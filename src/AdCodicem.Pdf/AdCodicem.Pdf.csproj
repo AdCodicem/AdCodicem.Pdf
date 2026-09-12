@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AdCodicem.Pdf</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <PackageId>AdCodicem.Pdf</PackageId>
+    <Description>Low-allocation PDF document writer for .NET: streaming file layout, TrueType embedding and tagged-PDF plumbing, with no native or managed dependencies.</Description>
+    <PackageTags>pdf;pdf-generation;streaming;aot</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AdCodicem.Pdf.Tests" />
+    <InternalsVisibleTo Include="AdCodicem.Pdf.Html" />
+    <InternalsVisibleTo Include="AdCodicem.Pdf.Html.Tests" />
+    <InternalsVisibleTo Include="AdCodicem.Pdf.Benchmarks" />
+  </ItemGroup>
+
+</Project>
