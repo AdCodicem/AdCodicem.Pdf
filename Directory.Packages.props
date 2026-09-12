@@ -1,0 +1,24 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Rendering">
+    <!-- HTML5 parsing only: the CSS cascade and the layout engine are ours (see docs/architecture.md). -->
+    <PackageVersion Include="AngleSharp" Version="1.*" />
+  </ItemGroup>
+
+  <ItemGroup Label="Test">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageVersion Include="xunit" Version="2.*" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.*" />
+    <PackageVersion Include="Shouldly" Version="4.*" />
+  </ItemGroup>
+
+  <ItemGroup Label="Benchmark">
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.*" />
+  </ItemGroup>
+
+</Project>
