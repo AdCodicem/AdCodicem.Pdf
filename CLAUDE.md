@@ -80,7 +80,7 @@ Si `dotnet` est introuvable : `apt-get install -y --no-install-recommends dotnet
 
 ```bash
 dotnet build   AdCodicem.Pdf.slnx -c Release
-dotnet test    AdCodicem.Pdf.slnx -c Release
+dotnet test --solution AdCodicem.Pdf.slnx -c Release
 dotnet run -c Release --project bench/AdCodicem.Pdf.Benchmarks -- --filter '*'
 ```
 

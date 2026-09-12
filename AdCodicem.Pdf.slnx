@@ -1,14 +1,8 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/AdCodicem.Pdf/AdCodicem.Pdf.csproj" />
-    <Project Path="src/AdCodicem.Pdf.Html/AdCodicem.Pdf.Html.csproj" />
-    <Project Path="src/AdCodicem.Pdf.AspNetCore/AdCodicem.Pdf.AspNetCore.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj" />
-    <Project Path="tests/AdCodicem.Pdf.Html.Tests/AdCodicem.Pdf.Html.Tests.csproj" />
-  </Folder>
-  <Folder Name="/bench/">
-    <Project Path="bench/AdCodicem.Pdf.Benchmarks/AdCodicem.Pdf.Benchmarks.csproj" />
   </Folder>
 </Solution>
