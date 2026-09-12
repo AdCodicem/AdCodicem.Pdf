@@ -1,0 +1,154 @@
+using AdCodicem.Pdf.Diagnostics;
+using AdCodicem.Pdf.Objects;
+
+namespace AdCodicem.Pdf.IO.Filters;
+
+/// <summary>Applies the chain of filters declared by a stream.</summary>
+internal static class PdfFilterPipeline
+{
+    /// <summary>
+    /// Decodes a stream's data, stopping at an image filter.
+    /// </summary>
+    /// <remarks>
+    /// Image filters are left in place on purpose: a JPEG inside a PDF is already a JPEG, and decoding it
+    /// to pixels only to encode it again is both slow and lossy. Callers that want pixels ask for them.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics)
+    {
+        var data = stream.GetRawBytes();
+        var filters = stream.Dictionary.GetRaw(PdfName.Filter).Resolved();
+
+        if (filters is null)
+        {
+            return data;
+        }
+
+        var parameters = stream.Dictionary.GetRaw(PdfName.DecodeParms).Resolved();
+
+        if (filters is PdfName single)
+        {
+            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics);
+        }
+
+        if (filters is not PdfArray chain)
+        {
+            diagnostics?.Warn(PdfDiagnosticCodes.FilterUnsupported, "The /Filter entry is neither a name nor an array.");
+            return data;
+        }
+
+        var parameterArray = parameters as PdfArray;
+
+        for (var index = 0; index < chain.Count; index++)
+        {
+            if (chain.Resolved(index) is not PdfName name)
+            {
+                continue;
+            }
+
+            var stepParameters = parameterArray is not null && index < parameterArray.Count
+                ? parameterArray.Resolved(index).AsDictionary()
+                : parameters.AsDictionary();
+
+            if (IsImageFilter(name))
+            {
+                return data;
+            }
+
+            data = ApplyOne(name, data, stepParameters, diagnostics);
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// Determines whether a filter produces an image format that should be left encoded.
+    /// </summary>
+    public static bool IsImageFilter(PdfName name) =>
+        name == PdfName.DCTDecode || name == PdfName.JPXDecode ||
+        name == PdfName.JBIG2Decode || name == PdfName.CCITTFaxDecode;
+
+    private static ReadOnlyMemory<byte> ApplyOne(
+        PdfName name,
+        ReadOnlyMemory<byte> data,
+        PdfDictionary? parameters,
+        PdfDiagnostics? diagnostics)
+    {
+        if (IsImageFilter(name))
+        {
+            return data;
+        }
+
+        if (name == PdfName.FlateDecode)
+        {
+            var decoded = FlateFilter.Decode(data, out var repaired, out var truncated);
+
+            if (repaired)
+            {
+                diagnostics?.Repair(PdfDiagnosticCodes.FilterFailed, "A Flate stream was not valid zlib data.");
+            }
+
+            if (truncated)
+            {
+                diagnostics?.Warn(PdfDiagnosticCodes.FilterFailed, "A Flate stream was truncated; the decoded prefix was kept.");
+            }
+
+            if (decoded.Length == 0 && data.Length > 0 && !truncated)
+            {
+                diagnostics?.Warn(PdfDiagnosticCodes.FilterFailed, "A Flate stream could not be decoded.");
+                return data;
+            }
+
+            return ApplyPredictor(decoded, parameters);
+        }
+
+        if (name == PdfName.LZWDecode)
+        {
+            var earlyChange = (int)(parameters.GetInteger(PdfName.EarlyChange) ?? 1);
+            var decoded = LzwFilter.Decode(data.Span, earlyChange is 0 ? 0 : 1);
+            return ApplyPredictor(decoded, parameters);
+        }
+
+        if (name == PdfName.ASCII85Decode)
+        {
+            return Ascii85Filter.Decode(data.Span);
+        }
+
+        if (name == PdfName.ASCIIHexDecode)
+        {
+            return AsciiHexFilter.Decode(data.Span);
+        }
+
+        if (name == PdfName.RunLengthDecode)
+        {
+            return RunLengthFilter.Decode(data.Span);
+        }
+
+        if (name == PdfName.Crypt)
+        {
+            // The identity crypt filter is a no-op; anything else needs the security handler (M9).
+            return data;
+        }
+
+        diagnostics?.Warn(PdfDiagnosticCodes.FilterUnsupported, $"The filter /{name.Value} is not supported.");
+        return data;
+    }
+
+    private static ReadOnlyMemory<byte> ApplyPredictor(byte[] decoded, PdfDictionary? parameters)
+    {
+        if (parameters is null)
+        {
+            return decoded;
+        }
+
+        var predictor = (int)parameters.GetInteger(PdfName.Predictor, 1);
+
+        return predictor <= 1
+            ? decoded
+            : PredictorTransform.Apply(
+                decoded,
+                predictor,
+                (int)parameters.GetInteger(PdfName.Colors, 1),
+                (int)parameters.GetInteger(PdfName.BitsPerComponent, 8),
+                (int)parameters.GetInteger(PdfName.Columns, 1));
+    }
+}
