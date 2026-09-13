@@ -84,6 +84,8 @@ public static class Corpus
 {
     private static readonly Lazy<(string Root, IReadOnlyList<CorpusDocument> Documents)> Loaded = new(Load);
 
+    private static readonly JsonSerializerOptions ManifestOptions = new() { PropertyNameCaseInsensitive = true };
+
     /// <summary>Gets the corpus directory.</summary>
     public static string Root => Loaded.Value.Root;
 
@@ -146,9 +148,8 @@ public static class Corpus
 
     private static List<CorpusDocument>? ReadManifest(string path)
     {
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         using var stream = System.IO.File.OpenRead(path);
         using var json = JsonDocument.Parse(stream);
-        return json.RootElement.GetProperty("documents").Deserialize<List<CorpusDocument>>(options);
+        return json.RootElement.GetProperty("documents").Deserialize<List<CorpusDocument>>(ManifestOptions);
     }
 }

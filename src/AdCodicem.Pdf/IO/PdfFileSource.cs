@@ -144,6 +144,8 @@ public abstract class PdfFileSource : IDisposable
             {
                 _handle.Dispose();
             }
+
+            base.Dispose(disposing);
         }
     }
 }

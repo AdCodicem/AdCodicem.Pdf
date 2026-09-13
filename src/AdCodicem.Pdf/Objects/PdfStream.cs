@@ -3,6 +3,10 @@ namespace AdCodicem.Pdf.Objects;
 /// <summary>
 /// Represents a PDF stream: a dictionary describing a sequence of bytes, plus the bytes themselves.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Naming",
+    "CA1711:Identifiers should not have incorrect suffix",
+    Justification = "The PDF specification calls this a public sealed class pdfstream : pdfobject; renaming it would make every reader of the specification translate.")]
 public sealed class PdfStream : PdfObject
 {
     /// <summary>Initialises a stream from its dictionary and its encoded data.</summary>

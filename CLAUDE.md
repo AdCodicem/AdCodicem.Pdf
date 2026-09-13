@@ -101,6 +101,10 @@ See `docs/corpus.md`.
 
 - **Everything is written in English**: code, public API, XML documentation, project documentation,
   commit messages, diagnostics and exception messages.
+- **The build has no warnings, and keeps none.** `TreatWarningsAsErrors` is on, analysis runs at
+  `latest-recommended`, code style is enforced in the build, and XML documentation is required on the
+  public API. A rule that is genuinely wrong for this codebase is suppressed **where it fires**, with a
+  written justification — never by adding to a global `NoWarn` list.
 - One public type per file. `sealed` by default. `internal` until an API is deliberately made public.
 - PDF object model types carry the `Pdf` prefix; types internal to the HTML engine do not.
 - Tests: **xUnit v3**, **AwesomeAssertions** (`value.Should().Be(…)`), **NSubstitute** for the few real

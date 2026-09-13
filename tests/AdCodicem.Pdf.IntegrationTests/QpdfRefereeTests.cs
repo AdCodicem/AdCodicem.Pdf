@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace AdCodicem.Pdf.IntegrationTests;
 
 /// <summary>
@@ -39,7 +41,7 @@ public class QpdfRefereeTests(RefereeContainer referee)
             "qpdf", "--show-npages", RefereeContainer.PathInContainer(file));
 
         exitCode.Should().NotBe(2, $"qpdf could not count the pages of {file}:\n{output}");
-        int.Parse(output.Trim()).Should().Be(expected!.Value, $"the manifest claims {expected} pages for {file}");
+        int.Parse(output.Trim(), CultureInfo.InvariantCulture).Should().Be(expected!.Value, $"the manifest claims {expected} pages for {file}");
     }
 
     public static TheoryData<string> AllDocuments =>
