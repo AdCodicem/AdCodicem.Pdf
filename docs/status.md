@@ -35,6 +35,18 @@ previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
 
+### 2026-09-13 — Packaging settled, and the wanted-documents specification
+- Package identifiers confirmed and checked as unclaimed: `AdCodicem.Pdf` plus `.Validation`, `.Html`,
+  `.AspNetCore`, `.FacturX`, `.Rendering`, `.Signing` (D23). The `AdCodicem.` prefix is to be reserved on
+  nuget.org with the first publish.
+- Publication switched to **trusted publishing** (D24): the release workflow exchanges a GitHub OIDC token
+  for a nuget.org key valid one hour and usable once, so no long-lived secret exists. `docs/releasing.md`
+  records the exact policy fields — a mismatch on the workflow file name or the environment is what breaks
+  this setup, and it breaks it silently until someone reads the error.
+- `docs/corpus-contributions.md` specifies the twelve document types still wanted (W01 to W12), with the
+  milestone each unblocks, what makes a sample usable, an anonymisation checklist, and the difference
+  between the public and private corpora.
+
 ### 2026-09-13 — Validation and repair milestones, and a defect the corpus found
 - Two milestones inserted at the user's request: **M2 document validation**, right after reading, and
   **M4 repair**, right after writing — repair produces a sound file, so it needs the writer. Everything
@@ -109,7 +121,8 @@ previous ordering, where M2 was writing and M3 assembly.
 | T01 | `TreatWarningsAsErrors` is off while the foundations settle | Turn on when M3 closes |
 | T02 | XML documentation (`CS1591`) is not enforced on the public API | Enforce when the public API freezes (M7.6) |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
-| T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Needs documents from the field |
+| T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
+| T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | Before the first release; steps in `docs/releasing.md` |
 | T04 | An OFL font set must be embedded for default rendering | During M6 |
 | T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M7 |
 | T06 | `PdfString.ToText` reads Latin-1 rather than full PDFDocEncoding (the 32 positions 0x80-0x9F differ) | Before the first public release |

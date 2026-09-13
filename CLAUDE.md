@@ -13,7 +13,8 @@ Read these, in this order, and nothing else:
 
 Load `docs/architecture.md` only when touching a boundary between layers, and `docs/decisions.md` only
 when considering reversing a settled choice. `docs/roadmap.md` places a milestone in the whole; it is not
-a daily working document. `docs/corpus.md` is required reading before closing any milestone.
+a daily working document. `docs/corpus.md` is required reading before closing any milestone; `docs/corpus-contributions.md` says
+what documents are still wanted and how they arrive; `docs/releasing.md` covers packaging and publishing.
 
 At the end of every session: update `docs/status.md` (actual state, not intentions), tick the milestone
 checklist, commit, push.
