@@ -74,6 +74,10 @@ public sealed class RefereeContainer : IAsyncLifetime
 }
 
 /// <summary>Shares one referee container across the whole integration suite.</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Naming",
+    "CA1711:Identifiers should not have incorrect suffix",
+    Justification = "xUnit collection definitions are named after the collection they define.")]
 [CollectionDefinition(Name)]
 public sealed class RefereeCollection : ICollectionFixture<RefereeContainer>
 {

@@ -7,9 +7,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
-    <!-- CS1591: XML docs are enforced once the public API stabilises (see docs/roadmap.md, M6). -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Analysis">
+    <!-- A warning nobody has to fix is a warning nobody reads. The build has none, and keeps none. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
   <PropertyGroup Label="Performance">

@@ -163,6 +163,19 @@ rejected alternatives are the most useful thing a reader has when deciding wheth
 *Consequence*: `docs/` is written for two audiences at once, and the site build runs in CI so a document
 that does not build is caught before it reaches the default branch.
 
+**D28 — Warnings are errors, and suppressions are local and justified.** `TreatWarningsAsErrors` is on
+across the solution, analysis runs at `latest-recommended`, code style is enforced in the build, and XML
+documentation is required on the public API.
+*Reason*: a warning nobody has to fix is a warning nobody reads, and a build that prints forty of them
+hides the one that matters. The two that CI caught in the first week — a `stackalloc` inside a loop, and
+an obsolete API — were both worth acting on and would both have been lost in noise.
+*How a rule that is wrong here is handled*: suppressed at the symbol that triggers it, with a
+`Justification` a reader can weigh. `PdfDictionary` and `PdfStream` keep the names the specification uses;
+renaming them so an analyzer stops objecting would make every reader of the specification translate. The
+single exception is scoped in `.editorconfig`: test method names carry underscores because they are
+sentences, and CA1707 objects only there.
+*Rejected*: a global `NoWarn` list, which is how a codebase quietly stops enforcing anything.
+
 ---
 
 ## Minor but durable technical decisions

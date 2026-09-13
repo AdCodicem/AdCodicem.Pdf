@@ -254,7 +254,7 @@ internal ref struct PdfObjectParser
         return dictionary;
     }
 
-    private PdfObject ReadStream(PdfDictionary dictionary)
+    private PdfStream ReadStream(PdfDictionary dictionary)
     {
         _lexer.SkipStreamEndOfLine();
 
@@ -297,7 +297,7 @@ internal ref struct PdfObjectParser
         return Finish(dictionary, dataStart, length, span.Length);
     }
 
-    private PdfObject Finish(PdfDictionary dictionary, int dataStart, int length, int bufferLength)
+    private PdfStream Finish(PdfDictionary dictionary, int dataStart, int length, int bufferLength)
     {
         length = Math.Max(length, 0);
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace AdCodicem.Pdf.TestSupport;
@@ -10,7 +11,7 @@ public sealed class TestPdfBuilder
 {
     private readonly List<(int Number, byte[] Body)> _objects = [];
 
-    public TestPdfBuilder Object(int number, string body)
+    public TestPdfBuilder WithObject(int number, string body)
     {
         _objects.Add((number, Encoding.ASCII.GetBytes(body)));
         return this;
@@ -19,13 +20,13 @@ public sealed class TestPdfBuilder
     public TestPdfBuilder Stream(int number, string dictionaryEntries, string data)
     {
         var body = $"<< {dictionaryEntries} /Length {data.Length} >>\nstream\n{data}\nendstream";
-        return Object(number, body);
+        return WithObject(number, body);
     }
 
     /// <summary>Writes a file with a classic cross-reference table.</summary>
     public byte[] BuildClassic(int rootNumber, long offsetError = 0, bool includeXRef = true)
     {
-        var writer = new Writer();
+        using var writer = new Writer();
         writer.WriteHeader("1.7");
 
         var offsets = WriteObjects(writer);
@@ -49,7 +50,7 @@ public sealed class TestPdfBuilder
     /// <summary>Writes a file whose index is a cross-reference stream, optionally with an object stream.</summary>
     public byte[] BuildWithXRefStream(int rootNumber, int[]? compressedObjects = null)
     {
-        var writer = new Writer();
+        using var writer = new Writer();
         writer.WriteHeader("1.5");
 
         compressedObjects ??= [];
@@ -140,7 +141,7 @@ public sealed class TestPdfBuilder
         (int Number, string Body)[] updates,
         bool pointPreviousAtSelf = false)
     {
-        var writer = new Writer();
+        using var writer = new Writer();
         writer.WriteRaw(original);
 
         var previousStartXRef = FindStartXRef(original);
@@ -174,7 +175,7 @@ public sealed class TestPdfBuilder
         var index = text.LastIndexOf("startxref", StringComparison.Ordinal);
         var rest = text[(index + "startxref".Length)..].Trim();
         var end = rest.IndexOfAny([' ', '\r', '\n']);
-        return long.Parse(end < 0 ? rest : rest[..end]);
+        return long.Parse(end < 0 ? rest : rest[..end], CultureInfo.InvariantCulture);
     }
 
     private Dictionary<int, long> WriteObjects(Writer writer)
@@ -192,7 +193,7 @@ public sealed class TestPdfBuilder
 
     private int MaxNumber() => _objects.Count == 0 ? 0 : _objects.Max(o => o.Number);
 
-    private sealed class Writer
+    private sealed class Writer : IDisposable
     {
         private readonly MemoryStream _stream = new();
 
@@ -228,7 +229,7 @@ public sealed class TestPdfBuilder
         public void WriteStartXRef(long xrefOffset)
         {
             WriteLine("startxref");
-            WriteLine(xrefOffset.ToString());
+            WriteLine(xrefOffset.ToString(CultureInfo.InvariantCulture));
             WriteLine("%%EOF");
         }
 
@@ -241,5 +242,7 @@ public sealed class TestPdfBuilder
         public void WriteRaw(byte[] data) => _stream.Write(data, 0, data.Length);
 
         public byte[] ToArray() => _stream.ToArray();
+
+        public void Dispose() => _stream.Dispose();
     }
 }

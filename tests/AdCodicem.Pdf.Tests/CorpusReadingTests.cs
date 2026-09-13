@@ -18,10 +18,12 @@ public class CorpusReadingTests
 {
     private static readonly TimeSpan OpenBudget = TimeSpan.FromSeconds(20);
 
+    private static readonly string[] CorpusFolders = ["documents", "vendor", "private"];
+
     [Fact]
     public void The_corpus_manifest_describes_every_document_present()
     {
-        var onDisk = new[] { "documents", "vendor", "private" }
+        var onDisk = CorpusFolders
             .Select(folder => Path.Combine(Corpus.Root, folder))
             .Where(Directory.Exists)
             .SelectMany(folder => Directory.EnumerateFiles(folder, "*.pdf", SearchOption.AllDirectories))
@@ -261,6 +263,8 @@ public class CorpusReadingTests
             {
                 _inner.Dispose();
             }
+
+            base.Dispose(disposing);
         }
     }
 }

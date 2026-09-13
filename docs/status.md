@@ -35,6 +35,18 @@ previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
 
+### 2026-09-13 — The build keeps no warnings
+- `TreatWarningsAsErrors` on, analysis at `latest-recommended`, code style enforced in the build, XML
+  documentation required on the public API (D28). T01 and T02 closed.
+- Four real defects in production code, all worth the trouble: an override that did not chain to
+  `base.Dispose`, and two return types wider than what the method can return. Ten more in the tests:
+  culture-dependent parsing and formatting, a `JsonSerializerOptions` rebuilt on every call, a type owning
+  an undisposed stream, a constant array allocated per call.
+- Three suppressions, each at the symbol that triggers it and each with a reason: `PdfDictionary` and
+  `PdfStream` keep the specification's vocabulary, and an xUnit collection definition is named after its
+  collection. One scoped exception in `.editorconfig`: test names carry underscores because they are
+  sentences.
+
 ### 2026-09-13 — Two test levels and a documentation site
 - Test stack settled (D25): xUnit v3, **AwesomeAssertions** in place of Shouldly, **NSubstitute** where an
   interaction is what needs asserting — the first such test pins that the parser resolves an indirect
@@ -142,8 +154,8 @@ previous ordering, where M2 was writing and M3 assembly.
 
 | # | Subject | Decision expected |
 |---|---------|-------------------|
-| T01 | `TreatWarningsAsErrors` is off while the foundations settle | Turn on when M3 closes |
-| T02 | XML documentation (`CS1591`) is not enforced on the public API | Enforce when the public API freezes (M7.6) |
+| ~~T01~~ | ~~`TreatWarningsAsErrors` is off while the foundations settle~~ | Done: on across the solution, analysis at `latest-recommended` |
+| ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
 | T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | Before the first release; steps in `docs/releasing.md` |

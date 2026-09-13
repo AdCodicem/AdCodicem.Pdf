@@ -26,10 +26,10 @@ public class HostileInputTests
     public void Ignores_a_stream_length_larger_than_the_file()
     {
         var bytes = new TestPdfBuilder()
-            .Object(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
-            .Object(3, "<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>")
-            .Object(4, "<< /Length 2147483647 >>\nstream\nshort\nendstream")
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>")
+            .WithObject(4, "<< /Length 2147483647 >>\nstream\nshort\nendstream")
             .BuildClassic(rootNumber: 1);
 
         using var document = Measure(() => PdfDocument.Open(bytes));
@@ -42,9 +42,9 @@ public class HostileInputTests
     public void Ignores_an_object_stream_that_claims_more_objects_than_it_could_hold()
     {
         var bytes = new TestPdfBuilder()
-            .Object(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .Object(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .Object(5, "<< /Type /ObjStm /N 1000000000 /First 4 /Length 8 >>\nstream\n1 0 <<>>\nendstream")
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Type /ObjStm /N 1000000000 /First 4 /Length 8 >>\nstream\n1 0 <<>>\nendstream")
             .BuildClassic(rootNumber: 1);
 
         using var document = Measure(() => PdfDocument.Open(bytes));
@@ -56,9 +56,9 @@ public class HostileInputTests
     public void Survives_a_cross_reference_stream_with_impossible_field_widths()
     {
         var bytes = new TestPdfBuilder()
-            .Object(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .Object(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .Object(3, "<< /Type /XRef /Size 3 /W [99 99 99] /Root 1 0 R /Length 4 >>\nstream\nAAAA\nendstream")
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< /Type /XRef /Size 3 /W [99 99 99] /Root 1 0 R /Length 4 >>\nstream\nAAAA\nendstream")
             .BuildClassic(rootNumber: 1);
 
         using var document = Measure(() => PdfDocument.Open(bytes));
@@ -70,9 +70,9 @@ public class HostileInputTests
     public void Survives_an_object_whose_length_refers_to_itself()
     {
         var bytes = new TestPdfBuilder()
-            .Object(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .Object(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .Object(3, "<< /Length 3 0 R >>\nstream\nloop\nendstream")
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< /Length 3 0 R >>\nstream\nloop\nendstream")
             .BuildClassic(rootNumber: 1);
 
         using var document = Measure(() => PdfDocument.Open(bytes));
@@ -84,8 +84,8 @@ public class HostileInputTests
     public void Survives_a_document_whose_pages_form_a_cycle()
     {
         var bytes = new TestPdfBuilder()
-            .Object(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .Object(2, "<< /Type /Pages /Kids [2 0 R] /Count 1 >>")
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [2 0 R] /Count 1 >>")
             .BuildClassic(rootNumber: 1);
 
         using var document = Measure(() => PdfDocument.Open(bytes));
@@ -125,8 +125,8 @@ public class HostileInputTests
     {
         var deep = new string('[', 20000) + new string(']', 20000);
         var bytes = new TestPdfBuilder()
-            .Object(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .Object(2, $"<< /Type /Pages /Kids [] /Count 0 /Deep {deep} >>")
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, $"<< /Type /Pages /Kids [] /Count 0 /Deep {deep} >>")
             .BuildClassic(rootNumber: 1);
 
         using var document = Measure(() => PdfDocument.Open(bytes));

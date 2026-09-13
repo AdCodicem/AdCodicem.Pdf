@@ -123,7 +123,7 @@ public class DocumentReaderTests
     [Fact]
     public void Refuses_an_encrypted_document_with_a_typed_exception()
     {
-        var builder = SampleDocument().Object(9, "<< /Filter /Standard /V 1 /R 2 /P -1 >>");
+        var builder = SampleDocument().WithObject(9, "<< /Filter /Standard /V 1 /R 2 /P -1 >>");
         var bytes = builder.BuildClassic(rootNumber: 1);
         var encrypted = Encoding.Latin1.GetString(bytes)
             .Replace("/Root 1 0 R >>", "/Root 1 0 R /Encrypt 9 0 R >>", StringComparison.Ordinal);
@@ -157,9 +157,9 @@ public class DocumentReaderTests
 
     private static TestPdfBuilder SampleDocument(string content = "BT (Bonjour) Tj ET") =>
         new TestPdfBuilder()
-            .Object(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
-            .Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>")
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>")
             .Stream(4, string.Empty, content);
 
     private static PdfDictionary Page(PdfDocument document) =>
@@ -201,6 +201,8 @@ public class DocumentReaderTests
             {
                 _inner.Dispose();
             }
+
+            base.Dispose(disposing);
         }
     }
 }
