@@ -13,10 +13,10 @@ public class DocumentReaderTests
     {
         using var document = PdfDocument.Open(SampleDocument().BuildClassic(rootNumber: 1));
 
-        document.Version.ShouldBe("1.7");
-        document.WasRepaired.ShouldBeFalse();
-        document.Catalog.ShouldNotBeNull().IsOfType(PdfName.Catalog).ShouldBeTrue();
-        PageContent(document).ShouldBe("BT (Bonjour) Tj ET");
+        document.Version.Should().Be("1.7");
+        document.WasRepaired.Should().BeFalse();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
     }
 
     [Fact]
@@ -24,8 +24,8 @@ public class DocumentReaderTests
     {
         using var document = PdfDocument.Open(SampleDocument().BuildWithXRefStream(rootNumber: 1));
 
-        document.WasRepaired.ShouldBeFalse();
-        PageContent(document).ShouldBe("BT (Bonjour) Tj ET");
+        document.WasRepaired.Should().BeFalse();
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
     }
 
     [Fact]
@@ -35,10 +35,10 @@ public class DocumentReaderTests
 
         using var document = PdfDocument.Open(bytes);
 
-        document.WasRepaired.ShouldBeFalse();
-        document.Catalog.ShouldNotBeNull().IsOfType(PdfName.Catalog).ShouldBeTrue();
-        Page(document).GetArray(PdfName.MediaBox).ShouldNotBeNull().Count.ShouldBe(4);
-        PageContent(document).ShouldBe("BT (Bonjour) Tj ET");
+        document.WasRepaired.Should().BeFalse();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        Page(document).GetArray(PdfName.MediaBox).Required().Count.Should().Be(4);
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
     }
 
     [Fact]
@@ -48,8 +48,8 @@ public class DocumentReaderTests
 
         using var document = PdfDocument.Open(bytes);
 
-        PageContent(document).ShouldBe("BT (Bonjour) Tj ET");
-        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).ShouldBeTrue();
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).Should().BeTrue();
     }
 
     [Fact]
@@ -59,10 +59,10 @@ public class DocumentReaderTests
 
         using var document = PdfDocument.Open(bytes);
 
-        document.WasRepaired.ShouldBeTrue();
-        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefRebuilt).ShouldBeTrue();
-        document.Catalog.ShouldNotBeNull().IsOfType(PdfName.Catalog).ShouldBeTrue();
-        PageContent(document).ShouldBe("BT (Bonjour) Tj ET");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefRebuilt).Should().BeTrue();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
     }
 
     [Fact]
@@ -73,8 +73,8 @@ public class DocumentReaderTests
 
         using var document = PdfDocument.Open(truncated);
 
-        document.WasRepaired.ShouldBeTrue();
-        document.Catalog.ShouldNotBeNull();
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.Required();
     }
 
     [Fact]
@@ -88,8 +88,8 @@ public class DocumentReaderTests
 
         using var document = PdfDocument.Open(updated);
 
-        document.WasRepaired.ShouldBeFalse();
-        PageContent(document).ShouldBe("BT (Au revoir) Tj ET");
+        document.WasRepaired.Should().BeFalse();
+        PageContent(document).Should().Be("BT (Au revoir) Tj ET");
     }
 
     [Fact]
@@ -104,8 +104,8 @@ public class DocumentReaderTests
 
         using var document = PdfDocument.Open(looping);
 
-        document.Catalog.ShouldNotBeNull();
-        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefChainCycle).ShouldBeTrue();
+        document.Catalog.Required();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefChainCycle).Should().BeTrue();
     }
 
     [Fact]
@@ -116,8 +116,8 @@ public class DocumentReaderTests
 
         using var document = PdfDocument.Open(prefixed);
 
-        document.Catalog.ShouldNotBeNull();
-        PageContent(document).ShouldBe("BT (Bonjour) Tj ET");
+        document.Catalog.Required();
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
     }
 
     [Fact]
@@ -128,13 +128,13 @@ public class DocumentReaderTests
         var encrypted = Encoding.Latin1.GetString(bytes)
             .Replace("/Root 1 0 R >>", "/Root 1 0 R /Encrypt 9 0 R >>", StringComparison.Ordinal);
 
-        Should.Throw<PdfEncryptedException>(() => PdfDocument.Open(Encoding.Latin1.GetBytes(encrypted)));
+        FluentThrow<PdfEncryptedException>(() => PdfDocument.Open(Encoding.Latin1.GetBytes(encrypted)));
     }
 
     [Fact]
     public void Refuses_an_empty_input()
     {
-        Should.Throw<PdfFormatException>(() => PdfDocument.Open(ReadOnlyMemory<byte>.Empty));
+        FluentThrow<PdfFormatException>(() => PdfDocument.Open(ReadOnlyMemory<byte>.Empty));
     }
 
     [Fact]
@@ -147,12 +147,12 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
 
         var afterOpen = source.BytesRead;
-        afterOpen.ShouldBeLessThan(200_000);
+        afterOpen.Should().BeLessThan(200_000);
 
-        var stream = Page(document).GetStream(PdfName.Contents).ShouldNotBeNull();
-        stream.GetRawBytes().Length.ShouldBe(payload.Length);
+        var stream = Page(document).GetStream(PdfName.Contents).Required();
+        stream.GetRawBytes().Length.Should().Be(payload.Length);
 
-        source.BytesRead.ShouldBeGreaterThan(afterOpen + payload.Length - 1);
+        source.BytesRead.Should().BeGreaterThan(afterOpen + payload.Length - 1);
     }
 
     private static TestPdfBuilder SampleDocument(string content = "BT (Bonjour) Tj ET") =>
@@ -165,16 +165,16 @@ public class DocumentReaderTests
     private static PdfDictionary Page(PdfDocument document) =>
         document.Catalog
             .GetDictionary(PdfName.Pages)
-            .ShouldNotBeNull()
+            .Required()
             .GetArray(PdfName.Kids)
-            .ShouldNotBeNull()
+            .Required()
             .Resolved(0)
             .AsDictionary()
-            .ShouldNotBeNull();
+            .Required();
 
     private static string PageContent(PdfDocument document)
     {
-        var stream = Page(document).GetStream(PdfName.Contents).ShouldNotBeNull();
+        var stream = Page(document).GetStream(PdfName.Contents).Required();
         return Encoding.ASCII.GetString(stream.Decode(document.Diagnostics).Span);
     }
 

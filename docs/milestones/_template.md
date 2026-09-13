@@ -21,7 +21,10 @@ Each slice is vertical, testable, and ends on a green commit.
 
 ## Tests required
 
-The behaviours to cover, degenerate and hostile cases included.
+**Unit** — the behaviours to cover, degenerate and hostile cases included.
+
+**Integration** — what an independent tool must confirm about the documents this milestone produces or
+reads, and which tool confirms it.
 
 ## Acceptance conditions
 
@@ -33,7 +36,12 @@ Written in the form *"these corpus documents, this behaviour, verified by this t
 
 What has already bitten, or what is known to be treacherous in the specification.
 
+## Documentation
+
+Which pages of `website/docs` this milestone adds or changes, and which project documents it touches.
+A milestone that adds public API without documenting it is not finished.
+
 ## Exit criteria
 
-Checkboxes verifiable by tests, including the acceptance conditions above. The milestone closes when they
-are all ticked and CI is green.
+Checkboxes verifiable by tests, including the acceptance conditions above and the six points of the
+definition of done in `docs/roadmap.md`. The milestone closes when they are all ticked and CI is green.

@@ -32,22 +32,22 @@ public class CorpusReadingTests
         var described = Corpus.Documents.Select(document => document.File).Order().ToList();
 
         // A document nobody asserts anything about is not part of the corpus, it is clutter.
-        described.ShouldBe(onDisk);
+        described.Should().Equal(onDisk);
     }
 
     [Fact]
     public void The_corpus_covers_several_producers_and_every_use_case()
     {
         Corpus.Documents.Select(document => document.Producer.Split(' ')[0]).Distinct().Count()
-            .ShouldBeGreaterThanOrEqualTo(3, "the shape of a cross-reference section is a producer's signature");
+            .Should().BeGreaterThanOrEqualTo(3, "the shape of a cross-reference section is a producer's signature");
 
         var useCases = Corpus.Documents.Select(document => document.UseCase).Distinct().ToList();
-        useCases.ShouldContain("invoice");
-        useCases.ShouldContain("report");
-        useCases.ShouldContain("contract");
-        useCases.ShouldContain("form");
-        useCases.ShouldContain("scan");
-        useCases.ShouldContain("archival");
+        useCases.Should().Contain("invoice");
+        useCases.Should().Contain("report");
+        useCases.Should().Contain("contract");
+        useCases.Should().Contain("form");
+        useCases.Should().Contain("scan");
+        useCases.Should().Contain("archival");
     }
 
     [Theory]
@@ -59,7 +59,7 @@ public class CorpusReadingTests
         if (entry.Expect.Encrypted)
         {
             // Decryption arrives in M9; until then the refusal must be typed and immediate.
-            Should.Throw<PdfEncryptedException>(() => PdfDocument.Open(Corpus.Read(file)));
+            FluentThrow<PdfEncryptedException>(() => PdfDocument.Open(Corpus.Read(file)));
             return;
         }
 
@@ -67,10 +67,10 @@ public class CorpusReadingTests
         using var document = PdfDocument.Open(Corpus.Read(file));
         stopwatch.Stop();
 
-        stopwatch.Elapsed.ShouldBeLessThan(OpenBudget, $"opening {entry.Name} must not take unbounded time");
+        stopwatch.Elapsed.Should().BeLessThan(OpenBudget, $"opening {entry.Name} must not take unbounded time");
 
-        document.Catalog.ShouldNotBeNull($"{entry.Name} has no document catalogue");
-        document.WasRepaired.ShouldBe(entry.Expect.IndexRebuilt, $"{entry.Name}: unexpected rebuild state");
+        document.Catalog.Required($"{entry.Name} has no document catalogue");
+        document.WasRepaired.Should().Be(entry.Expect.IndexRebuilt, $"{entry.Name}: unexpected rebuild state");
 
         // Judge the diagnostics on a full read, not on opening: a lying /Length is only discovered when
         // the stream it describes is actually decoded, which is the lazy reader behaving as designed.
@@ -78,7 +78,7 @@ public class CorpusReadingTests
 
         foreach (var code in entry.Expect.RequiredDiagnostics)
         {
-            document.Diagnostics.Contains(code).ShouldBeTrue(
+            document.Diagnostics.Contains(code).Should().BeTrue(
                 $"{entry.Name} should report '{code}', reported: {Describe(document.Diagnostics)}");
         }
 
@@ -89,12 +89,12 @@ public class CorpusReadingTests
                 .Where(entry => entry.Severity is PdfDiagnosticSeverity.Repair or PdfDiagnosticSeverity.Warning)
                 .ToList();
 
-            noise.ShouldBeEmpty($"{entry.Name} is well formed but produced {Describe(document.Diagnostics)}");
+            noise.Should().BeEmpty($"{entry.Name} is well formed but produced {Describe(document.Diagnostics)}");
         }
 
         if (entry.Expect.Pages is { } expectedPages)
         {
-            CountPages(document).ShouldBe(expectedPages, $"{entry.Name}: page count");
+            CountPages(document).Should().Be(expectedPages, $"{entry.Name}: page count");
         }
     }
 
@@ -106,12 +106,12 @@ public class CorpusReadingTests
         var size = source.Length;
 
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
-        document.Catalog.ShouldNotBeNull();
+        document.Catalog.Required();
 
         var readAtOpen = source.BytesRead;
 
         // Indexing touches the header, the tail and the cross-reference sections — never the page content.
-        readAtOpen.ShouldBeLessThan(
+        readAtOpen.Should().BeLessThan(
             size / 4,
             $"{Corpus.Get(file).Name}: opening read {readAtOpen} of {size} bytes, so content was read eagerly");
     }
@@ -127,7 +127,7 @@ public class CorpusReadingTests
         var before = GC.GetAllocatedBytesForCurrentThread();
         using (var document = PdfDocument.Open(bytes))
         {
-            CountPages(document).ShouldBe(entry.Expect.Pages!.Value);
+            CountPages(document).Should().Be(entry.Expect.Pages!.Value);
         }
 
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -135,7 +135,7 @@ public class CorpusReadingTests
         // Indexing a thousand-page document and walking its whole page tree measured 2.4 MB, roughly
         // 2.4 KB per page: proportional to the number of objects, not to the weight of the content.
         // The budget leaves headroom for producer variation and fails loudly on a regression.
-        allocated.ShouldBeLessThan(
+        allocated.Should().BeLessThan(
             4 * 1024 * 1024,
             $"indexing {entry.Name} allocated {allocated / 1024} KB");
     }
@@ -148,32 +148,33 @@ public class CorpusReadingTests
 
         using var document = PdfDocument.Open(Corpus.Read(file));
 
-        document.Catalog.ShouldNotBeNull($"{entry.Name}: qpdf recovers a catalogue here, so must we");
+        document.Catalog.Required($"{entry.Name}: qpdf recovers a catalogue here, so must we");
         ReadEverything(document);
-        document.Diagnostics.Count.ShouldBeGreaterThan(0, $"{entry.Name}: damage must never be silent");
+        document.Diagnostics.Count.Should().BeGreaterThan(0, $"{entry.Name}: damage must never be silent");
 
         if (entry.Expect.Pages is { } expectedPages)
         {
-            CountPages(document).ShouldBe(expectedPages, $"{entry.Name}: recovered page count");
+            CountPages(document).Should().Be(expectedPages, $"{entry.Name}: recovered page count");
         }
     }
 
-    public static TheoryData<string> AllDocuments => Corpus.Paths;
+    public static TheoryData<string> AllDocuments => Theory(Corpus.Paths);
 
-    public static TheoryData<string> LargeDocuments => Corpus.PathsWithFeature("many-pages", "dct-image");
+    public static TheoryData<string> LargeDocuments => Theory(Corpus.PathsWithFeature("many-pages", "dct-image"));
 
-    public static TheoryData<string> DamagedDocuments
+    public static TheoryData<string> DamagedDocuments =>
+        Theory(Corpus.PathsWhere(document => !document.Expect.Clean));
+
+    private static TheoryData<string> Theory(IReadOnlyList<string> paths)
     {
-        get
-        {
-            var data = new TheoryData<string>();
-            foreach (var document in Corpus.Documents.Where(document => !document.Expect.Clean))
-            {
-                data.Add(document.File);
-            }
+        var data = new TheoryData<string>();
 
-            return data;
+        foreach (var path in paths)
+        {
+            data.Add(path);
         }
+
+        return data;
     }
 
     /// <summary>

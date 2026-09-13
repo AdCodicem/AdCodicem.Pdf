@@ -3,7 +3,9 @@
     <Project Path="src/AdCodicem.Pdf/AdCodicem.Pdf.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AdCodicem.Pdf.TestSupport/AdCodicem.Pdf.TestSupport.csproj" />
     <Project Path="tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj" />
+    <Project Path="tests/AdCodicem.Pdf.IntegrationTests/AdCodicem.Pdf.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/bench/">
     <Project Path="bench/AdCodicem.Pdf.Benchmarks/AdCodicem.Pdf.Benchmarks.csproj" />

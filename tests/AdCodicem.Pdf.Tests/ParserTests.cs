@@ -10,52 +10,52 @@ public class ParserTests
     [Fact]
     public void Parses_the_primitive_values()
     {
-        Parse("true").ShouldBeSameAs(PdfBoolean.True);
-        Parse("false").ShouldBeSameAs(PdfBoolean.False);
-        Parse("null").ShouldBeSameAs(PdfNull.Instance);
-        Parse("42").ShouldBeOfType<PdfInteger>().Value.ShouldBe(42);
-        Parse("3.5").ShouldBeOfType<PdfReal>().Value.ShouldBe(3.5);
-        Parse("/Type").ShouldBeOfType<PdfName>().Value.ShouldBe("Type");
-        Parse("(text)").ShouldBeOfType<PdfString>().ToText().ShouldBe("text");
+        Parse("true").Should().BeSameAs(PdfBoolean.True);
+        Parse("false").Should().BeSameAs(PdfBoolean.False);
+        Parse("null").Should().BeSameAs(PdfNull.Instance);
+        Parse("42").Should().BeOfType<PdfInteger>().Subject.Value.Should().Be(42);
+        Parse("3.5").Should().BeOfType<PdfReal>().Subject.Value.Should().Be(3.5);
+        Parse("/Type").Should().BeOfType<PdfName>().Subject.Value.Should().Be("Type");
+        Parse("(text)").Should().BeOfType<PdfString>().Subject.ToText().Should().Be("text");
     }
 
     [Fact]
     public void Parses_an_array()
     {
-        var array = Parse("[1 2 /Three (four)]").ShouldBeOfType<PdfArray>();
+        var array = Parse("[1 2 /Three (four)]").Should().BeOfType<PdfArray>().Subject;
 
-        array.Count.ShouldBe(4);
-        array[0].AsInteger().ShouldBe(1);
-        array[2].AsName()!.Value.ShouldBe("Three");
+        array.Count.Should().Be(4);
+        array[0].AsInteger().Should().Be(1);
+        array[2].AsName()!.Value.Should().Be("Three");
     }
 
     [Fact]
     public void Parses_a_dictionary()
     {
-        var dictionary = Parse("<< /Type /Page /Count 3 /Nested << /A true >> >>").ShouldBeOfType<PdfDictionary>();
+        var dictionary = Parse("<< /Type /Page /Count 3 /Nested << /A true >> >>").Should().BeOfType<PdfDictionary>().Subject;
 
-        dictionary.IsOfType(PdfName.Page).ShouldBeTrue();
-        dictionary.GetInteger(PdfName.Count).ShouldBe(3);
-        dictionary.GetDictionary(PdfName.Get("Nested")).ShouldNotBeNull();
+        dictionary.IsOfType(PdfName.Page).Should().BeTrue();
+        dictionary.GetInteger(PdfName.Count).Should().Be(3);
+        dictionary.GetDictionary(PdfName.Get("Nested")).Required();
     }
 
     [Fact]
     public void Distinguishes_a_reference_from_two_integers()
     {
-        var reference = Parse("12 0 R").ShouldBeOfType<PdfReference>();
-        reference.Id.ShouldBe(new PdfObjectId(12));
+        var reference = Parse("12 0 R").Should().BeOfType<PdfReference>().Subject;
+        reference.Id.Should().Be(new PdfObjectId(12));
 
-        var array = Parse("[1 2]").ShouldBeOfType<PdfArray>();
-        array.Count.ShouldBe(2);
+        var array = Parse("[1 2]").Should().BeOfType<PdfArray>().Subject;
+        array.Count.Should().Be(2);
     }
 
     [Fact]
     public void Backtracks_when_two_integers_are_not_followed_by_R()
     {
-        var array = Parse("[1 2 3]").ShouldBeOfType<PdfArray>();
+        var array = Parse("[1 2 3]").Should().BeOfType<PdfArray>().Subject;
 
-        array.Count.ShouldBe(3);
-        array[2].AsInteger().ShouldBe(3);
+        array.Count.Should().Be(3);
+        array[2].AsInteger().Should().Be(3);
     }
 
     [Fact]
@@ -64,10 +64,10 @@ public class ParserTests
         var bytes = Encoding.ASCII.GetBytes("7 0 obj\n<< /Length 0 >>\nendobj\n");
         var parser = new PdfObjectParser(bytes);
 
-        parser.TryReadIndirectObject(out var id, out var value).ShouldBeTrue();
+        parser.TryReadIndirectObject(out var id, out var value).Should().BeTrue();
 
-        id.ShouldBe(new PdfObjectId(7));
-        value.ShouldBeOfType<PdfDictionary>();
+        id.Should().Be(new PdfObjectId(7));
+        value.Should().BeOfType<PdfDictionary>();
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public class ParserTests
     {
         var stream = ParseStream("<< /Length 11 >>\nstream\nHello World\nendstream");
 
-        Encoding.ASCII.GetString(stream.GetRawBytes().Span).ShouldBe("Hello World");
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("Hello World");
     }
 
     [Fact]
@@ -84,8 +84,8 @@ public class ParserTests
         var diagnostics = new PdfDiagnostics();
         var stream = ParseStream("<< /Length 3 >>\nstream\nHello World\nendstream", diagnostics);
 
-        Encoding.ASCII.GetString(stream.GetRawBytes().Span).ShouldBe("Hello World");
-        diagnostics.Contains(PdfDiagnosticCodes.StreamLengthInvalid).ShouldBeTrue();
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("Hello World");
+        diagnostics.Contains(PdfDiagnosticCodes.StreamLengthInvalid).Should().BeTrue();
     }
 
     [Fact]
@@ -94,20 +94,34 @@ public class ParserTests
         var diagnostics = new PdfDiagnostics();
         var stream = ParseStream("<< /Length 99 >>\nstream\ntruncated", diagnostics);
 
-        Encoding.ASCII.GetString(stream.GetRawBytes().Span).ShouldBe("truncated");
-        diagnostics.Contains(PdfDiagnosticCodes.StreamTruncated).ShouldBeTrue();
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("truncated");
+        diagnostics.Contains(PdfDiagnosticCodes.StreamTruncated).Should().BeTrue();
     }
 
     [Fact]
     public void Resolves_a_length_given_as_an_indirect_reference()
     {
-        var source = new FixedObjectSource(new PdfObjectId(9), PdfInteger.Create(5));
+        var source = ObjectSourceReturning(new PdfObjectId(9), PdfInteger.Create(5));
         var bytes = Encoding.ASCII.GetBytes("<< /Length 9 0 R >>\nstream\nABCDE\nendstream");
         var parser = new PdfObjectParser(bytes, source: source);
 
-        var stream = parser.ParseObject().ShouldBeOfType<PdfStream>();
+        var stream = parser.ParseObject().Should().BeOfType<PdfStream>().Subject;
 
-        Encoding.ASCII.GetString(stream.GetRawBytes().Span).ShouldBe("ABCDE");
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("ABCDE");
+    }
+
+    [Fact]
+    public void Asks_the_object_source_for_an_indirect_length_exactly_once()
+    {
+        var source = ObjectSourceReturning(new PdfObjectId(9), PdfInteger.Create(5));
+        var bytes = Encoding.ASCII.GetBytes("<< /Length 9 0 R >>\nstream\nABCDE\nendstream");
+        var parser = new PdfObjectParser(bytes, source: source);
+
+        parser.ParseObject();
+
+        // Resolving a length reaches back into the reader, which is re-entrant and cached. Asking twice
+        // would mean the parser re-resolves what it already knows, on the hottest path there is.
+        source.Received(1).GetObject(new PdfObjectId(9));
     }
 
     [Fact]
@@ -117,9 +131,9 @@ public class ParserTests
         var bytes = Encoding.ASCII.GetBytes("<< /Type /Page /Kids [1 0 R");
         var parser = new PdfObjectParser(bytes, diagnostics: diagnostics);
 
-        parser.ParseObject().ShouldBeOfType<PdfDictionary>();
+        parser.ParseObject().Should().BeOfType<PdfDictionary>();
 
-        parser.IsTruncated.ShouldBeTrue();
+        parser.IsTruncated.Should().BeTrue();
     }
 
     [Fact]
@@ -131,16 +145,16 @@ public class ParserTests
 
         parser.ParseObject();
 
-        diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).ShouldBeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
     }
 
     [Fact]
     public void Drops_entries_whose_value_is_null_as_the_specification_requires()
     {
-        var dictionary = Parse("<< /A 1 /B null >>").ShouldBeOfType<PdfDictionary>();
+        var dictionary = Parse("<< /A 1 /B null >>").Should().BeOfType<PdfDictionary>().Subject;
 
-        dictionary.Count.ShouldBe(1);
-        dictionary.ContainsKey(PdfName.Get("B")).ShouldBeFalse();
+        dictionary.Count.Should().Be(1);
+        dictionary.ContainsKey(PdfName.Get("B")).Should().BeFalse();
     }
 
     [Fact]
@@ -149,16 +163,16 @@ public class ParserTests
         var bytes = Encoding.ASCII.GetBytes("<< /A /B /C");
         var parser = new PdfObjectParser(bytes);
 
-        parser.ParseObject().ShouldBeOfType<PdfDictionary>().Count.ShouldBe(1);
-        parser.IsTruncated.ShouldBeTrue();
+        parser.ParseObject().Should().BeOfType<PdfDictionary>().Subject.Count.Should().Be(1);
+        parser.IsTruncated.Should().BeTrue();
     }
 
     [Fact]
     public void Treats_an_unresolvable_reference_as_null()
     {
-        var reference = Parse("3 0 R").ShouldBeOfType<PdfReference>();
+        var reference = Parse("3 0 R").Should().BeOfType<PdfReference>().Subject;
 
-        reference.Resolve().ShouldBeSameAs(PdfNull.Instance);
+        reference.Resolve().Should().BeSameAs(PdfNull.Instance);
     }
 
     private static PdfObject Parse(string text)
@@ -170,11 +184,21 @@ public class ParserTests
     private static PdfStream ParseStream(string text, PdfDiagnostics? diagnostics = null)
     {
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
-        return parser.ParseObject().ShouldBeOfType<PdfStream>();
+        return parser.ParseObject().Should().BeOfType<PdfStream>().Subject;
     }
 
-    private sealed class FixedObjectSource(PdfObjectId id, PdfObject value) : IPdfObjectSource
+    /// <summary>
+    /// An object source that knows one object. Substituted rather than hand-written, so that tests can
+    /// also assert how the parser uses it, not only what it gets back.
+    /// </summary>
+    private static IPdfObjectSource ObjectSourceReturning(PdfObjectId id, PdfObject value)
     {
-        public PdfObject GetObject(PdfObjectId requested) => requested == id ? value : PdfNull.Instance;
+        var source = Substitute.For<IPdfObjectSource>();
+
+        // An unconfigured substitute answers null, which is exactly the kind of surprise the reader must
+        // never meet: absence in PDF is the null object.
+        source.GetObject(Arg.Any<PdfObjectId>()).Returns(PdfNull.Instance);
+        source.GetObject(id).Returns(value);
+        return source;
     }
 }

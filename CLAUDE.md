@@ -73,6 +73,9 @@ third-party PDFs, table of contents, bookmarks, continuous pagination).
 9. Every feature ships **with its tests**. Every optimisation ships **with its benchmark**.
 10. **No milestone closes on synthetic files alone.** Each one is accepted against real documents from
     `tests/corpus`, under the rules in `docs/corpus.md`.
+11. **No milestone closes without both test levels and updated documentation.** Unit tests for the
+    behaviour, integration tests for anything an independent tool must confirm, and the documentation
+    site brought in line with what now exists. Code without either is unfinished, not ahead of schedule.
 
 ## Development environment
 
@@ -83,8 +86,11 @@ If `dotnet` is missing: `apt-get install -y --no-install-recommends dotnet-sdk-1
 
 ```bash
 dotnet build AdCodicem.Pdf.slnx -c Release
-dotnet test --solution AdCodicem.Pdf.slnx -c Release
+dotnet test --solution AdCodicem.Pdf.slnx -c Release          # unit + integration (the latter skip without Docker)
+dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
 dotnet run -c Release --project bench/AdCodicem.Pdf.Benchmarks -- --filter '*'
+
+cd website && npm ci && npm run build                          # the documentation site
 ```
 
 Corpus documents are produced by real generators available in the container — Chromium (Skia backend),
@@ -97,7 +103,15 @@ See `docs/corpus.md`.
   commit messages, diagnostics and exception messages.
 - One public type per file. `sealed` by default. `internal` until an API is deliberately made public.
 - PDF object model types carry the `Pdf` prefix; types internal to the HTML engine do not.
-- Tests: xUnit and Shouldly. A test name states a behaviour, not a method.
+- Tests: **xUnit v3**, **AwesomeAssertions** (`value.Should().Be(…)`), **NSubstitute** for the few real
+  seams, **Testcontainers** for integration. A test name states a behaviour, not a method.
+- Two suites, and the difference is not speed: `tests/AdCodicem.Pdf.Tests` asserts our own behaviour;
+  `tests/AdCodicem.Pdf.IntegrationTests` asserts what an independent tool says about it, running that
+  tool in a container. Shared fixtures live in `tests/AdCodicem.Pdf.TestSupport`.
+- Integration tests **skip** when Docker is absent rather than failing, so a sandbox without a daemon
+  still gives a usable run. They are not optional in CI.
+- The documentation site is `website/` (Docusaurus). It publishes the user-facing documentation *and*
+  `docs/` as they are, so a project document that does not build breaks CI.
 - Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`).
 - Development branch: `claude/nuget-pdf-html-dotnet-msyz8z`.
 

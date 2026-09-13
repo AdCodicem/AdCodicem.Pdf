@@ -139,6 +139,30 @@ API-key setup. The only stored value is the nuget.org account name, which is not
 `nuget` environment, so renaming `release.yml` or the environment breaks publishing until the policy is
 updated. `docs/releasing.md` records the exact fields.
 
+**D25 — Test stack: xUnit v3, AwesomeAssertions, NSubstitute.** Assertions read
+`value.Should().Be(…)`; AwesomeAssertions is the MIT-licensed continuation of that style.
+*Reason for NSubstitute in a library with few collaborators*: the seams that exist are real —
+`IPdfObjectSource`, and later the font resolver, the signer and the web-font fetcher — and some
+behaviour is only observable as an interaction. "The parser resolves an indirect length exactly once" is
+a statement about a call, not about a value.
+*Guard*: substitutes are for interaction assertions and for seams that would otherwise need a network, a
+clock or a container. A value-oriented library tested through mocks tests its own mocks.
+
+**D26 — Integration tests run the referees in containers.** `tests/AdCodicem.Pdf.IntegrationTests` uses
+Testcontainers to run qpdf — and later veraPDF, pdftotext, mutool — against the corpus.
+*Reason*: the corpus promises that our claims are checked by tools we did not write. Running them in
+containers makes that reproducible: the same versions answer on a laptop and in CI, and nobody installs
+anything. It also removes the last "please install this on the runner" from the build.
+*Consequence*: where no Docker daemon exists the tests skip with the reason attached, visible in the run.
+CI has Docker, so skipping there would be a failure of the runner, not of the suite.
+
+**D27 — A documentation site, published from the repository.** Docusaurus in `website/`, deployed to
+GitHub Pages, publishing both the user-facing documentation and `docs/` unchanged.
+*Reason for publishing the working documents*: for a young library, the roadmap, the decisions and their
+rejected alternatives are the most useful thing a reader has when deciding whether to depend on it.
+*Consequence*: `docs/` is written for two audiences at once, and the site build runs in CI so a document
+that does not build is caught before it reaches the default branch.
+
 ---
 
 ## Minor but durable technical decisions

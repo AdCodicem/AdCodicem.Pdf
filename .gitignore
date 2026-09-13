@@ -432,3 +432,8 @@ FodyWeavers.xsd
 # publishing them. See tests/corpus/README.md.
 tests/corpus/private/
 tests/corpus/private.json
+
+# Documentation site build output and dependencies
+website/node_modules/
+website/build/
+website/.docusaurus/
