@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Audit de la chaîne documentaire — rapport de synthèse</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm 22mm; }
+  body { font-family: "Liberation Serif", Georgia, serif; font-size: 10.5pt; line-height: 1.45; color: #161616; }
+  h1 { font-family: "Liberation Sans", Arial, sans-serif; font-size: 20pt; color: #1f3864; margin: 0 0 2mm; }
+  h2 { font-family: "Liberation Sans", Arial, sans-serif; font-size: 13pt; color: #1f3864; margin: 8mm 0 3mm; page-break-after: avoid; }
+  .subtitle { font-size: 11pt; color: #555; margin-bottom: 12mm; }
+  nav { border: 1px solid #d0d0d0; padding: 5mm 8mm; margin-bottom: 10mm; }
+  nav h2 { margin-top: 0; font-size: 11pt; }
+  nav ol { list-style: none; padding-left: 0; }
+  nav a { color: #1f3864; text-decoration: none; }
+  section { page-break-inside: auto; }
+  table { width: 100%; border-collapse: collapse; margin: 5mm 0; font-family: "Liberation Sans", Arial, sans-serif; font-size: 9pt; }
+  thead { display: table-header-group; }
+  th { background: #eef1f7; text-align: left; padding: 2mm; border-bottom: 1.5px solid #1f3864; }
+  td { padding: 2mm; border-bottom: 1px solid #e5e5e5; }
+  td.num, th.num { text-align: right; }
+  .two-columns { column-count: 2; column-gap: 8mm; margin-top: 4mm; text-align: justify; }
+  .pagebreak { page-break-before: always; }
+</style>
+</head>
+<body>
+<h1>Audit de la chaîne documentaire</h1>
+<div class="subtitle">Rapport de synthèse — février 2026</div>
+
+<nav>
+  <h2>Sommaire</h2>
+  <ol>
+    <li><a href="#s1">1. Périmètre de la mission</a></li>
+    <li><a href="#s2">2. Méthode</a></li>
+    <li><a href="#s3">3. Constats sur la génération documentaire</a></li>
+    <li><a href="#s4">4. Constats sur l'archivage</a></li>
+    <li><a href="#s5">5. Recommandations</a></li>
+    <li><a href="#s6">6. Trajectoire proposée</a></li>
+    <li><a href="#mesures">7. Tableau des mesures</a></li>
+    <li><a href="#annexe">8. Annexe — note de lecture</a></li>
+  </ol>
+</nav>
+
+<section id="s1">
+  <h2>1. Périmètre de la mission</h2>
+  <p>Le présent rapport rend compte de l'audit technique conduit entre le 6 janvier et le 4 février 2026 sur la plateforme de gestion documentaire de l'établissement. L'analyse a porté sur l'architecture applicative, la tenue en charge, la conformité réglementaire des documents produits et la maîtrise des coûts d'exploitation.</p>
+  <p>Trois environnements ont été examinés : la production, la préproduction et l'environnement de recette. Les mesures présentées dans ce document ont toutes été relevées sur la production, aux heures ouvrées, sur une période glissante de vingt jours.</p>
+</section>
+<section id="s2">
+  <h2>2. Méthode</h2>
+  <p>L'audit s'appuie sur trois sources : l'instrumentation applicative existante, une campagne de mesures dédiée, et des entretiens avec les équipes d'exploitation et de développement.</p>
+  <p>Les seuils retenus sont ceux du contrat de service en vigueur. Lorsqu'un écart est constaté, il est qualifié selon sa gravité, son antériorité et le coût estimé de sa correction.</p>
+</section>
+<section id="s3">
+  <h2>3. Constats sur la génération documentaire</h2>
+  <p>La chaîne de génération repose aujourd'hui sur un navigateur sans interface, piloté par un service dédié. Cette approche garantit une fidélité visuelle excellente mais consomme entre 180 et 320 Mo de mémoire vive par instance, pour une durée moyenne de génération de 1,9 seconde par document.</p>
+  <p>Aux volumes constatés — 42 000 documents par mois, avec des pointes à 4 100 documents par heure en fin de trimestre — cette consommation impose un dimensionnement dont le coût annuel dépasse largement celui du reste de la plateforme.</p>
+  <p>Les documents produits ne sont pas balisés. L'arbre de structure logique est absent, ce qui les rend inexploitables par un lecteur d'écran et non conformes aux obligations d'accessibilité applicables aux organismes publics.</p>
+</section>
+<section id="s4">
+  <h2>4. Constats sur l'archivage</h2>
+  <p>Les documents destinés à l'archivage ne déclarent pas de niveau de conformité PDF/A. Les polices sont embarquées de façon inconstante : sur un échantillon de 500 documents, 37 comportent au moins une police non embarquée, ce qui compromet leur lisibilité à long terme.</p>
+  <p>Les métadonnées XMP sont absentes ou incohérentes avec le dictionnaire d'informations dans 12 % des cas examinés.</p>
+</section>
+<section id="s5">
+  <h2>5. Recommandations</h2>
+  <p>Remplacer la chaîne de génération par un moteur managé, dont la consommation suit la complexité de la page et non la taille du document, et qui produise nativement une structure balisée.</p>
+  <p>Imposer la conformité PDF/A-3 pour tout document destiné à l'archivage, et contrôler cette conformité par un validateur automatisé intégré à la chaîne de publication.</p>
+  <p>Instrumenter la production pour suivre, document par document, le temps de génération, la mémoire consommée et le niveau de conformité obtenu.</p>
+</section>
+<section id="s6">
+  <h2>6. Trajectoire proposée</h2>
+  <p>La bascule peut être conduite en trois phases sur neuf mois, sans interruption de service, en faisant coexister les deux chaînes le temps de la comparaison documentaire.</p>
+  <p>Le retour sur investissement est atteint au douzième mois selon l'hypothèse basse, au huitième selon l'hypothèse haute.</p>
+</section>
+
+<section id="mesures" class="pagebreak">
+  <h2>7. Tableau des mesures</h2>
+  <p>Les valeurs observées sont des médianes sur vingt jours ouvrés. La colonne « projeté » correspond à
+  l'estimation obtenue après bascule vers un moteur managé.</p>
+  <table>
+    <thead>
+      <tr><th>Indicateur</th><th class="num">Observé</th><th class="num">Seuil</th><th class="num">Projeté</th><th>Verdict</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Génération d'une facture</td><td class="num">1,9 s</td><td class="num">2,0 s</td><td class="num">820 ms</td><td>Écart au seuil</td></tr>
+      <tr><td>Génération d'un rapport de 40 pages</td><td class="num">14,2 s</td><td class="num">8,0 s</td><td class="num">3,1 s</td><td>Non conforme</td></tr>
+      <tr><td>Mémoire par instance</td><td class="num">312 Mo</td><td class="num">256 Mo</td><td class="num">48 Mo</td><td>Non conforme</td></tr>
+      <tr><td>Documents par heure et par cœur</td><td class="num">310</td><td class="num">600</td><td class="num">1 450</td><td>Non conforme</td></tr>
+      <tr><td>Taux d'échec de génération</td><td class="num">0,42 %</td><td class="num">0,10 %</td><td class="num">0,01 %</td><td>Non conforme</td></tr>
+      <tr><td>Documents balisés</td><td class="num">0 %</td><td class="num">100 %</td><td class="num">100 %</td><td>Non conforme</td></tr>
+      <tr><td>Documents conformes PDF/A</td><td class="num">0 %</td><td class="num">100 %</td><td class="num">100 %</td><td>Non conforme</td></tr>
+      <tr><td>Polices intégralement embarquées</td><td class="num">92,6 %</td><td class="num">100 %</td><td class="num">100 %</td><td>Écart au seuil</td></tr>
+      <tr><td>Taille moyenne d'une facture</td><td class="num">241 Ko</td><td class="num">150 Ko</td><td class="num">88 Ko</td><td>Écart au seuil</td></tr>
+      <tr><td>Délai de démarrage à froid</td><td class="num">3,4 s</td><td class="num">1,0 s</td><td class="num">40 ms</td><td>Non conforme</td></tr>
+      <tr><td>Coût mensuel d'infrastructure</td><td class="num">4 180 €</td><td class="num">2 000 €</td><td class="num">610 €</td><td>Non conforme</td></tr>
+      <tr><td>Incidents liés à la génération (12 mois)</td><td class="num">23</td><td class="num">4</td><td class="num">—</td><td>Non conforme</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="annexe" class="pagebreak">
+  <h2>8. Annexe — note de lecture</h2>
+  <div class="two-columns">
+    <p>Les mesures de mémoire correspondent à l'empreinte résidente maximale observée sur la durée de
+    génération d'un document, instance de navigateur comprise. Elles ne tiennent pas compte de la mémoire
+    consommée par le service d'orchestration.</p>
+    <p>Les temps de génération incluent la mise en page et l'écriture du fichier, mais excluent la
+    récupération des données métier, dont la variabilité relève d'un autre périmètre.</p>
+    <p>Le taux de conformité PDF/A a été établi à l'aide d'un validateur indépendant, sur un échantillon
+    aléatoire de cinq cents documents tirés de la production sur trois mois.</p>
+    <p>Le coût d'infrastructure retenu est le coût facturé, hors amortissement des licences et hors temps
+    d'exploitation humain, dont l'estimation figure au chapitre six.</p>
+  </div>
+</section>
+</body>
+</html>

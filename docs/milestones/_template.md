@@ -1,32 +1,39 @@
-# M<n> — <titre>
+# M<n> — <title>
 
-> Statut : à faire | en cours | terminé — Dépend de : M<n-1>
+> State: to do | in progress | done — Depends on: M<n-1>
 
-## Objectif
+## Goal
 
-Une phrase : ce que la bibliothèque saura faire à la fin, qu'elle ne sait pas faire aujourd'hui.
+One sentence: what the library will be able to do at the end that it cannot do today.
 
-## Périmètre
+## Scope
 
-Ce qui est dans le jalon. Ce qui n'y est **pas**, explicitement, et vers quel jalon c'est renvoyé.
+What is in. What is explicitly **out**, and which milestone it is deferred to.
 
-## Conception
+## Design
 
-Types principaux, responsabilités, frontières. Assez précis pour qu'une session démarre sans réinventer,
-assez souple pour ne pas figer ce qui se découvre en écrivant.
+Main types, responsibilities, boundaries. Precise enough that a session can start without reinventing;
+loose enough not to freeze what will be discovered while writing.
 
-## Découpage en tranches
+## Slices
 
-Chaque tranche est verticale, testable, et se termine par un commit vert.
+Each slice is vertical, testable, and ends on a green commit.
 
-## Tests exigés
+## Tests required
 
-Liste des comportements à couvrir, y compris les cas dégénérés et hostiles.
+The behaviours to cover, degenerate and hostile cases included.
 
-## Pièges
+## Acceptance conditions
 
-Ce qui a déjà mordu, ou ce qu'on sait piégeux dans la spécification PDF.
+The real documents this milestone must handle, what handling them means, and the test that proves it.
+Written in the form *"these corpus documents, this behaviour, verified by this test"*. See
+`docs/corpus.md`. A milestone with no acceptance conditions is not specified.
 
-## Critères de sortie
+## Traps
 
-Cases à cocher vérifiables par des tests. Le jalon est clos quand toutes sont cochées.
+What has already bitten, or what is known to be treacherous in the specification.
+
+## Exit criteria
+
+Checkboxes verifiable by tests, including the acceptance conditions above. The milestone closes when they
+are all ticked and CI is green.

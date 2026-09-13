@@ -1,172 +1,173 @@
 # Architecture
 
-Document de référence. À charger uniquement quand on touche à une frontière entre couches ou qu'on
-introduit un nouveau composant. Le cadre quotidien est dans `CLAUDE.md`.
+A reference document. Load it when touching a boundary between layers or introducing a component. The
+day-to-day frame is `CLAUDE.md`.
 
-## 1. Vue d'ensemble
+## 1. Overview
 
-Deux chemins traversent la bibliothèque, et ils partagent le même modèle objet et le même écrivain :
+Two paths cross the library, and they share one object model and one writer:
 
 ```
-HTML ─▶ parsing ─▶ cascade CSS ─▶ arbre de boîtes ─▶ layout ─▶ pagination ─┐
-                                                                           ├─▶ modèle objet PDF ─▶ writer ─▶ octets
-PDF existant ─▶ lexer ─▶ xref ─▶ objets paresseux ─▶ manipulation ────────┘
+HTML ─▶ parse ─▶ CSS cascade ─▶ box tree ─▶ layout ─▶ pagination ─┐
+                                                                  ├─▶ PDF object model ─▶ writer ─▶ bytes
+existing PDF ─▶ lexer ─▶ xref ─▶ lazy objects ─▶ manipulation ────┘
 ```
 
-Le point de rencontre est volontaire : « ajouter une page HTML dans un PDF existant » n'est pas un cas
-particulier, c'est la composition normale des deux chemins.
+The meeting point is deliberate: "add an HTML page to an existing PDF" is not a special case, it is the
+ordinary composition of the two paths.
 
-## 2. Découpage en packages
+## 2. Package split
 
-| Package | Rôle | Dépendances |
+| Package | Role | Dependencies |
 |---|---|---|
-| `AdCodicem.Pdf` | Modèle objet, lecteur, écrivain, pages, polices, structure logique, sécurité, diagnostics | **aucune** |
-| `AdCodicem.Pdf.Html` | Parsing HTML, moteur CSS, layout, peinture vers PDF | AngleSharp, HarfBuzzSharp, SkiaSharp |
-| `AdCodicem.Pdf.AspNetCore` | Enregistrement DI, `IResult`, intégration MVC | `AdCodicem.Pdf.Html` |
-| `AdCodicem.Pdf.Validation` | Validateur PDF/A et PDF/UA | `AdCodicem.Pdf` |
-| `AdCodicem.Pdf.FacturX` | Factur-X / ZUGFeRD : embarquement, extraction, validation | `AdCodicem.Pdf` |
-| `AdCodicem.Pdf.Rendering` | Rastérisation PDF → image (satellite tardif) | SkiaSharp |
-| `AdCodicem.Pdf.Signing` | PAdES (satellite tardif) | `AdCodicem.Pdf` |
+| `AdCodicem.Pdf` | Object model, reader, writer, pages, fonts, logical structure, security, diagnostics | **none** |
+| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | AngleSharp, HarfBuzzSharp, SkiaSharp |
+| `AdCodicem.Pdf.AspNetCore` | DI registration, `IResult`, MVC integration | `AdCodicem.Pdf.Html` |
+| `AdCodicem.Pdf.Validation` | PDF/A and PDF/UA validator | `AdCodicem.Pdf` |
+| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD: embedding, extraction, validation | `AdCodicem.Pdf` |
+| `AdCodicem.Pdf.Rendering` | PDF → image rasterisation (late satellite) | SkiaSharp |
+| `AdCodicem.Pdf.Signing` | PAdES (late satellite) | `AdCodicem.Pdf` |
 
-Règle d'or : **le cœur ne dépend de rien**. C'est ce qui garantit sa compatibilité Native AOT, son
-empreinte mémoire et sa réutilisabilité côté serveur comme côté fonction serverless. Toute tentation
-d'y faire entrer Skia, AngleSharp ou une dépendance native est un signal de mauvais découpage.
+The rule: **the core depends on nothing**. That is what guarantees its Native AOT compatibility, its
+memory profile and its reuse on a server as much as in a serverless function. Any temptation to let Skia,
+AngleSharp or a native dependency into it is a sign the split is wrong.
 
-## 3. Le cœur `AdCodicem.Pdf`
-
-```
-Objects/      Modèle objet COS : PdfName, PdfNumber, PdfString, PdfArray, PdfDictionary,
-              PdfStream, PdfReference. Immuable là où c'est possible, interné pour les noms.
-IO/           PdfLexer (tokens), PdfParser (objets), Filters/ (Flate + prédicteurs, LZW, ASCII85,
-              ASCIIHex, RunLength, passthrough DCT/JPX), XRef/ (table classique, flux xref,
-              flux d'objets, chaîne /Prev, reconstruction), PdfWriter (écriture en flux).
-Documents/    PdfDocument (ouverture, sauvegarde), PdfPage, PdfPageCollection, héritage
-              d'attributs, copie profonde inter-documents, assemblage.
-Fonts/        Parsing TrueType/OpenType, métriques, sous-ensemblage, embarquement Type0/CIDFontType2,
-              CMap ToUnicode, registre et résolution de familles.
-Content/      Écriture d'opérateurs de flux de contenu ; interpréteur de flux (extraction, M7).
-Structure/    Arbre de structure logique (tagged PDF), contenu marqué, arbre des parents.
-Security/     Déchiffrement et chiffrement RC4/AES, permissions.
-Diagnostics/  PdfDiagnostics : anomalies, réparations, pertes de conformité.
-```
-
-### 3.1 Chemin de lecture
-
-1. **Indexation** — on lit la fin du fichier (`startxref`), on suit la chaîne `/Prev` et on construit une
-   table `numéro d'objet → (offset, génération)` ou `→ (flux d'objets, index)`. Seule cette table réside
-   en mémoire : quelques dizaines d'octets par objet, indépendamment de la taille des objets.
-2. **Réparation** — si `startxref` est faux, la table absente, ou un offset ne pointe pas sur l'objet
-   attendu, on bascule sur un balayage complet du fichier à la recherche des motifs `N G obj`, en
-   conservant la dernière définition de chaque objet. Chaque réparation est consignée dans le diagnostic.
-3. **Résolution paresseuse** — `PdfReference.Resolve()` lit et parse l'objet à la demande. Un cache LRU
-   borné (configurable, par défaut quelques milliers d'objets) évite de reparser les objets chauds
-   (arbre des pages, ressources partagées) sans jamais retenir tout le document.
-4. **Flux** — les données d'un flux ne sont ni lues ni décodées tant que l'appelant ne les demande pas.
-   Un flux copié d'un document à l'autre transite **encodé**, sans décompression ni recompression.
-
-### 3.2 Chemin d'écriture
-
-Le writer écrit en avançant, sans jamais revenir en arrière : il est le seul à connaître les offsets.
-
-- Les numéros d'objets sont **réservés à l'avance** et les corps écrits plus tard, ce qui permet de
-  référencer un objet pas encore produit (arbre des pages, ressources partagées).
-- Les flux sont écrits avec un `/Length` en **référence indirecte** : on compresse à la volée vers la
-  sortie, puis on écrit l'objet longueur juste après. Aucun flux de contenu n'est bufferisé en entier.
-- Deux modes de sauvegarde : **réécriture complète** (fichier compact, objets réordonnés, doublons
-  éliminés) ou **mise à jour incrémentale** (ajout en fin de fichier, octets d'origine intacts —
-  obligatoire pour ne pas invalider une signature existante).
-- La sortie est déterministe : ordre d'écriture stable, `/ID` dérivé du contenu ou fourni par l'appelant.
-
-### 3.3 Polices
-
-Le PDF n'embarque pas des caractères mais des **glyphes**. La chaîne est donc :
-texte → shaping (HarfBuzz, côté `.Html`) → identifiants de glyphes → encodage Identity-H → sous-ensemble
-de la police embarqué. Le cœur ne fait pas de shaping : il reçoit des glyphes déjà résolus et se charge
-des métriques, du sous-ensemblage et de l'embarquement, plus de la table `ToUnicode` sans laquelle le
-texte n'est ni copiable ni accessible.
-
-## 4. Le moteur HTML `AdCodicem.Pdf.Html`
+## 3. The core, `AdCodicem.Pdf`
 
 ```
-Parsing/   AngleSharp : DOM conforme HTML5. Rien d'autre n'est utilisé d'AngleSharp.
-Css/       Tokenizer CSS niveau 3, parseur de sélecteurs, feuille de style par défaut, cascade,
-           héritage, valeurs calculées **typées** (structs, pas de chaînes).
-Layout/    Arbre de boîtes, layout de bloc, layout en ligne (césure, alignement), tables, flex, grid,
-           pagination (@page, sauts, en-têtes/pieds, compteurs).
-Rendering/ Peinture de l'arbre de boîtes vers les opérateurs de contenu, liens, signets,
-           émission de la structure logique balisée.
-Fonts/     Résolution des familles CSS, @font-face, cache de polices, shaping HarfBuzz.
+Objects/      COS object model: PdfName, PdfNumber, PdfString, PdfArray, PdfDictionary, PdfStream,
+              PdfReference. Immutable where it can be, interned for names.
+IO/           PdfLexer (tokens), PdfObjectParser (objects), Filters/ (Flate with predictors, LZW,
+              ASCII85, ASCIIHex, RunLength, DCT and JPX passed through), XRef/ (classic tables,
+              cross-reference streams, object streams, the /Prev chain, rebuilding),
+              PdfWriter (forward-only output).
+Documents/    PdfDocument (open, save), PdfPage, PdfPageCollection, attribute inheritance,
+              cross-document deep copy, assembly.
+Fonts/        TrueType and OpenType parsing, metrics, subsetting, Type0/CIDFontType2 embedding,
+              the ToUnicode CMap, the font registry and family resolution.
+Content/      Content stream writing; the content stream interpreter used by extraction (M8).
+Structure/    The logical structure tree (tagged PDF), marked content, the parent tree.
+Security/     RC4 and AES decryption and encryption, permissions.
+Diagnostics/  PdfDiagnostics: anomalies, repairs, conformance losses.
 ```
 
-**Pourquoi un moteur CSS maison plutôt qu'AngleSharp.Css** : la valeur calculée d'AngleSharp.Css est une
-chaîne qu'il faut reparser à chaque accès, ce qui est rédhibitoire dans une boucle de layout ; le paquet
-est par ailleurs en préversion permanente. Le parsing HTML5, lui, est un travail ingrat, normatif et
-parfaitement résolu par AngleSharp : on le réutilise sans hésiter.
+### 3.1 The read path
 
-**Séparation layout / peinture** : le layout ne connaît pas le PDF, la peinture ne recalcule rien. Cette
-frontière est ce qui rendra possibles, plus tard, un backend de rastérisation ou un export SVG.
+1. **Indexing** — read the tail of the file (`startxref`), follow the `/Prev` chain, and build a map from
+   object number to either a byte offset or a position inside an object stream. Only that map lives in
+   memory: a few dozen bytes per object, whatever the objects weigh.
+2. **Repair** — if `startxref` is wrong, the table missing, or an offset does not point at the object it
+   claims, fall back to scanning the whole file for `N G obj` headers, keeping the last definition of each
+   number. Every repair is recorded in the diagnostics.
+3. **Lazy resolution** — `PdfReference.Resolve()` reads and parses the object on demand. A bounded cache
+   avoids reparsing hot objects (the page tree, shared resources) without ever retaining the whole document.
+4. **Streams** — stream data is neither read nor decoded until the caller asks. A stream copied from one
+   document to another travels **encoded**, with no decompress/recompress cycle.
 
-**Traçabilité DOM → PDF** : chaque boîte conserve une référence vers l'élément source. C'est la condition
-pour émettre la structure logique (PDF/UA) et pour situer une erreur dans le HTML d'origine. Cette
-information ne doit jamais être perdue par une couche intermédiaire.
+### 3.2 The write path
 
-## 5. Stratégie mémoire et CPU
+The writer only ever moves forward: it alone knows byte offsets.
 
-- **Budget mémoire** : la consommation doit suivre la complexité de la **page** en cours, jamais la taille
-  du document. Un rapport de 10 000 pages doit se générer dans la même empreinte qu'un rapport de 10.
-- **Pooling** : tampons d'écriture, tableaux de glyphes, boîtes de layout passent par `ArrayPool<T>` ou des
-  pools dédiés. Ce qui est loué est rendu, y compris en cas d'exception.
-- **Structs et spans** : les valeurs CSS calculées, les métriques, les rectangles et les positions sont des
-  structs. Le parsing travaille sur `ReadOnlySpan<byte>` sans matérialiser de chaînes.
-- **Chaînes** : les noms PDF sont internés une fois ; le reste du parsing évite `string` autant que possible.
-- **Asynchronisme** : l'API publique est asynchrone en entrée/sortie ; le calcul (layout, écriture) reste
-  synchrone, car le paralléliser par document apporte plus que de le rendre asynchrone.
-- **Parallélisme** : jamais implicite. Un document se génère sur un thread ; c'est l'appelant qui traite
-  plusieurs documents en parallèle, et l'API doit rendre cela sûr et naturel.
+- Object numbers are **reserved ahead of time** and bodies written later, so an object can refer to one
+  that does not exist yet (the page tree, shared resources).
+- Streams are written with an **indirect `/Length`**: compression runs straight to the output and the
+  length object follows. No content stream is ever buffered whole.
+- Two save modes: **full rewrite** (compact file, objects reordered, duplicates removed) or **incremental
+  update** (appended at the end, original bytes untouched — required not to invalidate a signature).
+- Output is deterministic: stable write order, and an `/ID` derived from content or supplied by the caller.
 
-## 6. Conformité
+### 3.3 Fonts
 
-La conformité n'est pas une case à cocher en fin de chaîne, c'est une contrainte qui remonte jusqu'au
-layout :
+A PDF embeds glyphs, not characters. The chain is therefore: text → shaping (HarfBuzz, in `.Html`) → glyph
+identifiers → Identity-H encoding → an embedded subset. The core does no shaping: it receives resolved
+glyphs and handles metrics, subsetting, embedding, and the `ToUnicode` table without which text is neither
+copyable nor accessible.
 
-- **PDF/A** impose l'embarquement de toutes les polices, un profil ICC de sortie, des métadonnées XMP
-  cohérentes avec le dictionnaire d'informations, et l'absence de certaines constructions.
-- **PDF/UA** impose un arbre de structure logique complet, un ordre de lecture explicite, des textes de
-  remplacement, une langue déclarée. D'où la traçabilité DOM → boîte → contenu marqué, qui doit exister
-  dès le premier jour même si l'émission complète arrive plus tard.
-- **En manipulation**, fusionner deux documents conformes doit produire un document conforme : recombinaison
-  des arbres de structure, des `OutputIntents`, des métadonnées, dédoublonnage des polices. Ce qui ne peut
-  pas être préservé est signalé dans le diagnostic.
+## 4. The HTML engine, `AdCodicem.Pdf.Html`
 
-## 7. Erreurs et diagnostics
+```
+Parsing/   AngleSharp: an HTML5-conforming DOM. Nothing else of AngleSharp is used.
+Css/       A level 3 CSS tokeniser, a selector parser, the default stylesheet, the cascade,
+           inheritance, and **typed** computed values (structs, not strings).
+Layout/    Box tree, block layout, inline layout (line breaking, alignment), tables, flex, grid,
+           pagination (@page, breaks, headers and footers, counters).
+Rendering/ Painting the box tree into content operators, links, bookmarks, and emission of the
+           tagged logical structure.
+Fonts/     CSS family resolution, @font-face, the font cache, HarfBuzz shaping.
+```
 
-| Situation | Réponse |
+**Why our own CSS engine rather than AngleSharp.Css**: its computed values are strings that must be
+reparsed on every access, which is disqualifying inside a layout loop, and the package has been in
+permanent prerelease. HTML5 parsing, on the other hand, is thankless, normative and thoroughly solved by
+AngleSharp: reuse it without hesitation.
+
+**Layout and painting are separate**: layout knows nothing about PDF, and painting recomputes nothing.
+That boundary is what will later make a rasterisation backend, or an SVG export, possible at all.
+
+**DOM to PDF traceability**: every box keeps a reference to its source element. That is the precondition
+for emitting the logical structure (PDF/UA) and for pointing at the offending line of HTML when something
+goes wrong. No intermediate layer may drop it.
+
+## 5. Memory and CPU strategy
+
+- **Memory budget**: consumption follows the complexity of the **page** being processed, never the size of
+  the document. A ten-thousand-page report must generate in the footprint of a ten-page one.
+- **Pooling**: write buffers, glyph arrays and layout boxes come from `ArrayPool<T>` or dedicated pools.
+  What is rented is returned, exceptions included.
+- **Structs and spans**: computed CSS values, metrics, rectangles and positions are structs. Parsing works
+  on `ReadOnlySpan<byte>` without materialising strings.
+- **Strings**: PDF names are interned once; the rest of parsing avoids `string` wherever it can.
+- **Asynchrony**: the public API is asynchronous at its I/O edges; computation (layout, writing) stays
+  synchronous, because parallelising across documents buys more than making one document await.
+- **Parallelism**: never implicit. One document is generated on one thread; the caller runs several
+  documents in parallel, and the API must make that safe and obvious.
+
+## 6. Conformance
+
+Conformance is not a box ticked at the end of the pipeline; it is a constraint that reaches back into
+layout:
+
+- **PDF/A** requires every font embedded, an output ICC profile, XMP metadata consistent with the
+  information dictionary, and the absence of certain constructs.
+- **PDF/UA** requires a complete logical structure tree, an explicit reading order, alternative texts and a
+  declared language. Hence the DOM → box → marked content traceability, which must exist from day one even
+  though full emission arrives later.
+- **In manipulation**, merging two conforming documents must produce a conforming document: structure trees,
+  `OutputIntents`, metadata and fonts are recombined, not concatenated. Whatever cannot be preserved is
+  reported in the diagnostics.
+
+## 7. Errors and diagnostics
+
+| Situation | Response |
 |---|---|
-| Le fichier n'est pas un PDF, ou est illisible même après réparation | Exception `PdfException` |
-| L'appelant demande l'impossible (page inexistante, mot de passe faux) | Exception typée |
-| Le fichier est imparfait mais exploitable | Entrée dans `PdfDiagnostics`, traitement poursuivi |
-| Une fonctionnalité CSS n'est pas supportée | Entrée dans le diagnostic, rendu dégradé, jamais d'échec |
-| Une conformité est rompue par une opération | Entrée dans le diagnostic, avec la cause précise |
+| The input is not a PDF, or is unreadable even after repair | `PdfException` |
+| The caller asks for the impossible (a page that does not exist, a wrong password) | A typed exception |
+| The file is imperfect but usable | An entry in `PdfDiagnostics`, processing continues |
+| A CSS feature is unsupported | An entry in the diagnostics, degraded rendering, never a failure |
+| An operation breaks a conformance guarantee | An entry in the diagnostics, with the precise cause |
 
-Le diagnostic est un objet retourné, pas un effet de bord : il s'inspecte, se sérialise et se teste.
+The diagnostic report is a returned value, not a side effect: it can be inspected, serialised and asserted
+on in tests.
 
-## 8. Tests
+## 8. Testing
 
-- **Unitaires** : chaque composant, avec ses cas dégénérés. Le lexer et le parseur sont testés sur des
-  entrées malformées autant que sur des entrées valides.
-- **Round-trip** : ouvrir → sauvegarder → rouvrir → comparer sémantiquement. Invariant central du socle.
-- **Corpus** : un jeu de PDF réels et volontairement cassés, versionné, avec le comportement attendu.
-- **Empreintes** : les documents générés sont comparés octet à octet à une référence, ce qui n'est possible
-  que grâce au déterminisme. Une différence intentionnelle se valide en régénérant la référence.
-- **Visuel** : comparaison d'images rendues par un outil externe en CI, tant que la rastérisation n'est pas
-  dans le périmètre.
-- **Benchmarks** : BenchmarkDotNet, avec `MemoryDiagnoser` systématique. Une régression d'allocation est
-  une régression.
-- **Sécurité** : fuzzing du lexer et du parseur sur le corpus cassé ; aucune entrée ne doit provoquer
-  d'exception non typée, de récursion infinie ni d'allocation démesurée.
+- **Unit**: every component, with its degenerate cases. The lexer and parser are tested on malformed input
+  as much as on valid input.
+- **Corpus**: real documents from real producers, and documents damaged on purpose. No milestone closes
+  without passing on it — see `docs/corpus.md`.
+- **Round-trip**: open → save → reopen → compare semantically. The central invariant of the foundations.
+- **External referees**: qpdf, pikepdf, pypdf and veraPDF run in CI to check our claims against tools we
+  did not write.
+- **Fingerprints**: generated documents are compared byte for byte against a reference, which determinism
+  makes possible. An intentional difference is approved by regenerating the reference in the same commit.
+- **Visual**: page images compared against approved references within a threshold.
+- **Benchmarks**: BenchmarkDotNet with `MemoryDiagnoser` throughout. An allocation regression is a
+  regression.
+- **Security**: fuzzing of the lexer and parser seeded with the damaged corpus; no input may produce an
+  untyped exception, an infinite loop or an unbounded allocation.
 
-## 9. Compatibilité et versionnement
+## 9. Compatibility and versioning
 
-SemVer strict. Tant que la version majeure est 0, l'API peut bouger, mais chaque rupture est consignée.
-Un test d'API publique (fichier de référence des signatures exportées) rend toute rupture visible en
-revue plutôt qu'après publication.
+Strict SemVer. While the major version is 0 the API may move, but every break is recorded. A public API
+test — a checked-in baseline of exported signatures — makes any break visible in review rather than after
+publication.

@@ -1,0 +1,398 @@
+{
+  "producers": {
+    "chromium": "Chromium 141.0.7390.37",
+    "libreoffice": "LibreOffice 24.2.7.2 420(Build:2)",
+    "reportlab": "ReportLab 5.0.1",
+    "qpdf": "qpdf 12.3.2 via pikepdf 10.13.0.post1"
+  },
+  "documents": [
+    {
+      "file": "documents/invoice/chromium-invoice-fr.pdf",
+      "title": "French invoice, VAT breakdown, accented text",
+      "useCase": "invoice",
+      "producer": "Chromium 141.0.7390.37",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "xref-stream",
+        "object-streams",
+        "type0-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "textContains": [
+          "Facture",
+          "Total TTC",
+          "TVA"
+        ]
+      }
+    },
+    {
+      "file": "documents/invoice/libreoffice-invoice-fr.pdf",
+      "title": "Same invoice through a different producer",
+      "useCase": "invoice",
+      "producer": "LibreOffice 24.2.7.2 420(Build:2)",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "xref-table",
+        "type1-and-truetype"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "textContains": [
+          "Facture"
+        ]
+      }
+    },
+    {
+      "file": "documents/invoice/reportlab-invoice.pdf",
+      "title": "Invoice from a third writer",
+      "useCase": "invoice",
+      "producer": "ReportLab 5.0.1",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "xref-table",
+        "standard-14-fonts"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "textContains": [
+          "AD CODICEM"
+        ]
+      }
+    },
+    {
+      "file": "documents/report/chromium-report-fr.pdf",
+      "title": "Multi-page audit report: contents, tables, two-column annex",
+      "useCase": "report",
+      "producer": "Chromium 141.0.7390.37",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "xref-stream",
+        "object-streams",
+        "internal-links",
+        "repeated-table-headers",
+        "two-column-text"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "textContains": [
+          "Sommaire",
+          "Tableau des mesures",
+          "Annexe"
+        ]
+      }
+    },
+    {
+      "file": "documents/report/libreoffice-report-fr.pdf",
+      "title": "Same report through a different producer",
+      "useCase": "report",
+      "producer": "LibreOffice 24.2.7.2 420(Build:2)",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "textContains": [
+          "Sommaire"
+        ]
+      }
+    },
+    {
+      "file": "documents/contract/chromium-contract-fr.pdf",
+      "title": "Service contract, justified body text",
+      "useCase": "contract",
+      "producer": "Chromium 141.0.7390.37",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "xref-stream",
+        "object-streams"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "textContains": [
+          "Article 1",
+          "Droit applicable"
+        ]
+      }
+    },
+    {
+      "file": "documents/invoice/qpdf-invoice-with-facturx-xml.pdf",
+      "title": "Invoice carrying an embedded Factur-X XML attachment",
+      "useCase": "invoice",
+      "producer": "qpdf 12.3.2 via pikepdf 10.13.0.post1",
+      "origin": "derived",
+      "licence": "MIT (derived from our own document)",
+      "features": [
+        "embedded-file",
+        "xref-stream"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "attachments": [
+          "factur-x.xml"
+        ]
+      }
+    },
+    {
+      "file": "documents/form/reportlab-subscription-form.pdf",
+      "title": "Interactive subscription form with text fields and a checkbox",
+      "useCase": "form",
+      "producer": "ReportLab 5.0.1",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "acroform",
+        "widget-annotations"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "formFields": [
+          "nom",
+          "prenom",
+          "societe",
+          "courriel",
+          "newsletter"
+        ]
+      }
+    },
+    {
+      "file": "documents/scan/reportlab-scanned-receipt.pdf",
+      "title": "Image-only page, as a scanner produces",
+      "useCase": "scan",
+      "producer": "ReportLab 5.0.1",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "dct-image",
+        "no-text"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false
+      }
+    },
+    {
+      "file": "documents/archival/libreoffice-report-pdfa2b.pdf",
+      "title": "Archival export of the report, claiming PDF/A-2b",
+      "useCase": "archival",
+      "producer": "LibreOffice 24.2.7.2 420(Build:2)",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "pdf-a-2b",
+        "xmp-metadata",
+        "output-intent",
+        "embedded-fonts"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "claimsConformance": "PDF/A-2b"
+      }
+    },
+    {
+      "file": "documents/archival/qpdf-linearized-report.pdf",
+      "title": "Linearised report, laid out for fast web viewing",
+      "useCase": "report",
+      "producer": "qpdf 12.3.2 via pikepdf 10.13.0.post1",
+      "origin": "derived",
+      "licence": "MIT (derived from our own document)",
+      "features": [
+        "linearized",
+        "hint-stream"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": []
+      }
+    },
+    {
+      "file": "documents/report/qpdf-objstm-report.pdf",
+      "title": "Report rewritten with every object packed into object streams",
+      "useCase": "report",
+      "producer": "qpdf 12.3.2 via pikepdf 10.13.0.post1",
+      "origin": "derived",
+      "licence": "MIT (derived from our own document)",
+      "features": [
+        "object-streams",
+        "xref-stream"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": []
+      }
+    },
+    {
+      "file": "documents/secured/qpdf-invoice-aes256.pdf",
+      "title": "Invoice encrypted with AES-256",
+      "useCase": "invoice",
+      "producer": "qpdf 12.3.2 via pikepdf 10.13.0.post1",
+      "origin": "derived",
+      "licence": "MIT (derived from our own document)",
+      "features": [
+        "encryption-aes256"
+      ],
+      "expect": {
+        "pages": 1,
+        "encrypted": true,
+        "password": "corpus",
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": []
+      }
+    },
+    {
+      "file": "documents/stress/reportlab-journal-1000-pages.pdf",
+      "title": "Operations journal of 1000 pages",
+      "useCase": "report",
+      "producer": "ReportLab 5.0.1",
+      "origin": "generated",
+      "licence": "MIT (our own source)",
+      "features": [
+        "many-pages",
+        "shared-resources"
+      ],
+      "expect": {
+        "pages": 1000,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": []
+      }
+    },
+    {
+      "file": "documents/damaged/invoice-no-xref.pdf",
+      "title": "Invoice damaged on purpose: no xref",
+      "useCase": "invoice",
+      "producer": "derived from chromium-invoice-fr.pdf",
+      "origin": "derived",
+      "licence": "MIT (derived from our own document)",
+      "features": [
+        "damage-no-xref"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ]
+      }
+    },
+    {
+      "file": "documents/damaged/invoice-shifted-offsets.pdf",
+      "title": "Invoice damaged on purpose: shifted offsets",
+      "useCase": "invoice",
+      "producer": "derived from chromium-invoice-fr.pdf",
+      "origin": "derived",
+      "licence": "MIT (derived from our own document)",
+      "features": [
+        "damage-shifted-offsets"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ]
+      }
+    },
+    {
+      "file": "documents/damaged/invoice-truncated-tail.pdf",
+      "title": "Invoice damaged on purpose: truncated tail",
+      "useCase": "invoice",
+      "producer": "derived from chromium-invoice-fr.pdf",
+      "origin": "derived",
+      "licence": "MIT (derived from our own document)",
+      "features": [
+        "damage-truncated-tail"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ]
+      }
+    },
+    {
+      "file": "documents/damaged/invoice-junk-prefix.pdf",
+      "title": "Invoice damaged on purpose: junk prefix",
+      "useCase": "invoice",
+      "producer": "derived from chromium-invoice-fr.pdf",
+      "origin": "derived",
+      "licence": "MIT (derived from our own document)",
+      "features": [
+        "damage-junk-prefix"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [
+          "xref.offset-adjusted"
+        ]
+      }
+    },
+    {
+      "file": "documents/damaged/invoice-lying-length.pdf",
+      "title": "Invoice damaged on purpose: lying length",
+      "useCase": "invoice",
+      "producer": "derived from chromium-invoice-fr.pdf",
+      "origin": "derived",
+      "licence": "MIT (derived from our own document)",
+      "features": [
+        "damage-lying-length"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [
+          "stream.length-invalid"
+        ]
+      }
+    }
+  ]
+}
