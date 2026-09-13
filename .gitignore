@@ -427,3 +427,8 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Confidential corpus documents: a team can test against real files from the field without
+# publishing them. See tests/corpus/README.md.
+tests/corpus/private/
+tests/corpus/private.json
