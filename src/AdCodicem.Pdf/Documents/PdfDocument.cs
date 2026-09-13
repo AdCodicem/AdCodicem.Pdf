@@ -75,6 +75,12 @@ public sealed class PdfDocument : IDisposable
 
         var diagnostics = new PdfDiagnostics { Capacity = options.DiagnosticCapacity };
         var reader = new PdfFileReader(source, diagnostics, options.ObjectCacheCapacity, ownsSource);
+        if (reader.ObjectCount == 0)
+        {
+            reader.Dispose();
+            throw new PdfFormatException("No PDF object could be found in the input.");
+        }
+
         var document = new PdfDocument(reader, diagnostics);
 
         if (document.IsEncrypted && options.ThrowOnEncrypted)
