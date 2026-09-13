@@ -1,0 +1,16 @@
+Third-party documents in tests/corpus/vendor
+============================================
+
+vendor/verapdf/
+    A small selection from the veraPDF corpus (https://github.com/veraPDF/veraPDF-corpus),
+    licensed by the veraPDF Consortium under the Creative Commons Attribution 4.0
+    International licence (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/).
+
+    The files are used unmodified as conformance fixtures and renamed for legibility;
+    tests/corpus/vendor.json records the original path of each one.
+
+    The Isartor test suite, also present in that repository, is deliberately excluded:
+    it arrived there under different terms.
+
+Everything else under tests/corpus is generated from our own sources and is covered by
+the repository's MIT licence.

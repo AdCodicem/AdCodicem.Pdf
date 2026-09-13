@@ -15,17 +15,23 @@ to be split into sub-milestones.
 |---|-----------|------|------------|-------|
 | M0 | Repository foundations | S | — | done |
 | M1 | Object model and tolerant reading | L | M0 | in progress |
-| M2 | Writing and round-trip fidelity | M | M1 | to do |
-| M3 | Pages and case-file assembly | M | M2 | to do |
-| M4 | Fonts, text and content streams | L | M2 | to do |
-| M5 | HTML → PDF engine | XL | M4 | to do |
-| M6 | Tagged structure and accessibility | M | M5 | to do |
-| M7 | Content on existing documents | M | M3, M4 | to do |
-| M8 | Extraction and analysis | L | M3 | to do |
-| M9 | Security and forms | L | M2 | to do |
-| M10 | PDF/A-3, Factur-X and the validator | L | M6, M8 | to do |
-| M11 | Optimisation, performance, hardening | M | M5, M8 | to do |
-| M12 | Satellites: rasterisation and signing | XL | M8, M9 | to do |
+| M2 | Document validation | M | M1 | to do |
+| M3 | Writing and round-trip fidelity | M | M1 | to do |
+| M4 | Repair | M | M2, M3 | to do |
+| M5 | Pages and case-file assembly | M | M3 | to do |
+| M6 | Fonts, text and content streams | L | M3 | to do |
+| M7 | HTML → PDF engine | XL | M6 | to do |
+| M8 | Tagged structure and accessibility | M | M7 | to do |
+| M9 | Content on existing documents | M | M5, M6 | to do |
+| M10 | Extraction and analysis | L | M5 | to do |
+| M11 | Security and forms | L | M3 | to do |
+| M12 | PDF/A-3, Factur-X and conformance profiles | L | M2, M8, M10 | to do |
+| M13 | Optimisation, performance, hardening | M | M7, M10 | to do |
+| M14 | Satellites: rasterisation and signing | XL | M10, M11 | to do |
+
+Validation comes immediately after reading, because a verdict on a document needs nothing more than the
+ability to read it — and because repair, conformance and every later guarantee are expressed in terms of
+its findings. Repair comes immediately after writing, since producing a sound file is what repair means.
 
 Every acceptance condition below is an executable test over `tests/corpus`. "External referee" means an
 independent tool run in CI — qpdf, pikepdf, pypdf, veraPDF — used to check our claims against something
@@ -58,7 +64,32 @@ scanning when the index is wrong or absent; `PdfDiagnostics`; the corpus harness
   are a small fraction of file size, verified by counting reads.
 - Indexing the `stress` document holds within a stated memory budget recorded in `status.md`.
 
-## M2 — Writing and round-trip fidelity
+## M2 — Document validation
+
+**Goal**: given any document the reader can open, produce a structured, machine-readable verdict on what
+is wrong with it — separately from whether it could be read at all.
+
+**Deliverables**: the `AdCodicem.Pdf.Validation` package; a rule engine (`IValidationRule`,
+`ValidationProfile`, `PdfValidator`) whose findings carry a stable rule identifier, a severity, the object
+they concern and a remedy hint; a `PdfValidationReport` that serialises; and the **structural profile** —
+file structure, object graph integrity, page tree consistency, stream integrity, font embedding, resource
+resolution, metadata coherence, annotation and destination targets.
+
+Rule identifiers are part of the public contract from the day they ship: repair consumes them (M4),
+conformance profiles extend them (M12), and callers filter on them.
+
+**Acceptance**
+- Every well-formed corpus document, from all four producers, validates with **no error-severity finding**.
+  A validator that calls Chromium's or LibreOffice's output broken is a wrong validator, not a strict one.
+- Each `damaged/*` document produces the findings its manifest declares, with stable rule identifiers.
+- The vendored conformance fixtures discriminate: a file that is structurally sound but PDF/A-invalid
+  produces **no** structural error. Conformance verdicts must not leak into the structural profile — they
+  belong to M12.
+- Two runs over the same document produce the same findings in the same order.
+- Validating the 1000-page document holds within a stated memory budget, and does not read content it does
+  not need to inspect.
+
+## M3 — Writing and round-trip fidelity
 
 **Goal**: rewrite what was read, byte for byte in semantic terms.
 **Deliverables**: a forward-only `PdfWriter` (object numbers reserved ahead, indirect `/Length`,
@@ -74,7 +105,29 @@ and incremental update, a deterministic `/ID`, and preservation of an existing s
   existing signature still covers its byte range.
 - Rewriting the `stress` document holds memory flat and stays within the stated throughput budget.
 
-## M3 — Pages and case-file assembly
+## M4 — Repair
+
+**Goal**: turn a damaged document into a sound one, and state precisely what was changed and what was lost.
+
+**Deliverables**: `PdfRepair` in the core, driven by the reader's diagnostics and the M2 findings, with
+each remedy attached to the finding that justified it: rebuild the index, recompute stream lengths, drop
+or reconstruct unparseable objects, re-derive an inconsistent page tree, re-link orphaned pages, remove
+references that point nowhere, normalise the trailer. Two modes: **conservative**, which changes only what
+is broken and writes an incremental update, and **rebuild**, which normalises the whole file. A
+`PdfRepairReport` says what was found, what was done, and what could not be saved.
+
+Conformance remediation — embedding missing fonts, adding metadata — is **not** repair; it belongs to M12.
+
+**Acceptance**
+- Every `damaged/*` document repairs into a file that opens with no repair needed, validates with no error
+  finding, and is accepted by an external referee.
+- The repaired file matches the **undamaged original it was derived from**: same page count, same extracted
+  text. The corpus keeps those originals precisely so this can be asserted rather than asserted about.
+- Repairing a sound document in conservative mode changes nothing: byte-identical output.
+- When content is genuinely gone, the report says what was lost. A silently shorter document fails the test.
+- Repairing the 1000-page document holds memory bounded.
+
+## M5 — Pages and case-file assembly
 
 **Goal**: the first business priority — compose a case file from generated pages and third-party PDFs.
 **Deliverables**: the page tree with inherited attributes; `PdfPageCollection` (insert, remove, reorder,
@@ -89,7 +142,7 @@ annotations and attachments; a high-level assembly API.
   the media box and resources it inherited from its ancestors.
 - Assembling one hundred corpus documents holds memory proportional to the largest single page.
 
-## M4 — Fonts, text and content streams
+## M6 — Fonts, text and content streams
 
 **Goal**: write text that is correct, embedded, extractable and accessible.
 **Deliverables**: a TrueType and OpenType parser (metrics, `cmap`, `hmtx`, `glyf`/`loca`, `CFF`);
@@ -103,16 +156,16 @@ content stream operators; an embedded OFL font set.
   subset contains only the glyphs used.
 - Advance widths match a reference renderer within a stated tolerance across the corpus fonts.
 
-## M5 — HTML → PDF engine
+## M7 — HTML → PDF engine
 
 **Goal**: the original promise. **XL — split into sub-milestones:**
 
-- **M5.1** — CSS engine: tokeniser, selectors, cascade, inheritance, typed computed values, default stylesheet.
-- **M5.2** — Block and inline layout, line breaking, alignment, `@page` pagination, margins, headers and footers, page counters.
-- **M5.3** — Tables (automatic and fixed layout, spanning cells, repeated headers).
-- **M5.4** — Flexbox and simple grid.
-- **M5.5** — Images (JPEG passed through, PNG, transparency), inline SVG as vectors, borders and backgrounds.
-- **M5.6** — Links, bookmarks, a table of contents with real page numbers, `@font-face`, the public API and DI integration.
+- **M7.1** — CSS engine: tokeniser, selectors, cascade, inheritance, typed computed values, default stylesheet.
+- **M7.2** — Block and inline layout, line breaking, alignment, `@page` pagination, margins, headers and footers, page counters.
+- **M7.3** — Tables (automatic and fixed layout, spanning cells, repeated headers).
+- **M7.4** — Flexbox and simple grid.
+- **M7.5** — Images (JPEG passed through, PNG, transparency), inline SVG as vectors, borders and backgrounds.
+- **M7.6** — Links, bookmarks, a table of contents with real page numbers, `@font-face`, the public API and DI integration.
 
 **Acceptance**
 - The reference business documents — invoice, multi-page report, contract — render within an agreed visual
@@ -123,7 +176,7 @@ content stream operators; an embedded OFL font set.
   1000 pages.
 - Unsupported CSS never fails a render: it degrades and says so in the diagnostics.
 
-## M6 — Tagged structure and accessibility
+## M8 — Tagged structure and accessibility
 
 **Goal**: produce PDFs that are genuinely accessible, not merely labelled as such.
 **Deliverables**: the full logical structure tree, marked content and the parent tree, alternative text,
@@ -135,7 +188,7 @@ language, reading order, artifacts for decorative elements, tagged tables.
   report and across page breaks.
 - Every image carries alternative text or is marked as an artifact; no exceptions, verified by a test.
 
-## M7 — Content on existing documents
+## M9 — Content on existing documents
 
 **Goal**: act on a received PDF without regenerating it.
 **Deliverables**: watermarks and stamps (text or a rendered HTML fragment), numbering, overlay and
@@ -148,7 +201,7 @@ without name collisions.
 - Stamping a PDF/A document either preserves conformance, confirmed by the validator, or reports the loss
   in the diagnostics. Silence fails the test.
 
-## M8 — Extraction and analysis
+## M10 — Extraction and analysis
 
 **Goal**: read what a PDF contains.
 **Deliverables**: a content stream interpreter (graphics state, text, positions); positioned glyphs with
@@ -163,7 +216,7 @@ the tagged structure preferred where present; extraction of images, metadata, bo
 - Table detection on the invoice returns the line items with their columns, and states its confidence.
 - Extracting from the `stress` document holds memory bounded and independent of document length.
 
-## M9 — Security and forms
+## M11 — Security and forms
 
 **Goal**: open protected documents, produce protected documents, handle forms.
 **Deliverables**: RC4 40/128 and AES-128/256 decryption, encryption and permissions; AcroForms — reading,
@@ -176,12 +229,12 @@ filling, flattening, field appearances.
 - The `form` document round-trips: filled, saved, reopened, and the values read back are the values
   written; after flattening the values are still visible and the fields are gone.
 
-## M10 — PDF/A-3, Factur-X and the validator
+## M12 — PDF/A-3, Factur-X and conformance profiles
 
 **Goal**: regulatory conformance, guaranteed and checkable.
 **Deliverables**: PDF/A-2b and PDF/A-3b generation (ICC profile, XMP, rendering constraints); Factur-X and
-ZUGFeRD embedding and extraction; conformance actively preserved when merging; a built-in PDF/A and PDF/UA
-validator, delivered in stages.
+ZUGFeRD embedding and extraction; conformance actively preserved when merging; PDF/A and PDF/UA profiles for the
+M2 rule engine, delivered in stages.
 
 **Acceptance**
 - Documents we generate pass veraPDF for the claimed conformance level, with no error.
@@ -189,10 +242,10 @@ validator, delivered in stages.
   input.
 - Merging two PDF/A documents yields a document that still passes veraPDF; merging a conforming one with a
   non-conforming one reports the loss precisely.
-- The built-in validator agrees with veraPDF on every corpus document; each disagreement is either fixed or
-  recorded in the manifest with its reason.
+- The conformance profiles agree with veraPDF on every corpus document; each disagreement is either
+  fixed or recorded in the manifest with its reason.
 
-## M11 — Optimisation, performance, hardening
+## M13 — Optimisation, performance, hardening
 
 **Goal**: deliver the frugality the library promises, with numbers.
 **Deliverables**: global resource deduplication, recompression, subsetting of inherited fonts,
@@ -207,10 +260,10 @@ validation; fuzzing of the lexer and parser.
 - A fuzzing campaign over the lexer and parser, seeded with the `damaged` documents, finds no untyped
   exception, hang or unbounded allocation.
 
-## M12 — Satellites: rasterisation and signing
+## M14 — Satellites: rasterisation and signing
 
 **Goal**: the extensions that presuppose everything else.
-**Deliverables**: `AdCodicem.Pdf.Rendering` (Skia rasterisation reusing the M8 interpreter);
+**Deliverables**: `AdCodicem.Pdf.Rendering` (Skia rasterisation reusing the M10 interpreter);
 `AdCodicem.Pdf.Signing` (the `IPdfSigner` abstraction, a local implementation, a path to an HSM).
 
 **Acceptance**

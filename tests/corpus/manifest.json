@@ -393,6 +393,164 @@
           "stream.length-invalid"
         ]
       }
+    },
+    {
+      "file": "vendor/verapdf/pdfa1b-annotations-pass.pdf",
+      "title": "veraPDF test suite: 6.5.3 Annotation dictionaries, valid PDF/A-1b",
+      "useCase": "archival",
+      "producer": "veraPDF consortium test suite",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (veraPDF corpus)",
+      "features": [
+        "third-party",
+        "conformance-fixture"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "claimsConformance": "PDF/A-1b",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/verapdf/pdfa1b-forms-fail.pdf",
+      "title": "veraPDF test suite: 6.9 Interactive Forms, invalid PDF/A-1b",
+      "useCase": "archival",
+      "producer": "veraPDF consortium test suite",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (veraPDF corpus)",
+      "features": [
+        "third-party",
+        "conformance-fixture"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "claimsConformance": "PDF/A-1b",
+        "conformanceValid": false
+      }
+    },
+    {
+      "file": "vendor/verapdf/pdfa2b-content-pass.pdf",
+      "title": "veraPDF test suite: 6.2.2 Content streams, valid PDF/A-2b",
+      "useCase": "archival",
+      "producer": "veraPDF consortium test suite",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (veraPDF corpus)",
+      "features": [
+        "third-party",
+        "conformance-fixture"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "claimsConformance": "PDF/A-2b",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/verapdf/pdfa2b-actions-fail.pdf",
+      "title": "veraPDF test suite: 6.5.2 Trigger events, invalid PDF/A-2b",
+      "useCase": "archival",
+      "producer": "veraPDF consortium test suite",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (veraPDF corpus)",
+      "features": [
+        "third-party",
+        "conformance-fixture"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "claimsConformance": "PDF/A-2b",
+        "conformanceValid": false
+      }
+    },
+    {
+      "file": "vendor/verapdf/pdfa3b-embedded-pass.pdf",
+      "title": "veraPDF test suite: 6.8 Embedded files, valid PDF/A-3b",
+      "useCase": "archival",
+      "producer": "veraPDF consortium test suite",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (veraPDF corpus)",
+      "features": [
+        "third-party",
+        "conformance-fixture"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/verapdf/pdfa3b-embedded-fail.pdf",
+      "title": "veraPDF test suite: 6.8 Embedded files, invalid PDF/A-3b",
+      "useCase": "archival",
+      "producer": "veraPDF consortium test suite",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (veraPDF corpus)",
+      "features": [
+        "third-party",
+        "conformance-fixture"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": false
+      }
+    },
+    {
+      "file": "vendor/verapdf/pdfa4-metadata-pass.pdf",
+      "title": "veraPDF test suite: 6.7.5 File provenance information, valid PDF/A-4",
+      "useCase": "archival",
+      "producer": "veraPDF consortium test suite",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (veraPDF corpus)",
+      "features": [
+        "third-party",
+        "conformance-fixture"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "claimsConformance": "PDF/A-4",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/verapdf/pdf20-version-mismatch.pdf",
+      "title": "veraPDF test suite: PDF 2.0 version mismatch",
+      "useCase": "archival",
+      "producer": "veraPDF consortium test suite",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (veraPDF corpus)",
+      "features": [
+        "third-party",
+        "conformance-fixture"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": []
+      }
     }
   ]
 }

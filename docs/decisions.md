@@ -81,7 +81,7 @@ heuristics.
 exact result.
 
 **D15 — Rasterisation as a satellite, after the foundations.** It will reuse the content stream interpreter
-written for extraction. Until then, visual tests rely on an external tool in CI.
+written for extraction (M10). Until then, visual tests rely on an external tool in CI.
 
 **D16 — Conformance actively preserved, plus a built-in validator.** When merging, structure trees,
 `OutputIntents`, metadata and fonts are genuinely recombined.
@@ -102,6 +102,27 @@ rather than only on files we wrote by hand.
 commit messages, diagnostics and exception messages.
 *Reason*: the package is public, and a mixed-language repository forces every contributor to switch
 languages between a file and its documentation.
+
+**D20 — Validation is a rule engine, and conformance is a profile of it.** Validation lands immediately
+after reading (M2), as the structural profile of a rule engine whose findings carry stable identifiers.
+PDF/A and PDF/UA arrive later (M12) as further profiles, not as a separate validator.
+*Reason*: repair, conformance and every later guarantee are expressed in terms of findings. Two validators
+with two vocabularies would mean two answers to "is this document sound?".
+*Consequence*: rule identifiers are public API from the day they ship, and `docs/validation-rules.md`
+documents them.
+
+**D21 — Repair is driven by findings, and conservative by default.** Every change is justified by a
+validation finding, recorded in a report, and applied by preference as an incremental update that leaves
+the original bytes in place.
+*Reason*: repair is where a library quietly destroys data. A change nobody asked for is a corruption, and
+rewriting a file wholesale invalidates signatures and any external byte-range reference.
+*Rejected*: repairing as a side effect of reading (the caller must choose), and a single "fix everything"
+mode with no account of what it did.
+
+**D22 — Third-party corpus documents are vendored only under attribution-only licences.** A curated subset
+of the veraPDF corpus (CC BY 4.0) is committed with a NOTICE; ShareAlike collections are not vendored, and
+large corpora are fetched on demand for local investigation rather than committed.
+*Reason*: test data ships inside an MIT repository, so its licence must not reach back into the software.
 
 ---
 

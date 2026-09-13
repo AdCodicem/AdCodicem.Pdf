@@ -50,6 +50,19 @@ public class FilterTests
     }
 
     [Fact]
+    public void Decodes_a_flate_stream_that_legitimately_contains_nothing()
+    {
+        // A validly compressed empty stream — an empty content stream, an empty appearance — decodes to
+        // zero bytes. Reading that as a failure would hand back the compressed bytes instead.
+        var diagnostics = new PdfDiagnostics();
+        byte[] compressedNothing = [0x78, 0xDA, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01];
+
+        Decode(compressedNothing, PdfName.FlateDecode, diagnostics: diagnostics).Length.ShouldBe(0);
+
+        diagnostics.Count.ShouldBe(0);
+    }
+
+    [Fact]
     public void Leaves_data_alone_when_flate_cannot_decode_anything()
     {
         var diagnostics = new PdfDiagnostics();

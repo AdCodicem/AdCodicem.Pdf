@@ -59,8 +59,9 @@ anything about is not part of the corpus.
 }
 ```
 
-`expect` grows as milestones land: page count and repair status from M1, byte-identical round-trip from
-M2, merge invariants from M3, extracted text from M8, conformance verdicts from M10. An expectation is
+`expect` grows as milestones land: page count and repair status from M1, validation findings from M2,
+round-trip fidelity from M3, repaired-equals-original from M4, merge invariants from M5, extracted text
+from M10, conformance verdicts from M12. An expectation is
 never weakened to make a test pass — either the library is fixed, or the expectation is corrected with the
 reason recorded in the commit message.
 
