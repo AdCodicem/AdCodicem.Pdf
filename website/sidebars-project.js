@@ -1,0 +1,20 @@
+// The project's own working documents, published as they are written.
+/** @type {import('@docusaurus/plugin-content-docs').SidebarsConfig} */
+const sidebars = {
+  project: [
+    'roadmap',
+    'architecture',
+    'decisions',
+    'corpus',
+    'corpus-contributions',
+    'releasing',
+    'status',
+    {
+      type: 'category',
+      label: 'Milestones',
+      items: ['milestones/M1', 'milestones/M2', 'milestones/M4'],
+    },
+  ],
+};
+
+export default sidebars;

@@ -280,7 +280,23 @@ validation; fuzzing of the lexer and parser.
 2. Work in vertical, testable slices, never a whole horizontal layer.
 3. A delivered feature is code plus tests plus an entry in the `status.md` journal.
 4. What is discovered on the way and falls outside the milestone goes into the debt table, not into the code.
-5. Closing a milestone means its exit criteria **and** its corpus acceptance conditions are green in CI.
+
+## Definition of done
+
+Every milestone, without exception, closes only when all six hold:
+
+| | Requirement |
+|---|---|
+| 1 | Its **exit criteria** are met |
+| 2 | Its **acceptance conditions on the corpus** are green in CI, with no document skipped |
+| 3 | **Unit tests** cover the behaviour, its degenerate cases and its hostile ones — xUnit v3, AwesomeAssertions, NSubstitute where an interaction is the thing being asserted |
+| 4 | **Integration tests** confirm, through an independent tool running in a container, anything the milestone claims about a document: that it is valid, that it round-trips, that its text is what we say it is |
+| 5 | The **documentation site** matches what now exists: the user-facing pages under `website/docs` for anything a consumer can call, and the project documents for anything a contributor needs |
+| 6 | **`docs/status.md`** records the measurements rather than promising them |
+
+Points 3 to 5 are not paperwork after the fact. An untested behaviour is a guess; a claim no independent
+tool has checked is an opinion; and a feature nobody can find in the documentation does not exist for
+anyone outside this repository.
 
 ## Adding a milestone
 

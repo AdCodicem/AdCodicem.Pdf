@@ -1,12 +1,12 @@
 using System.Text;
 
-namespace AdCodicem.Pdf.Tests;
+namespace AdCodicem.Pdf.TestSupport;
 
 /// <summary>
 /// Assembles small PDF files with exact byte offsets, so the reader can be tested against every shape of
 /// cross-reference the format allows — and against files that have been damaged on purpose.
 /// </summary>
-internal sealed class TestPdfBuilder
+public sealed class TestPdfBuilder
 {
     private readonly List<(int Number, byte[] Body)> _objects = [];
 

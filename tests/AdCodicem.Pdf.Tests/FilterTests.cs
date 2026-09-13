@@ -24,7 +24,7 @@ public class FilterTests
     [Fact]
     public void Decodes_a_flate_stream()
     {
-        Text(Decode(FlateZlib, PdfName.FlateDecode)).ShouldBe(FlateText);
+        Text(Decode(FlateZlib, PdfName.FlateDecode)).Should().Be(FlateText);
     }
 
     [Fact]
@@ -32,9 +32,9 @@ public class FilterTests
     {
         var diagnostics = new PdfDiagnostics();
 
-        Text(Decode(FlateRawDeflate, PdfName.FlateDecode, diagnostics: diagnostics)).ShouldBe(FlateText);
+        Text(Decode(FlateRawDeflate, PdfName.FlateDecode, diagnostics: diagnostics)).Should().Be(FlateText);
 
-        diagnostics.HasRepairs.ShouldBeTrue();
+        diagnostics.HasRepairs.Should().BeTrue();
     }
 
     [Fact]
@@ -45,8 +45,8 @@ public class FilterTests
 
         var decoded = Text(Decode(truncated, PdfName.FlateDecode, diagnostics: diagnostics));
 
-        decoded.ShouldNotBeEmpty();
-        FlateText.ShouldStartWith(decoded);
+        decoded.Should().NotBeEmpty();
+        FlateText.Should().StartWith(decoded);
     }
 
     [Fact]
@@ -57,9 +57,9 @@ public class FilterTests
         var diagnostics = new PdfDiagnostics();
         byte[] compressedNothing = [0x78, 0xDA, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01];
 
-        Decode(compressedNothing, PdfName.FlateDecode, diagnostics: diagnostics).Length.ShouldBe(0);
+        Decode(compressedNothing, PdfName.FlateDecode, diagnostics: diagnostics).Length.Should().Be(0);
 
-        diagnostics.Count.ShouldBe(0);
+        diagnostics.Count.Should().Be(0);
     }
 
     [Fact]
@@ -68,33 +68,33 @@ public class FilterTests
         var diagnostics = new PdfDiagnostics();
         byte[] garbage = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
 
-        Decode(garbage, PdfName.FlateDecode, diagnostics: diagnostics).ToArray().ShouldBe(garbage);
+        Decode(garbage, PdfName.FlateDecode, diagnostics: diagnostics).ToArray().Should().Equal(garbage);
 
-        diagnostics.Contains(PdfDiagnosticCodes.FilterFailed).ShouldBeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.FilterFailed).Should().BeTrue();
     }
 
     [Fact]
     public void Decodes_a_hexadecimal_stream()
     {
-        Text(Decode("48656C6C6F>"u8.ToArray(), PdfName.ASCIIHexDecode)).ShouldBe("Hello");
+        Text(Decode("48656C6C6F>"u8.ToArray(), PdfName.ASCIIHexDecode)).Should().Be("Hello");
     }
 
     [Fact]
     public void Pads_an_odd_hexadecimal_stream()
     {
-        Decode("4A5>"u8.ToArray(), PdfName.ASCIIHexDecode).ToArray().ShouldBe([0x4A, 0x50]);
+        Decode("4A5>"u8.ToArray(), PdfName.ASCIIHexDecode).ToArray().Should().Equal((byte)0x4A, 0x50);
     }
 
     [Fact]
     public void Decodes_an_ascii85_stream()
     {
-        Text(Decode("87cURD]i,\"Ebo7~>"u8.ToArray(), PdfName.ASCII85Decode)).ShouldBe("Hello World");
+        Text(Decode("87cURD]i,\"Ebo7~>"u8.ToArray(), PdfName.ASCII85Decode)).Should().Be("Hello World");
     }
 
     [Fact]
     public void Reads_the_z_shortcut_of_an_ascii85_stream()
     {
-        Decode("z~>"u8.ToArray(), PdfName.ASCII85Decode).ToArray().ShouldBe([0, 0, 0, 0]);
+        Decode("z~>"u8.ToArray(), PdfName.ASCII85Decode).ToArray().Should().Equal((byte)0, 0, 0, 0);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class FilterTests
         // Two literal bytes, then five copies of 0x41, then the end marker.
         byte[] encoded = [0x01, 0x48, 0x49, 0xFC, 0x41, 0x80];
 
-        Text(Decode(encoded, PdfName.RunLengthDecode)).ShouldBe("HIAAAAA");
+        Text(Decode(encoded, PdfName.RunLengthDecode)).Should().Be("HIAAAAA");
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class FilterTests
     {
         byte[] encoded = [0x80, 0x0B, 0x60, 0x50, 0x22, 0x0C, 0x0C, 0x85, 0x01];
 
-        Text(Decode(encoded, PdfName.LZWDecode)).ShouldBe("-----A---B");
+        Text(Decode(encoded, PdfName.LZWDecode)).Should().Be("-----A---B");
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class FilterTests
 
         var result = PredictorTransform.Apply(predicted, predictor: 12, colors: 1, bitsPerComponent: 8, columns: 4);
 
-        result.ShouldBe([10, 20, 30, 40, 11, 22, 33, 44, 12, 24, 36, 48]);
+        result.Should().Equal((byte)10, 20, 30, 40, 11, 22, 33, 44, 12, 24, 36, 48);
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class FilterTests
 
         var result = PredictorTransform.Apply(predicted, predictor: 2, colors: 1, bitsPerComponent: 8, columns: 4);
 
-        result.ShouldBe([10, 15, 20, 25]);
+        result.Should().Equal((byte)10, 15, 20, 25);
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public class FilterTests
         dictionary.Set(PdfName.Filter, new PdfArray([PdfName.ASCIIHexDecode, PdfName.FlateDecode]));
         var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(Encoding.ASCII.GetBytes(hex)));
 
-        Text(stream.Decode()).ShouldBe(FlateText);
+        Text(stream.Decode()).Should().Be(FlateText);
     }
 
     [Fact]
@@ -154,8 +154,8 @@ public class FilterTests
         byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0];
         var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(jpeg));
 
-        stream.HasImageFilter().ShouldBeTrue();
-        stream.Decode().ToArray().ShouldBe(jpeg);
+        stream.HasImageFilter().Should().BeTrue();
+        stream.Decode().ToArray().Should().Equal(jpeg);
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class FilterTests
 
         Decode([1, 2, 3], PdfName.Get("MadeUpDecode"), diagnostics: diagnostics);
 
-        diagnostics.Contains(PdfDiagnosticCodes.FilterUnsupported).ShouldBeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.FilterUnsupported).Should().BeTrue();
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class FilterTests
     {
         var stream = new PdfStream(new PdfDictionary(), PdfStreamData.FromMemory("plain"u8.ToArray()));
 
-        Text(stream.Decode()).ShouldBe("plain");
+        Text(stream.Decode()).Should().Be("plain");
     }
 
     private static ReadOnlyMemory<byte> Decode(

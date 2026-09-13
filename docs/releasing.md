@@ -78,3 +78,18 @@ Consider requiring a reviewer on the `nuget` environment so a tag cannot publish
 
 If the push fails with an authorisation error, the mismatch is almost always between the policy and the
 workflow: the file name, the environment, or the account name in `NUGET_USER`.
+
+## The documentation site
+
+`website/` is a Docusaurus site publishing both the user-facing documentation and the project documents in
+`docs/`. CI builds it on every push, so a document that does not build never reaches the default branch;
+`.github/workflows/docs.yml` deploys it to GitHub Pages when `docs/` or `website/` changes on `main`.
+
+One manual step, once: **Settings → Pages → Source: GitHub Actions**. Until then the deployment job fails
+with a permissions error, and the site simply is not published — nothing else breaks.
+
+The site lands at `https://adcodicem.github.io/AdCodicem.Pdf/`. If the repository is ever renamed, the
+`baseUrl` in `website/docusaurus.config.js` has to follow.
+
+Updating the site is part of the definition of done for every milestone, not a separate chore — see
+`docs/roadmap.md`.

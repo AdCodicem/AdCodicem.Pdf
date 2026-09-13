@@ -8,7 +8,7 @@ here.
 
 - **Current milestone**: M1 — Object model and tolerant reading (`docs/milestones/M1.md`), slices 1 to 8 written
 - **Last milestone closed**: M0 — Repository foundations
-- **Builds**: yes — **Tests**: 111, all green — **CI**: green
+- **Builds**: yes — **Tests**: 112 unit + 47 integration (skipped without Docker) — **CI**: green
 - **Branch**: `claude/nuget-pdf-html-dotnet-msyz8z`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
@@ -34,6 +34,24 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-13 — Two test levels and a documentation site
+- Test stack settled (D25): xUnit v3, **AwesomeAssertions** in place of Shouldly, **NSubstitute** where an
+  interaction is what needs asserting — the first such test pins that the parser resolves an indirect
+  `/Length` exactly once, which is a statement about a call and not about a value.
+- Shared fixtures extracted into `tests/AdCodicem.Pdf.TestSupport`, so both suites read one manifest.
+- `tests/AdCodicem.Pdf.IntegrationTests` runs the independent referees in **containers** (D26). qpdf now
+  cross-checks every corpus document: its page count against the manifest, and its own verdict on which
+  documents are damaged. Where no Docker daemon exists the 47 tests skip with the reason attached rather
+  than failing, which is what makes the suite usable in a sandbox.
+- A **Docusaurus site** in `website/` (D27) publishes the user-facing documentation and `docs/` unchanged,
+  deployed to GitHub Pages. Its build runs in CI, so a project document that does not build is caught
+  before the default branch. Docusaurus 3.9 had to be taken to 3.10: the older release pairs with a
+  webpack whose progress-plugin schema it violates, and the build fails on a validation error that says
+  nothing about the cause.
+- The **definition of done** now has six points in `docs/roadmap.md`, and every milestone carries a
+  Documentation section: unit tests, integration tests and documentation are conditions of closing a
+  milestone, not follow-up work (invariant 11).
 
 ### 2026-09-13 — Packaging settled, and the wanted-documents specification
 - Package identifiers confirmed and checked as unclaimed: `AdCodicem.Pdf` plus `.Validation`, `.Html`,
@@ -123,6 +141,8 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
 | T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | Before the first release; steps in `docs/releasing.md` |
+| T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish | Settings → Pages → Source: GitHub Actions |
+| T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T04 | An OFL font set must be embedded for default rendering | During M6 |
 | T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M7 |
 | T06 | `PdfString.ToText` reads Latin-1 rather than full PDFDocEncoding (the 32 positions 0x80-0x9F differ) | Before the first public release |

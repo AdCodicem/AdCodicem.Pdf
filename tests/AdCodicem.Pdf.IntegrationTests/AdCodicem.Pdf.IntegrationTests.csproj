@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <RootNamespace>AdCodicem.Pdf.Tests</RootNamespace>
+    <RootNamespace>AdCodicem.Pdf.IntegrationTests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
@@ -12,6 +12,7 @@
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Testcontainers" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,10 +22,8 @@
 
   <ItemGroup>
     <Using Include="AwesomeAssertions" />
-    <Using Include="NSubstitute" />
     <Using Include="Xunit" />
     <Using Include="AdCodicem.Pdf.TestSupport" />
-    <Using Include="AdCodicem.Pdf.TestSupport.AssertionHelpers" Static="true" />
   </ItemGroup>
 
 </Project>

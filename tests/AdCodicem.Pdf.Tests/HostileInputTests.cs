@@ -19,7 +19,7 @@ public class HostileInputTests
     {
         var noise = Encoding.ASCII.GetBytes("%PDF-1.7\n" + new string('x', 5000));
 
-        Should.Throw<PdfFormatException>(() => PdfDocument.Open(noise));
+        FluentThrow<PdfFormatException>(() => PdfDocument.Open(noise));
     }
 
     [Fact]
@@ -34,8 +34,8 @@ public class HostileInputTests
 
         using var document = Measure(() => PdfDocument.Open(bytes));
 
-        var stream = document.GetObject(new PdfObjectId(4)).AsStream().ShouldNotBeNull();
-        stream.GetRawBytes().Length.ShouldBeLessThan(bytes.Length);
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+        stream.GetRawBytes().Length.Should().BeLessThan(bytes.Length);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class HostileInputTests
 
         using var document = Measure(() => PdfDocument.Open(bytes));
 
-        document.Catalog.ShouldNotBeNull();
+        document.Catalog.Required();
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class HostileInputTests
 
         using var document = Measure(() => PdfDocument.Open(bytes));
 
-        document.Catalog.ShouldNotBeNull();
+        document.Catalog.Required();
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class HostileInputTests
 
         using var document = Measure(() => PdfDocument.Open(bytes));
 
-        document.GetObject(new PdfObjectId(3)).ShouldNotBeNull();
+        document.GetObject(new PdfObjectId(3)).Required();
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class HostileInputTests
 
         using var document = Measure(() => PdfDocument.Open(bytes));
 
-        document.Catalog.GetDictionary(PdfName.Pages).ShouldNotBeNull();
+        document.Catalog.GetDictionary(PdfName.Pages).Required();
     }
 
     [Fact]
@@ -131,8 +131,8 @@ public class HostileInputTests
 
         using var document = Measure(() => PdfDocument.Open(bytes));
 
-        document.GetObject(new PdfObjectId(2)).ShouldNotBeNull();
-        document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).ShouldBeTrue();
+        document.GetObject(new PdfObjectId(2)).Required();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
     }
 
     private static T Measure<T>(Func<T> action)
@@ -141,7 +141,7 @@ public class HostileInputTests
         var result = action();
         stopwatch.Stop();
 
-        stopwatch.Elapsed.ShouldBeLessThan(Budget, "A hostile input must not be allowed to take unbounded time.");
+        stopwatch.Elapsed.Should().BeLessThan(Budget, "A hostile input must not be allowed to take unbounded time.");
         return result;
     }
 }

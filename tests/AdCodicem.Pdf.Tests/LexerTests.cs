@@ -10,7 +10,7 @@ public class LexerTests
     {
         var kinds = Tokenise("[ ] << >> { }");
 
-        kinds.ShouldBe(
+        kinds.Should().Equal(
         [
             PdfTokenKind.ArrayStart,
             PdfTokenKind.ArrayEnd,
@@ -26,7 +26,7 @@ public class LexerTests
     {
         var kinds = Tokenise("% a comment\n42");
 
-        kinds.ShouldBe([PdfTokenKind.Integer]);
+        kinds.Should().Equal(PdfTokenKind.Integer);
     }
 
     [Theory]
@@ -40,8 +40,8 @@ public class LexerTests
         var lexer = new PdfLexer(Encoding.ASCII.GetBytes(text));
         var token = lexer.Read();
 
-        token.Kind.ShouldBe(PdfTokenKind.Integer);
-        token.Integer.ShouldBe(expected);
+        token.Kind.Should().Be(PdfTokenKind.Integer);
+        token.Integer.Should().Be(expected);
     }
 
     [Theory]
@@ -55,8 +55,8 @@ public class LexerTests
         var lexer = new PdfLexer(Encoding.ASCII.GetBytes(text));
         var token = lexer.Read();
 
-        token.Kind.ShouldBe(PdfTokenKind.Real);
-        token.Real.ShouldBe(expected, 1e-9);
+        token.Kind.Should().Be(PdfTokenKind.Real);
+        token.Real.Should().BeApproximately(expected, 1e-9);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class LexerTests
         var lexer = new PdfLexer("12abc"u8.ToArray());
         var token = lexer.Read();
 
-        token.Kind.ShouldBe(PdfTokenKind.Keyword);
+        token.Kind.Should().Be(PdfTokenKind.Keyword);
     }
 
     [Fact]
@@ -74,8 +74,8 @@ public class LexerTests
         var lexer = new PdfLexer("/Name#20With#20Spaces"u8.ToArray());
         var token = lexer.Read();
 
-        token.Kind.ShouldBe(PdfTokenKind.Name);
-        PdfStringDecoder.DecodeName(token.Text).ShouldBe("Name With Spaces");
+        token.Kind.Should().Be(PdfTokenKind.Name);
+        PdfStringDecoder.DecodeName(token.Text).Should().Be("Name With Spaces");
     }
 
     [Fact]
@@ -84,8 +84,8 @@ public class LexerTests
         var lexer = new PdfLexer("/ 1"u8.ToArray());
         var token = lexer.Read();
 
-        token.Kind.ShouldBe(PdfTokenKind.Name);
-        token.Text.Length.ShouldBe(0);
+        token.Kind.Should().Be(PdfTokenKind.Name);
+        token.Text.Length.Should().Be(0);
     }
 
     [Fact]
@@ -94,9 +94,9 @@ public class LexerTests
         var lexer = new PdfLexer("(outer (inner) still outer)"u8.ToArray());
         var token = lexer.Read();
 
-        token.Kind.ShouldBe(PdfTokenKind.LiteralString);
+        token.Kind.Should().Be(PdfTokenKind.LiteralString);
         Encoding.ASCII.GetString(PdfStringDecoder.DecodeLiteral(token.Text))
-            .ShouldBe("outer (inner) still outer");
+            .Should().Be("outer (inner) still outer");
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class LexerTests
         var lexer = new PdfLexer(@"(a \) b)"u8.ToArray());
         var token = lexer.Read();
 
-        Encoding.ASCII.GetString(PdfStringDecoder.DecodeLiteral(token.Text)).ShouldBe("a ) b");
+        Encoding.ASCII.GetString(PdfStringDecoder.DecodeLiteral(token.Text)).Should().Be("a ) b");
     }
 
     [Fact]
@@ -114,8 +114,8 @@ public class LexerTests
         var lexer = new PdfLexer("(never closed"u8.ToArray());
         var token = lexer.Read();
 
-        token.Kind.ShouldBe(PdfTokenKind.LiteralString);
-        lexer.IsAtEnd.ShouldBeTrue();
+        token.Kind.Should().Be(PdfTokenKind.LiteralString);
+        lexer.IsAtEnd.Should().BeTrue();
     }
 
     [Fact]
@@ -124,8 +124,8 @@ public class LexerTests
         var lexer = new PdfLexer("<901FA>"u8.ToArray());
         var token = lexer.Read();
 
-        token.Kind.ShouldBe(PdfTokenKind.HexString);
-        PdfStringDecoder.DecodeHex(token.Text).ShouldBe([0x90, 0x1F, 0xA0]);
+        token.Kind.Should().Be(PdfTokenKind.HexString);
+        PdfStringDecoder.DecodeHex(token.Text).Should().Equal((byte)0x90, 0x1F, 0xA0);
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class LexerTests
         var lexer = new PdfLexer("<48 65\n6C>"u8.ToArray());
         var token = lexer.Read();
 
-        PdfStringDecoder.DecodeHex(token.Text).ShouldBe([0x48, 0x65, 0x6C]);
+        PdfStringDecoder.DecodeHex(token.Text).Should().Equal((byte)0x48, 0x65, 0x6C);
     }
 
     [Fact]
@@ -145,7 +145,7 @@ end)"u8.ToArray());
         var token = lexer.Read();
 
         Encoding.ASCII.GetString(PdfStringDecoder.DecodeLiteral(token.Text))
-            .ShouldBe("tab:\t octal:A continued:end");
+            .Should().Be("tab:\t octal:A continued:end");
     }
 
     [Fact]
@@ -153,7 +153,7 @@ end)"u8.ToArray());
     {
         var kinds = Tokenise(")))");
 
-        kinds.ShouldBe([PdfTokenKind.Unknown, PdfTokenKind.Unknown, PdfTokenKind.Unknown]);
+        kinds.Should().Equal(PdfTokenKind.Unknown, PdfTokenKind.Unknown, PdfTokenKind.Unknown);
     }
 
     private static List<PdfTokenKind> Tokenise(string text)

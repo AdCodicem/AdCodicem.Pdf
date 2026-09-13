@@ -1,10 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace AdCodicem.Pdf.Tests;
+namespace AdCodicem.Pdf.TestSupport;
 
 /// <summary>What the manifest says about one corpus document.</summary>
-internal sealed record CorpusExpectation
+public sealed record CorpusExpectation
 {
     /// <summary>Page count, established by an independent tool, or null when nothing is recoverable.</summary>
     public int? Pages { get; init; }
@@ -40,7 +40,7 @@ internal sealed record CorpusExpectation
 }
 
 /// <summary>One entry of the corpus manifest.</summary>
-internal sealed record CorpusDocument
+public sealed record CorpusDocument
 {
     public required string File { get; init; }
 
@@ -69,7 +69,7 @@ internal sealed record CorpusDocument
 /// Tests read the manifest rather than hard-coding file names, so adding a document to the corpus adds it
 /// to every acceptance test at once — and a document nobody asserts anything about cannot hide in the tree.
 /// </remarks>
-internal static class Corpus
+public static class Corpus
 {
     private static readonly Lazy<(string Root, IReadOnlyList<CorpusDocument> Documents)> Loaded = new(Load);
 
@@ -79,35 +79,16 @@ internal static class Corpus
     /// <summary>Gets every document described by the manifest.</summary>
     public static IReadOnlyList<CorpusDocument> Documents => Loaded.Value.Documents;
 
-    /// <summary>Gets the relative paths of every document, for use as test data.</summary>
-    public static TheoryData<string> Paths
-    {
-        get
-        {
-            var data = new TheoryData<string>();
-            foreach (var document in Documents)
-            {
-                data.Add(document.File);
-            }
+    /// <summary>Gets the relative path of every document, for use as test data.</summary>
+    public static IReadOnlyList<string> Paths => [.. Documents.Select(document => document.File)];
 
-            return data;
-        }
-    }
+    /// <summary>Gets the paths of the documents carrying any of the given features.</summary>
+    public static IReadOnlyList<string> PathsWithFeature(params string[] features) =>
+        [.. Documents.Where(document => features.Any(document.Features.Contains)).Select(document => document.File)];
 
-    /// <summary>Gets the documents of one use case.</summary>
-    public static TheoryData<string> PathsWithFeature(params string[] features)
-    {
-        var data = new TheoryData<string>();
-        foreach (var document in Documents)
-        {
-            if (features.Any(feature => document.Features.Contains(feature)))
-            {
-                data.Add(document.File);
-            }
-        }
-
-        return data;
-    }
+    /// <summary>Gets the paths of the documents matching a predicate.</summary>
+    public static IReadOnlyList<string> PathsWhere(Func<CorpusDocument, bool> predicate) =>
+        [.. Documents.Where(predicate).Select(document => document.File)];
 
     /// <summary>Returns the manifest entry for a relative path.</summary>
     public static CorpusDocument Get(string file) =>
