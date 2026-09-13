@@ -21,7 +21,7 @@ public class CorpusReadingTests
     [Fact]
     public void The_corpus_manifest_describes_every_document_present()
     {
-        var onDisk = new[] { "documents", "vendor" }
+        var onDisk = new[] { "documents", "vendor", "private" }
             .Select(folder => Path.Combine(Corpus.Root, folder))
             .Where(Directory.Exists)
             .SelectMany(folder => Directory.EnumerateFiles(folder, "*.pdf", SearchOption.AllDirectories))

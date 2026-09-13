@@ -129,13 +129,20 @@ internal static class Corpus
             var candidate = System.IO.Path.Combine(directory.FullName, "tests", "corpus", "manifest.json");
             if (System.IO.File.Exists(candidate))
             {
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                using var stream = System.IO.File.OpenRead(candidate);
-                using var json = JsonDocument.Parse(stream);
-                var documents = json.RootElement.GetProperty("documents").Deserialize<List<CorpusDocument>>(options)
+                var root = System.IO.Path.GetDirectoryName(candidate)!;
+                var documents = ReadManifest(candidate)
                     ?? throw new InvalidOperationException("The corpus manifest has no documents.");
 
-                return (System.IO.Path.GetDirectoryName(candidate)!, documents);
+                // An optional private manifest lets a team test against confidential documents without
+                // committing them: tests/corpus/private/ and private.json are ignored by git, and
+                // everything simply runs on the public corpus when they are absent.
+                var privateManifest = System.IO.Path.Combine(root, "private.json");
+                if (System.IO.File.Exists(privateManifest) && ReadManifest(privateManifest) is { } confidential)
+                {
+                    documents.AddRange(confidential);
+                }
+
+                return (root, documents);
             }
 
             directory = directory.Parent;
@@ -143,5 +150,13 @@ internal static class Corpus
 
         throw new InvalidOperationException(
             "tests/corpus/manifest.json was not found. Build the corpus with tests/corpus/build/build_corpus.py.");
+    }
+
+    private static List<CorpusDocument>? ReadManifest(string path)
+    {
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        using var stream = System.IO.File.OpenRead(path);
+        using var json = JsonDocument.Parse(stream);
+        return json.RootElement.GetProperty("documents").Deserialize<List<CorpusDocument>>(options);
     }
 }

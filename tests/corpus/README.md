@@ -39,3 +39,15 @@ apt-get install -y --no-install-recommends libreoffice-writer   # Chromium is al
 
 `CorpusReadingTests.The_corpus_manifest_describes_every_document_present` fails if a file is added without
 a manifest entry: a document nobody asserts anything about is clutter, not coverage.
+
+## Confidential documents
+
+This repository is public, so anything committed here is published. Documents that cannot be published go
+in `tests/corpus/private/`, described by `tests/corpus/private.json` in the same format as the manifest.
+Both are ignored by git; the test suite merges them when they are there and runs on the public corpus when
+they are not, so a private corpus never breaks anyone else's build.
+
+That is the place for documents from the field — files from Word, Acrobat, a scanner, a supplier's ERP, or
+anything that broke somebody's tooling. If a document can be anonymised enough to publish, it is worth far
+more in the public corpus: strip it, check what its metadata still says about its origin, and add it under
+`documents/` with its provenance.
