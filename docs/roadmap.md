@@ -1,169 +1,236 @@
-# Feuille de route
+# Roadmap
 
-Index des jalons. Sert à situer un travail dans l'ensemble — **pas** à travailler au quotidien : la
-spécification détaillée du jalon en cours vit dans `docs/milestones/`, et l'état réel dans `docs/status.md`.
+An index of milestones. It places a piece of work in the whole — it is **not** the daily working document:
+the detailed specification of the current milestone lives in `docs/milestones/`, and the real state in
+`docs/status.md`.
 
-Un jalon n'est pas une session : les gros jalons s'étalent sur plusieurs sessions, et un jalon n'est clos
-que lorsque ses critères de sortie sont **vérifiés par des tests**, pas lorsque le code existe.
+A milestone is not a session: the large ones span several, and a milestone closes only when its exit
+criteria and its **acceptance conditions on the corpus** are verified by tests — not when the code exists.
+The acceptance rules are in `docs/corpus.md`.
 
-Taille indicative : **S** ≈ une session, **M** ≈ deux à trois, **L** ≈ une poignée, **XL** ≈ un chantier
-à découper en sous-jalons.
+Indicative size: **S** ≈ one session, **M** ≈ two or three, **L** ≈ a handful, **XL** ≈ a programme of work
+to be split into sub-milestones.
 
-| # | Jalon | Taille | Dépend de | État |
-|---|-------|--------|-----------|------|
-| M0 | Fondations du dépôt | S | — | en cours |
-| M1 | Modèle objet et lecture tolérante | L | M0 | à faire |
-| M2 | Écriture et fidélité de round-trip | M | M1 | à faire |
-| M3 | Pages et assemblage de dossiers | M | M2 | à faire |
-| M4 | Polices, texte et flux de contenu | L | M2 | à faire |
-| M5 | Moteur HTML → PDF | XL | M4 | à faire |
-| M6 | Structure balisée et accessibilité | M | M5 | à faire |
-| M7 | Contenu sur documents existants | M | M3, M4 | à faire |
-| M8 | Extraction et analyse | L | M3 | à faire |
-| M9 | Sécurité et formulaires | L | M2 | à faire |
-| M10 | Conformité PDF/A-3, Factur-X, validateur | L | M6, M8 | à faire |
-| M11 | Optimisation, performance, durcissement | M | M5, M8 | à faire |
-| M12 | Satellites : rastérisation, signature | XL | M8, M9 | à faire |
+| # | Milestone | Size | Depends on | State |
+|---|-----------|------|------------|-------|
+| M0 | Repository foundations | S | — | done |
+| M1 | Object model and tolerant reading | L | M0 | in progress |
+| M2 | Writing and round-trip fidelity | M | M1 | to do |
+| M3 | Pages and case-file assembly | M | M2 | to do |
+| M4 | Fonts, text and content streams | L | M2 | to do |
+| M5 | HTML → PDF engine | XL | M4 | to do |
+| M6 | Tagged structure and accessibility | M | M5 | to do |
+| M7 | Content on existing documents | M | M3, M4 | to do |
+| M8 | Extraction and analysis | L | M3 | to do |
+| M9 | Security and forms | L | M2 | to do |
+| M10 | PDF/A-3, Factur-X and the validator | L | M6, M8 | to do |
+| M11 | Optimisation, performance, hardening | M | M5, M8 | to do |
+| M12 | Satellites: rasterisation and signing | XL | M8, M9 | to do |
 
----
-
-## M0 — Fondations du dépôt
-
-**Objectif** : que n'importe quelle session puisse compiler, tester et publier sans rien découvrir.
-**Livrables** : solution et découpage en projets, gestion centralisée des versions de paquets, CI GitHub
-Actions (build, tests, benchmarks à la demande, publication sur tag), hook `SessionStart` installant le
-SDK, cadre documentaire (`CLAUDE.md`, `architecture.md`, `decisions.md`, `roadmap.md`, `status.md`).
-**Critères de sortie** : `dotnet test` vert en local et en CI ; un paquet NuGet se construit.
-
-## M1 — Modèle objet et lecture tolérante
-
-**Objectif** : ouvrir n'importe quel PDF, y compris imparfait, sans le charger en mémoire.
-**Livrables** : modèle objet COS ; lexer et parseur travaillant sur `ReadOnlySpan<byte>` ; filtres Flate
-(avec prédicteurs PNG et TIFF), ASCIIHex, ASCII85, RunLength, LZW ; table xref classique, flux xref, flux
-d'objets, chaîne `/Prev`, fichiers à référence hybride ; résolution paresseuse avec cache borné ;
-reconstruction par balayage quand la table est fausse ou absente ; `PdfDiagnostics`.
-**Critères de sortie** : le corpus de tests s'ouvre intégralement, y compris les fichiers volontairement
-cassés, avec les diagnostics attendus ; aucune entrée malformée ne provoque d'exception non typée, de
-récursion infinie ou d'allocation démesurée ; l'empreinte mémoire d'ouverture d'un gros fichier reste
-proportionnelle au nombre d'objets, pas à leur taille.
-
-## M2 — Écriture et fidélité de round-trip
-
-**Objectif** : réécrire ce qu'on a lu, à l'octet près sur le plan sémantique.
-**Livrables** : `PdfWriter` en flux (numéros réservés d'avance, `/Length` indirect, compression à la volée) ;
-table xref classique et flux xref ; flux d'objets en écriture ; sauvegarde complète et mise à jour
-incrémentale ; `/ID` déterministe ; préservation d'une signature existante en mode incrémental.
-**Critères de sortie** : ouvrir → sauvegarder → rouvrir donne un document sémantiquement identique sur tout
-le corpus ; la mise à jour incrémentale laisse les octets d'origine intacts ; deux exécutions produisent
-des octets identiques.
-
-## M3 — Pages et assemblage de dossiers
-
-**Objectif** : la priorité métier n°1 — composer un dossier à partir de pages générées et de PDF tiers.
-**Livrables** : arbre des pages avec héritage d'attributs ; `PdfPageCollection` (insertion, suppression,
-réordonnancement, rotation, extraction) ; copie profonde inter-documents avec dédoublonnage des ressources ;
-fusion préservant signets, liens, annotations et pièces jointes ; API d'assemblage de haut niveau.
-**Critères de sortie** : fusionner N documents produit un fichier valide dont la taille n'explose pas
-(ressources dédoublonnées) ; les signets et liens internes pointent toujours au bon endroit après fusion ;
-la mémoire consommée ne suit pas la taille cumulée des entrées.
-
-## M4 — Polices, texte et flux de contenu
-
-**Objectif** : écrire du texte correct, embarqué, extractible et accessible.
-**Livrables** : parseur TrueType/OpenType (métriques, `cmap`, `hmtx`, `glyf`/`loca`, `CFF`) ;
-sous-ensemblage ; embarquement Type0/CIDFontType2 et `ToUnicode` ; registre de polices et résolution de
-familles ; écriture d'opérateurs de flux de contenu ; jeu de polices OFL embarqué.
-**Critères de sortie** : un PDF généré affiche correctement du texte français accentué, se copie-colle
-correctement, et ses polices sont embarquées sous-ensemblées ; les métriques correspondent à celles d'un
-moteur de référence à une tolérance près.
-
-## M5 — Moteur HTML → PDF
-
-**Objectif** : le cœur de la promesse initiale. **XL — à découper en sous-jalons :**
-
-- **M5.1** — Moteur CSS : tokenizer, sélecteurs, cascade, héritage, valeurs calculées typées, feuille par défaut.
-- **M5.2** — Layout de bloc et en ligne, césure, alignements, pagination `@page`, marges, en-têtes et pieds, compteurs de pages.
-- **M5.3** — Tables (modèle de largeur automatique et fixe, fusion de cellules, répétition d'en-tête).
-- **M5.4** — Flexbox et grid simple.
-- **M5.5** — Images (JPEG en passthrough, PNG, transparence), SVG en vectoriel, bordures et fonds.
-- **M5.6** — Liens, signets, sommaire avec numéros de page réels, `@font-face`, API publique et intégration DI.
-
-**Critères de sortie** : un jeu de documents de référence (facture, rapport multi-pages, contrat) est rendu
-conformément aux images de référence ; la génération d'un document de 1 000 pages tient dans une empreinte
-mémoire constante.
-
-## M6 — Structure balisée et accessibilité
-
-**Objectif** : produire des PDF réellement accessibles, pas seulement étiquetés comme tels.
-**Livrables** : arbre de structure logique complet, contenu marqué et arbre des parents, textes de
-remplacement, langue, ordre de lecture, artefacts pour les éléments décoratifs, tables balisées.
-**Critères de sortie** : les documents de référence passent la validation PDF/UA d'un outil externe ; un
-lecteur d'écran restitue un ordre de lecture correct.
-
-## M7 — Contenu sur documents existants
-
-**Objectif** : intervenir sur un PDF reçu sans le régénérer.
-**Livrables** : filigranes et tampons (texte ou fragment HTML rendu), numérotation, superposition et
-sous-position, en-têtes et pieds ajoutés après coup, N-up et imposition, fusion de dictionnaires de
-ressources sans collision de noms.
-**Critères de sortie** : tamponner un document ne modifie ni son contenu d'origine ni sa conformité, et le
-diagnostic signale toute perte.
-
-## M8 — Extraction et analyse
-
-**Objectif** : lire ce que contient un PDF.
-**Livrables** : interpréteur de flux de contenu (états graphiques, texte, positions) ; glyphes positionnés
-avec police et taille ; regroupement en mots, lignes, blocs, colonnes ; détection de tableaux avec indice
-de confiance ; lecture prioritaire de la structure balisée quand elle existe ; extraction d'images, de
-métadonnées, de signets et de pièces jointes.
-**Critères de sortie** : le texte extrait d'un corpus de référence correspond à l'attendu ; l'ordre de
-lecture est correct sur les documents à colonnes ; l'extraction d'un gros document reste en mémoire bornée.
-
-## M9 — Sécurité et formulaires
-
-**Objectif** : ouvrir les documents protégés, produire des documents protégés, traiter les formulaires.
-**Livrables** : déchiffrement RC4 40/128 et AES-128/256, chiffrement et permissions ; AcroForms — lecture,
-remplissage, aplatissement, apparence des champs.
-**Critères de sortie** : les documents chiffrés du corpus s'ouvrent ; un formulaire rempli s'affiche
-correctement dans les lecteurs courants, avant comme après aplatissement.
-
-## M10 — Conformité PDF/A-3, Factur-X et validateur
-
-**Objectif** : la conformité réglementaire, garantie et vérifiable.
-**Livrables** : génération PDF/A-2b et PDF/A-3b (profil ICC, XMP, contraintes de rendu) ; embarquement et
-extraction Factur-X/ZUGFeRD ; préservation active de la conformité lors des fusions ; validateur intégré
-PDF/A et PDF/UA, livré par paliers.
-**Critères de sortie** : les documents produits passent veraPDF ; le validateur intégré est cohérent avec
-lui sur le corpus.
-
-## M11 — Optimisation, performance et durcissement
-
-**Objectif** : tenir la promesse de sobriété, chiffres à l'appui.
-**Livrables** : dédoublonnage global des ressources, recompression, sous-ensemblage des polices héritées,
-linéarisation ; campagne de benchmarks et budgets de performance en CI ; validation Native AOT et trimming ;
-fuzzing du lexer et du parseur.
-**Critères de sortie** : budgets de débit et d'allocation définis et tenus en CI ; une régression
-d'allocation fait échouer la CI ; un exécutable AOT génère un document.
-
-## M12 — Satellites : rastérisation, signature
-
-**Objectif** : les extensions qui supposent tout le reste en place.
-**Livrables** : `AdCodicem.Pdf.Rendering` (rastérisation via Skia, réutilisant l'interpréteur de M8) ;
-`AdCodicem.Pdf.Signing` (abstraction `IPdfSigner`, implémentation locale, horodatage, chemin vers HSM).
-**Critères de sortie** : les vignettes produites correspondent aux images de référence ; une signature
-produite est validée par un lecteur de référence.
+Every acceptance condition below is an executable test over `tests/corpus`. "External referee" means an
+independent tool run in CI — qpdf, pikepdf, pypdf, veraPDF — used to check our claims against something
+that was not written by us.
 
 ---
 
-## Travailler un jalon
+## M0 — Repository foundations
 
-1. Lire `CLAUDE.md`, `docs/status.md`, puis `docs/milestones/<jalon>.md`.
-2. Travailler par tranche verticale testable, jamais par couche horizontale entière.
-3. Une fonctionnalité livrée = code + tests + entrée dans le journal de `status.md`.
-4. Ce qui est découvert en route et sort du jalon va dans la dette de `status.md`, pas dans le code.
-5. Clore un jalon = ses critères de sortie sont vérifiés par des tests, et `status.md` le reflète.
+**Goal**: any session can build, test and publish without discovering anything.
+**Deliverables**: solution and project layout, central package management, GitHub Actions CI (build, test,
+benchmarks on demand, publish on tag), a `SessionStart` hook that installs the SDK, and the documentation
+frame (`CLAUDE.md`, `architecture.md`, `decisions.md`, `roadmap.md`, `corpus.md`, `status.md`).
+**Acceptance**: CI is green on a clean clone; a NuGet package builds.
 
-## Ajouter un jalon
+## M1 — Object model and tolerant reading
 
-Créer `docs/milestones/<numéro>.md` à partir de `docs/milestones/_template.md`, ajouter la ligne dans le
-tableau ci-dessus, et n'y détailler que ce qui est décidé — un jalon lointain reste volontairement grossier.
+**Goal**: open any PDF, imperfect ones included, without loading it into memory.
+**Deliverables**: the COS object model; a lexer and parser over spans; Flate (with PNG and TIFF
+predictors), LZW, ASCII85, ASCIIHex and RunLength filters; classic tables, cross-reference streams, object
+streams, the `/Prev` chain and hybrid-reference files; lazy resolution with a bounded cache; rebuilding by
+scanning when the index is wrong or absent; `PdfDiagnostics`; the corpus harness itself.
+
+**Acceptance**
+- Every document in the corpus opens, and its page count and catalogue match the manifest.
+- Each `damaged` document opens with exactly the diagnostics its manifest declares — no more, no fewer.
+- No document, hostile ones included, produces an untyped exception, unbounded recursion, or an allocation
+  the file chose; each stays inside a per-document time budget.
+- Opening a document does not read its content: on the `scan` and `stress` documents, bytes read at open
+  are a small fraction of file size, verified by counting reads.
+- Indexing the `stress` document holds within a stated memory budget recorded in `status.md`.
+
+## M2 — Writing and round-trip fidelity
+
+**Goal**: rewrite what was read, byte for byte in semantic terms.
+**Deliverables**: a forward-only `PdfWriter` (object numbers reserved ahead, indirect `/Length`,
+compression on the fly), classic tables and cross-reference streams, object streams on write, full rewrite
+and incremental update, a deterministic `/ID`, and preservation of an existing signature.
+
+**Acceptance**
+- Every corpus document survives open → save → reopen with an identical object graph, compared
+  semantically rather than textually.
+- An external referee opens every rewritten document without complaint.
+- Saving the same document twice produces identical bytes.
+- An incremental update on the signed `contract` document leaves the original bytes untouched, and the
+  existing signature still covers its byte range.
+- Rewriting the `stress` document holds memory flat and stays within the stated throughput budget.
+
+## M3 — Pages and case-file assembly
+
+**Goal**: the first business priority — compose a case file from generated pages and third-party PDFs.
+**Deliverables**: the page tree with inherited attributes; `PdfPageCollection` (insert, remove, reorder,
+rotate, extract); cross-document deep copy with resource deduplication; merge preserving bookmarks, links,
+annotations and attachments; a high-level assembly API.
+
+**Acceptance**
+- Merging the `contract` appendices with generated pages yields a document an external referee accepts,
+  in which every internal link and bookmark still resolves to the page it named.
+- The merged file is no larger than the sum of its inputs minus deduplicated resources, measured.
+- Extraction, reordering and rotation preserve inherited attributes: a page taken out of a document keeps
+  the media box and resources it inherited from its ancestors.
+- Assembling one hundred corpus documents holds memory proportional to the largest single page.
+
+## M4 — Fonts, text and content streams
+
+**Goal**: write text that is correct, embedded, extractable and accessible.
+**Deliverables**: a TrueType and OpenType parser (metrics, `cmap`, `hmtx`, `glyf`/`loca`, `CFF`);
+subsetting; Type0/CIDFontType2 embedding with `ToUnicode`; a font registry with family resolution;
+content stream operators; an embedded OFL font set.
+
+**Acceptance**
+- A generated document containing accented French text, typographic ligatures and a CJK sample extracts
+  back to exactly the input text through an external extractor.
+- Every font in a generated document is embedded and subsetted; an external referee confirms it, and the
+  subset contains only the glyphs used.
+- Advance widths match a reference renderer within a stated tolerance across the corpus fonts.
+
+## M5 — HTML → PDF engine
+
+**Goal**: the original promise. **XL — split into sub-milestones:**
+
+- **M5.1** — CSS engine: tokeniser, selectors, cascade, inheritance, typed computed values, default stylesheet.
+- **M5.2** — Block and inline layout, line breaking, alignment, `@page` pagination, margins, headers and footers, page counters.
+- **M5.3** — Tables (automatic and fixed layout, spanning cells, repeated headers).
+- **M5.4** — Flexbox and simple grid.
+- **M5.5** — Images (JPEG passed through, PNG, transparency), inline SVG as vectors, borders and backgrounds.
+- **M5.6** — Links, bookmarks, a table of contents with real page numbers, `@font-face`, the public API and DI integration.
+
+**Acceptance**
+- The reference business documents — invoice, multi-page report, contract — render within an agreed visual
+  difference threshold against approved reference images, page by page.
+- Their generated versions enter the corpus and satisfy every earlier milestone's acceptance conditions in
+  turn: what we produce must be as readable as what we consume.
+- Generating a one-thousand-page report holds memory constant as page count grows, measured at 10, 100 and
+  1000 pages.
+- Unsupported CSS never fails a render: it degrades and says so in the diagnostics.
+
+## M6 — Tagged structure and accessibility
+
+**Goal**: produce PDFs that are genuinely accessible, not merely labelled as such.
+**Deliverables**: the full logical structure tree, marked content and the parent tree, alternative text,
+language, reading order, artifacts for decorative elements, tagged tables.
+
+**Acceptance**
+- The reference documents pass PDF/UA validation by an external validator with no error.
+- Reading order extracted from the structure tree matches the visual order, including in the two-column
+  report and across page breaks.
+- Every image carries alternative text or is marked as an artifact; no exceptions, verified by a test.
+
+## M7 — Content on existing documents
+
+**Goal**: act on a received PDF without regenerating it.
+**Deliverables**: watermarks and stamps (text or a rendered HTML fragment), numbering, overlay and
+underlay, headers and footers added after the fact, N-up and imposition, resource dictionary merging
+without name collisions.
+
+**Acceptance**
+- Stamping every corpus document leaves every untouched object byte-identical, verified object by object.
+- Text extracted from a stamped document is the original text plus the stamp, and nothing else.
+- Stamping a PDF/A document either preserves conformance, confirmed by the validator, or reports the loss
+  in the diagnostics. Silence fails the test.
+
+## M8 — Extraction and analysis
+
+**Goal**: read what a PDF contains.
+**Deliverables**: a content stream interpreter (graphics state, text, positions); positioned glyphs with
+font and size; grouping into words, lines, blocks and columns; table detection with a confidence score;
+the tagged structure preferred where present; extraction of images, metadata, bookmarks and attachments.
+
+**Acceptance**
+- Text extracted from each corpus document matches the manifest expectations, including the two-column
+  report, where reading order must be correct.
+- A `scan` document reports that it has no extractable text rather than returning noise.
+- The Factur-X invoice yields its embedded XML byte-identical to the source.
+- Table detection on the invoice returns the line items with their columns, and states its confidence.
+- Extracting from the `stress` document holds memory bounded and independent of document length.
+
+## M9 — Security and forms
+
+**Goal**: open protected documents, produce protected documents, handle forms.
+**Deliverables**: RC4 40/128 and AES-128/256 decryption, encryption and permissions; AcroForms — reading,
+filling, flattening, field appearances.
+
+**Acceptance**
+- Every encrypted corpus document opens with its recorded password, and its content matches the
+  unencrypted twin it was derived from.
+- Documents we encrypt open in an external referee with the same password and permissions.
+- The `form` document round-trips: filled, saved, reopened, and the values read back are the values
+  written; after flattening the values are still visible and the fields are gone.
+
+## M10 — PDF/A-3, Factur-X and the validator
+
+**Goal**: regulatory conformance, guaranteed and checkable.
+**Deliverables**: PDF/A-2b and PDF/A-3b generation (ICC profile, XMP, rendering constraints); Factur-X and
+ZUGFeRD embedding and extraction; conformance actively preserved when merging; a built-in PDF/A and PDF/UA
+validator, delivered in stages.
+
+**Acceptance**
+- Documents we generate pass veraPDF for the claimed conformance level, with no error.
+- A Factur-X invoice we generate is accepted by an independent Factur-X validator, and its XML matches the
+  input.
+- Merging two PDF/A documents yields a document that still passes veraPDF; merging a conforming one with a
+  non-conforming one reports the loss precisely.
+- The built-in validator agrees with veraPDF on every corpus document; each disagreement is either fixed or
+  recorded in the manifest with its reason.
+
+## M11 — Optimisation, performance, hardening
+
+**Goal**: deliver the frugality the library promises, with numbers.
+**Deliverables**: global resource deduplication, recompression, subsetting of inherited fonts,
+linearisation; a benchmark campaign with performance budgets enforced in CI; Native AOT and trimming
+validation; fuzzing of the lexer and parser.
+
+**Acceptance**
+- Published budgets for throughput and allocation hold on the `stress` documents, and CI fails when a
+  budget is exceeded — an allocation regression is a regression.
+- Optimising a corpus document reduces its size without changing what an external referee extracts from it.
+- A Native AOT executable opens, transforms and writes every corpus document.
+- A fuzzing campaign over the lexer and parser, seeded with the `damaged` documents, finds no untyped
+  exception, hang or unbounded allocation.
+
+## M12 — Satellites: rasterisation and signing
+
+**Goal**: the extensions that presuppose everything else.
+**Deliverables**: `AdCodicem.Pdf.Rendering` (Skia rasterisation reusing the M8 interpreter);
+`AdCodicem.Pdf.Signing` (the `IPdfSigner` abstraction, a local implementation, a path to an HSM).
+
+**Acceptance**
+- Rasterised pages of the reference documents match approved reference images within the agreed threshold.
+- A signature we produce validates in an external reader, and the document still opens in every earlier
+  acceptance test.
+- Signing does not invalidate an existing signature on the `contract` document.
+
+---
+
+## Working a milestone
+
+1. Read `CLAUDE.md`, `docs/status.md`, then `docs/milestones/<milestone>.md`.
+2. Work in vertical, testable slices, never a whole horizontal layer.
+3. A delivered feature is code plus tests plus an entry in the `status.md` journal.
+4. What is discovered on the way and falls outside the milestone goes into the debt table, not into the code.
+5. Closing a milestone means its exit criteria **and** its corpus acceptance conditions are green in CI.
+
+## Adding a milestone
+
+Create `docs/milestones/<number>.md` from `docs/milestones/_template.md`, add its row above, and specify
+only what is decided — a distant milestone stays deliberately coarse. Its acceptance conditions, however,
+are written when the milestone is written: they are what the work is for.

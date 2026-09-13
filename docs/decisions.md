@@ -1,108 +1,118 @@
-# Décisions d'architecture
+# Architecture decisions
 
-Une décision actée ne se rediscute pas sans élément nouveau. Ce fichier existe pour éviter de refaire
-le même débat à chaque session : il donne le choix, la raison, et ce qui a été écarté.
+A settled decision is not reopened without new evidence. This file exists so the same debate is not had
+twice: it records the choice, the reason, and what was rejected.
 
-Format : décision — raison — alternatives écartées — ce qui la remettrait en cause.
-
----
-
-**D01 — Moteur de rendu 100 % managé.** AngleSharp pour le parsing HTML5, moteur CSS et layout écrits par
-nous, writer PDF écrit par nous.
-*Raison* : c'est la seule option compatible avec l'objectif de sobriété. Une instance Chromium consomme
-150 à 300 Mo et démarre en centaines de millisecondes ; un moteur managé rend une facture en quelques
-mégaoctets et quelques millisecondes, et se déploie en conteneur distroless.
-*Écarté* : wrapper Chromium/Playwright (empreinte et complexité de déploiement), binding natif type PDFium
-(dépendances par RID, incompatible AOT).
-*Remise en cause* : un besoin avéré de rendre des pages web arbitraires avec JavaScript — auquel cas on
-ajoute un backend satellite, sans toucher au cœur.
-
-**D02 — Périmètre complet : génération et manipulation.** Décidé après un premier cadrage « génération
-seule ».
-*Conséquence majeure* : la manipulation impose un parseur complet et un modèle objet en lecture/écriture.
-Ce n'est pas un module greffé sur le writer, c'est la moitié basse de la bibliothèque, et les deux
-chemins partagent le même modèle objet.
-
-**D03 — Documents métier avec sous-ensemble CSS moderne.** Box model complet, tables, paged media, flexbox,
-grid simple, SVG inline. Pas de JavaScript.
-*Raison* : couvre factures, rapports, contrats, étiquettes — la totalité des usages visés — pour une
-fraction du coût d'un moteur web complet.
-
-**D04 — SkiaSharp et HarfBuzzSharp autorisés, dans `.Html` uniquement.** HarfBuzz pour le shaping (ligatures,
-crénage, écritures complexes, bidirectionnel), Skia pour le décodage d'images et le rendu SVG de secours.
-*Raison* : réécrire un shaper de qualité représente des années ; le résultat serait typographiquement
-inférieur. Le confinement au package HTML préserve un cœur sans dépendance.
-*Écarté* : tout en managé (coût disproportionné), Skia partout (contamine le cœur).
-
-**D05 — Writer PDF maison plutôt que le backend PDF de Skia.**
-*Raison* : Skia produit un PDF opaque — pas de PDF/A, pas de structure balisée, pas de contrôle de la
-compression, pas d'écriture en flux. Or la conformité et le streaming sont au cœur de la promesse.
-*Écarté* : `SKDocument.CreatePdf` (rapide à livrer, impasse ensuite).
-
-**D06 — Conformité structurante dès la conception.** En-têtes/pieds, numérotation, liens, signets ;
-PDF/A-3 et Factur-X ; PDF/UA balisé.
-*Raison* : la traçabilité DOM → boîte → contenu marqué qu'exige PDF/UA est impossible à rajouter après
-coup sans réécrire le layout. Elle est donc présente dès le premier jalon, même si l'émission complète
-de l'arbre de structure arrive plus tard.
-
-**D07 — Façade + options immuables + DI.** `IPdfRenderer` singleton thread-safe, `record` d'options,
-`AddAdCodicemPdf()`.
-*Écarté* : builder fluent en API primaire (peut être ajouté au-dessus plus tard, l'inverse est faux).
-
-**D08 — Cœur sans dépendance + satellites.** Voir le tableau des packages dans `architecture.md`.
-*Raison* : un consommateur qui ne fait que manipuler des PDF ne doit pas tirer AngleSharp ni un binaire natif.
-
-**D09 — `net10.0` uniquement, C# 14.**
-*Raison* : accès sans compromis aux API de performance récentes, aucune compilation conditionnelle.
-*Écarté* : multiciblage `net8.0` (double matrice, API perf indisponibles). À reconsidérer seulement si un
-consommateur réel reste bloqué en LTS.
-
-**D10 — Polices : registre explicite, jeu OFL embarqué, webfonts optionnelles.**
-*Raison* : un conteneur n'a aucune police installée ; dépendre des polices système rend le rendu non
-reproductible. Le jeu embarqué garantit que le premier essai fonctionne. Le téléchargement de `@font-face`
-distants est possible mais **désactivé par défaut** : appel réseau pendant un rendu, donc non déterministe
-et exposé côté sécurité.
-
-**D11 — GitHub Actions, publication nuget.org.** Le dépôt est sur GitHub ; la CI est vérifiable depuis les
-sessions de développement, ce qui n'est pas le cas d'Azure Pipelines.
-
-**D12 — Lecture paresseuse ; sortie en réécriture complète ou incrémentale.**
-*Raison* : c'est ce qui permet de manipuler un document de plusieurs centaines de mégaoctets dans quelques
-mégaoctets de RAM, et de ne pas invalider une signature existante.
-*Écarté* : chargement complet en mémoire (approche de la plupart des bibliothèques .NET, contraire à
-l'objectif), pipeline en flux pur (interdit réordonnancement, dédoublonnage global, formulaires).
-
-**D13 — Lecteur tolérant avec rapport de diagnostic.** Reconstruction de xref, récupération sur objets
-malformés, plus un rapport structuré des anomalies et des réparations.
-*Raison* : les PDF réels sont fréquemment non conformes ; un lecteur strict échoue là où tous les lecteurs
-du marché réussissent. Le rapport permet de tracer la qualité des fichiers entrants.
-
-**D14 — Extraction de texte complète, structure balisée prioritaire.** Glyphes positionnés, regroupement en
-lignes et paragraphes, détection de tableaux, et lorsque le document est balisé on suit son arbre de
-structure plutôt que les heuristiques.
-*Note* : la détection de tableaux est heuristique par nature ; l'API doit exposer un indice de confiance
-plutôt que laisser croire à un résultat exact.
-
-**D15 — Rastérisation en package satellite, après le socle.** Elle réutilisera l'interpréteur de flux de
-contenu écrit pour l'extraction. D'ici là, les tests visuels s'appuient sur un outil externe en CI.
-
-**D16 — Conformité préservée activement, plus un validateur intégré.** À la fusion, on recombine réellement
-les arbres de structure, les `OutputIntents`, les métadonnées et les polices.
-*Réserve assumée* : un validateur PDF/A complet représente des centaines de règles. Il sera livré par
-paliers, en couvrant d'abord ce que la bibliothèque produit elle-même, puis les documents tiers.
-
-**D17 — Signature : place réservée.** Le writer doit savoir produire des mises à jour incrémentales et
-préserver une signature existante intacte. PAdES viendra ensuite, derrière une abstraction `IPdfSigner`
-permettant de déléguer à un HSM ou à un prestataire qualifié.
+Format: decision — reason — rejected alternatives — what would reopen it.
 
 ---
 
-## Décisions techniques mineures mais durables
+**D01 — Fully managed rendering.** AngleSharp for HTML5 parsing; the CSS engine, the layout engine and the
+PDF writer are ours.
+*Reason*: it is the only option compatible with the frugality goal. A Chromium instance costs 150 to 300 MB
+and hundreds of milliseconds to start; a managed engine renders an invoice in a few megabytes and a few
+milliseconds, and deploys into a distroless container.
+*Rejected*: wrapping Chromium or Playwright (footprint and deployment complexity), binding a native engine
+such as PDFium (per-RID dependencies, incompatible with AOT).
+*Would reopen it*: a demonstrated need to render arbitrary web pages with JavaScript — which would be met
+by adding a satellite backend, not by changing the core.
 
-- Unité interne du layout : le **pixel CSS** ; conversion en points (`× 0.75`) au moment de la peinture seulement.
-- Le repère PDF est en bas à gauche, le layout travaille en haut à gauche : la conversion se fait à un seul
-  endroit, dans la peinture.
-- Les noms PDF sont internés ; les entiers usuels sont mis en cache.
-- Un flux copié d'un document à l'autre transite **encodé**, sans cycle décompression/recompression.
-- Le `/ID` du document est dérivé du contenu, ou fourni par l'appelant, jamais aléatoire — le déterminisme
-  prime, et un identifiant aléatoire rendrait tout test d'empreinte impossible.
+**D02 — Full scope: generation and manipulation.** Decided after an initial framing of "generation only".
+*Consequence*: manipulation requires a complete parser and a read/write object model. That is not a module
+bolted onto the writer, it is the lower half of the library, and both paths share one object model.
+
+**D03 — Business documents with a modern CSS subset.** The full box model, tables, paged media, flexbox,
+simple grid, inline SVG. No JavaScript.
+*Reason*: it covers invoices, reports, contracts and labels — the whole of the intended use — for a
+fraction of the cost of a complete web engine.
+
+**D04 — SkiaSharp and HarfBuzzSharp allowed, in `.Html` only.** HarfBuzz for shaping (ligatures, kerning,
+complex scripts, bidirectional text), Skia for image decoding and SVG fallback rendering.
+*Reason*: writing a quality shaper takes years, and the result would be typographically worse. Confining
+these to the HTML package keeps the core dependency-free.
+*Rejected*: everything managed (disproportionate cost), Skia everywhere (contaminates the core).
+
+**D05 — Our own PDF writer rather than Skia's PDF backend.**
+*Reason*: Skia produces an opaque PDF — no PDF/A, no tagged structure, no control over compression, no
+streaming output. Conformance and streaming are the heart of the promise.
+*Rejected*: `SKDocument.CreatePdf` (quick to ship, a dead end afterwards).
+
+**D06 — Conformance designed in from the start.** Headers and footers, numbering, links, bookmarks;
+PDF/A-3 and Factur-X; tagged PDF/UA.
+*Reason*: the DOM → box → marked-content traceability that PDF/UA demands cannot be retrofitted without
+rewriting layout. It is therefore present from the first milestone, even though full emission of the
+structure tree comes later.
+
+**D07 — Facade, immutable options, dependency injection.** A thread-safe `IPdfRenderer` singleton, options
+as records, `AddAdCodicemPdf()`.
+*Rejected*: a fluent builder as the primary API — it can be layered on top later; the reverse is not true.
+
+**D08 — A dependency-free core plus satellites.** See the package table in `architecture.md`.
+*Reason*: a consumer who only manipulates PDFs should not pull in AngleSharp or a native binary.
+
+**D09 — `net10.0` only, C# 14.**
+*Reason*: unhindered access to recent performance APIs, and no conditional compilation.
+*Rejected*: multi-targeting `net8.0` (a double matrix, performance APIs unavailable). To be reconsidered
+only if a real consumer is stuck on LTS.
+
+**D10 — Fonts: an explicit registry, an embedded OFL set, optional web fonts.**
+*Reason*: a container has no fonts installed, and depending on system fonts makes rendering irreproducible.
+The embedded set guarantees that the first attempt works. Fetching remote `@font-face` resources is
+possible but **off by default**: a network call during rendering is neither deterministic nor safe.
+
+**D11 — GitHub Actions, published to nuget.org.** The repository is on GitHub, and its CI can be inspected
+from a development session, which is not true of Azure Pipelines.
+
+**D12 — Lazy reading; output as a full rewrite or an incremental update.**
+*Reason*: it is what allows a document of several hundred megabytes to be manipulated in a few megabytes of
+memory, and an existing signature not to be invalidated.
+*Rejected*: loading everything into memory (what most .NET libraries do, and contrary to the goal); a pure
+streaming pipeline (rules out reordering, global deduplication and forms).
+
+**D13 — A tolerant reader with a diagnostic report.** Cross-reference rebuilding, recovery from malformed
+objects, and a structured report of anomalies and repairs.
+*Reason*: real PDFs are frequently non-conforming, and a strict reader fails where every reader on the
+market succeeds. The report also lets a caller track the quality of incoming files.
+
+**D14 — Full text extraction, tagged structure preferred.** Positioned glyphs, grouping into lines and
+paragraphs, table detection, and, when the document is tagged, following its structure tree rather than
+heuristics.
+*Note*: table detection is heuristic by nature; the API must expose a confidence score rather than imply an
+exact result.
+
+**D15 — Rasterisation as a satellite, after the foundations.** It will reuse the content stream interpreter
+written for extraction. Until then, visual tests rely on an external tool in CI.
+
+**D16 — Conformance actively preserved, plus a built-in validator.** When merging, structure trees,
+`OutputIntents`, metadata and fonts are genuinely recombined.
+*Accepted caveat*: a complete PDF/A validator is hundreds of rules. It ships in stages, covering first what
+the library produces itself, then third-party documents.
+
+**D17 — Signing: space reserved.** The writer must be able to produce incremental updates and to leave an
+existing signature intact. PAdES follows, behind an `IPdfSigner` abstraction so signing can be delegated to
+an HSM or a qualified provider.
+
+**D18 — Milestones are accepted on real documents.** Every milestone states acceptance conditions verified
+against `tests/corpus`, a set of documents produced by real generators and contributed from the field,
+rather than only on files we wrote by hand.
+*Reason*: hand-built test files prove the code handles what we imagined. Producers emit what they emit.
+*Consequence*: the corpus and its manifest are part of the library's contract; see `docs/corpus.md`.
+
+**D19 — Everything is written in English.** Code, public API, XML documentation, project documentation,
+commit messages, diagnostics and exception messages.
+*Reason*: the package is public, and a mixed-language repository forces every contributor to switch
+languages between a file and its documentation.
+
+---
+
+## Minor but durable technical decisions
+
+- The layout engine works in **CSS pixels**; conversion to points (`× 0.75`) happens only when painting.
+- The PDF coordinate system starts bottom-left and layout works top-left: the conversion lives in exactly
+  one place, in painting.
+- PDF names are interned; common integers are cached.
+- A stream copied between documents travels **encoded**, with no decompress/recompress cycle.
+- A dictionary entry whose value is null is dropped on parse: the specification says it is equivalent to an
+  absent entry, and every later stage is spared a null it would have to ignore.
+- The document `/ID` is derived from content, or supplied by the caller, never random — determinism comes
+  first, and a random identifier would make fingerprint tests impossible.

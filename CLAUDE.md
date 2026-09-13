@@ -1,105 +1,112 @@
-# AdCodicem.Pdf — cadre de travail
+# AdCodicem.Pdf — working frame
 
-Bibliothèque **.NET 10 / C# 14** publiée en NuGet (MIT) qui **génère des PDF à partir de HTML** et
-**manipule des PDF existants**, avec une exigence permanente de sobriété CPU et mémoire.
+A **.NET 10 / C# 14** NuGet library (MIT) that **generates PDF from HTML** and **manipulates existing
+PDF documents**, under a standing requirement of frugal CPU and memory use.
 
-## Comment aborder une session
+## How to approach a session
 
-Lis dans cet ordre, et rien de plus :
+Read these, in this order, and nothing else:
 
-1. **ce fichier** — le cadre invariant ;
-2. **`docs/status.md`** — où en est le projet, ce qui est en cours, la dette connue ;
-3. **le fichier du jalon en cours** dans `docs/milestones/` — la spécification détaillée du travail.
+1. **this file** — the invariant frame;
+2. **`docs/status.md`** — where the project stands, what is in flight, known debt;
+3. **the current milestone file** in `docs/milestones/` — the detailed specification of the work.
 
-Ne charge `docs/architecture.md` que si tu touches à une frontière entre couches, et
-`docs/decisions.md` que si tu envisages de remettre en cause un choix déjà acté.
-`docs/roadmap.md` sert à situer un jalon dans l'ensemble, pas à travailler au quotidien.
+Load `docs/architecture.md` only when touching a boundary between layers, and `docs/decisions.md` only
+when considering reversing a settled choice. `docs/roadmap.md` places a milestone in the whole; it is not
+a daily working document. `docs/corpus.md` is required reading before closing any milestone.
 
-À la fin de chaque session : mets `docs/status.md` à jour (état réel, pas intentions), coche la
-checklist du jalon, commite, pousse.
+At the end of every session: update `docs/status.md` (actual state, not intentions), tick the milestone
+checklist, commit, push.
 
-## Ce que la bibliothèque est — et n'est pas
+## What the library is — and is not
 
-- Un moteur HTML → PDF **entièrement managé** : pas de Chromium, pas de wkhtmltopdf, pas de process externe.
-- Un couple **lecteur/écrivain PDF** capable d'ouvrir des fichiers tiers imparfaits sans les charger en mémoire.
-- Elle ne vise **pas** la fidélité d'un navigateur : pas de JavaScript, pas d'animations, pas de rendu
-  de pages web arbitraires. Elle vise les **documents métier** — factures, rapports, contrats, dossiers.
+- A **fully managed** HTML → PDF engine: no Chromium, no wkhtmltopdf, no external process.
+- A **reader/writer pair** able to open imperfect third-party files without loading them into memory.
+- It does **not** chase browser fidelity: no JavaScript, no animation, no rendering of arbitrary web
+  pages. It targets **business documents** — invoices, reports, contracts, case files.
 
-## Décisions actées — ne pas les re-litiger
+## Settled decisions — do not relitigate
 
-| # | Décision |
+| # | Decision |
 |---|----------|
-| D01 | Moteur de rendu 100 % managé : AngleSharp (parsing HTML5) → CSS et layout maison → writer PDF maison |
-| D02 | Périmètre complet : génération **et** manipulation (assemblage, contenu, extraction, formulaires, sécurité, optimisation) |
-| D03 | Contenu cible : documents métier + sous-ensemble CSS moderne choisi (flex, grid simple, SVG, paged media) |
-| D04 | SkiaSharp et HarfBuzzSharp autorisés — dans `AdCodicem.Pdf.Html` uniquement, jamais dans le cœur |
-| D05 | Le writer PDF est écrit par nous : contrôle total sur compression, conformité, streaming |
-| D06 | Structurant dès la conception : en-têtes/pieds/numérotation/liens/signets, PDF/A-3 + Factur-X, PDF/UA (tagged) |
-| D07 | API : façade + options immuables + intégration DI ASP.NET Core |
-| D08 | Découpage : cœur sans dépendance + packages satellites |
-| D09 | Cible unique `net10.0`, C# 14 |
-| D10 | Polices : registre explicite + jeu OFL embarqué + webfonts CSS téléchargeables (désactivé par défaut) |
-| D11 | CI GitHub Actions, publication nuget.org |
-| D12 | Lecture paresseuse ; sortie au choix en réécriture complète ou mise à jour incrémentale |
-| D13 | Lecteur **tolérant** aux fichiers non conformes, avec rapport de diagnostic structuré |
-| D14 | Extraction de texte complète : glyphes positionnés → lignes/paragraphes → tableaux, en privilégiant la structure balisée quand elle existe |
-| D15 | Rastérisation PDF → image : package satellite, après le socle |
-| D16 | Conformité préservée activement lors des manipulations, plus un validateur PDF/A et PDF/UA intégré |
-| D17 | Signature : place réservée dans le writer (mise à jour incrémentale, préservation des signatures) ; PAdES plus tard |
+| D01 | Fully managed rendering: AngleSharp (HTML5 parsing) → our own CSS engine and layout → our own PDF writer |
+| D02 | Full scope: generation **and** manipulation (assembly, content, extraction, forms, security, optimisation) |
+| D03 | Target content: business documents plus a chosen subset of modern CSS (flex, simple grid, SVG, paged media) |
+| D04 | SkiaSharp and HarfBuzzSharp allowed — in `AdCodicem.Pdf.Html` only, never in the core |
+| D05 | We write the PDF writer ourselves: full control over compression, conformance and streaming |
+| D06 | Designed in from the start: headers/footers/numbering/links/bookmarks, PDF/A-3 and Factur-X, PDF/UA (tagged) |
+| D07 | API: facade plus immutable options plus ASP.NET Core dependency injection |
+| D08 | Packaging: a dependency-free core plus satellite packages |
+| D09 | Single target `net10.0`, C# 14 |
+| D10 | Fonts: explicit registry, an embedded OFL set, and CSS web fonts fetched on demand (off by default) |
+| D11 | CI on GitHub Actions, published to nuget.org |
+| D12 | Lazy reading; output either as a full rewrite or as an incremental update |
+| D13 | A **tolerant** reader for non-conforming files, with a structured diagnostic report |
+| D14 | Full text extraction: positioned glyphs → lines and paragraphs → tables, preferring the tagged structure where it exists |
+| D15 | PDF → image rasterisation: a satellite package, after the foundations |
+| D16 | Conformance actively preserved through manipulation, plus a built-in PDF/A and PDF/UA validator |
+| D17 | Signing: space reserved in the writer (incremental update, existing signatures preserved); PAdES later |
 
-Priorité métier n°1 après le socle : **l'assemblage de dossiers** (pages générées + PDF tiers, sommaire,
-signets, pagination continue).
+First business priority after the foundations: **assembling case files** (generated pages plus
+third-party PDFs, table of contents, bookmarks, continuous pagination).
 
-## Invariants d'architecture — non négociables
+## Architecture invariants — not negotiable
 
-1. **Le cœur `AdCodicem.Pdf` n'a aucune dépendance**, ni NuGet ni native, et reste compatible Native AOT et trimming.
-2. **Rien ne charge un document entier en mémoire.** Lecture paresseuse par objet, écriture en flux,
-   consommation mémoire fonction de la page la plus lourde, pas de la taille du fichier.
-3. **Pas d'allocation dans les boucles chaudes** — parsing, layout, écriture : `Span<T>`, `ArrayPool<T>`,
-   buffers réutilisés. Pas de LINQ, pas de `string.Split`, pas de closure, pas de boxing sur ces chemins.
-   Ailleurs, la lisibilité prime.
-4. **Toute donnée lue d'un fichier tiers est hostile.** Aucune allocation dimensionnée par une valeur du
-   fichier sans borne vérifiée, aucune récursion non bornée, aucune boucle dont la sortie dépend d'un
-   offset lu. Un PDF malformé produit un diagnostic, jamais un plantage ni un déni de service.
-5. **Les anomalies vont dans `PdfDiagnostics`**, pas dans un logger et pas dans une exception, tant que la
-   lecture peut continuer. Les exceptions sont réservées à ce qui rend l'opération impossible.
-6. **Déterminisme** : mêmes entrées → mêmes octets en sortie. Les seules sources de variation autorisées
-   sont fournies explicitement par l'appelant (date de création, identifiant de document).
-7. **Conformité** : on préserve PDF/A et la structure balisée, ou on signale explicitement la perte dans le
-   rapport. Jamais de rupture silencieuse.
-8. **Sûreté des types publics** : l'API publique est immuable par défaut, sans état statique mutable.
-   Un `PdfDocument` n'est pas thread-safe ; un moteur de rendu l'est.
-9. Toute fonctionnalité arrive **avec ses tests**. Toute optimisation arrive **avec son benchmark**.
+1. **The core `AdCodicem.Pdf` has no dependencies**, neither NuGet nor native, and stays compatible with
+   Native AOT and trimming.
+2. **Nothing loads a whole document into memory.** Objects are read lazily, output is written forward-only,
+   and memory follows the heaviest page rather than the size of the file.
+3. **No allocation in hot loops** — parsing, layout, writing: `Span<T>`, `ArrayPool<T>`, reused buffers.
+   No LINQ, no `string.Split`, no closures, no boxing on those paths. Elsewhere, readability wins.
+4. **Everything read from a third-party file is hostile.** No allocation sized by a value from the file
+   without a checked bound, no unbounded recursion, no loop whose exit depends on an offset that was read.
+   A malformed PDF produces a diagnostic, never a crash and never a denial of service.
+5. **Anomalies go into `PdfDiagnostics`**, not into a logger and not into an exception, as long as reading
+   can continue. Exceptions are for what makes the operation impossible.
+6. **Determinism**: same inputs, same bytes out. The only permitted sources of variation are supplied
+   explicitly by the caller (creation date, document identifier).
+7. **Conformance**: PDF/A and the tagged structure are preserved, or their loss is reported explicitly.
+   Never a silent break.
+8. **Public type safety**: the public API is immutable by default, with no mutable static state.
+   A `PdfDocument` is not thread-safe; a rendering engine is.
+9. Every feature ships **with its tests**. Every optimisation ships **with its benchmark**.
+10. **No milestone closes on synthetic files alone.** Each one is accepted against real documents from
+    `tests/corpus`, under the rules in `docs/corpus.md`.
 
-## Environnement de développement
+## Development environment
 
-Sessions Claude Code sur le web : le SDK .NET n'est pas préinstallé et les serveurs de Microsoft sont
-bloqués par la politique réseau. Le hook `SessionStart` (`.claude/scripts/setup-dotnet.sh`) installe
-`dotnet-sdk-10.0` depuis l'archive Ubuntu. nuget.org est joignable, `dotnet restore` fonctionne.
-Si `dotnet` est introuvable : `apt-get install -y --no-install-recommends dotnet-sdk-10.0`.
+Claude Code web sessions: the .NET SDK is not preinstalled and Microsoft's distribution hosts are blocked
+by the network policy. The `SessionStart` hook (`.claude/scripts/setup-dotnet.sh`) installs
+`dotnet-sdk-10.0` from the Ubuntu archive. nuget.org is reachable and `dotnet restore` works.
+If `dotnet` is missing: `apt-get install -y --no-install-recommends dotnet-sdk-10.0`.
 
 ```bash
-dotnet build   AdCodicem.Pdf.slnx -c Release
+dotnet build AdCodicem.Pdf.slnx -c Release
 dotnet test --solution AdCodicem.Pdf.slnx -c Release
 dotnet run -c Release --project bench/AdCodicem.Pdf.Benchmarks -- --filter '*'
 ```
 
+Corpus documents are produced by real generators available in the container — Chromium (Skia backend),
+LibreOffice, and Python producers from pypi — then committed, so tests never depend on the network.
+See `docs/corpus.md`.
+
 ## Conventions
 
-- **Code, API publique et commentaires XML en anglais** ; documentation projet (`docs/`, `CLAUDE.md`)
-  en français. Le `README.md` est la vitrine publique du paquet : en anglais.
-- Un fichier par type public. `sealed` par défaut. `internal` tant qu'une API n'est pas décidée publique.
-- Les types du modèle objet PDF portent le préfixe `Pdf` ; les types internes au moteur HTML n'en portent pas.
-- Tests : xUnit + Shouldly. Un test nommé décrit un comportement, pas une méthode.
-- Commits conventionnels (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`).
-- Branche de développement : `claude/nuget-pdf-html-dotnet-msyz8z`.
+- **Everything is written in English**: code, public API, XML documentation, project documentation,
+  commit messages, diagnostics and exception messages.
+- One public type per file. `sealed` by default. `internal` until an API is deliberately made public.
+- PDF object model types carry the `Pdf` prefix; types internal to the HTML engine do not.
+- Tests: xUnit and Shouldly. A test name states a behaviour, not a method.
+- Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`).
+- Development branch: `claude/nuget-pdf-html-dotnet-msyz8z`.
 
-## Pièges connus
+## Known traps
 
-- Le PDF est un format à **offsets absolus** : toute écriture qui décale des octets invalide la table xref.
-  Seul `PdfWriter` connaît les positions ; aucune couche supérieure ne calcule d'offset.
-- Les nombres réels PDF **n'admettent pas la notation exponentielle** : formater en `"0.####"` invariant.
-- Une chaîne de texte PDF non ASCII doit être écrite en **UTF-16BE avec BOM** — sinon les accents français cassent.
-- Un flux `/Length` peut être une **référence indirecte** ; c'est ce qui rend l'écriture en flux possible.
-- Les attributs de page (`Resources`, `MediaBox`, `Rotate`) sont **hérités** dans l'arbre des pages : toujours
-  passer par la résolution héritée, jamais lire le dictionnaire de page directement.
+- PDF is a format of **absolute offsets**: any write that shifts bytes invalidates the cross-reference
+  table. Only `PdfWriter` knows positions; no layer above it computes an offset.
+- PDF real numbers **admit no exponent notation**: format with an invariant `"0.####"`.
+- A non-ASCII PDF text string must be written as **UTF-16BE with a byte order mark**, or accented text
+  breaks in every reader.
+- A stream `/Length` may be an **indirect reference**; that is what makes streaming output possible.
+- Page attributes (`Resources`, `MediaBox`, `Rotate`) are **inherited** through the page tree: always go
+  through inherited resolution, never read the page dictionary directly.
