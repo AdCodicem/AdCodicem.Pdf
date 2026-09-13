@@ -15,6 +15,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: nuget
+    permissions:
+      contents: read
+      # Lets the job ask GitHub for the OIDC token that nuget.org exchanges for a short-lived key.
+      # Nothing long-lived is stored anywhere: see docs/releasing.md.
+      id-token: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -25,16 +31,42 @@ jobs:
       - name: Derive version from tag
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      - name: Pack
-        run: dotnet pack AdCodicem.Pdf.slnx -c Release -p:Version="$VERSION" -o artifacts
+      - name: Build
+        run: dotnet build AdCodicem.Pdf.slnx -c Release -p:Version="$VERSION"
 
-      - name: Push to nuget.org
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      - name: Test
+        run: dotnet test --solution AdCodicem.Pdf.slnx -c Release --no-build
+
+      - name: Pack
+        run: dotnet pack AdCodicem.Pdf.slnx -c Release --no-build -p:Version="$VERSION" -o artifacts
+
+      - name: Check the publishing identity is configured
         run: |
-          if [ -z "$NUGET_API_KEY" ]; then
-            echo "::error::NUGET_API_KEY secret is not configured for the 'nuget' environment."
+          if [ -z "${{ secrets.NUGET_USER }}" ]; then
+            echo "::error::The NUGET_USER secret is not set for the 'nuget' environment. It holds the"
+            echo "::error::nuget.org account name (the profile name, not an email address) that owns the"
+            echo "::error::trusted publishing policy. See docs/releasing.md."
             exit 1
           fi
-          dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" \
-            --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      # The key nuget.org returns lasts one hour and can be used once, so it is requested immediately
+      # before the push rather than at the start of the job.
+      - name: Exchange the OIDC token for a short-lived NuGet key
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        run: |
+          dotnet nuget push "artifacts/*.nupkg" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/*.nupkg
+          if-no-files-found: error

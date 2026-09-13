@@ -29,6 +29,11 @@ apt-get install -y --no-install-recommends libreoffice-writer   # Chromium is al
 
 ## Adding a document
 
+Contributing a file from the field — Word, Acrobat, a scanner, a supplier's ERP, or something that broke
+your tooling? `docs/corpus-contributions.md` is the specification: what is wanted, what to check before
+handing it over, and which of the public and private corpora it belongs in.
+
+
 1. Drop it under `documents/<use-case>/`, or add a generator to `build_corpus.py` if it can be produced.
 2. Add its manifest entry, including what tests must observe: page count, whether it is well formed,
    which diagnostics the reader must report, and whatever later milestones will assert (text, attachments,

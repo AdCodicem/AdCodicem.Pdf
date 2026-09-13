@@ -12,6 +12,9 @@ images, metadata and object streams in its own way, and each of them gets some d
 Hence invariant 10: **no milestone closes on synthetic files alone**. Every milestone states which real
 documents it must handle and what handling them means, and those statements are executable tests.
 
+**Contributing a document**: `docs/corpus-contributions.md` says what is wanted, what to check before
+handing anything over, and where it goes.
+
 ## Where the documents come from
 
 | Origin | What it gives | Rule |

@@ -61,7 +61,8 @@ The embedded set guarantees that the first attempt works. Fetching remote `@font
 possible but **off by default**: a network call during rendering is neither deterministic nor safe.
 
 **D11 — GitHub Actions, published to nuget.org.** The repository is on GitHub, and its CI can be inspected
-from a development session, which is not true of Azure Pipelines.
+from a development session, which is not true of Azure Pipelines. Publication uses trusted publishing, not
+an API key — see D24.
 
 **D12 — Lazy reading; output as a full rewrite or an incremental update.**
 *Reason*: it is what allows a document of several hundred megabytes to be manipulated in a few megabytes of
@@ -123,6 +124,20 @@ mode with no account of what it did.
 of the veraPDF corpus (CC BY 4.0) is committed with a NOTICE; ShareAlike collections are not vendored, and
 large corpora are fetched on demand for local investigation rather than committed.
 *Reason*: test data ships inside an MIT repository, so its licence must not reach back into the software.
+
+**D23 — Package identifiers, and a reserved prefix.** `AdCodicem.Pdf` for the core, then
+`.Validation`, `.Html`, `.AspNetCore`, `.FacturX`, `.Rendering` and `.Signing`. All seven were unclaimed
+when checked on 2026-09-13.
+*Consequence*: the `AdCodicem.` prefix is to be reserved on nuget.org with the first publish, so nobody
+else can publish under the name and consumers see a verified owner.
+
+**D24 — Trusted publishing rather than an API key.** The release workflow asks GitHub for a short-lived
+OIDC token, which nuget.org exchanges for a key valid one hour and usable once.
+*Reason*: there is then no long-lived credential to leak, rotate or store — the failure mode of every
+API-key setup. The only stored value is the nuget.org account name, which is not a credential.
+*Consequence*: the policy on nuget.org is pinned to the repository, the workflow file name and the
+`nuget` environment, so renaming `release.yml` or the environment breaks publishing until the policy is
+updated. `docs/releasing.md` records the exact fields.
 
 ---
 
