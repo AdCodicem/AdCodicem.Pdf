@@ -8,7 +8,7 @@ here.
 
 - **Current milestone**: M1 — Object model and tolerant reading (`docs/milestones/M1.md`), slices 1 to 8 written
 - **Last milestone closed**: M0 — Repository foundations
-- **Builds**: yes — **Tests**: 102, all green — **CI**: green
+- **Builds**: yes — **Tests**: 111, all green — **CI**: green
 - **Branch**: `claude/nuget-pdf-html-dotnet-msyz8z`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
@@ -25,11 +25,32 @@ budget in CI (`CorpusReadingTests`), so an allocation regression fails the build
 
 ## Next concrete step
 
-Close M1: fuzz the lexer and parser, seeded with the damaged corpus (T08). Then M2 — writing and
-round-trip fidelity, whose acceptance is that every corpus document survives open → save → reopen and is
-still accepted by an independent tool.
+Close M1: fuzz the lexer and parser, seeded with the damaged corpus (T08). Then M2 — document validation
+(`docs/milestones/M2.md`), whose acceptance is that no well-formed corpus document from any of the four
+producers earns an error-severity finding, and that a PDF/A-invalid file earns no *structural* one.
+
+**The milestones were renumbered** when validation and repair were inserted: validation is now M2 (right
+after reading) and repair M4 (right after writing). Numbers in commits older than 2026-09-13 refer to the
+previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-13 — Validation and repair milestones, and a defect the corpus found
+- Two milestones inserted at the user's request: **M2 document validation**, right after reading, and
+  **M4 repair**, right after writing — repair produces a sound file, so it needs the writer. Everything
+  after them shifted by two; the roadmap now runs to M14.
+- M2 is specified as a rule engine with stable finding identifiers, of which PDF/A and PDF/UA become
+  profiles in M12 (D20). M4 is specified as findings-driven and conservative by default, writing an
+  incremental update so signed bytes survive (D21).
+- Eight conformance fixtures from the veraPDF corpus vendored under CC BY 4.0 with a NOTICE (D22), taking
+  the corpus to 27 documents. `git clone` of public repositories works through the sandbox proxy, so
+  public corpora need no manual help.
+- **Those third-party files immediately found a real defect**: a validly compressed *empty* stream — an
+  empty content stream, an empty appearance, both commonplace — decodes to zero bytes, which the Flate
+  filter was reading as failure and answering with the compressed bytes plus a spurious warning. Success
+  is now reported explicitly rather than inferred from the length of the output, and filter diagnostics
+  carry the offset of the stream they concern, because "a Flate stream could not be decoded" with no
+  location is not actionable.
 
 ### 2026-09-13 — The corpus of real documents
 - 19 documents built by four real producers — Chromium (Skia backend), LibreOffice, ReportLab, qpdf —
@@ -85,12 +106,13 @@ still accepted by an independent tool.
 
 | # | Subject | Decision expected |
 |---|---------|-------------------|
-| T01 | `TreatWarningsAsErrors` is off while the foundations settle | Turn on when M2 closes |
-| T02 | XML documentation (`CS1591`) is not enforced on the public API | Enforce when the public API freezes (M5.6) |
-| ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 19 documents, four producers |
-| T04 | An OFL font set must be embedded for default rendering | During M4 |
-| T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M5 |
+| T01 | `TreatWarningsAsErrors` is off while the foundations settle | Turn on when M3 closes |
+| T02 | XML documentation (`CS1591`) is not enforced on the public API | Enforce when the public API freezes (M7.6) |
+| ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
+| T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Needs documents from the field |
+| T04 | An OFL font set must be embedded for default rendering | During M6 |
+| T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M7 |
 | T06 | `PdfString.ToText` reads Latin-1 rather than full PDFDocEncoding (the 32 positions 0x80-0x9F differ) | Before the first public release |
-| T07 | The object cache evicts FIFO rather than LRU; names are interned through an intermediate string | M11, with measurements |
+| T07 | The object cache evicts FIFO rather than LRU; names are interned through an intermediate string | M13, with measurements |
 | T08 | Fuzzing of the lexer and parser is not set up | Closing M1 |
-| T09 | A memory budget is now enforced in CI; a throughput budget is not | Throughput budget in M11 |
+| T09 | A memory budget is now enforced in CI; a throughput budget is not | Throughput budget in M13 |

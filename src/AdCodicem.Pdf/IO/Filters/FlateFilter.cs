@@ -12,37 +12,48 @@ namespace AdCodicem.Pdf.IO.Filters;
 /// </remarks>
 internal static class FlateFilter
 {
-    public static byte[] Decode(ReadOnlyMemory<byte> data, out bool repaired, out bool truncated)
+    /// <summary>
+    /// Decodes a Flate stream, reporting success explicitly.
+    /// </summary>
+    /// <remarks>
+    /// Success is a separate answer from the length of the output. A validly compressed stream that
+    /// contains nothing — an empty content stream, an empty appearance — decodes to zero bytes, and
+    /// treating that as a failure would hand the caller the compressed bytes instead of the empty
+    /// content it asked for.
+    /// </remarks>
+    public static bool TryDecode(ReadOnlyMemory<byte> data, out byte[] decoded, out bool repaired, out bool truncated)
     {
         repaired = false;
         truncated = false;
 
         if (data.IsEmpty)
         {
-            return [];
+            decoded = [];
+            return true;
         }
 
-        if (TryInflate(data, zlibHeader: true, out var result, out truncated))
+        if (TryInflate(data, zlibHeader: true, out decoded, out truncated))
         {
-            return result;
+            return true;
         }
 
         // A raw deflate stream, or a zlib header that was mangled.
-        if (TryInflate(data, zlibHeader: false, out result, out truncated))
+        if (TryInflate(data, zlibHeader: false, out decoded, out truncated))
         {
             repaired = true;
-            return result;
+            return true;
         }
 
         // Leading white space before the header happens when a generator miscounts /Length.
         var skipped = SkipLeadingWhitespace(data);
-        if (skipped > 0 && TryInflate(data[skipped..], zlibHeader: true, out result, out truncated))
+        if (skipped > 0 && TryInflate(data[skipped..], zlibHeader: true, out decoded, out truncated))
         {
             repaired = true;
-            return result;
+            return true;
         }
 
-        return [];
+        decoded = [];
+        return false;
     }
 
     private static int SkipLeadingWhitespace(ReadOnlyMemory<byte> data)

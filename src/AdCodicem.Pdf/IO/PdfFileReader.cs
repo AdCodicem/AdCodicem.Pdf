@@ -899,6 +899,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         public override int Length => length;
 
+        public override long Position => offset;
+
         public override ReadOnlyMemory<byte> GetBytes()
         {
             if (_bytes is not null)

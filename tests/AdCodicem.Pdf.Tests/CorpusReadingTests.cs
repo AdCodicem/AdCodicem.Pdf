@@ -21,8 +21,10 @@ public class CorpusReadingTests
     [Fact]
     public void The_corpus_manifest_describes_every_document_present()
     {
-        var onDisk = Directory
-            .EnumerateFiles(Path.Combine(Corpus.Root, "documents"), "*.pdf", SearchOption.AllDirectories)
+        var onDisk = new[] { "documents", "vendor" }
+            .Select(folder => Path.Combine(Corpus.Root, folder))
+            .Where(Directory.Exists)
+            .SelectMany(folder => Directory.EnumerateFiles(folder, "*.pdf", SearchOption.AllDirectories))
             .Select(path => Path.GetRelativePath(Corpus.Root, path).Replace(Path.DirectorySeparatorChar, '/'))
             .Order()
             .ToList();
@@ -194,7 +196,7 @@ public class CorpusReadingTests
     }
 
     /// <summary>
-    /// Walks the page tree. M1 has no page API — that is M3 — so the traversal lives here, which also
+    /// Walks the page tree. M1 has no page API — that is M5 — so the traversal lives here, which also
     /// exercises reference resolution and inherited structure across every producer in the corpus.
     /// </summary>
     private static int CountPages(PdfDocument document)

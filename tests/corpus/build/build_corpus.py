@@ -29,6 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ROOT / "sources"
 DOCUMENTS = ROOT / "documents"
+VENDOR = ROOT / "vendor.json"
 MANIFEST = ROOT / "manifest.json"
 
 CHROMIUM_CANDIDATES = [
@@ -510,12 +511,17 @@ def main() -> int:
                expect={"pages": recovered, "clean": False, "indexRebuilt": rebuild,
                        "requiredDiagnostics": expected_codes})
 
+    # Third-party documents are committed under vendor/ with their provenance, and are never touched by
+    # this script: they cannot be regenerated, only attributed. See tests/corpus/NOTICE.
+    vendored = json.loads(VENDOR.read_text(encoding="utf-8"))["documents"] if VENDOR.exists() else []
+    entries.extend(vendored)
+
     MANIFEST.write_text(
         json.dumps({"producers": versions, "documents": entries}, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8")
 
-    total = sum(path.stat().st_size for path in DOCUMENTS.rglob("*.pdf"))
-    print(f"{len(entries)} documents, {total / 1024 / 1024:.1f} MB")
+    total = sum(path.stat().st_size for path in ROOT.rglob("*.pdf"))
+    print(f"{len(entries)} documents ({len(vendored)} third-party), {total / 1024 / 1024:.1f} MB")
     for name, version in versions.items():
         print(f"  {name}: {version}")
     return 0

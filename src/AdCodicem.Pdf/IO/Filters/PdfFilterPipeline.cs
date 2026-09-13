@@ -25,9 +25,11 @@ internal static class PdfFilterPipeline
 
         var parameters = stream.Dictionary.GetRaw(PdfName.DecodeParms).Resolved();
 
+        var position = stream.Data.Position;
+
         if (filters is PdfName single)
         {
-            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics);
+            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics, position);
         }
 
         if (filters is not PdfArray chain)
@@ -54,7 +56,7 @@ internal static class PdfFilterPipeline
                 return data;
             }
 
-            data = ApplyOne(name, data, stepParameters, diagnostics);
+            data = ApplyOne(name, data, stepParameters, diagnostics, position);
         }
 
         return data;
@@ -71,7 +73,8 @@ internal static class PdfFilterPipeline
         PdfName name,
         ReadOnlyMemory<byte> data,
         PdfDictionary? parameters,
-        PdfDiagnostics? diagnostics)
+        PdfDiagnostics? diagnostics,
+        long position)
     {
         if (IsImageFilter(name))
         {
@@ -80,22 +83,23 @@ internal static class PdfFilterPipeline
 
         if (name == PdfName.FlateDecode)
         {
-            var decoded = FlateFilter.Decode(data, out var repaired, out var truncated);
+            if (!FlateFilter.TryDecode(data, out var decoded, out var repaired, out var truncated))
+            {
+                diagnostics?.Warn(PdfDiagnosticCodes.FilterFailed, "A Flate stream could not be decoded.", position);
+                return data;
+            }
 
             if (repaired)
             {
-                diagnostics?.Repair(PdfDiagnosticCodes.FilterFailed, "A Flate stream was not valid zlib data.");
+                diagnostics?.Repair(PdfDiagnosticCodes.FilterFailed, "A Flate stream was not valid zlib data.", position);
             }
 
             if (truncated)
             {
-                diagnostics?.Warn(PdfDiagnosticCodes.FilterFailed, "A Flate stream was truncated; the decoded prefix was kept.");
-            }
-
-            if (decoded.Length == 0 && data.Length > 0 && !truncated)
-            {
-                diagnostics?.Warn(PdfDiagnosticCodes.FilterFailed, "A Flate stream could not be decoded.");
-                return data;
+                diagnostics?.Warn(
+                    PdfDiagnosticCodes.FilterFailed,
+                    "A Flate stream was truncated; the decoded prefix was kept.",
+                    position);
             }
 
             return ApplyPredictor(decoded, parameters);
@@ -129,7 +133,8 @@ internal static class PdfFilterPipeline
             return data;
         }
 
-        diagnostics?.Warn(PdfDiagnosticCodes.FilterUnsupported, $"The filter /{name.Value} is not supported.");
+        diagnostics?.Warn(
+            PdfDiagnosticCodes.FilterUnsupported, $"The filter /{name.Value} is not supported.", position);
         return data;
     }
 
