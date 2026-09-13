@@ -105,8 +105,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     }
 
     /// <inheritdoc/>
-    PdfStreamData IPdfStreamDataProvider.Create(long absoluteOffset, int length) =>
-        new FileStreamData(_source, absoluteOffset, length);
+    PdfStreamData IPdfStreamDataProvider.Create(long absoluteOffset, int length)
+    {
+        // A declared length is a claim made by the file, so it is clamped to what the file can hold.
+        // Without this, "/Length 2147483647" would ask for two gigabytes of memory.
+        var available = (int)Math.Clamp(_source.Length - absoluteOffset, 0, int.MaxValue);
+        return new FileStreamData(_source, absoluteOffset, Math.Clamp(length, 0, available));
+    }
 
     /// <inheritdoc/>
     public void Dispose()
@@ -933,7 +938,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var count = (int)stream.Dictionary.GetInteger(PdfName.N, 0);
             var first = (int)stream.Dictionary.GetInteger(PdfName.First, -1);
 
-            if (count <= 0 || first < 0)
+            // Each entry of the header costs at least "0 0 ", so a count far beyond what the header could
+            // hold is a lie, and believing it would mean allocating arrays the file asked for.
+            if (count <= 0 || first < 0 || count > (first / 2) + 1)
             {
                 return null;
             }

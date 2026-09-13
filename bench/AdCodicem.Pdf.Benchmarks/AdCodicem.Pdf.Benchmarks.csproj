@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AdCodicem.Pdf.Benchmarks</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/AdCodicem.Pdf/AdCodicem.Pdf.csproj" />
+  </ItemGroup>
+
+</Project>
