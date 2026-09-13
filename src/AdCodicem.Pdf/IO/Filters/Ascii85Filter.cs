@@ -9,6 +9,9 @@ internal static class Ascii85Filter
     {
         var output = new ArrayBufferWriter<byte>(Math.Max(16, data.Length * 4 / 5));
         Span<byte> group = stackalloc byte[4];
+
+        // The 'z' shortcut writes four zero bytes; allocated once here rather than inside the loop.
+        Span<byte> zeros = stackalloc byte[4];
         var tuple = 0u;
         var count = 0;
         var index = 0;
@@ -35,7 +38,7 @@ internal static class Ascii85Filter
 
             if (current == (byte)'z' && count == 0)
             {
-                output.Write(stackalloc byte[4]);
+                output.Write(zeros);
                 continue;
             }
 

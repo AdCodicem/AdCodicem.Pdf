@@ -29,8 +29,7 @@ public sealed class RefereeContainer : IAsyncLifetime
     {
         try
         {
-            _container = new ContainerBuilder()
-                .WithImage(Image)
+            _container = new ContainerBuilder(Image)
                 .WithBindMount(Corpus.Root, CorpusMount, AccessMode.ReadOnly)
                 .WithEntrypoint("/bin/sh", "-c")
                 // qpdf is installed at start-up rather than baked into an image, so the corpus needs no

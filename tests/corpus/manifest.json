@@ -27,7 +27,8 @@
           "Facture",
           "Total TTC",
           "TVA"
-        ]
+        ],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -48,7 +49,8 @@
         "requiredDiagnostics": [],
         "textContains": [
           "Facture"
-        ]
+        ],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -69,7 +71,8 @@
         "requiredDiagnostics": [],
         "textContains": [
           "AD CODICEM"
-        ]
+        ],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -95,7 +98,8 @@
           "Sommaire",
           "Tableau des mesures",
           "Annexe"
-        ]
+        ],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -115,7 +119,8 @@
         "requiredDiagnostics": [],
         "textContains": [
           "Sommaire"
-        ]
+        ],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -137,7 +142,8 @@
         "textContains": [
           "Article 1",
           "Droit applicable"
-        ]
+        ],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -158,7 +164,8 @@
         "requiredDiagnostics": [],
         "attachments": [
           "factur-x.xml"
-        ]
+        ],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -183,7 +190,8 @@
           "societe",
           "courriel",
           "newsletter"
-        ]
+        ],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -202,7 +210,8 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
-        "hasExtractableText": false
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -223,7 +232,8 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
-        "claimsConformance": "PDF/A-2b"
+        "claimsConformance": "PDF/A-2b",
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -241,7 +251,8 @@
         "pages": 4,
         "clean": true,
         "indexRebuilt": false,
-        "requiredDiagnostics": []
+        "requiredDiagnostics": [],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -259,7 +270,8 @@
         "pages": 4,
         "clean": true,
         "indexRebuilt": false,
-        "requiredDiagnostics": []
+        "requiredDiagnostics": [],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -278,7 +290,8 @@
         "password": "corpus",
         "clean": true,
         "indexRebuilt": false,
-        "requiredDiagnostics": []
+        "requiredDiagnostics": [],
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -296,7 +309,8 @@
         "pages": 1000,
         "clean": true,
         "indexRebuilt": false,
-        "requiredDiagnostics": []
+        "requiredDiagnostics": [],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -315,7 +329,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
-        ]
+        ],
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -334,7 +349,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
-        ]
+        ],
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -353,7 +369,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
-        ]
+        ],
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -372,7 +389,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [
           "xref.offset-adjusted"
-        ]
+        ],
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -391,7 +409,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [
           "stream.length-invalid"
-        ]
+        ],
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -411,7 +430,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "claimsConformance": "PDF/A-1b",
-        "conformanceValid": true
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -431,7 +451,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "claimsConformance": "PDF/A-1b",
-        "conformanceValid": false
+        "conformanceValid": false,
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -451,7 +472,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "claimsConformance": "PDF/A-2b",
-        "conformanceValid": true
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -471,7 +493,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "claimsConformance": "PDF/A-2b",
-        "conformanceValid": false
+        "conformanceValid": false,
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -491,7 +514,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "claimsConformance": "PDF/A-3b",
-        "conformanceValid": true
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -511,7 +535,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "claimsConformance": "PDF/A-3b",
-        "conformanceValid": false
+        "conformanceValid": false,
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -531,7 +556,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "claimsConformance": "PDF/A-4",
-        "conformanceValid": true
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -549,7 +575,8 @@
         "pages": 1,
         "clean": true,
         "indexRebuilt": false,
-        "requiredDiagnostics": []
+        "requiredDiagnostics": [],
+        "refereeCheckSucceeds": true
       }
     }
   ]

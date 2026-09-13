@@ -18,6 +18,17 @@ public sealed record CorpusExpectation
     /// <summary>Diagnostic codes the reader must report for this document.</summary>
     public string[] RequiredDiagnostics { get; init; } = [];
 
+    /// <summary>
+    /// Whether <c>qpdf --check</c> finds nothing wrong with the file.
+    /// </summary>
+    /// <remarks>
+    /// Recorded per document by running that exact command when the corpus is built, never inferred.
+    /// Damage and rejection are not the same thing: junk before the header shifts every offset, and qpdf
+    /// adjusts to it without a word — while an encrypted document it has no password for is refused
+    /// although nothing is wrong with it.
+    /// </remarks>
+    public bool? RefereeCheckSucceeds { get; init; }
+
     /// <summary>Whether the document is encrypted, and with which password.</summary>
     public bool Encrypted { get; init; }
 

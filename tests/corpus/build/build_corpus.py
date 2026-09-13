@@ -358,12 +358,29 @@ def page_count(path: Path, password: str = "") -> int:
 
 def referee_page_count(path: Path) -> int | None:
     """What an independent tool can still recover from a damaged file, or None if it recovers nothing."""
-    import pikepdf
-
     try:
         return page_count(path)
     except Exception:
         return None
+
+
+def referee_check_succeeds(path: Path) -> bool:
+    """
+    Whether `qpdf --check` — the exact command the integration tests run in their container — finds
+    nothing wrong with the file.
+
+    Damage and rejection are not the same thing. A junk prefix before the header shifts every offset,
+    and qpdf adjusts to it without a word of complaint. Recording the referee's own answer, from the very
+    command that will be asserted against, keeps the integration tests honest instead of asserting what
+    we assume a tool ought to say.
+    """
+    if not shutil.which("qpdf"):
+        raise RuntimeError(
+            "qpdf is needed to author the corpus manifest: apt-get install -y --no-install-recommends qpdf")
+
+    completed = subprocess.run(
+        ["qpdf", "--check", str(path)], capture_output=True, text=True, timeout=120, check=False)
+    return completed.returncode == 0
 
 
 def main() -> int:
@@ -377,6 +394,12 @@ def main() -> int:
     def record(path: Path, **fields) -> None:
         entry = {"file": str(path.relative_to(ROOT)).replace(os.sep, "/")}
         entry.update(fields)
+
+        # Every document, sound or damaged, carries the referee's own verdict on it.
+        expect = entry.get("expect")
+        if isinstance(expect, dict) and "refereeCheckSucceeds" not in expect:
+            expect["refereeCheckSucceeds"] = referee_check_succeeds(path)
+
         entries.append(entry)
 
     invoice = DOCUMENTS / "invoice" / "chromium-invoice-fr.pdf"
@@ -504,16 +527,21 @@ def main() -> int:
         # What a damaged file still contains is established by an independent tool, never by our own
         # reader: an expectation derived from the code under test proves nothing.
         recovered = referee_page_count(damaged)
+        accepted = referee_check_succeeds(damaged)
 
         record(damaged, title=f"Invoice damaged on purpose: {name.replace('-', ' ')}", useCase="invoice",
                producer=f"derived from {invoice.name}", origin="derived",
                licence="MIT (derived from our own document)", features=[f"damage-{name}"],
                expect={"pages": recovered, "clean": False, "indexRebuilt": rebuild,
-                       "requiredDiagnostics": expected_codes})
+                       "requiredDiagnostics": expected_codes, "refereeCheckSucceeds": accepted})
 
     # Third-party documents are committed under vendor/ with their provenance, and are never touched by
     # this script: they cannot be regenerated, only attributed. See tests/corpus/NOTICE.
     vendored = json.loads(VENDOR.read_text(encoding="utf-8"))["documents"] if VENDOR.exists() else []
+    for entry in vendored:
+        expect = entry.setdefault("expect", {})
+        expect["refereeCheckSucceeds"] = referee_check_succeeds(ROOT / entry["file"])
+
     entries.extend(vendored)
 
     MANIFEST.write_text(
