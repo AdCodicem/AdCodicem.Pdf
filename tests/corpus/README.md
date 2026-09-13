@@ -18,6 +18,7 @@ and say in the commit message why the corpus changed.
 
 ```bash
 pip install -r tests/corpus/build/requirements.txt
+apt-get install -y --no-install-recommends qpdf   # the referee that authors part of the manifest
 python3 tests/corpus/build/build_corpus.py
 ```
 

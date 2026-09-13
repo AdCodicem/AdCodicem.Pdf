@@ -8,7 +8,7 @@ here.
 
 - **Current milestone**: M1 — Object model and tolerant reading (`docs/milestones/M1.md`), slices 1 to 8 written
 - **Last milestone closed**: M0 — Repository foundations
-- **Builds**: yes — **Tests**: 112 unit + 47 integration (skipped without Docker) — **CI**: green
+- **Builds**: yes — **Tests**: 112 unit + 48 integration (skipped without Docker) — **CI**: green
 - **Branch**: `claude/nuget-pdf-html-dotnet-msyz8z`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
@@ -52,6 +52,12 @@ previous ordering, where M2 was writing and M3 assembly.
 - The **definition of done** now has six points in `docs/roadmap.md`, and every milestone carries a
   Documentation section: unit tests, integration tests and documentation are conditions of closing a
   milestone, not follow-up work (invariant 11).
+- The referee earned its keep on its first CI run by contradicting an assumption of mine: I had asserted
+  that every damaged document makes qpdf complain, and **junk before the header does not** — qpdf shifts
+  every offset silently and reports a sound file. The manifest now records `refereeCheckSucceeds` per
+  document, filled in by running the very command the container runs, so the expectation is observed
+  rather than assumed. A first attempt to author it through pikepdf was worse than useless: `Pdf.check()`
+  does not exist in pikepdf 10, and a broad `except` turned that into "the referee rejects everything".
 
 ### 2026-09-13 — Packaging settled, and the wanted-documents specification
 - Package identifiers confirmed and checked as unclaimed: `AdCodicem.Pdf` plus `.Validation`, `.Html`,

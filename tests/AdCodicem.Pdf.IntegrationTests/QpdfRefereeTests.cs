@@ -12,26 +12,20 @@ namespace AdCodicem.Pdf.IntegrationTests;
 public class QpdfRefereeTests(RefereeContainer referee)
 {
     [Theory]
-    [MemberData(nameof(CleanDocuments))]
-    public async Task A_well_formed_document_passes_qpdfs_own_check(string file)
+    [MemberData(nameof(AllDocuments))]
+    public async Task Qpdfs_verdict_is_the_one_the_manifest_records(string file)
     {
         Assert.SkipWhen(referee.Unavailable is not null, referee.Unavailable ?? string.Empty);
 
+        var expected = Corpus.Get(file).Expect.RefereeCheckSucceeds;
         var (exitCode, output) = await referee.RunAsync("qpdf", "--check", RefereeContainer.PathInContainer(file));
 
-        // qpdf answers 0 when it is happy, 3 when it has warnings, and 2 when the file has real errors.
-        exitCode.Should().NotBe(2, $"qpdf reports errors in {file}:\n{output}");
-    }
-
-    [Theory]
-    [MemberData(nameof(DamagedDocuments))]
-    public async Task A_damaged_document_makes_qpdf_complain(string file)
-    {
-        Assert.SkipWhen(referee.Unavailable is not null, referee.Unavailable ?? string.Empty);
-
-        var (exitCode, output) = await referee.RunAsync("qpdf", "--check", RefereeContainer.PathInContainer(file));
-
-        exitCode.Should().NotBe(0, $"{file} is damaged on purpose, yet qpdf saw nothing:\n{output}");
+        // The manifest records what this very command answered when the corpus was built. A disagreement
+        // means the corpus has drifted, or the referee's version has — either way, something to look at
+        // rather than something to assume.
+        (exitCode == 0).Should().Be(
+            expected!.Value,
+            $"qpdf --check on {file} said:\n{output}");
     }
 
     [Theory]
@@ -48,11 +42,8 @@ public class QpdfRefereeTests(RefereeContainer referee)
         int.Parse(output.Trim()).Should().Be(expected!.Value, $"the manifest claims {expected} pages for {file}");
     }
 
-    public static TheoryData<string> CleanDocuments =>
-        Theory(Corpus.PathsWhere(document => document.Expect is { Clean: true, Encrypted: false }));
-
-    public static TheoryData<string> DamagedDocuments =>
-        Theory(Corpus.PathsWhere(document => !document.Expect.Clean));
+    public static TheoryData<string> AllDocuments =>
+        Theory(Corpus.PathsWhere(document => document.Expect.RefereeCheckSucceeds is not null));
 
     public static TheoryData<string> DocumentsWithKnownPageCount =>
         Theory(Corpus.PathsWhere(document =>

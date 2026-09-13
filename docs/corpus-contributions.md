@@ -117,6 +117,7 @@ One entry per document. Everything except `expect` is provenance; `expect` is wh
     "clean": true,
     "indexRebuilt": false,
     "requiredDiagnostics": [],
+    "refereeCheckSucceeds": true,
     "textContains": ["Facture", "Total TTC"]
   }
 }
@@ -124,7 +125,11 @@ One entry per document. Everything except `expect` is provenance; `expect` is wh
 
 Two rules about `expect`:
 
-- **Establish it with an independent tool**, never with our own reader. An expectation derived from the
+- **`refereeCheckSucceeds` is filled in by the build script**, which runs the very command the integration
+  tests run — `qpdf --check` — rather than guessing what it ought to say. Damage and rejection differ:
+  junk before the header shifts every offset and qpdf adjusts without complaint, while an encrypted
+  document it has no password for is refused although nothing is wrong with it.
+- **Establish the rest with an independent tool**, never with our own reader. An expectation derived from the
   code under test proves nothing. `pikepdf`, `qpdf --check` and `pdftotext` are the referees in use.
 - **Never weaken it to make a test pass.** Either the library is wrong and gets fixed, or the expectation
   was wrong and gets corrected with the reason in the commit message.
