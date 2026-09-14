@@ -11,7 +11,7 @@ Read these, in this order, and nothing else:
 2. **`docs/status.md`** — where the project stands, what is in flight, known debt;
 3. **the current milestone file** in `docs/milestones/` — the detailed specification of the work.
 
-Load `docs/architecture.md` only when touching a boundary between layers, and `docs/decisions.md` only
+Load `docs/architecture.md` only when touching a boundary between layers, and `docs/adr/` only
 when considering reversing a settled choice. `docs/roadmap.md` places a milestone in the whole; it is not
 a daily working document. `docs/corpus.md` is required reading before closing any milestone; `docs/corpus-contributions.md` says
 what documents are still wanted and how they arrive; `docs/releasing.md` covers packaging and publishing.
@@ -27,6 +27,9 @@ checklist, commit, push.
   pages. It targets **business documents** — invoices, reports, contracts, case files.
 
 ## Settled decisions — do not relitigate
+
+Each is an Architecture Decision Record in [`docs/adr/`](docs/adr/), with its context, its rejected
+alternatives and what would reopen it. The identifiers below are the ones commit messages cite.
 
 | # | Decision |
 |---|----------|
