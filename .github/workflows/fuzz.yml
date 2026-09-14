@@ -1,0 +1,40 @@
+name: Fuzzing
+
+on:
+  schedule:
+    # Every night. A campaign this size is too slow for every commit and too valuable to run by hand.
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "Mutations per seed document"
+        required: false
+        default: "20000"
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  fuzz:
+    name: Mutation campaign
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      # Seeded mutations of the corpus: a failure names the document and the seed, so it replays exactly.
+      - name: Fuzz the reader and the parser
+        env:
+          ADCODICEM_FUZZ_ITERATIONS: ${{ github.event.inputs.iterations || '20000' }}
+        run: |
+          dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release \
+            -- --filter-method '*Fuzz*'

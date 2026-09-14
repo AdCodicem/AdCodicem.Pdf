@@ -14,8 +14,8 @@ to be split into sub-milestones.
 | # | Milestone | Size | Depends on | State |
 |---|-----------|------|------------|-------|
 | M0 | Repository foundations | S | — | done |
-| M1 | Object model and tolerant reading | L | M0 | in progress |
-| M2 | Document validation | M | M1 | to do |
+| M1 | Object model and tolerant reading | L | M0 | done |
+| M2 | Document validation | M | M1 | next |
 | M3 | Writing and round-trip fidelity | M | M1 | to do |
 | M4 | Repair | M | M2, M3 | to do |
 | M5 | Pages and case-file assembly | M | M3 | to do |

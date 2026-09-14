@@ -6,9 +6,10 @@ here.
 
 ## At a glance
 
-- **Current milestone**: M1 — Object model and tolerant reading (`docs/milestones/M1.md`), slices 1 to 8 written
-- **Last milestone closed**: M0 — Repository foundations
-- **Builds**: yes — **Tests**: 112 unit + 48 integration (skipped without Docker) — **CI**: green
+- **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
+- **Last milestone closed**: **M1 — Object model and tolerant reading**
+- **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green
+- **Open pull request**: [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1)
 - **Branch**: `claude/nuget-pdf-html-dotnet-msyz8z`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
@@ -25,15 +26,31 @@ budget in CI (`CorpusReadingTests`), so an allocation regression fails the build
 
 ## Next concrete step
 
-Close M1: fuzz the lexer and parser, seeded with the damaged corpus (T08). Then M2 — document validation
-(`docs/milestones/M2.md`), whose acceptance is that no well-formed corpus document from any of the four
-producers earns an error-severity finding, and that a PDF/A-invalid file earns no *structural* one.
+M2 — document validation (`docs/milestones/M2.md`). Its first slice is the findings, the report and the
+rule engine end to end with a single trivial rule; the acceptance to keep in view is that no well-formed
+corpus document from any of the four producers earns an error-severity finding, and that a PDF/A-invalid
+file earns no *structural* one.
 
 **The milestones were renumbered** when validation and repair were inserted: validation is now M2 (right
 after reading) and repair M4 (right after writing). Numbers in commits older than 2026-09-13 refer to the
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-14 — M1 closed, and what fuzzing found on its first run
+- Mutation fuzzing of the reader and the parser, seeded from the corpus: bit flips, corrupted digits,
+  truncation, spliced bytes and broken keywords, each input asserted to end in a result or a typed
+  exception within a time and an allocation budget. Seeds are deterministic, so a failure replays from
+  the number printed in the message, and the offending bytes are written out.
+- **It found a process-killing defect within a minute.** A mutated invoice drove `LoadRegularObject` and
+  `RelocateAndLoad` into mutual recursion — the index named one offset, the neighbourhood search answered
+  with another that failed to parse the same way, and the two called each other 3 978 times until the
+  stack ran out. A file that kills the process is exactly what invariant 4 forbids, and no hand-written
+  test had thought to try it. Relocation is now three counted attempts with no path back into loading.
+- A campaign of 75 000 mutated inputs then ran clean in 76 seconds. A nightly workflow runs 20 000
+  mutations per seed document.
+- **M1 is closed**: every exit criterion ticked, corpus acceptance green in CI, both test levels in place,
+  documentation published.
 
 ### 2026-09-13 — The build keeps no warnings
 - `TreatWarningsAsErrors` on, analysis at `latest-recommended`, code style enforced in the build, XML
@@ -165,5 +182,5 @@ previous ordering, where M2 was writing and M3 assembly.
 | T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M7 |
 | T06 | `PdfString.ToText` reads Latin-1 rather than full PDFDocEncoding (the 32 positions 0x80-0x9F differ) | Before the first public release |
 | T07 | The object cache evicts FIFO rather than LRU; names are interned through an intermediate string | M13, with measurements |
-| T08 | Fuzzing of the lexer and parser is not set up | Closing M1 |
+| ~~T08~~ | ~~Fuzzing of the lexer and parser is not set up~~ | Done: in the suite per commit, and a nightly campaign |
 | T09 | A memory budget is now enforced in CI; a throughput budget is not | Throughput budget in M13 |
