@@ -1,5 +1,10 @@
 # AdCodicem.Pdf
 
+[![CI](https://github.com/AdCodicem/AdCodicem.Pdf/actions/workflows/ci.yml/badge.svg)](https://github.com/AdCodicem/AdCodicem.Pdf/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/AdCodicem.Pdf.svg)](https://www.nuget.org/packages/AdCodicem.Pdf)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/AdCodicem/AdCodicem.Pdf/badge)](https://scorecard.dev/viewer/?uri=github.com/AdCodicem/AdCodicem.Pdf)
+
 Managed PDF toolkit for .NET 10: generate PDF documents from HTML, and read, assemble and transform
 existing ones — with no headless browser, no native PDF engine and no external process.
 
@@ -43,6 +48,16 @@ dotnet build AdCodicem.Pdf.slnx -c Release
 dotnet test  AdCodicem.Pdf.slnx -c Release
 ```
 
+## Contributing
+
+The most useful contribution is a document: this library reads files produced by software that cannot be
+run here, and one real file that breaks something is worth more than a patch. See
+[docs/corpus-contributions.md](docs/corpus-contributions.md), and [CONTRIBUTING.md](CONTRIBUTING.md) for
+everything else.
+
+A malformed document that crashes, hangs or exhausts memory is a security issue, not an ordinary bug —
+report it privately, as [SECURITY.md](SECURITY.md) explains.
+
 ## Licence
 
-MIT. Project documentation is written in French; code, public API and this README are in English.
+MIT. Everything in this repository is written in English.
