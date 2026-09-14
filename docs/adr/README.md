@@ -46,5 +46,8 @@ A settled decision is not reopened without new evidence — that is what writing
 - A stream copied between documents travels **encoded**, with no decompress/recompress cycle.
 - A dictionary entry whose value is null is dropped on parse: the specification says it is equivalent to an
   absent entry, and every later stage is spared a null it would have to ignore.
+- CodeQL runs the security *and* quality suite: its quality queries find real defects here. The four that
+  are wrong for this codebase are excluded in `.github/codeql/codeql-config.yml`, each with its reason,
+  because C# has no in-source CodeQL suppression.
 - The document `/ID` is derived from content, or supplied by the caller, never random — determinism comes
   first, and a random identifier would make fingerprint tests impossible.

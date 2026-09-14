@@ -37,6 +37,24 @@ previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
 
+### 2026-09-14 — The repository brought to the standard toolchain
+- Community, security and supply-chain files; dependency automation, coverage, a formatting gate and API
+  compatibility validation; versions and releases derived from the commit history; a generated API
+  reference, a runnable sample, and the standard layout (`benchmarks/`, `docs/website`).
+- The decision log became **twenty-nine records** in `docs/adr/`, each with its context, its rejected
+  alternatives and what would reopen it. The index maps every record back to the `Dnn` identifier that
+  older commits cite, so nothing written before this stops resolving.
+- The conventional-commits check had been failing on every push for a reason it did not name: version 6
+  of the action refuses a `.js` configuration file and wants `.mjs`, and reports it as "you have commit
+  messages with errors". Since semantic-release computes the version from those same messages, a check
+  that cannot run is not cosmetic.
+- **CodeQL's first run paid for itself**: a buffering stream never disposed, a dead assignment in the
+  cross-reference reader, and `GetWindow` testing its own type instead of asking the source whether it
+  can serve bytes without copying. All three fixed; the third left the design better than it found it.
+  Four quality queries are excluded in `.github/codeql/codeql-config.yml`, each with its reason — one of
+  them flags every call to `Path.Combine` whatever its arguments, so the single place a path arrives from
+  outside the repository is guarded in code instead.
+
 ### 2026-09-14 — M1 closed, and what fuzzing found on its first run
 - Mutation fuzzing of the reader and the parser, seeded from the corpus: bit flips, corrupted digits,
   truncation, spliced bytes and broken keywords, each input asserted to end in a result or a typed
@@ -179,6 +197,8 @@ previous ordering, where M2 was writing and M3 assembly.
 | T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | Before the first release; steps in `docs/releasing.md` |
 | T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
+| T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
+| T15 | Auto-merge and branch protection are off, so the Dependabot auto-merge workflow cannot act and `main` accepts direct pushes | Settings → General → Allow auto-merge, then require the CI check on `main` |
 | T04 | An OFL font set must be embedded for default rendering | During M6 |
 | T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M7 |
 | T06 | `PdfString.ToText` reads Latin-1 rather than full PDFDocEncoding (the 32 positions 0x80-0x9F differ) | Before the first public release |
