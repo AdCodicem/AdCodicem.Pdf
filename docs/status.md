@@ -9,7 +9,12 @@ here.
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green
-- **Open pull request**: [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1)
+- **Pull requests**: none open — [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) is merged, so `main`
+  now carries everything described here
+- **Red on `main`, by design and not by defect**: `Release` stops at its own guard because the
+  publishing identity is not configured (T11) — nothing was versioned, tagged or published, the
+  semantic-release step never ran — and `Documentation` builds the site but cannot deploy it because
+  Pages is not enabled (T12). Both turn green the moment those two settings exist.
 - **Branch**: `claude/nuget-pdf-html-dotnet-msyz8z`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
@@ -38,6 +43,10 @@ previous ordering, where M2 was writing and M3 assembly.
 ## Journal
 
 ### 2026-09-14 — The repository brought to the standard toolchain
+- Merged into `main` at the end of the session. The first `Release` run then proved its own safety net:
+  with no previous tag semantic-release would have called this 1.0.0, and the workflow refused to
+  reach it — **tag `v0.1.0` before configuring the publishing identity**, or the first automated
+  release leaves 0.x on its own.
 - Community, security and supply-chain files; dependency automation, coverage, a formatting gate and API
   compatibility validation; versions and releases derived from the commit history; a generated API
   reference, a runnable sample, and the standard layout (`benchmarks/`, `docs/website`).
@@ -196,7 +205,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
-| T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | Before the first release; steps in `docs/releasing.md` |
+| T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | **Tag `v0.1.0` first**, then configure both, or the first automated release is 1.0.0; steps in `docs/releasing.md` |
 | T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
