@@ -32,7 +32,7 @@ jobs:
       - uses: github/codeql-action/init@v3
         with:
           languages: csharp
-          queries: security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
 
       # Built explicitly rather than by autobuild: the SDK is pinned in global.json and the solution is
       # an .slnx, which autobuild does not reliably pick up.

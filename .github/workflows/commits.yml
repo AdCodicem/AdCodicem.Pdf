@@ -22,4 +22,4 @@ jobs:
       # one does not merely look untidy - it silently produces no release.
       - uses: wagoid/commitlint-github-action@v6
         with:
-          configFile: commitlint.config.js
+          configFile: commitlint.config.mjs
