@@ -116,7 +116,9 @@ See `docs/corpus.md`.
   still gives a usable run. They are not optional in CI.
 - The documentation site is `website/` (Docusaurus). It publishes the user-facing documentation *and*
   `docs/` as they are, so a project document that does not build breaks CI.
-- Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`).
+- Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`) — **these
+  decide the version**: semantic-release reads them on every merge to `main`, so a malformed message
+  produces no release rather than an untidy log. CI rejects one on a pull request.
 - Development branch: `claude/nuget-pdf-html-dotnet-msyz8z`.
 
 ## Known traps
