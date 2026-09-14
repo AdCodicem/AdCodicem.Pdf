@@ -434,7 +434,10 @@ tests/corpus/private/
 tests/corpus/private.json
 
 # Documentation site build output and dependencies
-website/node_modules/
-website/build/
-website/.docusaurus/
+docs/website/node_modules/
+docs/website/build/
+docs/website/.docusaurus/
 TestResults/
+
+# API reference generated from the XML documentation comments at build time
+docs/website/docs/api/

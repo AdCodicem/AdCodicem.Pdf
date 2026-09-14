@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AdCodicem.Pdf.Samples.ReadDocument</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Samples reference the source, not the published package, so they break when the API does. -->
+    <ProjectReference Include="../../src/AdCodicem.Pdf/AdCodicem.Pdf.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -7,7 +7,10 @@
     <Project Path="tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj" />
     <Project Path="tests/AdCodicem.Pdf.IntegrationTests/AdCodicem.Pdf.IntegrationTests.csproj" />
   </Folder>
-  <Folder Name="/bench/">
-    <Project Path="bench/AdCodicem.Pdf.Benchmarks/AdCodicem.Pdf.Benchmarks.csproj" />
+  <Folder Name="/samples/">
+    <Project Path="samples/ReadDocument/ReadDocument.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/AdCodicem.Pdf.Benchmarks/AdCodicem.Pdf.Benchmarks.csproj" />
   </Folder>
 </Solution>
