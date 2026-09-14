@@ -295,7 +295,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (token.Kind == PdfTokenKind.EndOfInput)
                 {
-                    truncated = true;
+                    // The table runs past the window; the caller grows it and reads again.
                     break;
                 }
 
