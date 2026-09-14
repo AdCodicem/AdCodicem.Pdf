@@ -18,17 +18,35 @@ Confirmed, and all seven were unclaimed on nuget.org when checked on 2026-09-13:
 (Account → Reserve ID prefix, or by contacting support). It stops anyone else publishing under the name
 and marks the packages as coming from a verified owner.
 
-## Versioning
+## Versioning — computed from the commits
 
-Strict SemVer. `VersionPrefix` lives in `Directory.Build.props`; builds outside a tag carry the `alpha`
-suffix, and the release workflow takes the version from the tag itself.
+Versions are not chosen; they are derived. semantic-release reads the commits since the last tag and
+decides: `fix:` bumps the patch, `feat:` the minor, a `!` or a `BREAKING CHANGE:` footer the major.
+Nothing releasable in the commits means no release at all, which is the correct outcome for a branch of
+documentation changes.
+
+This is why the conventional-commit check on pull requests is not a style rule. A malformed message does
+not look untidy — it produces no release, silently.
+
+**All seven packages share one version** and are published together, even when only one changed. They
+are tightly coupled — the satellites exist to extend the core — and one number keeps the API-compatibility
+baseline unambiguous. Independent versioning would need `multi-semantic-release` and a different workflow
+shape.
+
+### Staying below 1.0
+
+semantic-release declares `1.0.0` for a first release when it finds no previous tag. To stay in `0.x`,
+tag the starting point once, by hand, before the first automated release:
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-While the major version is 0 the API may move between minor versions, but every break is recorded in
-`docs/decisions.md` and in the release notes.
+From then on it continues from that tag — `fix:` gives `0.1.1`, `feat:` gives `0.2.0` — and the move to
+`1.0.0` happens when a breaking change says so, which is the right moment for it.
+
+`VersionPrefix` in `Directory.Build.props` only matters for local builds; the release passes the computed
+version explicitly.
 
 ## Publishing: trusted publishing, not API keys
 
@@ -70,14 +88,27 @@ Consider requiring a reviewer on the `nuget` environment so a tag cannot publish
 
 ## Releasing
 
-1. Make sure `main` is green and `docs/status.md` reflects reality.
-2. Set `VersionPrefix` in `Directory.Build.props` to the version being released.
-3. Tag `vX.Y.Z` and push the tag.
-4. The workflow builds, runs the whole suite, packs, exchanges the OIDC token and pushes.
-5. Check the package on nuget.org, then reserve the ID prefix if this was the first publish.
+There is no release procedure. Merging a pull request into `main` is the procedure:
+
+1. The commits decide whether anything is released, and what the version is.
+2. `release.yml` builds, runs the whole suite, exchanges the OIDC token for a short-lived key, then
+   semantic-release packs, pushes to nuget.org, writes `CHANGELOG.md`, tags, and opens a GitHub Release.
+3. Check the package on nuget.org, and reserve the ID prefix if this was the first publish.
 
 If the push fails with an authorisation error, the mismatch is almost always between the policy and the
 workflow: the file name, the environment, or the account name in `NUGET_USER`.
+
+If nothing is published and you expected something, read the commits: `docs:`, `chore:`, `test:`,
+`refactor:` and `build:` deliberately release nothing.
+
+## Also configured by hand, once
+
+| What | Where | Needed for |
+|---|---|---|
+| `CODECOV_TOKEN` secret | Link the repository on codecov.io, then repository secrets | Coverage upload in CI |
+| "Allow auto-merge" | Settings → General | Dependabot auto-merge |
+| Branch protection on `main` with CI as a required check | Settings → Branches | Auto-merge cannot merge a red build |
+| Discussions, Sponsors | Settings → Features, and the GitHub account | The discussion template and `FUNDING.yml` |
 
 ## The documentation site
 

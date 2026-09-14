@@ -1,0 +1,35 @@
+{
+  "branches": ["main"],
+  "tagFormat": "v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md",
+        "changelogTitle": "# Changelog\n\nEvery release is generated from the commit history; see CONTRIBUTING.md for the conventions that drive it."
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "dotnet pack AdCodicem.Pdf.slnx -c Release -p:Version=${nextRelease.version} -p:PackageValidationBaselineVersion=${lastRelease.version || ''} -o artifacts",
+        "publishCmd": "dotnet nuget push 'artifacts/*.nupkg' --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["CHANGELOG.md"],
+        "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [{ "path": "artifacts/*.nupkg", "label": "NuGet packages" }]
+      }
+    ]
+  ]
+}
