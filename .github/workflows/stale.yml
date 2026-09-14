@@ -1,0 +1,33 @@
+name: Stale
+
+on:
+  schedule:
+    - cron: "13 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-stale: 60
+          days-before-close: 14
+          stale-issue-message: >
+            This issue has had no activity for 60 days. It will close in 14 days unless something
+            happens. If it still matters, a comment is enough to keep it — and if it is waiting on a
+            document that was never sent, that is usually what is missing.
+          stale-pr-message: >
+            This pull request has had no activity for 60 days and will close in 14 days. Say so if it is
+            still alive.
+          exempt-issue-labels: "pinned,security"
+          exempt-pr-labels: "pinned"
+          stale-issue-label: stale
+          stale-pr-label: stale

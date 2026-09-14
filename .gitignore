@@ -437,3 +437,4 @@ tests/corpus/private.json
 website/node_modules/
 website/build/
 website/.docusaurus/
+TestResults/

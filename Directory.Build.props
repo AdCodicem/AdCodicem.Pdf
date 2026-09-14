@@ -13,7 +13,7 @@
   <PropertyGroup Label="Analysis">
     <!-- A warning nobody has to fix is a warning nobody reads. The build has none, and keeps none. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
@@ -38,6 +38,9 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <VersionPrefix>0.1.0</VersionPrefix>
+    <!-- Fails the build on an accidental breaking API change. The baseline is supplied by the release
+         pipeline as the version last actually published, so it is a no-op until there is one. -->
+    <EnablePackageValidation>true</EnablePackageValidation>
     <VersionSuffix Condition="'$(GITHUB_REF_TYPE)' != 'tag'">alpha</VersionSuffix>
   </PropertyGroup>
 
