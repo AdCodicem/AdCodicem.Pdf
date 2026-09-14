@@ -43,7 +43,7 @@ public abstract class PdfFileSource : IDisposable
             return new MemorySource(segment.AsMemory());
         }
 
-        var buffer = new MemoryStream();
+        using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         return new MemorySource(buffer.GetBuffer().AsMemory(0, (int)buffer.Length));
     }
@@ -61,6 +61,19 @@ public abstract class PdfFileSource : IDisposable
     }
 
     /// <summary>
+    /// Hands out the bytes at <paramref name="offset"/> directly, when the source holds them in memory.
+    /// </summary>
+    /// <remarks>
+    /// A source backed by memory serves a window without copying anything; one backed by a file cannot,
+    /// and says so, which is why this is asked of the source rather than decided by testing its type.
+    /// </remarks>
+    private protected virtual bool TryGetMemory(long offset, int length, out ReadOnlyMemory<byte> memory)
+    {
+        memory = default;
+        return false;
+    }
+
+    /// <summary>
     /// Returns a view of <paramref name="length"/> bytes at <paramref name="offset"/>, clamped to the file.
     /// The window must be disposed; for a file-backed source it holds a pooled buffer.
     /// </summary>
@@ -73,9 +86,9 @@ public abstract class PdfFileSource : IDisposable
 
         var available = (int)Math.Min(length, Length - offset);
 
-        if (this is MemorySource memory)
+        if (TryGetMemory(offset, available, out var memory))
         {
-            return new PdfWindow(memory.Slice(offset, available), offset, rented: null);
+            return new PdfWindow(memory, offset, rented: null);
         }
 
         var buffer = ArrayPool<byte>.Shared.Rent(available);
@@ -100,7 +113,11 @@ public abstract class PdfFileSource : IDisposable
             return count;
         }
 
-        public ReadOnlyMemory<byte> Slice(long offset, int length) => data.Slice((int)offset, length);
+        private protected override bool TryGetMemory(long offset, int length, out ReadOnlyMemory<byte> memory)
+        {
+            memory = data.Slice((int)offset, length);
+            return true;
+        }
     }
 
     private sealed class FileSource : PdfFileSource

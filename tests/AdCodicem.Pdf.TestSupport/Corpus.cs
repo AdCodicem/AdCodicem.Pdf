@@ -109,7 +109,25 @@ public static class Corpus
         ?? throw new InvalidOperationException($"'{file}' is not in the corpus manifest.");
 
     /// <summary>Returns the absolute path of a corpus document.</summary>
-    public static string PathOf(string file) => System.IO.Path.Combine(Root, file);
+    /// <remarks>
+    /// A manifest entry names a document relative to the corpus root. An entry that is rooted, or that
+    /// climbs out of the corpus, is refused rather than followed: a private manifest is hand-written and
+    /// the tests open whatever it names.
+    /// </remarks>
+    public static string PathOf(string file)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(file);
+
+        var resolved = System.IO.Path.GetFullPath(System.IO.Path.Join(Root, file));
+
+        if (System.IO.Path.IsPathRooted(file) ||
+            !resolved.StartsWith(Root + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"'{file}' is not a path inside the corpus.");
+        }
+
+        return resolved;
+    }
 
     /// <summary>Reads a corpus document.</summary>
     public static byte[] Read(string file) => System.IO.File.ReadAllBytes(PathOf(file));

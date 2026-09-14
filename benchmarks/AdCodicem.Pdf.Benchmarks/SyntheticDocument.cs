@@ -7,7 +7,7 @@ internal static class SyntheticDocument
 {
     public static byte[] Create(int pageCount, int contentBytes)
     {
-        var stream = new MemoryStream();
+        using var stream = new MemoryStream();
         var offsets = new Dictionary<int, long>();
 
         Write(stream, "%PDF-1.7\n");
