@@ -58,6 +58,8 @@ const config = {
         // files are included: without this the plugin would try to swallow the site itself.
         path: '..',
         include: ['*.md', 'milestones/**/*.md', 'adr/**/*.md'],
+        // The blank templates are for writing records, not for reading.
+        exclude: ['adr/adr-template.md', 'milestones/_template.md'],
         routeBasePath: 'project',
         sidebarPath: './sidebars-project.js',
         editUrl: `https://github.com/${organisation}/${repository}/tree/main/docs/`,
@@ -82,7 +84,7 @@ const config = {
           items: [
             { label: 'Introduction', to: '/' },
             { label: 'Roadmap', to: '/project/roadmap' },
-            { label: 'Decisions', to: '/project/decisions' },
+            { label: 'Decisions', to: '/project/adr/' },
           ],
         },
         {

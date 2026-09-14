@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "api": "cd ../.. && dotnet tool restore && dotnet docfx metadata docs/docfx/docfx.json",
+    "api": "cd ../.. && dotnet tool restore && dotnet docfx metadata docs/docfx/docfx.json && node docs/website/scripts/fix-api-links.mjs",
     "prestart": "npm run api",
     "start": "docusaurus start",
     "prebuild": "npm run api",

@@ -159,8 +159,9 @@ previous ordering, where M2 was writing and M3 assembly.
 
 ### 2026-09-12 — Framing and foundations
 - Scope settled in two steps: HTML → PDF generation first, then extended to full manipulation of existing
-  documents. Nineteen decisions recorded in `docs/decisions.md`.
-- Documentation frame established: `CLAUDE.md` (session frame), `architecture.md`, `decisions.md`,
+  documents. Nineteen decisions recorded in `docs/adr/`.
+- Documentation frame established: `CLAUDE.md` (session frame), `architecture.md`, `decisions.md`
+  (since converted into `docs/adr/`),
   `roadmap.md` (M0 to M12), `corpus.md`, `milestones/` (per-milestone specification), this file.
 - Solution skeleton: core, HTML engine, ASP.NET Core integration, tests, benchmarks; `net10.0` target,
   central package management.
