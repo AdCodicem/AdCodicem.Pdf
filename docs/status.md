@@ -47,7 +47,9 @@ previous ordering, where M2 was writing and M3 assembly.
 - The conventional-commits check had been failing on every push for a reason it did not name: version 6
   of the action refuses a `.js` configuration file and wants `.mjs`, and reports it as "you have commit
   messages with errors". Since semantic-release computes the version from those same messages, a check
-  that cannot run is not cosmetic.
+  that cannot run is not cosmetic. Once it ran it refused one commit from 2026-09-13, whose subject
+  started with a capital; the message was corrected and the branch re-pushed, so
+  `config-conventional` stays enforced in full rather than relaxed to accommodate it.
 - **CodeQL's first run paid for itself**: a buffering stream never disposed, a dead assignment in the
   cross-reference reader, and `GetWindow` testing its own type instead of asking the source whether it
   can serve bytes without copying. All three fixed; the third left the design better than it found it.
