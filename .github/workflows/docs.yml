@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
-      - "website/**"
+      - "src/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -30,25 +30,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: website/package-lock.json
+          cache-dependency-path: docs/website/package-lock.json
 
       - name: Install
-        working-directory: website
+        working-directory: docs/website
         run: npm ci
 
       - name: Build
-        working-directory: website
+        working-directory: docs/website
         run: npm run build
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: website/build
+          path: docs/website/build
 
       - id: deployment
         uses: actions/deploy-pages@v4

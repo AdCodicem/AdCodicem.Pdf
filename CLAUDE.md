@@ -88,9 +88,9 @@ If `dotnet` is missing: `apt-get install -y --no-install-recommends dotnet-sdk-1
 dotnet build AdCodicem.Pdf.slnx -c Release
 dotnet test --solution AdCodicem.Pdf.slnx -c Release          # unit + integration (the latter skip without Docker)
 dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
-dotnet run -c Release --project bench/AdCodicem.Pdf.Benchmarks -- --filter '*'
+dotnet run -c Release --project benchmarks/AdCodicem.Pdf.Benchmarks -- --filter '*'
 
-cd website && npm ci && npm run build                          # the documentation site
+cd docs/website && npm ci && npm run build                          # the documentation site
 ```
 
 Corpus documents are produced by real generators available in the container — Chromium (Skia backend),
@@ -114,7 +114,7 @@ See `docs/corpus.md`.
   tool in a container. Shared fixtures live in `tests/AdCodicem.Pdf.TestSupport`.
 - Integration tests **skip** when Docker is absent rather than failing, so a sandbox without a daemon
   still gives a usable run. They are not optional in CI.
-- The documentation site is `website/` (Docusaurus). It publishes the user-facing documentation *and*
+- The documentation site is `docs/website` (Docusaurus). It publishes the user-facing documentation *and*
   `docs/` as they are, so a project document that does not build breaks CI.
 - Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`) — **these
   decide the version**: semantic-release reads them on every merge to `main`, so a malformed message

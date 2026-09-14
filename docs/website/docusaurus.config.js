@@ -41,7 +41,7 @@ const config = {
           path: 'docs',
           routeBasePath: '/',
           sidebarPath: './sidebars.js',
-          editUrl: `https://github.com/${organisation}/${repository}/tree/main/website/`,
+          editUrl: `https://github.com/${organisation}/${repository}/tree/main/docs/website/`,
         },
         blog: false,
         theme: { customCss: './src/css/custom.css' },
@@ -54,10 +54,13 @@ const config = {
       '@docusaurus/plugin-content-docs',
       {
         id: 'project',
-        path: '../docs',
+        // The site now lives inside docs/, so the project documents are its parent. Only their own
+        // files are included: without this the plugin would try to swallow the site itself.
+        path: '..',
+        include: ['*.md', 'milestones/**/*.md', 'adr/**/*.md'],
         routeBasePath: 'project',
         sidebarPath: './sidebars-project.js',
-        editUrl: `https://github.com/${organisation}/${repository}/tree/main/`,
+        editUrl: `https://github.com/${organisation}/${repository}/tree/main/docs/`,
       },
     ],
   ],

@@ -1,0 +1,38 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: "BenchmarkDotNet filter"
+        required: false
+        default: "*"
+
+permissions:
+  contents: read
+
+# Deliberately not on push: shared runners are noisy, and a number measured on one is worth less than the
+# time it takes to produce. Run this before a release, or locally when a change should have moved a figure.
+jobs:
+  benchmark:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Run
+        run: |
+          dotnet run -c Release --project benchmarks/AdCodicem.Pdf.Benchmarks -- \
+            --filter '${{ github.event.inputs.filter || '*' }}' --exporters json markdown
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: BenchmarkDotNet.Artifacts/results/*
+          if-no-files-found: warn

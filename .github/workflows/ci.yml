@@ -79,18 +79,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: website/package-lock.json
+          cache-dependency-path: docs/website/package-lock.json
 
       - name: Install
-        working-directory: website
+        working-directory: docs/website
         run: npm ci
 
       # The site publishes the project's own documents, so a documentation change that does not build is
       # caught here rather than after it reaches the default branch.
       - name: Build
-        working-directory: website
+        working-directory: docs/website
         run: npm run build

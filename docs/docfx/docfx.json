@@ -1,0 +1,17 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../../src",
+          "files": ["**/*.csproj"]
+        }
+      ],
+      "dest": "../website/docs/api",
+      "outputFormat": "markdown",
+      "properties": {
+        "TargetFramework": "net10.0"
+      }
+    }
+  ]
+}
