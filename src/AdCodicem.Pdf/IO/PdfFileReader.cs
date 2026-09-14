@@ -519,56 +519,39 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         _ => PdfNull.Instance,
     };
 
+    /// <summary>
+    /// Loads an object the index places at <paramref name="offset"/>, in at most three attempts: where the
+    /// index says, in the neighbourhood, and wherever a rebuilt index says.
+    /// </summary>
+    /// <remarks>
+    /// The attempts are counted rather than chained. An earlier version let relocation call back into
+    /// loading, and a fuzzed file drove the two into each other until the stack ran out — a file killing
+    /// the process is the exact outcome the reader exists to prevent.
+    /// </remarks>
     private PdfObject LoadRegularObject(PdfObjectId id, long offset)
     {
         if (offset < 0 || offset >= _source.Length)
         {
-            _diagnostics.Warn(PdfDiagnosticCodes.XRefEntryOutOfRange, $"Object {id.Number} points outside the file.", offset);
-            return RelocateAndLoad(id, offset);
+            _diagnostics.Warn(
+                PdfDiagnosticCodes.XRefEntryOutOfRange, $"Object {id.Number} points outside the file.", offset);
         }
-
-        var windowSize = InitialObjectWindow;
-
-        while (true)
+        else if (TryParseObjectAt(id, offset, out var atRecordedOffset))
         {
-            using var window = _source.GetWindow(offset, windowSize);
-            var parser = new PdfObjectParser(window.Memory, offset, this, _diagnostics, this);
-
-            if (!parser.TryReadIndirectObject(out var found, out var value))
-            {
-                return RelocateAndLoad(id, offset);
-            }
-
-            if (found.Number != id.Number)
-            {
-                return RelocateAndLoad(id, offset);
-            }
-
-            if (parser.IsTruncated && windowSize < MaxObjectWindow && window.Length == windowSize)
-            {
-                windowSize = (int)Math.Min((long)windowSize * 8, MaxObjectWindow);
-                continue;
-            }
-
-            return value;
+            return atRecordedOffset;
         }
-    }
 
-    /// <summary>
-    /// Deals with an object that is not where the index says. Offsets are commonly off by a few bytes, so
-    /// the neighbourhood is searched before falling back to rebuilding the whole index.
-    /// </summary>
-    private PdfObject RelocateAndLoad(PdfObjectId id, long offset)
-    {
-        if (TryFindObjectHeader(id.Number, offset, out var actual))
+        // Offsets are commonly off by a few bytes in files from careless tools, so the neighbourhood is
+        // searched before the index is given up on entirely.
+        if (TryFindObjectHeader(id.Number, offset, out var nearby) &&
+            TryParseObjectAt(id, nearby, out var relocated))
         {
             _diagnostics.Repair(
                 PdfDiagnosticCodes.XRefOffsetAdjusted,
-                $"Object {id.Number} was found {actual - offset} bytes from where the index said.",
-                actual);
+                $"Object {id.Number} was found {nearby - offset} bytes from where the index said.",
+                nearby);
 
-            _xref.Set(id.Number, XRefEntry.Regular(actual - _headerOffset, id.Generation));
-            return LoadRegularObject(id, actual);
+            _xref.Set(id.Number, XRefEntry.Regular(nearby - _headerOffset, id.Generation));
+            return relocated;
         }
 
         if (_repaired)
@@ -578,9 +561,47 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         Repair();
 
-        return _xref.TryGet(id.Number, out var entry) && entry.Kind == XRefEntryKind.Regular
-            ? LoadRegularObject(id, entry.Offset + _headerOffset)
+        return _xref.TryGet(id.Number, out var entry) &&
+               entry.Kind == XRefEntryKind.Regular &&
+               TryParseObjectAt(id, entry.Offset + _headerOffset, out var afterRebuild)
+            ? afterRebuild
             : PdfNull.Instance;
+    }
+
+    /// <summary>
+    /// Parses the object at an exact offset, growing the window while the object runs past its end.
+    /// Returns false when nothing with the expected number is there.
+    /// </summary>
+    private bool TryParseObjectAt(PdfObjectId id, long offset, out PdfObject value)
+    {
+        value = PdfNull.Instance;
+
+        if (offset < 0 || offset >= _source.Length)
+        {
+            return false;
+        }
+
+        var windowSize = InitialObjectWindow;
+
+        while (true)
+        {
+            using var window = _source.GetWindow(offset, windowSize);
+            var parser = new PdfObjectParser(window.Memory, offset, this, _diagnostics, this);
+
+            if (!parser.TryReadIndirectObject(out var found, out var parsed) || found.Number != id.Number)
+            {
+                return false;
+            }
+
+            if (parser.IsTruncated && windowSize < MaxObjectWindow && window.Length == windowSize)
+            {
+                windowSize = (int)Math.Min((long)windowSize * 8, MaxObjectWindow);
+                continue;
+            }
+
+            value = parsed;
+            return true;
+        }
     }
 
     private bool TryFindObjectHeader(int number, long approximateOffset, out long actualOffset)

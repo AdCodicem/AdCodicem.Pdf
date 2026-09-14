@@ -57,3 +57,21 @@ Codes are stable: they are part of the public contract, because callers filter o
 Exceptions are reserved for what makes the operation impossible: the input is not a PDF
 (`PdfFormatException`), or it is encrypted and cannot be opened with the credentials given
 (`PdfEncryptedException`). Anything the reader can work around is a diagnostic, never an exception.
+
+## Hostile input
+
+A PDF arrives from outside your system, so the reader treats every value in it as an attempt. No
+allocation is sized by a number read from the file without a checked bound, no recursion is unbounded,
+and no loop exits on an offset that came from the file.
+
+That claim is tested rather than asserted. Besides the hand-written cases — a cross-reference chain that
+loops, a stream claiming two gigabytes, an object stream declaring a billion objects, containers nested
+twenty thousand deep — a mutation campaign runs against the test corpus: bit flips, corrupted digits,
+truncations, spliced bytes and broken keywords, each input required to end either in a usable document or
+in a typed exception, inside a time and an allocation budget. Seventy-five thousand mutated documents run
+on every release, and twenty thousand mutations per seed document run nightly.
+
+The first campaign found a real defect within a minute: a mutated invoice made the reader's index lookup
+and its relocation search call each other until the stack ran out. Relocation is now bounded to three
+counted attempts. That is the kind of failure this exists to catch — no hand-written test had thought of
+it, and a file that kills the process is the worst outcome a document reader can have.
