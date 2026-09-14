@@ -1,0 +1,24 @@
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before asking: the [documentation site](https://adcodicem.github.io/AdCodicem.Pdf/) covers the
+        reading model and the diagnostics, and the [roadmap](https://github.com/AdCodicem/AdCodicem.Pdf/blob/main/docs/roadmap.md)
+        says what does not exist yet — which is a common answer while the library is young.
+  - type: textarea
+    id: question
+    attributes:
+      label: What are you trying to do?
+      description: The document or the task, rather than the API you were reaching for.
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you have tried
+      render: csharp
+  - type: input
+    id: version
+    attributes:
+      label: Package version

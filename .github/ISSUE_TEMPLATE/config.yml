@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/AdCodicem/AdCodicem.Pdf/security/advisories/new
+    about: A malformed document that crashes, hangs or exhausts memory is a security issue. Report it privately.
+  - name: Contributing a document to the test corpus
+    url: https://github.com/AdCodicem/AdCodicem.Pdf/blob/main/docs/corpus-contributions.md
+    about: Real files from real producers are the most valuable contribution to this project.
