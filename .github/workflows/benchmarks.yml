@@ -31,7 +31,7 @@ jobs:
           dotnet run -c Release --project benchmarks/AdCodicem.Pdf.Benchmarks -- \
             --filter '${{ github.event.inputs.filter || '*' }}' --exporters json markdown
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
           path: BenchmarkDotNet.Artifacts/results/*
