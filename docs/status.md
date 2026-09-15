@@ -9,14 +9,14 @@ here.
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green
-- **Pull requests**: none open. [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) is merged; the
-  preview/stable release split (ADR 30) and the baseline fix below are **on the branch, not yet on `main`**
+- **Pull requests**: [#9](https://github.com/AdCodicem/AdCodicem.Pdf/pull/9), open — the preview/stable
+  release split (ADR 30), the API-baseline fix and the coverage path fix. Not yet on `main`.
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
-- **Red on `main`, by design and not by defect**: `Release` stops at its own guard because the publishing
-  identity is not configured (T11) — nothing is versioned or published until it is — and `Documentation`
-  builds the site but cannot deploy it until Pages is enabled (T12). Once the branch lands, a merge
-  publishes a preview and `Documentation` runs only with a stable release.
+- **Publishing**: the nuget.org trusted-publishing policy is registered, GitHub Pages is enabled, Codecov
+  receives coverage. **One thing still missing: the `NUGET_USER` secret in the `nuget` environment** (T11) —
+  until it exists, `Release` stops at its own guard and nothing is published. Once it exists and #9 is
+  merged, the merge itself publishes the first preview, `0.1.1-preview.n`, which is what proves the policy.
 - **Branch**: `claude/nuget-pdf-html-dotnet-msyz8z`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
@@ -43,6 +43,15 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-15 — Publishing configured, one secret short
+- The trusted-publishing policy was registered on nuget.org and Codecov linked itself through its GitHub App.
+  Checked from the repository side rather than taken as done: GitHub Pages turned out to be enabled too (T12
+  closed), Codecov accepts coverage **without a token** (T14 closed) — but the `nuget` environment holds no
+  secret at all, so `NUGET_USER` is still missing and the release still stops at its guard (T11 open).
+- The coverage upload pointed at `tests/…/bin/Release/net10.0/TestResults/`, where nothing is written; the
+  report lands in the working directory, and the upload only worked because Codecov went looking for it.
+  The results directory is now named explicitly, and the upload points at it.
 
 ### 2026-09-15 — The starting tag, and the trap it would have sprung
 - `v0.1.0` tagged on `2808d2f`, the tip of `main`, so the first stable release continues in `0.x` instead of
@@ -236,10 +245,10 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
-| T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | Configure both — `v0.1.0` is tagged, so the first release stays in `0.x`; steps in `docs/releasing.md` |
-| T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish | Settings → Pages → Source: GitHub Actions |
+| T11 | The nuget.org trusted-publishing policy is registered and the `nuget` environment exists, but the environment holds **no `NUGET_USER` secret**, so the release stops at its guard | Add `NUGET_USER` (the nuget.org account name) to the `nuget` environment; the first preview then proves the policy |
+| ~~T12~~ | ~~GitHub Pages is not enabled for the repository~~ | Done: source GitHub Actions, deployments allowed from `main` only |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
-| T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
+| ~~T14~~ | ~~Codecov is not linked~~ | Done: the Codecov GitHub App links the repository, and a public repository uploads without a token |
 | T15 | Auto-merge and branch protection are off, so the Dependabot auto-merge workflow cannot act and `main` accepts direct pushes | Settings → General → Allow auto-merge, then require the CI check on `main` |
 | T16 | The API baseline is one version for the whole solution, checked against `AdCodicem.Pdf` only. A satellite first shipped in a later release — `AdCodicem.Pdf.Validation` in M2 — has no package at that version, and its pack fails with `NU1101` exactly as `v0.1.0` would have | In M2, before `AdCodicem.Pdf.Validation` is packable: make the baseline per package |
 | T04 | An OFL font set must be embedded for default rendering | During M6 |

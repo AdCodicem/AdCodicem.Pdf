@@ -65,7 +65,8 @@ an API key valid for one hour and usable once. No long-lived secret exists to le
 
 ### One-time setup on nuget.org
 
-Sign in, then **your username → Trusted Publishing → add a policy**:
+**Done** (2026-09-15) — not yet proven by a publish: the first run that exchanges a token is what confirms
+the fields below match. Sign in, then **your username → Trusted Publishing → add a policy**:
 
 | Field | Value |
 |---|---|
@@ -86,7 +87,9 @@ Two things worth knowing:
 
 ### One-time setup on GitHub
 
-Create the `nuget` environment (Settings → Environments) and add one secret to it:
+**Not done yet** (2026-09-15): the `nuget` environment exists — the first release run created it — but holds
+no secret, so the release stops at its guard before asking nuget.org for anything. Add one secret to it
+(Settings → Environments → `nuget`):
 
 | Secret | Value |
 |---|---|
@@ -144,7 +147,7 @@ After the first publish, check the package on nuget.org and reserve the ID prefi
 
 | What | Where | Needed for |
 |---|---|---|
-| `CODECOV_TOKEN` secret | Link the repository on codecov.io, then repository secrets | Coverage upload in CI |
+| The Codecov GitHub App | Installed on the repository — **done**; it links the repository by itself | Coverage upload in CI. A public repository uploads without a token; a `CODECOV_TOKEN` repository secret is read if one exists, and becomes necessary only if the repository goes private or Codecov stops accepting tokenless uploads |
 | "Allow auto-merge" | Settings → General | Dependabot auto-merge |
 | Branch protection on `main` with CI as a required check | Settings → Branches | Auto-merge cannot merge a red build |
 | Discussions, Sponsors | Settings → Features, and the GitHub account | The discussion template and `FUNDING.yml` |
@@ -157,8 +160,9 @@ After the first publish, check the package on nuget.org and reserve the ID prefi
 the version people can install rather than the tip of `main`. It also keeps its own **Run workflow**
 button, for a documentation fix that should not wait for the next release.
 
-One manual step, once: **Settings → Pages → Source: GitHub Actions**. Until then the deployment job fails
-with a permissions error, and the site simply is not published — nothing else breaks.
+One manual step, once: **Settings → Pages → Source: GitHub Actions** — **done**; the `github-pages`
+environment allows deployments from `main` only. Before it was done, the deployment job failed with a
+permissions error and the site simply was not published — nothing else broke.
 
 The site lands at `https://adcodicem.github.io/AdCodicem.Pdf/`. If the repository is ever renamed, the
 `baseUrl` in `docs/website/docusaurus.config.js` has to follow.
