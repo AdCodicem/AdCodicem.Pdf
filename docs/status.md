@@ -9,12 +9,14 @@ here.
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green
-- **Pull requests**: none open — [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) is merged, so `main`
-  now carries everything described here
-- **Red on `main`, by design and not by defect**: the preview job of `Release` stops at its own guard
-  because the publishing identity is not configured (T11) — nothing is versioned, tagged or published
-  until it is. `Documentation` no longer runs on a merge at all; it deploys with a stable release, and
-  will fail the same way until Pages is enabled (T12).
+- **Pull requests**: none open. [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) is merged; the
+  preview/stable release split (ADR 30) and the baseline fix below are **on the branch, not yet on `main`**
+- **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
+  for it, by design.
+- **Red on `main`, by design and not by defect**: `Release` stops at its own guard because the publishing
+  identity is not configured (T11) — nothing is versioned or published until it is — and `Documentation`
+  builds the site but cannot deploy it until Pages is enabled (T12). Once the branch lands, a merge
+  publishes a preview and `Documentation` runs only with a stable release.
 - **Branch**: `claude/nuget-pdf-html-dotnet-msyz8z`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
@@ -41,6 +43,19 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-15 — The starting tag, and the trap it would have sprung
+- `v0.1.0` tagged on `2808d2f`, the tip of `main`, so the first stable release continues in `0.x` instead of
+  being declared `1.0.0`. No workflow runs on a tag, so pushing it changed nothing on its own.
+- **Checked before relying on it, and it would have failed.** Both release paths passed the last tag as
+  the baseline for package validation, which downloads that version from nuget.org to compare the public
+  API — and nothing was ever published as `0.1.0`. `dotnet pack` with that baseline fails with `NU1101`,
+  reproduced locally. The first preview and the first stable release would both have died at packing, the
+  moment the publishing identity was configured.
+- `.github/scripts/published-baseline.sh` now decides the baseline: the last release's version if nuget.org
+  has a package for it, nothing if nothing has been published, and a failed run if nuget.org cannot be
+  asked. Every branch exercised; the stable release's exact prepare command, rendered by lodash as
+  semantic-release renders it, now packs `0.2.0` cleanly against the real tag.
 
 ### 2026-09-15 — Publishing and releasing are no longer the same event
 - A merge into `main` now publishes a **preview** package and nothing else: no tag, no changelog, no
@@ -221,11 +236,12 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
-| T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | **Tag `v0.1.0` first**, then configure both, or the first automated release is 1.0.0; steps in `docs/releasing.md` |
+| T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | Configure both — `v0.1.0` is tagged, so the first release stays in `0.x`; steps in `docs/releasing.md` |
 | T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
 | T15 | Auto-merge and branch protection are off, so the Dependabot auto-merge workflow cannot act and `main` accepts direct pushes | Settings → General → Allow auto-merge, then require the CI check on `main` |
+| T16 | The API baseline is one version for the whole solution, checked against `AdCodicem.Pdf` only. A satellite first shipped in a later release — `AdCodicem.Pdf.Validation` in M2 — has no package at that version, and its pack fails with `NU1101` exactly as `v0.1.0` would have | In M2, before `AdCodicem.Pdf.Validation` is packable: make the baseline per package |
 | T04 | An OFL font set must be embedded for default rendering | During M6 |
 | T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M7 |
 | T06 | `PdfString.ToText` reads Latin-1 rather than full PDFDocEncoding (the 32 positions 0x80-0x9F differ) | Before the first public release |
