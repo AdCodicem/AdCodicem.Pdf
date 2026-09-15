@@ -14,9 +14,23 @@ Confirmed, and all seven were unclaimed on nuget.org when checked on 2026-09-13:
 | `AdCodicem.Pdf.Rendering` | Rasterisation | M14 |
 | `AdCodicem.Pdf.Signing` | PAdES | M14 |
 
-**Reserve the `AdCodicem.` prefix** on nuget.org once the first package is published
-(Account → Reserve ID prefix, or by contacting support). It stops anyone else publishing under the name
-and marks the packages as coming from a verified owner.
+**Reserve the `AdCodicem.*` prefix** on nuget.org once the first package is published. It stops anyone else
+publishing under the name, and marks the packages as coming from a verified owner — on nuget.org and in
+Visual Studio.
+
+There is no button for it. The [procedure](https://learn.microsoft.com/nuget/nuget-org/id-prefix-reservation)
+is an email to **account@nuget.org** giving the owner's **display name** on nuget.org — the same account
+that owns the trusted-publishing policy — and the prefix requested. Send it from the address registered on
+that account; the team may ask identifying questions before accepting. The prefix is requested *private*
+(the default): a *public* prefix keeps the verified mark but lets anyone publish under it.
+
+What nuget.org weighs: that the prefix clearly identifies its owner, is not a common word and is at least
+four characters, and that packages under it carry consistent identifying metadata and a licence declared
+with the `license` element rather than `licenseUrl`. `Directory.Build.props` already gives every package
+`Authors` = `AdCodicem` and `PackageLicenseExpression` = `MIT`; there is no icon, so the rule on embedded
+icons does not apply. Packages the owner already published under the prefix get the mark retroactively.
+What waiting does risk is someone else publishing under the name first: a reservation leaves other owners'
+existing packages in place.
 
 ## Versioning — computed from the commits
 
