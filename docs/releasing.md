@@ -14,14 +14,9 @@ Confirmed, and all seven were unclaimed on nuget.org when checked on 2026-09-13:
 | `AdCodicem.Pdf.Rendering` | Rasterisation | M14 |
 | `AdCodicem.Pdf.Signing` | PAdES | M14 |
 
-**Reserve the `AdCodicem.*` prefix** on nuget.org. It stops anyone else publishing under the name, and marks
-the packages as coming from a verified owner — on nuget.org and in Visual Studio.
-
-The prefix is `AdCodicem.*` rather than `AdCodicem.Pdf.*` because the name is wider than this repository: the
-nuget.org account `AdCodicem` already owns the `AdCodicem.ValueObjects*` family, from
-[AdCodicem.ValueObjects](https://github.com/AdCodicem/AdCodicem.ValueObjects), and
-`AdCodicem.SpecFlow.MicrosoftDependencyInjection` (checked on 2026-09-15; none carries the verified mark yet).
-For the same reason the request does not have to wait for this repository's first publish.
+**Reserve the `AdCodicem.*` prefix** on nuget.org once the first package is published. It stops anyone else
+publishing under the name, and marks the packages as coming from a verified owner — on nuget.org and in
+Visual Studio.
 
 There is no button for it. The [procedure](https://learn.microsoft.com/nuget/nuget-org/id-prefix-reservation)
 is an email to **account@nuget.org** giving the owner's **display name** on nuget.org — the same account
@@ -33,9 +28,9 @@ What nuget.org weighs: that the prefix clearly identifies its owner, is not a co
 four characters, and that packages under it carry consistent identifying metadata and a licence declared
 with the `license` element rather than `licenseUrl`. `Directory.Build.props` already gives every package
 `Authors` = `AdCodicem` and `PackageLicenseExpression` = `MIT`; there is no icon, so the rule on embedded
-icons does not apply. The `AdCodicem.ValueObjects*` packages declare the same author and an MIT expression
-too. Packages the owner already published under the prefix get the mark retroactively; what waiting risks is
-someone else publishing under the name first, since a reservation leaves other owners' packages in place.
+icons does not apply. Packages the owner already published under the prefix get the mark retroactively.
+What waiting does risk is someone else publishing under the name first: a reservation leaves other owners'
+existing packages in place.
 
 ## Versioning — computed from the commits
 
@@ -160,8 +155,7 @@ Two things the stable run needs on `main`: permission to push the changelog comm
 protection is turned on, either allow the `github-actions` actor to bypass it, or accept that the release
 cannot record itself.
 
-After the first publish, check the package on nuget.org — it should carry the verified mark once the
-`AdCodicem.*` prefix is reserved.
+After the first publish, check the package on nuget.org and reserve the ID prefix.
 
 ## Also configured by hand, once
 
