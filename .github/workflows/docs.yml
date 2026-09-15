@@ -1,12 +1,10 @@
 name: Documentation
 
+# The site is published with a stable release, not with every merge, so what is documented online is
+# what is released. Called by release.yml; the manual trigger is there for a documentation fix that
+# should not wait for the next release.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
-      - "src/**"
-      - ".github/workflows/docs.yml"
+  workflow_call:
   workflow_dispatch:
 
 permissions:

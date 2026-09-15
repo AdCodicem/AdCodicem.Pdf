@@ -1,9 +1,22 @@
 name: Release
 
+# Two ways out of this repository, in one workflow file because a nuget.org trusted-publishing policy is
+# tied to the file name - one policy covers both:
+#
+#   - every push to main publishes a **preview** package, so what is on main is always installable;
+#   - a **manual** run cuts the stable release: version, changelog, tag, GitHub Release, packages, and
+#     the documentation site.
+#
+# Nothing is tagged, released or documented by merging. That is deliberate: a merge should be cheap.
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Work out the version and the notes, then stop - publish, tag and deploy nothing"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -12,17 +25,114 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
+# A preview and a stable release must never pack the same commit at the same time.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  release:
-    name: Semantic release
+  preview:
+    name: Preview package
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: nuget
+    permissions:
+      contents: read
+      # Lets the job exchange a GitHub OIDC token for a short-lived NuGet key; nothing long-lived is
+      # stored anywhere. See docs/releasing.md.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history, because the preview version is read from the last tag.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build and test
+        run: |
+          dotnet build AdCodicem.Pdf.slnx -c Release
+          dotnet test --solution AdCodicem.Pdf.slnx -c Release --no-build
+
+      - name: Check the publishing identity is configured
+        run: |
+          if [ -z "${{ secrets.NUGET_USER }}" ]; then
+            echo "::error::The NUGET_USER secret is not set for the 'nuget' environment. It holds the"
+            echo "::error::nuget.org account name that owns the trusted publishing policy. See docs/releasing.md."
+            exit 1
+          fi
+
+      # A preview says where it sits, not what it will be called: one patch above the last release, plus
+      # the run number so previews stay ordered. The stable release decides the real number - a feat takes
+      # it to the next minor instead - and a preview sorts between the two either way.
+      - name: Work out the preview version
+        id: version
+        run: |
+          set -eu
+          last="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+          last="${last#v}"
+
+          if [ -z "$last" ]; then
+            # Nothing released yet: there is no baseline to compare the API against either.
+            echo "No release tag yet; the preview starts from 0.0.0."
+            echo "version=0.0.1-preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "baseline=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          major="${last%%.*}"
+          rest="${last#*.}"
+          minor="${rest%%.*}"
+          patch="${rest#*.}"
+          patch="${patch%%[-+]*}"
+
+          echo "Last release $last; preview one patch above it."
+          echo "version=$major.$minor.$((patch + 1))-preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "baseline=$last" >> "$GITHUB_OUTPUT"
+
+      # Packed rather than repacked: --no-build would keep the assembly version of the build above, and
+      # the package would then disagree with what is inside it.
+      - name: Pack
+        run: >
+          dotnet pack AdCodicem.Pdf.slnx -c Release
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PackageValidationBaselineVersion=${{ steps.version.outputs.baseline }}
+          -o artifacts
+
+      # The key lasts an hour and is single-use to obtain, so it is requested immediately before the push.
+      - name: Exchange the OIDC token for a short-lived NuGet key
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push the preview
+        run: >
+          dotnet nuget push 'artifacts/*.nupkg'
+          --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
+
+      - name: Say what was published
+        run: |
+          echo "### Preview \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published to nuget.org. It is a prerelease, so it reaches only the people who ask for" >> "$GITHUB_STEP_SUMMARY"
+          echo "prereleases. Cut the stable release from the **Run workflow** button on this workflow." >> "$GITHUB_STEP_SUMMARY"
+
+  stable:
+    name: Stable release
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: nuget
     permissions:
       contents: write
       issues: write
       pull-requests: write
-      # Lets the job exchange a GitHub OIDC token for a short-lived NuGet key; nothing long-lived is
-      # stored anywhere. See docs/releasing.md.
       id-token: write
 
     steps:
@@ -45,6 +155,7 @@ jobs:
           dotnet test --solution AdCodicem.Pdf.slnx -c Release --no-build
 
       - name: Check the publishing identity is configured
+        if: ${{ !inputs.dry_run }}
         run: |
           if [ -z "${{ secrets.NUGET_USER }}" ]; then
             echo "::error::The NUGET_USER secret is not set for the 'nuget' environment. It holds the"
@@ -52,10 +163,10 @@ jobs:
             exit 1
           fi
 
-      # The key lasts an hour and is single-use to obtain, so it is requested immediately before
-      # semantic-release, which may publish within seconds of deciding to.
+      # Not requested on a dry run: the key is single-use to obtain, and a dry run publishes nothing.
       - name: Exchange the OIDC token for a short-lived NuGet key
         id: nuget-login
+        if: ${{ !inputs.dry_run }}
         uses: NuGet/login@v1
         with:
           user: ${{ secrets.NUGET_USER }}
@@ -67,8 +178,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
+          set -eu
+          arguments=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            arguments="--dry-run"
+          fi
+
           npx --yes \
             semantic-release@24 \
             @semantic-release/changelog@6 \
             @semantic-release/exec@6 \
-            @semantic-release/git@10
+            @semantic-release/git@10 \
+            $arguments
+
+  documentation:
+    name: Documentation
+    needs: stable
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml

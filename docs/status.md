@@ -11,10 +11,10 @@ here.
 - **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green
 - **Pull requests**: none open — [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) is merged, so `main`
   now carries everything described here
-- **Red on `main`, by design and not by defect**: `Release` stops at its own guard because the
-  publishing identity is not configured (T11) — nothing was versioned, tagged or published, the
-  semantic-release step never ran — and `Documentation` builds the site but cannot deploy it because
-  Pages is not enabled (T12). Both turn green the moment those two settings exist.
+- **Red on `main`, by design and not by defect**: the preview job of `Release` stops at its own guard
+  because the publishing identity is not configured (T11) — nothing is versioned, tagged or published
+  until it is. `Documentation` no longer runs on a merge at all; it deploys with a stable release, and
+  will fail the same way until Pages is enabled (T12).
 - **Branch**: `claude/nuget-pdf-html-dotnet-msyz8z`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
@@ -41,6 +41,22 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-15 — Publishing and releasing are no longer the same event
+- A merge into `main` now publishes a **preview** package and nothing else: no tag, no changelog, no
+  GitHub Release, no redeployed site. The **stable release is a manual run** of the same workflow, and it
+  alone versions, tags, writes `CHANGELOG.md`, publishes and deploys the documentation. ADR
+  [30](adr/0030-previews-on-every-merge-stable-releases-on-demand.md).
+- Both paths stay in `release.yml` on purpose: a nuget.org trusted-publishing policy is pinned to a
+  workflow **file name**, so one file is one policy to register rather than two to keep in step.
+- A preview is `<last release, patch bumped>-preview.<run number>` — after `v0.1.0`, `0.1.1-preview.12`.
+  It says where the preview sits rather than predicting the next release: if a `feat:` takes the release
+  to `0.2.0`, every `0.1.1-preview.n` still sorts between the two. Working the exact number out would
+  mean running semantic-release on every merge to answer a question only the release asks.
+- The site is deployed by the release rather than by the tip of `main`, so what is documented online is
+  what is installable. `docs.yml` keeps a manual trigger for a documentation fix that cannot wait.
+- The `-alpha` suffix now hangs on whether a build was handed a version at all, rather than on
+  `GITHUB_REF_TYPE` — a check that meant something when releases came from tag builds and nothing since.
 
 ### 2026-09-14 — The repository brought to the standard toolchain
 - Merged into `main` at the end of the session. The first `Release` run then proved its own safety net:
