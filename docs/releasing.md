@@ -20,10 +20,10 @@ and marks the packages as coming from a verified owner.
 
 ## Versioning — computed from the commits
 
-Versions are not chosen; they are derived. semantic-release reads the commits since the last tag and
-decides: `fix:` bumps the patch, `feat:` the minor, a `!` or a `BREAKING CHANGE:` footer the major.
-Nothing releasable in the commits means no release at all, which is the correct outcome for a branch of
-documentation changes.
+Versions are not chosen; they are derived. The *moment* of a release is chosen — see **Releasing** below.
+semantic-release reads the commits since the last tag and decides: `fix:` bumps the patch, `feat:` the
+minor, a `!` or a `BREAKING CHANGE:` footer the major. Nothing releasable in the commits means no release
+at all, which is the correct outcome for a run over documentation changes.
 
 This is why the conventional-commit check on pull requests is not a style rule. A malformed message does
 not look untidy — it produces no release, silently.
@@ -45,8 +45,9 @@ git tag v0.1.0 && git push origin v0.1.0
 From then on it continues from that tag — `fix:` gives `0.1.1`, `feat:` gives `0.2.0` — and the move to
 `1.0.0` happens when a breaking change says so, which is the right moment for it.
 
-`VersionPrefix` in `Directory.Build.props` only matters for local builds; the release passes the computed
-version explicitly.
+`VersionPrefix` in `Directory.Build.props` only matters for a build nobody handed a version to — a local
+`dotnet pack` gives `0.1.0-alpha`, and the `-alpha` is there to make an accidentally published local build
+obvious. Both release paths pass `-p:Version` explicitly, which overrides prefix and suffix alike.
 
 ## Publishing: trusted publishing, not API keys
 
@@ -88,18 +89,48 @@ Consider requiring a reviewer on the `nuget` environment so a tag cannot publish
 
 ## Releasing
 
-There is no release procedure. Merging a pull request into `main` is the procedure:
+Two paths out of the repository, both in `release.yml` — one file, because a trusted-publishing policy is
+tied to a workflow file name and one policy is enough for both.
 
-1. The commits decide whether anything is released, and what the version is.
-2. `release.yml` builds, runs the whole suite, exchanges the OIDC token for a short-lived key, then
-   semantic-release packs, pushes to nuget.org, writes `CHANGELOG.md`, tags, and opens a GitHub Release.
-3. Check the package on nuget.org, and reserve the ID prefix if this was the first publish.
+### Every merge publishes a preview
 
-If the push fails with an authorisation error, the mismatch is almost always between the policy and the
-workflow: the file name, the environment, or the account name in `NUGET_USER`.
+A push to `main` builds, runs the whole suite, and publishes a **prerelease** package. Nothing is tagged,
+no changelog is written, no GitHub Release is opened, the site is not redeployed. Merging stays cheap, and
+what is on `main` is always installable:
 
-If nothing is published and you expected something, read the commits: `docs:`, `chore:`, `test:`,
-`refactor:` and `build:` deliberately release nothing.
+```bash
+dotnet add package AdCodicem.Pdf --prerelease
+```
+
+A preview is numbered `<last release, patch bumped>-preview.<run number>` — after `v0.1.0`, the previews
+are `0.1.1-preview.12`, `0.1.1-preview.13`, and so on. That number says **where the preview sits**, not
+what the next release will be called: if the commits since the tag contain a `feat:`, the stable release
+will be `0.2.0`, and every `0.1.1-preview.n` still sorts correctly between `0.1.0` and `0.2.0`. The run
+number only ever increases, so previews never collide, and nothing has to be deleted from nuget.org —
+which is just as well, because nothing can be.
+
+### The stable release is a decision, and it is taken by hand
+
+**Actions → Release → Run workflow.** That run, and only that run:
+
+1. works the version out from the commits since the last tag;
+2. writes `CHANGELOG.md`, commits it, and tags `vX.Y.Z`;
+3. packs and pushes the stable packages to nuget.org;
+4. opens the GitHub Release with the generated notes;
+5. deploys the documentation site, so what is online is what is released.
+
+Tick **dry run** to see the version and the notes it would produce and stop there: nothing is published,
+tagged, or deployed, and no publishing key is even requested.
+
+If the run reports no release, read the commits: `docs:`, `chore:`, `test:`, `refactor:` and `build:`
+deliberately release nothing. If the push fails with an authorisation error, the mismatch is almost always
+between the policy and the workflow: the file name, the environment, or the account name in `NUGET_USER`.
+
+Two things the stable run needs on `main`: permission to push the changelog commit and the tag. If branch
+protection is turned on, either allow the `github-actions` actor to bypass it, or accept that the release
+cannot record itself.
+
+After the first publish, check the package on nuget.org and reserve the ID prefix.
 
 ## Also configured by hand, once
 
@@ -114,7 +145,9 @@ If nothing is published and you expected something, read the commits: `docs:`, `
 
 `docs/website` is a Docusaurus site publishing both the user-facing documentation and the project documents in
 `docs/`. CI builds it on every push, so a document that does not build never reaches the default branch;
-`.github/workflows/docs.yml` deploys it to GitHub Pages when `docs/` changes on `main`.
+`.github/workflows/docs.yml` deploys it to GitHub Pages **with the stable release**, so the site describes
+the version people can install rather than the tip of `main`. It also keeps its own **Run workflow**
+button, for a documentation fix that should not wait for the next release.
 
 One manual step, once: **Settings → Pages → Source: GitHub Actions**. Until then the deployment job fails
 with a permissions error, and the site simply is not published — nothing else breaks.

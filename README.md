@@ -39,6 +39,13 @@ need: a fully managed engine whose memory use follows the complexity of a page, 
 
 Further packages (validation, Factur-X, rasterisation, signing) are planned — see `docs/roadmap.md`.
 
+Nothing is published yet. Once it is, every merge into `main` publishes a preview, so the current state of
+the library is always installable:
+
+```bash
+dotnet add package AdCodicem.Pdf --prerelease
+```
+
 ## Building
 
 Requires the .NET 10 SDK.

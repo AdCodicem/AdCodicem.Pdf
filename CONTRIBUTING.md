@@ -52,6 +52,10 @@ feat!: drop the synchronous Open overloads
 A CI check validates this on every pull request — a malformed message blocks the merge, and worse,
 would silently produce no release.
 
+Merging does not release. A merge into `main` publishes a **preview** package, so a change is installable
+as soon as it lands; a stable release is a deliberate, manual run of the `Release` workflow, and that is
+what writes the changelog and the tag. [`docs/releasing.md`](docs/releasing.md) has the detail.
+
 ## What a change must carry
 
 The project's [definition of done](docs/roadmap.md) applies to contributions too:
