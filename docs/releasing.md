@@ -36,7 +36,7 @@ shape.
 ### Staying below 1.0
 
 semantic-release declares `1.0.0` for a first release when it finds no previous tag. To stay in `0.x`,
-tag the starting point once, by hand, before the first automated release:
+the starting point is tagged once, by hand — **done on 2026-09-15**, `v0.1.0` on `2808d2f`:
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
@@ -44,6 +44,14 @@ git tag v0.1.0 && git push origin v0.1.0
 
 From then on it continues from that tag — `fix:` gives `0.1.1`, `feat:` gives `0.2.0` — and the move to
 `1.0.0` happens when a breaking change says so, which is the right moment for it.
+
+That tag has **no package behind it**: nothing was ever published as `0.1.0`. It matters because package
+validation compares the public API with the last release, downloads that baseline from nuget.org, and fails
+the build with `NU1101` when nuget.org does not have it. Both release paths therefore ask
+`.github/scripts/published-baseline.sh` for the baseline instead of trusting the tag: it returns the last
+release's version only if nuget.org has a package for it, returns nothing when nothing has been published
+yet, and fails the run when nuget.org cannot be asked — a compatibility check that quietly switches itself
+off on a network error is not a check.
 
 `VersionPrefix` in `Directory.Build.props` only matters for a build nobody handed a version to — a local
 `dotnet pack` gives `0.1.0-alpha`, and the `-alpha` is there to make an accidentally published local build

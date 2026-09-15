@@ -90,9 +90,13 @@ jobs:
           patch="${rest#*.}"
           patch="${patch%%[-+]*}"
 
+          # The API is compared with the last release only if a package exists for it: a tag alone is
+          # not one, and package validation fails the build on a baseline nuget.org does not have.
+          baseline="$(sh .github/scripts/published-baseline.sh "$last")"
+
           echo "Last release $last; preview one patch above it."
           echo "version=$major.$minor.$((patch + 1))-preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          echo "baseline=$last" >> "$GITHUB_OUTPUT"
+          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
 
       # Packed rather than repacked: --no-build would keep the assembly version of the build above, and
       # the package would then disagree with what is inside it.
