@@ -9,15 +9,15 @@ here.
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green
-- **Pull requests**: none open. [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) is merged; the
-  preview/stable release split (ADR 30) and the baseline fix below are **on the branch, not yet on `main`**
+- **Pull requests**: none open. [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) and Dependabot's
+  six action bumps (#2 to #7) are merged; the preview/stable release split (ADR 30) and the baseline fix
+  are on `main`
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
 - **Red on `main`, by design and not by defect**: `Release` stops at its own guard because the publishing
   identity is not configured (T11) — nothing is versioned or published until it is — and `Documentation`
-  builds the site but cannot deploy it until Pages is enabled (T12). Once the branch lands, a merge
-  publishes a preview and `Documentation` runs only with a stable release.
-- **Branch**: `claude/nuget-pdf-html-dotnet-msyz8z`
+  builds the site but cannot deploy it until Pages is enabled (T12).
+- **Branch**: `claude/dependabot-prs-review-p3mx79` — this journal entry only; everything else is on `main`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -43,6 +43,14 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-16 — Dependabot's six action bumps merged
+- Six **major** GitHub Actions bumps, which `dependabot-auto-merge.yml` deliberately leaves for a human.
+  Each was read against its own release notes; what that reading settled is on the squash commits, where
+  it belongs. The three Pages bumps are reasoned rather than observed — see T12.
+- `Conventional commits` was red on all six: Dependabot wrote "Bump" with a capital and `subject-case`
+  refuses it. **Corrected at the squash, not relaxed in the configuration** — which fixed the source too,
+  since Dependabot copies the style of recent commits and its last rebase came back lowercase on its own.
 
 ### 2026-09-15 — The starting tag, and the trap it would have sprung
 - `v0.1.0` tagged on `2808d2f`, the tip of `main`, so the first stable release continues in `0.x` instead of
@@ -237,7 +245,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
 | T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | Configure both — `v0.1.0` is tagged, so the first release stays in `0.x`; steps in `docs/releasing.md` |
-| T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish | Settings → Pages → Source: GitHub Actions |
+| T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish. `Documentation` stops at `configure-pages`, so nothing downstream of it has ever run — the `configure-pages`, `upload-pages-artifact` and `deploy-pages` bumps of 2026-09-16 included | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
 | T15 | Auto-merge and branch protection are off, so the Dependabot auto-merge workflow cannot act and `main` accepts direct pushes | Settings → General → Allow auto-merge, then require the CI check on `main` |
