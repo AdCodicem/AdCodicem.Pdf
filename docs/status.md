@@ -9,9 +9,10 @@ here.
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green
-- **Pull requests**: none open. [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) and Dependabot's
-  six action bumps (#2 to #7) are merged; the preview/stable release split (ADR 30) and the baseline fix
-  are on `main`
+- **Pull requests**: [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11) open — publishing unblocked
+  and a manual preview trigger; **merging it publishes the first package**.
+  [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) and Dependabot's six action bumps (#2 to #7) are
+  merged; the preview/stable release split (ADR 30) and the baseline fix are on `main`
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
 - **Red on `main`, by design and not by defect**: `Release` stops at its own publishing-identity guard
