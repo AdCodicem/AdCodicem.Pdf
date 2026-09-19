@@ -10,8 +10,9 @@ here.
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**:
   green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
-- **Supply-chain score**: **5.5/10** as published on `1bfde6d`. The branch below is measured to take it to
-  **6.6**; everything above that needs repository settings or people, not code — see T15, T18 and T19
+- **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
+  to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
+  T18 and T19
 - **Pull requests**: none open. [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11) is merged —
   publishing is unblocked and a preview can be asked for without merging.
   [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) and Dependabot's six action bumps (#2 to #7) are
@@ -27,9 +28,8 @@ here.
 - **No package has been published yet**, preview or stable. The trusted publishing policy now exists on
   nuget.org and the publishing account is named in the workflow, so the next push to `main` is the first
   real attempt — and the first to reach the OIDC exchange.
-- **Branches**: `claude/scorecard-improvement-4ckfxd` — every action pinned by commit hash, the five OSV
-  advisories in the documentation site cleared, and a security policy that links rather than describes.
-  Not merged, so the next report is what confirms the arithmetic
+- **Branches**: `claude/scorecard-improvement-4ckfxd` — property-based tests, which are the shape of
+  fuzzing Scorecard recognises in C#. Not merged, so the next report is what confirms the arithmetic
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -55,6 +55,39 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-19 — Fuzzing read 0 because of what it looks for, and I had read the check wrong
+- **The correction first.** The entry below states that Scorecard detects no .NET fuzzer and that the 0
+  is simply wrong. That is false, and reading `checks/raw/fuzzing.go` rather than recalling it says so:
+  there is a `clients.CSharp` entry, and it greps `*.cs` for `using FsCheck;`, `using FsCheck.Xunit;`,
+  `using FsCheck.NUnit;` or `using Expecto.ExpectoFsCheck;`. The check is narrower than "is this project
+  fuzzed" — it asks whether the project does **property-based testing with FsCheck** — but it is not
+  blind to this stack, and the 0 was earned.
+- **So the fix is a test technique this codebase was missing, not a token.** `PropertyTests` holds six
+  properties over generated data: the lexer terminates on any bytes and keeps every token offset inside
+  the buffer; the parser answers for any bytes without letting its position escape the input; a text
+  string survives `FromText` and `ToText`; the hand-written integer and real parsers agree with the
+  framework everywhere both will answer; and the seeding itself replays.
+- **They complement the mutation campaign rather than repeat it.** Mutation fuzzing starts from real
+  documents and damages them, so it explores the neighbourhood of files that exist. A generator starts
+  from nothing and reaches an empty buffer, a file of nothing but delimiters, a number carrying forty
+  signs. Different instruments, different defects.
+- **Checked that they have teeth before trusting them.** Three were deliberately falsified — the integer
+  parser compared against `value + 1`, the round-trip against `value + "x"`, the lexer bound inverted —
+  and all three failed, shrank to a minimal counter-example and printed a replay pair. A property that
+  cannot fail is decoration.
+- **Deterministic in the suite, exploratory at night.** A fixed seed means a commit can never be failed
+  by luck; `ADCODICEM_PROPERTY_SEED` and `ADCODICEM_PROPERTY_TESTS` let the nightly campaign run 50 000
+  cases per property from a different seed each time, which `fuzz.yml` now does alongside the mutations.
+  FsCheck rejects an even gamma outright, so that half of the random state stays a constant.
+- **FsCheck without `FsCheck.Xunit`**: the runner integration still pins `xunit.extensibility.execution`
+  below 3.0.0 and would drag xUnit v2 into a v3 suite. The library itself is runner-agnostic, so a
+  property runs inside an ordinary fact. No advisory against `FsCheck` 3.4.0 or `FSharp.Core` 5.0.2, so
+  Vulnerabilities stays at 10.
+- **Measured effect: 6.6 → 7.1**, Fuzzing 0 → 10 at weight 5. Confirmed by the detection rules rather
+  than assumed: C# is 84% of what GitHub reports for this repository, far above the check's
+  `average / 4` prominence threshold; `*.cs` matches a nested path because the matcher falls back to the
+  file name; and `tests/` is not one of the `testdata/` or `src/test/` prefixes the walker skips.
 
 ### 2026-09-19 — The badge had a number at last, and it read 5.5
 - The first Scorecard run that ever started (run 13, on `1bfde6d`) published a report: **5.5 out of 10**.
@@ -89,11 +122,9 @@ previous ordering, where M2 was writing and M3 assembly.
   they are worth about 1.5 points, and both need the `main` ruleset of T15 plus pull requests someone
   approves. Maintained is 0 because the repository is younger than 90 days, which only time fixes.
   Contributors is 0 because there is one of us. CII-Best-Practices needs a registration (T18) and
-  Signed-Releases is unscored only because no release exists yet (T19). **Fuzzing reads 0 and will stay
-  there**: Scorecard detects OSS-Fuzz, ClusterFuzzLite and a list of language-specific fuzzers, none of
-  which covers .NET — the nightly mutation campaign that found the mutual-recursion defect is invisible
-  to it. The check does look for a bare `.onefuzz` file, and writing one to claim a fuzzer we do not use
-  would be a lie told to a number. The number stays wrong.
+  Signed-Releases is unscored only because no release exists yet (T19). ~~Fuzzing reads 0 and will stay
+  there: Scorecard detects no .NET fuzzer, so the number stays wrong.~~ **Wrong, and corrected the same
+  day** — the check does cover C#, and the entry below says how.
 
 ### 2026-09-19 — The supply-chain badge had never been earned
 - `OpenSSF Scorecard` was **red on every run it has ever had** — twelve of them, back to the day the

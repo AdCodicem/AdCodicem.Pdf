@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="NSubstitute" />
+    <PackageReference Include="FsCheck" />
   </ItemGroup>
 
   <ItemGroup>

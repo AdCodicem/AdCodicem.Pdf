@@ -10,6 +10,10 @@ on:
         description: "Mutations per seed document"
         required: false
         default: "20000"
+      cases:
+        description: "Generated cases per property"
+        required: false
+        default: "50000"
 
 permissions:
   contents: read
@@ -20,7 +24,7 @@ env:
 
 jobs:
   fuzz:
-    name: Mutation campaign
+    name: Mutation and property campaign
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -38,3 +42,14 @@ jobs:
         run: |
           dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release \
             -- --filter-method '*Fuzz*'
+
+      # The properties are fixed-seed in the suite, so a commit can never be failed by luck. Here they are
+      # allowed to explore: a different seed each night, over a domain a mutated real document never
+      # reaches. A failure still replays from the pair FsCheck prints with the counter-example.
+      - name: Check the properties over a wider domain
+        env:
+          ADCODICEM_PROPERTY_TESTS: ${{ github.event.inputs.cases || '50000' }}
+          ADCODICEM_PROPERTY_SEED: ${{ github.run_number }}
+        run: |
+          dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release \
+            -- --filter-method '*PropertyTests*'
