@@ -86,14 +86,17 @@ Two things worth knowing:
 
 ### One-time setup on GitHub
 
-Create the `nuget` environment (Settings → Environments) and add one secret to it:
+Create the `nuget` environment (Settings → Environments). The workflow declares `environment: nuget`, and
+the policy above names the same environment, so the two must agree — that is all the environment is for.
 
-| Secret | Value |
-|---|---|
-| `NUGET_USER` | The nuget.org **account name** — the profile name, not an email address |
+**No secret is involved.** `NuGet/login` requires a `user`, because OIDC proves the run is authorised
+without saying which account the short-lived key belongs to, and that account name is `AdCodicem` — the
+owner of this repository, the prefix of every package, and public on every page nuget.org serves for them.
+It is therefore written in `release.yml` as `NUGET_ACCOUNT`, once, at the top. A secret would have hidden
+nothing and added a step that fails months later, in a workflow nobody is watching, with an error about
+publishing when the cause is an empty setting.
 
-That is the only secret involved, and it is not a credential: it names which account's policy to match.
-Consider requiring a reviewer on the `nuget` environment so a tag cannot publish unattended.
+Consider requiring a reviewer on the `nuget` environment so a release cannot publish unattended.
 
 ## Releasing
 
@@ -132,7 +135,7 @@ tagged, or deployed, and no publishing key is even requested.
 
 If the run reports no release, read the commits: `docs:`, `chore:`, `test:`, `refactor:` and `build:`
 deliberately release nothing. If the push fails with an authorisation error, the mismatch is almost always
-between the policy and the workflow: the file name, the environment, or the account name in `NUGET_USER`.
+between the policy and the workflow: the file name, the environment, or the account name in `NUGET_ACCOUNT`.
 
 Two things the stable run needs on `main`: permission to push the changelog commit and the tag. If branch
 protection is turned on, either allow the `github-actions` actor to bypass it, or accept that the release

@@ -25,6 +25,13 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
+  # The nuget.org account that owns the trusted publishing policy. OIDC proves the run is authorised;
+  # this says which account the short-lived key is issued for, which is why NuGet/login requires it even
+  # though no credential is involved. It is not one: it is the public owner name already on every page
+  # of this repository and on every package it publishes, so it is stated here rather than kept as a
+  # secret nobody can see is missing.
+  NUGET_ACCOUNT: AdCodicem
+
 # A preview and a stable release must never pack the same commit at the same time.
 concurrency:
   group: release
@@ -57,14 +64,6 @@ jobs:
         run: |
           dotnet build AdCodicem.Pdf.slnx -c Release
           dotnet test --solution AdCodicem.Pdf.slnx -c Release --no-build
-
-      - name: Check the publishing identity is configured
-        run: |
-          if [ -z "${{ secrets.NUGET_USER }}" ]; then
-            echo "::error::The NUGET_USER secret is not set for the 'nuget' environment. It holds the"
-            echo "::error::nuget.org account name that owns the trusted publishing policy. See docs/releasing.md."
-            exit 1
-          fi
 
       # A preview says where it sits, not what it will be called: one patch above the last release, plus
       # the run number so previews stay ordered. The stable release decides the real number - a feat takes
@@ -112,7 +111,7 @@ jobs:
         id: nuget-login
         uses: NuGet/login@v1
         with:
-          user: ${{ secrets.NUGET_USER }}
+          user: ${{ env.NUGET_ACCOUNT }}
 
       - name: Push the preview
         run: >
@@ -158,22 +157,13 @@ jobs:
           dotnet build AdCodicem.Pdf.slnx -c Release
           dotnet test --solution AdCodicem.Pdf.slnx -c Release --no-build
 
-      - name: Check the publishing identity is configured
-        if: ${{ !inputs.dry_run }}
-        run: |
-          if [ -z "${{ secrets.NUGET_USER }}" ]; then
-            echo "::error::The NUGET_USER secret is not set for the 'nuget' environment. It holds the"
-            echo "::error::nuget.org account name that owns the trusted publishing policy. See docs/releasing.md."
-            exit 1
-          fi
-
       # Not requested on a dry run: the key is single-use to obtain, and a dry run publishes nothing.
       - name: Exchange the OIDC token for a short-lived NuGet key
         id: nuget-login
         if: ${{ !inputs.dry_run }}
         uses: NuGet/login@v1
         with:
-          user: ${{ secrets.NUGET_USER }}
+          user: ${{ env.NUGET_ACCOUNT }}
 
       # Decides the version from the commits, writes the changelog, packs, pushes, tags and releases.
       # No release is produced when no commit since the last tag warrants one.
