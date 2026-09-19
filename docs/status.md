@@ -8,7 +8,8 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green
+- **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green,
+  except `OpenSSF Scorecard` — red on every run since the day it was added, and fixed on the branch below
 - **Pull requests**: [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11) open — publishing unblocked
   and a manual preview trigger; **merging it publishes the first package**.
   [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) and Dependabot's six action bumps (#2 to #7) are
@@ -18,10 +19,16 @@ here.
 - **Red on `main`, by design and not by defect**: `Release` stops at its own publishing-identity guard
   (T11), **confirmed by running it on 2026-09-19** — and `Documentation` builds the site but cannot deploy
   it until Pages is enabled (T12). The guard is removed on the branch below; `main` still carries it.
+- **Red on `main` by defect**: `OpenSSF Scorecard` has failed all twelve of its runs, from the first one on
+  2026-09-14, on `Unable to resolve action ossf/scorecard-action@v2` — that action publishes no floating
+  `v2` tag, so the run died in *Prepare all required actions*, before a single step started. The README
+  badge has therefore never had a report to read. Pinned to `v2.4.4` on the branch below.
 - **No package has been published yet**, preview or stable. The trusted publishing policy now exists on
   nuget.org and the publishing account is named in the workflow, so the next push to `main` is the first
   real attempt — and the first to reach the OIDC exchange.
-- **Branch**: `claude/package-preview-deployment-h0lakt` — the publishing account moved out of the secrets, a manual preview trigger, and this journal entry. Not merged, so nothing has run with it yet
+- **Branches**: `claude/package-preview-deployment-h0lakt` — the publishing account moved out of the secrets,
+  a manual preview trigger, and its journal entry; `claude/scorecard-pipeline-47mgrj` — the Scorecard
+  action ref. Neither is merged, so nothing has run with either yet
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -47,6 +54,26 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-19 — The supply-chain badge had never been earned
+- `OpenSSF Scorecard` was **red on every run it has ever had** — twelve of them, back to the day the
+  workflow was added — and nothing said so, because the failure is not a check that fails but a workflow
+  that never starts: `ossf/scorecard-action@v2` does not resolve. The action tags releases (`v2.4.4` is the
+  current one) and publishes no floating major, so GitHub stops at *Prepare all required actions*. Six
+  seconds, no step run, no SARIF, nothing uploaded to code scanning and nothing published to
+  `api.scorecard.dev` — which is why the README badge has been empty since it was added.
+- **Dependabot could not have caught it either**: the `github-actions` ecosystem bumped six other actions
+  in this repository while leaving this one alone, because an unresolvable ref gives it no version to
+  compare. An exact tag puts the action back under Dependabot's eye, which is the part that keeps the fix
+  from decaying.
+- Read against the action's own source at `v2.4.4` rather than assumed: `repo_token` defaults to
+  `${{ github.token }}`, so the four job permissions already granted are what it needs; publication is
+  refused only for a private repository or a ref other than the default branch. `workflow_dispatch` was
+  added on the strength of that second rule — a report can now be asked for, provided the run is started
+  on `main`.
+- **Unproven until it runs.** The workflow only triggers on `main`, so merging is the first real attempt.
+  The thing to check afterwards is not the green tick but the badge: a green run that publishes nothing
+  looks exactly like a green run that does.
 
 ### 2026-09-19 — A preview was asked for, and the guard held
 - The preview deployment was launched by re-running `Release` on the tip of `main` (`2798fb2`, run 9,
