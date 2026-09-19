@@ -31,7 +31,8 @@ here.
   `dotnet add package AdCodicem.Pdf --prerelease`
 - **No stable release yet**: `v0.1.0` is a tag with nothing behind it, by design, and the stable path has
   still never run. Every merge into `main` now publishes a preview on its own.
-- **Coverage**: 82.61% on Codecov, which is linked and uploading without a token.
+- **Coverage**: 82.61% on Codecov, linked and uploading without a token. Its GitHub App is not installed,
+  which Codecov warns about on every pull request (T14).
 - **Branches**: five merged pull requests left their head branches on the remote.
   `claude/dependabot-prs-review-p3mx79`, `claude/scorecard-pipeline-47mgrj` and
   `claude/scorecard-improvement-4ckfxd` hold nothing `main` does not, and are deletable as they stand.
@@ -77,8 +78,12 @@ previous ordering, where M2 was writing and M3 assembly.
   `TestResults/` in the working directory. Codecov's CLI searches when the file it was handed is missing,
   and `fail_ci_if_error: false` means the day it stops searching, nothing turns red — the badge just
   freezes. Fixed by naming `--results-directory` and pointing the upload there.
-- **T14 was stale in the other direction.** Codecov is linked, the App uploads tokenless
-  (`Token length: 0`), and the badge reads 82.61%.
+- **T14 was stale in the other direction**, but only partly, and the branch overstated it. Codecov is
+  linked, the upload runs tokenless (`Token length: 0`) and the badge reads 82.61% — so "not linked, badge
+  empty" is done. The branch went further and called the Codecov **GitHub App** installed; it is not. The
+  bot comments as `codecov-commenter` rather than `codecov[bot]`, and says so itself on every pull
+  request. T14 is narrowed to that, not struck out — a distinction worth the correction, since it is the
+  difference between "coverage is handled" and "coverage happens to work".
 - **Two claims on those branches were checked and rejected.** One said the `NUGET_USER` secret still had
   to be added; `main` had already replaced that whole design with `NUGET_ACCOUNT` and no secret at all.
   The other said Pages was enabled — `adcodicem.github.io/AdCodicem.Pdf/` returns 404, so T12 stands as
@@ -398,7 +403,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish. `Documentation` stops at `configure-pages`, so nothing downstream of it has ever run — the `configure-pages`, `upload-pages-artifact` and `deploy-pages` bumps of 2026-09-16 included | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
-| ~~T14~~ | ~~Codecov is not linked, so the badge stays empty~~ | Done: the Codecov GitHub App links the repository, the upload runs tokenless (`Token length: 0` in run 84) and the badge reads 82.61% |
+| T14 | Codecov is linked and the badge reads 82.61%, uploaded tokenless (`Token length: 0` in run 84) — so the original entry, "not linked, badge stays empty", is closed. What is left is narrower: the Codecov **GitHub App** is not installed, so it comments as `codecov-commenter` rather than `codecov[bot]` and warns on every pull request that uploads and comments are not reliably processed | Install the Codecov GitHub App on the repository |
 | T15 | Auto-merge **is** allowed on the repository; what is missing is a ruleset on `main`, so it still accepts direct pushes and the Dependabot auto-merge workflow has no required check to wait for. **Measured cost**: Scorecard's `Branch-Protection` is 0/10 at weight 7.5, and `Code-Review` is 0/10 at the same weight because nothing here has ever been approved — together about **1.5 points** of the overall score, the largest block left | A branch ruleset on `main` requiring the five pull-request checks, non-strict, **with a bypass for GitHub Actions** — `@semantic-release/git` pushes the `chore(release)` commit straight to `main`, and a ruleset without that bypass fails the stable release in `prepare` |
 | T16 | The API baseline is one version for the whole solution, checked against `AdCodicem.Pdf` only. A satellite first shipped in a later release — `AdCodicem.Pdf.Validation` in M2 — has no package at that version, and its pack fails with `NU1101` exactly as `v0.1.0` would have | In M2, before `AdCodicem.Pdf.Validation` is packable: make the baseline per package |
 | T17 | One dependency in CI is still unpinned: `dotnet restore` in `ci.yml` has no `--locked-mode`, because no `packages.lock.json` is committed. Measured at 10 of Pinned-Dependencies' 144 weighted units — 0.05 of the displayed score — and `RestorePackagesWithLockFile` in `Directory.Build.props` fails the restore with `NETSDK1013` | When it buys something beyond the check: set the property **per project**, where it works, commit the six lock files, and add `--locked-mode` to `ci.yml` |
