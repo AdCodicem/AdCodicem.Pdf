@@ -8,7 +8,7 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**:
+- **Builds**: yes, with no warnings — **Tests**: 169 unit + 48 integration (skipped without Docker) — **CI**:
   green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
@@ -25,11 +25,19 @@ here.
   with the merge of #11, so nothing on `main` refuses to publish any more.
 - **`OpenSSF Scorecard` is fixed and proven**: the `v2.4.4` pin merged, run 13 went green, and
   `api.scorecard.dev` now serves a report — so the README badge finally has a number behind it.
-- **No package has been published yet**, preview or stable. The trusted publishing policy now exists on
-  nuget.org and the publishing account is named in the workflow, so the next push to `main` is the first
-  real attempt — and the first to reach the OIDC exchange.
-- **Branches**: `claude/scorecard-improvement-4ckfxd` — property-based tests, which are the shape of
-  fuzzing Scorecard recognises in C#. Not merged, so the next report is what confirms the arithmetic
+- **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) is on nuget.org —
+  `0.1.1-preview.10` through `0.1.1-preview.13`, previews from `main`, the first packages this project has
+  ever shipped. Trusted publishing works end to end; nothing long-lived is stored anywhere.
+  `dotnet add package AdCodicem.Pdf --prerelease`
+- **No stable release yet**: `v0.1.0` is a tag with nothing behind it, by design, and the stable path has
+  still never run. Every merge into `main` now publishes a preview on its own.
+- **Coverage**: 82.61% on Codecov, which is linked and uploading without a token.
+- **Branches**: five merged pull requests left their head branches on the remote.
+  `claude/dependabot-prs-review-p3mx79`, `claude/scorecard-pipeline-47mgrj` and
+  `claude/scorecard-improvement-4ckfxd` hold nothing `main` does not, and are deletable as they stand.
+  `claude/nuget-pdf-html-dotnet-msyz8z` and `claude/package-preview-deployment-h0lakt` each kept commits
+  pushed after their merge; what was still true on them is in this change, so they are deletable too once
+  it lands
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -55,6 +63,28 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-19 — What two abandoned branches still knew
+
+- Five merged pull requests left their branches behind. Three carried nothing `main` does not have and
+  were identified for deletion; two did not, and this is what they held.
+- **`main` was wrong about its own release.** It said no package had ever been published. nuget.org's flat
+  container says otherwise: `0.1.1-preview.10` through `.13`. T11 called trusted publishing *untested*
+  when four runs had already been through the OIDC exchange. The status file is the one document that
+  must never be optimistic *or* pessimistic, and it had drifted the second way.
+- **The coverage upload has never found the file it was given.** Run 84's log: `Some files were not found`
+  for the `bin/Release/net10.0/TestResults/` path, then `Found 1 coverage files to report` pointing at
+  `TestResults/` in the working directory. Codecov's CLI searches when the file it was handed is missing,
+  and `fail_ci_if_error: false` means the day it stops searching, nothing turns red — the badge just
+  freezes. Fixed by naming `--results-directory` and pointing the upload there.
+- **T14 was stale in the other direction.** Codecov is linked, the App uploads tokenless
+  (`Token length: 0`), and the badge reads 82.61%.
+- **Two claims on those branches were checked and rejected.** One said the `NUGET_USER` secret still had
+  to be added; `main` had already replaced that whole design with `NUGET_ACCOUNT` and no secret at all.
+  The other said Pages was enabled — `adcodicem.github.io/AdCodicem.Pdf/` returns 404, so T12 stands as
+  written. Neither was carried over.
+- The prefix reservation is now real debt rather than a future chore: packages exist under `AdCodicem.`
+  and nothing stops someone publishing beside them. T20, and the procedure is an email, not a button.
 
 ### 2026-09-19 — Fuzzing read 0 because of what it looks for, and I had read the check wrong
 - **The correction first.** The entry below states that Scorecard detects no .NET fuzzer and that the 0
@@ -365,15 +395,16 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
-| T11 | The nuget.org trusted publishing policy is configured; the publishing account is now named in `release.yml` and no secret is involved. **Untested**: no run has yet reached the OIDC exchange, so nothing has confirmed the policy actually matches | Merge the branch — the merge is itself the first preview. If the exchange is refused, the mismatch is the workflow file name, the environment, or the account name; `docs/releasing.md` lists the fields |
+| ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish. `Documentation` stops at `configure-pages`, so nothing downstream of it has ever run — the `configure-pages`, `upload-pages-artifact` and `deploy-pages` bumps of 2026-09-16 included | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
-| T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
+| ~~T14~~ | ~~Codecov is not linked, so the badge stays empty~~ | Done: the Codecov GitHub App links the repository, the upload runs tokenless (`Token length: 0` in run 84) and the badge reads 82.61% |
 | T15 | Auto-merge **is** allowed on the repository; what is missing is a ruleset on `main`, so it still accepts direct pushes and the Dependabot auto-merge workflow has no required check to wait for. **Measured cost**: Scorecard's `Branch-Protection` is 0/10 at weight 7.5, and `Code-Review` is 0/10 at the same weight because nothing here has ever been approved — together about **1.5 points** of the overall score, the largest block left | A branch ruleset on `main` requiring the five pull-request checks, non-strict, **with a bypass for GitHub Actions** — `@semantic-release/git` pushes the `chore(release)` commit straight to `main`, and a ruleset without that bypass fails the stable release in `prepare` |
 | T16 | The API baseline is one version for the whole solution, checked against `AdCodicem.Pdf` only. A satellite first shipped in a later release — `AdCodicem.Pdf.Validation` in M2 — has no package at that version, and its pack fails with `NU1101` exactly as `v0.1.0` would have | In M2, before `AdCodicem.Pdf.Validation` is packable: make the baseline per package |
 | T17 | One dependency in CI is still unpinned: `dotnet restore` in `ci.yml` has no `--locked-mode`, because no `packages.lock.json` is committed. Measured at 10 of Pinned-Dependencies' 144 weighted units — 0.05 of the displayed score — and `RestorePackagesWithLockFile` in `Directory.Build.props` fails the restore with `NETSDK1013` | When it buys something beyond the check: set the property **per project**, where it works, commit the six lock files, and add `--locked-mode` to `ci.yml` |
 | T18 | No OpenSSF Best Practices badge, so `CII-Best-Practices` is 0/10 at weight 2.5 — about 0.26 of the overall score | Register the project at [bestpractices.dev](https://www.bestpractices.dev), answer the questionnaire, put the badge in `README.md` |
 | T19 | `Signed-Releases` is unscored (-1) only because no release exists. The moment one does it becomes a scored High check, and nothing in `release.yml` attaches a signature or a provenance bundle to the GitHub Release | Before the first stable release: attest the packages and upload the bundle as a release asset, so the check has a `.intoto.jsonl` to find |
+| T20 | The `AdCodicem.` prefix is not reserved on nuget.org. Now that packages exist under it, anyone else can publish `AdCodicem.Anything`, and ours are not marked as coming from a verified owner | Email account@nuget.org with the owner display name and the glob `AdCodicem.*` — there is no self-service button; `docs/releasing.md` has the criteria |
 | T04 | An OFL font set must be embedded for default rendering | During M6 |
 | T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M7 |
 | T06 | `PdfString.ToText` reads Latin-1 rather than full PDFDocEncoding (the 32 positions 0x80-0x9F differ) | Before the first public release |
