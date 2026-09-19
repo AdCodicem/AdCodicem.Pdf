@@ -14,9 +14,27 @@ Confirmed, and all seven were unclaimed on nuget.org when checked on 2026-09-13:
 | `AdCodicem.Pdf.Rendering` | Rasterisation | M14 |
 | `AdCodicem.Pdf.Signing` | PAdES | M14 |
 
-**Reserve the `AdCodicem.` prefix** on nuget.org once the first package is published
-(Account → Reserve ID prefix, or by contacting support). It stops anyone else publishing under the name
-and marks the packages as coming from a verified owner.
+The first packages shipped on **2026-09-19**: `AdCodicem.Pdf` `0.1.1-preview.10` through
+`0.1.1-preview.13`, previews from `main`. The other six identifiers are still unclaimed, and ship with the
+milestones above.
+
+**Reserve the `AdCodicem.*` prefix** on nuget.org — now due, since packages exist under it. It stops anyone
+else publishing under the name, and marks the packages as coming from a verified owner — on nuget.org and
+in Visual Studio.
+
+There is no button for it. The [procedure](https://learn.microsoft.com/nuget/nuget-org/id-prefix-reservation)
+is an email to **account@nuget.org** giving the owner's **display name** on nuget.org — the same account
+that owns the trusted-publishing policy — and the prefix requested. Send it from the address registered on
+that account; the team may ask identifying questions before accepting. The prefix is requested *private*
+(the default): a *public* prefix keeps the verified mark but lets anyone publish under it.
+
+What nuget.org weighs: that the prefix clearly identifies its owner, is not a common word and is at least
+four characters, and that packages under it carry consistent identifying metadata and a licence declared
+with the `license` element rather than `licenseUrl`. `Directory.Build.props` already gives every package
+`Authors` = `AdCodicem` and `PackageLicenseExpression` = `MIT`; there is no icon, so the rule on embedded
+icons does not apply. Packages the owner already published under the prefix get the mark retroactively.
+What waiting risks is someone else publishing under the name first: a reservation leaves other owners'
+existing packages in place.
 
 ## Versioning — computed from the commits
 
@@ -65,7 +83,8 @@ an API key valid for one hour and usable once. No long-lived secret exists to le
 
 ### One-time setup on nuget.org
 
-Sign in, then **your username → Trusted Publishing → add a policy**:
+**Done** (2026-09-15) and **proven** on 2026-09-19, when the first preview was pushed through the OIDC
+exchange. Sign in, then **your username → Trusted Publishing → add a policy**:
 
 | Field | Value |
 |---|---|
@@ -152,13 +171,13 @@ Two things the stable run needs on `main`: permission to push the changelog comm
 protection is turned on, either allow the `github-actions` actor to bypass it, or accept that the release
 cannot record itself.
 
-After the first publish, check the package on nuget.org and reserve the ID prefix.
+The first publish has happened; reserving the ID prefix is what is left, and it is tracked as T20.
 
 ## Also configured by hand, once
 
 | What | Where | Needed for |
 |---|---|---|
-| `CODECOV_TOKEN` secret | Link the repository on codecov.io, then repository secrets | Coverage upload in CI |
+| The Codecov GitHub App | Installed on the repository — **done**; it links the repository by itself | Coverage upload in CI. A public repository uploads without a token; the `CODECOV_TOKEN` secret is read if one exists, and becomes necessary only if the repository goes private or Codecov stops accepting tokenless uploads |
 | "Allow auto-merge" | Settings → General | Dependabot auto-merge |
 | Branch protection on `main` with CI as a required check | Settings → Branches | Auto-merge cannot merge a red build |
 | Discussions, Sponsors | Settings → Features, and the GitHub account | The discussion template and `FUNDING.yml` |
