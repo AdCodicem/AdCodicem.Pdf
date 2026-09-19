@@ -9,19 +9,21 @@ here.
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green
-- **Pull requests**: [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11) open — publishing unblocked
-  and a manual preview trigger; **merging it publishes the first package**.
+- **Pull requests**: none open. [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11) is merged — it
+  unblocked publishing and added the manual preview trigger.
   [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) and Dependabot's six action bumps (#2 to #7) are
   merged; the preview/stable release split (ADR 30) and the baseline fix are on `main`
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
-- **Red on `main`, by design and not by defect**: `Release` stops at its own publishing-identity guard
-  (T11), **confirmed by running it on 2026-09-19** — and `Documentation` builds the site but cannot deploy
-  it until Pages is enabled (T12). The guard is removed on the branch below; `main` still carries it.
-- **No package has been published yet**, preview or stable. The trusted publishing policy now exists on
-  nuget.org and the publishing account is named in the workflow, so the next push to `main` is the first
-  real attempt — and the first to reach the OIDC exchange.
-- **Branch**: `claude/package-preview-deployment-h0lakt` — the publishing account moved out of the secrets, a manual preview trigger, and this journal entry. Not merged, so nothing has run with it yet
+- **Published**: [`AdCodicem.Pdf 0.1.1-preview.10`](https://www.nuget.org/packages/AdCodicem.Pdf/0.1.1-preview.10)
+  on nuget.org, from `main` at `80a825e` — the first package this project has ever shipped, and the first
+  run to reach the OIDC exchange. Trusted publishing works end to end; nothing long-lived is stored
+  anywhere. `dotnet add package AdCodicem.Pdf --prerelease`
+- **No stable release yet**: `v0.1.0` is a tag with nothing behind it, by design, and the stable path has
+  still never run. Every merge into `main` now publishes a preview on its own.
+- **Red on `main`, by design and not by defect**: `Documentation` builds the site but cannot deploy it
+  until Pages is enabled (T12). `Release` is green.
+- **Branch**: `claude/package-preview-deployment-h0lakt` — restarted from `main` after #11 merged; this journal entry only
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -48,7 +50,7 @@ previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
 
-### 2026-09-19 — A preview was asked for, and the guard held
+### 2026-09-19 — The first package, and the secret that was not one
 - The preview deployment was launched by re-running `Release` on the tip of `main` (`2798fb2`, run 9,
   attempt 2). Build and the whole suite pass in 25 seconds; the run then stops at **Check the publishing
   identity is configured**, because `NUGET_USER` is not set on the `nuget` environment. Nothing was packed,
@@ -66,6 +68,17 @@ previous ordering, where M2 was writing and M3 assembly.
   that tags, writes to `main` and cannot be withdrawn, so it is the one you have to select. ADR 30 is
   extended rather than reopened: publishing a preview should not have required a merge, since taking that
   pressure off the merge is what the record was for.
+- **[`AdCodicem.Pdf 0.1.1-preview.10`](https://www.nuget.org/packages/AdCodicem.Pdf/0.1.1-preview.10) is on
+  nuget.org**, packed from `main` at `80a825e` by run 10 — the first package this project has ever shipped.
+  Build, pack, OIDC exchange and push, 47 seconds end to end, `.nupkg` and `.snupkg` both. The policy
+  matched on its first real attempt, so no long-lived credential exists anywhere and none ever will.
+  Confirmed against nuget.org's own flat container rather than against the green run:
+  `dotnet add package AdCodicem.Pdf --prerelease`.
+- The API baseline is **still empty, and still correct**: `published-baseline.sh` asks nuget.org for
+  `0.1.0`, the last *release*, and nuget.org has only a preview. The first stable release is what will
+  give later runs something to compare against.
+- **The publish creates its own debt**: the `AdCodicem.` prefix is now worth reserving (T17). A package
+  exists under it, and nothing yet stops someone publishing beside it.
 
 ### 2026-09-16 — Dependabot's six action bumps merged
 - Six **major** GitHub Actions bumps, which `dependabot-auto-merge.yml` deliberately leaves for a human.
@@ -267,11 +280,12 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
-| T11 | The nuget.org trusted publishing policy is configured; the publishing account is now named in `release.yml` and no secret is involved. **Untested**: no run has yet reached the OIDC exchange, so nothing has confirmed the policy actually matches | Merge the branch — the merge is itself the first preview. If the exchange is refused, the mismatch is the workflow file name, the environment, or the account name; `docs/releasing.md` lists the fields |
+| ~~T11~~ | ~~Publishing is not configured~~ | Done, and **observed**: `0.1.1-preview.10` is on nuget.org, pushed by run 10 through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish. `Documentation` stops at `configure-pages`, so nothing downstream of it has ever run — the `configure-pages`, `upload-pages-artifact` and `deploy-pages` bumps of 2026-09-16 included | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
 | T15 | Auto-merge **is** allowed on the repository; what is missing is a ruleset on `main`, so it still accepts direct pushes and the Dependabot auto-merge workflow has no required check to wait for | A branch ruleset on `main` requiring the five pull-request checks, non-strict, **with a bypass for GitHub Actions** — `@semantic-release/git` pushes the `chore(release)` commit straight to `main`, and a ruleset without that bypass fails the stable release in `prepare` |
+| T17 | The `AdCodicem.` prefix is not reserved on nuget.org. Now that a package exists under it, anyone else can publish `AdCodicem.Anything`, and ours are not marked as coming from a verified owner | nuget.org → Account → Reserve ID prefix, or contact support; glob `AdCodicem.*` |
 | T16 | The API baseline is one version for the whole solution, checked against `AdCodicem.Pdf` only. A satellite first shipped in a later release — `AdCodicem.Pdf.Validation` in M2 — has no package at that version, and its pack fails with `NU1101` exactly as `v0.1.0` would have | In M2, before `AdCodicem.Pdf.Validation` is packable: make the baseline per package |
 | T04 | An OFL font set must be embedded for default rendering | During M6 |
 | T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M7 |

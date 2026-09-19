@@ -14,7 +14,10 @@ Confirmed, and all seven were unclaimed on nuget.org when checked on 2026-09-13:
 | `AdCodicem.Pdf.Rendering` | Rasterisation | M14 |
 | `AdCodicem.Pdf.Signing` | PAdES | M14 |
 
-**Reserve the `AdCodicem.` prefix** on nuget.org once the first package is published
+The first package shipped on **2026-09-19**: `AdCodicem.Pdf 0.1.1-preview.10`, a preview from `main`.
+The other six identifiers are still unclaimed, and ship with the milestones above.
+
+**Reserve the `AdCodicem.` prefix** on nuget.org — now due, since a package exists under it
 (Account → Reserve ID prefix, or by contacting support). It stops anyone else publishing under the name
 and marks the packages as coming from a verified owner.
 
