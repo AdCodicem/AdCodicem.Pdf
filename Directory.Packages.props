@@ -16,6 +16,10 @@
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <PackageVersion Include="Testcontainers" Version="4.15.0" />
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2" />
+    <!-- Property-based testing. Referenced without FsCheck.Xunit, whose runner integration still pins
+         xunit.extensibility.execution below 3.0.0 and would drag xUnit v2 into a v3 suite. The library
+         itself is runner-agnostic, so a property runs inside an ordinary fact. -->
+    <PackageVersion Include="FsCheck" Version="3.4.0" />
   </ItemGroup>
 
   <ItemGroup Label="Benchmark">

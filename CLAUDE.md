@@ -111,7 +111,8 @@ See `docs/corpus.md`.
 - One public type per file. `sealed` by default. `internal` until an API is deliberately made public.
 - PDF object model types carry the `Pdf` prefix; types internal to the HTML engine do not.
 - Tests: **xUnit v3**, **AwesomeAssertions** (`value.Should().Be(…)`), **NSubstitute** for the few real
-  seams, **Testcontainers** for integration. A test name states a behaviour, not a method.
+  seams, **FsCheck** for what must hold over every input rather than over a table of examples,
+  **Testcontainers** for integration. A test name states a behaviour, not a method.
 - Two suites, and the difference is not speed: `tests/AdCodicem.Pdf.Tests` asserts our own behaviour;
   `tests/AdCodicem.Pdf.IntegrationTests` asserts what an independent tool says about it, running that
   tool in a container. Shared fixtures live in `tests/AdCodicem.Pdf.TestSupport`.
