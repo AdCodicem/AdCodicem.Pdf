@@ -20,7 +20,7 @@ here.
 - **No package has been published yet**, preview or stable. The trusted publishing policy now exists on
   nuget.org and the publishing account is named in the workflow, so the next push to `main` is the first
   real attempt — and the first to reach the OIDC exchange.
-- **Branch**: `claude/package-preview-deployment-h0lakt` — the publishing account moved out of the secrets, and this journal entry. Not merged, so the preview has not run with it
+- **Branch**: `claude/package-preview-deployment-h0lakt` — the publishing account moved out of the secrets, a manual preview trigger, and this journal entry. Not merged, so nothing has run with it yet
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -59,11 +59,12 @@ previous ordering, where M2 was writing and M3 assembly.
   Keeping a public name in a secret hid nothing and bought a setup step that fails silently much later.
   It is now `NUGET_ACCOUNT` in `release.yml`, stated once at the top, and **both guards are gone** with the
   thing they guarded against.
-- Worth knowing before the next attempt: **a preview has no manual trigger**. The `preview` job is gated on
-  `github.event_name == 'push'`, so `workflow_dispatch` runs the *stable* release instead. Once T11 is
-  configured, a preview comes from a push to `main` or from re-running a past `main` push — and a re-run
-  keeps its run number, so it republishes the same `-preview.<n>` version, which `--skip-duplicate`
-  tolerates but which does not produce a new one.
+- **A preview had no manual trigger**, which is why the attempt above had to be a re-run — and a re-run
+  keeps its run number, so it republishes the same `-preview.<n>` version rather than producing a new one.
+  `workflow_dispatch` now asks *what to publish*, and defaults to `preview`. The stable path is the one
+  that tags, writes to `main` and cannot be withdrawn, so it is the one you have to select. ADR 30 is
+  extended rather than reopened: publishing a preview should not have required a merge, since taking that
+  pressure off the merge is what the record was for.
 
 ### 2026-09-16 — Dependabot's six action bumps merged
 - Six **major** GitHub Actions bumps, which `dependabot-auto-merge.yml` deliberately leaves for a human.

@@ -4,17 +4,26 @@ name: Release
 # tied to the file name - one policy covers both:
 #
 #   - every push to main publishes a **preview** package, so what is on main is always installable;
-#   - a **manual** run cuts the stable release: version, changelog, tag, GitHub Release, packages, and
-#     the documentation site.
+#   - a **stable release** cuts the version, changelog, tag, GitHub Release, packages and documentation
+#     site, and is never automatic: someone asks for it.
 #
 # Nothing is tagged, released or documented by merging. That is deliberate: a merge should be cheap.
+#
+# A manual run does either, and defaults to the harmless one. Publishing a preview needed a merge before,
+# which is a poor reason to merge; the stable release is the choice that has to be made deliberately,
+# because it tags, writes to main and can never be taken back off nuget.org.
 on:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
+      what:
+        description: "What to publish"
+        type: choice
+        options: [preview, stable]
+        default: preview
       dry_run:
-        description: "Work out the version and the notes, then stop - publish, tag and deploy nothing"
+        description: "Stable only - work out the version and the notes, then stop; publish and tag nothing"
         type: boolean
         default: false
 
@@ -40,7 +49,8 @@ concurrency:
 jobs:
   preview:
     name: Preview package
-    if: github.event_name == 'push'
+    # `inputs` is empty on a push, so the second test only ever decides a manual run.
+    if: github.event_name == 'push' || inputs.what == 'preview'
     runs-on: ubuntu-latest
     environment: nuget
     permissions:
@@ -124,12 +134,14 @@ jobs:
         run: |
           echo "### Preview \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Packed from \`${{ github.ref_name }}\` at \`${{ github.sha }}\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Published to nuget.org. It is a prerelease, so it reaches only the people who ask for" >> "$GITHUB_STEP_SUMMARY"
-          echo "prereleases. Cut the stable release from the **Run workflow** button on this workflow." >> "$GITHUB_STEP_SUMMARY"
+          echo "prereleases. Cut the stable release from **Run workflow**, choosing \`stable\`." >> "$GITHUB_STEP_SUMMARY"
 
   stable:
     name: Stable release
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.what == 'stable'
     runs-on: ubuntu-latest
     environment: nuget
     permissions:
@@ -188,7 +200,7 @@ jobs:
   documentation:
     name: Documentation
     needs: stable
-    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.what == 'stable' && !inputs.dry_run }}
     permissions:
       contents: read
       pages: write

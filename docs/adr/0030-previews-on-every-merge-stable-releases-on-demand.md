@@ -39,6 +39,11 @@ We will separate publishing from releasing, in one workflow file.
   It alone works out the version from the commits, writes `CHANGELOG.md`, tags, opens the GitHub Release,
   publishes the stable packages, and deploys the documentation site.
 
+*Added 2026-09-19, without reopening the above:* a manual run now chooses between the two, and defaults to
+the preview. The decision left "publish a preview" reachable only by merging, which makes a merge the way
+to ask for a package — the pressure this record set out to take off the merge. The stable path is the one
+that has to be deliberate, so it is the one you have to select.
+
 Both live in `release.yml` so that one trusted-publishing policy covers them.
 
 The preview number states where a preview sits rather than predicting what it will be called. After
