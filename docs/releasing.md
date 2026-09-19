@@ -113,6 +113,14 @@ what is on `main` is always installable:
 dotnet add package AdCodicem.Pdf --prerelease
 ```
 
+A preview can also be asked for without merging: **Actions → Release → Run workflow**, leaving **What to
+publish** on `preview`. It packs whichever ref you pick, so a branch can be tried on a real feed before it
+lands — at the price of a version on nuget.org that matches no commit on `main`, permanently. Prefer the
+merge unless there is a reason not to.
+
+Do not re-run a past run to get a fresh preview: a re-run keeps its run number, so it republishes the same
+version, which `--skip-duplicate` accepts and ignores. A new run is what produces a new number.
+
 A preview is numbered `<last release, patch bumped>-preview.<run number>` — after `v0.1.0`, the previews
 are `0.1.1-preview.12`, `0.1.1-preview.13`, and so on. That number says **where the preview sits**, not
 what the next release will be called: if the commits since the tag contain a `feat:`, the stable release
@@ -122,7 +130,9 @@ which is just as well, because nothing can be.
 
 ### The stable release is a decision, and it is taken by hand
 
-**Actions → Release → Run workflow.** That run, and only that run:
+**Actions → Release → Run workflow**, setting **What to publish** to `stable`. The dropdown defaults to
+`preview`, deliberately: the stable path tags, writes to `main` and cannot be taken back, so it is chosen
+rather than reached by clicking through. That run, and only that run:
 
 1. works the version out from the commits since the last tag;
 2. writes `CHANGELOG.md`, commits it, and tags `vX.Y.Z`;
@@ -131,7 +141,8 @@ which is just as well, because nothing can be.
 5. deploys the documentation site, so what is online is what is released.
 
 Tick **dry run** to see the version and the notes it would produce and stop there: nothing is published,
-tagged, or deployed, and no publishing key is even requested.
+tagged, or deployed, and no publishing key is even requested. It applies to the stable path only — a
+preview has no version to work out and nothing to undo but the publish itself.
 
 If the run reports no release, read the commits: `docs:`, `chore:`, `test:`, `refactor:` and `build:`
 deliberately release nothing. If the push fails with an authorisation error, the mismatch is almost always
