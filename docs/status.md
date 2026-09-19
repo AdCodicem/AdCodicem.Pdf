@@ -15,9 +15,11 @@ here.
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
 - **Red on `main`, by design and not by defect**: `Release` stops at its own guard because the publishing
-  identity is not configured (T11) — nothing is versioned or published until it is — and `Documentation`
-  builds the site but cannot deploy it until Pages is enabled (T12).
-- **Branch**: `claude/dependabot-prs-review-p3mx79` — this journal entry only; everything else is on `main`
+  identity is not configured (T11) — nothing is versioned or published until it is, **confirmed by running
+  it on 2026-09-19** — and `Documentation` builds the site but cannot deploy it until Pages is enabled (T12).
+- **No package has been published yet**, preview or stable. T11 is the only thing in the way, and it is
+  configuration on nuget.org and GitHub, not code.
+- **Branch**: `claude/package-preview-deployment-h0lakt` — this journal entry only; everything else is on `main`
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -43,6 +45,19 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-19 — A preview was asked for, and the guard held
+- The preview deployment was launched by re-running `Release` on the tip of `main` (`2798fb2`, run 9,
+  attempt 2). Build and the whole suite pass in 25 seconds; the run then stops at **Check the publishing
+  identity is configured**, because `NUGET_USER` is not set on the `nuget` environment. Nothing was packed,
+  nothing was pushed to nuget.org, no OIDC key was even requested. **T11 is the only blocker**, and it is
+  manual configuration — the nuget.org trusted-publishing policy and the GitHub environment secret, both
+  specified field by field in `docs/releasing.md`.
+- Worth knowing before the next attempt: **a preview has no manual trigger**. The `preview` job is gated on
+  `github.event_name == 'push'`, so `workflow_dispatch` runs the *stable* release instead. Once T11 is
+  configured, a preview comes from a push to `main` or from re-running a past `main` push — and a re-run
+  keeps its run number, so it republishes the same `-preview.<n>` version, which `--skip-duplicate`
+  tolerates but which does not produce a new one.
 
 ### 2026-09-16 — Dependabot's six action bumps merged
 - Six **major** GitHub Actions bumps, which `dependabot-auto-merge.yml` deliberately leaves for a human.
@@ -244,7 +259,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
-| T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet | Configure both — `v0.1.0` is tagged, so the first release stays in `0.x`; steps in `docs/releasing.md` |
+| T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet. Every `Release` run so far has died on the guard that checks it, the last on 2026-09-19 | Configure both — `v0.1.0` is tagged, so the first release stays in `0.x`; steps in `docs/releasing.md`. Nothing is installable from nuget.org until this is done |
 | T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish. `Documentation` stops at `configure-pages`, so nothing downstream of it has ever run — the `configure-pages`, `upload-pages-artifact` and `deploy-pages` bumps of 2026-09-16 included | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
