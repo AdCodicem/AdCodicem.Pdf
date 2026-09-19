@@ -67,6 +67,10 @@ The project's [definition of done](docs/roadmap.md) applies to contributions too
 3. **Documentation.** Public API needs XML comments, and anything a consumer can call needs a page on the
    site under `docs/website`.
 4. **`dotnet format`** before pushing; CI verifies it.
+5. **A workflow change pins its actions by commit hash**: `uses: owner/action@<40 hex> # vX.Y.Z`, never
+   a tag. A tag is a moving target — whoever can write to the action's repository can repoint it at
+   other code, and every run that follows picks it up silently. The trailing comment is how Dependabot
+   knows which version the hash stands for; it rewrites hash and comment together when it bumps one.
 
 ## Reading the codebase
 

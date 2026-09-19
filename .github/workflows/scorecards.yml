@@ -23,14 +23,15 @@ jobs:
       actions: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
-      # Pinned to a released version rather than a floating major: this action publishes no `v2` tag, and
-      # an unresolvable ref fails the run before any step starts — which is what it did on every run from
-      # the day this workflow was added. An exact version is also something Dependabot can see and bump.
-      - uses: ossf/scorecard-action@v2.4.4
+      # This action publishes no floating `v2` tag, and an unresolvable ref fails the run before any
+      # step starts — which is what it did on every run from the day this workflow was added. It is now
+      # pinned by commit hash like every other action here; the trailing comment is what Dependabot
+      # reads to know which version that hash is, and what it rewrites when it bumps one.
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         id: scorecard
         with:
           results_file: results.sarif
@@ -39,12 +40,12 @@ jobs:
           # this package can check its supply-chain posture without asking.
           publish_results: true
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: scorecard-results
           path: results.sarif
           retention-days: 5
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3.38.1
         with:
           sarif_file: results.sarif
