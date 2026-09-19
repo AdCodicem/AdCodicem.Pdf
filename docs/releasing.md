@@ -190,8 +190,14 @@ The first publish has happened; reserving the ID prefix is what is left, and it 
 the version people can install rather than the tip of `main`. It also keeps its own **Run workflow**
 button, for a documentation fix that should not wait for the next release.
 
-One manual step, once: **Settings → Pages → Source: GitHub Actions**. Until then the deployment job fails
-with a permissions error, and the site simply is not published — nothing else breaks.
+One manual step, once: **Settings → Pages → Source: GitHub Actions** — **done**. Before it was done the
+deployment job failed at `configure-pages` and the site simply was not published; nothing else broke.
+
+**First published on 2026-09-19**, by dispatching `Documentation` by hand rather than waiting for a
+stable release that has not happened yet. Note what that means for the invariant above: the site now
+describes the tip of `main`, not an installable release, and will keep doing so until the first stable
+run redeploys it. That is the cost of the manual button, and it is the reason the button is not the
+normal path.
 
 The site lands at `https://adcodicem.github.io/AdCodicem.Pdf/`. If the repository is ever renamed, the
 `baseUrl` in `docs/website/docusaurus.config.js` has to follow.
