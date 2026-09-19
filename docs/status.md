@@ -20,9 +20,9 @@ here.
   all on `main`
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
-- **Red on `main`, by design and not by defect**: `Documentation` builds the site but cannot deploy it
-  until Pages is enabled (T12). The publishing-identity guard that used to stop `Release` (T11) is gone
-  with the merge of #11, so nothing on `main` refuses to publish any more.
+- **Nothing on `main` is red any more.** The publishing-identity guard that used to stop `Release` (T11)
+  went with the merge of #11, and `Documentation` deployed successfully on 2026-09-19 (run 2). The site
+  is live at <https://adcodicem.github.io/AdCodicem.Pdf/>.
 - **`OpenSSF Scorecard` is fixed and proven**: the `v2.4.4` pin merged, run 13 went green, and
   `api.scorecard.dev` now serves a report — so the README badge finally has a number behind it.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) is on nuget.org —
@@ -84,10 +84,16 @@ previous ordering, where M2 was writing and M3 assembly.
   bot comments as `codecov-commenter` rather than `codecov[bot]`, and says so itself on every pull
   request. T14 is narrowed to that, not struck out — a distinction worth the correction, since it is the
   difference between "coverage is handled" and "coverage happens to work".
-- **Two claims on those branches were checked and rejected.** One said the `NUGET_USER` secret still had
-  to be added; `main` had already replaced that whole design with `NUGET_ACCOUNT` and no secret at all.
-  The other said Pages was enabled — `adcodicem.github.io/AdCodicem.Pdf/` returns 404, so T12 stands as
-  written. Neither was carried over.
+- **One claim on those branches was checked and rejected**: the `NUGET_USER` secret still had to be
+  added. `main` had already replaced that whole design with `NUGET_ACCOUNT` and no secret at all, so it
+  was not carried over.
+- **A second was rejected, then turned out to be right for the wrong reason.** The branch said Pages was
+  enabled; the site returned 404, so I kept T12 as written. T12 blamed the settings — "GitHub Pages is
+  not enabled" — and that was the stale part. Pages *was* enabled. What had never happened was a
+  deployment: `docs.yml` runs only with a stable release or its own manual trigger, run 1 had failed
+  back when the settings really were missing, and nothing re-attempted it since. Dispatching it
+  succeeded first time and the site is live. The lesson is the ordinary one: a 404 confirms the symptom,
+  not the diagnosis.
 - The prefix reservation is now real debt rather than a future chore: packages exist under `AdCodicem.`
   and nothing stops someone publishing beside them. T20, and the procedure is an email, not a button.
 
@@ -203,7 +209,8 @@ previous ordering, where M2 was writing and M3 assembly.
 ### 2026-09-16 — Dependabot's six action bumps merged
 - Six **major** GitHub Actions bumps, which `dependabot-auto-merge.yml` deliberately leaves for a human.
   Each was read against its own release notes; what that reading settled is on the squash commits, where
-  it belongs. The three Pages bumps are reasoned rather than observed — see T12.
+  it belongs. The three Pages bumps were reasoned rather than observed at the time; the deployment of
+  2026-09-19 has since exercised all three.
 - `Conventional commits` was red on all six: Dependabot wrote "Bump" with a capital and `subject-case`
   refuses it. **Corrected at the squash, not relaxed in the configuration** — which fixed the source too,
   since Dependabot copies the style of recent commits and its last rebase came back lowercase on its own.
@@ -401,7 +408,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
-| T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish. `Documentation` stops at `configure-pages`, so nothing downstream of it has ever run — the `configure-pages`, `upload-pages-artifact` and `deploy-pages` bumps of 2026-09-16 included | Settings → Pages → Source: GitHub Actions |
+| ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site serves 44 pages plus the API reference. The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is linked and the badge reads 82.61%, uploaded tokenless (`Token length: 0` in run 84) — so the original entry, "not linked, badge stays empty", is closed. What is left is narrower: the Codecov **GitHub App** is not installed, so it comments as `codecov-commenter` rather than `codecov[bot]` and warns on every pull request that uploads and comments are not reliably processed | Install the Codecov GitHub App on the repository |
 | T15 | Auto-merge **is** allowed on the repository; what is missing is a ruleset on `main`, so it still accepts direct pushes and the Dependabot auto-merge workflow has no required check to wait for. **Measured cost**: Scorecard's `Branch-Protection` is 0/10 at weight 7.5, and `Code-Review` is 0/10 at the same weight because nothing here has ever been approved — together about **1.5 points** of the overall score, the largest block left | A branch ruleset on `main` requiring the five pull-request checks, non-strict, **with a bypass for GitHub Actions** — `@semantic-release/git` pushes the `chore(release)` commit straight to `main`, and a ruleset without that bypass fails the stable release in `prepare` |
