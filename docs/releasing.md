@@ -177,7 +177,7 @@ The first publish has happened; reserving the ID prefix is what is left, and it 
 
 | What | Where | Needed for |
 |---|---|---|
-| The Codecov GitHub App | Installed on the repository — **done**; it links the repository by itself | Coverage upload in CI. A public repository uploads without a token; the `CODECOV_TOKEN` secret is read if one exists, and becomes necessary only if the repository goes private or Codecov stops accepting tokenless uploads |
+| Codecov | The repository is linked on codecov.io — **done**; it reports 82.61%. The Codecov **GitHub App** is **not** installed, and Codecov warns on each pull request that without it uploads and comments are not reliably processed (T14) | Coverage upload in CI. A public repository uploads without a token; the `CODECOV_TOKEN` secret is read if one exists, and becomes necessary only if the repository goes private or Codecov stops accepting tokenless uploads |
 | "Allow auto-merge" | Settings → General | Dependabot auto-merge |
 | Branch protection on `main` with CI as a required check | Settings → Branches | Auto-merge cannot merge a red build |
 | Discussions, Sponsors | Settings → Features, and the GitHub account | The discussion template and `FUNDING.yml` |

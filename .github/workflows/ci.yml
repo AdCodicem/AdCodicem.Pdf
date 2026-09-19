@@ -43,9 +43,9 @@ jobs:
             -- --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml \
                --results-directory TestResults
 
-      # A public repository uploads without a token, through the Codecov GitHub App — run 84 reported
-      # `Token length: 0` and the report still arrived. The secret is read if it exists, which is what a
-      # private repository, or Codecov refusing tokenless uploads, would need.
+      # A public repository uploads without a token — run 84 reported `Token length: 0` and the report
+      # still arrived. The secret is read if it exists, which is what a private repository, or Codecov
+      # refusing tokenless uploads, would need.
       - name: Upload coverage
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
