@@ -19,9 +19,11 @@ major does.
 
 Please **do not** open a public issue.
 
-Use GitHub's private vulnerability reporting: the **Security** tab of this repository → **Report a
-vulnerability**. That opens an advisory visible only to the maintainer, and is the fastest way to get a
-fix moving without disclosing the issue before a patch exists.
+Use GitHub's private vulnerability reporting:
+**[Report a vulnerability](https://github.com/AdCodicem/AdCodicem.Pdf/security/advisories/new)**. That
+opens an advisory visible only to the maintainer, and is the fastest way to get a fix moving without
+disclosing the issue before a patch exists. The same form is behind the **Security** tab of this
+repository, under **Advisories**.
 
 If a document reproduces the problem, attach it — a file that triggers the bug is worth more than any
 description of it. If the document is confidential, say so and send a reduced or synthetic reproduction
@@ -29,4 +31,13 @@ instead; the reporting thread is private, but a published advisory and its regre
 
 You should get an initial response within a few days. A confirmed report is fixed privately, and a
 GitHub Security Advisory is published alongside the patched release, crediting the reporter unless they
-prefer otherwise.
+prefer otherwise. Published advisories are listed on the
+[advisories page](https://github.com/AdCodicem/AdCodicem.Pdf/security/advisories).
+
+## What this repository does to earn that trust
+
+Its supply-chain posture is measured rather than asserted, and the report is public:
+[the OpenSSF Scorecard report](https://scorecard.dev/viewer/?uri=github.com/AdCodicem/AdCodicem.Pdf).
+Every GitHub Action used by a
+workflow here is pinned to a commit hash, dependency versions are locked, and every merge is analysed by
+CodeQL.
