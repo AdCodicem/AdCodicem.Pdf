@@ -8,27 +8,28 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**: green,
-  except `OpenSSF Scorecard` — red on every run since the day it was added, and fixed on the branch below
-- **Pull requests**: [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11) open — publishing unblocked
-  and a manual preview trigger; **merging it publishes the first package**.
+- **Builds**: yes, with no warnings — **Tests**: 163 unit + 48 integration (skipped without Docker) — **CI**:
+  green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
+- **Supply-chain score**: **5.5/10** as published on `1bfde6d`. The branch below is measured to take it to
+  **6.6**; everything above that needs repository settings or people, not code — see T15, T18 and T19
+- **Pull requests**: none open. [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11) is merged —
+  publishing is unblocked and a preview can be asked for without merging.
   [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) and Dependabot's six action bumps (#2 to #7) are
-  merged; the preview/stable release split (ADR 30) and the baseline fix are on `main`
+  merged too; the preview/stable release split (ADR 30), the baseline fix and the Scorecard action ref are
+  all on `main`
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
-- **Red on `main`, by design and not by defect**: `Release` stops at its own publishing-identity guard
-  (T11), **confirmed by running it on 2026-09-19** — and `Documentation` builds the site but cannot deploy
-  it until Pages is enabled (T12). The guard is removed on the branch below; `main` still carries it.
-- **Red on `main` by defect**: `OpenSSF Scorecard` has failed all twelve of its runs, from the first one on
-  2026-09-14, on `Unable to resolve action ossf/scorecard-action@v2` — that action publishes no floating
-  `v2` tag, so the run died in *Prepare all required actions*, before a single step started. The README
-  badge has therefore never had a report to read. Pinned to `v2.4.4` on the branch below.
+- **Red on `main`, by design and not by defect**: `Documentation` builds the site but cannot deploy it
+  until Pages is enabled (T12). The publishing-identity guard that used to stop `Release` (T11) is gone
+  with the merge of #11, so nothing on `main` refuses to publish any more.
+- **`OpenSSF Scorecard` is fixed and proven**: the `v2.4.4` pin merged, run 13 went green, and
+  `api.scorecard.dev` now serves a report — so the README badge finally has a number behind it.
 - **No package has been published yet**, preview or stable. The trusted publishing policy now exists on
   nuget.org and the publishing account is named in the workflow, so the next push to `main` is the first
   real attempt — and the first to reach the OIDC exchange.
-- **Branches**: `claude/package-preview-deployment-h0lakt` — the publishing account moved out of the secrets,
-  a manual preview trigger, and its journal entry; `claude/scorecard-pipeline-47mgrj` — the Scorecard
-  action ref. Neither is merged, so nothing has run with either yet
+- **Branches**: `claude/scorecard-improvement-4ckfxd` — every action pinned by commit hash, the five OSV
+  advisories in the documentation site cleared, and a security policy that links rather than describes.
+  Not merged, so the next report is what confirms the arithmetic
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -54,6 +55,45 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-19 — The badge had a number at last, and it read 5.5
+- The first Scorecard run that ever started (run 13, on `1bfde6d`) published a report: **5.5 out of 10**.
+  Before anything was touched, its own arithmetic was reproduced from the published per-check scores and
+  the documented risk weights — Critical 10, High 7.5, Medium 5, Low 2.5 — and it lands on 5.46, which is
+  what `api.scorecard.dev` rounds to 5.5. That is what makes the rest of this entry a measurement rather
+  than a hope: every fix below is worth a known number of points.
+- **Pinned-Dependencies, 1/10 — the whole of it.** Not one of the 39 action references in this repository
+  was pinned: 33 GitHub-owned and 6 third-party, every one on a floating tag. A tag is a name its owner
+  can repoint at other code, and every run after that picks the new code up in silence. All 39 are now
+  commit hashes, each carrying the version as a trailing comment — which is what Dependabot reads to know
+  what the hash stands for, and what it rewrites alongside the hash when it bumps one. Each hash was
+  resolved from `git ls-remote` and **checked against the annotated tag's dereferenced commit**, since a
+  tag object's own SHA is not the commit and pinning it would not resolve.
+- **Vulnerabilities, 5/10 — all five in the documentation site.** Two in `qs`, two in `serialize-javascript`
+  and one in `uuid`, every one a transitive dependency of Docusaurus that nothing here asks for by name.
+  npm's own advice was to take `@docusaurus/core` *down* to 3.5.2; three `overrides` clear all five without
+  moving Docusaurus at all. `npm audit` now reports nothing, and the site still builds.
+- **Security-Policy, 4/10 — and the missing 6 points were one link.** Scorecard gives 1 point for text,
+  3 for saying something about disclosure and timelines, and 6 for *linked* content. `SECURITY.md` was a
+  page of careful prose containing no URL whatsoever: it told the reader to find the Security tab. It now
+  links the advisory form itself, which is better writing before it is a better score.
+- **Measured effect: 5.5 → 6.6.** Pinned-Dependencies 1 → 9, Vulnerabilities 5 → 10, Security-Policy
+  4 → 10. Unproven until the next run on `main` publishes, for the same reason as last time.
+- **The last point on Pinned-Dependencies was refused, with a reason.** It is `dotnet restore` without
+  `--locked-mode`, which means committing `packages.lock.json`. Worth exactly 10 of the check's 144
+  weighted units — 0.05 of the displayed score, which rounds away entirely — and
+  `RestorePackagesWithLockFile` set in `Directory.Build.props` breaks restore outright (`NETSDK1013`, an
+  empty `TargetFramework`), though it works set per project. Central package management with transitive
+  pinning already gives most of what a lock file is for. Recorded as T17 rather than forced through.
+- **What is left is not code.** Branch-Protection and Code-Review are 0 and weigh 7.5 each: together
+  they are worth about 1.5 points, and both need the `main` ruleset of T15 plus pull requests someone
+  approves. Maintained is 0 because the repository is younger than 90 days, which only time fixes.
+  Contributors is 0 because there is one of us. CII-Best-Practices needs a registration (T18) and
+  Signed-Releases is unscored only because no release exists yet (T19). **Fuzzing reads 0 and will stay
+  there**: Scorecard detects OSS-Fuzz, ClusterFuzzLite and a list of language-specific fuzzers, none of
+  which covers .NET — the nightly mutation campaign that found the mutual-recursion defect is invisible
+  to it. The check does look for a bare `.onefuzz` file, and writing one to claim a fuzzer we do not use
+  would be a lie told to a number. The number stays wrong.
 
 ### 2026-09-19 — The supply-chain badge had never been earned
 - `OpenSSF Scorecard` was **red on every run it has ever had** — twelve of them, back to the day the
@@ -298,8 +338,11 @@ previous ordering, where M2 was writing and M3 assembly.
 | T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish. `Documentation` stops at `configure-pages`, so nothing downstream of it has ever run — the `configure-pages`, `upload-pages-artifact` and `deploy-pages` bumps of 2026-09-16 included | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
-| T15 | Auto-merge **is** allowed on the repository; what is missing is a ruleset on `main`, so it still accepts direct pushes and the Dependabot auto-merge workflow has no required check to wait for | A branch ruleset on `main` requiring the five pull-request checks, non-strict, **with a bypass for GitHub Actions** — `@semantic-release/git` pushes the `chore(release)` commit straight to `main`, and a ruleset without that bypass fails the stable release in `prepare` |
+| T15 | Auto-merge **is** allowed on the repository; what is missing is a ruleset on `main`, so it still accepts direct pushes and the Dependabot auto-merge workflow has no required check to wait for. **Measured cost**: Scorecard's `Branch-Protection` is 0/10 at weight 7.5, and `Code-Review` is 0/10 at the same weight because nothing here has ever been approved — together about **1.5 points** of the overall score, the largest block left | A branch ruleset on `main` requiring the five pull-request checks, non-strict, **with a bypass for GitHub Actions** — `@semantic-release/git` pushes the `chore(release)` commit straight to `main`, and a ruleset without that bypass fails the stable release in `prepare` |
 | T16 | The API baseline is one version for the whole solution, checked against `AdCodicem.Pdf` only. A satellite first shipped in a later release — `AdCodicem.Pdf.Validation` in M2 — has no package at that version, and its pack fails with `NU1101` exactly as `v0.1.0` would have | In M2, before `AdCodicem.Pdf.Validation` is packable: make the baseline per package |
+| T17 | One dependency in CI is still unpinned: `dotnet restore` in `ci.yml` has no `--locked-mode`, because no `packages.lock.json` is committed. Measured at 10 of Pinned-Dependencies' 144 weighted units — 0.05 of the displayed score — and `RestorePackagesWithLockFile` in `Directory.Build.props` fails the restore with `NETSDK1013` | When it buys something beyond the check: set the property **per project**, where it works, commit the six lock files, and add `--locked-mode` to `ci.yml` |
+| T18 | No OpenSSF Best Practices badge, so `CII-Best-Practices` is 0/10 at weight 2.5 — about 0.26 of the overall score | Register the project at [bestpractices.dev](https://www.bestpractices.dev), answer the questionnaire, put the badge in `README.md` |
+| T19 | `Signed-Releases` is unscored (-1) only because no release exists. The moment one does it becomes a scored High check, and nothing in `release.yml` attaches a signature or a provenance bundle to the GitHub Release | Before the first stable release: attest the packages and upload the bundle as a release asset, so the check has a `.intoto.jsonl` to find |
 | T04 | An OFL font set must be embedded for default rendering | During M6 |
 | T05 | A public API test (a baseline of exported signatures) | Put in place at the start of M7 |
 | T06 | `PdfString.ToText` reads Latin-1 rather than full PDFDocEncoding (the 32 positions 0x80-0x9F differ) | Before the first public release |
