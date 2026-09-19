@@ -6,6 +6,9 @@ on:
     - cron: "26 5 * * 2"
   push:
     branches: [main]
+  # Asking for a report on demand, rather than waiting for the weekly run. The action refuses any ref
+  # other than the default branch, so a manual run has to be started on `main`.
+  workflow_dispatch:
 
 permissions: read-all
 
@@ -24,7 +27,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ossf/scorecard-action@v2
+      # Pinned to a released version rather than a floating major: this action publishes no `v2` tag, and
+      # an unresolvable ref fails the run before any step starts — which is what it did on every run from
+      # the day this workflow was added. An exact version is also something Dependabot can see and bump.
+      - uses: ossf/scorecard-action@v2.4.4
         id: scorecard
         with:
           results_file: results.sarif
