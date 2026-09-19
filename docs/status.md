@@ -14,12 +14,13 @@ here.
   are on `main`
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
-- **Red on `main`, by design and not by defect**: `Release` stops at its own guard because the publishing
-  identity is not configured (T11) — nothing is versioned or published until it is, **confirmed by running
-  it on 2026-09-19** — and `Documentation` builds the site but cannot deploy it until Pages is enabled (T12).
-- **No package has been published yet**, preview or stable. T11 is the only thing in the way, and it is
-  configuration on nuget.org and GitHub, not code.
-- **Branch**: `claude/package-preview-deployment-h0lakt` — this journal entry only; everything else is on `main`
+- **Red on `main`, by design and not by defect**: `Release` stops at its own publishing-identity guard
+  (T11), **confirmed by running it on 2026-09-19** — and `Documentation` builds the site but cannot deploy
+  it until Pages is enabled (T12). The guard is removed on the branch below; `main` still carries it.
+- **No package has been published yet**, preview or stable. The trusted publishing policy now exists on
+  nuget.org and the publishing account is named in the workflow, so the next push to `main` is the first
+  real attempt — and the first to reach the OIDC exchange.
+- **Branch**: `claude/package-preview-deployment-h0lakt` — the publishing account moved out of the secrets, and this journal entry. Not merged, so the preview has not run with it
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -50,9 +51,14 @@ previous ordering, where M2 was writing and M3 assembly.
 - The preview deployment was launched by re-running `Release` on the tip of `main` (`2798fb2`, run 9,
   attempt 2). Build and the whole suite pass in 25 seconds; the run then stops at **Check the publishing
   identity is configured**, because `NUGET_USER` is not set on the `nuget` environment. Nothing was packed,
-  nothing was pushed to nuget.org, no OIDC key was even requested. **T11 is the only blocker**, and it is
-  manual configuration — the nuget.org trusted-publishing policy and the GitHub environment secret, both
-  specified field by field in `docs/releasing.md`.
+  nothing was pushed to nuget.org, no OIDC key was even requested.
+- **The secret was the wrong shape for what it held.** The trusted publishing policy was already configured
+  on nuget.org; what was missing was the answer to *which account*, which `NuGet/login` requires as `user`
+  because OIDC proves a run is authorised without saying who receives the key. That answer is `AdCodicem` —
+  the owner of this repository, the prefix of every package, public on every page nuget.org will serve.
+  Keeping a public name in a secret hid nothing and bought a setup step that fails silently much later.
+  It is now `NUGET_ACCOUNT` in `release.yml`, stated once at the top, and **both guards are gone** with the
+  thing they guarded against.
 - Worth knowing before the next attempt: **a preview has no manual trigger**. The `preview` job is gated on
   `github.event_name == 'push'`, so `workflow_dispatch` runs the *stable* release instead. Once T11 is
   configured, a preview comes from a push to `main` or from re-running a past `main` push — and a re-run
@@ -259,7 +265,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
-| T11 | The `nuget` GitHub environment and its `NUGET_USER` secret, and the nuget.org trusted publishing policy, are not configured yet. Every `Release` run so far has died on the guard that checks it, the last on 2026-09-19 | Configure both — `v0.1.0` is tagged, so the first release stays in `0.x`; steps in `docs/releasing.md`. Nothing is installable from nuget.org until this is done |
+| T11 | The nuget.org trusted publishing policy is configured; the publishing account is now named in `release.yml` and no secret is involved. **Untested**: no run has yet reached the OIDC exchange, so nothing has confirmed the policy actually matches | Merge the branch — the merge is itself the first preview. If the exchange is refused, the mismatch is the workflow file name, the environment, or the account name; `docs/releasing.md` lists the fields |
 | T12 | GitHub Pages is not enabled for the repository, so the documentation site builds but does not publish. `Documentation` stops at `configure-pages`, so nothing downstream of it has ever run — the `configure-pages`, `upload-pages-artifact` and `deploy-pages` bumps of 2026-09-16 included | Settings → Pages → Source: GitHub Actions |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is not linked, so the coverage upload in CI has no token and the badge stays empty | Link the repository on codecov.io, add `CODECOV_TOKEN` |
