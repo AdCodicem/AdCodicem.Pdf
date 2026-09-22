@@ -70,7 +70,9 @@ function PrereleaseBanner({className, label}) {
 export default function DocVersionBanner(props) {
   const version = useDocsVersion();
 
-  if (version.version !== 'current') {
+  // The project documents' plugin is unversioned, and its only version is called `current` too; it gets
+  // no banner, which is what Docusaurus's own gives it.
+  if (version.pluginId !== 'default' || version.version !== 'current') {
     return <OriginalDocVersionBanner {...props} />;
   }
 
