@@ -4,9 +4,13 @@
 [![NuGet](https://img.shields.io/nuget/v/AdCodicem.Pdf.svg)](https://www.nuget.org/packages/AdCodicem.Pdf)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/AdCodicem/AdCodicem.Pdf/badge)](https://scorecard.dev/viewer/?uri=github.com/AdCodicem/AdCodicem.Pdf)
+[![Documentation](https://img.shields.io/badge/docs-adcodicem.github.io-blue)](https://adcodicem.github.io/AdCodicem.Pdf/)
 
 Managed PDF toolkit for .NET 10: generate PDF documents from HTML, and read, assemble and transform
 existing ones — with no headless browser, no native PDF engine and no external process.
+
+**[Read the documentation](https://adcodicem.github.io/AdCodicem.Pdf/)** — concepts, guides and the
+generated API reference, versioned alongside each release.
 
 > **Status: early development.** The public API is not stable yet. See `docs/roadmap.md`.
 
@@ -39,8 +43,8 @@ need: a fully managed engine whose memory use follows the complexity of a page, 
 
 Further packages (validation, Factur-X, rasterisation, signing) are planned — see `docs/roadmap.md`.
 
-Nothing is published yet. Once it is, every merge into `main` publishes a preview, so the current state of
-the library is always installable:
+Every merge into `main` publishes a preview to nuget.org, so the current state of the library is always
+installable:
 
 ```bash
 dotnet add package AdCodicem.Pdf --prerelease
