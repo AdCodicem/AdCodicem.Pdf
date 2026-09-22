@@ -68,8 +68,9 @@ That claim is tested rather than asserted. Besides the hand-written cases — a 
 loops, a stream claiming two gigabytes, an object stream declaring a billion objects, containers nested
 twenty thousand deep — a mutation campaign runs against the test corpus: bit flips, corrupted digits,
 truncations, spliced bytes and broken keywords, each input required to end either in a usable document or
-in a typed exception, inside a time and an allocation budget. Seventy-five thousand mutated documents run
-on every release, and twenty thousand mutations per seed document run nightly.
+in a typed exception, inside a time and an allocation budget. A few thousand mutated documents go through
+the reader on every test run — every pull request, and every package before it is published — and a
+nightly campaign runs twenty thousand mutations per seed document.
 
 The first campaign found a real defect within a minute: a mutated invoice made the reader's index lookup
 and its relocation search call each other until the stack ran out. Relocation is now bounded to three
