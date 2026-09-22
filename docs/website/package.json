@@ -3,11 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "api": "cd ../.. && dotnet tool restore && dotnet docfx metadata docs/docfx/docfx.json && node docs/website/scripts/fix-api-links.mjs",
-    "prestart": "npm run api",
+    "api": "cd ../.. && dotnet tool restore && dotnet docfx metadata docs/docfx/docfx.json && node docs/website/scripts/tidy-api-reference.mjs",
+    "project": "node scripts/sync-project-docs.mjs",
+    "generate": "npm run api && npm run project",
+    "prestart": "npm run generate",
     "start": "docusaurus start",
-    "prebuild": "npm run api",
+    "prebuild": "npm run generate",
     "build": "docusaurus build",
+    "postbuild": "npm run check",
+    "check": "node scripts/check-site.mjs",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear"
   },

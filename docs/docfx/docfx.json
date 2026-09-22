@@ -9,6 +9,7 @@
       ],
       "dest": "../website/docs/api",
       "outputFormat": "markdown",
+      "filter": "filterConfig.yml",
       "properties": {
         "TargetFramework": "net10.0"
       }
