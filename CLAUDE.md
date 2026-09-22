@@ -119,7 +119,9 @@ See `docs/corpus.md`.
 - Integration tests **skip** when Docker is absent rather than failing, so a sandbox without a daemon
   still gives a usable run. They are not optional in CI.
 - The documentation site is `docs/website` (Docusaurus). It publishes the user-facing documentation *and*
-  `docs/` as they are, so a project document that does not build breaks CI.
+  `docs/` as they are, so a project document that does not build breaks CI. The user documentation is
+  versioned (ADR 31): `docs/website/docs` is the preview; a released line is frozen in
+  `docs/website/versioned_docs` by the stable release, and edited there only to correct that release.
 - Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`) — **these
   decide the version**: semantic-release reads them on every merge to `main`, so a malformed message
   produces no release rather than an untidy log. CI rejects one on a pull request.

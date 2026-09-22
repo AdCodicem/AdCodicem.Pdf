@@ -4,7 +4,9 @@ Date: 2026-09-15
 
 ## Status
 
-Accepted
+Accepted. What it says about the documentation site — deployed with the stable release only — is
+superseded by [31](0031-versioned-documentation-stable-lines-and-the-preview.md): every preview now
+deploys its documentation beside the stable versions.
 
 ## Context
 

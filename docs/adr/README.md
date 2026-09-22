@@ -37,6 +37,7 @@ A settled decision is not reopened without new evidence — that is what writing
 | [28](0028-a-documentation-site-published-from-the-repository.md) | A documentation site, published from the repository | `D27` |
 | [29](0029-warnings-are-errors-and-suppressions-are-local-and-justified.md) | Warnings are errors, and suppressions are local and justified | `D28` |
 | [30](0030-previews-on-every-merge-stable-releases-on-demand.md) | Previews on every merge, stable releases on demand | — |
+| [31](0031-versioned-documentation-stable-lines-and-the-preview.md) | Versioned documentation: stable lines, and the preview beside them | — |
 
 ## Decisions too small for a record of their own
 

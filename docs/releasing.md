@@ -124,9 +124,9 @@ tied to a workflow file name and one policy is enough for both.
 
 ### Every merge publishes a preview
 
-A push to `main` builds, runs the whole suite, and publishes a **prerelease** package. Nothing is tagged,
-no changelog is written, no GitHub Release is opened, the site is not redeployed. Merging stays cheap, and
-what is on `main` is always installable:
+A push to `main` builds, runs the whole suite, publishes a **prerelease** package, and redeploys the site
+with that preview's documentation under `/preview`. Nothing is tagged, no changelog is written, no GitHub
+Release is opened. Merging stays cheap, and what is on `main` is always installable — and documented:
 
 ```bash
 dotnet add package AdCodicem.Pdf --prerelease
@@ -135,7 +135,8 @@ dotnet add package AdCodicem.Pdf --prerelease
 A preview can also be asked for without merging: **Actions → Release → Run workflow**, leaving **What to
 publish** on `preview`. It packs whichever ref you pick, so a branch can be tried on a real feed before it
 lands — at the price of a version on nuget.org that matches no commit on `main`, permanently. Prefer the
-merge unless there is a reason not to.
+merge unless there is a reason not to. A preview packed from another branch is not documented on the site:
+its pages would replace `main`'s, and the Pages environment deploys from `main` alone.
 
 Do not re-run a past run to get a fresh preview: a re-run keeps its run number, so it republishes the same
 version, which `--skip-duplicate` accepts and ignores. A new run is what produces a new number.
@@ -154,10 +155,12 @@ which is just as well, because nothing can be.
 rather than reached by clicking through. That run, and only that run:
 
 1. works the version out from the commits since the last tag;
-2. writes `CHANGELOG.md`, commits it, and tags `vX.Y.Z`;
-3. packs and pushes the stable packages to nuget.org;
-4. opens the GitHub Release with the generated notes;
-5. deploys the documentation site, so what is online is what is released.
+2. freezes the user documentation for the release's line into `docs/website/versioned_docs` (see
+   [the documentation site](#the-documentation-site) below);
+3. writes `CHANGELOG.md`, commits it with the frozen documentation, and tags `vX.Y.Z`;
+4. packs and pushes the stable packages to nuget.org;
+5. opens the GitHub Release with the generated notes;
+6. redeploys the site from the release commit, so its root is the version just released.
 
 Tick **dry run** to see the version and the notes it would produce and stop there: nothing is published,
 tagged, or deployed, and no publishing key is even requested. It applies to the stable path only — a
@@ -185,19 +188,58 @@ The first publish has happened; reserving the ID prefix is what is left, and it 
 ## The documentation site
 
 `docs/website` is a Docusaurus site publishing both the user-facing documentation and the project documents in
-`docs/`. CI builds it on every push, so a document that does not build never reaches the default branch;
-`.github/workflows/docs.yml` deploys it to GitHub Pages **with the stable release**, so the site describes
-the version people can install rather than the tip of `main`. It also keeps its own **Run workflow**
-button, for a documentation fix that should not wait for the next release.
+`docs/`. CI builds it on every push, so a document that does not build never reaches the default branch,
+and every build ends by reading its own pages for anything rendered wrong (`scripts/check-site.mjs`).
+
+### What the site serves
+
+The user documentation is **versioned** (ADR 31); the project documents are not, and always come from
+`main`.
+
+| Where | What | Comes from |
+|---|---|---|
+| `/` | The latest stable line | `versioned_docs/version-<newest line>` |
+| `/0.2/`, `/1/`… | Every older stable line, under a "no longer maintained" banner | `versioned_docs/version-<line>` |
+| `/preview/` | The preview, behind the navbar's **Preview** button | `docs/website/docs`, the working tree |
+| `/project/` | Roadmap, status, decisions, milestones | `docs/`, copied at build time |
+
+A **line** is a minor version below 1.0 (`0.3`) and a major from 1.0 on (`1`), and the selector labels it
+with its latest release. `versions.json` lists the lines, newest first; `releases.json` maps each to its
+latest release. Both are written by the stable release — never by hand, except to prune a line.
+
+The preview section exists only while a preview is newer than the latest stable release. Right after a
+release there is none, and the **Preview** button disappears until the next merge publishes one. Before
+the first stable release, the preview is the whole site, at the root, under a banner saying so.
+
+### When it is deployed
+
+`.github/workflows/docs.yml` builds every version at once and deploys to GitHub Pages. `release.yml` calls
+it after every preview published from `main`, handing it the preview's version, and after every stable
+release, handing it the release commit. Its own **Run workflow** button redeploys `main` without a package
+— for a correction to a frozen version, typically; it asks nuget.org which preview to label the preview
+section with, unless it is given one.
+
+### Changing the documentation
+
+- **For the next release**: edit `docs/website/docs`. It shows under `/preview` after the merge, and is
+  frozen by the next stable release.
+- **For a version already released**: edit its copy in `docs/website/versioned_docs/version-<line>`, then
+  merge, or dispatch `Documentation`. Make the same change in `docs/website/docs` if it still applies: the
+  next release on that line re-freezes from there, and overwrites the copy.
+- **To see the versioned site locally**, freeze a line without committing it —
+  `node scripts/version-docs.mjs 0.2.0` in `docs/website` — then build with
+  `DOCS_PREVIEW_VERSION=0.2.1-preview.1 npm run build`. Delete `versioned_docs`, `versioned_sidebars`,
+  `versions.json` and `releases.json` afterwards. Without `DOCS_PREVIEW_VERSION`, a build labels the
+  working tree `local build`.
+
+### Settings
 
 One manual step, once: **Settings → Pages → Source: GitHub Actions** — **done**. Before it was done the
-deployment job failed at `configure-pages` and the site simply was not published; nothing else broke.
+deployment job failed at `configure-pages` and the site simply was not published; nothing else broke. The
+`github-pages` environment deploys from `main` only.
 
-**First published on 2026-09-19**, by dispatching `Documentation` by hand rather than waiting for a
-stable release that has not happened yet. Note what that means for the invariant above: the site now
-describes the tip of `main`, not an installable release, and will keep doing so until the first stable
-run redeploys it. That is the cost of the manual button, and it is the reason the button is not the
-normal path.
+**First published on 2026-09-19**, by dispatching `Documentation` by hand; **every user-facing page was
+broken until 2026-09-22** — see the status journal for why nothing caught it.
 
 The site lands at `https://adcodicem.github.io/AdCodicem.Pdf/`. If the repository is ever renamed, the
 `baseUrl` in `docs/website/docusaurus.config.js` has to follow.
