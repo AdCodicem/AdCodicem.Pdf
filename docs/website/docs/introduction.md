@@ -9,17 +9,19 @@ sidebar_position: 1
 A managed PDF toolkit for .NET 10: generate documents from HTML, and read, assemble and transform
 existing ones — with no headless browser, no native PDF engine and no external process.
 
-:::warning Pre-release
-
-Only previews are on nuget.org so far, and no stable release exists yet:
-
 ```bash
-dotnet add package AdCodicem.Pdf --prerelease
+dotnet add package AdCodicem.Pdf                 # the latest stable release
+dotnet add package AdCodicem.Pdf --prerelease    # the latest preview, built from main
 ```
 
-The reader is built and tested; writing, assembly and the HTML engine are ahead. The
-[roadmap](/project/roadmap) says what exists and what does not, and [status](/project/status) says where
-the work actually stands today.
+This documentation follows the version selected at the top of the page: each stable line has its own,
+and whenever `main` has moved past the latest release, the **Preview** button shows what is on it.
+
+:::warning Before 1.0
+
+The reader is built and tested; writing, assembly and the HTML engine are ahead, and any minor version may
+still change the API. The [roadmap](/project/roadmap) says what exists and what does not, and
+[status](/project/status) says where the work actually stands today.
 
 :::
 
@@ -55,7 +57,7 @@ One package exists today; the others are planned, and the milestone that brings 
 
 | Package | Contents | Available |
 |---|---|---|
-| `AdCodicem.Pdf` | Object model, lazy reader, streaming writer, pages, fonts, logical structure | Preview — the object model and the reader |
+| `AdCodicem.Pdf` | Object model, lazy reader, streaming writer, pages, fonts, logical structure | Published — the object model and the reader so far |
 | `AdCodicem.Pdf.Validation` | The validation rule engine and its profiles | Planned, M2 |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | Planned, M7 |
 | `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration | Planned, M7 |

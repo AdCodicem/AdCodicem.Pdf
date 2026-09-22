@@ -4,9 +4,32 @@
 // roadmap, the decisions and their rejected alternatives are the most useful thing a reader can have
 // when deciding whether to depend on a young library.
 
+import { previewIsCurrent, readReleases } from './scripts/versions.mjs';
+
 const organisation = 'AdCodicem';
 const repository = 'AdCodicem.Pdf';
 const source = `https://github.com/${organisation}/${repository}/tree/main`;
+
+// The user documentation is versioned; the project documents are not — they describe the project, not a
+// release, and always come from main. Each stable line is frozen by the release that opens it (see
+// scripts/version-docs.mjs) and served under its own path, the newest at the root. The working tree is the
+// preview: served under /preview beside them, or at the root while no stable release exists.
+const releases = readReleases();
+const hasStable = releases.length > 0;
+
+// The preview package a deployment documents, set by docs.yml. Left unset, the build is a local or CI one,
+// and documents the working tree; set but empty, no preview is newer than the latest stable release.
+const previewVersion = process.env.DOCS_PREVIEW_VERSION;
+const includePreview = previewVersion === undefined || !hasStable || previewIsCurrent(previewVersion, releases);
+const previewLabel = previewVersion === undefined ? 'local build' : previewVersion || 'preview';
+
+/** @type {import('@docusaurus/plugin-content-docs').PluginOptions['versions']} */
+const versions = Object.fromEntries(releases.map(({ line, version }) => [line, { label: version }]));
+if (includePreview) {
+  versions.current = hasStable
+    ? { label: previewLabel, path: 'preview', noIndex: true }
+    : { label: previewLabel };
+}
 
 /**
  * The generated API reference is one flat directory, one page per type and per namespace. Sorted by file
@@ -83,6 +106,9 @@ const config = {
           routeBasePath: '/',
           sidebarPath: './sidebars.js',
           sidebarItemsGenerator: sidebarItems,
+          lastVersion: hasStable ? releases[0].line : 'current',
+          includeCurrentVersion: includePreview,
+          versions,
           // The API reference is generated from the XML documentation comments: its source is the code,
           // and a link to a Markdown file that exists only during the build would lead to a 404.
           editUrl: ({ versionDocsDirPath, docPath }) =>
@@ -118,6 +144,12 @@ const config = {
       items: [
         { type: 'docSidebar', sidebarId: 'documentation', position: 'left', label: 'Documentation' },
         { to: '/project/roadmap', label: 'Project', position: 'left' },
+        // The selector lists the stable lines only; the preview has its own button, which hides itself
+        // when there is no preview to switch to (src/components/PreviewToggleNavbarItem.js).
+        ...(hasStable
+          ? [{ type: 'docsVersionDropdown', position: 'right', versions: releases.map(({ line }) => line) }]
+          : []),
+        { type: 'custom-previewToggle', position: 'right' },
         { href: `https://github.com/${organisation}/${repository}`, label: 'GitHub', position: 'right' },
       ],
     },
