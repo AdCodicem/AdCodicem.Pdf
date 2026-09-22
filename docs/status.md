@@ -13,24 +13,29 @@ here.
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
   T18 and T19
-- **Pull requests**: none open. [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11) is merged —
-  publishing is unblocked and a preview can be asked for without merging.
-  [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1) and Dependabot's six action bumps (#2 to #7) are
-  merged too; the preview/stable release split (ADR 30), the baseline fix and the Scorecard action ref are
-  all on `main`
+- **Pull requests**: versioned documentation (ADR 31) is open on `claude/docs-versioning`.
+  [#22](https://github.com/AdCodicem/AdCodicem.Pdf/pull/22), the site repair, is merged and deployed.
+  [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11), [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1)
+  and Dependabot's action bumps are merged too; the preview/stable release split (ADR 30), the baseline fix
+  and the Scorecard action ref are all on `main`
+- **`main` has a ruleset since 2026-09-22** ("Default": pull request with one code-owner approval, linear
+  history, CodeQL, coverage). Only repository admins bypass it — and the stable release pushes its
+  `chore(release)` commit to `main` as GitHub Actions. **The first stable release will fail at that push**
+  until the ruleset grants GitHub Actions a bypass, as T15 said it would have to. Nothing is published
+  when it fails: the push comes before the packages do
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
 - **Nothing on `main` is red any more.** The publishing-identity guard that used to stop `Release` (T11)
   went with the merge of #11, and `Documentation` deployed successfully on 2026-09-19 (run 2).
-- **The site at <https://adcodicem.github.io/AdCodicem.Pdf/> was live but broken** from its first deployment:
-  every user-facing page — introduction, concepts, the whole API reference — showed its own compiled
-  JavaScript as text. Repaired on `claude/docs-site-repair` (2026-09-22 below); once merged, the site is
-  redeployed by hand. **In flight next**: versioned documentation — stable versions behind a selector, the
-  latest preview behind a button, deployed with every preview.
+- **The site at <https://adcodicem.github.io/AdCodicem.Pdf/> works**, for the first time: until 2026-09-22
+  every user-facing page showed its own compiled JavaScript as text. Repaired by #22 and redeployed by
+  hand the same evening; the site check passes on all 74 published pages. **In flight**: versioned
+  documentation — stable lines behind a selector, the latest preview behind a button, redeployed with
+  every preview (ADR 31).
 - **`OpenSSF Scorecard` is fixed and proven**: the `v2.4.4` pin merged, run 13 went green, and
   `api.scorecard.dev` now serves a report — so the README badge finally has a number behind it.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) is on nuget.org —
-  `0.1.1-preview.10` through `0.1.1-preview.13`, previews from `main`, the first packages this project has
+  `0.1.1-preview.10` through `0.1.1-preview.20` at least (2026-09-22), previews from `main`, the first packages this project has
   ever shipped. Trusted publishing works end to end; nothing long-lived is stored anywhere.
   `dotnet add package AdCodicem.Pdf --prerelease`
 - **No stable release yet**: `v0.1.0` is a tag with nothing behind it, by design, and the stable path has
@@ -68,6 +73,32 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-22 — Documentation for every release, and for the preview
+- **The request**: a preview package should come with its documentation; the site should open on the
+  stable version, with a button to the latest preview; every stable release should keep its documentation,
+  behind a selector. Settled in ADR 31, with the choices it made along the way.
+- **Docusaurus's own versioning**, not a site per release: one build serves everything, and a frozen
+  version stays correctable. The stable release freezes the user documentation and the generated API
+  reference in its release commit (`scripts/version-docs.mjs`, run from `.releaserc.json`'s prepare step).
+- **One entry per line**: per minor below 1.0, per major from 1.0 — 1.0 opening the `1` line. A later
+  release on a line replaces its copy, deletions included (the script unstages the old copy from git, since
+  the release commit only adds what exists), and the selector shows the line's latest release. All lines
+  are kept.
+- **The preview has a button, not a selector entry**, and only while a preview is newer than the latest
+  stable release. Right after a release, the newest preview on nuget.org is *older* than it; a button to it
+  would lead backwards, so it disappears until the next merge. Before the first release the preview is the
+  whole site. The rules are in `scripts/versions.mjs` and pinned by `npm test` (12 cases, run in CI).
+- **Deployment**: `release.yml` calls `docs.yml` after every preview from `main`, with the preview's
+  version — nuget.org can take minutes to list a new package, so it is not asked — and after every stable
+  release, from the release commit, which the run did not start from. A manual run asks nuget.org.
+- **Verified by simulation**, since no stable release exists: freezing `0.1.1`, then `0.2.0`, then `0.2.1`
+  over it (a stale page and a local edit both gone, as they should be), then refusing `0.2.1` again and a
+  preview. Built each way — two lines and a preview, no preview after a release, no stable at all — with
+  the site check passing on every page, and the selector, the button in both directions, the banners and
+  the namespace sidebar of a frozen API reference looked at in a browser.
+- **Found on the way**: `main` gained a ruleset today, and GitHub Actions is not among its bypass actors —
+  the first stable release will fail when it pushes its commit (at a glance, above).
 
 ### 2026-09-22 — The site had never shown a single user-facing page
 - **What a visitor saw**: the introduction, both concept pages and all thirty API pages printed as
@@ -444,7 +475,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is linked and the badge reads 82.61%, uploaded tokenless (`Token length: 0` in run 84) — so the original entry, "not linked, badge stays empty", is closed. What is left is narrower: the Codecov **GitHub App** is not installed, so it comments as `codecov-commenter` rather than `codecov[bot]` and warns on every pull request that uploads and comments are not reliably processed | Install the Codecov GitHub App on the repository |
-| T15 | Auto-merge **is** allowed on the repository; what is missing is a ruleset on `main`, so it still accepts direct pushes and the Dependabot auto-merge workflow has no required check to wait for. **Measured cost**: Scorecard's `Branch-Protection` is 0/10 at weight 7.5, and `Code-Review` is 0/10 at the same weight because nothing here has ever been approved — together about **1.5 points** of the overall score, the largest block left | A branch ruleset on `main` requiring the five pull-request checks, non-strict, **with a bypass for GitHub Actions** — `@semantic-release/git` pushes the `chore(release)` commit straight to `main`, and a ruleset without that bypass fails the stable release in `prepare` |
+| T15 | **Half done, and the missing half now blocks the stable release**: the "Default" ruleset on `main` exists since 2026-09-22 (pull request, one code-owner approval, linear history, CodeQL, coverage), bypassed by repository admins only. GitHub Actions is not a bypass actor, so the stable release's push of its `chore(release)` commit will be refused. The original entry, for the record: auto-merge **is** allowed on the repository; what was missing is a ruleset on `main`, so it still accepted direct pushes and the Dependabot auto-merge workflow had no required check to wait for. **Measured cost**: Scorecard's `Branch-Protection` is 0/10 at weight 7.5, and `Code-Review` is 0/10 at the same weight because nothing here has ever been approved — together about **1.5 points** of the overall score, the largest block left | A branch ruleset on `main` requiring the five pull-request checks, non-strict, **with a bypass for GitHub Actions** — `@semantic-release/git` pushes the `chore(release)` commit straight to `main`, and a ruleset without that bypass fails the stable release in `prepare` |
 | T16 | The API baseline is one version for the whole solution, checked against `AdCodicem.Pdf` only. A satellite first shipped in a later release — `AdCodicem.Pdf.Validation` in M2 — has no package at that version, and its pack fails with `NU1101` exactly as `v0.1.0` would have | In M2, before `AdCodicem.Pdf.Validation` is packable: make the baseline per package |
 | T17 | One dependency in CI is still unpinned: `dotnet restore` in `ci.yml` has no `--locked-mode`, because no `packages.lock.json` is committed. Measured at 10 of Pinned-Dependencies' 144 weighted units — 0.05 of the displayed score — and `RestorePackagesWithLockFile` in `Directory.Build.props` fails the restore with `NETSDK1013` | When it buys something beyond the check: set the property **per project**, where it works, commit the six lock files, and add `--locked-mode` to `ci.yml` |
 | T18 | No OpenSSF Best Practices badge, so `CII-Best-Practices` is 0/10 at weight 2.5 — about 0.26 of the overall score | Register the project at [bestpractices.dev](https://www.bestpractices.dev), answer the questionnaire, put the badge in `README.md` |

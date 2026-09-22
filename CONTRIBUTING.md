@@ -65,7 +65,7 @@ The project's [definition of done](docs/roadmap.md) applies to contributions too
 2. **No new warnings.** The build treats them as errors. A rule that is genuinely wrong here is suppressed
    where it fires, with a written justification — never by a global `NoWarn`.
 3. **Documentation.** Public API needs XML comments, and anything a consumer can call needs a page on the
-   site under `docs/website`.
+   site under `docs/website/docs` — the preview's documentation, frozen by the next stable release.
 4. **`dotnet format`** before pushing; CI verifies it.
 5. **A workflow change pins its actions by commit hash**: `uses: owner/action@<40 hex> # vX.Y.Z`, never
    a tag. A tag is a moving target — whoever can write to the action's repository can repoint it at
