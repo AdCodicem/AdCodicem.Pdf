@@ -13,7 +13,8 @@ here.
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
   T18 and T19
-- **Pull requests**: versioned documentation (ADR 31) is open on `claude/docs-versioning`.
+- **Pull requests**: versioned documentation (ADR 31) is [#23](https://github.com/AdCodicem/AdCodicem.Pdf/pull/23),
+  merged once green: after it, every merge redeploys the site.
   [#22](https://github.com/AdCodicem/AdCodicem.Pdf/pull/22), the site repair, is merged and deployed.
   [#11](https://github.com/AdCodicem/AdCodicem.Pdf/pull/11), [#1](https://github.com/AdCodicem/AdCodicem.Pdf/pull/1)
   and Dependabot's action bumps are merged too; the preview/stable release split (ADR 30), the baseline fix
