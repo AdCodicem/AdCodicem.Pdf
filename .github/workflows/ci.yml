@@ -99,6 +99,11 @@ jobs:
         working-directory: docs/website
         run: npm ci
 
+      # The rules deciding which versions the site lists, and when the preview is shown.
+      - name: Test the versioning rules
+        working-directory: docs/website
+        run: npm test
+
       # The site publishes the project's own documents, so a documentation change that does not build is
       # caught here rather than after it reaches the default branch.
       - name: Build

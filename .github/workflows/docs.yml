@@ -1,32 +1,51 @@
 name: Documentation
 
-# The site is published with a stable release, not with every merge, so what is documented online is
-# what is released. Called by release.yml; the manual trigger is there for a documentation fix that
-# should not wait for the next release.
+# Builds the whole site and deploys it to GitHub Pages: every stable line frozen by a release, served
+# unchanged, the newest at the root; and the preview — the working tree — under /preview, whenever a
+# preview package is newer than the latest stable release. Before the first stable release, the preview
+# is the site.
+#
+# Called by release.yml after every preview package and every stable release (ADR 31). The manual trigger
+# redeploys on its own, for a change that ships no package — a correction to a frozen version, say.
 on:
   workflow_call:
+    inputs:
+      ref:
+        description: "The commit to build. After a stable release it is the release commit, which carries the frozen documentation and is not the commit the run started from."
+        type: string
+        default: ""
+      preview_version:
+        description: "The preview package the preview section documents. Empty looks it up on nuget.org."
+        type: string
+        default: ""
   workflow_dispatch:
+    inputs:
+      preview_version:
+        description: "The preview package the preview section documents. Leave empty to take the newest from nuget.org."
+        type: string
+        default: ""
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# One deployment at a time; a queued run supersedes an older one rather than racing it.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   deploy:
     name: Build and deploy to GitHub Pages
     runs-on: ubuntu-latest
+    # One deployment at a time. A pending one is replaced by a newer one, which builds a newer commit.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -42,6 +61,30 @@ jobs:
         working-directory: docs/website
         run: npm ci
 
+      # A run that follows a preview package is told its version: nuget.org can take minutes to list a
+      # package it has just accepted. Any other run asks nuget.org, and gets nothing when the newest preview
+      # is older than the latest stable release — right after one, typically.
+      - name: Work out what the preview section documents
+        working-directory: docs/website
+        env:
+          REQUESTED: ${{ inputs.preview_version }}
+        run: |
+          set -eu
+          preview="$REQUESTED"
+          if [ -z "$preview" ]; then
+            preview="$(node scripts/preview-version.mjs)"
+          fi
+
+          # Checked as a whole string before it reaches GITHUB_ENV, where a newline would set a variable of
+          # its own — which is why this is bash's =~ and not grep, which matches line by line.
+          if [[ -n "$preview" && ! "$preview" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]; then
+            echo "::error::'$preview' is not a preview version."
+            exit 1
+          fi
+
+          echo "DOCS_PREVIEW_VERSION=$preview" >> "$GITHUB_ENV"
+          echo "PREVIEW=${preview:-none newer than the latest stable release}" >> "$GITHUB_ENV"
+
       - name: Build
         working-directory: docs/website
         run: npm run build
@@ -54,3 +97,15 @@ jobs:
 
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+      - name: Say what was deployed
+        working-directory: docs/website
+        run: |
+          stable="$(cat releases.json 2>/dev/null | tr -d '\n ' || true)"
+          {
+            echo "### Documentation deployed"
+            echo ""
+            echo "- **Stable lines**: \`${stable:-none yet}\`"
+            echo "- **Preview**: \`$PREVIEW\`"
+            echo "- Built from \`$(git rev-parse --short HEAD)\`."
+          } >> "$GITHUB_STEP_SUMMARY"
