@@ -98,6 +98,9 @@ previous ordering, where M2 was writing and M3 assembly.
   preview. Built each way — two lines and a preview, no preview after a release, no stable at all — with
   the site check passing on every page, and the selector, the button in both directions, the banners and
   the namespace sidebar of a frozen API reference looked at in a browser.
+- **Caught by looking, then made checkable**: the preview's banner appeared on every project document too —
+  their unversioned plugin's only version is also named `current`. Fixed, and the site check now fails on
+  a version banner under `/project/` (it reported 41 pages before the fix, none after).
 - **Found on the way**: `main` gained a ruleset today, and GitHub Actions is not among its bypass actors —
   the first stable release will fail when it pushes its commit (at a glance, above).
 

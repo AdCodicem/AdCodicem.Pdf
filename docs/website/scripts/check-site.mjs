@@ -2,11 +2,13 @@
 //
 // The build succeeding proves little: in September 2026 every page of the user documentation was
 // published as its own compiled JavaScript, printed as text, and the build, every link and every HTTP
-// status were fine. Two failures are looked for, in the text a reader sees — scripts, styles and code
-// samples excluded, since a sample may legitimately show markup:
+// status were fine. What is looked for, in the text a reader sees — scripts, styles and code samples
+// excluded, since a sample may legitimately show markup:
 //
 // - compiled MDX: a page whose content was compiled twice renders the output of the first pass;
-// - escaped markup: an HTML tag printed as text, as DocFX's heading anchors were in the API reference.
+// - escaped markup: an HTML tag printed as text, as DocFX's heading anchors were in the API reference;
+// - an unresolved DocFX cross-reference, which a browser renders as nothing at all;
+// - a version banner on a project document, which belongs to no version.
 //
 // Run automatically after every build; see package.json. Given a directory, it checks that instead — a
 // saved copy of the published site, for instance.
@@ -33,9 +35,14 @@ const checks = [
       /&lt;\/?(?:a|abbr|b|br|code|div|em|i|img|li|ol|p|pre|span|strong|sub|sup|table|td|th|tr|ul|xref)(?:\s|\/|&gt;)/,
   },
   {
-    // DocFX's placeholder for a reference it could not resolve; a browser renders it as nothing at all.
     reason: "an unresolved DocFX cross-reference",
     pattern: /<xref\b/,
+  },
+  {
+    // The project documents are unversioned, but their plugin's only version is named like the preview.
+    reason: "a version banner on an unversioned project document",
+    pattern: /\btheme-doc-version-banner\b/,
+    appliesTo: (page) => page.split(path.sep)[0] === "project",
   },
 ];
 
@@ -80,13 +87,16 @@ let pages = 0;
 
 for await (const file of htmlFiles(root)) {
   pages += 1;
+  const page = path.relative(root, file);
   const text = visibleText(await readFile(file, "utf8"));
 
-  for (const { reason, pattern } of checks) {
+  for (const { reason, pattern, appliesTo } of checks) {
+    if (appliesTo && !appliesTo(page)) continue;
+
     const found = pattern.exec(text);
     if (found) {
       const excerpt = text.slice(Math.max(0, found.index - 60), found.index + 80).replace(/\s+/g, " ");
-      failures.push(`${path.relative(root, file)}: ${reason}\n    …${excerpt}…`);
+      failures.push(`${page}: ${reason}\n    …${excerpt}…`);
     }
   }
 }
@@ -102,4 +112,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Site check: ${pages} built pages, none showing compiled MDX or escaped markup.`);
+console.log(`Site check: ${pages} built pages, none showing compiled MDX, escaped markup or a misplaced banner.`);
