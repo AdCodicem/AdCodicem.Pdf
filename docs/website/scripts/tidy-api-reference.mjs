@@ -11,7 +11,7 @@
 // - A `<see cref>` DocFX could not resolve on its own is left as an empty `<xref>` element, so the
 //   sentence around it simply lost a word. It becomes a link to the page, and the member, it names.
 
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -86,5 +86,9 @@ for (const name of files) {
     rewritten += 1;
   }
 }
+
+// DocFX's own table of contents: the sidebar is built from the pages, and a stable release would otherwise
+// freeze this file with them.
+await rm(path.join(directory, "toc.yml"), { force: true });
 
 console.log(`API reference: ${rewritten} of ${files.length} pages tidied.`);
