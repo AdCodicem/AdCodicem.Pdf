@@ -6,7 +6,7 @@ namespace AdCodicem.Pdf.Objects;
 [System.Diagnostics.CodeAnalysis.SuppressMessage(
     "Naming",
     "CA1711:Identifiers should not have incorrect suffix",
-    Justification = "The PDF specification calls this a public sealed class pdfdictionary : pdfobject; renaming it would make every reader of the specification translate.")]
+    Justification = "The PDF specification calls this object a dictionary; renaming it would make every reader of the specification translate.")]
 public sealed class PdfDictionary : PdfObject, IEnumerable<KeyValuePair<PdfName, PdfObject>>
 {
     private readonly Dictionary<PdfName, PdfObject> _entries;

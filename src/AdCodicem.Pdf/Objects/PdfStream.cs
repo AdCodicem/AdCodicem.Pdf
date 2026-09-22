@@ -6,7 +6,7 @@ namespace AdCodicem.Pdf.Objects;
 [System.Diagnostics.CodeAnalysis.SuppressMessage(
     "Naming",
     "CA1711:Identifiers should not have incorrect suffix",
-    Justification = "The PDF specification calls this a public sealed class pdfstream : pdfobject; renaming it would make every reader of the specification translate.")]
+    Justification = "The PDF specification calls this object a stream; renaming it would make every reader of the specification translate.")]
 public sealed class PdfStream : PdfObject
 {
     /// <summary>Initialises a stream from its dictionary and its encoded data.</summary>
