@@ -31,8 +31,8 @@ that account; the team may ask identifying questions before accepting. The prefi
 What nuget.org weighs: that the prefix clearly identifies its owner, is not a common word and is at least
 four characters, and that packages under it carry consistent identifying metadata and a licence declared
 with the `license` element rather than `licenseUrl`. `Directory.Build.props` already gives every package
-`Authors` = `AdCodicem` and `PackageLicenseExpression` = `MIT`; there is no icon, so the rule on embedded
-icons does not apply. Packages the owner already published under the prefix get the mark retroactively.
+`Authors` = `AdCodicem`, `PackageLicenseExpression` = `MIT`, and an embedded icon (`assets/icon.png`, packed
+as `PackageIcon`). Packages the owner already published under the prefix get the mark retroactively.
 What waiting risks is someone else publishing under the name first: a reservation leaves other owners'
 existing packages in place.
 
