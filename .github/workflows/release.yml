@@ -3,11 +3,12 @@ name: Release
 # Two ways out of this repository, in one workflow file because a nuget.org trusted-publishing policy is
 # tied to the file name - one policy covers both:
 #
-#   - every push to main publishes a **preview** package, so what is on main is always installable;
-#   - a **stable release** cuts the version, changelog, tag, GitHub Release, packages and documentation
-#     site, and is never automatic: someone asks for it.
+#   - every push to main publishes a **preview** package, so what is on main is always installable, and
+#     redeploys the site with that preview's documentation beside the stable versions (ADR 31);
+#   - a **stable release** cuts the version, changelog, tag, GitHub Release and packages, freezes the
+#     documentation of its line, and is never automatic: someone asks for it.
 #
-# Nothing is tagged, released or documented by merging. That is deliberate: a merge should be cheap.
+# Nothing is tagged or released by merging. That is deliberate: a merge should be cheap.
 #
 # A manual run does either, and defaults to the harmless one. Publishing a preview needed a merge before,
 # which is a poor reason to merge; the stable release is the choice that has to be made deliberately,
@@ -58,6 +59,8 @@ jobs:
       # Lets the job exchange a GitHub OIDC token for a short-lived NuGet key; nothing long-lived is
       # stored anywhere. See docs/releasing.md.
       id-token: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -139,6 +142,21 @@ jobs:
           echo "Published to nuget.org. It is a prerelease, so it reaches only the people who ask for" >> "$GITHUB_STEP_SUMMARY"
           echo "prereleases. Cut the stable release from **Run workflow**, choosing \`stable\`." >> "$GITHUB_STEP_SUMMARY"
 
+  # Every preview published from main puts its documentation online, under /preview beside the stable
+  # versions. A preview packed from another branch is for trying out, not for documenting, and the Pages
+  # environment deploys from main alone.
+  preview-documentation:
+    name: Preview documentation
+    needs: preview
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
+    with:
+      preview_version: ${{ needs.preview.outputs.version }}
+
   stable:
     name: Stable release
     if: github.event_name == 'workflow_dispatch' && inputs.what == 'stable'
@@ -149,6 +167,8 @@ jobs:
       issues: write
       pull-requests: write
       id-token: write
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -160,9 +180,12 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # For semantic-release, and for the documentation site, whose user pages the release freezes.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: docs/website/package-lock.json
 
       - name: Build and test
         run: |
@@ -177,9 +200,12 @@ jobs:
         with:
           user: ${{ env.NUGET_ACCOUNT }}
 
-      # Decides the version from the commits, writes the changelog, packs, pushes, tags and releases.
-      # No release is produced when no commit since the last tag warrants one.
+      # Decides the version from the commits, writes the changelog, freezes the documentation of the
+      # release's line, packs, pushes, tags and releases. No release is produced when no commit since the
+      # last tag warrants one. The commit it ends on is the release commit, which carries the frozen
+      # documentation; the site is built from that one, not from the commit this run started from.
       - name: Release
+        id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
@@ -197,6 +223,10 @@ jobs:
             @semantic-release/git@10 \
             $arguments
 
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # With no preview newer than the release, the redeployed site has no preview section until the next
+  # merge publishes one.
   documentation:
     name: Documentation
     needs: stable
@@ -206,3 +236,5 @@ jobs:
       pages: write
       id-token: write
     uses: ./.github/workflows/docs.yml
+    with:
+      ref: ${{ needs.stable.outputs.commit }}
