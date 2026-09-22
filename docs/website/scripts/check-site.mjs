@@ -47,13 +47,33 @@ async function* htmlFiles(directory) {
   }
 }
 
-// What a reader sees as prose: everything but scripts, styles, and code — inline or in a block.
-const visibleText = (html) =>
-  html
-    .replace(/<script\b[\s\S]*?<\/script>/g, "")
-    .replace(/<style\b[\s\S]*?<\/style>/g, "")
-    .replace(/<pre\b[\s\S]*?<\/pre>/g, "")
-    .replace(/<code\b[\s\S]*?<\/code>/g, "");
+const skippedElement = /<(script|style|pre|code)\b[^>]*>/gi;
+
+// What a reader sees as prose: everything but scripts, styles, and code — inline or in a block. Each
+// skipped element runs to its own closing tag, the way an HTML parser treats raw text: a script is not
+// scanned for tags, and a code block's inner <code> ends with the <pre> that holds it.
+function visibleText(html) {
+  const lower = html.toLowerCase();
+  let text = "";
+  let position = 0;
+
+  while (position < html.length) {
+    skippedElement.lastIndex = position;
+    const opening = skippedElement.exec(html);
+    if (!opening) {
+      text += html.slice(position);
+      break;
+    }
+
+    text += html.slice(position, opening.index);
+
+    const closing = lower.indexOf(`</${opening[1].toLowerCase()}`, skippedElement.lastIndex);
+    const end = closing < 0 ? -1 : lower.indexOf(">", closing);
+    position = end < 0 ? html.length : end + 1;
+  }
+
+  return text;
+}
 
 const failures = [];
 let pages = 0;
