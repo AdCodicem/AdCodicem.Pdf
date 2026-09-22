@@ -21,8 +21,12 @@ here.
 - **Tagged**: `v0.1.0` on `2808d2f` — the starting point semantic-release continues from. No package exists
   for it, by design.
 - **Nothing on `main` is red any more.** The publishing-identity guard that used to stop `Release` (T11)
-  went with the merge of #11, and `Documentation` deployed successfully on 2026-09-19 (run 2). The site
-  is live at <https://adcodicem.github.io/AdCodicem.Pdf/>.
+  went with the merge of #11, and `Documentation` deployed successfully on 2026-09-19 (run 2).
+- **The site at <https://adcodicem.github.io/AdCodicem.Pdf/> was live but broken** from its first deployment:
+  every user-facing page — introduction, concepts, the whole API reference — showed its own compiled
+  JavaScript as text. Repaired on `claude/docs-site-repair` (2026-09-22 below); once merged, the site is
+  redeployed by hand. **In flight next**: versioned documentation — stable versions behind a selector, the
+  latest preview behind a button, deployed with every preview.
 - **`OpenSSF Scorecard` is fixed and proven**: the `v2.4.4` pin merged, run 13 went green, and
   `api.scorecard.dev` now serves a report — so the README badge finally has a number behind it.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) is on nuget.org —
@@ -64,6 +68,35 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-22 — The site had never shown a single user-facing page
+- **What a visitor saw**: the introduction, both concept pages and all thirty API pages printed as
+  `export const frontMatter = …` followed by a screen of `_jsx(…)` calls. Only the project documents
+  rendered. It had been that way since the first deployment on 2026-09-19.
+- **Why**: moving the site into `docs/website` left the project documents' plugin pointed at `docs/` —
+  which now contained the site. Docusaurus scopes each docs plugin's MDX loader to its whole directory;
+  `include` and `exclude` choose pages, not what the loader compiles. So every user page went through two
+  loaders, and the second rendered the first one's output as Markdown. The page itself said so: it imported
+  metadata from `…/docusaurus-plugin-content-docs/project/`, the wrong plugin.
+- **Fix**: the project documents are copied into `docs/website/project` (ignored by git) before every build
+  and published from there; edit links still point at `docs/`. ADR 28 carries the amendment.
+- **Why nobody noticed**: the build passed, every link resolved, every URL returned 200 — and T12 below was
+  closed on "the site serves 44 pages", which counted responses and never looked at one. Every build now
+  ends with `check-site.mjs`, which reads the built pages for compiled MDX, HTML printed as text and
+  unresolved DocFX references, and fails the build on any. Run against a saved copy of the published site,
+  it reports 64 problems in 74 pages; against the repaired build, none.
+- **The API reference, tidied while there**: DocFX's inline `<a id>` anchors had been the title, sidebar
+  label and table-of-contents text of every page — they are explicit heading ids now; six `<see cref>`
+  DocFX could not resolve had left empty elements, and now link to what they name; cross-links carrying an
+  anchor were not being rewritten; the sidebar groups types under their namespace; generated pages no
+  longer offer an edit link to a file that exists only during the build; and analyser suppressions are
+  filtered out of declarations. Printing them exposed two `Justification` strings in `PdfDictionary` and
+  `PdfStream` mangled by an old search-and-replace ("calls this a public sealed class pdfdictionary :
+  pdfobject"), now rewritten.
+- **Stale content**: the introduction still said nothing was on nuget.org; it now gives the `--prerelease`
+  command and says which package exists and which milestone brings each of the others. The diagnostics
+  page claimed seventy-five thousand mutations on every release; a normal test run does about three
+  thousand, and the page now says so.
 
 ### 2026-09-19 — What two abandoned branches still knew
 
@@ -408,7 +441,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
 | T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
-| ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site serves 44 pages plus the API reference. The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
+| ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
 | T14 | Codecov is linked and the badge reads 82.61%, uploaded tokenless (`Token length: 0` in run 84) — so the original entry, "not linked, badge stays empty", is closed. What is left is narrower: the Codecov **GitHub App** is not installed, so it comments as `codecov-commenter` rather than `codecov[bot]` and warns on every pull request that uploads and comments are not reliably processed | Install the Codecov GitHub App on the repository |
 | T15 | Auto-merge **is** allowed on the repository; what is missing is a ruleset on `main`, so it still accepts direct pushes and the Dependabot auto-merge workflow has no required check to wait for. **Measured cost**: Scorecard's `Branch-Protection` is 0/10 at weight 7.5, and `Code-Review` is 0/10 at the same weight because nothing here has ever been approved — together about **1.5 points** of the overall score, the largest block left | A branch ruleset on `main` requiring the five pull-request checks, non-strict, **with a bypass for GitHub Actions** — `@semantic-release/git` pushes the `chore(release)` commit straight to `main`, and a ruleset without that bypass fails the stable release in `prepare` |

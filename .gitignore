@@ -441,3 +441,6 @@ TestResults/
 
 # API reference generated from the XML documentation comments at build time
 docs/website/docs/api/
+
+# The project documents, copied from docs/ at build time (see docs/website/scripts/sync-project-docs.mjs)
+docs/website/project/

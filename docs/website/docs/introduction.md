@@ -11,9 +11,15 @@ existing ones — with no headless browser, no native PDF engine and no external
 
 :::warning Pre-release
 
-Nothing is published on nuget.org yet. The reader is built and tested; writing, assembly and the HTML
-engine are ahead. The [roadmap](/project/roadmap) says what exists and what does not, and
-[status](/project/status) says where the work actually stands today.
+Only previews are on nuget.org so far, and no stable release exists yet:
+
+```bash
+dotnet add package AdCodicem.Pdf --prerelease
+```
+
+The reader is built and tested; writing, assembly and the HTML engine are ahead. The
+[roadmap](/project/roadmap) says what exists and what does not, and [status](/project/status) says where
+the work actually stands today.
 
 :::
 
@@ -44,15 +50,18 @@ its content.
 
 ## Packages
 
-| Package | Contents |
-|---|---|
-| `AdCodicem.Pdf` | Object model, lazy reader, streaming writer, pages, fonts, logical structure |
-| `AdCodicem.Pdf.Validation` | The validation rule engine and its profiles |
-| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF |
-| `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration |
-| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD |
-| `AdCodicem.Pdf.Rendering` | Rasterisation |
-| `AdCodicem.Pdf.Signing` | PAdES signing |
+One package exists today; the others are planned, and the milestone that brings each one is on the
+[roadmap](/project/roadmap).
+
+| Package | Contents | Available |
+|---|---|---|
+| `AdCodicem.Pdf` | Object model, lazy reader, streaming writer, pages, fonts, logical structure | Preview — the object model and the reader |
+| `AdCodicem.Pdf.Validation` | The validation rule engine and its profiles | Planned, M2 |
+| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | Planned, M7 |
+| `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration | Planned, M7 |
+| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD | Planned, M12 |
+| `AdCodicem.Pdf.Rendering` | Rasterisation | Planned, M14 |
+| `AdCodicem.Pdf.Signing` | PAdES signing | Planned, M14 |
 
 ## Reading a document today
 

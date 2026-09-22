@@ -6,6 +6,47 @@
 
 const organisation = 'AdCodicem';
 const repository = 'AdCodicem.Pdf';
+const source = `https://github.com/${organisation}/${repository}/tree/main`;
+
+/**
+ * The generated API reference is one flat directory, one page per type and per namespace. Sorted by file
+ * name, a namespace's own page lands after its types; grouped here instead, each namespace is a category
+ * whose page is its link, holding its types by name.
+ *
+ * @type {import('@docusaurus/plugin-content-docs').PluginOptions['sidebarItemsGenerator']}
+ */
+async function sidebarItems({ defaultSidebarItemsGenerator, ...args }) {
+  if (args.item.dirName !== 'api') return defaultSidebarItemsGenerator(args);
+
+  const pages = args.docs.filter((doc) => doc.sourceDirName === 'api');
+  const uid = (doc) => doc.id.slice(doc.id.lastIndexOf('/') + 1);
+  const byName = (a, b) => a.label.localeCompare(b.label);
+
+  const namespaces = pages.filter((doc) => doc.title.startsWith('Namespace '));
+  const categories = new Map(
+    namespaces.map((doc) => [
+      uid(doc),
+      { type: 'category', label: uid(doc), link: { type: 'doc', id: doc.id }, items: [] },
+    ]),
+  );
+
+  const loose = [];
+  for (const doc of pages) {
+    if (namespaces.includes(doc)) continue;
+
+    // The longest namespace the type's name starts with, so a nested type stays with its namespace.
+    let owner = uid(doc);
+    do {
+      owner = owner.includes('.') ? owner.slice(0, owner.lastIndexOf('.')) : '';
+    } while (owner && !categories.has(owner));
+
+    const item = { type: 'doc', id: doc.id, label: uid(doc).slice(owner ? owner.length + 1 : 0) };
+    (owner ? categories.get(owner).items : loose).push(item);
+  }
+
+  for (const category of categories.values()) category.items.sort(byName);
+  return [...[...categories.values()].sort(byName), ...loose.sort(byName)];
+}
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -41,7 +82,11 @@ const config = {
           path: 'docs',
           routeBasePath: '/',
           sidebarPath: './sidebars.js',
-          editUrl: `https://github.com/${organisation}/${repository}/tree/main/docs/website/`,
+          sidebarItemsGenerator: sidebarItems,
+          // The API reference is generated from the XML documentation comments: its source is the code,
+          // and a link to a Markdown file that exists only during the build would lead to a 404.
+          editUrl: ({ versionDocsDirPath, docPath }) =>
+            docPath.startsWith('api/') ? undefined : `${source}/docs/website/${versionDocsDirPath}/${docPath}`,
         },
         blog: false,
         theme: { customCss: './src/css/custom.css' },
@@ -54,15 +99,15 @@ const config = {
       '@docusaurus/plugin-content-docs',
       {
         id: 'project',
-        // The site now lives inside docs/, so the project documents are its parent. Only their own
-        // files are included: without this the plugin would try to swallow the site itself.
-        path: '..',
-        include: ['*.md', 'milestones/**/*.md', 'adr/**/*.md'],
-        // The blank templates are for writing records, not for reading.
-        exclude: ['adr/adr-template.md', 'milestones/_template.md'],
+        // A copy of the project documents, never ../ itself. That directory contains this site, and
+        // Docusaurus compiles everything under a plugin's path with that plugin's loader, whatever
+        // `include` says — pointed at ../, this plugin compiled the user documentation a second time and
+        // the site published it as JavaScript. scripts/sync-project-docs.mjs makes the copy.
+        path: 'project',
         routeBasePath: 'project',
         sidebarPath: './sidebars-project.js',
-        editUrl: `https://github.com/${organisation}/${repository}/tree/main/docs/`,
+        // Edits go to the originals in docs/, not to the copy.
+        editUrl: ({ docPath }) => `${source}/docs/${docPath}`,
       },
     ],
   ],

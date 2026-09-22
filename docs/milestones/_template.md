@@ -38,7 +38,7 @@ What has already bitten, or what is known to be treacherous in the specification
 
 ## Documentation
 
-Which pages of `website/docs` this milestone adds or changes, and which project documents it touches.
+Which pages of `docs/website/docs` this milestone adds or changes, and which project documents it touches.
 A milestone that adds public API without documenting it is not finished.
 
 ## Exit criteria
