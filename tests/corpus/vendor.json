@@ -157,6 +157,1344 @@
         "indexRebuilt": false,
         "requiredDiagnostics": []
       }
+    },
+    {
+      "file": "vendor/us-federal/xerox-workcentre-treasury-imf-report-scan.pdf",
+      "title": "US Treasury report to Congress scanned on a Xerox WorkCentre Pro 265: JBIG2 with global segments, no text layer",
+      "useCase": "scan",
+      "producer": "Xerox WorkCentre Pro 265 (copier firmware)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://home.treasury.gov/system/files/206/2007-Final-COP-report_0_0.pdf",
+        "sha256": "8cfb790a4407f251769ce9619997ac659f13bca42988db16255b0c7ab2f8c8c0",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://home.treasury.gov/"
+      },
+      "features": [
+        "third-party",
+        "office-copier",
+        "jbig2",
+        "jbig2-globals",
+        "image-only",
+        "xref-table",
+        "private-info-key"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false
+      }
+    },
+    {
+      "file": "vendor/us-federal/hp-mfp-acrobat-ocr-nih-report.pdf",
+      "title": "NIH advisory council report scanned on an HP multifunction printer, with the invisible OCR text layer Acrobat Pro 11 added",
+      "useCase": "scan",
+      "producer": "Hewlett Packard MFP; OCR by Adobe Acrobat Pro 11.0.10 Paper Capture",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://report.nih.gov/sites/report/files/docs/ORIP%202015.pdf",
+        "sha256": "a10746d257938c230c9bcac61ab0d2ca2dfdd07a6d08382ac0d7db1251f46c59",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://report.nih.gov/"
+      },
+      "features": [
+        "third-party",
+        "office-copier",
+        "ocr-layer",
+        "invisible-text",
+        "jpeg",
+        "xref-stream",
+        "object-streams",
+        "tagged"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "NIH Revitalization Act of 1993",
+          "Council of Councils (CoC)",
+          "Science Education Partnership"
+        ]
+      }
+    },
+    {
+      "file": "vendor/us-federal/acrobat3-import-irs-1040-1988-scan.pdf",
+      "title": "IRS Form 1040 (1988) scanned and imported by Acrobat 3.0 in 1999: PDF 1.2, CCITT G4, no text",
+      "useCase": "scan",
+      "producer": "Acrobat 3.0 Import Plug-in (1999)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-prior/f1040--1988.pdf",
+        "sha256": "e4022b8e9d43602750d733113e2da64361641566c6893bffce287b6d860b135f",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.irs.gov/prior-year-forms-and-instructions"
+      },
+      "features": [
+        "third-party",
+        "pdf-1.2",
+        "legacy",
+        "ccitt-g4",
+        "lzw",
+        "image-only",
+        "linearized",
+        "nul-terminated-info-strings",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false
+      }
+    },
+    {
+      "file": "vendor/us-federal/distiller2-irs-9465-1996-rc4-40.pdf",
+      "title": "IRS Form 9465 (1996): Distiller 2.0 output given an AcroForm and 40-bit RC4 encryption by Acrobat in 1998",
+      "useCase": "form",
+      "producer": "Acrobat Distiller 2.0 for Windows; form, encryption and linearisation by Acrobat (1998)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-prior/f9465--1996.pdf",
+        "sha256": "86b9f31d4e3f642fe196079b23590c3b286b6e353f86a2c76402b7cdfc1a2fe5",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.irs.gov/prior-year-forms-and-instructions"
+      },
+      "features": [
+        "third-party",
+        "pdf-1.2",
+        "legacy",
+        "encryption-rc4-40",
+        "empty-user-password",
+        "acroform",
+        "linearized",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "encrypted": true,
+        "password": "",
+        "hasExtractableText": true,
+        "textContains": [
+          "Installment Agreement Request",
+          "Cat. No. 14842Y",
+          "Form 9465 (Rev. 1-96)"
+        ]
+      }
+    },
+    {
+      "file": "vendor/us-federal/distiller3-irs-ss4-1995-form.pdf",
+      "title": "IRS Form SS-4 (1995): Distiller 3.0 with an Acrobat 3 AcroForm and LZW streams",
+      "useCase": "form",
+      "producer": "Acrobat Distiller 3.0 for Windows (1997)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-prior/fss4--1995.pdf",
+        "sha256": "81f4e7f9b33d34287f12b220af348e74db5b764c20b10eb8eab77259891ed02d",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.irs.gov/prior-year-forms-and-instructions"
+      },
+      "features": [
+        "third-party",
+        "pdf-1.2",
+        "legacy",
+        "acroform",
+        "lzw",
+        "linearized",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Application for Employer Identification Number",
+          "Cat. No. 16055N",
+          "Application by Tele-TIN"
+        ]
+      }
+    },
+    {
+      "file": "vendor/us-federal/distiller4-opm-fehb-election-form-2000.pdf",
+      "title": "OPM benefits letter attachment (2000): Distiller 4.0, TrueType converted to Type 1 subsets, Arial not embedded",
+      "useCase": "form",
+      "producer": "Acrobat Distiller 4.0 for Windows (2000)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.opm.gov/retirement-services/publications-forms/benefits-administration-letters/2000/00-215_attach3.pdf",
+        "sha256": "23ef6b38638a645c06699778021c42d68ded660d0e5aaf1d5dc6e5e9c6920911",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.opm.gov/retirement-services/publications-forms/benefits-administration-letters/"
+      },
+      "features": [
+        "third-party",
+        "pdf-1.2",
+        "legacy",
+        "type1c-subset",
+        "non-embedded-truetype",
+        "linearized",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Premium Conversion Waiver/Election Form",
+          "Qualifying Life Events (QLEs)",
+          "Attachment 3"
+        ]
+      }
+    },
+    {
+      "file": "vendor/us-federal/indesign-irs-pub1-arabic.pdf",
+      "title": "IRS Publication 1 in Arabic: right-to-left text in Type 1 (CFF) subsets with ToUnicode, catalogue /Lang wrongly en-US",
+      "useCase": "report",
+      "producer": "Adobe InDesign 15.1 (Windows), Adobe PDF Library 15.0",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-prior/p1ar--2017.pdf",
+        "sha256": "3bf73157c5170446af9d66afe6d4fa44de7997313117b3e8f04b832c524759db",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.irs.gov/forms-pubs/about-publication-1"
+      },
+      "features": [
+        "third-party",
+        "rtl-arabic",
+        "type1c-subset",
+        "tounicode",
+        "tagged",
+        "lang-mismatch",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Catalog Number 74791U",
+          "Low Income Taxpayer Clinic",
+          "وثيقة حقوق دافع"
+        ]
+      }
+    },
+    {
+      "file": "vendor/us-federal/indesign-irs-pub1-russian.pdf",
+      "title": "IRS Publication 1 in Russian: Cyrillic through Type 1 fonts with /Differences encodings, six incremental updates mixing a table and an xref stream",
+      "useCase": "report",
+      "producer": "Adobe InDesign 15.1 (Windows), Adobe PDF Library 15.0; later incremental saves",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-prior/p1ru--2017.pdf",
+        "sha256": "ea92fca226b2e6b7905c7af1300fa27b866d632c715a20cc7cd8f812d1d0b9fc",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.irs.gov/forms-pubs/about-publication-1"
+      },
+      "features": [
+        "third-party",
+        "cyrillic",
+        "differences-encoding",
+        "tounicode",
+        "incremental-update",
+        "hybrid-xref",
+        "object-streams",
+        "tagged",
+        "lang-mismatch"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Декларация прав налогоплательщиков",
+          "Catalog Number 58860S",
+          "Low Income Taxpayer Clinic"
+        ]
+      }
+    },
+    {
+      "file": "vendor/us-federal/indesign-irs-pub1-chinese-traditional.pdf",
+      "title": "IRS Publication 1 in Traditional Chinese: CIDFontType2 and CIDFontType0C subsets, catalogue /Lang wrongly en-US",
+      "useCase": "report",
+      "producer": "Adobe InDesign 15.1 (Windows), Adobe PDF Library 15.0",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-prior/p1zht--2017.pdf",
+        "sha256": "1b773f0dbb1418bf31d53daa9446b8d792260e66d66640ff53feed42d4b27ffa",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.irs.gov/forms-pubs/about-publication-1"
+      },
+      "features": [
+        "third-party",
+        "cjk",
+        "type0-subset",
+        "cidfonttype2",
+        "cidfonttype0c",
+        "tagged",
+        "lang-mismatch",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Catalog Number 58858G",
+          "納稅人享有的權利項目",
+          "Taxpayer Advocate Service"
+        ]
+      }
+    },
+    {
+      "file": "vendor/us-federal/livecycle-uscis-ar11-xfa-form.pdf",
+      "title": "USCIS Form AR-11: LiveCycle Designer XFA form with calculate scripts and Reader usage rights, AES-128 with an empty user password",
+      "useCase": "form",
+      "producer": "Designer 6.5 (Adobe LiveCycle Designer)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.uscis.gov/sites/default/files/document/forms/ar-11.pdf",
+        "sha256": "f02879c3dcb820468e24d0dc6987c232ae6bb5ae0814881f80f3d606251cd0ff",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.uscis.gov/ar-11"
+      },
+      "features": [
+        "third-party",
+        "xfa",
+        "acroform",
+        "ur3-usage-rights",
+        "encryption-aes128",
+        "empty-user-password",
+        "linearized",
+        "tagged",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "encrypted": true,
+        "password": "",
+        "hasExtractableText": true,
+        "textContains": [
+          "Alien's Change of Address Card",
+          "1344 Pleasants Drive",
+          "Form AR-11 Edition 11/02/22"
+        ]
+      }
+    },
+    {
+      "file": "vendor/us-federal/itext-govinfo-us-code-certified.pdf",
+      "title": "1 U.S.C. §1 as certified by the Government Publishing Office: a DocMDP certification signature added in an incremental update",
+      "useCase": "contract",
+      "producer": "govinfo, U.S. Government Publishing Office (iText Core 7.2.3)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.govinfo.gov/content/pkg/USCODE-2024-title1/pdf/USCODE-2024-title1-chap1-sec1.pdf",
+        "sha256": "98e24238169dbcc429c73d0b57119982a9b2088d44913dd967e79e0df3ea75b5",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.govinfo.gov/app/details/USCODE-2024-title1/USCODE-2024-title1-chap1-sec1"
+      },
+      "features": [
+        "third-party",
+        "signed-adbe-pkcs7-detached",
+        "certification-signature",
+        "docmdp",
+        "fieldmdp",
+        "incremental-update",
+        "xref-table",
+        "size-off-by-one"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Respect for Marriage Act",
+          "Words denoting number, gender",
+          "Born-Alive Infants Protection"
+        ]
+      }
+    },
+    {
+      "file": "vendor/opf-format-corpus/distiller3-dea-cfr-damaged.pdf",
+      "title": "21 CFR Parts 1307-1308 (DEA, typeset by GPO, 2000) as crawled into GovDocs1: a wrong startxref and wrong stream lengths",
+      "useCase": "damaged",
+      "producer": "Acrobat Distiller 3.01 for Windows (GPO ACOMP.exe, 2000)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105); byte-identical GovDocs1 capture, via the OPF format-corpus",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/govdocs1-error-pdfs/error_set_2/303226.pdf",
+        "sha256": "da14d24dd22effebec987312abf0312750bdbbaf93f54c9aef3b9ec7041e40ba",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdf-1.2",
+        "legacy",
+        "startxref-wrong",
+        "stream-length-wrong",
+        "corrupt-content-streams",
+        "type3-font",
+        "real-world-damage"
+      ],
+      "expect": {
+        "pages": 19,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "stream.length-invalid"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Native American Church",
+          "Drug Enforcement Administration",
+          "EXEMPT ANABOLIC STEROID PRODUCTS"
+        ]
+      }
+    },
+    {
+      "file": "vendor/opf-format-corpus/imagemagick-false-pdfa1b-jpx.pdf",
+      "title": "ImageMagick 6.8.9 output claiming PDF/A-1b while it carries a JPEG 2000 image and no output intent",
+      "useCase": "archival",
+      "producer": "ImageMagick 6.8.9-8",
+      "origin": "contributed",
+      "licence": "CC0 1.0 (Open Preservation Foundation format-corpus)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/pdfCabinetOfHorrors/balloon_a1b_jp2k.pdf",
+        "sha256": "7e5f457dbf1ee161e1377a29723c1f03b3c94ba3d2322a7bb972dd1ca0a87b79",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "false-conformance-claim",
+        "jpx",
+        "image-only",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "claimsConformance": "PDF/A-1b",
+        "conformanceValid": false
+      }
+    },
+    {
+      "file": "vendor/uk-ogl/word2019-ccs-contract-schedule.pdf",
+      "title": "Crown Commercial Service contract schedule saved as PDF by Word 2019: hybrid cross-reference, non-embedded Arial",
+      "useCase": "contract",
+      "producer": "Microsoft® Word 2019",
+      "origin": "contributed",
+      "licence": "UK Open Government Licence v3.0 (Crown copyright)",
+      "source": {
+        "url": "https://assets.publishing.service.gov.uk/media/68357d337fb7a7d9cd7752ed/Call-Off_Schedule_12_-_Clustering_v1.0_PA.pdf",
+        "sha256": "8bf5941080bbef755cfb8b59bb658b5162ff4217cac4ac2b074f8e7fb1e7d761",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.gov.uk/government/publications/the-public-sector-contract-call-off-schedules"
+      },
+      "features": [
+        "third-party",
+        "word-save-as-pdf",
+        "hybrid-xref",
+        "object-streams",
+        "tagged",
+        "non-embedded-truetype"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Call-Off Schedule 12 (Clustering)",
+          "Cluster Member claims",
+          "Model Version: v1.0 PA"
+        ]
+      }
+    },
+    {
+      "file": "vendor/uk-ogl/indesign-acrobat-hmcts-n208-form.pdf",
+      "title": "HMCTS claim form N208: InDesign 15.1, finished in Acrobat with Reader usage rights, optional content and a CCITT image",
+      "useCase": "form",
+      "producer": "Adobe InDesign 15.1 (Macintosh), Adobe PDF Library 15.0; usage rights by Acrobat",
+      "origin": "contributed",
+      "licence": "UK Open Government Licence v3.0 (Crown copyright)",
+      "source": {
+        "url": "https://assets.publishing.service.gov.uk/media/601aa90ed3bf7f70c036dbd6/n208-eng.pdf",
+        "sha256": "673621d1559c784bf9d7a139a620e32c47d942ceb3a58f2c02fd179fd838ac40",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.gov.uk/government/publications/form-n208-claim-form-cpr-part-8"
+      },
+      "features": [
+        "third-party",
+        "acroform",
+        "ur3-usage-rights",
+        "optional-content",
+        "ccitt",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "tagged",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Claim form (CPR Part 8)",
+          "Statement of Truth",
+          "Crown copyright 2020"
+        ]
+      }
+    },
+    {
+      "file": "vendor/uk-ogl/distiller10-hmrc-gift-aid-letter.pdf",
+      "title": "HMRC template letter printed through the PScript5 driver to Acrobat Distiller 10.1.8",
+      "useCase": "report",
+      "producer": "Acrobat Distiller 10.1.8 (Windows), PScript5.dll 5.2.2",
+      "origin": "contributed",
+      "licence": "UK Open Government Licence v3.0 (Crown copyright)",
+      "source": {
+        "url": "https://assets.publishing.service.gov.uk/media/5a747c53e5274a7f990288d1/ga-claim-letter-standard.pdf",
+        "sha256": "63ff08f714bb4d136bb0014e112c7242bd230185afe26ed4827763e2892b69ea",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.gov.uk/government/publications/gift-aid-claim-template-letter-standard-method"
+      },
+      "features": [
+        "third-party",
+        "distiller",
+        "print-driver",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "tagged",
+        "type0-subset",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Template Letter for Gift Aid",
+          "Dear (name of supporter),",
+          "Yours faithfully/sincerely"
+        ]
+      }
+    },
+    {
+      "file": "vendor/uk-ogl/pagemaker-distiller5-hmrc-iht205-form.pdf",
+      "title": "HMRC IHT205 (2004-2006 edition): PageMaker 6.52 and Distiller 5.0, JavaScript form calculations, RC4-128 with an empty user password (pdf.js issue 13132)",
+      "useCase": "form",
+      "producer": "Adobe PageMaker 6.52, Acrobat Distiller 5.0 (Windows)",
+      "origin": "contributed",
+      "licence": "UK Open Government Licence v3.0 (Crown copyright)",
+      "source": {
+        "url": "https://web.archive.org/web/20210324123420id_/https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/866023/IHT205_2004-2006.pdf",
+        "sha256": "d1794877fefccd0820f4ce3b8dd800aa391d5099684b39576f49f02166ffc496",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/mozilla/pdf.js/issues/13132"
+      },
+      "features": [
+        "third-party",
+        "acroform",
+        "javascript",
+        "encryption-rc4-128",
+        "empty-user-password",
+        "linearized",
+        "tagged",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "encrypted": true,
+        "password": "",
+        "hasExtractableText": true,
+        "textContains": [
+          "Return of estate information",
+          "Net estate for inheritance tax",
+          "HMRC CT 12/05"
+        ]
+      }
+    },
+    {
+      "file": "vendor/fr-licence-ouverte/word2010-meae-paris-call-survey.pdf",
+      "title": "French foreign ministry questionnaire saved as PDF by Word 2010: hybrid cross-reference, /Lang fr-FR over English text",
+      "useCase": "report",
+      "producer": "Microsoft® Word 2010",
+      "origin": "contributed",
+      "licence": "Licence Ouverte / Open Licence (Etalab)",
+      "source": {
+        "url": "https://static.data.gouv.fr/resources/consultation-des-soutiens-de-lappel-de-paris-paris-call-community-consultation/20200609-091009/paris-call-consultation-eng-survey-questions.pdf",
+        "sha256": "6304458a0689038f4d09662eaf95b730c4bc24f4f44b41268d45b58cdfc787fd",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.data.gouv.fr/datasets/consultation-des-soutiens-de-lappel-de-paris-paris-call-community-consultation"
+      },
+      "features": [
+        "third-party",
+        "word-save-as-pdf",
+        "hybrid-xref",
+        "object-streams",
+        "tagged",
+        "truetype-subset",
+        "type0-subset",
+        "lang-mismatch"
+      ],
+      "expect": {
+        "pages": 5,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Paris Call Community Consultation",
+          "contact@pariscall.international",
+          "Multi-stakeholder cooperation"
+        ]
+      }
+    },
+    {
+      "file": "vendor/fr-licence-ouverte/word365-dila-text-drawn-as-images.pdf",
+      "title": "DILA data sheet from Word for Microsoft 365 (French): the body text, in a font Word could not embed, is drawn as soft-masked images",
+      "useCase": "report",
+      "producer": "Microsoft® Word pour Microsoft 365",
+      "origin": "contributed",
+      "licence": "Licence Ouverte / Open Licence (Etalab)",
+      "source": {
+        "url": "https://echanges.dila.gouv.fr/OPENDATA/DISCOURS_PUBLICS/DILA_Discours%20publics_Presentation_20251126.pdf",
+        "sha256": "b84e4eb0ec00b543e5325dba7210bf402b17b136a709db0a362793d66c883ab2",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.data.gouv.fr/datasets/metadonnees-des-discours-publics-de-vie-publique-fr"
+      },
+      "features": [
+        "third-party",
+        "word-save-as-pdf",
+        "text-as-images",
+        "smask",
+        "hybrid-xref",
+        "object-streams",
+        "tagged",
+        "utf16-metadata"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false
+      }
+    },
+    {
+      "file": "vendor/fr-licence-ouverte/print-to-pdf-excel-agec2025.pdf",
+      "title": "Excel sheet printed through Microsoft Print to PDF and published untouched: classic table, generic CIDFont+Fn subsets, empty /Author",
+      "useCase": "report",
+      "producer": "Microsoft: Print To PDF (printed from Excel)",
+      "origin": "contributed",
+      "licence": "Licence Ouverte / Open Licence (Etalab)",
+      "source": {
+        "url": "https://static.data.gouv.fr/resources/donnees-agec-2025/20260324-110258/agec2025-publication.pdf",
+        "sha256": "5ab80ce3aa9d40c2e5834fa4fccd9ff4f8f5d98737db9e0195249c8b44dbf9cc",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.data.gouv.fr/datasets/donnees-agec-2025"
+      },
+      "features": [
+        "third-party",
+        "print-driver",
+        "xref-table",
+        "type0-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Vidéoprojecteur",
+          "Réemploi ou réutilisation HT",
+          "Montant TTC"
+        ]
+      }
+    },
+    {
+      "file": "vendor/fr-licence-ouverte/libreoffice-cerfa-13983-form.pdf",
+      "title": "Cerfa 13983*03: a LibreOffice 4.4 form re-saved four times by other tools, JavaScript formatting actions, a PDF/UA claim",
+      "useCase": "form",
+      "producer": "LibreOffice 4.4 (Writer); later incremental saves by another tool",
+      "origin": "contributed",
+      "licence": "Licence Ouverte / Open Licence (Etalab)",
+      "source": {
+        "url": "https://www.formulaires.service-public.gouv.fr/gf/cerfa_13983.do",
+        "sha256": "b86100dca935c3e54092edc3db317feeafb6c1dc1e560542a91ed0e7fa990010",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://www.formulaires.service-public.gouv.fr/gf/showFormulaireSignaletiqueConsulter.do?numCerfa=13983&lang=fr"
+      },
+      "features": [
+        "third-party",
+        "acroform",
+        "javascript",
+        "incremental-update",
+        "xref-stream",
+        "object-streams",
+        "tagged"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "DEMANDE D'AGRÉMENT SANITAIRE",
+          "Cerfa N°13983*03",
+          "Date de mise à jour : Août 2017"
+        ]
+      }
+    },
+    {
+      "file": "vendor/eu-publications/pdflib-oj-exchange-rates-greek.pdf",
+      "title": "EU Official Journal notice in Greek: PDFlib+PDI 10 from Arbortext, PDF/A-2a, complete EUAlbertina TrueType fonts",
+      "useCase": "archival",
+      "producer": "PDFlib+PDI 10.0.2p2 (Arbortext Layout Developer 12.2)",
+      "origin": "contributed",
+      "licence": "EU Publications Office reuse policy (Commission Decision 2011/833/EU)",
+      "source": {
+        "url": "http://publications.europa.eu/resource/cellar/a6e4fdfb-c67a-11f0-8da2-01aa75ed71a1.0005.01/DOC_1",
+        "sha256": "64e1cb6428aba81acad81c605a6d55c099dcd4dff5b4318d83be7896a7574583",
+        "retrieved": "2026-09-24",
+        "landingPage": "http://data.europa.eu/eli/C/2025/5662/oj"
+      },
+      "features": [
+        "third-party",
+        "greek",
+        "pdfa",
+        "tagged",
+        "type0-cidfonttype2",
+        "full-font-embedding",
+        "linearized",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Ισοτιμίες του ευρώ",
+          "C/2025/5662",
+          "δολάριο ΗΠΑ"
+        ],
+        "claimsConformance": "PDF/A-2a",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/eu-publications/antenna-house-oj-exchange-rates-2019.pdf",
+      "title": "EU Official Journal notice (2019): Antenna House 6.4, PDF/A-1a, an empty /Lang, references to objects missing from the xref",
+      "useCase": "archival",
+      "producer": "Antenna House PDF Output Library 6.4 (AH XSL Formatter 6.4)",
+      "origin": "contributed",
+      "licence": "EU Publications Office reuse policy (Commission Decision 2011/833/EU)",
+      "source": {
+        "url": "https://publications.europa.eu/resource/cellar/c87451e3-1899-11e9-8d04-01aa75ed71a1.0006.01/DOC_1",
+        "sha256": "aba0bec32609b39e5b5827c188e250f8c78586cbdee51eb52718c455f3ba653c",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:C2019/018/01"
+      },
+      "features": [
+        "third-party",
+        "pdfa",
+        "tagged",
+        "empty-lang",
+        "undefined-object-references",
+        "full-font-embedding",
+        "linearized",
+        "xref-table",
+        "linearization-hints-inconsistent",
+        "malformed-font-xmp"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Euro exchange rates",
+          "(2019/C 18/01)",
+          "Iceland króna"
+        ],
+        "claimsConformance": "PDF/A-1a",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/eu-publications/distiller10-eu-consolidated-regulation-2015.pdf",
+      "title": "Consolidated Council Regulation 2866/98 (2015): Arbortext and Acrobat Distiller 10, PDF/A-1a with a CMYK output intent",
+      "useCase": "archival",
+      "producer": "Acrobat Distiller 10.0.0 (Arbortext Advanced Print Publisher 10.0)",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (EUR-Lex consolidated texts)",
+      "source": {
+        "url": "https://publications.europa.eu/resource/cellar/9b101b8a-567e-496d-8742-1aaf2e994680.0012.03/DOC_1",
+        "sha256": "b84f96c32ae85e88a77550a2b86342e051a4d7ad6e3e5af6a8fca3c43009c37a",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:01998R2866-20150101"
+      },
+      "features": [
+        "third-party",
+        "pdfa",
+        "tagged",
+        "cmyk-output-intent",
+        "linearized",
+        "xref-table",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "COUNCIL REGULATION (EC) No 2866/98",
+          "HAS ADOPTED THIS REGULATION:",
+          "Estonian kroons"
+        ],
+        "claimsConformance": "PDF/A-1a",
+        "conformanceValid": false
+      }
+    },
+    {
+      "file": "vendor/eu-publications/3heights-eu-consolidated-regulation-2026.pdf",
+      "title": "The same regulation consolidated in 2026, through the 3-Heights PDF to PDF/A converter: PDF/A-2a",
+      "useCase": "archival",
+      "producer": "3-Heights PDF to PDF-A Converter Shell 4.7.24.2 (Arbortext Advanced Print Publisher 11.0)",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (EUR-Lex consolidated texts)",
+      "source": {
+        "url": "https://publications.europa.eu/resource/cellar/6939a281-e022-11f0-8439-01aa75ed71a1.0005.03/DOC_1",
+        "sha256": "f00123d945e45675896c784a138bc5740d8bbbc7844e9e44e06bcda3fd903228",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:01998R2866-20260101"
+      },
+      "features": [
+        "third-party",
+        "pdfa",
+        "tagged",
+        "pdfa-converter",
+        "linearized",
+        "xref-table",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Council Regulation (EU) 2025/1409",
+          "Croatian kuna"
+        ],
+        "claimsConformance": "PDF/A-2a",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/lu-legilux/antenna-house-legilux-memorial-pades-lta.pdf",
+      "title": "Luxembourg Official Journal notice under a qualified electronic seal: PAdES B-LTA with DSS and a document timestamp, three incremental updates",
+      "useCase": "contract",
+      "producer": "Antenna House PDF Output Library 7.5 (XSL Formatter 7.5); LuxTrust qualified seal",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (Legilux)",
+      "source": {
+        "url": "https://data.legilux.public.lu/filestore/eli/etat/leg/pa/2026/06/03/a278/jo/fr/pdfa/eli-etat-leg-pa-2026-06-03-a278-jo-fr-pdfa.pdf",
+        "sha256": "a1822353fa3dcc3455776ef2691a0672700df968ff3fb1cd8d47e3c9cb7bd057",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://legilux.public.lu/eli/etat/leg/pa/2026/06/03/a278/jo"
+      },
+      "features": [
+        "third-party",
+        "signed-pades",
+        "pades-b-lta",
+        "qualified-seal",
+        "dss",
+        "document-timestamp",
+        "incremental-update",
+        "xref-stream",
+        "object-streams",
+        "xref-stream-missing-self-entry"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Indice des prix",
+          "Institut national de la statistique",
+          "A 278 - 1"
+        ]
+      }
+    },
+    {
+      "file": "vendor/jp-nta/indesign-distiller18-nta-gift-tax-vertical.pdf",
+      "title": "Japanese gift-tax return: vertical CID fonts (Identity-V) without ToUnicode, AES-128 with an empty user password (pdf.js issue 11526)",
+      "useCase": "form",
+      "producer": "Adobe InDesign CC 2017 (Macintosh), Acrobat Distiller 18.0 (Macintosh)",
+      "origin": "contributed",
+      "licence": "Public Data License 1.0 (Japan; CC BY 4.0 compatible)",
+      "source": {
+        "url": "https://web.archive.org/web/20200210200830id_/https://www.nta.go.jp/taxes/tetsuzuki/shinsei/shinkoku/zoyo/yoshiki2019/pdf/006.pdf",
+        "sha256": "401e46e03f5a2db6fe25bf94acdf3e75eed37abe04e41ebe8ddd7c99f1b639ab",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/mozilla/pdf.js/issues/11526"
+      },
+      "features": [
+        "third-party",
+        "cjk",
+        "vertical-writing",
+        "no-tounicode",
+        "encryption-aes128",
+        "empty-user-password",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "encrypted": true,
+        "password": ""
+      }
+    },
+    {
+      "file": "vendor/pikepdf/scanner-ccitt-endofline.pdf",
+      "title": "Office scanner output whose CCITT G3 image sets /EndOfLine true: it broke pikepdf's image extraction (pikepdf issue 601)",
+      "useCase": "scan",
+      "producer": "unknown office scanner (no /Info)",
+      "origin": "contributed",
+      "licence": "CC0 1.0 (pikepdf REUSE.toml)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pikepdf/pikepdf/910e06b7d547e4e040780748f8ecc0fb7eba7181/tests/resources/ccitt-endofline-true.pdf",
+        "sha256": "11290d3534d5e97ecd6634111549e05c691530cc9d73326b34f12ef550e1c5f3",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/pikepdf/pikepdf/issues/601"
+      },
+      "features": [
+        "third-party",
+        "ccitt-g3",
+        "ccitt-endofline",
+        "image-only",
+        "xref-table",
+        "real-world-damage"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false
+      }
+    },
+    {
+      "file": "vendor/pikepdf/handwritten-cyclic-toc.pdf",
+      "title": "Hand-written reduction whose outline and links point at each other in a cycle, with no trailer /Size and a page lacking MediaBox and Resources: it crashed pikepdf (issue 677)",
+      "useCase": "damaged",
+      "producer": "hand-written",
+      "origin": "contributed",
+      "licence": "CC-PDDC (public domain dedication; pikepdf REUSE.toml)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pikepdf/pikepdf/910e06b7d547e4e040780748f8ecc0fb7eba7181/tests/resources/cyclic-toc.pdf",
+        "sha256": "20bd7f9073fa2dfc4fc3adeb5899538efa7ebe38074534e800a07c696e5c2852",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/pikepdf/pikepdf/issues/677"
+      },
+      "features": [
+        "third-party",
+        "cyclic-destinations",
+        "trailer-without-size",
+        "missing-mediabox",
+        "missing-resources",
+        "hand-written"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "unsupported": "M2: the reader accepts a trailer without /Size and a page without MediaBox or Resources in silence, while qpdf reports all three; validation must report them"
+      }
+    },
+    {
+      "file": "vendor/pdf-association/handwritten-type3-recursion.pdf",
+      "title": "Hand-written denial-of-service probe: a Type 3 glyph draws with a second Type 3 font whose pattern refers back to the first",
+      "useCase": "damaged",
+      "producer": "hand-written (PDF Association SafeDocs)",
+      "origin": "contributed",
+      "licence": "Apache-2.0 / CC BY 4.0 (PDF Association SafeDocs)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/safedocs/68f730ab8c39204844112c499c5707b79878533b/Miscellaneous%20Targeted%20Test%20PDFs/ContentStreamCycleType3insideType3.pdf",
+        "sha256": "131aec277c444c985d502e5f589f37735d275a8ea247c1beedba0781fbe99d40",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/pdf-association/safedocs/blob/68f730ab8c39204844112c499c5707b79878533b/Miscellaneous%20Targeted%20Test%20PDFs/README.md"
+      },
+      "features": [
+        "third-party",
+        "type3-recursion-cycle",
+        "hostile-content",
+        "hand-written",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false
+      }
+    },
+    {
+      "file": "vendor/pdf-association/handwritten-dict-is-stream.pdf",
+      "title": "Hand-written dialect: page and font dictionaries given stream bodies, and /Metadata pointing at a missing object; qpdf finds no page",
+      "useCase": "damaged",
+      "producer": "hand-written (PDF Association SafeDocs)",
+      "origin": "contributed",
+      "licence": "Apache-2.0 / CC BY 4.0 (PDF Association SafeDocs)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/safedocs/68f730ab8c39204844112c499c5707b79878533b/Dialects/Dialect-DictIsStream.pdf",
+        "sha256": "a9eb0a3fa943629f29b42471643436d5bca4c55b27ae9aabc8e17e1fc6889008",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/pdf-association/safedocs/blob/68f730ab8c39204844112c499c5707b79878533b/Dialects/README.md"
+      },
+      "features": [
+        "third-party",
+        "dict-is-stream",
+        "page-object-is-stream",
+        "dangling-reference",
+        "hand-written",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 0,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "unsupported": "M2: the reader counts the page given a stream body as a page and reports nothing, while qpdf ignores it and finds none; validation decides between recovering and refusing it, and must report it either way"
+      }
+    },
+    {
+      "file": "vendor/pdf-association/handwritten-indexed-colour-out-of-range.pdf",
+      "title": "Hand-written: an Indexed colour space addressed with -17, 6.5 and 17 against a hival of 7",
+      "useCase": "damaged",
+      "producer": "hand-written (PDF Association pdf-differences)",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (PDF Association pdf-differences)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/pdf-differences/907fe96e52b73e491489eee545c47b119bf9989b/IndexedColor/IndexedCS_negative_and_high.pdf",
+        "sha256": "818053a2bf343f31f4ad0b48eb2837eb3b43a4543c9feb6269a9f653fbcee59e",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/pdf-association/pdf-differences/blob/907fe96e52b73e491489eee545c47b119bf9989b/IndexedColor/README.md"
+      },
+      "features": [
+        "third-party",
+        "indexed-colour-out-of-range",
+        "hostile-content",
+        "hand-written",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false
+      }
+    },
+    {
+      "file": "vendor/pyhanko/acrobat-reader-signed-twice.pdf",
+      "title": "Two Acrobat Reader signatures, each in its own incremental update, with RFC 3161 timestamps and fictitious test certificates",
+      "useCase": "contract",
+      "producer": "Adobe Acrobat Reader 2020.013 (signatures); base file from pyHanko's test suite",
+      "origin": "contributed",
+      "licence": "MIT (pyHanko)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/MatthiasValvekens/pyHanko/4115c6eaf369b5c6f9055abf6b9e22937ef79cb8/internal/common-test-utils/src/pyhanko_testing_commons/test_data/data/pdf/minimal-signed-twice-both-created.pdf",
+        "sha256": "2ef1b801c4d168d0deb5904f5d272e64e2f080c9273e92d8803272fd9d1721c9",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/MatthiasValvekens/pyHanko/commit/e165aa209be2ffbcef12651a189bbbc15a991266"
+      },
+      "features": [
+        "third-party",
+        "signed-adbe-pkcs7-detached",
+        "multiple-signatures",
+        "signature-timestamp",
+        "incremental-update",
+        "xref-stream",
+        "object-streams",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello World",
+          "Testerino"
+        ]
+      }
+    },
+    {
+      "file": "vendor/zugferd/mustang-zugferd2-en16931-invoice.pdf",
+      "title": "Sample invoice through the Mustang library: ZUGFeRD 2.0 EN 16931, PDF/A-3u claim, zugferd-invoice.xml as an /AF alternative",
+      "useCase": "invoice",
+      "producer": "mustangproject 1.7.2 (Apache PDFBox), page body from LibreOffice",
+      "origin": "contributed",
+      "licence": "Apache-2.0 (ZUGFeRD/corpus)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/404d5757c67a03e9603cb265efd30b37fc23e3a3/ZUGFeRDv2/correct/Mustangproject/MustangGnuaccountingBeispielRE-20190610_507.pdf",
+        "sha256": "0c83a0ee452ba819a9fe8f2c180f578171b00f4cac5b1b419446d92818796e55",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/ZUGFeRD/corpus/tree/master/ZUGFeRDv2/correct/Mustangproject"
+      },
+      "features": [
+        "third-party",
+        "zugferd-2",
+        "embedded-file",
+        "af-relationship",
+        "pdfa",
+        "tagged",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "RE-20190610/507",
+          "Bei Spiel GmbH",
+          "Due payable: 571.04"
+        ],
+        "attachments": [
+          "zugferd-invoice.xml"
+        ],
+        "claimsConformance": "PDF/A-3u",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/zugferd/mustang-zugferd1-basic-invoice.pdf",
+      "title": "Sample invoice through the Mustang library: the legacy ZUGFeRD 1.0 BASIC namespace and ZUGFeRD-invoice.xml name, PDF/A-3u claim",
+      "useCase": "invoice",
+      "producer": "mustangproject 1.6.1 (Apache PDFBox), page body from LibreOffice",
+      "origin": "contributed",
+      "licence": "Apache-2.0 (Mustang project)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/mustangproject/fed2d08dc9a56d74bccc7b08193097fe99d8694b/library/src/test/resources/MustangGnuaccountingBeispielRE-20170509_505.pdf",
+        "sha256": "f6bb9d49def4ab4453b43812007b412ea88ae0709fac6502efa29147afc24584",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/ZUGFeRD/mustangproject/tree/master/library/src/test/resources"
+      },
+      "features": [
+        "third-party",
+        "zugferd-1",
+        "embedded-file",
+        "af-relationship",
+        "pdfa",
+        "tagged",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "RE-20170509/505",
+          "Powered by GnuAccounting",
+          "Heiße Luft pro Liter"
+        ],
+        "attachments": [
+          "ZUGFeRD-invoice.xml"
+        ],
+        "claimsConformance": "PDF/A-3u",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/zugferd/fop26-xrechnung-visualisation.pdf",
+      "title": "XRechnung visualisation rendered by Apache FOP 2.6 (Java) with non-embedded base-14 fonts",
+      "useCase": "invoice",
+      "producer": "Apache FOP Version 2.6",
+      "origin": "contributed",
+      "licence": "Apache-2.0 (ZUGFeRD quba-viewer)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/quba-viewer/73a4af196dd01a40787d390e0a40fdb6dc41fec9/000resources/xr.pdf",
+        "sha256": "e51b878c981bf25f8f84c7b41752c1f097b1e81d0a6afee2fb021570284b273e",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/ZUGFeRD/quba-viewer/tree/master/000resources"
+      },
+      "features": [
+        "third-party",
+        "apache-fop",
+        "java-stack",
+        "standard-14-fonts",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Test company",
+          "Testprodukt",
+          "DE12500105170648489890"
+        ]
+      }
+    },
+    {
+      "file": "vendor/docentric/fop-factur-x-visualisation.pdf",
+      "title": "Factur-X visualisation of a Dynamics 365 demo invoice rendered by Apache FOP (Java): PDF/A-3b claim without the XML attached",
+      "useCase": "invoice",
+      "producer": "Apache FOP (Mustang CLI)",
+      "origin": "contributed",
+      "licence": "MIT (Docentric e-invoice validator)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/Docentric/docentric-e-invoice-validator/a72ed0db96f3fd0247923f6d8ab53faef0b3e91a/samples/factur-x%20e-invoice.pdf",
+        "sha256": "3d60692dcbb795913304f4324468f4aed20845efbe5d00e84487576c43221a76",
+        "retrieved": "2026-09-24",
+        "landingPage": "https://github.com/Docentric/docentric-e-invoice-validator/tree/main/samples"
+      },
+      "features": [
+        "third-party",
+        "apache-fop",
+        "java-stack",
+        "pdfa",
+        "type0-subset",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Contoso Entertainment System Germany",
+          "CIV-000168",
+          "A.Datum Corporation"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true
+      }
+    },
+    {
+      "file": "vendor/bfo/bfo-pdfa2b-embedded-pdf.pdf",
+      "title": "BFO PDF/A-2 suite, valid case 6.8: a PDF/A-2b file carrying another PDF in its EmbeddedFiles name tree (BFO Java library)",
+      "useCase": "archival",
+      "producer": "BFO PDF library (Java)",
+      "origin": "contributed",
+      "licence": "CC BY 3.0 (BFO PDF/A test suite)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/bfosupport/pdfa-testsuite/c22d80260c7ec975a511f9bfcc6590b7ceb1cf18/pdfa2-6-8-bfo-t01-pass.pdf",
+        "sha256": "c819041df1a21c5ea517e43f549a601b55a179229e0671d2c70c3214c48145d0",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdfa",
+        "embedded-file",
+        "nested-pdf",
+        "eof-inside-stream",
+        "xref-table",
+        "conformance-fixture"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "pdfa2-6-8-t01-pass",
+          "EmbeddedFiles key",
+          "le name dictionary"
+        ],
+        "attachments": [
+          "pdfa2-6-1-5-t01-pa"
+        ],
+        "claimsConformance": "PDF/A-2b",
+        "conformanceValid": true
+      }
     }
   ]
 }
