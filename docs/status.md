@@ -13,7 +13,7 @@ here.
   green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
 - **Corpus**: 68 documents, 9.7 MB — 19 generated here, 3 from Word and PDF24 on Windows, 46 third-party
   files under attribution-only licences (38 added on 2026-09-24, see `docs/corpus-sources.md`). On the
-  branch `claude/corpus-third-party-documents`, in a draft pull request, not yet on `main`
+  branch `claude/corpus-third-party-documents`, draft pull request [#25](https://github.com/AdCodicem/AdCodicem.Pdf/pull/25), not yet on `main`
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
   T18 and T19
