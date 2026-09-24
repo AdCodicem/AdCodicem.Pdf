@@ -1956,6 +1956,1762 @@
       }
     },
     {
+      "file": "vendor/zugferd/itext-pdfbox-weclapp-facturx-en16931-invoice.pdf",
+      "title": "A weclapp ERP invoice rendered by iText 2.1.7 and turned into a Factur-X EN 16931 PDF/A-3U by PDFBox through Mustang: /MarkInfo aliases the page-tree node, the structure tree is empty, and the visible total differs from the XML by a cent",
+      "useCase": "invoice",
+      "producer": "weclapp ERP; iText 2.1.7, then Apache PDFBox through Mustang 2.5.3",
+      "origin": "contributed",
+      "licence": "Apache-2.0 (Mustang project)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/mustangproject/9af931d1de42b8144c0de0f14cc3adf14c33cf73/library/src/test/resources/MustangBeispiel20221026.pdf",
+        "sha256": "98a694e3eaca6c7e37a85cba73a640977c121c01549e09182836b433d8d53a18",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdfa3u-claim-on-pdf14-header",
+        "factur-x-en16931",
+        "associated-file-af-alternative",
+        "embedded-files-name-tree",
+        "output-intent-srgb",
+        "markinfo-aliases-pages-node",
+        "empty-struct-tree-root",
+        "non-standard-itxt-key-in-pages",
+        "type0-cidfonttype2-subset-fonts",
+        "classic-xref-table",
+        "page-transparency-group",
+        "page-tabs-structure",
+        "info-xmp-metadata-mismatch",
+        "visible-total-differs-from-xml",
+        "pdfbox-binary-comment",
+        "single-revision",
+        "specimen-test-tenant-data",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Rechnung RE1001",
+          "Suite_Enterprise year monthly",
+          "Beispiel AG"
+        ],
+        "attachments": [
+          "factur-x.xml"
+        ],
+        "claimsConformance": "PDF/A-3u",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/docentric/aspose-d365-facturx-extended-invoice.pdf",
+      "title": "A Dynamics 365 sales invoice produced by Docentric AX through Aspose.PDF for .NET as an untagged Factur-X EXTENDED PDF/A-3B, Contoso demo data",
+      "useCase": "invoice",
+      "producer": "Microsoft Dynamics 365 F&O, Docentric AX 3.4.9, Aspose.PDF for .NET 25.2",
+      "origin": "contributed",
+      "licence": "MIT (Docentric e-invoice validator)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/Docentric/docentric-e-invoice-validator/a72ed0db96f3fd0247923f6d8ab53faef0b3e91a/samples/ZuGFeRD%20e-Invoice.pdf",
+        "sha256": "fdf30d0e7b0418e7b794fcc2fbebe6b671cf3eb4dedb3721522f6d642151c42f",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdfa3b-claim",
+        "factur-x-extended",
+        "associated-file-af-alternative",
+        "embedded-files-name-tree",
+        "output-intent-srgb",
+        "untagged",
+        "catalog-version-key",
+        "non-standard-defaultvalue-key-in-pages",
+        "aspose-obfuscated-product-marker",
+        "type0-cidfonttype2-subset-fonts",
+        "classic-xref-table",
+        "page-transparency-group",
+        "explicit-rotate-zero",
+        "fractional-a4-mediabox",
+        "single-revision",
+        "specimen-demo-data",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "A.Datum Corporation",
+          "CIV-000168",
+          "Active speaker"
+        ],
+        "attachments": [
+          "factur-x.xml"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/pdf-association/pdflib-pps-kraxi-pdfa2a-pdfua1-invoice.pdf",
+      "title": "PDFlib's Kraxi specimen invoice from the PDF/UA Reference Suite: PDF/A-2a and PDF/UA-1, a fully tagged table, a captioned photograph, xref and object streams",
+      "useCase": "invoice",
+      "producer": "PDFlib Personalization Server 9.2.0p5 (Java binding)",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (PDF Association, PDF/UA Reference Suite 1.1)",
+      "source": {
+        "url": "https://pdfa.org/wp-content/uploads/2024/02/PDFUA-Reference-Files_1-1_2024_02.zip (member PDFUA-Ref-2-02_Invoice.pdf)",
+        "sha256": "fbae08464f192f532205833215505b78266e86df6283d9b0c439cb06927ce0b9",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdfua1-claim",
+        "pdfa2a-claim",
+        "tagged-structure-tree",
+        "lang-en",
+        "table-thead-tbody-th-td",
+        "figure-with-caption",
+        "tagged-form-xobject-structparents",
+        "isolated-transparency-group-form",
+        "dct-jpeg-iccbased",
+        "type0-cidfonttype2-subset-font",
+        "type1-subset-font-in-form-xobject",
+        "xref-stream",
+        "object-streams",
+        "outlines",
+        "display-doc-title",
+        "page-tabs-structure",
+        "xmp-pdfua-extension-schema",
+        "output-intent-srgb",
+        "single-revision",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "INVOICE 2020-10",
+          "Pretty Dark Flyer",
+          "Kraxi Systems, Inc."
+        ],
+        "claimsConformance": "PDF/A-2a",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/fr-licence-ouverte/fop-dictao-dila-signed-joafe-notice.pdf",
+      "title": "A notice of the French Journal officiel des associations generated by Apache FOP and signed by DILA's Dictao service in an incremental update: adbe.pkcs7.detached, SHA-1/RSA, an organisation certificate",
+      "useCase": "contract",
+      "producer": "Apache FOP 0.95 (DILA); signed by Dictao D2S 5.9 with DILA's Certigna certificate",
+      "origin": "contributed",
+      "licence": "Licence Ouverte / Open Licence (Etalab)",
+      "source": {
+        "url": "https://fr.ftp.opendatasoft.com/datadila/JO/ASSOCIATIONS/JOAFE/PDF/2026/20260038/JOAFE_PDF_Unitaire_20260038_01244.pdf",
+        "sha256": "bcc381534178bfa947619c52ff48ca7b898fa473c063ad112d1ff01c70cdb566",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "signed-pdf",
+        "adbe-pkcs7-detached",
+        "adobe-ppklite-filter",
+        "sha1-rsa-signature",
+        "signature-cryptographically-valid",
+        "embedded-certificate-chain-3-certs",
+        "organisation-signing-certificate",
+        "signer-cert-eku-email-protection-only",
+        "no-timestamp-token",
+        "no-embedded-revocation-data",
+        "no-dss",
+        "no-docmdp",
+        "prop-build-dictao-d2s",
+        "signature-contents-zero-padded",
+        "byte-range-covers-whole-file",
+        "incremental-update",
+        "two-revisions",
+        "catalog-and-page-redefined-in-update",
+        "single-entry-xref-subsections",
+        "classic-xref-tables",
+        "mixed-eol-lf-then-crlf",
+        "same-id-in-both-trailers",
+        "first-revision-valid-alone",
+        "acroform-sigflags-3",
+        "visible-signature-widget",
+        "layered-signature-appearance-n0-n2",
+        "acroform-dr-xobjects",
+        "widget-appearance-text-extracted-by-pdftotext",
+        "non-embedded-helvetica-with-differences-encoding",
+        "cidfonttype2-identity-h-subset-fonts",
+        "base14-fonts-not-embedded",
+        "dct-images",
+        "flate-rgb-image-in-appearance",
+        "indirect-stream-length",
+        "info-utf16be-hex-strings",
+        "xmp-metadata",
+        "page-labels",
+        "bleedbox-trimbox",
+        "untagged",
+        "pdf-1.4",
+        "fop-generated"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Annonce n° 1244",
+          "W441008167",
+          "L'ATELIER DE LAURE"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/uk-ogl/pdfmaker10-word-dh-care-bill-factsheet.pdf",
+      "title": "A tagged factsheet from Acrobat PDFMaker 10 for Word, then an Acrobat incremental save that redefines the pages, Info and XMP in a new object stream",
+      "useCase": "report",
+      "producer": "Acrobat PDFMaker 10.0 for Word, Adobe PDF Library 10.0; Acrobat incremental save",
+      "origin": "contributed",
+      "licence": "UK Open Government Licence v3.0 (Crown copyright)",
+      "source": {
+        "url": "https://assets.publishing.service.gov.uk/media/5a758477ed915d6faf2b39c4/Factsheet_1_update__tweak_.pdf",
+        "sha256": "ce36d8a57a7f02687d45d0d65ed69b23f9d16b38cea3fa80be759208ecce05ee",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdfmaker-for-word",
+        "incremental-update",
+        "two-revisions",
+        "xref-stream-in-every-revision",
+        "object-streams",
+        "update-rewrites-pages-in-object-stream",
+        "update-adds-empty-acroform",
+        "tagged-structure",
+        "rolemap-word-style-names",
+        "lang-utf16be",
+        "single-bookmark",
+        "truetype-not-embedded-arial",
+        "truetype-subset-calibri",
+        "type0-identity-h-symbol-subset",
+        "iccbased-colour-spaces",
+        "image-with-smask",
+        "multiple-content-streams-per-page",
+        "cr-and-crlf-line-endings"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "FACTSHEET 1",
+          "market position statement",
+          "December 2013"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/opf-format-corpus/pdfmaker9-word-distiller-pdfa1b-test-document.pdf",
+      "title": "A tagged PDFMaker 9.1 for Word document distilled by Distiller 9.5.2 with a PDF/A-1b claim that veraPDF accepts",
+      "useCase": "archival",
+      "producer": "Acrobat PDFMaker 9.1 for Word (Dutch), Acrobat Distiller 9.5.2",
+      "origin": "contributed",
+      "licence": "CC0 1.0 (Open Preservation Foundation format-corpus)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/pdfCabinetOfHorrors/text_only_pdfa1b.pdf",
+        "sha256": "81bf11af4c56488c63c6d038d4ba09c7334dc3e26c5d6a17c7df9bd398f48635",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdfmaker-for-word",
+        "distiller",
+        "pdfa1b-claim",
+        "pdfa-extension-schema-in-xmp",
+        "output-intent-srgb",
+        "classic-xref-table",
+        "single-revision",
+        "tagged-structure",
+        "rolemap-and-classmap",
+        "lang-utf16be",
+        "page-labels",
+        "pieceinfo-markedpdf",
+        "truetype-subset-times-new-roman",
+        "no-tounicode-winansi",
+        "mixed-cr-crlf-lf-line-endings"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "This is a test document.",
+          "Public Domain Dedication"
+        ],
+        "claimsConformance": "PDF/A-1b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/opf-format-corpus/pdfmaker9-word-distiller-linearized-font-not-embedded.pdf",
+      "title": "The same PDFMaker 9.1 document linearized by Distiller 9.5.2: first-page startxref 0, xref and object streams, an inconsistent hint table, Times New Roman not embedded",
+      "useCase": "report",
+      "producer": "Acrobat PDFMaker 9.1 for Word (Dutch), Acrobat Distiller 9.5.2, linearized",
+      "origin": "contributed",
+      "licence": "CC0 1.0 (Open Preservation Foundation format-corpus)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/pdfCabinetOfHorrors/text_only_fontsNotEmbedded.pdf",
+        "sha256": "fc11edd136ab259f3f22a13c2740edccda4d9225c80aec94fe6834aad5a87713",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdfmaker-for-word",
+        "distiller",
+        "linearized",
+        "first-page-startxref-zero",
+        "xref-streams",
+        "object-streams",
+        "linearization-hint-table-inconsistent",
+        "uncompressed-object-after-compressed-in-xref-stream",
+        "tagged-structure",
+        "rolemap-and-classmap",
+        "lang-utf16be",
+        "page-labels",
+        "pieceinfo-markedpdf",
+        "truetype-not-embedded-times-new-roman",
+        "no-tounicode-winansi",
+        "pdf-1.7-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "It only contains some text.",
+          "neighboring rights"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/opf-format-corpus/quartz-word-mac2011-lorem-ipsum.pdf",
+      "title": "Word for Mac 2011 through the macOS Quartz PDFContext: PDF 1.3, indirect stream lengths, a MacRoman TrueType subset without ToUnicode, a non-standard /AAPL:Keywords array",
+      "useCase": "report",
+      "producer": "Microsoft Word for Mac 2011, Mac OS X 10.7.3 Quartz PDFContext",
+      "origin": "contributed",
+      "licence": "CC0 1.0 (Open Preservation Foundation format-corpus)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/variations/variations/application/pdf/lorem-ipsum.pdf",
+        "sha256": "b55fd1597a4f1a91ea0c02e8571610541ccaf1aa02b68000726b419afe407ea8",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "macos-quartz-pdfcontext",
+        "word-for-mac",
+        "pdf-1.3-header",
+        "classic-xref-table",
+        "single-revision",
+        "lf-line-endings",
+        "indirect-stream-length",
+        "minimal-catalog",
+        "no-xmp-metadata",
+        "info-nonstandard-aapl-keywords-array",
+        "info-date-z-with-offset",
+        "truetype-subset-macroman-no-tounicode",
+        "iccbased-rgb-colour-space",
+        "untagged"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Variatio Ipsius",
+          "Lorem ipsum dolor sit amet",
+          "Praesent in urna nunc."
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/pdf-association/indesign13-pdfua1-german-book-chapter.pdf",
+      "title": "A 21-page German book chapter from InDesign CC 2018 claiming PDF/UA-1: a rich role-mapped tag tree and three incremental updates over classic tables",
+      "useCase": "report",
+      "producer": "Adobe InDesign CC 13.1 (Macintosh), Adobe PDF Library 15.0; three incremental updates",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (PDF Association, PDF/UA Reference Suite 1.1)",
+      "source": {
+        "url": "https://pdfa.org/wp-content/uploads/2024/02/PDFUA-Reference-Files_1-1_2024_02.zip (member PDFUA-Ref-2-05_BookChapter-german.pdf)",
+        "sha256": "fc525b8899da31779b6143c16053779cd560d4417018a901472de33c71252352",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "tagged",
+        "pdfua-1-claim",
+        "indesign",
+        "incremental-update",
+        "four-revisions",
+        "xref-table",
+        "adbe-extension-level-3-on-1.4-header",
+        "role-map",
+        "class-map",
+        "custom-structure-types",
+        "toc-structure",
+        "list-structure",
+        "table-structure",
+        "actual-text",
+        "figure-alt-text",
+        "link-annotations",
+        "link-objr",
+        "named-destinations",
+        "outline",
+        "type1-font",
+        "truetype-font",
+        "cidfonttype2-font",
+        "font-subset",
+        "jpeg-image",
+        "icc-based-colour",
+        "control-char-in-extracted-text",
+        "lang-de",
+        "multi-page"
+      ],
+      "expect": {
+        "pages": 21,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Online-Fassung Kapitel 3",
+          "Grundüberlegungen",
+          "Keep it simple"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/pdf-association/indesign15-pdfua1-form.pdf",
+      "title": "A fillable InDesign 2020 form claiming PDF/UA-1: tagged text, combo, check-box and radio fields, widgets without appearance streams, stale linearization hints",
+      "useCase": "form",
+      "producer": "Adobe InDesign 15.0 (Macintosh), Adobe PDF Library 15.0, linearized",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (PDF Association, PDF/UA Reference Suite 1.1)",
+      "source": {
+        "url": "https://pdfa.org/wp-content/uploads/2024/02/PDFUA-Reference-Files_1-1_2024_02.zip (member PDFUA-Ref-2-10_Form.pdf)",
+        "sha256": "06d5cacd7c5ba9573a57c6d99d3f357ee14a24cff0c138036840fc44c6311806",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "tagged",
+        "pdfua-1-claim",
+        "indesign",
+        "acroform",
+        "text-field",
+        "required-field",
+        "combo-box",
+        "check-box",
+        "radio-group",
+        "radio-no-toggle-to-off",
+        "field-tooltips",
+        "merged-field-widget",
+        "widgets-without-appearance-streams",
+        "form-structure-objr",
+        "role-map",
+        "class-map",
+        "linearized",
+        "inconsistent-hint-tables",
+        "xref-stream",
+        "object-streams",
+        "truetype-font",
+        "font-subset",
+        "no-outline",
+        "lang-en-gb"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "PDF/UA form example",
+          "Radio buttons: yes no",
+          "Check boxes:"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/opf-format-corpus/pdfmaker5-distiller5-va-select-agents.pdf",
+      "title": "A 2002 PDF 1.2 from PDFMaker 5 for Word and Distiller 5, linearized then incrementally updated in 2006, so its linearization is stale and its /Prev chain runs through the first-page table",
+      "useCase": "report",
+      "producer": "Acrobat PDFMaker 5.0 for Word, Acrobat Distiller 5.0.5; incremental update in 2006",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105); GovDocs1 copy via the OPF format-corpus",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/govdocs1-error-pdfs/error_set_1/225188.pdf",
+        "sha256": "bb2255f91dac9c829cdf495d077c1e8239c775e6fb6b93c7979f96d795809b13",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdf-1-2-header",
+        "linearized-then-incrementally-updated",
+        "stale-linearization-dictionary",
+        "incremental-update",
+        "prev-chain-through-first-page-xref",
+        "cr-only-line-endings",
+        "xref-subsection-header-trailing-space",
+        "indirect-stream-length",
+        "multiple-content-streams",
+        "tagged-structure-under-1-2-header",
+        "xmp-metadata-stream",
+        "pre-2002-xmp-syntax-in-old-revision",
+        "superseded-info-object-redefined",
+        "custom-info-keys",
+        "non-embedded-truetype",
+        "subset-truetype-fonts",
+        "calrgb-colour-space"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "HHS NON-OVERLAP SELECT AGENTS",
+          "Crimean-Congo haemorrhagic",
+          "Xylella fastidiosa"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/pdf-association/handwritten-compacted-syntax.pdf",
+      "title": "The SafeDocs lexer torture test: every legal pairing of PDF tokens written with no whitespace between them, in the body and in a content stream",
+      "useCase": "damaged",
+      "producer": "hand-written (PDF Association SafeDocs)",
+      "origin": "contributed",
+      "licence": "Apache-2.0 / CC BY 4.0 (PDF Association SafeDocs)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/safedocs/68f730ab8c39204844112c499c5707b79878533b/CompactedSyntax/CompactedPDFSyntaxTest.pdf",
+        "sha256": "df9ab28a64f63896152934fb13e9ee1322cbd94874206b91107344ffff7aaa6c",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "compacted-syntax-no-whitespace-between-tokens",
+        "comments-as-token-delimiters",
+        "empty-indirect-object",
+        "signed-and-dot-leading-reals",
+        "empty-name-key",
+        "hex-string-info-values",
+        "catalog-aa-javascript-will-print",
+        "user-unit",
+        "unknown-content-operator-with-large-dict-operand",
+        "non-embedded-type1",
+        "crlf-line-endings",
+        "empty-indirect-object"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [
+          "syntax.unexpected-token"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "PDF compacted syntax sequences",
+          "must NOT be resaved"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/pdf-association/handwritten-dual-startxref.pdf",
+      "title": "Two startxref lines before %%EOF, each pointing at its own table and its own object 7: only a reader that takes the last one shows 'Second startxref'",
+      "useCase": "damaged",
+      "producer": "hand-written (PDF Association SafeDocs)",
+      "origin": "contributed",
+      "licence": "Apache-2.0 / CC BY 4.0 (PDF Association SafeDocs)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/safedocs/68f730ab8c39204844112c499c5707b79878533b/Miscellaneous%20Targeted%20Test%20PDFs/Dual-startxref.pdf",
+        "sha256": "378e1e7967af58f6847a2e6ac56d9384e4ba08071b7ecee1fba5785073409135",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "two-startxref-lines-before-eof",
+        "two-unlinked-xref-sections",
+        "duplicate-object-number-in-body",
+        "last-startxref-wins",
+        "empty-outlines",
+        "non-embedded-type1",
+        "crlf-line-endings"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Second startxref"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/pdf-association/handwritten-utf16le-strings.pdf",
+      "title": "Every kind of text string written in UTF-16LE behind an FF FE mark, which the standard forbids and real files contain",
+      "useCase": "damaged",
+      "producer": "hand-written (PDF Association SafeDocs)",
+      "origin": "contributed",
+      "licence": "Apache-2.0 / CC BY 4.0 (PDF Association SafeDocs)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/safedocs/68f730ab8c39204844112c499c5707b79878533b/Miscellaneous%20Targeted%20Test%20PDFs/utf16LE-test.pdf",
+        "sha256": "04af7aced559ca6b9fbf7a466526a94f3b76cf75ed6af81f4f963892a9bcacfa",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "utf16le-bom-text-strings",
+        "utf16le-literal-and-hex-strings",
+        "utf16le-info-dictionary",
+        "utf16le-outline-titles",
+        "utf16le-ocg-names",
+        "utf16le-page-label-prefix",
+        "utf16le-alt-and-actualtext",
+        "optional-content",
+        "page-labels",
+        "outlines",
+        "tagged-structure",
+        "xref-free-head-generation-65536",
+        "flate-rgb-image",
+        "non-embedded-type1"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "PDF with UTF-16LE test file",
+          "Some paragraph text.",
+          "Heading Level 2"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/pdf-association/handwritten-content-stream-indirect-refs.pdf",
+      "title": "A content stream invalid on purpose: an inline image, a BDC property list and a BX/EX section each carry an indirect reference",
+      "useCase": "damaged",
+      "producer": "hand-written (PDF Association SafeDocs)",
+      "origin": "contributed",
+      "licence": "Apache-2.0 / CC BY 4.0 (PDF Association SafeDocs)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/safedocs/68f730ab8c39204844112c499c5707b79878533b/Dialects/Dialect-ContentStreamsWithIndirectRefs.pdf",
+        "sha256": "e72a02730490375bf3d9a96b310e69efe2e58b25a7b8b4ac27078f8b87ba9270",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "indirect-reference-in-content-stream",
+        "inline-image-private-dict-key",
+        "inline-image-length-key",
+        "asciihex-inline-image",
+        "marked-content-property-dict-inline",
+        "bx-ex-compatibility-section",
+        "unknown-content-operator",
+        "non-embedded-type1",
+        "crlf-line-endings"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Inside marked content",
+          "after unknown operator",
+          "Compatibility section"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/pdf-association/handwritten-inline-image-abbreviations.pdf",
+      "title": "Eight inline images whose dictionaries give abbreviated and full key names with conflicting values; the abbreviated key must win",
+      "useCase": "damaged",
+      "producer": "hand-written (PDF Association pdf-differences)",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (PDF Association pdf-differences)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/pdf-differences/907fe96e52b73e491489eee545c47b119bf9989b/Inline-Image-Abbreviations/InlineAbbreviations.pdf",
+        "sha256": "5716b3f45f5353b9d674bfb3d0c829341c6d061256ad7e5e66721a40425ab1f5",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "inline-image-conflicting-abbreviated-and-full-keys",
+        "inline-image-length-key",
+        "asciihex-inline-image",
+        "flate-png-predictor-inline-image",
+        "inline-image-decode-array",
+        "named-calrgb-colour-space",
+        "unbalanced-q-Q",
+        "xref-free-head-generation-65536",
+        "non-embedded-type1"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/us-federal/livecycle-irs-1040-2022-xfa-ur3.pdf",
+      "title": "IRS Form 1040 for 2022, blank and unencrypted: a LiveCycle XFA and AcroForm hybrid with 136 fields, a UR3 usage-rights signature, incremental updates over xref streams",
+      "useCase": "form",
+      "producer": "Adobe LiveCycle Designer 6.5; Reader-extended (UR3) in an incremental update",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-prior/f1040--2022.pdf",
+        "sha256": "7f7933e17b2701e8555164f18bd9d93e8891c7bc0d6e45d8df6d84a2cf78b48f",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "xfa-acroform-hybrid",
+        "xfa-11-packets",
+        "acroform-136-widgets",
+        "usage-rights-ur3-signature",
+        "incremental-updates",
+        "xref-stream",
+        "object-streams",
+        "tagged-structure-tree",
+        "pdfua-1-claim-xmp",
+        "adobe-extension-level-8",
+        "embedded-type1-subset-fonts",
+        "xmp-packet-inside-xfa",
+        "not-encrypted"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "U.S. Individual Income Tax Return",
+          "OMB No. 1545-0074",
+          "Digital Assets"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/pikepdf/livecycle-dod-dd293-aes128-xfa.pdf",
+      "title": "DoD Form DD 293: a blank LiveCycle XFA and AcroForm hybrid, AES-128 with an empty user password, Reader usage rights, linearized with a faulty hint table",
+      "useCase": "form",
+      "producer": "Adobe LiveCycle Designer 6.4; AES-128; Reader-extended (UR3); linearized",
+      "origin": "contributed",
+      "licence": "CC-PDDC (public domain dedication; pikepdf REUSE.toml)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pikepdf/pikepdf/910e06b7d547e4e040780748f8ecc0fb7eba7181/tests/resources/form_dd0293.pdf",
+        "sha256": "0691d01c9bf7f42263b24fa5577fc742a4acec69eee64bd47db572bc63362463",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "aes-128-encryption-v4-r4-aesv2",
+        "empty-user-password",
+        "permissions-p-minus-1052",
+        "linearized",
+        "broken-hint-table",
+        "xfa-acroform-hybrid",
+        "acroform-102-widgets",
+        "usage-rights-ur3-signature",
+        "sigflags-3",
+        "xref-stream",
+        "object-streams",
+        "tagged-structure-tree",
+        "pdfua-claim-invalid-conformance-b",
+        "non-embedded-truetype-fonts",
+        "embedded-cidfonttype2-subset",
+        "link-annotations-uri-and-mailto"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "encrypted": true,
+        "password": "",
+        "hasExtractableText": true,
+        "textContains": [
+          "REVIEW OF DISCHARGE",
+          "OMB No. 0704-0004",
+          "Army Discharge Review Board"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/us-federal/print-to-pdf-excel-dod-fcf-rates-2021.pdf",
+      "title": "A DoD Comptroller exchange-rate table printed from Excel through Microsoft Print to PDF on a government workstation and published untouched, the account name in /Author",
+      "useCase": "report",
+      "producer": "Microsoft: Print To PDF (printed from Excel)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://comptroller.war.gov/Portals/45/documents/fcfr/May_2021.pdf",
+        "sha256": "403ff4e1bd6cf2dec81c1f2387a2da7067b56e100ed07e23230b00c28143ef08",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "microsoft-print-to-pdf",
+        "classic-xref-table",
+        "single-revision",
+        "no-trailer-id",
+        "no-xmp-metadata",
+        "minimal-catalog",
+        "landscape-mediabox",
+        "cidfonttype2-identity-h-embedded",
+        "generic-cidfont-names",
+        "tounicode-cmap",
+        "untagged",
+        "account-name-in-author"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "FOREIGN CURRENCY FLUCTUATIONS",
+          "For Month Ended 5/31/2021",
+          "SOUTH KOREA"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/us-federal/distiller6-cdc-west-nile-chinese-traditional.pdf",
+      "title": "A 2004 CDC fact sheet in Traditional Chinese from Word through PScript5 and Distiller 6: an embedded ArialUnicodeMS Identity-H font beside non-embedded WinAnsi fonts, a faulty hint table",
+      "useCase": "report",
+      "producer": "Microsoft Word, PScript5.dll 5.2, Acrobat Distiller 6.0 (2004)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://web.archive.org/web/20130123034858id_/http://www.cdc.gov/ncidod/dvbid/westnile/languages/chinese.pdf",
+        "sha256": "1111e4cfa027c1d6f258e0d6117b16494d919e988969b2c786527a99de5d6c6d",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdf-1-4",
+        "linearized",
+        "broken-hint-table",
+        "classic-xref-table",
+        "traditional-chinese-text",
+        "cidfonttype2-identity-h-embedded",
+        "arialunicodems-subset",
+        "symbolmt-cid-subset",
+        "tounicode-cmap",
+        "non-embedded-truetype-winansi",
+        "dct-images",
+        "page-labels",
+        "xmp-metadata-distiller6",
+        "untagged",
+        "page-footer-numbering-mismatch"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "西尼羅河病毒症",
+          "CDC公眾答復專線",
+          "2004年8月"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/us-federal/xerox-workcentre-5335-ocr-hud-fonsi-linearized.pdf",
+      "title": "A HUD memorandum scanned on a Xerox WorkCentre 5335 whose own invisible OCR text sits over a bitonal JBIG2 page, later linearized with hint tables qpdf finds inconsistent",
+      "useCase": "scan",
+      "producer": "Xerox WorkCentre 5335 with its own OCR; later linearized by an unidentified tool",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "http://web.archive.org/web/20250214083835id_/https://www.hud.gov/sites/documents/2014rcbcdah-fonsi.pdf",
+        "sha256": "e206eb2702785ac267f6ffd7215266cd6a1698509187ef86cd8fe779bf0dfb3a",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "copier-native-ocr",
+        "invisible-text-render-mode-3",
+        "one-tj-per-ocr-line",
+        "tz-horizontal-scaling-41-to-2000-percent",
+        "non-embedded-base14-type1-fonts",
+        "winansi-base-encoding-dictionary",
+        "jbig2-bitonal-full-page-image",
+        "jbig2-without-globals",
+        "linearized",
+        "inconsistent-linearization-hint-tables",
+        "classic-xref-table",
+        "content-stream-array",
+        "empty-outlines-dictionary",
+        "empty-info-strings",
+        "xmp-metadata",
+        "cropbox"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Rural Capacity Building",
+          "FR-5700-N-15",
+          "Environmental Clearance Officer"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/us-federal/xerox-workcentre-5755-ocr-hud-fonsi-mrc.pdf",
+      "title": "A HUD memorandum scanned on a Xerox WorkCentre 5755 into mixed raster content with the copier's own OCR: a JPEG background, JBIG2 masks with globals, a deskew matrix, a MediaBox with a negative origin",
+      "useCase": "scan",
+      "producer": "Xerox WorkCentre 5755 with its own OCR (mixed raster content); later re-serialised with object streams",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "http://web.archive.org/web/20210530174815id_/https://www.hud.gov/sites/documents/2015ROSS-SC-FONSI.PDF",
+        "sha256": "4673b2bb061b46163183958e27366cc96222bfce221ff724b4efde380f71f8a8",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "copier-native-ocr",
+        "invisible-text-render-mode-3",
+        "one-tj-per-ocr-line",
+        "tz-horizontal-scaling-35-to-2000-percent",
+        "non-embedded-base14-type1-fonts",
+        "mixed-raster-content-mrc",
+        "grey-jpeg-background-layer",
+        "flate-over-dct-filter-chain",
+        "decodeparms-array-with-null",
+        "jbig2-image-masks",
+        "jbig2-globals",
+        "colour-filled-image-masks",
+        "rotated-deskewed-image-matrix",
+        "mediabox-negative-origin",
+        "xref-stream",
+        "object-streams",
+        "content-stream-array",
+        "empty-outlines-dictionary",
+        "xmp-metadata",
+        "cropbox"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Resident Opportunity and Self",
+          "FR-5900-N-05",
+          "Coastal Barrier Resources"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/swissqrbill/pdfbox-swiss-qr-bill-a4.pdf",
+      "title": "A Swiss QR-bill payment slip written by the SwissQRBill Java library through PDFBox 3, with SIX's published specimen data",
+      "useCase": "invoice",
+      "producer": "SwissQRBill (Java), Apache PDFBox 3.0.6",
+      "origin": "contributed",
+      "licence": "MIT (SwissQRBill)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/manuelbl/SwissQRBill/ec67df3d950a6d7df23204c510cf6ef47df5282b/generator/src/test/resources/a4bill_ex1.pdf",
+        "sha256": "651e30bd6a45fcf3d70e58936ee8fbe1bd7e9a140ec474c1deeaa3151c2d6f19",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "xref-stream",
+        "object-streams",
+        "xref-stream-missing-own-entry",
+        "type0-cidfonttype2-identity-h",
+        "subset-embedded-truetype",
+        "tounicode-cmap",
+        "cidtogidmap-stream",
+        "vector-qr-code-rectangles",
+        "bezier-path-scissors-symbol",
+        "dashed-separator-lines",
+        "fractional-a4-mediabox",
+        "catalog-version-key",
+        "info-title-only-no-producer",
+        "not-tagged",
+        "no-xmp",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Payment part",
+          "Acceptance point",
+          "UV;UltraPay005;12345"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/jasper-modular/openpdf-jasperreports-financial-statement.pdf",
+      "title": "A four-page financial statement from JasperReports 7.0.6 on OpenPDF, with fabricated sample data",
+      "useCase": "invoice",
+      "producer": "JasperReports Library 7.0.6, OpenPDF 1.3.43",
+      "origin": "contributed",
+      "licence": "Apache-2.0 (jasper-modular-library)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/hhdevr/jasper-modular-library/4f1cbdf7d326b6a4a16659ac9a70ba5988687cfb/docs/financial_report.pdf",
+        "sha256": "b0433524404a924dbd0f802b8dd8d2898e5716f44f5a37ff5d5eb0ba5ad9309f",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "classic-xref-table",
+        "standard-14-font-not-embedded",
+        "winansi-encoding-no-tounicode",
+        "named-destinations",
+        "transparency-group-on-pages",
+        "flate-rgb-image-xobject",
+        "dashed-line-rules",
+        "vector-table-grid",
+        "page-tabs-key",
+        "viewer-preferences-print-scaling",
+        "multi-page",
+        "not-tagged",
+        "no-xmp",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "FINANCIAL REPORT",
+          "REVENUE REPORT",
+          "Software Products"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/us-federal/pdfwriter3-copyright-office-dmca-summary-1998-rc4-40.pdf",
+      "title": "The Copyright Office's 1998 DMCA summary from Acrobat PDFWriter 3.02, re-saved in 2001 with linearization and 40-bit RC4: a malformed creation date and colour-space defaults in the catalogue",
+      "useCase": "report",
+      "producer": "WordPerfect, Acrobat PDFWriter 3.02 for Windows (1998); Acrobat re-save with RC4-40 (2001)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.copyright.gov/legislation/dmca.pdf",
+        "sha256": "931f4374c255bcf28690c0567ba7be8e53513bce682e3db8086a831b92fcdfb6",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdfwriter-3",
+        "wordperfect-source",
+        "pdf-1.4-header",
+        "encryption-rc4-40",
+        "standard-security-r2",
+        "empty-user-password",
+        "restricted-permissions-p-minus-12",
+        "linearized",
+        "stale-linearization-hints",
+        "truetype-not-embedded",
+        "truetype-symbolic-subset-embedded",
+        "no-tounicode",
+        "winansi-encoding",
+        "lzw",
+        "indexed-colour-image",
+        "ascii85-lookup-table",
+        "catalog-default-colour-spaces-calgray-calrgb",
+        "invalid-creation-date-year-zero",
+        "legacy-xmp-xap-namespace",
+        "procset",
+        "cr-line-endings"
+      ],
+      "expect": {
+        "pages": 18,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "encrypted": true,
+        "password": "",
+        "hasExtractableText": true,
+        "textContains": [
+          "U.S. Copyright Office Summary",
+          "Vessel Hull Design Protection",
+          "WIPO TREATY IMPLEMENTATION"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/us-federal/pdfwriter4-usda-dry-whey-standard-2000.pdf",
+      "title": "A USDA grade standard from Acrobat PDFWriter 4.05 (2000): PDF 1.3, page thumbnails, ASCII85 over LZW, CalGray and CalRGB defaults, fonts to substitute",
+      "useCase": "report",
+      "producer": "WordPerfect, Acrobat PDFWriter 4.05 for Windows, Acrobat optimized save (2000)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.ams.usda.gov/sites/default/files/media/Dry_Whey_Standard%5B1%5D.pdf",
+        "sha256": "0a5a4dd85bee2d7c88b12f5d23784433fbc5845705f5ffa6f4f9f903407f3853",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "pdfwriter-4",
+        "wordperfect-source",
+        "pdf-1.3",
+        "linearized",
+        "stale-linearization-hints",
+        "page-thumbnails",
+        "ascii85-flate-filter-chain",
+        "ascii85-lzw-filter-chain",
+        "indexed-colour-thumbnails",
+        "shared-thumbnail-palette",
+        "truetype-not-embedded",
+        "winansi-encoding",
+        "no-tounicode",
+        "catalog-default-colour-spaces-calgray-calrgb",
+        "no-xmp",
+        "procset",
+        "cr-line-endings"
+      ],
+      "expect": {
+        "pages": 6,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "United States Standards for Dry Whey",
+          "Classification of Flavor",
+          "U.S. Extra Grade"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/us-federal/distiller3-mac-msha-crusher-dust-card-1997.pdf",
+      "title": "An MSHA pocket card from PageMaker 6.5 and Acrobat Distiller 3.0 for Power Macintosh (1997): non-embedded Type 1 fonts with /Differences and no base encoding, eight content streams on one page",
+      "useCase": "report",
+      "producer": "Adobe PageMaker 6.5, Acrobat Distiller 3.0 for Power Macintosh (1997); Acrobat re-save (2002)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://arlweb.msha.gov/S&HINFO/DUSTY/CRUSHER.PDF",
+        "sha256": "4c279de646bf0b9c999afb39e331f44cbd9bf1d948f0c94d4d1daf5fe70eae0c",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "distiller-3-mac",
+        "pagemaker-6.5",
+        "pdf-1.4-header",
+        "linearized",
+        "stale-linearization-hints",
+        "type1-not-embedded-non-standard-14",
+        "differences-encoding-without-base",
+        "mac-roman-style-differences",
+        "contents-array",
+        "non-letter-media-box",
+        "legacy-xmp-xap-namespace",
+        "unreferenced-indirect-name-objects",
+        "extgstate",
+        "cr-line-endings"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "TIPS FOR DUSTY JOBS",
+          "Crusher Operators",
+          "Beards prevent it."
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/uk-ogl/print-to-pdf-word-cspl-agenda.pdf",
+      "title": "A committee agenda printed from Word through Microsoft Print to PDF and published untouched: one revision, generic CIDFont+Fn subsets, the printing account in /Author",
+      "useCase": "report",
+      "producer": "Microsoft: Print To PDF (printed from Word)",
+      "origin": "contributed",
+      "licence": "UK Open Government Licence v3.0 (Crown copyright)",
+      "source": {
+        "url": "https://assets.publishing.service.gov.uk/media/6797ab5a4686aac158606346/CSPL_329th_Meeting__Thursday_19_December_2024_Agenda.pdf",
+        "sha256": "374b3cce2eae52a45fadb2c7faed5214e734ccc0bc09509ac597caa7e2067837",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "microsoft-print-to-pdf",
+        "printed-from-word",
+        "classic-xref-table",
+        "single-revision",
+        "no-trailer-id",
+        "no-xmp-metadata",
+        "minimal-catalog",
+        "cidfonttype2-identity-h-embedded",
+        "generic-cidfont-names",
+        "tounicode-cmap",
+        "y-down-page-matrix",
+        "untagged",
+        "account-name-in-author",
+        "word-title-prefix"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "329th MEETING",
+          "CSPL draft report",
+          "Forward Agenda"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/fr-licence-ouverte/pdfmaker-acrobat-cerfa-12156-form.pdf",
+      "title": "Cerfa 12156*06: a ten-page form from Acrobat PDFMaker 21 for Word, re-saved by Acrobat Pro DC 22 with a calculation order, linearized with 494 stale hint entries",
+      "useCase": "form",
+      "producer": "Acrobat PDFMaker 21 pour Word; Adobe Acrobat Pro DC 22.2, linearized",
+      "origin": "contributed",
+      "licence": "Licence Ouverte / Open Licence (Etalab)",
+      "source": {
+        "url": "https://www.formulaires.service-public.gouv.fr/gf/cerfa_12156_06.do",
+        "sha256": "e3cf916dbab16ba7456d54f66835d52a45219a8f47c0a4a517dea9a856077326",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "acrobat-pdfmaker-word",
+        "acrobat-resave",
+        "linearized",
+        "stale-linearization-hint-tables",
+        "uncompressed-after-compressed-in-xref-stream",
+        "xref-stream",
+        "object-streams",
+        "acroform",
+        "calculated-fields",
+        "calculation-order",
+        "document-javascript",
+        "will-close-javascript-template-spawn",
+        "unsigned-signature-field",
+        "tagged",
+        "no-lang",
+        "outlines",
+        "scanned-page-with-live-ocr-text",
+        "cidfonttype0-ocr-fonts",
+        "cidfonttype2-subsets",
+        "truetype-subsets",
+        "jpeg-image",
+        "indexed-image"
+      ],
+      "expect": {
+        "pages": 10,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "DEMANDE DE SUBVENTION(S)",
+          "N°12156*06",
+          "Décembre 2022 - Page 1 sur 10"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/uk-ogl/pdfmaker25-home-office-eia.pdf",
+      "title": "A Home Office impact assessment from Acrobat PDFMaker 25 for Word, linearized then updated twice for its metadata",
+      "useCase": "report",
+      "producer": "Acrobat PDFMaker 25 for Word, Adobe PDF Library 25.1; two incremental updates",
+      "origin": "contributed",
+      "licence": "UK Open Government Licence v3.0 (Crown copyright)",
+      "source": {
+        "url": "https://assets.publishing.service.gov.uk/media/693049af375aee4a15ee8b3c/CP_Bill_EIA_-_Critical_Police_Undertakings.pdf",
+        "sha256": "675ecf98f2a447a57171e9b8345872e23b94f0ea2cbaf2341beaa9c0d3a52b82",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "acrobat-pdfmaker-word",
+        "linearized-then-updated",
+        "stale-linearization-dictionary",
+        "incremental-update",
+        "metadata-only-revisions",
+        "xref-stream",
+        "object-streams",
+        "tagged",
+        "lang-en-gb",
+        "custom-info-keys",
+        "xmp-metadata",
+        "truetype-subsets-winansi",
+        "tounicode-cmap",
+        "link-annotations-mailto",
+        "display-doc-title"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Critical Police Undertakings",
+          "Equality Impact Assessment",
+          "Consideration of limb 3"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/us-federal/illustrator-irs-pub1-english.pdf",
+      "title": "IRS Publication 1 in English from Adobe Illustrator CS6, linearized then saved twice more by Illustrator: the source of the vendored Arabic, Russian and Chinese editions",
+      "useCase": "report",
+      "producer": "Adobe Illustrator CS6 (Windows), Adobe PDF Library 10.01; two incremental saves",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.irs.gov/pub/irs-prior/p1--2017.pdf",
+        "sha256": "b76c98a904265a8a25b0fd1a6cfebfe03dd29c1da4c661f2808515ae01c440ac",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "adobe-illustrator",
+        "linearized-then-updated",
+        "stale-linearization-dictionary",
+        "incremental-update",
+        "revision-removes-text",
+        "classic-xref-table",
+        "mixed-line-endings",
+        "pieceinfo-illustrator",
+        "separation-colour-space",
+        "overprint-extgstate",
+        "type1c-subsets",
+        "no-tounicode",
+        "reused-subset-tag",
+        "unmapped-ligatures",
+        "large-xmp-with-thumbnail",
+        "trimbox-bleedbox-artbox",
+        "untagged"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Your Rights as a Taxpayer",
+          "The Taxpayer Bill of Rights",
+          "Catalog Number 64731W"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/lu-legilux/fop22-legilux-memorial-seal-renewed-timestamps.pdf",
+      "title": "A 2018 Luxembourg law under a qualified electronic seal kept alive by document timestamps added in 2018 and 2020: Apache FOP 2.2, a classic table, then DSS updates",
+      "useCase": "contract",
+      "producer": "Apache FOP 2.2; LuxTrust qualified seal (2018), document timestamps (2018, 2020)",
+      "origin": "contributed",
+      "licence": "CC BY 4.0 (Legilux)",
+      "source": {
+        "url": "https://data.legilux.public.lu/filestore/eli/etat/leg/loi/2018/07/20/a612/jo/fr/pdfa/eli-etat-leg-loi-2018-07-20-a612-jo-fr-pdfa.pdf",
+        "sha256": "5cbfe699883a3d1cbe9990a954bdb5ab12b68e466885a6a2b67009381804bc7e",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "apache-fop",
+        "xref-table",
+        "unsigned-base-revision",
+        "incremental-update",
+        "four-incremental-updates",
+        "qualified-seal",
+        "cades-detached-signature",
+        "signature-timestamp",
+        "dss",
+        "document-timestamp",
+        "two-document-timestamps",
+        "ltv-renewal",
+        "expired-signing-certificate",
+        "invisible-signature-widgets",
+        "etsi-subfilters-under-pdf-1.4-header",
+        "lang-x-unknown",
+        "page-labels",
+        "not-tagged"
+      ],
+      "expect": {
+        "pages": 40,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Loi du 20 juillet 2018 portant",
+          "Doc. parl. 7195",
+          "directive (UE) 2015/2366"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/us-federal/omniform-usda-rd1924-5-hidden-widgets.pdf",
+      "title": "USDA Form RD 1924-5 from OmniForm (2004), whose hidden widgets pdf.js drew outside the page (issue 4914)",
+      "useCase": "form",
+      "producer": "OmniForm Premium, OmniForm Converter for PDF (2004)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://web.archive.org/web/20120324003827id_/http://www.rurdev.usda.gov/supportdocuments/rd1924-0005_930800V01.pdf",
+        "sha256": "a82117599786ed102f27c694abd6516c77600a19ba9a54adb6a75443edc3e5cd",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "omniform",
+        "acroform",
+        "hidden-widgets",
+        "document-javascript",
+        "will-print-did-print-javascript",
+        "format-keystroke-validate-javascript",
+        "linearized",
+        "linearization-hints-inconsistent",
+        "xref-table",
+        "cr-line-endings",
+        "fonts-not-embedded",
+        "legacy-xmp-without-xmpmeta",
+        "broke-pdfjs"
+      ],
+      "expect": {
+        "pages": 5,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "INVITATION FOR BID",
+          "OMB NO. 0575-0042",
+          "EQUAL OPPORTUNITY CLAUSE"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/fr-licence-ouverte/livecycle-es9-cerfa-14880-xfa-form.pdf",
+      "title": "Cerfa 14880*02 from LiveCycle Designer ES 9: an XFA form whose usage rights were applied twice, the second after an update that invalidated its linearization",
+      "useCase": "form",
+      "producer": "Adobe LiveCycle Designer ES 9.0; Reader usage rights applied twice by Acrobat (2018)",
+      "origin": "contributed",
+      "licence": "Licence Ouverte / Open Licence (Etalab)",
+      "source": {
+        "url": "https://www.formulaires.service-public.gouv.fr/gf/cerfa_14880.do",
+        "sha256": "45bfa4669b76ae73aa37951bc17de419b21720815e6f2bc206003321e296ed4a",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "xfa",
+        "xfa-static",
+        "xfa-template-2.5",
+        "xfa-javascript",
+        "document-javascript",
+        "usage-rights-ur3",
+        "usage-rights-reapplied",
+        "incremental-update",
+        "linearization-invalidated-by-update",
+        "xref-stream",
+        "object-streams",
+        "xfa-streams-typed-embedded-file",
+        "open-action",
+        "outlines"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "N°14880*02",
+          "PERMIS DE CONDUIRE - AVIS",
+          "Enseignant de la conduite"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/us-federal/designer-distiller23-uscis-i9-javascript-form.pdf",
+      "title": "USCIS Form I-9 (2025): a Designer source distilled by Acrobat Distiller 23 into an AcroForm of 128 fields driven by JavaScript validation, format and keystroke actions",
+      "useCase": "form",
+      "producer": "Designer 6.5, Acrobat Distiller 23.0 (Windows, 2025)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105)",
+      "source": {
+        "url": "https://www.uscis.gov/sites/default/files/document/forms/i-9.pdf",
+        "sha256": "780f348c34df694bb0b4dbbfaf9f22b99b9757b80d16a37ba89aadf069597281",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "acroform",
+        "field-javascript",
+        "validate-javascript",
+        "format-keystroke-javascript",
+        "blur-javascript",
+        "checkbox-mutual-exclusion-javascript",
+        "tagged",
+        "pdfua-claim",
+        "xref-stream",
+        "object-streams",
+        "indexed-colour-image",
+        "link-annotations",
+        "page-labels",
+        "non-embedded-times-roman",
+        "tounicode-two-byte-codes-in-simple-font",
+        "xfa-leftover-xmp"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Employment Eligibility Verification",
+          "OMB No.1615-0047",
+          "LISTS OF ACCEPTABLE DOCUMENTS"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/zugferd/gnuaccounting-mustang10-zugferd-rc-invoice.pdf",
+      "title": "An invoice from the GnuAccounting package, made into ZUGFeRD by Mustang 1.0 in 2014 with the pre-1.0 release-candidate namespace",
+      "useCase": "invoice",
+      "producer": "GnuAccounting 0.8.6beta1 (page from OpenOffice), Mustang 1.0 (Apache PDFBox)",
+      "origin": "contributed",
+      "licence": "Apache-2.0 (ZUGFeRD/corpus)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/d891458e9822e34271a5438497bf924e89955979/ZUGFeRDv1/correct/Mustangproject/MustangGnuaccountingBeispielRE-20140703_502.pdf",
+        "sha256": "c1b950edb7bfacaae6d1f803b6aca4eb6d7ac03e698bb0d6fb801af7b86cf522",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "gnuaccounting",
+        "mustang-1.0",
+        "apache-pdfbox-writer",
+        "zugferd-rc-prerelease-namespace",
+        "xmp-zugferd-rc-extension-schema",
+        "zugferd-xmp-basic-vs-xml-comfort-mismatch",
+        "pdfa-3u-claim-on-pdf-1.4-header",
+        "af-relationship-alternative",
+        "embedded-file-uncompressed",
+        "embedded-file-subtype-text-xml",
+        "names-embeddedfiles",
+        "tagged",
+        "lang-de-de",
+        "srgb-output-intent",
+        "truetype-subsets-no-os2-table",
+        "truetype-subsets-with-tounicode",
+        "dctdecode-logo",
+        "classic-xref-table",
+        "single-revision",
+        "info-without-dates",
+        "openaction-xyz",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Rechnung # RE-20140703/502",
+          "Powered by GnuAccounting",
+          "Heiße Luft pro Liter"
+        ],
+        "attachments": [
+          "ZUGFeRD-invoice.xml"
+        ],
+        "claimsConformance": "PDF/A-3u",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/opf-format-corpus/reader10-openoffice32-annotated-object-streams.pdf",
+      "title": "An OpenOffice.org 3.2 file annotated and fully re-saved by Adobe Reader X: Adobe's own xref and object streams around a third party's content, /Producer left unchanged",
+      "useCase": "report",
+      "producer": "OpenOffice.org 3.2 Writer (2010); fully re-saved by Adobe Reader X 10.1.2 (2012)",
+      "origin": "contributed",
+      "licence": "CC0 1.0 (Open Preservation Foundation format-corpus)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/office-examples/OpenOffice.org%203.2.0%20OSX/pdf-features/simple-annotated-in-adobe-x.pdf",
+        "sha256": "7c785a1c3c5e0c870c8d8933ed52e306a7de23a29a2136895052471f2860e091",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "adobe-reader-x-full-save",
+        "openoffice-3.2-origin",
+        "producer-not-updated-after-adobe-save",
+        "pdf-1.6-header",
+        "cr-and-crlf-line-endings",
+        "xref-stream",
+        "xref-stream-png-up-predictor",
+        "object-streams",
+        "single-revision",
+        "text-annotation-with-popup",
+        "highlight-annotation-quadpoints",
+        "annotation-rich-text-rc",
+        "names-ap-named-appearance",
+        "xmp-added-by-adobe-xmp-core",
+        "xmpmm-document-and-instance-id",
+        "truetype-subset-with-tounicode",
+        "untagged",
+        "lang-en-us",
+        "openaction-xyz"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "This is simple document",
+          "created in Open Office."
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/opf-format-corpus/openoffice32-pdfa1a-embedded-lucida.pdf",
+      "title": "A PDF/A-1a export from OpenOffice.org 3.2: a role map that maps Document to itself and a non-standard trailer /DocChecksum",
+      "useCase": "archival",
+      "producer": "OpenOffice.org 3.2 Writer (Mac OS X), PDF/A-1a export",
+      "origin": "contributed",
+      "licence": "CC0 1.0 (Open Preservation Foundation format-corpus)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/office-examples/OpenOffice.org%203.2.0%20OSX/embeds/embedded-lucinda-sans-PDFA-1a.pdf",
+        "sha256": "a94f1599aa7987531bd99f431bb1ba7508012eb7db9ffcb8a79f9515556b93ac",
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "openoffice-3.2",
+        "pdfa-1a-claim",
+        "tagged",
+        "rolemap-document-to-itself",
+        "rolemap-custom-style-to-p",
+        "structure-tree-three-paragraphs",
+        "lang-en-us",
+        "gts-pdfa1-srgb-output-intent",
+        "two-truetype-subsets-with-tounicode",
+        "truetype-subsets-no-os2-table",
+        "info-date-z-with-trailing-apostrophe",
+        "trailer-nonstandard-docchecksum",
+        "pdf-1.4-header",
+        "classic-xref-table",
+        "single-revision",
+        "openaction-xyz"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "embedded font (Lucinda Sans",
+          "created in Open Office."
+        ],
+        "claimsConformance": "PDF/A-1a",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
       "file": "documents/invoice/word-invoice-fr.pdf",
       "title": "The corpus invoice laid out in Word and exported with Save as PDF",
       "useCase": "invoice",
