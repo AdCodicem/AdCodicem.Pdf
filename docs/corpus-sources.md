@@ -164,8 +164,8 @@ still says E — which makes it a W06 file as much as a W01 one.
 | US Topo map, Washington West, 2023 — one page, a 109.5-megapixel Flate image and 31 layers ([USGS](https://prd-tnm.s3.amazonaws.com/StagedProducts/Maps/USTopo/PDF/DC/DC_Washington_West_20230612_TM_geo.pdf)) | 63,128,959 bytes | `33cfc95870f64560dcdedc616d3e666f6f99e485125f290cc9963e1db2d9f6d5` |
 
 All three are US federal works. Publishers reissue such files, so the hash says which bytes a
-measurement was taken on. Fetching one on demand for M13 — pinned by hash, as PDFBox and pdf.js do — is a
-decision for that milestone.
+measurement was taken on. The first and third are now in the remote corpus (below), fetched and tested
+every night at these hashes; the heavy scan is left for M13 to add when its memory budgets need it.
 
 ## What other PDF libraries ship
 
@@ -241,8 +241,8 @@ engraving under ImageMagick's false PDF/A claim, whose only names are historical
 These files would fill a gap the corpus still has, and were not committed because their licence is unclear
 or excludes redistribution. They are listed so that a later session, or a rights holder asked directly,
 can reopen them. None has been screened in full for personal data. [ADR 32](adr/0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md),
-proposed, would let the tests use such files without redistributing them: a manifest of URLs and
-hashes, and a separate job that fetches them.
+accepted, lets the tests use such files without redistributing them; the leads it has already taken in
+are listed under *In the remote corpus* below, and the others remain open to it.
 
 | W | Document | Where | What holds it back | What would clear it |
 |---|---|---|---|---|
@@ -272,6 +272,27 @@ hashes, and a separate job that fetches them.
 Two good files first held back for a name rather than a licence — the PDF Association's
 `CompactedPDFSyntaxTest.pdf` and Docentric's Factur-X EXTENDED sample from Dynamics 365 — entered in the
 second pass, once a name alone no longer disqualified a file.
+
+## In the remote corpus
+
+Ten documents are used without being redistributed ([ADR 32](adr/0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md)):
+`tests/corpus/remote.json` pins each one to an immutable URL and a SHA-256, and the `Remote corpus`
+workflow fetches them and runs both suites over them every night. Their expectations were established like
+everyone else's — pages and verdicts by qpdf 11.9.1 in the integration tests' container, text by poppler's
+pdftotext 24.02, conformance by veraPDF 1.30.2 — on 2026-09-24.
+
+| W | Document | Why it is remote | What it adds |
+|---|---|---|---|
+| W03 | Ricoh MP C3003 scan through 3-Heights (pdf.js `issue5747.pdf`) | A bug-report attachment, licensed by nobody | A copier's CCITT page with an OCR layer in a non-embedded Identity-H font; a valid PDF/A-1b |
+| W04 | SAP NetWeaver 7.40 form output (pdf.js `bug1727053.pdf`) | A Bugzilla attachment, licensed by nobody | A real statement from an ERP, the one kind of W04 file the committed corpus still lacks |
+| W07 | The FNFE-MPE's official Factur-X example, BASIC WL, in French | All rights reserved | `factur-x.xml` under /AF, a valid PDF/A-3b, written by the factur-x Python library through PyPDF2 |
+| W07 | intarsys's ZUGFeRD 2.0 EN 16931 sample | A vendor's sample, no redistribution licence | A second vendor's toolkit, `zugferd-invoice.xml`, a valid PDF/A-3b |
+| — | pdfLaTeX with hyperref (`py-pdf/sample-files`) | CC BY-SA 4.0 | The TeX family, absent until now: Computer Modern Type 1 subsets, outline, xref stream |
+| — | A Google Docs download (`py-pdf/sample-files`) | CC BY-SA 4.0 | Skia's Google Docs renderer, a Type 3 font beside CID subsets |
+| W09 | WeasyPrint 54.1 Arabic (`py-pdf/sample-files`) | CC BY-SA 4.0 | Arabic shaped into CID subsets by an HTML-to-PDF engine — this project's own kind of producer |
+| W09 | US Census Bureau 2020 language guide in Hebrew | No reuse statement found; possibly a contractor's translation | Hebrew right to left in Adobe Hebrew Type 1 subsets, tagged with `/Lang he` |
+| W11 | United States Code 2023, Title 42 | 37.6 MB, too large to commit | 9,302 pages and a GPO signature in an incremental update; opening, decoding every stream and walking the page tree took 0.8 s on the development machine |
+| W11 | US Topo map, Washington West, 2023 | 63.1 MB, too large to commit | One page with a 109.5-megapixel image; recorded as unsupported until T21, the false truncated-stream report it exposed, is fixed |
 
 ## Traps met along the way
 

@@ -19,9 +19,14 @@ third-party files under vendor/, described by vendor.json, and files under docum
 contributed.json - contributed from the field, or written on Windows by build_word.ps1. The script leaves
 their files alone and merges their entries into the manifest with the referee's verdict on each.
 
+Documents we may use but not redistribute are not in the manifest at all (ADR 32): remote.json describes
+them, fetch_remote.py downloads them into remote/, which git ignores, and the tests merge those present.
+
     python3 build_corpus.py                    regenerate everything this script produces
     python3 build_corpus.py --committed-only   only refresh the committed documents' manifest entries,
                                                keeping the generated ones: needs qpdf, nothing else
+    python3 build_corpus.py --remote           record the referee's verdict on each fetched remote document
+                                               in remote.json: run fetch_remote.py first; needs qpdf
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ SOURCES = ROOT / "sources"
 DOCUMENTS = ROOT / "documents"
 VENDOR = ROOT / "vendor.json"
 CONTRIBUTED = ROOT / "contributed.json"
+REMOTE = ROOT / "remote.json"
 MANIFEST = ROOT / "manifest.json"
 
 CHROMIUM_CANDIDATES = [
@@ -449,9 +455,33 @@ def refresh_committed() -> int:
     return 0
 
 
+def refresh_remote() -> int:
+    """
+    Records in remote.json the referee's verdict on each remote document, from the file fetch_remote.py put in
+    remote/. The verdict is written by this script, with the command the integration tests run, for the same
+    reason as everywhere else in the corpus: an expectation nobody observed proves nothing.
+    """
+    listing = json.loads(REMOTE.read_text(encoding="utf-8"))
+    missing = []
+    for entry in listing["documents"]:
+        path = ROOT / entry["file"]
+        if not path.exists():
+            missing.append(entry["file"])
+            continue
+        entry.setdefault("expect", {})["refereeCheckSucceeds"] = referee_check_succeeds(path)
+
+    REMOTE.write_text(json.dumps(listing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    for name in missing:
+        print(f"not fetched, verdict left as it was: {name}")
+    print(f"{len(listing['documents']) - len(missing)} remote documents checked by the referee")
+    return 1 if missing else 0
+
+
 def main() -> int:
     if "--committed-only" in sys.argv[1:]:
         return refresh_committed()
+    if "--remote" in sys.argv[1:]:
+        return refresh_remote()
 
     committed = committed_entries()
     clear_generated_documents(committed)

@@ -18,7 +18,7 @@ public class CorpusReadingTests
 {
     private static readonly TimeSpan OpenBudget = TimeSpan.FromSeconds(20);
 
-    private static readonly string[] CorpusFolders = ["documents", "vendor", "private"];
+    private static readonly string[] CorpusFolders = ["documents", "vendor", "private", "remote"];
 
     [Fact]
     public void The_corpus_manifest_describes_every_document_present()

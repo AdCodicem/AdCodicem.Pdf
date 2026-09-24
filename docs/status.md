@@ -9,11 +9,15 @@ here.
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 332 unit (4 skipped by design: two corpus documents
-  recorded as unsupported until M2) + 196 integration (skipped without Docker) — **CI**:
+  recorded as unsupported until M2) + 196 integration (skipped without Docker); with the remote corpus
+  fetched, 354 unit (a fifth skip: the map waiting on T21) + 216 integration — **CI**:
   green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
 - **Corpus**: 106 documents, 15.4 MB — 19 generated here, 3 from Word and PDF24 on Windows, 84 third-party
-  files under attribution-only licences (76 added on 2026-09-24, see `docs/corpus-sources.md`). On the
-  branch `claude/corpus-third-party-documents`, draft pull request [#25](https://github.com/AdCodicem/AdCodicem.Pdf/pull/25), not yet on `main`
+  files under attribution-only licences (76 added on 2026-09-24, see `docs/corpus-sources.md`). Beside it,
+  a **remote corpus** of 10 documents we may use but not redistribute — never committed, fetched at a
+  pinned SHA-256 and tested every night by the `Remote corpus` workflow (ADR 32, accepted). On the
+  branch `claude/corpus-third-party-documents`, draft pull request [#25](https://github.com/AdCodicem/AdCodicem.Pdf/pull/25), not yet on `main`;
+  the nightly workflow has therefore never run on GitHub
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
   T18 and T19
@@ -78,6 +82,26 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-24 — ADR 32 accepted and implemented: the remote corpus
+- **The decision**: documents we may use but not redistribute — bug-report attachments, vendors' samples,
+  ShareAlike sets, files too large to commit — are described in `tests/corpus/remote.json`, fetched on
+  demand at a pinned SHA-256, and never committed, nor anything derived from them. Accepted by the
+  maintainer the day it was proposed.
+- **What implements it**: `build/fetch_remote.py` (standard library only; refuses a changed file instead
+  of trusting it; tells an unavailable document from a refused one), `build_corpus.py --remote` (the
+  referee's verdict, as for every other entry), `Corpus` merging the remote entries whose file is present,
+  `tests/corpus/remote/` ignored by git, and a `Remote corpus` workflow — nightly and on dispatch — that
+  runs both suites over what it fetched and reports a missing document as such, not as a failing test.
+- **The first ten documents**, from the leads the search held back: the Ricoh copier scan and the SAP
+  NetWeaver statement kept by pdf.js, the FNFE-MPE's and intarsys's Factur-X samples, three ShareAlike
+  files (pdfTeX, Google Docs, WeasyPrint in Arabic), the Census Bureau's Hebrew guide, and two of W11's
+  heavy references. Expectations established by qpdf, poppler and veraPDF like everyone else's.
+- **Observed, not assumed**: all ten fetched from their real sources and matched their hashes; a pinned
+  hash changed on purpose was refused and the file removed; a second run downloaded nothing. With them,
+  354 unit and 216 integration tests pass (the topographic map skipped with its T21 reason); without them,
+  the suite is exactly as before, 332 and 196. The US Code's 9,302 pages open clean in 0.8 s.
+- **Not yet observed**: the workflow itself, which only runs from `main`'s schedule or a dispatch.
 
 ### 2026-09-24 — The wanted documents, searched for on the internet
 - **The request**: find in public sources the documents `corpus-contributions.md` asks for (W01–W12),
@@ -525,8 +549,8 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures; 68 since 2026-09-24 |
 | T10 | **Narrowed on 2026-09-24**: Word, PDFMaker, Acrobat, InDesign, LiveCycle, PDFWriter, copier scans with their own OCR, Java writers, ERP Factur-X samples, PDF 1.2 archives, signatures and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing is what only an inbox holds: a real invoice or statement from a supplier or bank, a commercial e-signature, a copier file untouched since the copier wrote it, Hebrew | Contributions, per the "still wanted" column of `docs/corpus-contributions.md`; ADR 32 (proposed) for files that can be used but not redistributed |
-| T21 | **The reader reports a truncated stream that is not.** When a stream's data ends inside the parser's 8 KB window but its `endstream` falls past the window's end, `PdfObjectParser.ReadStream` finds no `endstream` in the window and reports `stream.truncated`, cutting the stream at the window. Found on object 49 of the USGS Washington West topographic map (W11 reference, `docs/corpus-sources.md`): data from 68 to 8,185 in a 8,192-byte window; qpdf reads it cleanly. The same file also earns a `filter.failed` on its 14.9 MB Flate image, not yet explained | A synthetic regression test (a stream ending 1 to 10 bytes before 8 KB), then treat an `endstream` beyond the window like data beyond it when a stream-data provider exists |
-| T22 | W11 has no committed document, by decision: three public references are hashed in `docs/corpus-sources.md`. The memory promise needs one in CI | M13: fetch one on demand, pinned by SHA-256, as pdf.js and PDFBox do — or commit a smaller heavy case |
+| T21 | **The reader reports a truncated stream that is not.** When a stream's data ends inside the parser's 8 KB window but its `endstream` falls past the window's end, `PdfObjectParser.ReadStream` finds no `endstream` in the window and reports `stream.truncated`, cutting the stream at the window. Found on object 49 of the USGS Washington West topographic map (W11 reference, `docs/corpus-sources.md`): data from 68 to 8,185 in a 8,192-byte window; qpdf reads it cleanly. The same file also earns a `filter.failed` on its 14.9 MB Flate image, not yet explained. The map is now in the remote corpus, recorded as unsupported with this reason, so the fix is checked against it every night | A synthetic regression test (a stream ending 1 to 10 bytes before 8 KB), then treat an `endstream` beyond the window like data beyond it when a stream-data provider exists |
+| T22 | W11 has no committed document, by decision. Two of its three references — 9,302 pages, and one 63 MB page — are in the remote corpus (ADR 32) and tested every night, but not in the main CI job, and the heavy scan (147 MB of JPEG 2000) is not fetched at all | M13: state its memory budgets against the remote documents, add the heavy scan to `remote.json`, and close only on a green `Remote corpus` run |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |

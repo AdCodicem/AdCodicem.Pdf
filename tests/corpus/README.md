@@ -11,6 +11,8 @@ vendor/           third-party files, by source, used unmodified under the terms 
 manifest.json     the index: one entry per document, with what tests must observe
 vendor.json       the entries of the files under vendor/
 contributed.json  the entries of the files under documents/ that build_corpus.py cannot produce
+remote.json       documents we may use but not redistribute, fetched on demand (ADR 32)
+remote/           where build/fetch_remote.py puts them; ignored by git, never committed
 ```
 
 `manifest.json` is written by `build/build_corpus.py`, never by hand: it is the generated entries plus
@@ -92,3 +94,38 @@ That is the place for documents from the field — files from Word, Acrobat, a s
 anything that broke somebody's tooling. If a document can be anonymised enough to publish, it is worth far
 more in the public corpus: strip it, check what its metadata still says about its origin, and add it under
 `documents/` with its provenance.
+
+## Remote documents
+
+Some public files are worth testing against but cannot be committed: attachments to other projects' bug
+reports, vendors' samples under "all rights reserved", ShareAlike sets whose licence would reach every
+derivative we make, and documents too large for the repository. ADR 32 keeps them out of git and in the
+tests: `remote.json` describes them, with a mandatory `source.url` and `source.sha256`, and the test suite
+merges the entries whose file has been fetched.
+
+```bash
+python3 tests/corpus/build/fetch_remote.py          # fetch what is missing, verify what is present
+python3 tests/corpus/build/fetch_remote.py --list   # each document's state, nothing fetched
+dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
+```
+
+A download whose SHA-256 differs from the pinned one is refused: the file changed at its source, so it is a
+new document, reviewed as one — never accepted by updating the hash. The `Remote corpus` workflow does the
+same every night and by manual dispatch, and reports an unavailable document as such rather than as a
+failing test.
+
+To add one, choose an immutable URL — a repository commit, an Internet Archive `id_` copy, a permanent
+publisher URI — and write the entry as for any other document, expectations established with independent
+tools, `licence` saying why the file is remote rather than vendored. Titles and `textContains` strings are
+published with the manifest, so they carry no personal data. Then fetch it and record the referee's
+verdict, in the container the integration tests use:
+
+```bash
+python3 tests/corpus/build/fetch_remote.py
+docker run --rm -v "$PWD/tests/corpus:/corpus" alpine:3.21 \
+  sh -c "apk add --no-cache qpdf python3 >/dev/null && python3 /corpus/build/build_corpus.py --remote"
+```
+
+Nothing under `remote/` is committed, nor anything derived from it — a damaged or repaired variant, a
+rendering. Moving the directory aside to test without it? Move it out of the repository: a renamed
+directory is no longer ignored.

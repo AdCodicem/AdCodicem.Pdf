@@ -128,20 +128,7 @@ public static class Corpus
     /// climbs out of the corpus, is refused rather than followed: a private manifest is hand-written and
     /// the tests open whatever it names.
     /// </remarks>
-    public static string PathOf(string file)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(file);
-
-        var resolved = System.IO.Path.GetFullPath(System.IO.Path.Join(Root, file));
-
-        if (System.IO.Path.IsPathRooted(file) ||
-            !resolved.StartsWith(Root + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException($"'{file}' is not a path inside the corpus.");
-        }
-
-        return resolved;
-    }
+    public static string PathOf(string file) => Resolve(Root, file);
 
     /// <summary>Reads a corpus document.</summary>
     public static byte[] Read(string file) => System.IO.File.ReadAllBytes(PathOf(file));
@@ -168,6 +155,15 @@ public static class Corpus
                     documents.AddRange(confidential);
                 }
 
+                // Documents we may use but not redistribute are described in remote.json and fetched on
+                // demand into tests/corpus/remote/, which git ignores (ADR 32). Only those actually fetched
+                // join the corpus, so a run without the network tests exactly what is committed.
+                var remoteManifest = System.IO.Path.Combine(root, "remote.json");
+                if (System.IO.File.Exists(remoteManifest) && ReadManifest(remoteManifest) is { } remote)
+                {
+                    documents.AddRange(remote.Where(document => System.IO.File.Exists(Resolve(root, document.File))));
+                }
+
                 return (root, documents);
             }
 
@@ -176,6 +172,21 @@ public static class Corpus
 
         throw new InvalidOperationException(
             "tests/corpus/manifest.json was not found. Build the corpus with tests/corpus/build/build_corpus.py.");
+    }
+
+    private static string Resolve(string root, string file)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(file);
+
+        var resolved = System.IO.Path.GetFullPath(System.IO.Path.Join(root, file));
+
+        if (System.IO.Path.IsPathRooted(file) ||
+            !resolved.StartsWith(root + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"'{file}' is not a path inside the corpus.");
+        }
+
+        return resolved;
     }
 
     private static List<CorpusDocument>? ReadManifest(string path)

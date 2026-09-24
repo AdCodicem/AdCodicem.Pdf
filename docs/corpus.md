@@ -24,10 +24,20 @@ handing anything over, and where it goes.
 | Third-party documents found in public sources (`vendor/`) | Producers we will never run — Acrobat, InDesign, LiveCycle, copier firmware, a qualified-seal service — and damage from the wild | Attribution-only licence (ADR 23), no real person's name anywhere, byte-identical to the publisher's copy; source URL and SHA-256 recorded; see `docs/corpus-sources.md` |
 | Contributed real documents | Everything the generators never do: legacy tooling, scanners, foreign-language typography, damaged files from the wild | No confidential content; origin and licence recorded; anonymised before committing |
 | Derived variants | Encryption, linearisation, object-stream rewrites, and deliberate damage | Derived by a recorded, repeatable transformation from a document already in the corpus |
+| Remote documents we may use but not redistribute (`remote.json`, ADR 32) | What only a bug report, a vendor's sample, a ShareAlike set or a file too large to commit can give | Never committed, nor anything derived from them; fetched at a pinned SHA-256 from an immutable URL; tested by a separate job |
 
 Documents are **committed**, not generated at test time: producer output changes with producer version, and
 a test suite that shifts under you is worse than no test suite. Regeneration is an explicit act, reviewed
 like any other change. It also keeps CI free of any network dependency.
+
+The one exception is the **remote corpus** (ADR 32): documents whose licence forbids redistribution, or whose
+size forbids committing them. `remote.json` describes them in the manifest's format, with a mandatory
+`source.url` and `source.sha256`; `build/fetch_remote.py` downloads them into `remote/`, which git ignores,
+and refuses any file whose hash differs — a changed file is a new document, reviewed as one. The test suite
+merges the entries whose file is present, so the main CI job fetches nothing, finds nothing, and tests
+exactly what is committed. The `Remote corpus` workflow fetches them every night and runs both suites over
+them; a download failure is reported as such, never as a test failure. The manifest itself is public, so its
+titles and `textContains` strings carry no personal data, and it lists only files anyone can download.
 
 Keep each document small — a few hundred kilobytes at most, except the one deliberate large-document case.
 
@@ -42,11 +52,14 @@ tests/corpus/
   contributed.json       entries for files under documents/ the build script cannot produce
   vendor/                third-party files, by source, with NOTICE and LICENSES/ for their terms
   vendor.json            entries for the files under vendor/
+  remote.json            entries for documents fetched on demand, never committed (ADR 32)
+  remote/                where build/fetch_remote.py puts them; ignored by git
 ```
 
 `build_corpus.py --committed-only` merges `vendor.json` and `contributed.json` into the manifest without
-regenerating anything, with the referee's verdict on each file; `tests/corpus/README.md` gives the
-container command that makes that verdict the integration tests' own.
+regenerating anything, with the referee's verdict on each file; `build_corpus.py --remote` records that
+verdict in `remote.json` for each fetched remote document. `tests/corpus/README.md` gives the container
+commands that make those verdicts the integration tests' own.
 
 ## Manifest
 
@@ -59,7 +72,7 @@ anything about is not part of the corpus.
   "title": "French invoice with VAT breakdown",
   "useCase": "invoice",                  // invoice | report | contract | form | scan | archival | mixed
   "producer": "Chromium 147 (Skia PDF backend)",
-  "origin": "generated",                 // generated | contributed | derived
+  "origin": "generated",                 // generated | contributed | derived | remote
   "licence": "MIT (generated from our own source)",
   "features": ["xref-stream", "object-streams", "type0-subset", "utf16-metadata"],
   "expect": {
@@ -85,7 +98,8 @@ Three fields serve that rule:
 - `conformanceValid` — veraPDF's verdict on the PDF/A level the document claims (`claimsConformance`),
   for M12 to agree with.
 - `source` — for a third-party file, the URL it was retrieved from, the date and the SHA-256 of the bytes
-  as published, so provenance is checkable without trusting the repository.
+  as published, so provenance is checkable without trusting the repository. For a remote document it is
+  mandatory, and it is what `fetch_remote.py` downloads and verifies.
 
 ## Use-case categories
 
@@ -117,3 +131,7 @@ A document that cannot be handled and is not going to be handled in this milesto
 expectation is recorded as unsupported (`expect.unsupported`), with the milestone that will address it.
 Silence is not an option; a known gap must be written down where the next session will read it. A
 milestone is not closed while an entry still names it as the one that will.
+
+A milestone may name **remote documents** in its acceptance conditions (ADR 32). The main CI job never sees
+them, so such a milestone is closed only on a green run of the `Remote corpus` workflow, recorded in
+`docs/status.md` with its date.
