@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
@@ -35,6 +36,35 @@ public class CorpusReadingTests
 
         // A document nobody asserts anything about is not part of the corpus, it is clutter.
         described.Should().Equal(onDisk);
+    }
+
+    [Fact]
+    public void Remote_documents_are_pinned_and_kept_where_git_ignores_them()
+    {
+        // Read raw: the corpus leaves out the remote entries whose file was not fetched, and those are
+        // exactly the ones this main job never sees otherwise.
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Corpus.Root, "manifest.json")));
+
+        foreach (var entry in manifest.RootElement.GetProperty("documents").EnumerateArray())
+        {
+            var file = entry.GetProperty("file").GetString();
+            var remote = entry.TryGetProperty("origin", out var origin) && origin.GetString() == "remote";
+
+            // ADR 32: a remote document is fetched, never committed, and only the bytes that were reviewed
+            // are accepted.
+            (file?.StartsWith("remote/", StringComparison.Ordinal) ?? false).Should().Be(
+                remote, $"{file}: origin \"remote\" and the remote/ folder go together");
+
+            if (remote)
+            {
+                var source = entry.TryGetProperty("source", out var value) ? value : default;
+                Text(source, "url").Should().MatchRegex(@"^https?://\S+$", $"{file} is fetched from its source");
+                Text(source, "sha256").Should().MatchRegex("^[0-9a-f]{64}$", $"{file} is pinned to its SHA-256");
+            }
+        }
+
+        static string? Text(JsonElement parent, string name) =>
+            parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value) ? value.GetString() : null;
     }
 
     [Fact]

@@ -8,15 +8,15 @@ sources/          the HTML documents the corpus is generated from
 build/            the generation scripts and their pinned Python requirements
 documents/        the committed PDF files, by use case
 vendor/           third-party files, by source, used unmodified under the terms in NOTICE
+remote/           documents we may use but not redistribute, put there by build/fetch_remote.py (ADR 32);
+                  ignored by git, never committed
 manifest.json     the index: one entry per document, with what tests must observe
-vendor.json       the entries of the files under vendor/
-contributed.json  the entries of the files under documents/ that build_corpus.py cannot produce
-remote.json       documents we may use but not redistribute, fetched on demand (ADR 32)
-remote/           where build/fetch_remote.py puts them; ignored by git, never committed
 ```
 
-`manifest.json` is written by `build/build_corpus.py`, never by hand: it is the generated entries plus
-those of `vendor.json` and `contributed.json`, each with the referee's verdict added.
+`manifest.json` describes every document once, whoever produced it. `build/build_corpus.py` writes the
+entries of what it generates, marked `"builtBy": "build_corpus.py"`, and replaces only those. Every other
+entry is written by hand — third-party files, documents from `build/build_word.ps1` or from the field,
+remote documents — and the script adds nothing to it but the referee's verdict.
 
 ## Regenerating
 
@@ -36,8 +36,8 @@ The script needs Chromium and LibreOffice Writer on the machine. In a Claude Cod
 apt-get install -y --no-install-recommends libreoffice-writer   # Chromium is already at /opt/pw-browsers
 ```
 
-It regenerates only what it produces. Files described by `vendor.json` and `contributed.json` are left
-alone, and their entries merged into the manifest.
+It regenerates only what it produces. Every other document is left alone, and so is its entry, but for the
+referee's verdict, which the script refreshes.
 
 **Office desktop writers** — Word's Save as PDF, the Microsoft Print to PDF driver, and the PDF24 printer
 (PScript5 PostScript converted by Ghostscript) — run only on Windows, so their documents come from
@@ -53,8 +53,8 @@ converts the job, so the PDF is untouched. The Microsoft driver offers no such i
 overwrites its `/Author` token in place with a neutral value of the same length, so no offset moves, and
 records the file as derived. Any output that still names the account is deleted.
 
-**Refreshing the entries of committed documents only** — after adding a file under `vendor/` or
-`documents/` — needs nothing but qpdf, and is best run in the container the integration tests use, so the
+**Refreshing the referee's verdict on committed documents only** — after adding a file under `vendor/` or
+`documents/` with its entry — needs nothing but qpdf, and is best run in the container the integration tests use, so the
 recorded verdict is that exact qpdf's:
 
 ```bash
@@ -70,15 +70,15 @@ handing it over, and which of the public and private corpora it belongs in.
 
 
 1. Add a generator to `build_corpus.py` if it can be produced. Otherwise, drop it under
-   `documents/<use-case>/` and describe it in `contributed.json` — or, for a third party's file, under
-   `vendor/<source>/`, described in `vendor.json`, with its licence added to `NOTICE`.
+   `documents/<use-case>/` — or, for a third party's file, under `vendor/<source>/`, with its licence added
+   to `NOTICE` — and describe it in `manifest.json`, by hand, after the entries marked `builtBy`.
 2. Write its entry, including what tests must observe: page count, whether it is well formed,
    which diagnostics the reader must report, and whatever later milestones will assert (text, attachments,
    form fields, conformance level).
 3. Establish the page count with an **independent tool**, never with our own reader — an expectation
    derived from the code under test proves nothing.
 4. Record the origin and the licence. Contributed documents must carry no confidential content.
-5. Merge the entry into `manifest.json` with `build_corpus.py --committed-only`, as above.
+5. Record the referee's verdict with `build_corpus.py --committed-only`, as above.
 
 `CorpusReadingTests.The_corpus_manifest_describes_every_document_present` fails if a file is added without
 a manifest entry: a document nobody asserts anything about is clutter, not coverage.
@@ -86,7 +86,8 @@ a manifest entry: a document nobody asserts anything about is clutter, not cover
 ## Confidential documents
 
 This repository is public, so anything committed here is published. Documents that cannot be published go
-in `tests/corpus/private/`, described by `tests/corpus/private.json` in the same format as the manifest.
+in `tests/corpus/private/`, described by `tests/corpus/private.json` in the same format as the manifest —
+the one entry list kept apart, because git must ignore it.
 Both are ignored by git; the test suite merges them when they are there and runs on the public corpus when
 they are not, so a private corpus never breaks anyone else's build.
 
@@ -100,8 +101,10 @@ more in the public corpus: strip it, check what its metadata still says about it
 Some public files are worth testing against but cannot be committed: attachments to other projects' bug
 reports, vendors' samples under "all rights reserved", ShareAlike sets whose licence would reach every
 derivative we make, and documents too large for the repository. ADR 32 keeps them out of git and in the
-tests: `remote.json` describes them, with a mandatory `source.url` and `source.sha256`, and the test suite
-merges the entries whose file has been fetched.
+tests: the manifest describes them with origin `remote` and a mandatory `source.url` and `source.sha256`,
+and the test suite leaves out those whose file has not been fetched. The main job still reads their
+entries: `CorpusReadingTests.Remote_documents_are_pinned_and_kept_where_git_ignores_them` fails on a remote
+entry outside `remote/`, on a file under `remote/` not marked remote, and on a missing URL or SHA-256.
 
 ```bash
 python3 tests/corpus/build/fetch_remote.py          # fetch what is missing, verify what is present
@@ -115,8 +118,9 @@ same every night and by manual dispatch, and reports an unavailable document as 
 failing test.
 
 To add one, choose an immutable URL — a repository commit, an Internet Archive `id_` copy, a permanent
-publisher URI — and write the entry as for any other document, expectations established with independent
-tools, `licence` saying why the file is remote rather than vendored. Titles and `textContains` strings are
+publisher URI — and write the entry as for any other document, with its file under `remote/<source>/`,
+origin `remote`, expectations established with independent tools, and `licence` saying why the file is
+remote rather than vendored. Titles and `textContains` strings are
 published with the manifest, so they carry no personal data. Then fetch it and record the referee's
 verdict, in the container the integration tests use:
 

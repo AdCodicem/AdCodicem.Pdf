@@ -14,19 +14,18 @@ Producers used:
 Damaged variants are derived by byte-level surgery on a valid document, so each one isolates exactly one
 defect.
 
-Documents this script cannot produce are committed with their manifest entries and never regenerated:
-third-party files under vendor/, described by vendor.json, and files under documents/ described by
-contributed.json - contributed from the field, or written on Windows by build_word.ps1. The script leaves
-their files alone and merges their entries into the manifest with the referee's verdict on each.
-
-Documents we may use but not redistribute are not in the manifest at all (ADR 32): remote.json describes
-them, fetch_remote.py downloads them into remote/, which git ignores, and the tests merge those present.
+manifest.json describes every document, whoever produced it. The entries this script writes carry
+"builtBy": "build_corpus.py", and they are the only ones it ever replaces. Every other entry is written by
+hand, and the script gives it nothing but the referee's verdict: third-party files under vendor/, files
+under documents/ contributed from the field or written on Windows by build_word.ps1, and the documents we
+may use but not redistribute (origin "remote", ADR 32), which fetch_remote.py downloads into remote/ - ignored
+by git - and which the tests use when they are present.
 
     python3 build_corpus.py                    regenerate everything this script produces
-    python3 build_corpus.py --committed-only   only refresh the committed documents' manifest entries,
-                                               keeping the generated ones: needs qpdf, nothing else
-    python3 build_corpus.py --remote           record the referee's verdict on each fetched remote document
-                                               in remote.json: run fetch_remote.py first; needs qpdf
+    python3 build_corpus.py --committed-only   only refresh the referee's verdict on the committed documents
+                                               this script does not build: needs qpdf, nothing else
+    python3 build_corpus.py --remote           record the referee's verdict on each fetched remote document:
+                                               run fetch_remote.py first; needs qpdf
 """
 
 from __future__ import annotations
@@ -43,10 +42,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ROOT / "sources"
 DOCUMENTS = ROOT / "documents"
-VENDOR = ROOT / "vendor.json"
-CONTRIBUTED = ROOT / "contributed.json"
-REMOTE = ROOT / "remote.json"
 MANIFEST = ROOT / "manifest.json"
+
+# The mark on the manifest entries this script writes, and may therefore replace.
+BUILT_BY = "build_corpus.py"
 
 CHROMIUM_CANDIDATES = [
     "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
@@ -399,27 +398,34 @@ def referee_check_succeeds(path: Path) -> bool:
     return completed.returncode == 0
 
 
-def committed_entries() -> list[dict]:
+def read_manifest() -> dict:
     """
-    The documents this script cannot regenerate, only attribute: third-party files (vendor.json, see
-    tests/corpus/NOTICE) and documents contributed or produced elsewhere (contributed.json). Each one gets the
-    referee's verdict, recorded by the same command the integration tests run.
+    The manifest as committed. It is the only record of the entries this script does not build, so a missing
+    one is an error, never an empty corpus to start again from.
     """
-    entries: list[dict] = []
-    for listing in (VENDOR, CONTRIBUTED):
-        if listing.exists():
-            entries.extend(json.loads(listing.read_text(encoding="utf-8"))["documents"])
+    return json.loads(MANIFEST.read_text(encoding="utf-8"))
 
+
+def is_ours(entry: dict) -> bool:
+    return entry.get("builtBy") == BUILT_BY
+
+
+def is_remote(entry: dict) -> bool:
+    return entry.get("origin") == "remote"
+
+
+def refresh_verdicts(entries: list[dict]) -> None:
+    """Gives each document the referee's verdict, recorded by the same command the integration tests run."""
     for entry in entries:
-        expect = entry.setdefault("expect", {})
-        expect["refereeCheckSucceeds"] = referee_check_succeeds(ROOT / entry["file"])
+        path = ROOT / entry["file"]
+        if not path.exists():
+            raise FileNotFoundError(f"{entry['file']} is in the manifest, but not in tests/corpus")
+        entry.setdefault("expect", {})["refereeCheckSucceeds"] = referee_check_succeeds(path)
 
-    return entries
 
-
-def clear_generated_documents(committed: list[dict]) -> None:
+def clear_generated_documents(kept: list[dict]) -> None:
     """Deletes what this script produced last time, and nothing it could not produce again."""
-    keep = {(ROOT / entry["file"]).resolve() for entry in committed}
+    keep = {(ROOT / entry["file"]).resolve() for entry in kept}
     if DOCUMENTS.exists():
         for path in sorted(DOCUMENTS.rglob("*"), key=lambda item: len(item.parts), reverse=True):
             if path.is_file() and path.resolve() not in keep:
@@ -432,49 +438,44 @@ def clear_generated_documents(committed: list[dict]) -> None:
 def write_manifest(versions: dict[str, str], entries: list[dict]) -> None:
     MANIFEST.write_text(
         json.dumps({"producers": versions, "documents": entries}, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8")
+        encoding="utf-8", newline="\n")
 
-    committed = sum(1 for entry in entries if entry.get("origin") == "contributed" or entry["file"].startswith("vendor/"))
-    total = sum(path.stat().st_size for path in ROOT.rglob("*.pdf") if "private" not in path.parts)
-    print(f"{len(entries)} documents ({committed} committed from elsewhere), {total / 1024 / 1024:.1f} MB")
+    ours = sum(1 for entry in entries if is_ours(entry))
+    remote = sum(1 for entry in entries if is_remote(entry))
+    committed = [path for path in ROOT.rglob("*.pdf")
+                 if not {"private", "remote"} & set(path.relative_to(ROOT).parts)]
+    total = sum(path.stat().st_size for path in committed)
+    print(f"{len(entries)} documents: {ours} built here, {len(entries) - ours - remote} committed from elsewhere, "
+          f"{remote} remote; {total / 1024 / 1024:.1f} MB committed")
     for name, version in versions.items():
         print(f"  {name}: {version}")
 
 
 def refresh_committed() -> int:
-    """Rewrites the committed documents' entries in the manifest, keeping the generated ones as they are."""
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    committed = committed_entries()
-    listed = {entry["file"] for entry in committed}
-
-    generated = [entry for entry in manifest["documents"]
-                 if entry.get("origin") in ("generated", "derived")
-                 and entry["file"] not in listed and not entry["file"].startswith("vendor/")]
-
-    write_manifest(manifest.get("producers", {}), generated + committed)
+    """Refreshes the referee's verdict on the committed documents this script does not build, and nothing else."""
+    manifest = read_manifest()
+    refresh_verdicts([entry for entry in manifest["documents"] if not is_ours(entry) and not is_remote(entry)])
+    write_manifest(manifest.get("producers", {}), manifest["documents"])
     return 0
 
 
 def refresh_remote() -> int:
     """
-    Records in remote.json the referee's verdict on each remote document, from the file fetch_remote.py put in
-    remote/. The verdict is written by this script, with the command the integration tests run, for the same
-    reason as everywhere else in the corpus: an expectation nobody observed proves nothing.
+    Records the referee's verdict on each remote document, from the file fetch_remote.py put in remote/. The
+    verdict is written by this script, with the command the integration tests run, for the same reason as
+    everywhere else in the corpus: an expectation nobody observed proves nothing.
     """
-    listing = json.loads(REMOTE.read_text(encoding="utf-8"))
-    missing = []
-    for entry in listing["documents"]:
-        path = ROOT / entry["file"]
-        if not path.exists():
-            missing.append(entry["file"])
-            continue
-        entry.setdefault("expect", {})["refereeCheckSucceeds"] = referee_check_succeeds(path)
+    manifest = read_manifest()
+    remote = [entry for entry in manifest["documents"] if is_remote(entry)]
+    fetched = [entry for entry in remote if (ROOT / entry["file"]).exists()]
+    refresh_verdicts(fetched)
+    write_manifest(manifest.get("producers", {}), manifest["documents"])
 
-    REMOTE.write_text(json.dumps(listing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    for name in missing:
-        print(f"not fetched, verdict left as it was: {name}")
-    print(f"{len(listing['documents']) - len(missing)} remote documents checked by the referee")
-    return 1 if missing else 0
+    for entry in remote:
+        if entry not in fetched:
+            print(f"not fetched, verdict left as it was: {entry['file']}")
+    print(f"{len(fetched)} of {len(remote)} remote documents checked by the referee")
+    return 1 if len(fetched) < len(remote) else 0
 
 
 def main() -> int:
@@ -483,14 +484,16 @@ def main() -> int:
     if "--remote" in sys.argv[1:]:
         return refresh_remote()
 
-    committed = committed_entries()
-    clear_generated_documents(committed)
+    manifest = read_manifest()
+    kept = [entry for entry in manifest["documents"] if not is_ours(entry)]
+    refresh_verdicts([entry for entry in kept if not is_remote(entry)])
+    clear_generated_documents(kept)
 
     versions = producer_versions()
     entries: list[dict] = []
 
     def record(path: Path, **fields) -> None:
-        entry = {"file": str(path.relative_to(ROOT)).replace(os.sep, "/")}
+        entry = {"file": str(path.relative_to(ROOT)).replace(os.sep, "/"), "builtBy": BUILT_BY}
         entry.update(fields)
 
         # Every document, sound or damaged, carries the referee's own verdict on it.
@@ -633,8 +636,9 @@ def main() -> int:
                expect={"pages": recovered, "clean": False, "indexRebuilt": rebuild,
                        "requiredDiagnostics": expected_codes, "refereeCheckSucceeds": accepted})
 
-    # Committed documents come last, untouched: they cannot be regenerated, only attributed.
-    entries.extend(committed)
+    # Every other document comes last, untouched but for the referee's verdict: it cannot be regenerated,
+    # only attributed.
+    entries.extend(kept)
     write_manifest(versions, entries)
     return 0
 

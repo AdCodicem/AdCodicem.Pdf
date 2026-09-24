@@ -146,6 +146,12 @@ public static class Corpus
                 var documents = ReadManifest(candidate)
                     ?? throw new InvalidOperationException("The corpus manifest has no documents.");
 
+                // Documents we may use but not redistribute (origin "remote") are fetched on demand into
+                // tests/corpus/remote/, which git ignores (ADR 32). Only those actually fetched join the
+                // corpus, so a run without the network tests exactly what is committed.
+                documents.RemoveAll(document =>
+                    document.Origin == "remote" && !System.IO.File.Exists(Resolve(root, document.File)));
+
                 // An optional private manifest lets a team test against confidential documents without
                 // committing them: tests/corpus/private/ and private.json are ignored by git, and
                 // everything simply runs on the public corpus when they are absent.
@@ -153,15 +159,6 @@ public static class Corpus
                 if (System.IO.File.Exists(privateManifest) && ReadManifest(privateManifest) is { } confidential)
                 {
                     documents.AddRange(confidential);
-                }
-
-                // Documents we may use but not redistribute are described in remote.json and fetched on
-                // demand into tests/corpus/remote/, which git ignores (ADR 32). Only those actually fetched
-                // join the corpus, so a run without the network tests exactly what is committed.
-                var remoteManifest = System.IO.Path.Combine(root, "remote.json");
-                if (System.IO.File.Exists(remoteManifest) && ReadManifest(remoteManifest) is { } remote)
-                {
-                    documents.AddRange(remote.Where(document => System.IO.File.Exists(Resolve(root, document.File))));
                 }
 
                 return (root, documents);

@@ -12,8 +12,9 @@ invoice â€” the content of sources/invoice-fr.html, fictitious from end to end â
 and writes it through all three.
 
 Run it deliberately, on Windows with Word and PDF24 Creator installed, and review the diff: like every
-producer, these change their output from one version to the next. The versions it prints belong in
-tests/corpus/contributed.json, since build_corpus.py cannot regenerate these files and leaves them alone.
+producer, these change their output from one version to the next. The versions it prints belong in these
+files' entries in tests/corpus/manifest.json, marked "builtBy": "build_word.ps1": build_corpus.py cannot
+regenerate the files, and leaves them and their entries alone.
 
 The document carries no personal data: its author is set to "AdCodicem" explicitly, both printers' habit of
 stamping the Windows account that printed is dealt with where each allows it (below), and any file that

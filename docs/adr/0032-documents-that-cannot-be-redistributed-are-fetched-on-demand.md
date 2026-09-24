@@ -7,9 +7,15 @@ Date: 2026-09-24
 Accepted on 2026-09-24. Complements [23](0023-third-party-corpus-documents-are-vendored-only-under-attribu.md),
 which it leaves unchanged: what is committed still needs an attribution-only licence.
 
-Implemented by `tests/corpus/remote.json`, `tests/corpus/build/fetch_remote.py`,
-`build_corpus.py --remote`, the merge in `tests/AdCodicem.Pdf.TestSupport/Corpus.cs` and the
-`Remote corpus` workflow (`.github/workflows/remote-corpus.yml`).
+Implemented by the entries of origin `remote` in `tests/corpus/manifest.json`,
+`tests/corpus/build/fetch_remote.py`, `build_corpus.py --remote`, the filter in
+`tests/AdCodicem.Pdf.TestSupport/Corpus.cs` and the `Remote corpus` workflow
+(`.github/workflows/remote-corpus.yml`).
+
+Amended on 2026-09-24, the day it was accepted: the remote entries moved from `remote.json` into the
+single corpus manifest, marked by `"origin": "remote"`, when `vendor.json` and `contributed.json` were
+folded into it too. The decision below is unchanged; only the file that holds the entries is. Where it
+says `remote.json`, read the manifest's remote entries.
 
 ## Context
 
