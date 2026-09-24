@@ -117,21 +117,22 @@ Use cases are `invoice`, `report`, `contract`, `form`, `scan`, `archival`, `dama
 Names are lower case with hyphens, and name the producer first: `word-print-driver-invoice.pdf`,
 `acrobat-contract-signed.pdf`.
 
-Then describe it in `tests/corpus/contributed.json` — not in `manifest.json`, which the build script
-rewrites — and run `build_corpus.py --committed-only` to merge it with the referee's verdict
-(`tests/corpus/README.md` has the one-line container command). Or tell me the two lines about the file and
+Then describe it in `tests/corpus/manifest.json` — by hand: the build script replaces only the entries it
+writes itself, marked `builtBy` — and run `build_corpus.py --committed-only` to record the referee's
+verdict (`tests/corpus/README.md` has the one-line container command). Or tell me the two lines about the file and
 I will write the entry, establish the expectations with an independent tool, and add it to the acceptance
 tests.
 
 A third party's file — a sample from another project's test suite, a public-domain government document —
-goes under `tests/corpus/vendor/<source>/` instead, described in `vendor.json`, and only under an
+goes under `tests/corpus/vendor/<source>/` instead, described in the same manifest, and only under an
 attribution-only licence recorded in `tests/corpus/NOTICE` (ADR 23).
 
 ### Public but not redistributable — fetched on demand
 
 A file anyone can download but nobody may republish — a bug-report attachment, a vendor's sample, a
 ShareAlike document, a file too large to commit — is not committed at all. It is described in
-`tests/corpus/remote.json` with its URL and SHA-256, fetched by `build/fetch_remote.py`, and tested every
+`tests/corpus/manifest.json` with origin `remote`, its URL and its SHA-256, fetched by
+`build/fetch_remote.py`, and tested every
 night by the `Remote corpus` workflow (ADR 32). Send the URL rather than the file; `tests/corpus/README.md`
 says how an entry is written. A document of yours that is not public belongs in the private corpus, not
 here: the manifest is published, and it lists only files anyone can already download.

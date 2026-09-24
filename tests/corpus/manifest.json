@@ -8,6 +8,7 @@
   "documents": [
     {
       "file": "documents/invoice/chromium-invoice-fr.pdf",
+      "builtBy": "build_corpus.py",
       "title": "French invoice, VAT breakdown, accented text",
       "useCase": "invoice",
       "producer": "Chromium 141.0.7390.37",
@@ -33,6 +34,7 @@
     },
     {
       "file": "documents/invoice/libreoffice-invoice-fr.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Same invoice through a different producer",
       "useCase": "invoice",
       "producer": "LibreOffice 24.2.7.2 420(Build:2)",
@@ -55,6 +57,7 @@
     },
     {
       "file": "documents/invoice/reportlab-invoice.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Invoice from a third writer",
       "useCase": "invoice",
       "producer": "ReportLab 5.0.1",
@@ -77,6 +80,7 @@
     },
     {
       "file": "documents/report/chromium-report-fr.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Multi-page audit report: contents, tables, two-column annex",
       "useCase": "report",
       "producer": "Chromium 141.0.7390.37",
@@ -104,6 +108,7 @@
     },
     {
       "file": "documents/report/libreoffice-report-fr.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Same report through a different producer",
       "useCase": "report",
       "producer": "LibreOffice 24.2.7.2 420(Build:2)",
@@ -125,6 +130,7 @@
     },
     {
       "file": "documents/contract/chromium-contract-fr.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Service contract, justified body text",
       "useCase": "contract",
       "producer": "Chromium 141.0.7390.37",
@@ -148,6 +154,7 @@
     },
     {
       "file": "documents/invoice/qpdf-invoice-with-facturx-xml.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Invoice carrying an embedded Factur-X XML attachment",
       "useCase": "invoice",
       "producer": "qpdf 12.3.2 via pikepdf 10.13.0.post1",
@@ -170,6 +177,7 @@
     },
     {
       "file": "documents/form/reportlab-subscription-form.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Interactive subscription form with text fields and a checkbox",
       "useCase": "form",
       "producer": "ReportLab 5.0.1",
@@ -196,6 +204,7 @@
     },
     {
       "file": "documents/scan/reportlab-scanned-receipt.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Image-only page, as a scanner produces",
       "useCase": "scan",
       "producer": "ReportLab 5.0.1",
@@ -216,6 +225,7 @@
     },
     {
       "file": "documents/archival/libreoffice-report-pdfa2b.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Archival export of the report, claiming PDF/A-2b",
       "useCase": "archival",
       "producer": "LibreOffice 24.2.7.2 420(Build:2)",
@@ -238,6 +248,7 @@
     },
     {
       "file": "documents/archival/qpdf-linearized-report.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Linearised report, laid out for fast web viewing",
       "useCase": "report",
       "producer": "qpdf 12.3.2 via pikepdf 10.13.0.post1",
@@ -257,6 +268,7 @@
     },
     {
       "file": "documents/report/qpdf-objstm-report.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Report rewritten with every object packed into object streams",
       "useCase": "report",
       "producer": "qpdf 12.3.2 via pikepdf 10.13.0.post1",
@@ -276,6 +288,7 @@
     },
     {
       "file": "documents/secured/qpdf-invoice-aes256.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Invoice encrypted with AES-256",
       "useCase": "invoice",
       "producer": "qpdf 12.3.2 via pikepdf 10.13.0.post1",
@@ -296,6 +309,7 @@
     },
     {
       "file": "documents/stress/reportlab-journal-1000-pages.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Operations journal of 1000 pages",
       "useCase": "report",
       "producer": "ReportLab 5.0.1",
@@ -315,6 +329,7 @@
     },
     {
       "file": "documents/damaged/invoice-no-xref.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Invoice damaged on purpose: no xref",
       "useCase": "invoice",
       "producer": "derived from chromium-invoice-fr.pdf",
@@ -335,6 +350,7 @@
     },
     {
       "file": "documents/damaged/invoice-shifted-offsets.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Invoice damaged on purpose: shifted offsets",
       "useCase": "invoice",
       "producer": "derived from chromium-invoice-fr.pdf",
@@ -355,6 +371,7 @@
     },
     {
       "file": "documents/damaged/invoice-truncated-tail.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Invoice damaged on purpose: truncated tail",
       "useCase": "invoice",
       "producer": "derived from chromium-invoice-fr.pdf",
@@ -375,6 +392,7 @@
     },
     {
       "file": "documents/damaged/invoice-junk-prefix.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Invoice damaged on purpose: junk prefix",
       "useCase": "invoice",
       "producer": "derived from chromium-invoice-fr.pdf",
@@ -395,6 +413,7 @@
     },
     {
       "file": "documents/damaged/invoice-lying-length.pdf",
+      "builtBy": "build_corpus.py",
       "title": "Invoice damaged on purpose: lying length",
       "useCase": "invoice",
       "producer": "derived from chromium-invoice-fr.pdf",
@@ -3713,6 +3732,7 @@
     },
     {
       "file": "documents/invoice/word-invoice-fr.pdf",
+      "builtBy": "build_word.ps1",
       "title": "The corpus invoice laid out in Word and exported with Save as PDF",
       "useCase": "invoice",
       "producer": "Microsoft® Word for Microsoft 365 (16.0.20326), Windows 11 25H2, via build/build_word.ps1",
@@ -3742,6 +3762,7 @@
     },
     {
       "file": "documents/invoice/word-print-driver-invoice-fr.pdf",
+      "builtBy": "build_word.ps1",
       "title": "The same Word invoice printed through the Microsoft Print to PDF driver",
       "useCase": "invoice",
       "producer": "Microsoft: Print To PDF, Windows 11 25H2, printed from Word 16.0.20326 by build/build_word.ps1",
@@ -3768,6 +3789,7 @@
     },
     {
       "file": "documents/invoice/pdf24-invoice-fr.pdf",
+      "builtBy": "build_word.ps1",
       "title": "The same Word invoice through the PDF24 printer, which draws a box for every capital E of the regular face: the driver's PostScript lacks that glyph, so the subset maps code 48 to nothing while ToUnicode still says E",
       "useCase": "invoice",
       "producer": "PDF24 Creator 11.29.1 (GPL Ghostscript 10.06.0, profile default/best), printed from Word 16.0.20326 on Windows 11 25H2 by build/build_word.ps1",
@@ -3794,6 +3816,381 @@
           "Étude Noailles"
         ],
         "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfjs/ricoh-3heights-scan-issue5747.pdf",
+      "title": "Office copier scan from a Ricoh MP C3003 converted by 3-Heights: CCITT image, an OCR layer in a non-embedded Identity-H font, a PDF/A-1b claim",
+      "useCase": "scan",
+      "producer": "RICOH MP C3003; 3-Heights(TM) PDF Producer 4.4.34.0",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to pdf.js issue 5747, kept in pdf.js's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue5747.pdf",
+        "sha256": "f7083a6dcef36f41e31eb7fa36a1798fa9b1552d9cd773b1ec05becb47552070",
+        "bytes": 112018,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "office-copier",
+        "ccitt",
+        "ocr-layer",
+        "non-embedded-cid-font",
+        "pdfa",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Lorem ipsum dolor sit amet"
+        ],
+        "claimsConformance": "PDF/A-1b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfjs/sap-netweaver-form-bug1727053.pdf",
+      "title": "SAP NetWeaver 7.40 form output: a Turkish account statement with an embedded bold Arial TrueType font",
+      "useCase": "invoice",
+      "producer": "SAP NetWeaver 740",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to Mozilla bug 1727053, kept in pdf.js's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/bug1727053.pdf",
+        "sha256": "c2c8e7f07822af1fde821a7d9b8bac2c82be6b88d4edea400e11cb78a57d7f58",
+        "bytes": 420987,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "sap-netweaver",
+        "erp-output",
+        "truetype-embedded",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "5.000,00 TL"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/zugferd-corpus/fnfe-factur-x-basicwl-fr.pdf",
+      "title": "The FNFE-MPE's official Factur-X example in French, BASIC WL profile: factur-x.xml attached, a PDF/A-3b claim",
+      "useCase": "invoice",
+      "producer": "factur-x Python library 0.8, written by PyPDF2",
+      "origin": "remote",
+      "licence": "All rights reserved: an FNFE-MPE sample, copied into the ZUGFeRD/corpus repository. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/d891458e9822e34271a5438497bf924e89955979/ZUGFeRDv2/correct/FNFE-factur-x-examples/Facture_FR_BASICWL.pdf",
+        "sha256": "2e783dddb6bb77166d65057138826b6cbe96178afe11ee33e6d60c9679809b6e",
+        "bytes": 91446,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "factur-x",
+        "embedded-file",
+        "af-relationship",
+        "pdfa",
+        "truetype-subset",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Facture FA-2017-0010",
+          "Adresse de livraison"
+        ],
+        "attachments": [
+          "factur-x.xml"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/zugferd-corpus/intarsys-zugferd2-en16931.pdf",
+      "title": "The ZUGFeRD 2.0 EN 16931 sample from the intarsys toolkit: zugferd-invoice.xml attached, a PDF/A-3b claim",
+      "useCase": "invoice",
+      "producer": "intarsys ZUGFeRD Toolkit 2.0; intarsys PDF/A Live!",
+      "origin": "remote",
+      "licence": "No redistribution licence: an intarsys sample from the FeRD package, copied into the ZUGFeRD/corpus repository. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/d891458e9822e34271a5438497bf924e89955979/ZUGFeRDv2/correct/intarsys/EN16931/zugferd_2p0_EN16931_Einfach.pdf",
+        "sha256": "29842457f57143aba5da78fdf390aba773c965e60b1caab93dfff3e9d4c802f4",
+        "bytes": 147759,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "zugferd-2",
+        "embedded-file",
+        "af-relationship",
+        "pdfa",
+        "type0-subset",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Handelsrechnung Nr. 471102"
+        ],
+        "attachments": [
+          "zugferd-invoice.xml"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/py-pdf-sample-files/pdftex-outline.pdf",
+      "title": "pdfLaTeX with hyperref: four pages of Computer Modern Type 1 subsets, a table of contents and an outline",
+      "useCase": "report",
+      "producer": "pdfTeX-1.40.23 (LaTeX with hyperref)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0 (py-pdf/sample-files): ShareAlike would reach every derivative the corpus makes, so it is used, not vendored (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/py-pdf/sample-files/02b8203bf416db3dbdb03438bc8278dfcb0555f3/006-pdflatex-outline/pdflatex-outline.pdf",
+        "sha256": "17b5a4dac75613b82749c7538fc93991a385a5d419cc9832fdba24c1726a031a",
+        "bytes": 48722,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "pdftex",
+        "type1-subset",
+        "outlines",
+        "internal-links",
+        "xref-stream",
+        "object-streams"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello, here is some text without a meaning"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/py-pdf-sample-files/google-docs-document.pdf",
+      "title": "A Google Docs document downloaded as PDF: Skia's Google Docs renderer, Arial CID subsets and a Type 3 font",
+      "useCase": "report",
+      "producer": "Skia/PDF m103 Google Docs Renderer",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0 (py-pdf/sample-files): ShareAlike would reach every derivative the corpus makes, so it is used, not vendored (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/py-pdf/sample-files/02b8203bf416db3dbdb03438bc8278dfcb0555f3/011-google-doc-document/google-doc-document.pdf",
+        "sha256": "69f6b7f493b1bc55d518942976cbeadc4ec0a36f6d8a6dc24feffc516d35b2c9",
+        "bytes": 80100,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "google-docs",
+        "skia",
+        "type0-subset",
+        "type3-font",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Beautiful is better than ugly"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/py-pdf-sample-files/weasyprint-arabic.pdf",
+      "title": "WeasyPrint 54.1 output of a short Arabic text: shaped right-to-left glyphs in CID subsets, bidi marks in extraction",
+      "useCase": "report",
+      "producer": "WeasyPrint 54.1",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0 (py-pdf/sample-files): ShareAlike would reach every derivative the corpus makes, so it is used, not vendored (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/py-pdf/sample-files/02b8203bf416db3dbdb03438bc8278dfcb0555f3/015-arabic/habibi.pdf",
+        "sha256": "1017c4559eb7d0ccf7d151a3f051c8c1da27a7c1dc8050b2b687e3d3228e1b6f",
+        "bytes": 14957,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "weasyprint",
+        "html-to-pdf",
+        "rtl-arabic",
+        "type0-subset",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "habibi"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/census/indesign-census-2020-hebrew-guide.pdf",
+      "title": "US Census Bureau 2020 language guide in Hebrew: InDesign CC 13.1, Adobe Hebrew Type 1 subsets, tagged with /Lang he",
+      "useCase": "report",
+      "producer": "Adobe InDesign CC 13.1 (Windows), Adobe PDF Library 15.0",
+      "origin": "remote",
+      "licence": "Unclear: no Census Bureau reuse statement was found, and the translation may be a contractor's, so public domain under 17 U.S.C. 105 cannot be shown. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://www2.census.gov/programs-surveys/decennial/2020/resources/language-materials/guides/Hebrew-Guide.pdf",
+        "sha256": "b41eee18e0ab3cef31e4a2015c5e1ed1566e3c53407cab1a8778c6a66b9dd949",
+        "bytes": 1684948,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "rtl-hebrew",
+        "type1-subset",
+        "tagged",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "jpeg",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 8,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "המדריך שלך למפקד האוכלוסין",
+          "0607-1006"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/govinfo/us-code-2023-title42.pdf",
+      "title": "United States Code, 2023 edition, Title 42: 9,302 pages, a Government Publishing Office signature in an incremental update",
+      "useCase": "stress",
+      "producer": "PDFium (govinfo, U.S. Government Publishing Office)",
+      "origin": "remote",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105): at 37.6 MB too large to commit, so fetched on demand (ADR 32)",
+      "source": {
+        "url": "https://www.govinfo.gov/content/pkg/USCODE-2023-title42/pdf/USCODE-2023-title42.pdf",
+        "sha256": "9384648a70cf217b7dfff872ebd699b24a59dce55c76cdc06c802810782d0350",
+        "bytes": 37632691,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "too-large-to-commit",
+        "many-pages",
+        "signed-adbe-pkcs7-detached",
+        "incremental-update",
+        "size-off-by-one",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 9302,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "THE PUBLIC HEALTH AND WELFARE"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/usgs/us-topo-washington-west-2023.pdf",
+      "title": "US Topo map, Washington West quadrangle, 2023: one page with a 109.5-megapixel Flate image, JPEG strips and 31 layers",
+      "useCase": "stress",
+      "producer": "Esri ArcSOC 10.8.1",
+      "origin": "remote",
+      "licence": "Public domain (US federal government work, USGS): at 63.1 MB too large to commit, so fetched on demand (ADR 32)",
+      "source": {
+        "url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/Maps/USTopo/PDF/DC/DC_Washington_West_20230612_TM_geo.pdf",
+        "sha256": "33cfc95870f64560dcdedc616d3e666f6f99e485125f290cc9963e1db2d9f6d5",
+        "bytes": 63128959,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "too-large-to-commit",
+        "single-huge-page",
+        "large-flate-image",
+        "dct-image",
+        "optional-content",
+        "geospatial",
+        "linearized",
+        "xref-stream"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "WASHINGTON WEST QUADRANGLE"
+        ],
+        "unsupported": "T21: the reader reports a stream truncated at its 8 KB window boundary that qpdf reads whole, and a Flate failure on the 14.9 MB image not yet explained; both are recorded in docs/status.md and must be fixed before M13 relies on this document",
+        "refereeCheckSucceeds": false
       }
     }
   ]

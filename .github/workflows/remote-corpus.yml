@@ -1,7 +1,7 @@
 name: Remote corpus
 
 # Documents we may use in tests but not redistribute - bug-report attachments, vendors' samples, ShareAlike
-# sets, files too large to commit - are described in tests/corpus/remote.json and fetched here, never
+# sets, files too large to commit - are the remote entries of tests/corpus/manifest.json, fetched here, never
 # committed (ADR 32). This is the only job that meets them, and the only one that depends on the network.
 on:
   schedule:

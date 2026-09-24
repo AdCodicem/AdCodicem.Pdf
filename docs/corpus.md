@@ -24,18 +24,18 @@ handing anything over, and where it goes.
 | Third-party documents found in public sources (`vendor/`) | Producers we will never run — Acrobat, InDesign, LiveCycle, copier firmware, a qualified-seal service — and damage from the wild | Attribution-only licence (ADR 23), no real person's name anywhere, byte-identical to the publisher's copy; source URL and SHA-256 recorded; see `docs/corpus-sources.md` |
 | Contributed real documents | Everything the generators never do: legacy tooling, scanners, foreign-language typography, damaged files from the wild | No confidential content; origin and licence recorded; anonymised before committing |
 | Derived variants | Encryption, linearisation, object-stream rewrites, and deliberate damage | Derived by a recorded, repeatable transformation from a document already in the corpus |
-| Remote documents we may use but not redistribute (`remote.json`, ADR 32) | What only a bug report, a vendor's sample, a ShareAlike set or a file too large to commit can give | Never committed, nor anything derived from them; fetched at a pinned SHA-256 from an immutable URL; tested by a separate job |
+| Remote documents we may use but not redistribute (origin `remote`, ADR 32) | What only a bug report, a vendor's sample, a ShareAlike set or a file too large to commit can give | Never committed, nor anything derived from them; fetched at a pinned SHA-256 from an immutable URL; tested by a separate job |
 
 Documents are **committed**, not generated at test time: producer output changes with producer version, and
 a test suite that shifts under you is worse than no test suite. Regeneration is an explicit act, reviewed
 like any other change. It also keeps CI free of any network dependency.
 
 The one exception is the **remote corpus** (ADR 32): documents whose licence forbids redistribution, or whose
-size forbids committing them. `remote.json` describes them in the manifest's format, with a mandatory
-`source.url` and `source.sha256`; `build/fetch_remote.py` downloads them into `remote/`, which git ignores,
-and refuses any file whose hash differs — a changed file is a new document, reviewed as one. The test suite
-merges the entries whose file is present, so the main CI job fetches nothing, finds nothing, and tests
-exactly what is committed. The `Remote corpus` workflow fetches them every night and runs both suites over
+size forbids committing them. The manifest describes them like any other document, with origin `remote`
+and a mandatory `source.url` and `source.sha256`; `build/fetch_remote.py` downloads them into `remote/`,
+which git ignores, and refuses any file whose hash differs — a changed file is a new document, reviewed as
+one. The test suite leaves out the remote entries whose file is absent, so the main CI job fetches nothing,
+finds nothing, and tests exactly what is committed. The `Remote corpus` workflow fetches them every night and runs both suites over
 them; a download failure is reported as such, never as a test failure. The manifest itself is public, so its
 titles and `textContains` strings carry no personal data, and it lists only files anyone can download.
 
@@ -45,21 +45,20 @@ Keep each document small — a few hundred kilobytes at most, except the one del
 
 ```
 tests/corpus/
-  manifest.json          the index: one entry per document, written by build/build_corpus.py
+  manifest.json          the index: one entry per document, whoever produced it
   sources/               the inputs documents are generated from (HTML, ODT, scripts)
   build/                 the generation scripts and their recorded producer versions
   documents/             the committed PDF files, by category
-  contributed.json       entries for files under documents/ the build script cannot produce
   vendor/                third-party files, by source, with NOTICE and LICENSES/ for their terms
-  vendor.json            entries for the files under vendor/
-  remote.json            entries for documents fetched on demand, never committed (ADR 32)
-  remote/                where build/fetch_remote.py puts them; ignored by git
+  remote/                documents fetched on demand by build/fetch_remote.py (ADR 32); ignored by git
 ```
 
-`build_corpus.py --committed-only` merges `vendor.json` and `contributed.json` into the manifest without
-regenerating anything, with the referee's verdict on each file; `build_corpus.py --remote` records that
-verdict in `remote.json` for each fetched remote document. `tests/corpus/README.md` gives the container
-commands that make those verdicts the integration tests' own.
+One manifest describes every document, so each is described exactly once. `build/build_corpus.py` writes
+the entries of the documents it generates, marks them `"builtBy": "build_corpus.py"`, and replaces only
+those; every other entry is written by hand, and the script adds nothing to it but the referee's verdict.
+`build_corpus.py --committed-only` refreshes that verdict on the committed documents without regenerating
+anything, and `build_corpus.py --remote` on each fetched remote document. `tests/corpus/README.md` gives the
+container commands that make those verdicts the integration tests' own.
 
 ## Manifest
 
@@ -69,6 +68,7 @@ anything about is not part of the corpus.
 ```jsonc
 {
   "file": "documents/invoice/chromium-invoice-fr.pdf",
+  "builtBy": "build_corpus.py",          // the script that writes the file, if one does
   "title": "French invoice with VAT breakdown",
   "useCase": "invoice",                  // invoice | report | contract | form | scan | archival | mixed
   "producer": "Chromium 147 (Skia PDF backend)",

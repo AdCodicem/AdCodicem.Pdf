@@ -1,7 +1,7 @@
 Third-party documents in tests/corpus/vendor
 ============================================
 
-Every file below is used unmodified and renamed for legibility. tests/corpus/vendor.json records,
+Every file below is used unmodified and renamed for legibility. tests/corpus/manifest.json records,
 for each one, the URL it was retrieved from, the date, and the SHA-256 of the bytes as published.
 Only licences that ask for nothing beyond attribution are accepted here (docs/adr/0023); how the
 files were found and checked is in docs/corpus-sources.md.

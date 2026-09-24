@@ -3,7 +3,7 @@
 On 2026-09-24 the public internet was searched for the documents `docs/corpus-contributions.md` asks for
 (W01 to W12), and the test corpora of other PDF libraries were examined for the same purpose. This page
 records the rules applied, what entered `tests/corpus/vendor`, what was turned down and why, and what the
-search taught us. `tests/corpus/vendor.json` holds the per-file detail: source URL, retrieval date,
+search taught us. `tests/corpus/manifest.json` holds the per-file detail: source URL, retrieval date,
 SHA-256 of the published bytes, and every expectation.
 
 ## The rules a document had to meet
@@ -208,8 +208,8 @@ someone who did not own them.
   source each was made from.
 - **veraPDF** encodes the expected verdict in each file's name, so a fixture is self-describing.
 
-`vendor.json` now records the source URL, date and SHA-256 of every vendored file, which gives this corpus
-the provenance pikepdf has.
+The manifest now records the source URL, date and SHA-256 of every third-party file, which gives this
+corpus the provenance pikepdf has.
 
 ## What was turned down, and why
 
@@ -276,7 +276,7 @@ second pass, once a name alone no longer disqualified a file.
 ## In the remote corpus
 
 Ten documents are used without being redistributed ([ADR 32](adr/0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md)):
-`tests/corpus/remote.json` pins each one to an immutable URL and a SHA-256, and the `Remote corpus`
+the manifest pins each one, with origin `remote`, to an immutable URL and a SHA-256, and the `Remote corpus`
 workflow fetches them and runs both suites over them every night. Their expectations were established like
 everyone else's — pages and verdicts by qpdf 11.9.1 in the integration tests' container, text by poppler's
 pdftotext 24.02, conformance by veraPDF 1.30.2 — on 2026-09-24.

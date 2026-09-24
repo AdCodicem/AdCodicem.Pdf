@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Fetches the remote corpus: the documents we may use in tests but not redistribute (ADR 32).
 
-tests/corpus/remote.json describes them in the corpus manifest's format, each with the URL it is fetched from
-and the SHA-256 it must have. They land in tests/corpus/remote/, which git ignores: nothing fetched is ever
-committed, nor anything derived from it. The test suite merges the entries whose file is present, so a machine
-that never runs this script tests exactly the committed corpus.
+tests/corpus/manifest.json describes them among the other documents, with origin "remote", the URL each is
+fetched from and the SHA-256 it must have. They land in tests/corpus/remote/, which git ignores: nothing fetched
+is ever committed, nor anything derived from it. The test suite leaves out the remote entries whose file is
+absent, so a machine that never runs this script tests exactly the committed corpus.
 
 A download is accepted only if its SHA-256 is the one the manifest pins. A file that has changed at its source
 is refused, never accepted by updating the hash: it is a new document, to be reviewed as one.
@@ -30,7 +30,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = ROOT / "remote.json"
+MANIFEST = ROOT / "manifest.json"
 USER_AGENT = "AdCodicem.Pdf-corpus/1.0 (+https://github.com/AdCodicem/AdCodicem.Pdf; test corpus, ADR 32)"
 DEFAULT_CEILING = 512 * 1024 * 1024
 ATTEMPTS = 3
@@ -42,8 +42,19 @@ class InvalidManifest(Exception):
 
 
 def load_entries() -> list[dict]:
-    """Reads remote.json and refuses anything the rest of the script, or the tests, could not trust."""
-    documents = json.loads(MANIFEST.read_text(encoding="utf-8"))["documents"]
+    """
+    Reads the manifest's remote entries, and refuses anything the rest of the script, or the tests, could not
+    trust. A file under remote/ is remote and nothing else is: an entry marked remote elsewhere would be
+    silently left out of the tests whenever its file is absent, and a remote file marked otherwise would fail
+    every test run that never fetched it.
+    """
+    documents = []
+    for entry in json.loads(MANIFEST.read_text(encoding="utf-8"))["documents"]:
+        if (entry.get("origin") == "remote") != entry.get("file", "").startswith("remote/"):
+            raise InvalidManifest(f"'{entry.get('file')}': origin \"remote\" and the remote/ folder go together")
+        if entry.get("origin") == "remote":
+            documents.append(entry)
+
     seen: set[str] = set()
     for entry in documents:
         name = entry.get("file", "")
@@ -144,7 +155,7 @@ def main() -> int:
     try:
         entries = load_entries()
     except (InvalidManifest, KeyError, json.JSONDecodeError) as error:
-        print(f"tests/corpus/remote.json is invalid: {error}", file=sys.stderr)
+        print(f"tests/corpus/manifest.json is invalid: {error}", file=sys.stderr)
         return 2
 
     rows = []
