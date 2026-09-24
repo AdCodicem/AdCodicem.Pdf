@@ -13,6 +13,15 @@ Producers used:
 
 Damaged variants are derived by byte-level surgery on a valid document, so each one isolates exactly one
 defect.
+
+Documents this script cannot produce are committed with their manifest entries and never regenerated:
+third-party files under vendor/, described by vendor.json, and files under documents/ described by
+contributed.json - contributed from the field, or written on Windows by build_word.ps1. The script leaves
+their files alone and merges their entries into the manifest with the referee's verdict on each.
+
+    python3 build_corpus.py                    regenerate everything this script produces
+    python3 build_corpus.py --committed-only   only refresh the committed documents' manifest entries,
+                                               keeping the generated ones: needs qpdf, nothing else
 """
 
 from __future__ import annotations
@@ -30,6 +39,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ROOT / "sources"
 DOCUMENTS = ROOT / "documents"
 VENDOR = ROOT / "vendor.json"
+CONTRIBUTED = ROOT / "contributed.json"
 MANIFEST = ROOT / "manifest.json"
 
 CHROMIUM_CANDIDATES = [
@@ -383,10 +393,68 @@ def referee_check_succeeds(path: Path) -> bool:
     return completed.returncode == 0
 
 
-def main() -> int:
+def committed_entries() -> list[dict]:
+    """
+    The documents this script cannot regenerate, only attribute: third-party files (vendor.json, see
+    tests/corpus/NOTICE) and documents contributed or produced elsewhere (contributed.json). Each one gets the
+    referee's verdict, recorded by the same command the integration tests run.
+    """
+    entries: list[dict] = []
+    for listing in (VENDOR, CONTRIBUTED):
+        if listing.exists():
+            entries.extend(json.loads(listing.read_text(encoding="utf-8"))["documents"])
+
+    for entry in entries:
+        expect = entry.setdefault("expect", {})
+        expect["refereeCheckSucceeds"] = referee_check_succeeds(ROOT / entry["file"])
+
+    return entries
+
+
+def clear_generated_documents(committed: list[dict]) -> None:
+    """Deletes what this script produced last time, and nothing it could not produce again."""
+    keep = {(ROOT / entry["file"]).resolve() for entry in committed}
     if DOCUMENTS.exists():
-        shutil.rmtree(DOCUMENTS)
-    DOCUMENTS.mkdir(parents=True)
+        for path in sorted(DOCUMENTS.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+            if path.is_file() and path.resolve() not in keep:
+                path.unlink()
+            elif path.is_dir() and not any(path.iterdir()):
+                path.rmdir()
+    DOCUMENTS.mkdir(parents=True, exist_ok=True)
+
+
+def write_manifest(versions: dict[str, str], entries: list[dict]) -> None:
+    MANIFEST.write_text(
+        json.dumps({"producers": versions, "documents": entries}, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8")
+
+    committed = sum(1 for entry in entries if entry.get("origin") == "contributed" or entry["file"].startswith("vendor/"))
+    total = sum(path.stat().st_size for path in ROOT.rglob("*.pdf") if "private" not in path.parts)
+    print(f"{len(entries)} documents ({committed} committed from elsewhere), {total / 1024 / 1024:.1f} MB")
+    for name, version in versions.items():
+        print(f"  {name}: {version}")
+
+
+def refresh_committed() -> int:
+    """Rewrites the committed documents' entries in the manifest, keeping the generated ones as they are."""
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    committed = committed_entries()
+    listed = {entry["file"] for entry in committed}
+
+    generated = [entry for entry in manifest["documents"]
+                 if entry.get("origin") in ("generated", "derived")
+                 and entry["file"] not in listed and not entry["file"].startswith("vendor/")]
+
+    write_manifest(manifest.get("producers", {}), generated + committed)
+    return 0
+
+
+def main() -> int:
+    if "--committed-only" in sys.argv[1:]:
+        return refresh_committed()
+
+    committed = committed_entries()
+    clear_generated_documents(committed)
 
     versions = producer_versions()
     entries: list[dict] = []
@@ -535,23 +603,9 @@ def main() -> int:
                expect={"pages": recovered, "clean": False, "indexRebuilt": rebuild,
                        "requiredDiagnostics": expected_codes, "refereeCheckSucceeds": accepted})
 
-    # Third-party documents are committed under vendor/ with their provenance, and are never touched by
-    # this script: they cannot be regenerated, only attributed. See tests/corpus/NOTICE.
-    vendored = json.loads(VENDOR.read_text(encoding="utf-8"))["documents"] if VENDOR.exists() else []
-    for entry in vendored:
-        expect = entry.setdefault("expect", {})
-        expect["refereeCheckSucceeds"] = referee_check_succeeds(ROOT / entry["file"])
-
-    entries.extend(vendored)
-
-    MANIFEST.write_text(
-        json.dumps({"producers": versions, "documents": entries}, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8")
-
-    total = sum(path.stat().st_size for path in ROOT.rglob("*.pdf"))
-    print(f"{len(entries)} documents ({len(vendored)} third-party), {total / 1024 / 1024:.1f} MB")
-    for name, version in versions.items():
-        print(f"  {name}: {version}")
+    # Committed documents come last, untouched: they cannot be regenerated, only attributed.
+    entries.extend(committed)
+    write_manifest(versions, entries)
     return 0
 
 

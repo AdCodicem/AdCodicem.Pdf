@@ -4,11 +4,17 @@ Real documents from real producers, plus copies damaged on purpose. The policy �
 from, what the manifest promises and what closing a milestone requires — is in `docs/corpus.md`.
 
 ```
-sources/     the HTML documents the corpus is generated from
-build/       the generation script and its pinned Python requirements
-documents/   the committed PDF files, by use case
-manifest.json  the index: one entry per document, with what tests must observe
+sources/          the HTML documents the corpus is generated from
+build/            the generation scripts and their pinned Python requirements
+documents/        the committed PDF files, by use case
+vendor/           third-party files, by source, used unmodified under the terms in NOTICE
+manifest.json     the index: one entry per document, with what tests must observe
+vendor.json       the entries of the files under vendor/
+contributed.json  the entries of the files under documents/ that build_corpus.py cannot produce
 ```
+
+`manifest.json` is written by `build/build_corpus.py`, never by hand: it is the generated entries plus
+those of `vendor.json` and `contributed.json`, each with the referee's verdict added.
 
 ## Regenerating
 
@@ -28,6 +34,29 @@ The script needs Chromium and LibreOffice Writer on the machine. In a Claude Cod
 apt-get install -y --no-install-recommends libreoffice-writer   # Chromium is already at /opt/pw-browsers
 ```
 
+It regenerates only what it produces. Files described by `vendor.json` and `contributed.json` are left
+alone, and their entries merged into the manifest.
+
+**Word's two writers** — Save as PDF and the Microsoft Print to PDF driver — run only on Windows, so their
+documents come from `build/build_word.ps1` rather than from the script above:
+
+```powershell
+./tests/corpus/build/build_word.ps1   # Windows with Word installed; prints the versions to record
+```
+
+The print driver writes the display name of the Windows account that printed into `/Author`, whatever the
+document says. The script overwrites that token in place with a neutral value of the same length, so no
+offset moves, records the file as derived, and deletes any output that still names someone.
+
+**Refreshing the entries of committed documents only** — after adding a file under `vendor/` or
+`documents/` — needs nothing but qpdf, and is best run in the container the integration tests use, so the
+recorded verdict is that exact qpdf's:
+
+```bash
+docker run --rm -v "$PWD/tests/corpus:/corpus" alpine:3.21 \
+  sh -c "apk add --no-cache qpdf python3 >/dev/null && python3 /corpus/build/build_corpus.py --committed-only"
+```
+
 ## Adding a document
 
 Contributing a file from the field — Word, Acrobat, a scanner, a supplier's ERP, or something that broke
@@ -35,13 +64,16 @@ your tooling? `docs/corpus-contributions.md` is the specification: what is wante
 handing it over, and which of the public and private corpora it belongs in.
 
 
-1. Drop it under `documents/<use-case>/`, or add a generator to `build_corpus.py` if it can be produced.
-2. Add its manifest entry, including what tests must observe: page count, whether it is well formed,
+1. Add a generator to `build_corpus.py` if it can be produced. Otherwise, drop it under
+   `documents/<use-case>/` and describe it in `contributed.json` — or, for a third party's file, under
+   `vendor/<source>/`, described in `vendor.json`, with its licence added to `NOTICE`.
+2. Write its entry, including what tests must observe: page count, whether it is well formed,
    which diagnostics the reader must report, and whatever later milestones will assert (text, attachments,
    form fields, conformance level).
 3. Establish the page count with an **independent tool**, never with our own reader — an expectation
    derived from the code under test proves nothing.
 4. Record the origin and the licence. Contributed documents must carry no confidential content.
+5. Merge the entry into `manifest.json` with `build_corpus.py --committed-only`, as above.
 
 `CorpusReadingTests.The_corpus_manifest_describes_every_document_present` fails if a file is added without
 a manifest entry: a document nobody asserts anything about is clutter, not coverage.

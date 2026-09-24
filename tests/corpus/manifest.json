@@ -578,6 +578,61 @@
         "requiredDiagnostics": [],
         "refereeCheckSucceeds": true
       }
+    },
+    {
+      "file": "documents/invoice/word-invoice-fr.pdf",
+      "title": "The corpus invoice laid out in Word and exported with Save as PDF",
+      "useCase": "invoice",
+      "producer": "Microsoft® Word for Microsoft 365 (16.0.20326), Windows 11 25H2, via build/build_word.ps1",
+      "origin": "contributed",
+      "licence": "MIT (our own fictitious content); the embedded Arial subsets are embedded under the font's embedding permissions",
+      "features": [
+        "word-save-as-pdf",
+        "hybrid-xref",
+        "empty-update-section",
+        "object-streams",
+        "tagged",
+        "truetype-subset",
+        "type0-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "textContains": [
+          "Facture",
+          "Total TTC",
+          "Étude Noailles"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "documents/invoice/word-print-driver-invoice-fr.pdf",
+      "title": "The same Word invoice printed through the Microsoft Print to PDF driver",
+      "useCase": "invoice",
+      "producer": "Microsoft: Print To PDF, Windows 11 25H2, printed from Word 16.0.20326 by build/build_word.ps1",
+      "origin": "derived",
+      "licence": "MIT (our own fictitious content); the embedded Arial subsets are embedded under the font's embedding permissions",
+      "features": [
+        "print-driver",
+        "xref-table",
+        "type0-subset",
+        "author-overwritten-in-place"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "textContains": [
+          "Facture",
+          "Total TTC",
+          "Étude Noailles"
+        ],
+        "refereeCheckSucceeds": true
+      }
     }
   ]
 }
