@@ -68,6 +68,22 @@ public class CorpusReadingTests
     }
 
     [Fact]
+    public void A_committed_document_weighs_at_most_2_MB()
+    {
+        // Everyone who clones the repository downloads the committed corpus. Size never turns a document
+        // down: over 2 MB it is fetched on demand from its public URL instead (ADR 32). Remote and private
+        // documents are never committed, so their weight is nobody's download.
+        const long Threshold = 2_000_000;
+
+        var oversized = Corpus.Documents
+            .Where(document => document.Origin != "remote" && !document.File.StartsWith("private/", StringComparison.Ordinal))
+            .Where(document => new FileInfo(Corpus.PathOf(document.File)).Length > Threshold)
+            .Select(document => document.File);
+
+        oversized.Should().BeEmpty("a document over 2 MB belongs in the remote corpus, not in the repository");
+    }
+
+    [Fact]
     public void The_corpus_covers_several_producers_and_every_use_case()
     {
         Corpus.Documents.Select(document => document.Producer.Split(' ')[0]).Distinct().Count()
