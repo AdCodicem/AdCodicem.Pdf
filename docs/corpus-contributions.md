@@ -7,14 +7,15 @@ and what closing a milestone requires of it — is in `docs/corpus.md`.
 
 The corpus covers four producers we can drive in a container — Chromium's Skia backend, LibreOffice,
 ReportLab and qpdf — three office writers driven on Windows — Word's Save as PDF, the Microsoft Print to
-PDF driver and the PDF24 printer — and 84 third-party files found in public sources under attribution-only
+PDF driver and the PDF24 printer — and 90 third-party files found in public sources under attribution-only
 licences: conformance fixtures from veraPDF and BFO, government documents from five countries and the EU,
-specimen invoices from ERP and invoicing tools, and regression files from other PDF libraries.
+specimen invoices from ERP and invoicing tools, and regression files from other PDF libraries. Another 86
+that we may use but not redistribute are fetched on demand and tested every night.
 `docs/corpus-sources.md` says where each came from, which other libraries' corpora were examined, and why
 most of them could not be used.
 
 What public sources cannot give us is what arrives in a real inbox: a bank statement out of a Java stack,
-a supplier's Factur-X straight from its ERP with real data, a contract signed through Yousign or DocuSign,
+a supplier's Factur-X straight from its ERP with real data, a contract signed through Yousign or Adobe Sign,
 a scan as the office copier wrote it, or a file that broke something last week. Those almost always carry
 someone's address or account details, so they cannot be found — only contributed, and anonymised. Each one
 that enters the corpus stays there, checked on every commit, for the life of the project.
@@ -22,7 +23,9 @@ that enters the corpus stays there, checked on every commit, for the life of the
 The first three third-party files we added found a real defect within a minute — a validly compressed
 empty stream being read as a decoding failure. The search that brought the next seventy-six found a test
 that could not read a page count qpdf printed with a warning, and a reader that calls a sound stream
-truncated when its end falls just past an 8 KB window. That is the return on this.
+truncated when its end falls just past an 8 KB window. The pass after it, eighty-two more, found the same
+window cutting objects longer than 8 KB, and each cross-reference section read through a window of up to
+64 KB, whatever its size. That is the return on this.
 
 ## What is wanted
 
@@ -48,24 +51,26 @@ made, not because of what it says.
 
 ### What is already in, and what is still missing
 
-After two passes over public sources on 2026-09-24 (`docs/corpus-sources.md`), the corpus holds something
-for every line, and for most of them several producers. What is still wanted is what only a contribution
-can bring: documents that went through a real inbox.
+After three passes over public sources on 2026-09-24 (`docs/corpus-sources.md`), the corpus holds something
+for every line, and for most of them several producers. The third pass followed the leads held back by
+their licence, so most of what it found is remote: fetched on demand, never committed (ADR 32). What is
+still wanted is what only a contribution can bring: documents that went through a real inbox, and that we
+may commit.
 
 | # | In the corpus | Still wanted |
 |---|---------------|--------------|
-| W01 | Word 2010, 2019 and Microsoft 365 Save as PDF; Word for Mac through Quartz; Print to PDF from Word and from Excel, untouched; our own invoice through Save as PDF, the print driver and PDF24 | — |
-| W02 | PDFMaker 5, 9.1, 10, 21 and 25 for Word; Distiller 2 to 10; InDesign; PageMaker; Illustrator; LiveCycle Designer; Acrobat Pro DC and Reader X re-saves; usage rights | — |
-| W03 | Two Xerox copiers with their own OCR layer, Xerox JBIG2 without text, an HP MFP with Acrobat's OCR, a scanner's CCITT G3 file, a 1999 CCITT import; remote: a Ricoh MP C3003 scan through 3-Heights | A copier file untouched since the copier wrote it (the Xerox ones were later re-saved), from another brand — Canon, Ricoh, Konica |
-| W04 | JasperReports 7 on OpenPDF, iText 2.1.7 then PDFBox (weclapp), PDFBox 3 (Swiss QR-bill), PDFlib's Java binding, Apache FOP — all with fictitious data; remote: a real SAP NetWeaver statement | **A real invoice or statement from a supplier or bank** we may commit: SAP, Crystal, a bank's own stack |
-| W05 | A GPO certification, DILA's Dictao signature, a qualified seal renewed by timestamps over two years, a PAdES B-LTA seal, two Acrobat Reader signatures | **A commercial e-signature**: Yousign, DocuSign, Universign, Adobe Sign |
-| W06 | A really damaged GovDocs1 file, a GovDocs1 error file, a scanner file that broke pikepdf, forms that broke pdf.js, SafeDocs lexer and dialect tests | Anything that broke your own tools |
-| W07 | Factur-X from weclapp and from Dynamics 365 (demo data), ZUGFeRD from GnuAccounting and from the Mustang library; remote: the FNFE-MPE's French example and intarsys's EN 16931 sample | A Factur-X a supplier's ERP actually sent, anonymised |
-| W08 | Blank XFA forms (IRS, USCIS, DoD, a Cerfa), JavaScript AcroForms (USCIS I-9, HMRC), a calculation order, an OmniForm form, tagged forms | A form that is filled in — with fictitious values |
-| W09 | Arabic, Russian, Greek, Traditional Chinese (2004 and 2017), vertical Japanese without ToUnicode; remote: Hebrew (a US Census guide) and Arabic shaped into CID fonts by WeasyPrint | Korean; Hebrew and shaped Arabic we may commit |
-| W10 | PDF 1.2 to 1.4 from 1995–2004: PDFWriter 3.02 and 4.05, Distiller 2, 3 (Windows and Mac), 4 and 6, PDFMaker 5, Acrobat 3, RC4-40 | A file from before 1996, PDF 1.0 or 1.1 |
-| W11 | Nothing committed, by design; remote: the US Code's Title 42 (9,302 pages) and a USGS topographic map (one 63 MB page), fetched and tested every night | The heavy scan (USGS Professional Paper 1, 147 MB), left for M13 to fetch; the map's acceptance waits on T21 |
-| W12 | PDF/A from PDFlib, Antenna House, Distiller, 3-Heights, BFO, Mustang, Aspose, OpenOffice and Word via PDFMaker, and a false claim, each with veraPDF's verdict | A PDF/A-3 from a real ERP with its validation report |
+| W01 | Word 2010, 2019 and Microsoft 365 Save as PDF; Word for Mac through Quartz; Print to PDF from Word and from Excel, untouched; our own invoice through Save as PDF, the print driver and PDF24; remote: Word 2010 and 2019 pages signed in PAdES, a Word for Microsoft 365 form finished in Acrobat, an Excel for Office 365 sheet under 24 signatures, a Print to PDF poster that an Adobe tool later updated | — |
+| W02 | PDFMaker 5, 9.1, 10, 21 and 25 for Word; Distiller 2 to 10; InDesign; PageMaker; Illustrator; LiveCycle Designer; Acrobat Pro DC and Reader X re-saves; usage rights; remote: PDFMaker 8.1, 11 and 23, FrameMaker through Distiller 6 and 10, Web Capture, Image Conversion, Photoshop, InDesign CS6, an Acrobat 9 portfolio with 3D models, dynamic XFA from LiveCycle ES 9 and 10 | — |
+| W03 | Two Xerox copiers with their own OCR layer, Xerox JBIG2 without text, an HP MFP with Acrobat's OCR, a scanner's CCITT G3 file, a 1999 CCITT import, ABBYY FineReader 8 OCR under CCITT G4 pages, a JBIG2 scan completed in DocuSign; remote: a Konica Minolta bizhub scan untouched, with the copier's own OCR, a Ricoh MP C3003 scan through 3-Heights, a Ricoh MP 5054 scan completed in DocuSign, a Canon scanner's own OCR in a damaged file, Kodak Capture and Epson scans, OmniPage and AbleDocs OCR in tagged scans | A copier file untouched since the copier wrote it that we may commit: the Xerox ones were later re-saved, and the Konica, Canon and Epson files are remote, the Canon one damaged |
+| W04 | JasperReports 7 on OpenPDF, iText 2.1.7 then PDFBox (weclapp), PDFBox 3 (Swiss QR-bill), PDFlib's Java binding, Apache FOP, PDFMaker 21 (a UK government sample invoice) — all with fictitious data; remote, real output: SAP NetWeaver (a statement and an invoice), Axapta, Scoro, a card statement from PDFlib on z/OS, a bank's AFP batch processor, a central bank's JasperReports on iText 2.1.0 | **A real invoice or statement from a supplier or bank** we may commit: every real one found is remote. Crystal Reports and Oracle: the two Oracle invoices found each gave a person's phone number |
+| W05 | A GPO certification, DILA's Dictao signature, a qualified seal renewed by timestamps over two years, a PAdES B-LTA seal, two Acrobat Reader signatures, **DocuSign's envelope seal on a GSA contract form**, node-signpdf's signature and unsigned placeholder; remote: Adobe Sign, Yousign's qualified seal, DocuSign twice more, Universign document timestamps, Foxit PhantomPDF certification and approval signatures, PAdES B-B to B-LTA, Slovak and Hungarian qualified seals, the Spanish gazette's seal, 24 signatures and a timestamp in one file, a certified dynamic XFA form, legacy `adbe.x509.rsa_sha1` and MD5 references | **A Yousign, Universign or Adobe Sign signature we may commit**: those found are remote, Universign's only as timestamps. A signature under a person's own certificate: those examined carried an e-mail address, a phone number or an identity number |
+| W06 | A really damaged GovDocs1 file, a GovDocs1 error file, a scanner file that broke pikepdf, forms that broke pdf.js, SafeDocs lexer and dialect tests, a signature `/Reason` that broke node-signpdf; remote: files that broke pdf.js, PDFBox, PDFium, pdfplumber, PdfPig, OCRmyPDF and EU DSS — truncations, a zeroed block, junk after `%%EOF`, a stale tail, object-stream indexes wrapped at 16 bits, corrupt Flate data and fonts | Anything that broke your own tools |
+| W07 | Factur-X from weclapp and from Dynamics 365 (demo data), ZUGFeRD from GnuAccounting and from the Mustang library, the factur-x Python library's output; remote: the FNFE-MPE's French example, intarsys's EN 16931 and XRECHNUNG samples, DWC's generator through WeasyPrint, Symtrax, Konik, 4s4u's additional data, an Order-X purchase order, a UBL payload made hybrid by iText 9 | A Factur-X a supplier's ERP actually sent, anonymised: the two found, from Oracle Reports and from Business Central, carried a person's contact details |
+| W08 | Blank XFA forms (IRS, USCIS, DoD, a Cerfa), JavaScript AcroForms (USCIS I-9, HMRC), a calculation order, an OmniForm form, tagged forms; remote: dynamic XFA from LiveCycle ES 9 and 10, encrypted, one of them certified, OPM's OF-306 with date JavaScript and signature fields, an Acrobat radio-button form with NULs in its names, an XFA form filled with fictitious values inside a portfolio | A form that is filled in — with fictitious values — that we may commit |
+| W09 | Arabic, Russian, Greek, Traditional Chinese (2004 and 2017), vertical Japanese without ToUnicode; remote: Hebrew (a US Census guide, a USDA fact sheet), Arabic shaped into CID fonts by WeasyPrint, Chinese font names in GBK bytes, PDF 2.0 UTF-8 strings | Korean; Hebrew and shaped Arabic we may commit |
+| W10 | PDF 1.2 to 1.4 from 1995–2004: PDFWriter 3.02 and 4.05, Distiller 2, 3 (Windows and Mac), 4 and 6, PDFMaker 5, Acrobat 3, RC4-40; remote: a 1998 PDFWriter 3.02 file with its line ends stripped | A file from before 1996, PDF 1.0 or 1.1 |
+| W11 | Nothing committed, by design; remote: the US Code's Title 42 (9,302 pages), a USGS topographic map (one 63 MB page) and USGS Professional Paper 1 (147 MB of JPEG 2000 scans), fetched and tested every night; beside them a 4.7 MB portfolio, a 10.6 MB tagged scan, a CCITT image that decodes to 153 MB, 24 signatures in 48 updates | — (the map's acceptance waits on T21) |
+| W12 | PDF/A from PDFlib, Antenna House, Distiller, 3-Heights, BFO, Mustang, Aspose, OpenOffice and Word via PDFMaker, and two false claims, one from the factur-x Python library, each with veraPDF's verdict; remote: PDF/A-1a from callas pdfaPilot and Oracle Outside In, PDF/A-1b from Ghostscript, PDF/A-3 from Symtrax, Konik, intarsys and iText 9, PDF/A-4f and PDF/A-3u from WeasyPrint, claims veraPDF rejects from PDFMaker 11 and a gazette decree re-signed through iText, PDF/X-3 from Photoshop, PDF/UA-1 from AbleDocs and InDesign | A PDF/A-3 from a real ERP with its validation report, that we may commit |
 
 ## What makes a usable sample
 
@@ -87,9 +92,12 @@ This repository is **public**. Everything committed to `tests/corpus/documents` 
 
 - [ ] **Visible content**: no one's phone number, postal address or e-mail address, no account or
       identity numbers, no health data, and no amounts you would not print in a newspaper. A person's
-      name alone is acceptable, and fabricated or specimen data is always fine. Redacting in a PDF viewer
-      often only draws a black rectangle over text that is still there — check by selecting the text
-      underneath, or by extracting it.
+      name alone is acceptable, and so is an image of a handwritten signature, which counts as a name.
+      Fabricated or specimen data is always fine, an invented e-mail address at a real domain included;
+      so is an anonymous photograph, even captioned with a health condition, and a software library's
+      copyright line compiled into the file, even with its author's e-mail address. Redacting in a PDF
+      viewer often only draws a black rectangle over text that is still there — check by selecting the
+      text underneath, or by extracting it.
 - [ ] **Metadata**: `/Info` and XMP carry author, company, the local file path and sometimes the template
       used. Say so if you want them stripped; I will do it and record that the file was modified.
       A print driver writes its own: **Microsoft Print to PDF puts the display name of the Windows
@@ -136,9 +144,11 @@ A file anyone can download but nobody may republish — a bug-report attachment,
 ShareAlike document, any file over 2 MB whatever its licence — is not committed at all. It is described in
 `tests/corpus/manifest.json` with origin `remote`, its URL and its SHA-256, fetched by
 `build/fetch_remote.py`, and tested every
-night by the `Remote corpus` workflow (ADR 32). Send the URL rather than the file; `tests/corpus/README.md`
-says how an entry is written. A document of yours that is not public belongs in the private corpus, not
-here: the manifest is published, and it lists only files anyone can already download.
+night by the `Remote corpus` workflow (ADR 32). Terms that restrict reuse do not keep a file out —
+conditions beyond attribution, non-commercial reproduction only, fair use only, no modification or
+commercial use — but "educational use only" does. Send the URL rather than the file; `tests/corpus/README.md` says how an entry is written. A
+document of yours that is not public belongs in the private corpus, not here: the manifest is published,
+and it lists only files anyone can already download.
 
 ### Private — the file cannot be published
 
