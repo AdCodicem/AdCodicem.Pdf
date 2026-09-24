@@ -15,13 +15,18 @@ A file entered the corpus only if it met all four. A file that failed one was re
    Licence, the EU's reuse decision 2011/833/EU, Japan's Public Data License, MIT, BSD or Apache-2.0.
    ShareAlike, copyleft, non-commercial, no-derivatives and "no licence stated" were all refused. A code
    licence on a repository does not cover the bug-report attachments committed into it.
-2. **No real person's name anywhere**: visible text, `/Info`, XMP, annotation authors, form values, XFA
-   packets, signing certificates, embedded files, and the objects of superseded revisions that
-   incremental updates keep in the file. Three things are tolerated, as decided with the maintainer:
-   typeface-designer credits inside embedded font programs (present in almost every PDF, our own Word
-   output included), people known to the general public, and historical figures. Clearly fictitious
-   specimen data — John Doe, Contoso, *Entenhausen* — is fine; a name that cannot be shown fictitious is
-   treated as real.
+2. **No real person's contact or identity data anywhere**: no one's phone number, postal address or own
+   e-mail address, and no bank, identity or health data tied to a person — in the visible text, `/Info`,
+   XMP, annotations, form values, XFA packets, signing certificates, embedded files, and the objects of
+   superseded revisions that incremental updates keep in the file. A person's name alone is acceptable,
+   and so are a Windows user ID in a path and a photograph. Fabricated, fake and specimen data of any kind
+   is fine — John Doe, Contoso, *Entenhausen*, a 555 number. Organisations' addresses and switchboards are
+   fine.
+
+   The rule was decided with the maintainer, and relaxed during the search: it began as "no real person's
+   name anywhere", with typeface-designer credits, public figures and historical figures as the only
+   exceptions. The first 38 files were admitted under that stricter rule, and every file turned down for a
+   name alone was then examined again.
 3. **The publisher's own bytes**, never a re-saved copy: each file was downloaded again and its SHA-256
    compared, from a permanent URL where one exists (a repository commit, the EU's Cellar URIs, the IRS
    prior-year archive), or from the Internet Archive's unmodified `id_` copy when the publisher has
@@ -43,6 +48,10 @@ fonts when their `fsType` allows embedding.
   and re-downloaded each file. 12 were rejected; 4 of those were readmitted after the maintainer's rulings
   on font credits, complete fonts and historical figures; one more was dropped by a final scan of every
   revision's metadata. **38 entered the corpus**, 6.6 MB in all.
+- **Reopening, after the rule on names was relaxed**: every file turned down for a name alone was examined
+  again, and a critic went through the 117 earlier rejections for the ones missed. Two rounds re-downloaded,
+  re-screened and re-licensed 70 candidates against the revised rule. **38 more entered**, 6.1 MB, filling
+  most of what the first pass had left open.
 - **Referees**: page counts and attachments from pikepdf; the `qpdf --check` verdict from qpdf 11.9.1 in
   the integration tests' container; text from poppler's `pdftotext` 24.02; conformance from veraPDF 1.30.2.
 - **Our reader** opened every one of the 239 real PDFs downloaded along the way: 209 opened clean, 15
@@ -52,6 +61,8 @@ fonts when their `fsType` allows embedding.
   the others were not all checked against qpdf: a Cerfa reported truncated may be the same defect.
 
 ## What entered the corpus
+
+### First pass
 
 | File under `tests/corpus/vendor/` | W | What it brings |
 |---|---|---|
@@ -93,6 +104,51 @@ fonts when their `fsType` allows embedding.
 | `zugferd/fop26-xrechnung-visualisation.pdf` | W04 | Apache FOP 2.6 with base-14 fonts |
 | `docentric/fop-factur-x-visualisation.pdf` | W04, W12 | Apache FOP, a PDF/A-3b claim without the XML attached |
 | `bfo/bfo-pdfa2b-embedded-pdf.pdf` | W12 | PDF/A-2b carrying another PDF, whose `%%EOF` sits inside a stream |
+
+### Second pass, under the revised rule
+
+| File under `tests/corpus/vendor/` | W | What it brings |
+|---|---|---|
+| `zugferd/itext-pdfbox-weclapp-facturx-en16931-invoice.pdf` | W07, W04 | A real ERP's Factur-X (weclapp, a test tenant): iText 2.1.7 then PDFBox, `/MarkInfo` aliasing the page tree, a one-cent gap between page and XML |
+| `docentric/aspose-d365-facturx-extended-invoice.pdf` | W07 | Dynamics 365 through Docentric AX and Aspose.PDF for .NET: Factur-X EXTENDED, PDF/A-3B |
+| `zugferd/gnuaccounting-mustang10-zugferd-rc-invoice.pdf` | W07, W12 | An accounting package's ZUGFeRD from 2014, in the release-candidate namespace |
+| `pdf-association/pdflib-pps-kraxi-pdfa2a-pdfua1-invoice.pdf` | W04, W12 | PDFlib's Java invoice, PDF/A-2a and PDF/UA-1, both upheld by veraPDF |
+| `jasper-modular/openpdf-jasperreports-financial-statement.pdf` | W04 | JasperReports 7.0.6 on OpenPDF, fabricated data |
+| `swissqrbill/pdfbox-swiss-qr-bill-a4.pdf` | W04 | A Swiss QR-bill from the SwissQRBill library through PDFBox 3, with SIX's specimen data |
+| `fr-licence-ouverte/fop-dictao-dila-signed-joafe-notice.pdf` | W05 | A Journal officiel notice signed by DILA's Dictao service: SHA-1/RSA, an organisation certificate |
+| `lu-legilux/fop22-legilux-memorial-seal-renewed-timestamps.pdf` | W05 | A 2018 qualified seal kept alive by document timestamps added in 2018 and 2020 |
+| `us-federal/xerox-workcentre-5335-ocr-hud-fonsi-linearized.pdf` | W03 | A Xerox copier's own OCR (render mode 3, horizontal scaling up to 2000 %) over a JBIG2 page |
+| `us-federal/xerox-workcentre-5755-ocr-hud-fonsi-mrc.pdf` | W03 | Mixed raster content with the copier's own OCR: a JPEG background, JBIG2 masks, a MediaBox with a negative origin |
+| `uk-ogl/print-to-pdf-word-cspl-agenda.pdf` | W01 | Print to PDF from Word, untouched, the printing account in `/Author` |
+| `us-federal/print-to-pdf-excel-dod-fcf-rates-2021.pdf` | W01 | Print to PDF from Excel on a government workstation, untouched |
+| `opf-format-corpus/quartz-word-mac2011-lorem-ipsum.pdf` | W01 | Word for Mac through the macOS Quartz writer: indirect stream lengths, a MacRoman subset |
+| `uk-ogl/pdfmaker10-word-dh-care-bill-factsheet.pdf` | W02 | PDFMaker 10 for Word, then an Acrobat incremental save that redefines the pages |
+| `uk-ogl/pdfmaker25-home-office-eia.pdf` | W02 | PDFMaker 25 for Word, linearized then updated twice |
+| `opf-format-corpus/pdfmaker9-word-distiller-pdfa1b-test-document.pdf` | W02, W12 | PDFMaker 9.1 and Distiller 9.5 with a PDF/A-1b claim veraPDF upholds |
+| `opf-format-corpus/pdfmaker9-word-distiller-linearized-font-not-embedded.pdf` | W02 | 8 KB of Adobe linearization: a first-page `startxref 0`, a stale hint table |
+| `opf-format-corpus/pdfmaker5-distiller5-va-select-agents.pdf` | W10, W06 | PDF 1.2 from PDFMaker 5 (2002), linearized then updated in 2006; a GovDocs1 error file |
+| `us-federal/illustrator-irs-pub1-english.pdf` | W02 | Adobe Illustrator CS6: the English source of the vendored Arabic, Russian and Chinese editions |
+| `opf-format-corpus/reader10-openoffice32-annotated-object-streams.pdf` | W02 | An OpenOffice file fully re-saved by Adobe Reader X: Adobe's streams around a third party's content |
+| `opf-format-corpus/openoffice32-pdfa1a-embedded-lucida.pdf` | W12 | PDF/A-1a from OpenOffice.org 3.2, upheld by veraPDF |
+| `pdf-association/indesign13-pdfua1-german-book-chapter.pdf` | W02, W12 | InDesign CC 2018 claiming PDF/UA-1: a rich tag tree, three incremental updates |
+| `pdf-association/indesign15-pdfua1-form.pdf` | W08, W12 | A tagged InDesign form claiming PDF/UA-1, widgets without appearance streams |
+| `us-federal/livecycle-irs-1040-2022-xfa-ur3.pdf` | W08 | An XFA form the reader can open today: not encrypted, 136 fields, usage rights |
+| `pikepdf/livecycle-dod-dd293-aes128-xfa.pdf` | W08 | An XFA form under AES-128, linearized with a faulty hint table |
+| `us-federal/designer-distiller23-uscis-i9-javascript-form.pdf` | W08 | A 2025 AcroForm driven by JavaScript validation, format and keystroke actions |
+| `fr-licence-ouverte/pdfmaker-acrobat-cerfa-12156-form.pdf` | W08, W02 | PDFMaker 21 re-saved by Acrobat Pro DC: 406 fields, a calculation order, 494 stale hint entries |
+| `fr-licence-ouverte/livecycle-es9-cerfa-14880-xfa-form.pdf` | W08 | LiveCycle Designer ES 9 XFA, usage rights applied twice |
+| `us-federal/omniform-usda-rd1924-5-hidden-widgets.pdf` | W06, W08 | OmniForm output whose hidden widgets pdf.js drew outside the page (issue 4914) |
+| `us-federal/pdfwriter3-copyright-office-dmca-summary-1998-rc4-40.pdf` | W10 | Acrobat PDFWriter 3.02 (1998), RC4-40, a malformed creation date |
+| `us-federal/pdfwriter4-usda-dry-whey-standard-2000.pdf` | W10 | Acrobat PDFWriter 4.05 (2000): page thumbnails, ASCII85 over LZW |
+| `us-federal/distiller3-mac-msha-crusher-dust-card-1997.pdf` | W10 | Distiller 3.0 for Power Macintosh (1997): non-embedded Type 1 fonts, eight content streams on a page |
+| `us-federal/distiller6-cdc-west-nile-chinese-traditional.pdf` | W09, W10 | Traditional Chinese from Word through Distiller 6 (2004), ArialUnicodeMS as Identity-H |
+| `pdf-association/handwritten-compacted-syntax.pdf` | W06 | Every token pairing with no whitespace, and an empty object; xpdf 4.00 extracts nothing from it |
+| `pdf-association/handwritten-dual-startxref.pdf` | W06 | Two `startxref` lines, of which only the last is right |
+| `pdf-association/handwritten-utf16le-strings.pdf` | W06 | Text strings in UTF-16LE, which the standard forbids and real files contain |
+| `pdf-association/handwritten-content-stream-indirect-refs.pdf` | W06 | Indirect references inside a content stream |
+| `pdf-association/handwritten-inline-image-abbreviations.pdf` | W06 | Inline images whose abbreviated and full keys disagree |
+
+### Our own, from Windows
 
 Our own additions for W01 are in `documents/invoice/`: the same fictitious invoice through Word's Save as
 PDF, the Microsoft Print to PDF driver and the PDF24 printer (`build/build_word.ps1`). The PDF24 file draws
@@ -159,18 +215,23 @@ the provenance pikepdf has.
 
 | Candidate | Reason |
 |---|---|
-| Department of Health factsheet (Acrobat PDFMaker 10) | The `/Info` of an earlier revision, still in the file, names a civil servant |
-| VA "Select Agents and Toxins" (GovDocs1) | Same: three revisions, the older ones name the author |
-| DD Form 293 (pikepdf, public domain) | The XFA configuration packet holds the designer's `C:\Users\<surname>` path |
-| IRS Form 1040 for 2022 | The XFA packet holds a path with an employee's user identifier |
-| weclapp Factur-X (Mustang) — the only real-ERP Factur-X found | `/Creator` names a person who cannot be shown fictitious |
-| PDF/UA reference invoice (PDFlib, Java) | A photograph of a real person under a sample sales-representative name |
+| A Journal officiel des associations notice | The registered office is a named couple's home |
+| Another such notice | The association's purpose describes a named child's medical care |
+| PDF/UA Reference Suite papers and presentation | Their authors' own e-mail addresses are printed on the page |
+| CDC Emerging Infectious Diseases article (1997, PDF 1.1) | The author's own e-mail and fax, in an "Address for correspondence" block |
+| HUD charge of discrimination (Xerox, the copier's own OCR) | Health data tied to an identifiable complainant |
+| Hetzner invoice (Apache FOP), in the ZUGFeRD corpus | A private customer's home address |
+| GnuAccounting invoice of May 2014 | A sole proprietor's tax number in the attached XML |
+| Environment Canterbury letter (Konica, the copier's own OCR) | Reuse limited to non-commercial purposes |
+| JasperReports invoice sample (iText 2.1.7) | Third-party template images the author's licence does not cover |
 | National Park Service lesson plan (Canon iR-ADV scan) | The NPS arrowhead is excluded from the Service's public-domain statement |
 | European e-Justice page (iText 5) | The EU reuse decision excludes logos, and the page embeds the portal's |
 | IRS Form 1040 for 1994 (Net Distiller 1.02) | Complete Type 1 fonts whose embedding permission cannot be checked |
-| CDC fact sheet in Chinese (2004) | `/Author` names a person |
 
-Four files first rejected were readmitted after the maintainer's rulings: the two EU Official Journal
+Under the first, stricter rule, a dozen more had been turned down for a name alone — a civil servant in a
+superseded `/Info`, an employee's Windows path in an XFA packet, a photographed sales representative, a
+`/Creator` nobody could show to be fictitious. All of them entered in the second pass. Four files had
+already been readmitted in the first pass after the maintainer's rulings: the two EU Official Journal
 notices whose EUAlbertina fonts are embedded in full under an editable-embedding permission, the 2026
 consolidated regulation whose only name is a typeface designer's credit inside a font, and the 1786
 engraving under ImageMagick's false PDF/A claim, whose only names are historical figures.
@@ -179,13 +240,16 @@ engraving under ImageMagick's false PDF/A claim, whose only names are historical
 
 These files would fill a gap the corpus still has, and were not committed because their licence is unclear
 or excludes redistribution. They are listed so that a later session, or a rights holder asked directly,
-can reopen them. None has been through the full name screening.
+can reopen them. None has been screened in full for personal data. [ADR 32](adr/0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md),
+proposed, would let the tests use such files without redistributing them: a manifest of URLs and
+hashes, and a separate job that fetches them.
 
 | W | Document | Where | What holds it back | What would clear it |
 |---|---|---|---|---|
 | W01, W08 | OPM OF-306, a Word for Microsoft 365 form later edited in Acrobat, with JavaScript fields | [opm.gov](https://www.opm.gov/forms/pdf_fill/of0306.pdf) | No OPM reuse statement was found, so public domain rests on 17 U.S.C. 105 alone — the same basis on which the OPM attachment in `us-federal/` was accepted | A consistent ruling on statute-only evidence |
 | W02 | UK OZEV plug-in vehicle grant sample invoice, Acrobat PDFMaker 21 for Word | [gov.uk](https://assets.publishing.service.gov.uk/media/62a21964d3bf7f036750b0d2/plug-in-vehicle-grant-portal-sample-invoice.pdf) | OGL v3 coverage not verified | Reading the publication page's licence line |
 | W03 | Scan from a Ricoh MP C3003 through 3-Heights, with a PDF/A claim | [pdf.js `issue5747.pdf`](https://github.com/mozilla/pdf.js/blob/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue5747.pdf) | A bug-report attachment; the repository's licence does not cover it | The reporter's permission |
+| W03 | Environment Canterbury letter scanned on a Konica bizhub with its own OCR, mixed raster content | [ecan.govt.nz](https://api.ecan.govt.nz/TrimPublicAPI/documents/download/3147720) | Reuse limited to personal, informational and non-commercial purposes | Not under ADR 23 |
 | W03 | Federal Reserve SR 01-15 attachment, OCR by ABBYY FineReader 8 | [federalreserve.gov](https://www.federalreserve.gov/BoardDocs/SRLetters/2001/sr0115a1.pdf) | The Board's reuse statement was not verified; a desktop scanner, not a copier | The Board's website policy |
 | W04 | SAP NetWeaver 7.40 form output | [pdf.js `bug1727053.pdf`](https://github.com/mozilla/pdf.js/blob/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/bug1727053.pdf) | A Bugzilla attachment, no licence | The reporter's permission |
 | W04 | A real Oracle Reports invoice among Mustang's test files | [mustangproject test resources](https://github.com/ZUGFeRD/mustangproject/tree/master/library/src/test/resources) | No licence statement for test files; provenance unknown | The maintainer's account of where it came from |
@@ -205,10 +269,9 @@ can reopen them. None has been through the full name screening.
 | W06 | Two real-world files in pdf-differences' UnknownFilter set (one a wine label) | [pdf-differences `UnknownFilter`](https://github.com/pdf-association/pdf-differences/tree/907fe96e52b73e491489eee545c47b119bf9989b/UnknownFilter) | Third parties' documents under the PDF Association's CC BY | Not recoverable |
 | W06 | US state documents and Canadian federal forms linked by pdf.js | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | State works are not public domain; Canada's reproduction terms are not attribution-only | Not under ADR 23 |
 
-Two good files were held back for a name rather than a licence, and could come back if their owners removed
-it: the PDF Association's `CompactedPDFSyntaxTest.pdf`, whose `/Author` names its author, and Docentric's
-Factur-X EXTENDED sample from Dynamics 365 — a real ERP export —, whose keywords carry an employee's first
-name.
+Two good files first held back for a name rather than a licence — the PDF Association's
+`CompactedPDFSyntaxTest.pdf` and Docentric's Factur-X EXTENDED sample from Dynamics 365 — entered in the
+second pass, once a name alone no longer disqualified a file.
 
 ## Traps met along the way
 
@@ -226,23 +289,40 @@ name.
 - **The Internet Archive's `id_` URLs return the original bytes**, byte-identical to what pdf.js and
   others recorded; without `id_`, the archive rewrites the file.
 - **pdfa.org refuses a bare user agent**, and several government sites answer 403 to one.
+- **A registered office can be someone's home.** Notices about associations give their seat, and a small
+  association's seat is often its founder's house — one gave it as "chez M. et Mme …". An association's
+  stated purpose can even describe a named child's illness. Each notice had to be read, not sampled.
+- **A copier's name survives a later save.** Two Xerox scans still carry the copier as Producer after an
+  unidentified tool re-serialised them; the OCR layer is the copier's (its own font names, no Acrobat
+  trace), but the bytes are not the copier's alone.
 
 ## What the milestones can take from it
 
-- **M1**: none of the 239 real PDFs crashed or hung the reader. Two hand-written files show it silent
-  where qpdf reports damage; they are recorded as unsupported until M2.
+- **M1**: none of the 239 real PDFs downloaded in the first pass crashed or hung the reader, and all 76
+  vendored files open as their entries say. Two hand-written files show it silent where qpdf reports
+  damage; they are recorded as unsupported until M2. On the empty object of the compacted-syntax file,
+  the reader and qpdf agree.
 - **M2**: the vendored files carry anomalies every reader tolerates and a validator should name without
-  calling them errors — stale linearization hint tables (fourteen files), a `/Size` one too large, an xref
-  stream without its own entry, references to objects the xref lacks, font-level XMP that is not
-  well-formed XML, an empty `/Lang`, a `/Lang` that contradicts the text. `docs/milestones/M2.md` lists
-  them among its acceptance conditions.
-- **M10**: extraction will meet text drawn as images, an OCR layer, vertical Japanese without ToUnicode,
-  Arabic on which xpdf and poppler disagree — xpdf reads "الضرائب", poppler "الرضائب" —, and the PDF24 file
-  where ToUnicode says E and no glyph is drawn.
-- **M12**: veraPDF 1.30.2 upholds seven of the nine PDF/A claims among the new files and rejects two: the
-  2015 consolidated text (rules 6.4-3 and 6.2.3.3-1) and ImageMagick's claim (6.7.3-8, 6.1.8-1, 6.7.3-1,
-  6.2.3.3-1). It passes the 2019 notice despite its malformed font XMP, which is worth an opinion of our own.
+  calling them errors — stale linearization hint tables (some twenty files), a `/Size` one too large, an
+  xref stream without its own entry, references to objects the xref lacks, font-level XMP that is not
+  well-formed XML, an empty `/Lang`, a `/Lang` that contradicts the text, UTF-16LE text strings, two
+  `startxref` lines, a `/MarkInfo` pointing at the page tree, `/Info` and XMP that disagree.
+  `docs/milestones/M2.md` lists them among its acceptance conditions.
+- **M10**: extraction will meet text drawn as images, OCR layers — Acrobat's and two copiers' own, with
+  horizontal scaling up to 2000 % —, vertical Japanese without ToUnicode, Arabic on which xpdf and poppler
+  disagree — xpdf reads "الضرائب", poppler "الرضائب" —, the PDF24 file where ToUnicode says E and no glyph
+  is drawn, a compacted-syntax file from which xpdf 4.00 extracts nothing while poppler and PDFium do,
+  indirect references inside a content stream, and inline images whose keys contradict each other.
+- **M11**: XFA forms from Designer 6.4, 6.5 and ES 9, one of them readable today; AcroForms driven by
+  JavaScript; a calculation order; widgets without appearance streams.
+- **M12**: veraPDF 1.30.2 upholds thirteen of the fifteen PDF/A claims among the new files, and PDFlib's
+  PDF/UA-1 claim. It rejects two: the 2015 consolidated text (rules 6.4-3 and 6.2.3.3-1) and ImageMagick's
+  claim (6.7.3-8, 6.1.8-1, 6.7.3-1, 6.2.3.3-1). It passes the 2019 notice despite its malformed font XMP,
+  which is worth an opinion of our own.
+- **M3, M4**: signatures to keep intact through an incremental update — a GPO certification, DILA's
+  Dictao signature, a qualified seal renewed by timestamps over two years, PAdES B-LTA, Acrobat signatures.
 - **M13**: the W11 references above.
 
-What public sources could not provide — a real Java-stack invoice, a commercial e-signature, a Factur-X
-straight from an ERP, a copier's own OCR — is listed as still wanted in `docs/corpus-contributions.md`.
+What public sources could not provide — a real invoice or statement from a supplier or bank, a commercial
+e-signature, a copier file untouched since the copier wrote it, Hebrew — is listed as still wanted in
+`docs/corpus-contributions.md`.
