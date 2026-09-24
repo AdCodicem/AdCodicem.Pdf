@@ -6,6 +6,7 @@ const sidebars = {
     'architecture',
     'corpus',
     'corpus-contributions',
+    'corpus-sources',
     'releasing',
     'status',
     {

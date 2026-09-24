@@ -8,8 +8,12 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 169 unit + 48 integration (skipped without Docker) — **CI**:
+- **Builds**: yes, with no warnings — **Tests**: 251 unit (4 skipped by design: two corpus documents
+  recorded as unsupported until M2) + 123 integration (skipped without Docker) — **CI**:
   green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
+- **Corpus**: 68 documents, 9.7 MB — 19 generated here, 3 from Word and PDF24 on Windows, 46 third-party
+  files under attribution-only licences (38 added on 2026-09-24, see `docs/corpus-sources.md`). On the
+  branch `claude/corpus-third-party-documents`, in a draft pull request, not yet on `main`
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
   T18 and T19
@@ -74,6 +78,40 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-24 — The wanted documents, searched for on the internet
+- **The request**: find in public sources the documents `corpus-contributions.md` asks for (W01–W12),
+  free of rights and free of real people's data, and see what other PDF libraries keep. The rules were
+  settled with the maintainer before anything was downloaded, then twice more along the way: ADR 23
+  licences only; no real person's name anywhere, superseded revisions included, with typeface-designer
+  credits, public figures and historical figures tolerated; publisher's bytes only; specimens allowed.
+- **38 third-party documents entered `tests/corpus/vendor`**, 6.6 MB, from 69 downloaded candidates and
+  47 adversarially verified ones. Every line of the wanted list now has something; what public sources
+  cannot give — a real Java-stack invoice, a commercial e-signature, a Factur-X from an ERP, a copier's
+  own OCR — stays wanted, and says so in `corpus-contributions.md`. Provenance (URL, date, SHA-256) is in
+  `vendor.json`, attribution in `NOTICE`, the whole story in `docs/corpus-sources.md`.
+- **W01 was also produced here**: `build/build_word.ps1` writes the corpus invoice through Word's Save as
+  PDF, the Microsoft Print to PDF driver and the PDF24 printer. Both printers stamp the Windows account
+  that printed: the Microsoft driver's display name in `/Author` (overwritten in place, same length, file
+  recorded as derived), Ghostscript's `%%For` in `/Author` and the XMP (set in the PostScript before PDF24
+  converts it). **The PDF24 file draws a box for every capital E** of the regular face: the driver's
+  PostScript lacks the glyph while ToUnicode still says E — a genuine W06 file from an office desktop.
+- **Most other libraries' corpora cannot be reused**: bug-report attachments under a code licence
+  (pdf.js, PDFium, PDFBox, PdfPig, pypdf…), copyleft (Poppler, MuPDF, iText, and `py-pdf/sample-files` under
+  CC BY-SA). pikepdf's per-file `REUSE.toml` is the one complete provenance record found.
+- **The corpus found three things of ours.** `build_corpus.py` deleted the whole of `documents/` before
+  regenerating, so a contributed document would have vanished with its entry: `contributed.json` now lists
+  what the script must keep, and `--committed-only` refreshes the manifest with nothing but qpdf. The
+  integration test read qpdf's page count from standard output and standard error together, and failed on
+  any file qpdf warns about. And the reader falsely reports a truncated stream at a window boundary (T21).
+- **Recorded, not fixed**: two hand-written files on which the reader is silent while qpdf reports damage
+  (a trailer without `/Size`, a page given a stream body) are `unsupported` until M2 — a manifest field
+  that did not exist, and now skips the test with the reason. `M2.md` gains the corresponding acceptance
+  conditions and the anomalies of the vendored files (stale hint tables, a `/Size` off by one, an xref
+  stream without its own entry, undefined references, malformed font XMP).
+- **Referees**: pikepdf for pages, qpdf 11.9.1 in the integration container for the verdict, poppler's
+  `pdftotext` 24.02 for text — it disagrees with xpdf on one Arabic ligature —, veraPDF 1.30.2 for PDF/A:
+  seven claims upheld, two rejected.
 
 ### 2026-09-22 — Documentation for every release, and for the preview
 - **The request**: a preview package should come with its documentation; the site should open on the
@@ -473,8 +511,10 @@ previous ordering, where M2 was writing and M3 assembly.
 |---|---------|-------------------|
 | ~~T01~~ | ~~`TreatWarningsAsErrors` is off while the foundations settle~~ | Done: on across the solution, analysis at `latest-recommended` |
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
-| ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures |
-| T10 | The corpus has no document from Word, Acrobat, InDesign, a real scanner or a Java stack — the producers we cannot run here | Specified as W01 to W12 in `docs/corpus-contributions.md`; waiting on documents from the field |
+| ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures; 68 since 2026-09-24 |
+| T10 | **Narrowed on 2026-09-24**: Word, Acrobat, InDesign, LiveCycle, copier scans, PDF 1.2 archives, signatures and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing is what only an inbox holds: a real Java-stack invoice, a commercial e-signature, a Factur-X from an ERP, a copier's own OCR layer | Contributions, per the "still wanted" column of `docs/corpus-contributions.md` |
+| T21 | **The reader reports a truncated stream that is not.** When a stream's data ends inside the parser's 8 KB window but its `endstream` falls past the window's end, `PdfObjectParser.ReadStream` finds no `endstream` in the window and reports `stream.truncated`, cutting the stream at the window. Found on object 49 of the USGS Washington West topographic map (W11 reference, `docs/corpus-sources.md`): data from 68 to 8,185 in a 8,192-byte window; qpdf reads it cleanly. The same file also earns a `filter.failed` on its 14.9 MB Flate image, not yet explained | A synthetic regression test (a stream ending 1 to 10 bytes before 8 KB), then treat an `endstream` beyond the window like data beyond it when a stream-data provider exists |
+| T22 | W11 has no committed document, by decision: three public references are hashed in `docs/corpus-sources.md`. The memory promise needs one in CI | M13: fetch one on demand, pinned by SHA-256, as pdf.js and PDFBox do — or commit a smaller heavy case |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |

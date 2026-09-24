@@ -20,6 +20,8 @@ handing anything over, and where it goes.
 | Origin | What it gives | Rule |
 |---|---|---|
 | Generated in-container by real producers — Chromium (Skia backend), LibreOffice, Python producers from pypi | Genuine producer quirks, reproducible, no licensing question | The build script and the producer version are recorded in the manifest |
+| Generated on Windows from our own content — Word's Save as PDF, the Microsoft Print to PDF driver, the PDF24 printer (`build/build_word.ps1`) | The office desktop's writers, which no container runs | Same content as the generated invoice; nothing the script cannot account for, including what a driver stamps on its own |
+| Third-party documents found in public sources (`vendor/`) | Producers we will never run — Acrobat, InDesign, LiveCycle, copier firmware, a qualified-seal service — and damage from the wild | Attribution-only licence (ADR 23), no real person's name anywhere, byte-identical to the publisher's copy; source URL and SHA-256 recorded; see `docs/corpus-sources.md` |
 | Contributed real documents | Everything the generators never do: legacy tooling, scanners, foreign-language typography, damaged files from the wild | No confidential content; origin and licence recorded; anonymised before committing |
 | Derived variants | Encryption, linearisation, object-stream rewrites, and deliberate damage | Derived by a recorded, repeatable transformation from a document already in the corpus |
 
@@ -33,11 +35,18 @@ Keep each document small — a few hundred kilobytes at most, except the one del
 
 ```
 tests/corpus/
-  manifest.json          the index: one entry per document
+  manifest.json          the index: one entry per document, written by build/build_corpus.py
   sources/               the inputs documents are generated from (HTML, ODT, scripts)
-  build/                 the generation script and its recorded producer versions
+  build/                 the generation scripts and their recorded producer versions
   documents/             the committed PDF files, by category
+  contributed.json       entries for files under documents/ the build script cannot produce
+  vendor/                third-party files, by source, with NOTICE and LICENSES/ for their terms
+  vendor.json            entries for the files under vendor/
 ```
+
+`build_corpus.py --committed-only` merges `vendor.json` and `contributed.json` into the manifest without
+regenerating anything, with the referee's verdict on each file; `tests/corpus/README.md` gives the
+container command that makes that verdict the integration tests' own.
 
 ## Manifest
 
@@ -68,6 +77,16 @@ from M10, conformance verdicts from M12. An expectation is
 never weakened to make a test pass — either the library is fixed, or the expectation is corrected with the
 reason recorded in the commit message.
 
+Three fields serve that rule:
+
+- `unsupported` — the reason the library cannot yet meet the entry's expectations, and the milestone that
+  will. The acceptance tests skip the document with that reason in their output; the expectations stay as
+  the independent tool established them.
+- `conformanceValid` — veraPDF's verdict on the PDF/A level the document claims (`claimsConformance`),
+  for M12 to agree with.
+- `source` — for a third-party file, the URL it was retrieved from, the date and the SHA-256 of the bytes
+  as published, so provenance is checkable without trusting the repository.
+
 ## Use-case categories
 
 The corpus is organised by what the document *is*, not by which feature it exercises, so that coverage
@@ -95,5 +114,6 @@ verified by this test"*. A milestone is closed when, and only when:
 4. `docs/status.md` records the measurements rather than promising them.
 
 A document that cannot be handled and is not going to be handled in this milestone is not deleted: its
-expectation is recorded as unsupported, with the milestone that will address it. Silence is not an option;
-a known gap must be written down where the next session will read it.
+expectation is recorded as unsupported (`expect.unsupported`), with the milestone that will address it.
+Silence is not an option; a known gap must be written down where the next session will read it. A
+milestone is not closed while an entry still names it as the one that will.
