@@ -433,6 +433,10 @@ FodyWeavers.xsd
 tests/corpus/private/
 tests/corpus/private.json
 
+# Documents we may use in tests but not redistribute, fetched on demand from tests/corpus/remote.json by
+# build/fetch_remote.py (ADR 32). Nothing fetched is ever committed, nor anything derived from it.
+tests/corpus/remote/
+
 # Documentation site build output and dependencies
 docs/website/node_modules/
 docs/website/build/

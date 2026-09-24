@@ -56,15 +56,15 @@ can bring: documents that went through a real inbox.
 |---|---------------|--------------|
 | W01 | Word 2010, 2019 and Microsoft 365 Save as PDF; Word for Mac through Quartz; Print to PDF from Word and from Excel, untouched; our own invoice through Save as PDF, the print driver and PDF24 | — |
 | W02 | PDFMaker 5, 9.1, 10, 21 and 25 for Word; Distiller 2 to 10; InDesign; PageMaker; Illustrator; LiveCycle Designer; Acrobat Pro DC and Reader X re-saves; usage rights | — |
-| W03 | Two Xerox copiers with their own OCR layer, Xerox JBIG2 without text, an HP MFP with Acrobat's OCR, a scanner's CCITT G3 file, a 1999 CCITT import | A copier file untouched since the copier wrote it (the Xerox ones were later re-saved), from another brand — Canon, Ricoh, Konica |
-| W04 | JasperReports 7 on OpenPDF, iText 2.1.7 then PDFBox (weclapp), PDFBox 3 (Swiss QR-bill), PDFlib's Java binding, Apache FOP — all with fictitious data | **A real invoice or statement from a supplier or bank**: SAP, Crystal, a bank's own stack |
+| W03 | Two Xerox copiers with their own OCR layer, Xerox JBIG2 without text, an HP MFP with Acrobat's OCR, a scanner's CCITT G3 file, a 1999 CCITT import; remote: a Ricoh MP C3003 scan through 3-Heights | A copier file untouched since the copier wrote it (the Xerox ones were later re-saved), from another brand — Canon, Ricoh, Konica |
+| W04 | JasperReports 7 on OpenPDF, iText 2.1.7 then PDFBox (weclapp), PDFBox 3 (Swiss QR-bill), PDFlib's Java binding, Apache FOP — all with fictitious data; remote: a real SAP NetWeaver statement | **A real invoice or statement from a supplier or bank** we may commit: SAP, Crystal, a bank's own stack |
 | W05 | A GPO certification, DILA's Dictao signature, a qualified seal renewed by timestamps over two years, a PAdES B-LTA seal, two Acrobat Reader signatures | **A commercial e-signature**: Yousign, DocuSign, Universign, Adobe Sign |
 | W06 | A really damaged GovDocs1 file, a GovDocs1 error file, a scanner file that broke pikepdf, forms that broke pdf.js, SafeDocs lexer and dialect tests | Anything that broke your own tools |
-| W07 | Factur-X from weclapp and from Dynamics 365 (demo data), ZUGFeRD from GnuAccounting and from the Mustang library | A Factur-X a supplier's ERP actually sent, anonymised |
+| W07 | Factur-X from weclapp and from Dynamics 365 (demo data), ZUGFeRD from GnuAccounting and from the Mustang library; remote: the FNFE-MPE's French example and intarsys's EN 16931 sample | A Factur-X a supplier's ERP actually sent, anonymised |
 | W08 | Blank XFA forms (IRS, USCIS, DoD, a Cerfa), JavaScript AcroForms (USCIS I-9, HMRC), a calculation order, an OmniForm form, tagged forms | A form that is filled in — with fictitious values |
-| W09 | Arabic, Russian, Greek, Traditional Chinese (2004 and 2017), vertical Japanese without ToUnicode | Hebrew; Korean; Arabic with real shaping in a CID font |
+| W09 | Arabic, Russian, Greek, Traditional Chinese (2004 and 2017), vertical Japanese without ToUnicode; remote: Hebrew (a US Census guide) and Arabic shaped into CID fonts by WeasyPrint | Korean; Hebrew and shaped Arabic we may commit |
 | W10 | PDF 1.2 to 1.4 from 1995–2004: PDFWriter 3.02 and 4.05, Distiller 2, 3 (Windows and Mac), 4 and 6, PDFMaker 5, Acrobat 3, RC4-40 | A file from before 1996, PDF 1.0 or 1.1 |
-| W11 | Nothing committed: three public references, hashed, in `docs/corpus-sources.md` | A decision on fetching one on demand for M13 (ADR 32, proposed) |
+| W11 | Nothing committed, by design; remote: the US Code's Title 42 (9,302 pages) and a USGS topographic map (one 63 MB page), fetched and tested every night | The heavy scan (USGS Professional Paper 1, 147 MB), left for M13 to fetch; the map's acceptance waits on T21 |
 | W12 | PDF/A from PDFlib, Antenna House, Distiller, 3-Heights, BFO, Mustang, Aspose, OpenOffice and Word via PDFMaker, and a false claim, each with veraPDF's verdict | A PDF/A-3 from a real ERP with its validation report |
 
 ## What makes a usable sample
@@ -126,6 +126,15 @@ tests.
 A third party's file — a sample from another project's test suite, a public-domain government document —
 goes under `tests/corpus/vendor/<source>/` instead, described in `vendor.json`, and only under an
 attribution-only licence recorded in `tests/corpus/NOTICE` (ADR 23).
+
+### Public but not redistributable — fetched on demand
+
+A file anyone can download but nobody may republish — a bug-report attachment, a vendor's sample, a
+ShareAlike document, a file too large to commit — is not committed at all. It is described in
+`tests/corpus/remote.json` with its URL and SHA-256, fetched by `build/fetch_remote.py`, and tested every
+night by the `Remote corpus` workflow (ADR 32). Send the URL rather than the file; `tests/corpus/README.md`
+says how an entry is written. A document of yours that is not public belongs in the private corpus, not
+here: the manifest is published, and it lists only files anyone can already download.
 
 ### Private — the file cannot be published
 

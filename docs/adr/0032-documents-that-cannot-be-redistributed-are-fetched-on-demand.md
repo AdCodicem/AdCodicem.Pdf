@@ -4,8 +4,12 @@ Date: 2026-09-24
 
 ## Status
 
-Proposed. Complements [23](0023-third-party-corpus-documents-are-vendored-only-under-attribu.md), which
-it leaves unchanged: what is committed still needs an attribution-only licence.
+Accepted on 2026-09-24. Complements [23](0023-third-party-corpus-documents-are-vendored-only-under-attribu.md),
+which it leaves unchanged: what is committed still needs an attribution-only licence.
+
+Implemented by `tests/corpus/remote.json`, `tests/corpus/build/fetch_remote.py`,
+`build_corpus.py --remote`, the merge in `tests/AdCodicem.Pdf.TestSupport/Corpus.cs` and the
+`Remote corpus` workflow (`.github/workflows/remote-corpus.yml`).
 
 ## Context
 
