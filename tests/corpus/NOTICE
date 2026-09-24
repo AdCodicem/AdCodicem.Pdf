@@ -22,9 +22,15 @@ vendor/us-federal/
     Treasury, National Institutes of Health, Office of Personnel Management, U.S. Citizenship
     and Immigration Services, the Government Publishing Office, the Department of Housing and
     Urban Development, the Copyright Office, the Department of Agriculture, the Mine Safety and
-    Health Administration, the Centers for Disease Control and Prevention and the Department of
-    Defense - which are not subject to copyright in the United States (17 U.S.C. 105). Files a
-    publisher has withdrawn were taken from the Internet Archive's unmodified copies.
+    Health Administration, the Centers for Disease Control and Prevention, the Department of
+    Defense and the General Services Administration - which are not subject to copyright in the
+    United States (17 U.S.C. 105). Files a publisher has withdrawn were taken from the Internet
+    Archive's unmodified copies.
+    - finereader8-frb-sr0115-examiner-guidance.pdf is the Board of Governors of the Federal Reserve
+      System's attachment to SR letter 01-15, in the public domain by the Board's website notice
+      (https://www.federalreserve.gov/disclaimer.htm): "Unless otherwise indicated, information on
+      Board's website is in the public domain and may be copied and distributed without permission.
+      Please cite to the Board as the source."
 
 vendor/opf-format-corpus/
     From the Open Preservation Foundation format-corpus
@@ -44,7 +50,8 @@ vendor/uk-ogl/
     Contains public sector information licensed under the Open Government Licence v3.0
     (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
     Crown copyright: Crown Commercial Service, HM Courts & Tribunals Service, HM Revenue &
-    Customs, Department of Health, Committee on Standards in Public Life, Home Office.
+    Customs, Department of Health, Committee on Standards in Public Life, Home Office, Office for
+    Zero Emission Vehicles and Department for Transport.
 
 vendor/fr-licence-ouverte/
     Informations publiques réutilisées sous la Licence Ouverte / Open Licence d'Etalab
@@ -111,8 +118,8 @@ vendor/pyhanko/
 vendor/zugferd/
     Licensed under the Apache License 2.0 (LICENSES/Apache-2.0.txt).
     - mustang-zugferd2-en16931-invoice.pdf: https://github.com/ZUGFeRD/corpus (commit 404d575).
-    - gnuaccounting-mustang10-zugferd-rc-invoice.pdf: https://github.com/ZUGFeRD/corpus
-      (commit d891458).
+    - gnuaccounting-mustang10-zugferd-rc-invoice.pdf and pypdf2-facturx-python-false-pdfa3b.pdf:
+      https://github.com/ZUGFeRD/corpus (commit d891458).
     - mustang-zugferd1-basic-invoice.pdf and itext-pdfbox-weclapp-facturx-en16931-invoice.pdf:
       https://github.com/ZUGFeRD/mustangproject (commits fed2d08 and 9af931d), whose NOTICE reads:
       "Mustangproject Copyright 2014 Jochen Staerk".
@@ -137,7 +144,13 @@ vendor/bfo/
     licensed under the Creative Commons Attribution 3.0 licence
     (https://creativecommons.org/licenses/by/3.0/legalcode).
 
-The MIT licence, as it applies to vendor/pyhanko/, vendor/docentric/ and vendor/swissqrbill/:
+vendor/node-signpdf/
+    From the node-signpdf test resources (https://github.com/vbuch/node-signpdf, commit ed3a144).
+    Copyright (c) 2019 The Authors. MIT licence (text below). The signing certificate and the
+    signer's details are fictitious test credentials.
+
+The MIT licence, as it applies to vendor/pyhanko/, vendor/docentric/, vendor/swissqrbill/ and
+vendor/node-signpdf/:
 
     Permission is hereby granted, free of charge, to any person obtaining a copy of this software
     and associated documentation files (the "Software"), to deal in the Software without

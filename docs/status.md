@@ -8,15 +8,17 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 334 unit (4 skipped by design: two corpus documents
-  recorded as unsupported until M2) + 196 integration (skipped without Docker); with the remote corpus
-  fetched, 356 unit (a fifth skip: the map waiting on T21) + 216 integration — **CI**:
+- **Builds**: yes, with no warnings — **Tests**: 346 unit (4 skipped by design: two corpus
+  documents recorded as unsupported until M2) + 208 integration (skipped without Docker);
+  with the remote corpus fetched, 539 unit (14 skipped by design, on documents recorded
+  as unsupported until M2 or until T21, T23 or T24 is fixed) + 363 integration — **CI**:
   green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
-- **Corpus**: 106 documents, 15.4 MB — 19 generated here, 3 from Word and PDF24 on Windows, 84 third-party
-  files under attribution-only licences (76 added on 2026-09-24, see `docs/corpus-sources.md`). Beside it,
-  a **remote corpus** of 10 documents we may use but not redistribute — never committed, fetched at a
-  pinned SHA-256 and tested every night by the `Remote corpus` workflow (ADR 32, accepted). All 116 are
-  described in one file, `tests/corpus/manifest.json`. On the
+- **Corpus**: 112 committed documents, 16.8 MB — 19 generated here, 3 from Word and PDF24 on Windows, 90
+  third-party files under attribution-only licences (82 of them added on 2026-09-24, see
+  `docs/corpus-sources.md`). Beside it, a **remote corpus** of 86 documents we may use but not
+  redistribute — never committed, fetched at a pinned SHA-256 and tested every night by the
+  `Remote corpus` workflow (ADR 32, accepted). All 198 are described in one file,
+  `tests/corpus/manifest.json`. On the
   branch `claude/corpus-third-party-documents`, draft pull request [#25](https://github.com/AdCodicem/AdCodicem.Pdf/pull/25), not yet on `main`;
   the nightly workflow has therefore never run on GitHub
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
@@ -83,6 +85,70 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-24 — The leads held back by their licence: 82 more documents, 76 of them remote
+- **The request**: now that ADR 32 gives a place to files we may not redistribute, follow the leads
+  `corpus-sources.md` had held back for their licence, and reconsider the five files once refused for size
+  alone. Eleven research groups: W05 signatures (pdfcpu's test data, EU DSS's test resources, Foxit's files
+  in `pdfium_tests`, node-signpdf, the BOE's sealed gazette, a hunt for commercial e-signatures), W04 real
+  invoices and statements, W07 vendors' Factur-X and ZUGFeRD samples, government leads, W06 files that
+  broke pdf.js, PDFBox, PDFium and pdfplumber, and ShareAlike sets. They examined 113 candidates and
+  proposed 80, each then adversarially verified — bytes downloaded again and hashed, licence, personal
+  data, expectations against qpdf, poppler and veraPDF —; 79 survived, and 158 further leads were set
+  aside, each with its reason.
+- **Six committed**, each under an attribution-only licence and under 2 MB, after a final independent
+  review of bytes, licence and personal data: node-signpdf's own two files (MIT), a signature whose
+  `/Reason` contains the keyword `trailer` and an unsigned placeholder; the ZUGFeRD corpus maintainer's
+  factur-x Python output with a false PDF/A-3b claim (Apache-2.0); the Federal Reserve Board's SR 01-15
+  attachment, FineReader 8 OCR under CCITT pages (the Board's public-domain notice); the UK OZEV sample
+  invoice (OGL v3); and a GSA Standard Form 30 completed in DocuSign (US federal, public domain) — **the
+  first commercial e-signature the public corpus holds**.
+- **76 remote, 86 in all**: a Konica copier's untouched scan with its own OCR, the file W03 lacked; Adobe
+  Sign, Yousign, two more DocuSign files and Universign timestamps; PAdES
+  B-B to B-LTA, qualified seals, 24 signatures in 48 updates; real invoices and statements from SAP,
+  Axapta, Scoro, PDFlib on z/OS and a bank's AFP batch processor; eight vendor samples of Factur-X,
+  ZUGFeRD and Order-X; files that broke pdf.js, PDFBox, PDFium, pdfplumber, PdfPig and OCRmyPDF; and USGS
+  Professional Paper 1 (147 MB), so all three W11 references are now fetched and tested every night. The
+  committed corpus is 112 files, 16.8 MB: 19 generated, 93 from elsewhere.
+- **The five refused for size alone, reconsidered** under the new rule: the Open Preservation Foundation's
+  signed 3D portfolio (CC0, 4.7 MB) went remote, as did PDF/UA Reference Suite 2-09, a tagged scan of
+  10.6 MB, and 2-08, a textbook chapter of 2.3 MB whose content is a publisher's that the suite's CC BY
+  cannot be shown to cover. The NIST request for quotation scanned on a Canon SC1011 was refused: it prints
+  two named staff members' direct phone lines and own e-mail addresses, and Acrobat had re-saved it anyway.
+  Suite member 2-01, a Danish magazine of 12.9 MB, was refused: it gives health conditions of named people,
+  children among them. And 2-06, a 1.65 MB brochure first held back for naming a photographed person, went
+  remote: its cover photograph carries a third party's copyright the suite licence cannot cover.
+- **The maintainer's rulings on borderline cases**, now rules in `corpus-contributions.md`: a software
+  library author's own e-mail inside that library's copyright string compiled into the file is a library
+  credit, and acceptable; an anonymous photograph whose caption describes a health condition is
+  anonymised, and acceptable; images of named people's handwritten signatures are treated like names,
+  acceptable even in a committed file — which moved the SF 30 from remote to vendored; fabricated test
+  e-mail constants at real domains are fictitious data. Remote use is acceptable under terms that restrict
+  reuse — conditions beyond attribution, non-commercial reproduction, fair use only, no modification or
+  commercial use — but not "educational use only": California Geological Survey Note 17 was excluded for
+  it.
+- **Excluded, notably**: the Mustang library's Oracle Reports invoice, whose XML
+  gives an employee's direct line and e-mail; Adobe's well-known signed sample, whose signer certificate
+  carries an employee's own e-mail. Most of the EU DSS files set aside failed the same way: personal
+  signing certificates carry e-mail addresses, phone numbers and national identity numbers.
+- **What the reader made of them** — the library is not changed on this branch; gaps are recorded, as
+  ever. **T23** (new): an indirect object longer than the reader's 8 KB window is cut at the window's edge
+  — a DSS `/VRI` dictionary of 10,112 bytes in the file with 24 signatures, 36 structure arrays of about
+  8.7 KB in the 2015 BOE law — where qpdf reads them whole. Both entries are unsupported until it is
+  fixed, before M2 closes. **T24** (new): each cross-reference section is read through a window of up to
+  64 KB whatever its size, so opening a 218 KB signed web capture with three sections reads 117 KB —
+  bounded, but proportional to the number of sections; that entry is unsupported, for M13.
+- **Recorded without a new debt row**: two files where the reader is silent while qpdf reports damage — an
+  `/Info` without `endobj`, names containing `#00` — are unsupported until M2, like the two hand-written
+  ones before them. PDFBOX-3947, a zeroed block that destroyed one object stream: the cross-reference
+  reads as written, and the reader rebuilds the index when it meets the destroyed stream, and reports it —
+  so the entry expects no rebuild at opening and the rebuild diagnostic after a full read. Two truncated
+  PDFBox files record no page count: qpdf 11.9.1 finds no `/Root` in one; on the other, qpdf 11.9.1,
+  qpdf 12 and PDFium disagree (11, 4 and 8 pages).
+- **The laziness test** now honours `unsupported`, like the other acceptance tests, and skips an encrypted
+  document visibly until M11 brings decryption. It no longer applies to documents whose index must be
+  rebuilt: a rebuild scans the file by definition. With the remote corpus fetched, 539 unit and
+  363 integration tests pass; without it, 346 and 208.
 
 ### 2026-09-24 — Size is a recommendation; over 2 MB a document goes remote
 - **The maintainer's rule**: the corpus search refused files over 2 MB, and so lost five that would have
@@ -578,9 +644,11 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T01~~ | ~~`TreatWarningsAsErrors` is off while the foundations settle~~ | Done: on across the solution, analysis at `latest-recommended` |
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures; 68 since 2026-09-24 |
-| T10 | **Narrowed on 2026-09-24**: Word, PDFMaker, Acrobat, InDesign, LiveCycle, PDFWriter, copier scans with their own OCR, Java writers, ERP Factur-X samples, PDF 1.2 archives, signatures and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing is what only an inbox holds: a real invoice or statement from a supplier or bank, a commercial e-signature, a copier file untouched since the copier wrote it, Hebrew | Contributions, per the "still wanted" column of `docs/corpus-contributions.md`; ADR 32 (proposed) for files that can be used but not redistributed |
+| T10 | **Narrowed on 2026-09-24**: Word, PDFMaker, Acrobat, InDesign, LiveCycle, PDFWriter, copier scans with their own OCR, Java writers, ERP Factur-X samples, PDF 1.2 archives, signatures — DocuSign's among them since the third pass — and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing from what may be committed is what only an inbox holds: a real invoice or statement from a supplier or bank (real ones are in the remote corpus only), a Yousign, Universign or Adobe Sign signature, a copier file untouched since the copier wrote it, Hebrew | Contributions, per the "still wanted" column of `docs/corpus-contributions.md`; the remote corpus (ADR 32) for files that can be used but not redistributed |
 | T21 | **The reader reports a truncated stream that is not.** When a stream's data ends inside the parser's 8 KB window but its `endstream` falls past the window's end, `PdfObjectParser.ReadStream` finds no `endstream` in the window and reports `stream.truncated`, cutting the stream at the window. Found on object 49 of the USGS Washington West topographic map (W11 reference, `docs/corpus-sources.md`): data from 68 to 8,185 in a 8,192-byte window; qpdf reads it cleanly. The same file also earns a `filter.failed` on its 14.9 MB Flate image, not yet explained. The map is now in the remote corpus, recorded as unsupported with this reason, so the fix is checked against it every night | A synthetic regression test (a stream ending 1 to 10 bytes before 8 KB), then treat an `endstream` beyond the window like data beyond it when a stream-data provider exists |
-| T22 | W11 has no committed document, by decision. Two of its three references — 9,302 pages, and one 63 MB page — are in the remote corpus (ADR 32) and tested every night, but not in the main CI job, and the heavy scan (147 MB of JPEG 2000) is not fetched at all | M13: state its memory budgets against the remote documents, add the heavy scan to the manifest's remote entries, and close only on a green `Remote corpus` run |
+| T22 | W11 has no committed document, by decision. All three of its references — 9,302 pages, one 63 MB page, and since the third pass of 2026-09-24 the heavy scan (USGS Professional Paper 1, 147 MB of JPEG 2000) — are in the remote corpus (ADR 32) and tested every night, but not in the main CI job | M13: state its memory budgets against the remote documents, and close only on a green `Remote corpus` run |
+| T23 | **The reader cuts an indirect object longer than its 8 KB window at the window's edge.** Found on two remote documents: object 458 of the EU DSS file with 24 signatures and a document timestamp, a DSS `/VRI` dictionary of 10,112 bytes, reported as a truncated object exactly 8 KB in; and object 14 of the BOE's 2015 law, a structure array of 8,694 bytes, reported as unexpected tokens at the same point, with 35 arrays like it. qpdf reads all of them whole. `PdfFileReader.TryParseObjectAt` does grow its window when the parser says an object ran out, but the parser has warned into the document's diagnostics by then. The same window as T21, met by an object rather than a stream. Both entries are recorded as unsupported with this reason, so the fix is checked against them every night | **Before M2 closes** — a validator cannot build on invented syntax errors: a synthetic regression test (a dictionary and an array a few bytes over 8 KB), then find why a window that turns out too small still leaves a diagnostic behind, or is not grown at all |
+| T24 | **Opening reads each cross-reference section through a window of up to 64 KB, whatever the section's size.** Bounded, but proportional to the number of sections rather than to their size: opening the 218 KB signed Web Capture file from pdfcpu's test data, which has three sections, reads 117 KB — more than the quarter of the file the laziness test allows. The entry is recorded as unsupported with this reason | M13, with the other budgets: start a section's window small and grow it, as object windows already do |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |

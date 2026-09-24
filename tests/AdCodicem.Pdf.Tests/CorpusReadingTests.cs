@@ -107,7 +107,7 @@ public class CorpusReadingTests
 
         if (entry.Expect.Encrypted)
         {
-            // Decryption arrives in M9; until then the refusal must be typed and immediate.
+            // Decryption arrives in M11; until then the refusal must be typed and immediate.
             FluentThrow<PdfEncryptedException>(() => PdfDocument.Open(Corpus.Read(file)));
             return;
         }
@@ -151,6 +151,10 @@ public class CorpusReadingTests
     [MemberData(nameof(LargeDocuments))]
     public void Opening_does_not_read_the_content_of(string file)
     {
+        var entry = Corpus.Get(file);
+        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+        Assert.SkipWhen(entry.Expect.Encrypted, $"{entry.Name}: an encrypted document is refused at opening until M11");
+
         var source = new CountingSource(Corpus.Read(file));
         var size = source.Length;
 
@@ -162,7 +166,7 @@ public class CorpusReadingTests
         // Indexing touches the header, the tail and the cross-reference sections — never the page content.
         readAtOpen.Should().BeLessThan(
             size / 4,
-            $"{Corpus.Get(file).Name}: opening read {readAtOpen} of {size} bytes, so content was read eagerly");
+            $"{entry.Name}: opening read {readAtOpen} of {size} bytes, so content was read eagerly");
     }
 
     [Fact]
@@ -210,7 +214,14 @@ public class CorpusReadingTests
 
     public static TheoryData<string> AllDocuments => Theory(Corpus.Paths);
 
-    public static TheoryData<string> LargeDocuments => Theory(Corpus.PathsWithFeature("many-pages", "dct-image"));
+    /// <summary>
+    /// Lazy opening is promised for documents whose index can be read as written: rebuilding one means
+    /// scanning the whole file, by definition.
+    /// </summary>
+    public static TheoryData<string> LargeDocuments =>
+        Theory(Corpus.PathsWhere(document =>
+            (document.Features.Contains("many-pages") || document.Features.Contains("dct-image"))
+            && !document.Expect.IndexRebuilt));
 
     public static TheoryData<string> DamagedDocuments =>
         Theory(Corpus.PathsWhere(document => !document.Expect.Clean));

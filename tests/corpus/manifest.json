@@ -3731,6 +3731,281 @@
       }
     },
     {
+      "file": "vendor/node-signpdf/skia-chrome74-node-signpdf-reason-contains-trailer.pdf",
+      "title": "A Chrome 74 (Skia) page signed by node-signpdf in an incremental update whose signature /Reason string contains the keyword trailer",
+      "useCase": "contract",
+      "producer": "Skia/PDF m74 (Chrome 74 print of node-signpdf's CONTRIBUTING); signature by node-signpdf (@signpdf/placeholder-plain, P12Signer), 2024",
+      "origin": "contributed",
+      "licence": "MIT (node-signpdf; Copyright (c) 2019 The Authors)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/vbuch/node-signpdf/ed3a144cafe8fd8594779b6db9612d335e7c18e6/resources/issue-209-reason-includes-trailer-word.pdf",
+        "sha256": "be0c32b95cc822fbdf7008b3b8bfa8c2695e418a1818559ca9453f3bdb10348b",
+        "bytes": 90288,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "node-signpdf",
+        "skia",
+        "chrome-print",
+        "signed-adbe-pkcs7-detached",
+        "approval-signature",
+        "invisible-signature",
+        "incremental-update",
+        "keyword-trailer-inside-signature-string",
+        "prop-build",
+        "sha256-rsa-signature",
+        "self-signed-certificate",
+        "signature-cryptographically-valid",
+        "signature-contents-zero-padded",
+        "signature-widget-without-appearance",
+        "startxref-points-before-xref-keyword",
+        "type0-subset",
+        "uri-links",
+        "xref-table",
+        "pdf-1.4",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "All PRs are welcome in the develop branch",
+          "gitmoji is used in the commit messages"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/node-signpdf/pdfkit-node-signpdf-unsigned-placeholder.pdf",
+      "title": "A PDFKit page carrying node-signpdf's unsigned signature placeholder: name tokens in /ByteRange and 8,192 zero bytes of /Contents",
+      "useCase": "contract",
+      "producer": "PDFKit, through node-signpdf's @signpdf/placeholder-pdfkit, 2023",
+      "origin": "contributed",
+      "licence": "MIT (node-signpdf; Copyright (c) 2019 The Authors)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/vbuch/node-signpdf/ed3a144cafe8fd8594779b6db9612d335e7c18e6/resources/with-placeholder.pdf",
+        "sha256": "110d1b1d18bb94de3a44dd9d1b447aa44d78fa5bf46d6adf38759224d1fcc604",
+        "bytes": 18233,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "node-signpdf",
+        "pdfkit",
+        "unsigned-signature-placeholder",
+        "byterange-name-placeholders",
+        "signature-contents-all-zero",
+        "invisible-signature",
+        "signature-widget-without-appearance",
+        "empty-creation-date",
+        "info-strings-indirect",
+        "base14-fonts-not-embedded",
+        "xref-table",
+        "pdf-1.3",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "document with a signature placeholder"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/zugferd/pypdf2-facturx-python-false-pdfa3b.pdf",
+      "title": "Mustang's GnuAccounting sample made into Factur-X BASIC by the factur-x Python library through PyPDF2: a PDF/A-3b claim veraPDF rejects on five rules (no trailer /ID, no binary comment, no output intent, bare metadata stream)",
+      "useCase": "invoice",
+      "producer": "factur-x Python library (Akretion), written by PyPDF2, over a GnuAccounting page (OpenOffice)",
+      "origin": "contributed",
+      "licence": "Apache-2.0 (ZUGFeRD/corpus)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/d891458e9822e34271a5438497bf924e89955979/ZUGFeRDv2/fail/python-factur-x/python-factur-x.pdf",
+        "sha256": "8594d34806f627802e565949177d027b4ebede60843706cc21d025957966da11",
+        "bytes": 60184,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "gnuaccounting",
+        "factur-x-python",
+        "pypdf2",
+        "factur-x",
+        "factur-x-basic",
+        "false-conformance-claim",
+        "pdfa",
+        "pdfa-3b-claim",
+        "pdf-1.3-header",
+        "no-binary-header-comment",
+        "no-trailer-id",
+        "no-output-intent",
+        "metadata-stream-without-type-subtype",
+        "xmp-without-xpacket-wrapper",
+        "name-tree-and-af-reference-different-filespecs",
+        "embedded-file-uncompressed",
+        "af-relationship-alternative",
+        "truetype-subset",
+        "dctdecode-logo",
+        "xref-table",
+        "single-revision",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "RE-20171118/506",
+          "Heiße Luft pro Liter"
+        ],
+        "attachments": [
+          "factur-x.xml"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "vendor/us-federal/finereader8-frb-sr0115-examiner-guidance.pdf",
+      "title": "Federal Reserve SR 01-15 attachment: ABBYY FineReader 8 OCR beneath 300 dpi CCITT G4 page images, tagged, a linearized hybrid-reference file",
+      "useCase": "scan",
+      "producer": "ABBYY FineReader 8.0 Professional Edition (2006), tagged and saved as a linearized hybrid-reference file",
+      "origin": "contributed",
+      "licence": "Public domain (Board of Governors of the Federal Reserve System: its website notice puts information on the site in the public domain unless otherwise indicated)",
+      "source": {
+        "url": "https://www.federalreserve.gov/BoardDocs/SRLetters/2001/sr0115a1.pdf",
+        "sha256": "28952d3168b1c73bdc417956092efe602aaf97c4fa1535cfc5046ee97ca3e8c4",
+        "bytes": 212488,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "abbyy-finereader",
+        "ocr-layer",
+        "text-under-image",
+        "ccitt",
+        "non-embedded-base14",
+        "tagged",
+        "artifact-with-mcid",
+        "link-annotations",
+        "uri-links",
+        "remediation-markers-in-text",
+        "multiple-content-streams",
+        "pdf-1.4",
+        "hybrid-xref",
+        "object-streams",
+        "linearized",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Interagency Guidelines Establishing Standards For Safeguarding Customer Information",
+          "[EndofFootnote1]"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/uk-ogl/pdfmaker21-ozev-sample-invoice.pdf",
+      "title": "OZEV plug-in vehicle grant sample invoice: Acrobat PDFMaker 21 for Word, tagged, a 'Sample' watermark in an Acrobat optional-content group",
+      "useCase": "invoice",
+      "producer": "Acrobat PDFMaker 21 for Word, Adobe PDF Library 21.11.71",
+      "origin": "contributed",
+      "licence": "Open Government Licence v3.0 (Crown copyright, Office for Zero Emission Vehicles)",
+      "source": {
+        "url": "https://assets.publishing.service.gov.uk/media/62a21964d3bf7f036750b0d2/plug-in-vehicle-grant-portal-sample-invoice.pdf",
+        "sha256": "e997f1d780f85d23d8db494a55254647dc2443dac4965cdfb2e7d4a63aac312e",
+        "bytes": 718018,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "specimen",
+        "pdfmaker",
+        "acrobat-watermark-ocg",
+        "optional-content",
+        "tagged",
+        "outlines",
+        "empty-acroform",
+        "truetype-subset",
+        "type0-subset",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "linearization-hints-inconsistent",
+        "full-font-embedding"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Sample invoice",
+          "Plug in Small Van Grant"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "vendor/us-federal/docusign-pdfkit-gsa-sf30-contract-modification.pdf",
+      "title": "A US GSA contract modification (SF 30) completed in DocuSign: a JBIG2 scan on a rotated page, DocuSign's envelope seal with a FieldMDP reference, validation data appended in an incremental update",
+      "useCase": "contract",
+      "producer": "PDFKit.NET 11.9.751.0 DMV10 (DocuSign)",
+      "origin": "contributed",
+      "licence": "Public domain (US federal government work, 17 U.S.C. 105; GSA's reuse notice)",
+      "source": {
+        "url": "https://www.gsa.gov/system/files/DEExtension20240528%20(1)%20(1).pdf",
+        "sha256": "bff94366930eca4d60c1bbee9d616e162671bc6998120ac877b6adc11da427d5",
+        "bytes": 290845,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "docusign",
+        "signed-adbe-pkcs7-detached",
+        "fieldmdp",
+        "md5-digest-method",
+        "dss",
+        "incremental-update",
+        "xref-stream",
+        "object-streams",
+        "jbig2",
+        "rotate-270",
+        "hidden-signature-widget",
+        "creation-date-year-0001",
+        "signing-certificate-expired"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "DocuSign Envelope ID: 5E4F270B-11D1-4A55-8FB6-141F027EE088"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
       "file": "documents/invoice/word-invoice-fr.pdf",
       "builtBy": "build_word.ps1",
       "title": "The corpus invoice laid out in Word and exported with Save as PDF",
@@ -4191,6 +4466,3605 @@
         ],
         "unsupported": "T21: the reader reports a stream truncated at its 8 KB window boundary that qpdf reads whole, and a Flate failure on the 14.9 MB image not yet explained; both are recorded in docs/status.md and must be fixed before M13 relies on this document",
         "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfcpu/word2019-diia-test-pades-b-lta.pdf",
+      "title": "Word 2019 page signed PAdES B-LTA with a DIIA test certificate: signature timestamp, a DSS of certificates and OCSP responses, then a document timestamp lacking /Filter",
+      "useCase": "contract",
+      "producer": "Microsoft Word 2019; ETSI.CAdES.detached signature, DSS and ETSI.RFC3161 document timestamp added by an unidentified signing tool, certificates from the Ukrainian DIIA test CA",
+      "origin": "remote",
+      "licence": "Not licensed: a signed test file in pdfcpu's test data, which states no licence for it (Apache-2.0 covers the code). Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdfcpu/pdfcpu/4d0e9ff2e547383e02b6b385ea9e6b48c4cc9f65/pkg/testdata/signatures/ETSI.CAdES.detached/testPAdES_BLTA.pdf",
+        "sha256": "b27bbf34dab79fdb0e2386d8465e98f32bfcb928d8d35a9e7c8f4edf8d5a37d3",
+        "bytes": 103335,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "signed-etsi-cades-detached",
+        "pades-b-lta",
+        "test-certificate",
+        "rsa-sha256-signature",
+        "signing-certificate-v2",
+        "signature-timestamp",
+        "timestamp-token-without-certificates",
+        "dss",
+        "dss-ocsp-only",
+        "dss-without-vri",
+        "document-timestamp",
+        "doctimestamp-without-filter",
+        "signature-cryptographically-valid",
+        "signature-widget-not-in-page-annots",
+        "signature-widget-without-appearance",
+        "unreferenced-objects-in-update",
+        "update-glued-to-eof-marker",
+        "incremental-update",
+        "word-2019",
+        "hybrid-xref",
+        "xref-table",
+        "object-streams",
+        "tagged",
+        "truetype-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Test"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfcpu/word2019-diia-test-pades-b-b.pdf",
+      "title": "Word 2019 page signed PAdES B-B with a DIIA test certificate: ETSI.CAdES.detached, no timestamp, the update glued to the %%EOF marker",
+      "useCase": "contract",
+      "producer": "Microsoft Word 2019; ETSI.CAdES.detached signature added by an unidentified signing tool, certificate from the Ukrainian DIIA test CA",
+      "origin": "remote",
+      "licence": "Not licensed: a signed test file in pdfcpu's test data, which states no licence for it (Apache-2.0 covers the code). Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdfcpu/pdfcpu/4d0e9ff2e547383e02b6b385ea9e6b48c4cc9f65/pkg/testdata/signatures/ETSI.CAdES.detached/testPAdES_BB.pdf",
+        "sha256": "56d0cefb1260cef5266a9edca19be92373572b6d10f7065258772b65ff6f34d8",
+        "bytes": 50375,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "signed-etsi-cades-detached",
+        "pades-b-b",
+        "test-certificate",
+        "rsa-sha256-signature",
+        "signing-certificate-v2",
+        "no-signature-timestamp",
+        "signature-cryptographically-valid",
+        "signature-widget-not-in-page-annots",
+        "signature-widget-without-appearance",
+        "unreferenced-objects-in-update",
+        "update-glued-to-eof-marker",
+        "incremental-update",
+        "word-2019",
+        "hybrid-xref",
+        "xref-table",
+        "object-streams",
+        "tagged",
+        "truetype-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Test"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfcpu/word2019-diia-test-pades-b-lt.pdf",
+      "title": "Word 2019 page signed PAdES B-LT with a DIIA test certificate: a timestamped signature, then a DSS of certificates and OCSP responses in an unsigned final update",
+      "useCase": "contract",
+      "producer": "Microsoft Word 2019; ETSI.CAdES.detached signature and DSS added by an unidentified signing tool, certificates from the Ukrainian DIIA test CA",
+      "origin": "remote",
+      "licence": "Not licensed: a signed test file in pdfcpu's test data, which states no licence for it (Apache-2.0 covers the code). Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdfcpu/pdfcpu/4d0e9ff2e547383e02b6b385ea9e6b48c4cc9f65/pkg/testdata/signatures/ETSI.CAdES.detached/testPAdES_BLT.pdf",
+        "sha256": "2f9949e81b59ee8ecb3e300d4b1b8607b84a3dab6042a696ad1ea37c3e3e4847",
+        "bytes": 81837,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "signed-etsi-cades-detached",
+        "pades-b-lt",
+        "test-certificate",
+        "rsa-sha256-signature",
+        "signing-certificate-v2",
+        "signature-timestamp",
+        "timestamp-token-without-certificates",
+        "dss",
+        "dss-ocsp-only",
+        "dss-without-vri",
+        "unsigned-final-revision",
+        "signature-cryptographically-valid",
+        "signature-widget-not-in-page-annots",
+        "signature-widget-without-appearance",
+        "unreferenced-objects-in-update",
+        "update-glued-to-eof-marker",
+        "incremental-update",
+        "word-2019",
+        "hybrid-xref",
+        "xref-table",
+        "object-streams",
+        "tagged",
+        "truetype-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Test"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfcpu/quartz-avow-certified-docmdp-md5-sigref.pdf",
+      "title": "Mac OS X Quartz page certified with an Adobe CDS certificate: DocMDP P=1 and FieldMDP with legacy MD5 object-digest references, embedded CRL and OCSP, a timestamp",
+      "useCase": "contract",
+      "producer": "Mac OS X 10.5.3 Quartz PDFContext (Pages); certification signature by Adobe PDF Library 7 (Windows) with Adobe.PPKLite, for Avow Systems",
+      "origin": "remote",
+      "licence": "Not licensed: an Avow Systems sample certified document kept in pdfcpu's test data, which states no licence for it. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdfcpu/pdfcpu/4d0e9ff2e547383e02b6b385ea9e6b48c4cc9f65/pkg/testdata/signatures/adbe.pkcs7.detached/sample2.pdf",
+        "sha256": "1d80fcdec5d47243bb3b14a0b548fef836b4d64fb3d0965f115775ef0eb86e26",
+        "bytes": 58063,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "signed-adbe-pkcs7-detached",
+        "certification-signature",
+        "docmdp",
+        "docmdp-p1",
+        "fieldmdp",
+        "sigref-md5-object-digest",
+        "sig-field-lock",
+        "adobe-cds-certificate",
+        "sha1-rsa-signature",
+        "adbe-revocation-info-archival",
+        "embedded-crl",
+        "embedded-ocsp",
+        "signature-timestamp",
+        "expired-signing-certificate",
+        "signature-cryptographically-valid",
+        "invisible-signature-widget",
+        "catalog-version-key",
+        "incremental-update",
+        "xref-table",
+        "truetype-subset",
+        "ligature-fi"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Sample Certified PDF"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfcpu/acrobat-web-capture8-x509-rsa-sha1-signed.pdf",
+      "title": "An Acrobat Web Capture 8.0 page capture signed with the legacy adbe.x509.rsa_sha1 subfilter: raw PKCS#1 value, certificate in /Cert, stale linearization",
+      "useCase": "contract",
+      "producer": "Acrobat Web Capture 8.0 (linearized); signed in an incremental update by Tecxoft's PDF signing product in trial mode, with Tecxoft's self-signed demo certificate",
+      "origin": "remote",
+      "licence": "Not licensed: Tecxoft's own published signing sample (byte-identical to https://www.tecxoft.com/samples/sample01.pdf), a capture of Sun's java.sun.com home page, kept in pdfcpu's test data, which states no licence for it. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdfcpu/pdfcpu/4d0e9ff2e547383e02b6b385ea9e6b48c4cc9f65/pkg/testdata/signatures/adbe.x509.rsa_sha1/sample01.pdf",
+        "sha256": "3e36114d980d1c41d59ce52d48dbf8f2c1e28ee34cca420819f92072a7844dfd",
+        "bytes": 218067,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "signed-adbe-x509-rsa-sha1",
+        "raw-pkcs1-signature",
+        "certificate-in-signature-dictionary",
+        "self-signed-certificate",
+        "test-certificate",
+        "negative-certificate-serial",
+        "sha1-rsa-signature",
+        "expired-signing-certificate",
+        "signature-cryptographically-valid",
+        "visible-signature-widget",
+        "layered-signature-appearance",
+        "dct-image",
+        "web-capture",
+        "spider-info",
+        "web-capture-name-trees",
+        "linearized-then-updated",
+        "stale-linearization",
+        "incremental-update",
+        "xref-table",
+        "truetype-not-embedded",
+        "type0-subset",
+        "link-annotations",
+        "outlines",
+        "structure-tree-without-markinfo"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "The Source for Java Developers",
+          "Java Application Platform SDK Update 5 Released"
+        ],
+        "refereeCheckSucceeds": true,
+        "unsupported": "T24: the reader reads each cross-reference section through a window of up to 64 KB whatever the section's size, so opening this 218 KB file with three sections reads 117 KB, more than the quarter the laziness test allows; bounded, but proportional to the number of sections. Recorded in docs/status.md, for M13"
+      }
+    },
+    {
+      "file": "remote/eu-dss/pdfmaker11-nbu-sk-qualified-seal-docmdp-fieldmdp.pdf",
+      "title": "The Slovak National Security Authority's supervision scheme under its qualified seal: a certification signature (DocMDP P=2 with FieldMDP, legacy MD5 signature references) saved by Acrobat 11 into a linearized file with inconsistent hint tables, an empty Adobe revocation attribute, a PDF/A-1a claim",
+      "useCase": "contract",
+      "producer": "Acrobat PDFMaker 11 pre Word (Slovak localisation), Adobe PDF Library 11.0; certified with Acrobat 11.0.0 (Exchange-Pro) under the NBÚ qualified seal",
+      "origin": "remote",
+      "licence": "LGPL-2.1 (EU DSS test resources, issue DSS-2554), and the sealed document is the Slovak NSA's, with no reuse licence found. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/esig/dss/c8aea1f90958a851f651fe39f1575fcbd6d4a11d/dss-pades/src/test/resources/validation/dss-2554/fieldmdp-include.pdf",
+        "sha256": "87bd16a43c6aabff97def9b8f9827299d46a157505135a07c500a3d596b4f243",
+        "bytes": 1192476,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "copyleft",
+        "signed-pades",
+        "cades-detached-signature",
+        "qualified-seal",
+        "organisation-signing-certificate",
+        "certification-signature",
+        "docmdp",
+        "fieldmdp",
+        "field-lock",
+        "sigref-md5-digests",
+        "adbe-revocation-info-archival-empty",
+        "adobe-ppklite-filter",
+        "adbe-extension-level-8",
+        "signature-in-linearized-file",
+        "linearized",
+        "linearization-hints-inconsistent",
+        "pdfa",
+        "tagged",
+        "outlines",
+        "link-annotations",
+        "truetype-subset",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 36,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Supervision Scheme of Qualified Trust Services",
+          "No. 1353/2017/IBEP/OA-006"
+        ],
+        "claimsConformance": "PDF/A-1a",
+        "conformanceValid": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/eu-dss/neooffice-polysys-hu-two-seals-two-doc-timestamps.pdf",
+      "title": "ETSI plugtest file from Hungary: two qualified e-seals of a signing-software vendor, RSA then ECDSA, each followed by a document timestamp, a DSS with VRI, and a Producer written as a byte-order mark before single-byte text",
+      "useCase": "contract",
+      "producer": "NeoOffice 2015.5 (Writer); sealed with Polysys PolySigno under Microsec e-Szigno qualified seals and timestamps",
+      "origin": "remote",
+      "licence": "LGPL-2.1 (EU DSS test resources, from an ETSI PAdES plugtest). Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/esig/dss/c8aea1f90958a851f651fe39f1575fcbd6d4a11d/dss-pades/src/test/resources/validation/Signature-P-HU_POL-7.pdf",
+        "sha256": "37247bb9487e60c808136f763e8e3a83a2f19847862a7b7d8f72ada4b0faf6c7",
+        "bytes": 165221,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "copyleft",
+        "etsi-plugtest",
+        "signed-pades",
+        "pades-b-lta",
+        "qualified-seal",
+        "organisation-signing-certificate",
+        "multiple-signatures",
+        "rsa-signature",
+        "ecdsa-signature",
+        "signature-timestamp",
+        "document-timestamp",
+        "two-document-timestamps",
+        "dss",
+        "vri",
+        "ocsp",
+        "incremental-update",
+        "five-incremental-updates",
+        "signature-in-first-revision",
+        "adbe-extension-level-5",
+        "text-string-bom-before-single-byte-text",
+        "tagged",
+        "truetype-subset",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "toBeSigned"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/eu-dss/word2010-cs-plugtest-pades-lta-two-doc-timestamps.pdf",
+      "title": "ETSI plugtest file from a French test PKI over a Word 2010 hybrid-reference file: a PAdES-EPES signature with claimed roles and Adobe revocation data, then two document timestamps and a DSS with VRI",
+      "useCase": "contract",
+      "producer": "Microsoft Word 2010; signed and timestamped with CS's TRUSTY test PKI (ETSI plugtest)",
+      "origin": "remote",
+      "licence": "LGPL-2.1 (EU DSS test resources, from an ETSI PAdES plugtest). Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/esig/dss/c8aea1f90958a851f651fe39f1575fcbd6d4a11d/dss-pades/src/test/resources/validation/Signature-P-FR_CS-5.pdf",
+        "sha256": "4e98c47ebacf027e1217b1e1ee3d168481b9cda15e55887f2e7808605940f27f",
+        "bytes": 188746,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "copyleft",
+        "etsi-plugtest",
+        "test-certificate",
+        "signed-pades",
+        "pades-epes",
+        "signature-policy",
+        "claimed-roles",
+        "adbe-revocation-info-archival",
+        "sha512-signature",
+        "signature-timestamp",
+        "pades-b-lta",
+        "document-timestamp",
+        "two-document-timestamps",
+        "dss",
+        "vri",
+        "crls",
+        "incremental-update",
+        "hybrid-xref",
+        "xref-stream",
+        "object-streams",
+        "tagged",
+        "truetype-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Politique de signature"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/eu-dss/eboe-fnmt-boe-seal-pkcs7-sha1-then-anf-test-signature.pdf",
+      "title": "A Spanish Official State Gazette decree sealed by the gazette's signing service with adbe.pkcs7.sha1 under Adobe.PPKMS and a signature timestamp, then signed again with a public test certificate in an incremental update: 28 pages, a PDF/A-1a claim",
+      "useCase": "contract",
+      "producer": "eBOE, Adobe PDF Library 8.0, modified using iText 5.0.0; FNMT-RCM seal of the Agencia Estatal BOE, then ANF's test certificate",
+      "origin": "remote",
+      "licence": "LGPL-2.1 (EU DSS test resources), and the base is a sealed BOE gazette PDF whose reuse terms add conditions beyond attribution. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/esig/dss/c8aea1f90958a851f651fe39f1575fcbd6d4a11d/dss-pades/src/test/resources/validation/pkcs7_sha1.pdf",
+        "sha256": "4e194bb166a178a642af1007c44ece084bbea5579dcf19ea85bf938d36892078",
+        "bytes": 483824,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "copyleft",
+        "signed-adbe-pkcs7-sha1",
+        "signed-adbe-pkcs7-detached",
+        "adobe-ppkms-filter",
+        "adobe-ppklite-filter",
+        "sha1-rsa-signature",
+        "organisation-signing-certificate",
+        "official-gazette-seal",
+        "signature-timestamp",
+        "multiple-signatures",
+        "test-certificate",
+        "incremental-update",
+        "pdfa",
+        "tagged",
+        "page-labels",
+        "ccitt",
+        "truetype-subset",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 28,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Real Decreto 1671/2009",
+          "BOLETÍN OFICIAL DEL ESTADO"
+        ],
+        "claimsConformance": "PDF/A-1a",
+        "conformanceValid": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/eu-dss/indesign-docusign-envelope-seal-postsignum-doc-timestamp.pdf",
+      "title": "A DocuSign envelope export of a blank form template: DocuSign's organisation seal (adbe.pkcs7.detached, Adobe.PPKMS), extended a day later with a DSS and a document timestamp from a Czech demo TSA",
+      "useCase": "contract",
+      "producer": "Adobe InDesign CC 13.0, PDFKit.NET 20.2 and iTextSharp 5.5.13 (DocuSign); document timestamp from PostSignum's demo TSA",
+      "origin": "remote",
+      "licence": "LGPL-2.1 (EU DSS test resources, issue DSS-2199), and the form and its export are DocuSign's, with no reuse licence. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/esig/dss/c8aea1f90958a851f651fe39f1575fcbd6d4a11d/dss-pades/src/test/resources/validation/DSS-2199.pdf",
+        "sha256": "6f63a31451c7c16d357cadd0db55af9b9bf0d4fdbeeedd567daf33eaefa8a016",
+        "bytes": 299809,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "copyleft",
+        "commercial-e-signature",
+        "docusign",
+        "signed-adbe-pkcs7-detached",
+        "adobe-ppkms-filter",
+        "organisation-signing-certificate",
+        "document-timestamp",
+        "dss",
+        "vri",
+        "crls",
+        "incremental-update",
+        "name-hash-escape-high-byte",
+        "truetype-subset",
+        "type0-subset",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "HIGH SCHOOL FIELD TRIP PERMISSION SLIP",
+          "DocuSign Envelope ID"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/eu-dss/ghostscript-certipost-universign-mentana-four-revisions.pdf",
+      "title": "A Notepad printout signed in 2013 with a Belgian test certificate (SHA-512), kept by Universign document timestamps in 2013 and 2019, then signed again in 2020 with RSASSA-PSS: five incremental updates, two startxref offsets one byte early",
+      "useCase": "contract",
+      "producer": "PScript5.dll 5.2.2 and GPL Ghostscript 9.02; Cryptolog CUTE 6.3.1 signature, Universign document timestamps (the 2019 one written by Cryptolog Serenity), a 2020 signature under a D-TRUST qualified pseudonym certificate at Mentana-Claimsoft",
+      "origin": "remote",
+      "licence": "LGPL-2.1 (EU DSS test resources). Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/esig/dss/c8aea1f90958a851f651fe39f1575fcbd6d4a11d/dss-pades/src/test/resources/validation/pades3_Baseline_B.pdf",
+        "sha256": "da288b9ffa67843790b0f30bffe8a901e5490e5e901413ba99875a992b8e7112",
+        "bytes": 387414,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "copyleft",
+        "test-certificate",
+        "signed-pades",
+        "pades-b-b",
+        "pades-b-lta",
+        "sha512-signature",
+        "rsassa-pss-signature",
+        "pseudonym-certificate",
+        "document-timestamp",
+        "two-document-timestamps",
+        "multiple-signatures",
+        "dss",
+        "crls",
+        "incremental-update",
+        "five-incremental-updates",
+        "startxref-off-by-one",
+        "truetype-subset",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Test.txt"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/eu-dss/excel365-nowina-25-signatures-dss-vri.pdf",
+      "title": "An Excel for Office 365 sheet carrying 24 signatures and a document timestamp in 48 incremental updates, with a DSS of 31 certificates, 29 OCSP responses and 24 VRI entries",
+      "useCase": "stress",
+      "producer": "Microsoft Excel for Office 365; signatures by EU DSS with Nowina test certificates, GlobalSign timestamps",
+      "origin": "remote",
+      "licence": "LGPL-2.1 (EU DSS cookbook test resources). Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/esig/dss/c8aea1f90958a851f651fe39f1575fcbd6d4a11d/dss-cookbook/src/test/resources/snippets/25sigs.pdf",
+        "sha256": "debef5ff21d254ea5bed5cdb839a021eb51e72eed72e9498c84ad9cf3454d6f6",
+        "bytes": 958559,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "copyleft",
+        "test-certificate",
+        "signed-pades",
+        "many-signatures",
+        "multiple-signatures",
+        "signature-timestamp",
+        "document-timestamp",
+        "dss",
+        "vri",
+        "ocsp",
+        "incremental-update",
+        "forty-eight-incremental-updates",
+        "unreferenced-xref-stream-per-update",
+        "hybrid-xref",
+        "xref-table",
+        "xref-stream",
+        "object-streams",
+        "tagged",
+        "truetype-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Devilsaur",
+          "Bracers"
+        ],
+        "unsupported": "T23: the reader cuts an indirect object longer than its 8 KB window at the window's edge and reports a truncated object at exactly 8 KB into object 458, the DSS /VRI dictionary (10,112 bytes), which qpdf reads whole; recorded in docs/status.md, to be fixed before M2 closes",
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/eu-dss/dss-signed-widget-self-parent-startxref-past-eof.pdf",
+      "title": "A signed one-page chart whose signature update is unreachable: startxref points past the end of the file, the update's xref offsets are wrong, and the signature widget is its own /Parent",
+      "useCase": "damaged",
+      "producer": "Bullzip PDF Printer (Freeware Edition) printing a Word document; signed with a Nowina test certificate in a field named CSGN_Signature, the signed update then damaged for EU DSS's infinite-loop regression (DSS-1872)",
+      "origin": "remote",
+      "licence": "LGPL-2.1 (EU DSS test resources, the DSS-1872 infinite-loop regression file), over a conversion chart whose page states a CC BY-SA 3.0 licence (ShareAlike). Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/esig/dss/c8aea1f90958a851f651fe39f1575fcbd6d4a11d/dss-pades/src/test/resources/validation/pades_infinite_loop.pdf",
+        "sha256": "e6ffaacc910616afac9900ca86db9bec4f6106f3b4489583197b1f61670d8c68",
+        "bytes": 29469,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "copyleft",
+        "sharealike",
+        "test-certificate",
+        "signed-pades",
+        "incremental-update",
+        "startxref-past-eof",
+        "byterange-past-eof",
+        "signature-contents-shorter-than-byterange",
+        "xref-offsets-wrong",
+        "xref-free-head-fields-swapped",
+        "self-referencing-parent",
+        "field-tree-cycle",
+        "hung-xpdf-4.00",
+        "rotated-page",
+        "non-embedded-standard-fonts",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "ASCII Conversion Chart"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfium-tests/foxit-phantompdf-certification-signature-visible.pdf",
+      "title": "Foxit PhantomPDF certification signature written in a single full save: DocMDP P=1 beside a FieldMDP reference, a visible widget, SHA-1 CMS without signed attributes, xref stream",
+      "useCase": "contract",
+      "producer": "Foxit PhantomPDF (Foxit Software Inc.), signed 2015-03-12 with a self-signed test certificate",
+      "origin": "remote",
+      "licence": "No licence for the file: a Foxit QA document in PDFium's pdfium_tests repository, whose BSD licence covers the PDFium authors' own work, not Foxit's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/QPDFium/pdfium_tests/cb0e8e2cb824a72af6d23a472373484cb31fa288/fx/mulobj/new/signature/new_certify1.pdf",
+        "sha256": "80475edb92fef8775f2ab3283839385cf5162e232e23fb13de7f8f0fa7ac2ec8",
+        "bytes": 8669,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "foxit-phantompdf",
+        "signed-adbe-pkcs7-detached",
+        "certification-signature",
+        "docmdp",
+        "fieldmdp",
+        "perms-docmdp",
+        "field-lock",
+        "signature-in-sole-revision",
+        "byte-range-covers-whole-file",
+        "cms-without-signed-attributes",
+        "sha1-rsa-signature",
+        "self-signed-certificate",
+        "signature-cryptographically-valid",
+        "signature-contents-zero-padded",
+        "visible-signature-widget",
+        "layered-signature-appearance",
+        "acroform-sigflags-3",
+        "non-embedded-cjk-cid-font",
+        "text-only-in-widget-appearance",
+        "page-without-contents",
+        "xref-stream",
+        "object-streams",
+        "pdf-1.7"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Digitally signed by hello"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfium-tests/foxit-phantompdf-certification-signature-garbage-bbox.pdf",
+      "title": "Foxit PhantomPDF invisible certification signature whose appearance stream, inside the signed bytes, carries a BBox of garbage reals that leaves a string unterminated to the end of the file",
+      "useCase": "damaged",
+      "producer": "Foxit PhantomPDF (Foxit Software Inc.), signed 2015-03-12 with a self-signed test certificate",
+      "origin": "remote",
+      "licence": "No licence for the file: a Foxit QA document in PDFium's pdfium_tests repository, whose BSD licence covers the PDFium authors' own work, not Foxit's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/QPDFium/pdfium_tests/cb0e8e2cb824a72af6d23a472373484cb31fa288/fx/mulobj/new/signature/new_certify2.pdf",
+        "sha256": "20378a57245c6d7dbd9eee1f2e27de4e058609c7395729d716cbf4be1b46b4b0",
+        "bytes": 6903,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "foxit-phantompdf",
+        "signed-adbe-pkcs7-detached",
+        "certification-signature",
+        "docmdp",
+        "fieldmdp",
+        "perms-docmdp",
+        "field-lock",
+        "invisible-signature",
+        "signature-in-sole-revision",
+        "byte-range-covers-whole-file",
+        "cms-without-signed-attributes",
+        "sha1-rsa-signature",
+        "self-signed-certificate",
+        "signature-cryptographically-valid",
+        "signature-contents-zero-padded",
+        "acroform-sigflags-3",
+        "malformed-real-in-bbox",
+        "unterminated-string-to-eof",
+        "damage-inside-signed-byte-range",
+        "dangling-reference",
+        "page-without-contents",
+        "non-embedded-cjk-cid-font",
+        "xref-stream",
+        "object-streams",
+        "pdf-1.7"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfium-tests/foxit-phantompdf-approval-signature-rsa1024.pdf",
+      "title": "Foxit PhantomPDF approval signature written in a single full save: a visible widget, a 1024-bit RSA key, SHA-1 CMS without signed attributes, xref stream",
+      "useCase": "contract",
+      "producer": "Foxit PhantomPDF (Foxit Software Inc.), signed 2015-03-12 with a self-signed test certificate",
+      "origin": "remote",
+      "licence": "No licence for the file: a Foxit QA document in PDFium's pdfium_tests repository, whose BSD licence covers the PDFium authors' own work, not Foxit's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/QPDFium/pdfium_tests/cb0e8e2cb824a72af6d23a472373484cb31fa288/fx/mulobj/new/signature/new_signature1.pdf",
+        "sha256": "b0c7513ee6886be86b81eaf51889ab5c29e1f56b0b5dd8a7be69ec4632b09447",
+        "bytes": 6840,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "foxit-phantompdf",
+        "signed-adbe-pkcs7-detached",
+        "approval-signature",
+        "signature-in-sole-revision",
+        "byte-range-covers-whole-file",
+        "cms-without-signed-attributes",
+        "sha1-rsa-signature",
+        "rsa-1024-key",
+        "self-signed-certificate",
+        "signature-cryptographically-valid",
+        "signature-contents-zero-padded",
+        "visible-signature-widget",
+        "layered-signature-appearance",
+        "acroform-sigflags-3",
+        "non-embedded-cjk-cid-font",
+        "text-only-in-widget-appearance",
+        "page-without-contents",
+        "xref-stream",
+        "object-streams",
+        "pdf-1.7"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Digitally signed by hello"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/node-signpdf/openoffice21-node-signpdf-signed-twice.pdf",
+      "title": "An OpenOffice.org 2.1 page signed twice by node-signpdf: two incremental updates, two self-signed certificates, CMS signed attributes not in DER order, startxref one byte before each update's xref",
+      "useCase": "contract",
+      "producer": "OpenOffice.org 2.1 Writer (base document, W3C WAI test file); signatures by node-signpdf with node-forge, 2019",
+      "origin": "remote",
+      "licence": "Licence unclear: node-signpdf is MIT, but the signed base document is W3C's WAI test file, whose licence is not node-signpdf's and does not grant derivatives. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/vbuch/node-signpdf/ed3a144cafe8fd8594779b6db9612d335e7c18e6/resources/signed-twice.pdf",
+        "sha256": "afba378349107ea2fd92e8d4882075290864d40e21eca86c0bfe7435e35fc7a6",
+        "bytes": 25475,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "node-signpdf",
+        "openoffice",
+        "signed-adbe-pkcs7-detached",
+        "multiple-signatures",
+        "approval-signature",
+        "incremental-update",
+        "three-revisions",
+        "cms-signed-attributes-not-der-sorted",
+        "signature-cryptographically-valid",
+        "sha256-rsa-signature",
+        "self-signed-certificate",
+        "signer-certificate-expired-at-signing",
+        "sha1-certificate-signature",
+        "signature-contents-zero-padded",
+        "signature-widget-without-appearance",
+        "startxref-points-before-xref-keyword",
+        "size-off-by-one",
+        "update-trailer-without-id",
+        "truetype-subset",
+        "outlines",
+        "xref-table",
+        "pdf-1.4",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Dummy PDF file"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/boe/indesign-apdfl9-boe-law-2015-aeboe-seal.pdf",
+      "title": "Spain's Official State Gazette, a 2015 law: 68 tagged pages from Adobe PDF Library 9.9, sealed by AEBOE with adbe.pkcs7.sha1 and an RFC 3161 timestamp, a PDF/A-1a claim",
+      "useCase": "archival",
+      "producer": "eBOE (Adobe InDesign), converted to PDF/A-1a by callas pdfaPilot, Adobe PDF Library 9.9",
+      "origin": "remote",
+      "licence": "BOE reuse terms: reuse requires citing the AEBOE as the source, not distorting the meaning and keeping the metadata unaltered — conditions beyond attribution. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://www.boe.es/boe/dias/2015/10/02/pdfs/BOE-A-2015-10565.pdf",
+        "sha256": "f7113ad1dcc2208be56d8cd1f7731ef8a384df7547cc23b7d3df8a02cc6b7b80",
+        "bytes": 1198080,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "reuse-conditions",
+        "signed-adbe-pkcs7-sha1",
+        "no-signed-attributes",
+        "rfc3161-timestamp-unsigned-attribute",
+        "signing-certificate-expired",
+        "invisible-signature",
+        "public-sector-e-seal",
+        "tagged",
+        "page-labels",
+        "pdfa",
+        "pdfe-output-intent",
+        "truetype-subset",
+        "ccitt",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 68,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Ley 39/2015, de 1 de octubre, del Procedimiento Administrativo Común de las",
+          "cve: BOE-A-2015-10565"
+        ],
+        "claimsConformance": "PDF/A-1a",
+        "conformanceValid": true,
+        "unsupported": "T23: the reader cuts an indirect object longer than its 8 KB window at the window's edge and reports unexpected tokens at exactly 8 KB into object 14, a structure array, and 35 like it (8,694 bytes), which qpdf reads whole; recorded in docs/status.md, to be fixed before M2 closes",
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/boe/antenna-house-openpdf-boe-royal-decree-2026-aeboe-seal.pdf",
+      "title": "Spain's Official State Gazette, a 2026 royal decree: Antenna House output signed by OpenPDF with the AEBOE seal (adbe.pkcs7.sha1, an ECDSA timestamp), tagged, a PDF/A-1a claim",
+      "useCase": "archival",
+      "producer": "eBOE; Antenna House PDF Output Library 6.6.1477 (Linux64); converted to PDF/A-1a by callas pdfaPilot; modified (signed) using OpenPDF 1.3.39",
+      "origin": "remote",
+      "licence": "BOE reuse terms: reuse requires citing the AEBOE as the source, not distorting the meaning and keeping the metadata unaltered — conditions beyond attribution. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://www.boe.es/boe/dias/2026/09/15/pdfs/BOE-A-2026-19200.pdf",
+        "sha256": "ffceca871f251667adac066ae88b9b84e2a6b8cb5d789c74a5c445e94cfdee4d",
+        "bytes": 287206,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "reuse-conditions",
+        "signed-adbe-pkcs7-sha1",
+        "no-signed-attributes",
+        "rfc3161-timestamp-unsigned-attribute",
+        "ecdsa-timestamp",
+        "invisible-signature",
+        "public-sector-e-seal",
+        "tagged",
+        "lang",
+        "pdfa",
+        "type0-subset",
+        "flate-png-predictor-image",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 14,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Real Decreto 723/2026, de 9 de septiembre, por el que se transpone la",
+          "cve: BOE-A-2026-19200"
+        ],
+        "claimsConformance": "PDF/A-1a",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/maine-legislature/ricoh-docusign-itextsharp-state-contract-amendment.pdf",
+      "title": "A State of Maine contract amendment scanned on a Ricoh MP 5054 and completed in DocuSign: rotated JPEG pages, the envelope seal appended by iTextSharp, then a DSS revision",
+      "useCase": "contract",
+      "producer": "RICOH MP 5054; PDFKit.NET 19.4.100.11601; iTextSharp 5.5.13-SNAPSHOT (DocuSign, Inc.; licensed version)",
+      "origin": "remote",
+      "licence": "Unclear: a State of Maine contract document posted by the Maine Legislature, with no reuse statement found; a state work is not covered by 17 U.S.C. 105. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://web.archive.org/web/20210627001558id_/https://legislature.maine.gov/doc/6497",
+        "sha256": "21ae8a09b518d49d02ade15513c51f80e1b6c88fae20f19ee432d9b2cf32c08f",
+        "bytes": 1258299,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "docusign",
+        "office-copier",
+        "dct-image",
+        "rotate-270",
+        "signed-adbe-pkcs7-detached",
+        "incremental-update",
+        "dss",
+        "esic-extension-level-5-on-1.4-header",
+        "catalog-version",
+        "non-ascii-name-in-prop-build",
+        "signing-certificate-expired",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "DocuSign Envelope ID: 2A20417B-0920-4762-910D-F285C010C207"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfcpu-issues/adobe-sign-certified-aes128-test-agreement.pdf",
+      "title": "An Adobe Sign test agreement: an ETSI.CAdES.detached certification signature under AES-128 encryption with an empty user password",
+      "useCase": "contract",
+      "producer": "Adobe Sign (Adobe PDF Java Toolkit PPKLite, 'Adobe Sign CDS Signer' 6.6)",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to pdfcpu issue 389, never added to pdfcpu's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://github.com/pdfcpu/pdfcpu/files/7460545/adobe_sign_test_optimized_encrypted_.pdf",
+        "sha256": "871fec08dfbf580cb25de3d866335e6fc85d59efb6566d21fdb8ec77d918a475",
+        "bytes": 64359,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "adobe-sign",
+        "signed-etsi-cades-detached",
+        "certification-signature",
+        "docmdp",
+        "eidas-qualified-seal",
+        "adbe-revocation-info-archival",
+        "encrypted-aes-128",
+        "empty-user-password",
+        "encrypt-metadata-false",
+        "identity-crypt-filter",
+        "adbe-extension-level-5",
+        "link-annotation",
+        "invisible-signature",
+        "type0-subset",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "encrypted": true,
+        "password": "",
+        "hasExtractableText": true,
+        "textContains": [
+          "Testing Adobe Sign"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/qpdf-issues/yousign-signserver-qualified-seal-test-page.pdf",
+      "title": "A Yousign-sealed test page: a qualified e-seal applied by SignServer through iText 7, a visible layered signature appearance and read-only text fields",
+      "useCase": "contract",
+      "producer": "wkhtmltopdf 0.12.2.4 (Qt 4.8.6); iText Core 7.2.6 (AGPL version); SignServer (Yousign)",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to qpdf issue 1469. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://github.com/user-attachments/files/20368727/simple_one_page_signed_via_yousign.pdf",
+        "sha256": "f07f748d10f837f5baf2a822f786dcd763d57743f5f3788823ac8673adc38464",
+        "bytes": 268042,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "yousign",
+        "signed-adbe-pkcs7-detached",
+        "eidas-qualified-seal",
+        "visible-signature",
+        "layered-signature-appearance",
+        "read-only-text-fields",
+        "signed-by-full-rewrite",
+        "wkhtmltopdf",
+        "outlines",
+        "named-destinations",
+        "type0-subset",
+        "type0-full-font-embedded",
+        "subset-tag-only-in-fontdescriptor",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "ATTENTION: Fichier de simulation GED PDF"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfpig/axapta-credit-note-issue1309.pdf",
+      "title": "Axapta credit note from its own PDF writer: an /Info object without endobj, non-embedded Identity-H CID TrueType fonts (one named /7), ToUnicode maps with duplicate codes that turn the minus into a soft hyphen",
+      "useCase": "invoice",
+      "producer": "Axapta (build 1600.4514), writer identifying itself as AloUu",
+      "origin": "remote",
+      "licence": "Not licensed: a supplier's credit note attached to PdfPig issue 1309 and kept in PdfPig's integration documents; the repository's Apache-2.0 does not cover a third party's document. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/UglyToad/PdfPig/df33de5e55e8004dc4ffa768a9dee4f20b94c3bd/src/UglyToad.PdfPig.Tests/Integration/Documents/LKR824191.pdf",
+        "sha256": "f868d3b1ef8c06a170f5ff7d9179d6119db5696a20dbcc49c2a99f8b29855331",
+        "bytes": 64755,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "axapta",
+        "erp-output",
+        "missing-endobj",
+        "non-embedded-cid-font",
+        "identity-h",
+        "numeric-font-name",
+        "tounicode-duplicate-codes",
+        "soft-hyphen-minus",
+        "base14-not-embedded",
+        "empty-outlines",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Kreeditarve LKR824191",
+          "Tasumisele kuulub"
+        ],
+        "unsupported": "M2: the reader accepts the /Info object that ends without endobj, which qpdf reports, and says nothing",
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfpig/scoro-chromium-exiftool-invoice-issue1297.pdf",
+      "title": "Scoro invoice: a Chromium page re-serialised by qpdf without /Info or structure tree, /ActualText marked content, then an ExifTool incremental update adding /Info and XMP",
+      "useCase": "invoice",
+      "producer": "Scoro: Skia/PDF (Chromium) page, inferred, re-serialised by qpdf; /Info and XMP added by an ExifTool incremental update",
+      "origin": "remote",
+      "licence": "Not licensed: a supplier's invoice attached to PdfPig issue 1297 and kept in PdfPig's integration documents; the repository's Apache-2.0 does not cover a third party's document. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/UglyToad/PdfPig/df33de5e55e8004dc4ffa768a9dee4f20b94c3bd/src/UglyToad.PdfPig.Tests/Integration/Documents/soundandvision.pdf",
+        "sha256": "d92aac913b83817b649490981d9ad655f3335c977261c1eb943ff15f14487b67",
+        "bytes": 85509,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "scoro",
+        "skia",
+        "qpdf-rewrite",
+        "exiftool-update",
+        "incremental-update",
+        "no-producer",
+        "struct-parents-without-struct-tree",
+        "marked-content",
+        "actual-text",
+        "type0-subset",
+        "dct-image",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Invoice No. 15293",
+          "Reverse charge Directive"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfminer/sap-netweaver-invoice-issue1062.pdf",
+      "title": "SAP NetWeaver 7.40 invoice form over two pages: indirect /Filter arrays, SAP ArchiveLink comments inside /Info, zero-padded /Widths, one logo embedded twice",
+      "useCase": "invoice",
+      "producer": "SAP NetWeaver 740 (form ZLB_BIL_INVOICE NL, batch user)",
+      "origin": "remote",
+      "licence": "Not licensed: a supplier's invoice attached to pdfminer.six issue 1062 and kept in its samples/contrib; the repository's MIT licence does not cover a third party's document. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdfminer/pdfminer.six/a18de2a9c479b4c847538500017b449ddaec177e/samples/contrib/issue-1062-filters.pdf",
+        "sha256": "c424fc5e2172aa49906756c5649c7bc1c995fcf04b34a4b8da9754ba2ce7202a",
+        "bytes": 35750,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "sap-netweaver",
+        "erp-output",
+        "indirect-filter",
+        "indirect-length",
+        "indirect-encoding-name",
+        "comments-in-dictionary",
+        "zero-padded-numbers",
+        "digit-leading-names",
+        "base14-not-embedded",
+        "indexed-image",
+        "duplicated-image",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "AC wormwiel-motorreductor",
+          "Factuurontvanger:"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfjs/pdflib-zos-card-statement-issue6605.pdf",
+      "title": "Card statement page from PDFlib+PDI on IBM z/OS: EBCDIC character codes in bitmap Type 3 fonts, a form XObject, an incremental update leaving 115 orphaned objects",
+      "useCase": "invoice",
+      "producer": "PDFlib+PDI 8.0.5-m (zSeries z/OS); cut to one page and saved by Nitro Pro 9.5, then edited by Nitro Pro 9.5 in an incremental update",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to pdf.js issue 6605, kept in pdf.js's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue6605.pdf",
+        "sha256": "a14f0c95f8f4afe1134161613276bd95e72b6dc7d494f5619c157dbf94a51984",
+        "bytes": 174718,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "mainframe-output",
+        "pdflib",
+        "ebcdic-codes",
+        "type3-bitmap-font",
+        "inline-image-glyphs",
+        "tounicode",
+        "replacement-character",
+        "form-xobject",
+        "incremental-update",
+        "orphaned-objects",
+        "free-xref-entries",
+        "nitro-pro-edit",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Account messages",
+          "Transfer high-rate balances and save!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/jasperreports-banrep/jasperreports-itext210-rates-bulletin.pdf",
+      "title": "JasperReports on iText 2.1.0: a central bank's fax bulletin of reserve-currency rates, a seven-column table in non-embedded Helvetica with a JPEG logo",
+      "useCase": "report",
+      "producer": "JasperReports (report monedas_reserva), iText 2.1.0 (by lowagie.com)",
+      "origin": "remote",
+      "licence": "Unclear for this copy: Banco de la República's own IVR fax bulletin, kept beside its report definition in an MIT-licensed repository whose grant does not clearly reach the bank's output; the bank's legal notice forbids modification and commercial use, and the WM rates it carries need WM's authorisation to be published. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/aldovilardy/JasperReports/0c50901b4779df9aa852afd1f247ed7461fff9da/build/classes/JReports/monedas_reserva_margenes.pdf",
+        "sha256": "a0d8e565b4a8643da24fa6ee7ab7a042fa2e0c073f22bbddcf84d48bc7fdff14",
+        "bytes": 61571,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "jasperreports",
+        "itext-2.1.0",
+        "bank-output",
+        "table",
+        "base14-not-embedded",
+        "dct-image",
+        "named-destinations",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Tasas de cambio - Monedas de reserva",
+          "Dólar australiano (AUD)"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfminer/afp-batch-processor-bank-statement-2b.pdf",
+      "title": "Bank statement excerpt from an AFP Batch Processor: bitmap Type 3 fonts with a named encoding and no ToUnicode, a wrapped column header, xref and object streams",
+      "useCase": "invoice",
+      "producer": "AFP Batch Processor 1.06.00 (AFP to PDF, 2016); rewritten in April 2017 by an Adobe application (XMP Core 5.6-c015, inferred Acrobat DC)",
+      "origin": "remote",
+      "licence": "Not licensed: a contributed sample kept in pdfminer.six's samples/contrib; the repository's MIT licence does not cover a bank's document. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdfminer/pdfminer.six/a18de2a9c479b4c847538500017b449ddaec177e/samples/contrib/2b.pdf",
+        "sha256": "7e003e4e46a9c26149f42575418ef442909dfcc965674ab1e01cb40056891a2e",
+        "bytes": 19959,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "afp-to-pdf",
+        "bank-output",
+        "type3-bitmap-font",
+        "type3-named-encoding",
+        "no-tounicode",
+        "inline-image",
+        "wrapped-table-header",
+        "redacted-fragment",
+        "xref-stream",
+        "object-streams"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Amount in EUR Booked balance in",
+          "01/14/2016"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/mustang/dwc-weasyprint-facturx-extended-pdfa4f.pdf",
+      "title": "DWC FX Generator through WeasyPrint 68.1: a Factur-X EXTENDED invoice in PDF 2.0 with a valid PDF/A-4F claim, two RDF blocks in one XMP packet, and factur-x.xml listed twice in /AF",
+      "useCase": "invoice",
+      "producer": "DWC FX Generator 1.0 (WeasyPrint 68.1)",
+      "origin": "remote",
+      "licence": "No redistribution licence: a DWC sample (\"© DWC 2025\" on the page) built on FeRD's ZUGFeRD 2.4 example, committed to Mustang's test resources under the repository's code licence. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/mustangproject/7869b59a0ff17636355e4ed44a4518d190683155/library/src/test/resources/EXTENDED_Fremdwaehrung_wdis_fx-pdfa4.pdf",
+        "sha256": "b6a000d5806b33290445c61d388217853436b8ed25fdc044e1ed59f42bd6ff68",
+        "bytes": 57379,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "dwc-fx-generator",
+        "weasyprint",
+        "html-to-pdf",
+        "factur-x",
+        "factur-x-extended",
+        "foreign-currency",
+        "pdf-2.0-header",
+        "pdfa",
+        "pdfa-4f-claim",
+        "info-moddate-only",
+        "embedded-file",
+        "af-relationship-data",
+        "af-array-duplicate-entry",
+        "xmp-two-rdf-blocks",
+        "xmp-attribute-form-pdfaid",
+        "empty-pieceinfo",
+        "srgb-output-intent",
+        "type0-subset",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Handelsrechnung (380) Nr. 47110815",
+          "Global Supplies Financial Services"
+        ],
+        "attachments": [
+          "factur-x.xml"
+        ],
+        "claimsConformance": "PDF/A-4f",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/mustang/dwc-weasyprint-facturx-extended-no-fx-xmp.pdf",
+      "title": "DWC FX Generator through WeasyPrint 66.0: a Factur-X EXTENDED invoice whose XMP has no Factur-X schema or fx: properties, in an xref stream, with a valid PDF/A-3u claim",
+      "useCase": "invoice",
+      "producer": "DWC FX Generator 1.0 (WeasyPrint 66.0)",
+      "origin": "remote",
+      "licence": "No redistribution licence: a DWC sample (\"© DWC 2025\" on the page) built on FeRD's ZUGFeRD 2.5 example, committed to Mustang's test resources under the repository's code licence. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/mustangproject/7869b59a0ff17636355e4ed44a4518d190683155/library/src/test/resources/cii/X19_01_Warenrechnung_fx.pdf",
+        "sha256": "7629bd356fe1a5c2d82ed08774300a2acf5bf50329dd8ec9f24b58f2528d830b",
+        "bytes": 63258,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "dwc-fx-generator",
+        "weasyprint",
+        "html-to-pdf",
+        "factur-x",
+        "factur-x-extended",
+        "xmp-without-factur-x-metadata",
+        "xmp-without-xmpmeta-wrapper",
+        "embedded-file",
+        "af-relationship-data",
+        "af-array-duplicate-entry",
+        "pdfa",
+        "pdfa-3u-claim",
+        "srgb-output-intent",
+        "type0-subset",
+        "xref-stream",
+        "object-streams",
+        "test-indicator",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Nr. R87654321012345",
+          "Visualisierung eRechnung"
+        ],
+        "attachments": [
+          "factur-x.xml"
+        ],
+        "claimsConformance": "PDF/A-3u",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/mustang/facturx-python-order-x-comfort.pdf",
+      "title": "An Order-X purchase order, COMFORT profile, written by the factur-x Python library through PyPDF4: order-x.xml attached, DocumentType ORDER in the generic fx namespace, a PDF/A-3b claim",
+      "useCase": "invoice",
+      "producer": "factur-x Python library 2.0 (Akretion), written by PyPDF4",
+      "origin": "remote",
+      "licence": "No redistribution licence: the official Order-X example (FNFE-MPE and FeRD), copied into Mustang's test resources. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/mustangproject/7869b59a0ff17636355e4ed44a4518d190683155/library/src/test/resources/ORDER-X_EX01_ORDER_FULL_DATA-COMFORT.pdf",
+        "sha256": "f3b42e875c3d8a6e48f48a925fa6725533c355babde8fb4302a72fd046cc3c9b",
+        "bytes": 239358,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "order-x",
+        "order-x-comfort",
+        "purchase-order",
+        "factur-x-python",
+        "pypdf4",
+        "embedded-file",
+        "af-relationship-alternative",
+        "xmp-fx-generic-namespace",
+        "embedded-xml-utf8-bom",
+        "pdfa",
+        "pdfa-3b-claim",
+        "srgb-output-intent",
+        "truetype-subset",
+        "flate-image-with-smask",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "PURCHASE ORDER ID: PO123456789",
+          "BUYER_TRADING_NAME"
+        ],
+        "attachments": [
+          "order-x.xml"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/zugferd-corpus/intarsys-zugferd22-xrechnung-profile.pdf",
+      "title": "FeRD's ZUGFeRD 2.2 example in the XRECHNUNG profile from the intarsys toolkit: xrechnung.xml attached as /Source by an incremental update over a jPod-written PDF/A-3b base",
+      "useCase": "invoice",
+      "producer": "intarsys ZUGFeRD Toolkit 2.1; intarsys PDF/A Live! (base revision: PDFA Live 7.1, jPod)",
+      "origin": "remote",
+      "licence": "No redistribution licence: an example from FeRD's ZUGFeRD 2.2 information package, copied into the ZUGFeRD/corpus repository. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/d891458e9822e34271a5438497bf924e89955979/XML-Rechnung/FX/XRECHNUNG_Einfach.pdf",
+        "sha256": "3fedc66a282b885c2f15086ae08166fd6fc39cb248f1ec11ba1dd844c25dfe4b",
+        "bytes": 153579,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "intarsys",
+        "zugferd-2",
+        "xrechnung-profile",
+        "xrechnung-xml-attachment-name",
+        "xmp-fx-version-2.1",
+        "embedded-file",
+        "af-relationship-source",
+        "incremental-update",
+        "attachment-added-by-update",
+        "catalog-version-entry",
+        "pdfa",
+        "pdfa-3b-claim",
+        "no-output-intent",
+        "truetype-embedded-without-subset-tag",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Leitwege-ID",
+          "04011000-12345-34"
+        ],
+        "attachments": [
+          "xrechnung.xml"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/zugferd-corpus/symtrax-itextsharp-zugferd21-minimum-pdfa3a.pdf",
+      "title": "FeRD's ZUGFeRD 2.1 MINIMUM example rendered by Symtrax Compleo through iTextSharp 4.1.0: tagged, a valid PDF/A-3a claim, a whole Times New Roman embedded, paths closed with no current point",
+      "useCase": "invoice",
+      "producer": "Symtrax Compleo Suite (iTextSharp 4.1.0, based on iText 2.1.0)",
+      "origin": "remote",
+      "licence": "No redistribution licence: Symtrax's rendering of FeRD's ZUGFeRD 2.1 examples, copied into the ZUGFeRD/corpus repository. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/d891458e9822e34271a5438497bf924e89955979/ZUGFeRDv2/correct/symtrax/Beispiele/MINIMUM/zugferd_2p1_MINIMUM_Rechnung.pdf",
+        "sha256": "38b95693497b73c33524fddaff2e389a36a7b742fe3867e661b939cbb1e75aed",
+        "bytes": 667173,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "symtrax-compleo",
+        "itextsharp",
+        "dotnet-producer",
+        "factur-x",
+        "factur-x-minimum",
+        "zugferd-2",
+        "embedded-file-uncompressed",
+        "af-relationship-data",
+        "tagged",
+        "pdfa",
+        "pdfa-3a-claim",
+        "srgb-output-intent",
+        "full-font-embedding",
+        "cidset",
+        "closepath-without-current-point",
+        "letter-spaced-text",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Handelsrechnung Nr. 471102 vom 05.03.2020",
+          "urn:factur-x.eu:1p0:minimum"
+        ],
+        "attachments": [
+          "factur-x.xml"
+        ],
+        "claimsConformance": "PDF/A-3a",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/zugferd-corpus/itext9-facturx-ubl-payload.pdf",
+      "title": "An ERP invoice with test data made hybrid by iText Core 9.0.0: tagged, a valid PDF/A-3b claim, and a factur-x.xml that holds a UBL invoice rather than CII",
+      "useCase": "invoice",
+      "producer": "iText Core 9.0.0 (AGPL version), over an ERP's invoice layout",
+      "origin": "remote",
+      "licence": "Not licensed: an ERP vendor's test invoice attached to quba-viewer issue 143, copied into the ZUGFeRD/corpus repository. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/d891458e9822e34271a5438497bf924e89955979/ZUGFeRDv2/fail/FX-With-UBL-REC50304330.pdf",
+        "sha256": "d121c4bd4e409a2375f89dca3d11e6fca655cec60bfe781f5a8d72c30635eb79",
+        "bytes": 116560,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "itext-9",
+        "erp-output",
+        "anonymised",
+        "factur-x",
+        "ubl-payload-in-factur-x",
+        "xmp-attribute-form",
+        "embedded-file",
+        "af-relationship-alternative",
+        "tagged",
+        "pdfa",
+        "pdfa-3b-claim",
+        "custom-output-intent",
+        "type0-subset",
+        "truetype-subset",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Rechnung 50304330",
+          "WARNUNG VOR BETRUG"
+        ],
+        "attachments": [
+          "factur-x.xml"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/zugferd-corpus/pypdf2-zugferd1-additional-data-cr-eol.pdf",
+      "title": "intarsys's ZUGFeRD 1.0 EXTENDED example with a second XML attached as /Supplement by the 4s4u additional-data library, re-saved linearized with CR-only line ends and inconsistent hint tables",
+      "useCase": "invoice",
+      "producer": "additional-data library 0.3.1.0 (4s4u), written by PyPDF2 over intarsys ZUGFeRD Toolkit 1.0 output, then re-saved linearized by a tool that kept /Producer",
+      "origin": "remote",
+      "licence": "No redistribution licence: a 4s4u sample built on FeRD's ZUGFeRD 1.0 example (\"Copyright AWV e.V. 2013\" on the page), copied into the ZUGFeRD/corpus repository. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/d891458e9822e34271a5438497bf924e89955979/ZUGFeRDv1/correct/4s4u/additional-data-sample-1.pdf",
+        "sha256": "e42098099b27c0523b11eba460b6164718edcb52f921011f43bd177287f96402",
+        "bytes": 111968,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "vendor-sample",
+        "zugferd-1",
+        "zugferd-extended",
+        "additional-data",
+        "two-embedded-files",
+        "af-relationship-alternative",
+        "af-relationship-supplement",
+        "xmp-two-extension-schemas",
+        "pdfa",
+        "pdfa-3b-claim",
+        "no-output-intent",
+        "linearized",
+        "linearization-hints-inconsistent",
+        "cr-only-line-endings",
+        "xref-stream",
+        "object-streams",
+        "truetype-subset",
+        "dct-image-iccbased",
+        "letter-spaced-text",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "W A R E N R E C H N U N G",
+          "Copyright AWV e.V. 2013"
+        ],
+        "attachments": [
+          "ZUGFeRD-invoice.xml",
+          "additional_data-logistics-invoice-1.0-unique.xml"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/zugferd-corpus/konik-pdfbox-zugferd1-basic-from-word.pdf",
+      "title": "Konik's ZUGFeRD 1.0 BASIC sample: a Word page made hybrid by Konik's PDFBox carriage, one subset tag shared by four font programs, zf:Version 1p0 in the XMP",
+      "useCase": "invoice",
+      "producer": "Konik PDFBox-Carriage (Apache PDFBox), page from Microsoft Word",
+      "origin": "remote",
+      "licence": "AGPL-3.0 (a sample of the Konik project, copied into the ZUGFeRD/corpus repository): copyleft, so it is used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ZUGFeRD/corpus/d891458e9822e34271a5438497bf924e89955979/ZUGFeRDv1/correct/Konik/acme_invoice-42_ZUGFeRD.pdf",
+        "sha256": "a3b700e2db9b61ff8400e9d98aeeca9a8c547fcceb850d11d0a509dbeaadc148",
+        "bytes": 115940,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "copyleft",
+        "konik",
+        "apache-pdfbox-writer",
+        "word-page",
+        "zugferd-1",
+        "zugferd-basic",
+        "xmp-zugferd-version-1p0",
+        "embedded-file-uncompressed",
+        "af-relationship-alternative",
+        "reused-subset-tag",
+        "markinfo-without-structtree",
+        "empty-outlines",
+        "pdfa",
+        "pdfa-3b-claim",
+        "srgb-output-intent",
+        "type0-subset",
+        "truetype-subset",
+        "indexed-iccbased-image",
+        "xref-table",
+        "specimen"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Rechnung Nr. 42",
+          "Amboss 250 kg"
+        ],
+        "attachments": [
+          "ZUGFeRD-invoice.xml"
+        ],
+        "claimsConformance": "PDF/A-3b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/usgs/omnipage-usgs-professional-paper-1-1902.pdf",
+      "title": "USGS Professional Paper 1 (1902) as scanned in 2017: 125 JPEG 2000 page images under an invisible OmniPage 19 OCR layer, tagged, 146.7 MB",
+      "useCase": "stress",
+      "producer": "OmniPage CSDK 19 / OmniPage 19 (Nuance), 2017",
+      "origin": "remote",
+      "licence": "Public domain (US federal government work, USGS): at 146.7 MB too large to commit, so fetched on demand (ADR 32)",
+      "source": {
+        "url": "https://pubs.usgs.gov/pp/0001/report.pdf",
+        "sha256": "50b5ea3fecbbda5f74fcd4dd53f348d697c18d44f1a6ff1a42fd1f0031c5ee3d",
+        "bytes": 146708859,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "too-large-to-commit",
+        "heavy-scan",
+        "jpx",
+        "large-jpx-plate",
+        "omnipage",
+        "ocr-layer",
+        "invisible-text",
+        "non-embedded-base14",
+        "tagged",
+        "outlines",
+        "uri-links",
+        "malformed-uri-links",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "linearization-hints-inconsistent",
+        "linearization-hints-beyond-eof"
+      ],
+      "expect": {
+        "pages": 125,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "KETCHIKAN MINING DISTRICT, ALASKA",
+          "Professional Paper No. 1"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/usda/pdfmaker23-usda-title-vi-fact-sheet-hebrew.pdf",
+      "title": "USDA Title VI fact sheet in Hebrew: Acrobat PDFMaker 23 for Word, right-to-left text in Arial TrueType and CID subsets, tagged with /Lang he, Hebrew outline titles",
+      "useCase": "report",
+      "producer": "Acrobat PDFMaker 23 for Word, Adobe PDF Library 23.6.96",
+      "origin": "remote",
+      "licence": "USDA puts most of its web content in the public domain, but its policy reserves the USDA symbol that this fact sheet's banner carries, and the Hebrew translation's provenance is unknown. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://web.archive.org/web/20250403210826id_/https://www.nifa.usda.gov/sites/default/files/2023-12/Title%20VI%20Fact%20Sheet%20(Hebrew).pdf",
+        "sha256": "6b726ae410931ad8b8b5f150eb7a7a5d37830f532ae272e0c24071954ea5a26d",
+        "bytes": 202780,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "reserved-logo",
+        "rtl-hebrew",
+        "pdfmaker",
+        "truetype-subset",
+        "type0-subset",
+        "tagged",
+        "unicode-outline-titles",
+        "uri-links",
+        "tel-and-mailto-links",
+        "indexed-image",
+        "empty-acroform",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "דע את זכויותיך תחת כותרת",
+          "משרד עוזר המזכיר לזכויות האזרח"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/opm/word365-acrobat-opm-of306-form.pdf",
+      "title": "OPM Optional Form 306: a Word for Microsoft 365 document made into a tagged AcroForm by Acrobat, 40 fields with date JavaScript and two unsigned signature fields",
+      "useCase": "form",
+      "producer": "Microsoft Word for Microsoft 365; form fields added in Adobe Acrobat (XMP Core 5.6), Producer left as Word",
+      "origin": "remote",
+      "licence": "Unclear: no OPM reuse statement was found, so public domain rests on 17 U.S.C. 105 alone; fetched from an Internet Archive capture because opm.gov serves the current edition. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://web.archive.org/web/20260830190845id_/https://www.opm.gov/forms/pdf_fill/of0306.pdf",
+        "sha256": "3229d821dd6b07b2f38c73fa5be4ce87276a09f03df881fab2be9ef3bd5b6261",
+        "bytes": 171239,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "word-365",
+        "acrobat-added-fields",
+        "acroform",
+        "format-keystroke-javascript",
+        "field-tooltips",
+        "unsigned-signature-field",
+        "sigflags-1",
+        "tagged",
+        "outlines",
+        "idtree-in-names-dictionary",
+        "non-embedded-truetype",
+        "type0-subset",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Declaration for Federal Employment",
+          "OMB No. 3206-0182"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/govuk/print-to-pdf-border-force-poster-updated.pdf",
+      "title": "Microsoft Print To PDF output of a poster: text as vector outlines with no fonts, a JPEG, then an Adobe incremental update that rewrote /Info and added XMP",
+      "useCase": "report",
+      "producer": "Microsoft: Print To PDF; metadata update by an Adobe tool (XMP Core 9.1)",
+      "origin": "remote",
+      "licence": "GOV.UK publishes it under OGL v3 'except where otherwise stated', but the poster carries Crimestoppers', the NCA's and the NPCC's logos, which that licence does not cover. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://assets.publishing.service.gov.uk/media/6a79b5b17349adb729babe73/Pegasus_EngPoster2.pdf",
+        "sha256": "14ec7ed20de41220b0a8c627480a0b53b5f1ba95e2bdbbe4b46fdc09efaf432c",
+        "bytes": 148914,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "third-party-logos",
+        "microsoft-print-to-pdf",
+        "text-as-paths",
+        "no-fonts",
+        "dct-image",
+        "flipped-ctm",
+        "even-odd-clip",
+        "incremental-update",
+        "info-replaced-in-update",
+        "xmp-added-in-update",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfjs/aspose-cad-stale-tail-issue9418.pdf",
+      "title": "Aspose.CAD for .NET 17.9 drawing written over an older, longer file: the stale tail's trailer names the /Info dictionary as /Root, and qpdf and poppler find no page",
+      "useCase": "damaged",
+      "producer": "Aspose.CAD for .NET 17.9 (Creator: Aspose Pty Ltd.), over the untruncated tail of an earlier file",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to pdf.js issue 9418, kept in pdf.js's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue9418.pdf",
+        "sha256": "bc0d5ec68433277d36aea4d80c3f8a97a85672b3ded52696118f69623f9a5114",
+        "bytes": 151088,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "aspose-cad",
+        "cad-drawing",
+        "stale-tail-after-overwrite",
+        "trailer-root-wrong",
+        "xref-offsets-wrong",
+        "hybrid-reference",
+        "xref-table",
+        "xref-stream",
+        "missing-object-stream",
+        "type0-subset",
+        "truetype-subset",
+        "real-world-damage"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf",
+      "title": "Firefox Nightly print through cairo 1.18.0: 65,542 objects in one object stream, their xref-stream indexes wrapped at 16 bits, so poppler loses the catalog",
+      "useCase": "damaged",
+      "producer": "Firefox Nightly 142.0a1, cairo 1.18.0",
+      "origin": "remote",
+      "licence": "No licence stated: a reproduction printed from Firefox by a pdf.js developer for Mozilla bug 1978317, kept in pdf.js's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/bug1978317.pdf",
+        "sha256": "2da2307afefe14c163f0f57a794c5199e9302eec3fdc154896a05976e08c2727",
+        "bytes": 1535205,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "firefox-print",
+        "cairo",
+        "xref-stream",
+        "object-streams",
+        "objstm-index-overflow",
+        "many-objects",
+        "many-annotations",
+        "link-annotations",
+        "struct-tree-without-markinfo",
+        "truetype-subset",
+        "real-world-damage"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfjs/canon-scan-junk-after-eof-scan-bad.pdf",
+      "title": "Canon scanner page with the scanner's own invisible OCR text, 11 KB of re-encoded bytes after %%EOF, and a JPEG under Flate that libjpeg calls corrupt",
+      "useCase": "damaged",
+      "producer": "Canon scanner (Creator 'Canon ', blank Producer), 2011",
+      "origin": "remote",
+      "licence": "No licence stated: committed to pdf.js's test files in 2011 by a contributor, with no statement covering the scan. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/scan-bad.pdf",
+        "sha256": "d40f31f182cf254ab134826d379875acacb1f7b48bf1a57bce2e30b38d16628e",
+        "bytes": 29832,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "licence-unclear",
+        "office-copier",
+        "ocr-layer",
+        "invisible-text",
+        "junk-after-eof",
+        "startxref-not-found",
+        "dct-in-flate",
+        "dct-corrupt",
+        "non-embedded-type1",
+        "xref-table",
+        "real-world-damage"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "pdf.js"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfjs/aspose-pdf-java-decodeparms-null-issue7200.pdf",
+      "title": "Aspose.Pdf for Java 10.2 image-only page: every Flate stream in use carries /DecodeParms [null], and /ToUnicode is a name rather than a stream",
+      "useCase": "damaged",
+      "producer": "Aspose.Pdf for Java 10.2.0 (Creator: Aspose Ltd.)",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to pdf.js issue 7200, whose reporter allowed its use in pdf.js's test suite only. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue7200.pdf",
+        "sha256": "9ff3272be159d68d2b9d146955184778926d7f789f1f4f5517c8b0ecac2e2c20",
+        "bytes": 37095,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "aspose-pdf-java",
+        "decodeparms-null",
+        "tounicode-name",
+        "length1-zero",
+        "image-only",
+        "indexed-colour",
+        "type0",
+        "fonts-unused",
+        "xref-table",
+        "real-world-damage"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfjs/typeset-sh-corrupt-flate-issue11651.pdf",
+      "title": "typeset.sh HTML-to-PDF output: a FontFile2 whose deflate data is corrupt, a ToUnicode stream with a wrong Adler-32, and text shown before any Tf",
+      "useCase": "damaged",
+      "producer": "typeset.sh",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to pdf.js issue 11651, kept in pdf.js's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue11651.pdf",
+        "sha256": "dbbe8b9a376318e0e525c939af007e21ee78c22000cbe4855f61d7f9e50d1b27",
+        "bytes": 23047,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "typeset-sh",
+        "html-to-pdf",
+        "flate-corrupt",
+        "flate-checksum-wrong",
+        "font-program-undecodable",
+        "text-before-tf",
+        "invalid-operators",
+        "trailer-id-null",
+        "type0",
+        "xref-table",
+        "real-world-damage"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello world"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfjs/acrobat8-jpx-precincts-issue5475.pdf",
+      "title": "Adobe Acrobat 8 Image Conversion output: one JPEG 2000 photograph with several precincts per resolution level, linearized",
+      "useCase": "stress",
+      "producer": "Adobe Acrobat 8.0 Image Conversion Plug-in",
+      "origin": "remote",
+      "licence": "Not licensed: a PDF made by a contributor for pdf.js issue 5475 and kept in pdf.js's test files; a comment says the test photos came from Unsplash (then CC0), but the photo is not identified and the file carries no licence. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue5475.pdf",
+        "sha256": "c50d4b50fa976b9001774f30d7d1f23a50169c9fd7e50dacc7022d7a0ea6a0ef",
+        "bytes": 166026,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "acrobat-image-conversion",
+        "jpx",
+        "jp2-container",
+        "jpx-no-colorspace",
+        "jpx-multiple-precincts",
+        "image-only",
+        "linearized",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfjs/itext5-ccitt-g4-mask-issue4379.pdf",
+      "title": "iText 5.5.0 image whose explicit /Mask is a CCITT Group 4 stencil over a predictor-coded 1-bit Indexed image",
+      "useCase": "stress",
+      "producer": "iText 5.5.0 (AGPL version)",
+      "origin": "remote",
+      "licence": "Not licensed: made by the reporter of pdf.js issue 4379 and donated to pdf.js's test suite only. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue4379.pdf",
+        "sha256": "6a6c99d02d3e45bdf9ad0418a17e777e07003673b00d60ec872faca1382faca6",
+        "bytes": 4264,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "itext",
+        "ccitt-g4",
+        "image-mask",
+        "explicit-mask",
+        "flate-png-predictor",
+        "indexed-colour",
+        "image-only",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfjs/outside-in-pdfa1a-broken-loca-issue17671.pdf",
+      "title": "Oracle Outside In PDF Export 8.5.7 spreadsheet page: a veraPDF-valid PDF/A-1a whose embedded Calibri subset has a loca table ending in a zero offset",
+      "useCase": "archival",
+      "producer": "Oracle Outside In Technology, PDF Export 8.5.7.241.2401241133",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to pdf.js issue 17671, kept in pdf.js's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue17671.pdf",
+        "sha256": "dd4261babb58f609f9719079424d5104712e20d6847ae6eb571b4a1da8a613f8",
+        "bytes": 20490,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "oracle-outside-in",
+        "spreadsheet-export",
+        "pdfa",
+        "tagged",
+        "output-intent",
+        "linearized",
+        "linearization-hints-inconsistent",
+        "truetype-embedded",
+        "truetype-loca-malformed",
+        "xref-table",
+        "real-world-damage"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Das ist ein Test"
+        ],
+        "claimsConformance": "PDF/A-1a",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfjs/arcmap-cff-fdselect-bug1146106.pdf",
+      "title": "Esri ArcMap 10.2.2 map layer: a CID-keyed CFF icon font whose format 3 FDSelect starts at glyph 1, with layers and a geospatial measure",
+      "useCase": "damaged",
+      "producer": "Esri ArcMap 10.2.2.3552",
+      "origin": "remote",
+      "licence": "Not licensed: an attachment to Mozilla bug 1146106, kept in pdf.js's test files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/mozilla/pdf.js/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/bug1146106.pdf",
+        "sha256": "63bdac77b56f72a04e654440e624e50d77e420632a03f97dca971616658acdbc",
+        "bytes": 4517,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "esri-arcmap",
+        "cff-cid-font",
+        "cff-fdselect-malformed",
+        "no-tounicode",
+        "optional-content",
+        "geospatial",
+        "xref-table",
+        "real-world-damage"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/canada/livecycle-es10-ircc-imm1344-certified-dynamic-xfa.pdf",
+      "title": "LiveCycle Designer ES 10 dynamic XFA form (Canadian immigration IMM 1344): a placeholder page, AES-128, a DocMDP certification with a timestamp, then UR3 usage rights in an incremental update",
+      "useCase": "form",
+      "producer": "Adobe LiveCycle Designer ES 10.0; certified with Adobe Acrobat Standard DC 2015.006.30172; Reader-extended (UR3) by Acrobat Reader DC extensions",
+      "origin": "remote",
+      "licence": "Government of Canada terms: non-commercial reproduction only, under conditions, and no commercial redistribution without written permission; the bytes are the Internet Archive capture that pdf.js links to. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://web.archive.org/web/20201111224144id_/https://www.canada.ca/content/dam/ircc/migration/ircc/english/pdf/kits/forms/imm1344e.pdf",
+        "sha256": "aa502cb2ed7cf57d7084f543215626148cc37d70c70034c7086dfee420aae559",
+        "bytes": 579243,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "reuse-restricted",
+        "linked-by-pdfjs",
+        "xfa",
+        "xfa-dynamic",
+        "xfa-template-2.8",
+        "needs-rendering",
+        "xfa-placeholder-page",
+        "certification-signature",
+        "docmdp",
+        "fieldmdp",
+        "signed-adbe-pkcs7-detached",
+        "rfc3161-timestamp",
+        "organisation-signing-certificate",
+        "usage-rights-ur3",
+        "signed-and-encrypted",
+        "incremental-update",
+        "encryption-aes128",
+        "empty-user-password",
+        "document-javascript",
+        "tagged",
+        "outlines",
+        "xref-stream",
+        "object-streams",
+        "non-embedded-times-roman"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "encrypted": true,
+        "password": "",
+        "hasExtractableText": true,
+        "textContains": [
+          "Please wait...",
+          "If this message is not eventually replaced by the proper contents of the document"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/canada/livecycle-es9-cfia-fish-export-licence-dynamic-xfa.pdf",
+      "title": "LiveCycle Designer ES 9 dynamic XFA form (Canadian fish export licence application): a placeholder page, AES-128, legacy /UR beside /UR3 usage rights",
+      "useCase": "form",
+      "producer": "Adobe LiveCycle Designer ES 9.0; usage rights (UR, UR3) signed with Adobe's Reader Extensions certificate",
+      "origin": "remote",
+      "licence": "Government of Canada terms: non-commercial reproduction only, under conditions, and no commercial redistribution without written permission; the bytes are the Internet Archive capture that pdf.js links to. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://web.archive.org/web/20210609130056id_/https://inspection.canada.ca/DAM/DAM-food-aliments/STAGING/text-texte/c5704_re_1357758804123_eng.pdf",
+        "sha256": "d89216e804a56129e149b4b71f7047a897228455474a2ccc6949eda4c9baae7b",
+        "bytes": 112999,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "reuse-restricted",
+        "linked-by-pdfjs",
+        "xfa",
+        "xfa-dynamic",
+        "xfa-template-2.8",
+        "needs-rendering",
+        "xfa-placeholder-page",
+        "usage-rights-ur",
+        "usage-rights-ur3",
+        "ur-signature-without-byterange",
+        "adbe-extension-level-3",
+        "encryption-aes128",
+        "empty-user-password",
+        "document-javascript",
+        "tagged",
+        "xref-stream",
+        "object-streams",
+        "non-embedded-times-roman"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "encrypted": true,
+        "password": "",
+        "hasExtractableText": true,
+        "textContains": [
+          "Please wait...",
+          "If this message is not eventually replaced by the proper contents of the document"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/us-states/powerbi-pdfium-acrobat-covid-dashboard-nine-updates.pdf",
+      "title": "Massachusetts COVID-19 dashboard: a Power BI export through PDFium, linearized by Adobe Acrobat and then saved nine more times incrementally by Acrobat, which added headers and footers and kept PDFium as producer (pdf.js issue 12533)",
+      "useCase": "report",
+      "producer": "PDFium (a Power BI export with PowerVisuals and Segoe UI fonts); linearized and then saved nine times incrementally by Adobe Acrobat DC (Adobe XMP Core 5.6-c017, 2020), which kept /Producer and /Creator PDFium",
+      "origin": "remote",
+      "licence": "© Commonwealth of Massachusetts: the Mass.gov terms forbid any copying beyond fair use; the bytes are the Internet Archive capture that pdf.js links to. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://web.archive.org/web/20201026152003id_/https://www.mass.gov/doc/covid-19-dashboard-october-25-2020/download",
+        "sha256": "dec4729ef4d9891cd189f7fa0ba59d3e2868996bdb24d058924cb9c44b9b1cd6",
+        "bytes": 1901959,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "all-rights-reserved",
+        "linked-by-pdfjs",
+        "power-bi",
+        "pdfium",
+        "adobe-acrobat-incremental-saves",
+        "producer-not-updated-after-adobe-save",
+        "linearized-then-updated",
+        "incremental-update",
+        "nine-incremental-updates",
+        "linearization-invalidated-by-update",
+        "cr-line-endings",
+        "acrobat-headers-footers",
+        "pieceinfo",
+        "type0-subset",
+        "emoji-font",
+        "optional-content",
+        "empty-acroform",
+        "link-annotations",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 24,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Dashboard of Public Health Indicators",
+          "COVID Patient Census by Hospital"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdf-differences/unidentified-wine-merchant-sheet-png-under-dctdecode.pdf",
+      "title": "A German wine merchant's product sheet from an unidentified generator: a PNG stored under /DCTDecode, Identity-H TrueType subsets without ToUnicode, no /Info (pdf-differences UnknownFilter)",
+      "useCase": "damaged",
+      "producer": "Unidentified (no /Info or XMP): Identity-H TrueType overlay on a letterhead form XObject from an Adobe application",
+      "origin": "remote",
+      "licence": "A third party's real-world document, published unmodified in the PDF Association's pdf-differences repository, whose CC BY 4.0 cannot cover it. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/pdf-differences/907fe96e52b73e491489eee545c47b119bf9989b/UnknownFilter/4387ba480c6f935b8e97749d40b3c001ad584b7bda66ca2c040be67337669497.pdf",
+        "sha256": "4387ba480c6f935b8e97749d40b3c001ad584b7bda66ca2c040be67337669497",
+        "bytes": 506671,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "third-party-document",
+        "real-world-damage",
+        "parser-differential",
+        "png-labelled-dctdecode",
+        "no-tounicode",
+        "identity-h-truetype-subset",
+        "type1c-subset",
+        "ccitt-image-mask",
+        "form-xobject",
+        "no-info",
+        "trailer-comment-cr-before-startxref",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfbox/amyuni-truncated-linearized-pdfbox3208.pdf",
+      "title": "Amyuni PDF Converter 4.0.0.9 output, linearized and cut 1,950 bytes short: main cross-reference section and trailer lost, /Prev pointing past the end of the file",
+      "useCase": "damaged",
+      "producer": "Amyuni PDF Converter 4.0.0.9 (Liquent services server), 2014",
+      "origin": "remote",
+      "licence": "Not licensed: a web-crawled file attached to Apache PDFBox issue PDFBOX-3208 and downloaded by PDFBox's build. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://issues.apache.org/jira/secure/attachment/12784025/PDFBOX-3208-L33MUTT2SVCWGCS6UIYL5TH3PNPXHIS6.pdf",
+        "sha256": "e85cba6d75465a20ce1336093f316fe526a4be2eee7afcbf21c047d69d1107e5",
+        "bytes": 477059,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "real-world-damage",
+        "truncated",
+        "linearized",
+        "main-xref-lost",
+        "prev-beyond-eof",
+        "startxref-missing",
+        "info-recovery",
+        "xref-table",
+        "amyuni",
+        "stored-companion-file-list",
+        "empty-acroform",
+        "outlines",
+        "type0-cidfonttype2",
+        "dct-images"
+      ],
+      "expect": {
+        "pages": 10,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Diretrizes do diagnóstico e tratamento da crise hipertensiva em crianças",
+          "DOCUMENTO OFICIAL"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfbox/distiller8-trailing-junk-after-eof-pdfbox3783.pdf",
+      "title": "PDFMaker 8.1 and Distiller 8.1, linearized hybrid-reference file followed by 7,588 bytes of UTF-16LE text after its last %%EOF, hiding startxref from a 1 KB tail search",
+      "useCase": "damaged",
+      "producer": "Acrobat PDFMaker 8.1 for Word, Acrobat Distiller 8.1.0 (Windows), 2008",
+      "origin": "remote",
+      "licence": "Not licensed: a web-crawled university page attached to Apache PDFBox issue PDFBOX-3783 and downloaded by PDFBox's build. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://issues.apache.org/jira/secure/attachment/12867102/PDFBOX-3783-72GLBIGUC6LB46ELZFBARRJTLN4RBSQM.pdf",
+        "sha256": "894a0c002fc469122dc799db672562844677a814c2789a25ef54c130450bf7cd",
+        "bytes": 82301,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "real-world-damage",
+        "junk-after-eof",
+        "utf16le-trailing-garbage",
+        "startxref-beyond-1kb-tail",
+        "linearized",
+        "hybrid-reference",
+        "xref-stream",
+        "object-streams",
+        "tagged",
+        "truetype-subset",
+        "truetype-not-embedded",
+        "type0-cidfonttype2",
+        "pieceinfo"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "EMERGENCY CONTACTS",
+          "VICTIMS ASSISTANCE"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfbox/pdfwriter3-cr-stripped-offsets-pdfbox3940.pdf",
+      "title": "Acrobat PDFWriter 3.02 (PDF 1.2, LZW) with its CR LF line ends stripped after writing: xref offsets 3 to 175 bytes past their objects, startxref 184 bytes off, /Info dates in plain English",
+      "useCase": "damaged",
+      "producer": "WordPerfect, Acrobat PDFWriter 3.02 for Windows (1998)",
+      "origin": "remote",
+      "licence": "Not licensed: a GovDocs1 file attached to Apache PDFBox issue PDFBOX-3940; it looks like a USDA APHIS export certificate, so probably public domain, but its original URL is unknown. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://issues.apache.org/jira/secure/attachment/12888957/079977.pdf",
+        "sha256": "ae90b75c3b4c76d86ddd250097d23993b23213c88213c0b2f26e856ead441079",
+        "bytes": 11651,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "licence-unclear",
+        "real-world-damage",
+        "crlf-stripped",
+        "xref-offsets-shifted",
+        "startxref-wrong",
+        "pdf-1.2",
+        "legacy",
+        "pdfwriter-3",
+        "wordperfect-source",
+        "lzw",
+        "xref-table",
+        "indirect-length",
+        "non-pdf-date-strings",
+        "undefined-string-escapes",
+        "truetype-not-embedded",
+        "catalog-default-colour-spaces"
+      ],
+      "expect": {
+        "pages": 5,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "ANIMAL HEALTH CERTIFICATE",
+          "for importation of ova and embryos of the equine species"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfbox/distiller6-zeroed-object-stream-pdfbox3947.pdf",
+      "title": "FrameMaker 7.1 and Distiller 6.0.1 report, linearized with 104 object streams, with a 32 KiB block zeroed at 0x198000: one object stream destroyed and a Flate stream broken",
+      "useCase": "damaged",
+      "producer": "FrameMaker 7.1, Acrobat Distiller 6.0.1 (Windows), 2005",
+      "origin": "remote",
+      "licence": "Public domain as a USGS report, as its imprint page states, but this damaged copy exists only as an attachment to Apache PDFBox issue PDFBOX-3947, and at 2.1 MB it is over the size limit for committed files. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://issues.apache.org/jira/secure/attachment/12890031/670064.pdf",
+        "sha256": "5daeb7f3c0066d409bca791d620692912caf1b363764a36504de9307ddd30cf2",
+        "bytes": 2122217,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "too-large-to-commit",
+        "real-world-damage",
+        "zeroed-block",
+        "object-stream-destroyed",
+        "flate-data-corrupt",
+        "linearized",
+        "hybrid-reference",
+        "xref-stream",
+        "object-streams",
+        "linearization-hints-inconsistent",
+        "tagged",
+        "jpx-images",
+        "embedded-file",
+        "outlines",
+        "page-labels",
+        "article-threads",
+        "link-annotations"
+      ],
+      "expect": {
+        "pages": 41,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "stream.length-invalid"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Open-File Report 2004-1366",
+          "Test Drilling and Geophysical Logging Surveys"
+        ],
+        "attachments": [
+          "High Quality.joboptions"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfbox/distiller10-truncated-lost-catalog-pdfbox3949.pdf",
+      "title": "FrameMaker 10 and Distiller 10 budget book, linearized then updated, cut at 1,048,352 bytes: last xref stream lost, no classic trailer left, so qpdf 11.9.1 finds no /Root",
+      "useCase": "damaged",
+      "producer": "FrameMaker 10.0.1, Acrobat Distiller 10.1.0 (Windows), 2011",
+      "origin": "remote",
+      "licence": "Not licensed: a City of Portland budget book (a municipal work, not public domain), crawled, truncated and attached to Apache PDFBox issue PDFBOX-3949. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://issues.apache.org/jira/secure/attachment/12890037/MKFYUGZWS3OPXLLVU2Z4LWCTVA5WNOGF.pdf",
+        "sha256": "6a9af3d09c6111ec13534910bd81dec3737f0dbb03dee628781d57137719fed3",
+        "bytes": 1048352,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "real-world-damage",
+        "truncated",
+        "incomplete-object-stream",
+        "last-xref-lost",
+        "trailer-only-in-xref-streams",
+        "referee-cannot-open",
+        "linearized",
+        "incremental-update",
+        "xref-stream",
+        "object-streams",
+        "tagged",
+        "ccitt",
+        "link-annotations",
+        "many-pages"
+      ],
+      "expect": {
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "FY 2011–12 Adopted Budget",
+          "Emergency Communication Fund"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfbox/word2010-truncated-page-tree-pdfbox3950.pdf",
+      "title": "Word 2010 file with a later revision appended, cut at exactly 1 MiB: page-tree kids lost to the cut, and qpdf 11.9.1, PDFium and PDFBox count 11, 8 and 4 pages",
+      "useCase": "damaged",
+      "producer": "Microsoft Word 2010 (2012)",
+      "origin": "remote",
+      "licence": "Public domain (US federal government work, DHS-FEMA Form 086-0-22 and its instructions), but this copy is a crawl cut at 1 MiB, known only as an attachment to Apache PDFBox issue PDFBOX-3950, not the publisher's bytes. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://issues.apache.org/jira/secure/attachment/12890042/23EGDHXSBBYQLKYOKGZUOVYVNE675PRD.pdf",
+        "sha256": "82df89d292f54affb6e58da7d18c90f44c60a9f21f904ff41dd2af8ae8c4a366",
+        "bytes": 1048576,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "real-world-damage",
+        "truncated",
+        "appended-revision",
+        "hybrid-reference",
+        "xref-stream",
+        "object-streams",
+        "dangling-page-tree-kids",
+        "page-count-disagreement",
+        "no-tounicode-shifted-text",
+        "truetype-not-embedded",
+        "truetype-subset",
+        "link-annotations",
+        "dct-image"
+      ],
+      "expect": {
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Number 3 – Geographic Coordinate Data",
+          "LOMC CLEARINGHOUSE"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfbox/acrobat-form-nul-in-names-pdfbox6178.pdf",
+      "title": "Acrobat-saved radio-button form whose export value is written /m#00nnlich: an escaped NUL inside names used as values and dictionary keys",
+      "useCase": "damaged",
+      "producer": "Adobe Acrobat, 2025-2026 (no /Producer recorded)",
+      "origin": "remote",
+      "licence": "Not licensed: a reporter's form attached to Apache PDFBox issue PDFBOX-6178 and downloaded by PDFBox's build. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://issues.apache.org/jira/secure/attachment/13081311/form_selected_ASCII_NUL_acrobat.pdf",
+        "sha256": "c135f91446bfaca59997a254fdbd4f26bcaa21b4fa85fc02351ab595406da555",
+        "bytes": 20082,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "real-world-damage",
+        "nul-in-name",
+        "name-hex-escape-00",
+        "acroform",
+        "radio-buttons",
+        "appearance-states",
+        "non-ascii-export-value",
+        "xref-table",
+        "cidfonttype0-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "männlich:",
+          "weiblich:"
+        ],
+        "unsupported": "M2: the reader accepts the names written with #00, a NUL the syntax forbids and qpdf reports, and says nothing",
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdfium/itextsharp-lang-escape-info-bug182.pdf",
+      "title": "iTextSharp 5.5.0 output whose UTF-16BE /Info strings open with a language escape sequence (ESC ja ESC)",
+      "useCase": "form",
+      "producer": "Super Visual Formade for Web / Java Edition, iTextSharp 5.5.0 (2015)",
+      "origin": "remote",
+      "licence": "Not licensed: a bug-report file kept in PDFium's testing/resources, which the BSD licence of PDFium's hand-written test files does not cover. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/chromium/pdfium/a84323421e94f484faca52dd9d027934eba42ab8/testing/resources/bug_182.pdf",
+        "sha256": "8484042bb12dc33bbfef5a8d9e64cd3ed99630f5684fc7b7e94358a60d42d220",
+        "bytes": 17012,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "utf16be-language-escape",
+        "info-strings",
+        "pdfdocencoding-non-ascii",
+        "pdf-1.2",
+        "itextsharp",
+        "xref-table",
+        "truetype-subset"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Test PDF"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfplumber/pypdf2-inverted-mediabox-issue932.pdf",
+      "title": "PyPDF2-rewritten one-page scan with an inverted MediaBox [0 841.68 631.08 0] and a Flate-over-DCT page image",
+      "useCase": "scan",
+      "producer": "PyPDF2 (only /Producer; the page's font resources are named /KSPF1)",
+      "origin": "remote",
+      "licence": "Not licensed: a reporter's file from pdfplumber issue 932, kept in its tests/pdfs; the project's MIT licence covers its code, not reporters' documents. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/jsvine/pdfplumber/4c64b92d5caccd71c645e98e0fabb0c4dba7ff45/tests/pdfs/malformed-from-issue-932.pdf",
+        "sha256": "471f16c8716a7fa8cda228ad293a4df97fe16f184ff3d952f26fc9e38a348ff3",
+        "bytes": 61037,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "inverted-mediabox",
+        "cropbox-differs-from-mediabox",
+        "scan",
+        "flate-over-dct",
+        "image-with-text-overlay",
+        "truetype-not-embedded",
+        "pypdf2",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "2021"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdfplumber/ghostscript-cpdf-gbk-font-names-issue842.pdf",
+      "title": "Ghostscript 9.04 via PDFCreator, page extracted by cpdf: CID font names in GBK bytes written as #xx escapes, with WinCharSetFFFF-H suffixes",
+      "useCase": "report",
+      "producer": "PDFCreator 1.2.3 (GPL Ghostscript 9.04), page extracted by cpdf (2012)",
+      "origin": "remote",
+      "licence": "Not licensed: a reporter's file from pdfplumber issue 842, kept in its tests/pdfs; the project's MIT licence covers its code, not reporters' documents. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/jsvine/pdfplumber/4c64b92d5caccd71c645e98e0fabb0c4dba7ff45/tests/pdfs/issue-842-example.pdf",
+        "sha256": "1c49e633f46097016b41113160de375ae7367d607706b3a042580baed90defeb",
+        "bytes": 287855,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "bug-report-attachment",
+        "cjk",
+        "gbk-bytes-in-names",
+        "name-hex-escapes",
+        "non-standard-cmap-suffix",
+        "type0-cidfonttype2-identity-h",
+        "orphan-info-dictionary",
+        "malformed-xmp",
+        "empty-page-labels",
+        "ghostscript",
+        "cpdf",
+        "xref-table",
+        "duplicated-text-runs"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "ANHUI ANLI ARTIFICIAL LEATHER CO.,LTD.",
+          "2011 年年度报告"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/py-pdf-sample-files/wkhtmltopdf-qt5-html-page.pdf",
+      "title": "wkhtmltopdf 0.12.5 on Qt 5.12.8 (through pdfkit): an HTML page in DejaVu Sans CID subsets, text drawn one glyph at a time in a y-down matrix",
+      "useCase": "report",
+      "producer": "wkhtmltopdf 0.12.5 (Qt 5.12.8 PDF engine), called through the pdfkit Python wrapper",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0 (py-pdf/sample-files): ShareAlike would reach every derivative the corpus makes. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/py-pdf/sample-files/02b8203bf416db3dbdb03438bc8278dfcb0555f3/022-pdfkit/pdfkit.pdf",
+        "sha256": "8820ba44cd62264fd561e921aacc214cee7ba76723f525d591cdb2104a87f0dd",
+        "bytes": 14404,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "wkhtmltopdf",
+        "qt-pdf-engine",
+        "html-to-pdf",
+        "type0-cidfonttype2-subset",
+        "cidset",
+        "tounicode-space-mapped-to-tab",
+        "one-tj-per-glyph",
+        "y-down-text-matrix",
+        "empty-annots-array",
+        "pattern-colour-space",
+        "no-trailer-id",
+        "no-xmp",
+        "untagged",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Header",
+          "ABC:"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/py-pdf-sample-files/ghostscript10-pdfa1b-type1c.pdf",
+      "title": "Ghostscript 10.00.0 pdfwrite output claiming PDF/A-1b: Type 1C subsets without ToUnicode, word spaces only as TJ kerning, an AdobeRGB output intent",
+      "useCase": "archival",
+      "producer": "GPL Ghostscript 10.00.0 (pdfwrite, PDF/A-1b), from a TeX source set in cm-super fonts",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0 (py-pdf/sample-files), over the text of Apple's 1997 advertisement: ShareAlike would reach every derivative the corpus makes. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/py-pdf/sample-files/02b8203bf416db3dbdb03438bc8278dfcb0555f3/021-pdfa/crazyones-pdfa.pdf",
+        "sha256": "f05f2738a1fa8c1d2e1147881fe1a62516a7f8caaf784067790731f56df626c4",
+        "bytes": 16368,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "ghostscript",
+        "pdfwrite",
+        "pdfa",
+        "type1c-subset",
+        "no-tounicode",
+        "differences-encoding",
+        "ligature-glyphs",
+        "word-spaces-as-kerning",
+        "adobergb-output-intent",
+        "xmp-metadata",
+        "untagged",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "The Crazy Ones",
+          "Heres to the crazy ones."
+        ],
+        "claimsConformance": "PDF/A-1b",
+        "conformanceValid": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/pdf20examples/handwritten-pdf20-utf8-strings.pdf",
+      "title": "PDF Association hand-written PDF 2.0 example: UTF-8 text strings in /Info, outline titles, layer names, a page-label prefix and alternate text, in a tagged page",
+      "useCase": "report",
+      "producer": "hand-written (PDF Association pdf20examples)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0 (PDF Association pdf20examples): ShareAlike would reach every derivative the corpus makes. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/pdf-association/pdf20examples/c20f2c17bfcc4baab7cfe62e70fae64caf14d5fa/pdf20-utf8-test.pdf",
+        "sha256": "a7ca717ef062df0a65e58487d26358c81424b76084a2000ca1c74b9e5776b7a1",
+        "bytes": 13926,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "hand-written",
+        "pdf-2.0",
+        "utf8-text-strings",
+        "utf8-literal-and-hex-strings",
+        "utf8-info-dictionary",
+        "utf8-bom-date-strings",
+        "utf8-outline-titles",
+        "utf8-ocg-names",
+        "utf8-page-label-prefix",
+        "utf8-alt-and-actualtext",
+        "supplementary-plane-characters",
+        "bidi-control-characters",
+        "optional-content",
+        "ocgs-off-by-default",
+        "page-labels",
+        "outlines",
+        "tagged",
+        "duplicate-mcid",
+        "non-embedded-type1",
+        "flate-rgb-image",
+        "pdf-comments",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "PDF 2.0 with UTF-8 test file",
+          "(c) 2021 PDF Association."
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ocrmypdf/kodak-capture-scan-broken-outline.pdf",
+      "title": "Kodak Capture Desktop 1.2 scan: one CCITT G4 image and an outline root whose /First names a missing object and whose /Last points at itself",
+      "useCase": "scan",
+      "producer": "Kodak Capture Desktop Software 1.2 (Producer 'Eastman Kodak Company', Creator 'Document Imaging')",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0 (OCRmyPDF REUSE.toml): ShareAlike would reach every derivative the corpus makes. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ocrmypdf/OCRmyPDF/e59d7627dd7f4e17d117b24f1c636dc37789fa93/tests/resources/kcs.pdf",
+        "sha256": "8e7727b1e554334ef032ca89fbe858b3b951643324c7ee1533220bcf192ca60a",
+        "bytes": 4372,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "kodak-capture",
+        "scanner-software",
+        "ccitt-g4",
+        "image-only",
+        "outline-first-dangling-reference",
+        "outline-last-self-reference",
+        "info-strings-trailing-spaces",
+        "indirect-stream-length",
+        "no-trailer-id",
+        "no-binary-header-comment",
+        "no-xmp",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ocrmypdf/epson-scan-indirect-rotate.pdf",
+      "title": "Epson device scan of a printed page: one CCITT G4 image, no /Info, a Pages node nested in another and /Rotate given as an indirect object",
+      "useCase": "scan",
+      "producer": "An Epson printer's scan function, per OCRmyPDF's test-resource notes ('created by an Epson printer'); the file carries no /Info",
+      "origin": "remote",
+      "licence": "CC BY-SA 3.0, held by the contributors to the Wikipedia article it reproduces (OCRmyPDF REUSE.toml): ShareAlike would reach every derivative the corpus makes. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ocrmypdf/OCRmyPDF/e59d7627dd7f4e17d117b24f1c636dc37789fa93/tests/resources/epson.pdf",
+        "sha256": "3fce2d6e5baffec839ffc86b7c91903b139399392ea76a09bdfcca40cb8b5a4d",
+        "bytes": 79979,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "epson",
+        "office-scanner",
+        "ccitt-g4",
+        "image-only",
+        "no-info",
+        "nested-page-tree",
+        "indirect-rotate",
+        "indirect-stream-length",
+        "image-interpolate",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ocrmypdf/photoshop-cc2015-pdfx3-cmyk.pdf",
+      "title": "Photoshop CC 2015 page claiming PDF/X-3:2002: CMYK JPEGs, a SWOP output intent, and a Futura CID subset whose ToUnicode values are byte-swapped",
+      "useCase": "archival",
+      "producer": "Adobe Photoshop CC 2015 (Macintosh), Photoshop Image Conversion Plug-in",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0 (OCRmyPDF REUSE.toml): ShareAlike would reach every derivative the corpus makes. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ocrmypdf/OCRmyPDF/e59d7627dd7f4e17d117b24f1c636dc37789fa93/tests/resources/cmyk.pdf",
+        "sha256": "6d3e47ad66c94d02436aca48f881a20f594bc0ded731001ebe4639497d697cd3",
+        "bytes": 897087,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "photoshop",
+        "pdfx-3-claim",
+        "cmyk-output-intent",
+        "default-cmyk-iccbased",
+        "duplicate-icc-profile",
+        "dct-cmyk-images",
+        "dct-colortransform-on-cmyk",
+        "photoshop-dct-decodeparms",
+        "type0-cidfonttype2-subset",
+        "tounicode-byte-swapped",
+        "nul-terminated-cidsysteminfo-strings",
+        "text-render-mode-7-clip",
+        "one-tj-per-glyph",
+        "unused-overprint-extgstate",
+        "artbox",
+        "xmp-thumbnail",
+        "xmp-photoshop-text-layers",
+        "untagged",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ocrmypdf/tiff2pdf-35000px-ccitt-image.pdf",
+      "title": "tiff2pdf output under a PDF 1.1 header: one 35,000 x 35,000 CCITT G4 image in 10.5 KB that decodes to 153 MB, on an 8,400-point page",
+      "useCase": "stress",
+      "producer": "libtiff tiff2pdf 20150912 (the TIFF from Adobe Photoshop CC 2015)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0 (OCRmyPDF REUSE.toml): ShareAlike would reach every derivative the corpus makes. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ocrmypdf/OCRmyPDF/e59d7627dd7f4e17d117b24f1c636dc37789fa93/tests/resources/hugemono.pdf",
+        "sha256": "88c3685307635935b188d1427e94183549c5897c42704684984d49bae0679f2f",
+        "bytes": 11779,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "tiff2pdf",
+        "libtiff",
+        "pdf-1.1-header",
+        "huge-decoded-image",
+        "high-compression-ratio",
+        "ccitt-g4",
+        "single-huge-page",
+        "image-only",
+        "indirect-stream-length",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ocrmypdf/pdfpen-imprints-split-content.pdf",
+      "title": "PDFpen 8.3.1 page of text imprints: seven content streams whose q and Q fall in different streams, Form XObjects with PDFpen's private keys and plist streams",
+      "useCase": "report",
+      "producer": "PDFpen 8.3.1 (macOS)",
+      "origin": "remote",
+      "licence": "A bug-report attachment (OCRmyPDF issue 121) whose contributor agreed to CC BY-SA 4.0 in issue 254; OCRmyPDF's REUSE.toml now says MIT, but no MIT grant from him is on record. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/ocrmypdf/OCRmyPDF/e59d7627dd7f4e17d117b24f1c636dc37789fa93/tests/resources/overlay.pdf",
+        "sha256": "5f70d517728964c92db344b86f09b79c678b36c3f8f5c7f33e98f5709838e92d",
+        "bytes": 38153,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "sharealike",
+        "bug-report-attachment",
+        "licence-unclear",
+        "pdfpen",
+        "macos-editor",
+        "content-array",
+        "graphics-state-split-across-streams",
+        "pdfpen-private-keys",
+        "binary-plist-streams",
+        "form-xobject-imprints",
+        "page-thumbnail",
+        "pages-node-mediabox-overridden",
+        "empty-outlines-dictionary",
+        "truetype-subset-macroman-no-tounicode",
+        "iccbased-gray",
+        "trailer-private-key",
+        "interleaved-free-xref-entries",
+        "xref-table",
+        "broke-ocrmypdf"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Payed 2017-Jan-22"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/opf-format-corpus/acrobat9-portfolio-signed-3d.pdf",
+      "title": "Adobe Acrobat 9 Pro Extended PDF portfolio: a Flash navigator, a collection schema and five embedded PDFs, among them U3D and PRC 3D models and an XFA form under a certification signature",
+      "useCase": "contract",
+      "producer": "Adobe Acrobat Pro Extended 9.1.0 (portfolio); embedded: Adobe LiveCycle Designer ES 8.2 certified in Acrobat 9, Adobe InDesign CS2 and CS3 through Adobe PDF Library 7.0 and 8.0",
+      "origin": "remote",
+      "licence": "CC0 1.0 (Open Preservation Foundation format-corpus, pdfCabinetOfHorrors: 'All files in this folder: Creative Commons CC0'; provided to OPF by Adobe): at 4.7 MB over the 2 MB threshold for committed files, so fetched on demand (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/pdfCabinetOfHorrors/digitally_signed_3D_Portfolio.pdf",
+        "sha256": "8f8131d879037c3ed620331615606e8ba2e2e830578a1373b0648375c73f8324",
+        "bytes": 4723857,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "too-large-to-commit",
+        "portfolio",
+        "collection",
+        "collection-schema",
+        "collection-folders",
+        "flash-navigator",
+        "adbe-extension-level-3",
+        "embedded-files",
+        "embedded-pdf",
+        "embedded-signed-adbe-pkcs7-detached",
+        "embedded-certification-signature",
+        "embedded-docmdp",
+        "embedded-fieldmdp",
+        "embedded-xfa",
+        "embedded-3d-u3d",
+        "embedded-3d-prc",
+        "embedded-3d-javascript",
+        "embedded-jpx",
+        "embedded-tagged",
+        "devicen-nchannel",
+        "type4-function",
+        "transparency-group",
+        "soft-mask",
+        "type1c-subset",
+        "jpx",
+        "name-tree-keys-folder-prefixed",
+        "linearized",
+        "xref-stream",
+        "object-streams",
+        "linearization-hints-inconsistent"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "open this PDF portfolio in",
+          "Get Adobe Reader Now!"
+        ],
+        "attachments": [
+          "91009276_prod_dev_collab_sb_ue.pdf",
+          "Design of Landing Gear.pdf",
+          "Landing Gear Project data.pdf",
+          "Marketing Collateral with 3D.pdf",
+          "Technical Specification.pdf"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdf-association/abledocs-pdfua1-tagged-textbook-scan.pdf",
+      "title": "An 82-page scanned textbook chapter remediated to PDF/UA-1 by AbleDocs: JPEG and JBIG2 page images painted over a live OCR text layer, 480 tagged formulas with spoken alt text, a linearized hybrid-reference file",
+      "useCase": "scan",
+      "producer": "AbleDocs Inc. (remediation tool; no /Creator), linearized",
+      "origin": "remote",
+      "licence": "CC BY 4.0 as announced for the PDF Association's PDF/UA Reference Suite 1.1, though the pages are a chapter of a commercial mathematics textbook whose publisher's licence is not shown: at 10.6 MB over the 2 MB threshold for committed files, so fetched on demand (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/opendataloader-project/opendataloader-pdf/03908f182f22a1799ce8716d45ccfe79d28f3d78/samples/pdf/pdfua-1-reference-suite-1-1/PDFUA-Ref-2-09_Scanned.pdf",
+        "sha256": "bb46d5c723fe1427dd1bf92ccd8653f9a5cef4054f7d878168b99477fa3792ae",
+        "bytes": 10630156,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "too-large-to-commit",
+        "scan",
+        "remediated-scan",
+        "tagged",
+        "pdfua-1-claim",
+        "ocr-layer",
+        "ocr-text-painted-under-page-image",
+        "page-image-as-pagination-artifact",
+        "dct-image",
+        "jbig2",
+        "jbig2-without-globals",
+        "formula-structure-with-alt-text",
+        "figure-alt-text",
+        "role-map",
+        "table-structure",
+        "list-structure",
+        "outline",
+        "page-labels",
+        "empty-acroform",
+        "non-embedded-standard-14-in-acroform-dr",
+        "cidfonttype2-font",
+        "font-subset",
+        "placeholder-subset-tag-shared",
+        "subset-tag-with-empty-font-name",
+        "catalog-lang-not-bcp47",
+        "linearized",
+        "inconsistent-hint-tables",
+        "hybrid-xref",
+        "xref-stream",
+        "object-streams",
+        "single-revision",
+        "multi-page"
+      ],
+      "expect": {
+        "pages": 82,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Mathematics compares the most diverse phenomena",
+          "2.1 Periodic Functions"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdf-association/abledocs-pdfua1-textbook-chapter.pdf",
+      "title": "A 32-page textbook chapter remediated to PDF/UA-1 by AbleDocs: CFF Type 1 fonts, CMYK JPEG photographs, Indexed-CMYK JPEG 2000 icons with JPEG 2000 soft masks, tagged links and TOC, PDF/A and PDF/E output intents without a claim, stale linearization hints",
+      "useCase": "report",
+      "producer": "AbleDocs Inc. (remediation tool; no /Creator), linearized",
+      "origin": "remote",
+      "licence": "CC BY 4.0 as announced for the PDF Association's PDF/UA Reference Suite 1.1, though the chapter prints Cengage Learning and photo-agency copyrights the suite licence cannot be shown to cover: at 2.3 MB over the 2 MB threshold for committed files, so fetched on demand (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/veraPDF/veraPDF-regression-tests/460137f340002b07594c0f3621d3dd785c22b94e/WCAG_2_2/1.7/PDFUA-Ref-2-08_BookChapter.pdf",
+        "sha256": "2b958600daec79373736f413f2712fcd9c604de2c352cbc1ec9d67cc5d7932f1",
+        "bytes": 2284439,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "too-large-to-commit",
+        "textbook-chapter",
+        "remediated",
+        "tagged",
+        "pdfua-1-claim",
+        "figure-alt-text",
+        "toc-structure",
+        "list-structure",
+        "table-structure",
+        "link-annotations",
+        "link-objr",
+        "uri-link",
+        "named-destinations",
+        "outline",
+        "page-labels",
+        "empty-acroform",
+        "non-embedded-standard-14-in-acroform-dr",
+        "type1c-font",
+        "cidfonttype0c-font",
+        "font-subset",
+        "dct-image",
+        "cmyk-jpeg",
+        "jpx",
+        "jpx-soft-mask",
+        "indexed-colour-image",
+        "unreferenced-image-objects",
+        "output-intent-without-pdfa-claim",
+        "output-intent-srgb",
+        "pdfe-output-intent",
+        "names-ap-tree",
+        "lang-en",
+        "linearized",
+        "inconsistent-hint-tables",
+        "xref-table",
+        "single-revision",
+        "multi-page"
+      ],
+      "expect": {
+        "pages": 32,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Physical Development: The Brain, Body, Motor Skills, and Sexual Development",
+          "nonorganic failure to thrive"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/pdf-association/indesign-cs6-pdfua1-brochure.pdf",
+      "title": "The PDF Association's 2012 PDF/UA brochure from InDesign CS6, saved linearized in 2019 and then updated twice: two A4-landscape pages claiming PDF/UA-1, JPEG 2000 photographs, a /Prev chain through the first-page xref stream",
+      "useCase": "report",
+      "producer": "Adobe InDesign CS6 (Macintosh), Adobe PDF Library 10.0.1; saved linearized in 2019, then two incremental updates",
+      "origin": "remote",
+      "licence": "CC BY 4.0 is announced for the PDF/UA Reference Suite 1.1 (PDF Association), but this member prints a photographer's own copyright line under its cover photograph and leaves its second photograph uncredited, so the suite licence cannot be shown to cover them. Byte-identical to member PDFUA-Ref-2-06_Brochure.pdf of https://pdfa.org/wp-content/uploads/2024/02/PDFUA-Reference-Files_1-1_2024_02.zip, fetched from opendataloader-pdf's copy. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://raw.githubusercontent.com/opendataloader-project/opendataloader-pdf/03908f182f22a1799ce8716d45ccfe79d28f3d78/samples/pdf/pdfua-1-reference-suite-1-1/PDFUA-Ref-2-06_Brochure.pdf",
+        "sha256": "aefd5ab48a908b9996ffadcb14d8ff31a2c653657cbe011a46f4cf61396a589e",
+        "bytes": 1649896,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "third-party-photograph",
+        "tagged",
+        "pdfua-1-claim",
+        "indesign",
+        "linearized-then-incrementally-updated",
+        "stale-linearization-dictionary",
+        "first-page-startxref-zero",
+        "prev-chain-through-first-page-xref",
+        "incremental-update",
+        "two-incremental-updates",
+        "xref-stream",
+        "object-streams",
+        "adbe-extension-level-3-on-1.6-header",
+        "role-map",
+        "class-map",
+        "custom-structure-types",
+        "list-structure",
+        "actual-text",
+        "figure-alt-text",
+        "nul-terminated-structure-strings",
+        "link-annotations",
+        "link-objr",
+        "mailto-links",
+        "outline",
+        "page-mode-use-outlines",
+        "display-doc-title",
+        "page-tabs-structure",
+        "empty-acroform",
+        "type1c-subset",
+        "cidfonttype2-font",
+        "font-subset",
+        "jpx",
+        "jp2-container",
+        "jp2-multiple-colr-boxes",
+        "icc-based-colour",
+        "image-xmp-metadata",
+        "transparency-group-form",
+        "blend-mode-multiply",
+        "overprint-extgstate",
+        "axial-shading",
+        "soft-hyphen-in-extracted-text",
+        "landscape-mediabox",
+        "lang-en",
+        "multi-page"
+      ],
+      "expect": {
+        "pages": 2,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "ISO 14289: The new standard",
+          "Why does the world need PDF/UA?",
+          "PDF/UA makes the world a better place"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ecan/konica-bizhub-c554e-letter-scan.pdf",
+      "title": "Konica Minolta bizhub C554e scan, untouched: mixed raster content (JPEG background, CCITT image masks) under the copier's invisible OCR in non-embedded Arial",
+      "useCase": "scan",
+      "producer": "KONICA MINOLTA bizhub C554e",
+      "origin": "remote",
+      "licence": "Environment Canterbury allows reuse for personal, informational and non-commercial purposes only; fetched from the Internet Archive's unmodified capture. Used, not redistributed (ADR 32)",
+      "source": {
+        "url": "https://web.archive.org/web/20220228203317id_/https://api.ecan.govt.nz/TrimPublicAPI/documents/download/3147720",
+        "sha256": "1299ce83fd902309ea1866c61bfd2d4889b27d7921188e996f4af62626003140",
+        "bytes": 212363,
+        "retrieved": "2026-09-24"
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "non-commercial-only",
+        "office-copier",
+        "konica-minolta",
+        "copier-ocr",
+        "ocr-layer",
+        "invisible-text",
+        "mixed-raster-content",
+        "flate-over-dct",
+        "ccitt-image-mask",
+        "non-embedded-truetype",
+        "blank-page",
+        "open-action",
+        "pdf-1.4",
+        "xref-table"
+      ],
+      "expect": {
+        "pages": 4,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Government Policy Statement on Transport 2018",
+          "Hokitika Gorge"
+        ],
+        "refereeCheckSucceeds": true
       }
     }
   ]
