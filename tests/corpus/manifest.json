@@ -633,6 +633,36 @@
         ],
         "refereeCheckSucceeds": true
       }
+    },
+    {
+      "file": "documents/invoice/pdf24-invoice-fr.pdf",
+      "title": "The same Word invoice through the PDF24 printer, which draws a box for every capital E of the regular face: the driver's PostScript lacks that glyph, so the subset maps code 48 to nothing while ToUnicode still says E",
+      "useCase": "invoice",
+      "producer": "PDF24 Creator 11.29.1 (GPL Ghostscript 10.06.0, profile default/best), printed from Word 16.0.20326 on Windows 11 25H2 by build/build_word.ps1",
+      "origin": "contributed",
+      "licence": "MIT (our own fictitious content); the embedded Arial subsets are embedded under the font's embedding permissions",
+      "features": [
+        "ghostscript-pdfwrite",
+        "print-driver",
+        "xref-stream",
+        "object-streams",
+        "truetype-subset",
+        "symbolic-truetype",
+        "missing-glyph",
+        "renders-wrong"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "textContains": [
+          "Facture",
+          "Total TTC",
+          "Étude Noailles"
+        ],
+        "refereeCheckSucceeds": true
+      }
     }
   ]
 }

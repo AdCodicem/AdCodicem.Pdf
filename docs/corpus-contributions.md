@@ -60,6 +60,11 @@ This repository is **public**. Everything committed to `tests/corpus/documents` 
       there — check by selecting the text underneath, or by extracting it.
 - [ ] **Metadata**: `/Info` and XMP carry author, company, the local file path and sometimes the template
       used. Say so if you want them stripped; I will do it and record that the file was modified.
+      A print driver writes its own: **Microsoft Print to PDF puts the display name of the Windows
+      account that printed into `/Author`**, whatever the document's properties say; Ghostscript-based
+      printers such as PDF24 copy the account's user name from the PostScript into `/Author` and the XMP;
+      and Word's Save as PDF copies the document's Author property, which defaults to the Office user's
+      name.
 - [ ] **Hidden material**: attachments, annotations and their authors, form field values, layers turned
       off, earlier versions kept by incremental updates. A PDF can hold several years of edits.
 - [ ] **Licence and permission**: you must be entitled to publish it. A supplier's invoice is your
@@ -80,9 +85,15 @@ Use cases are `invoice`, `report`, `contract`, `form`, `scan`, `archival`, `dama
 Names are lower case with hyphens, and name the producer first: `word-print-driver-invoice.pdf`,
 `acrobat-contract-signed.pdf`.
 
-Then add its manifest entry to `tests/corpus/manifest.json`, or tell me the two lines about the file and
+Then describe it in `tests/corpus/contributed.json` — not in `manifest.json`, which the build script
+rewrites — and run `build_corpus.py --committed-only` to merge it with the referee's verdict
+(`tests/corpus/README.md` has the one-line container command). Or tell me the two lines about the file and
 I will write the entry, establish the expectations with an independent tool, and add it to the acceptance
 tests.
+
+A third party's file — a sample from another project's test suite, a public-domain government document —
+goes under `tests/corpus/vendor/<source>/` instead, described in `vendor.json`, and only under an
+attribution-only licence recorded in `tests/corpus/NOTICE` (ADR 23).
 
 ### Private — the file cannot be published
 

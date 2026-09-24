@@ -37,16 +37,19 @@ apt-get install -y --no-install-recommends libreoffice-writer   # Chromium is al
 It regenerates only what it produces. Files described by `vendor.json` and `contributed.json` are left
 alone, and their entries merged into the manifest.
 
-**Word's two writers** — Save as PDF and the Microsoft Print to PDF driver — run only on Windows, so their
-documents come from `build/build_word.ps1` rather than from the script above:
+**Office desktop writers** — Word's Save as PDF, the Microsoft Print to PDF driver, and the PDF24 printer
+(PScript5 PostScript converted by Ghostscript) — run only on Windows, so their documents come from
+`build/build_word.ps1` rather than from the script above:
 
 ```powershell
-./tests/corpus/build/build_word.ps1   # Windows with Word installed; prints the versions to record
+./tests/corpus/build/build_word.ps1   # Windows with Word and PDF24 Creator; prints the versions to record
 ```
 
-The print driver writes the display name of the Windows account that printed into `/Author`, whatever the
-document says. The script overwrites that token in place with a neutral value of the same length, so no
-offset moves, records the file as derived, and deletes any output that still names someone.
+Both printers stamp the Windows account that printed into `/Author`, whatever the document says. For PDF24
+the account arrives as the PostScript's `%%For` comment, which the script sets to `AdCodicem` before PDF24
+converts the job, so the PDF is untouched. The Microsoft driver offers no such intermediate: the script
+overwrites its `/Author` token in place with a neutral value of the same length, so no offset moves, and
+records the file as derived. Any output that still names the account is deleted.
 
 **Refreshing the entries of committed documents only** — after adding a file under `vendor/` or
 `documents/` — needs nothing but qpdf, and is best run in the container the integration tests use, so the

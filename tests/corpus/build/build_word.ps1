@@ -4,17 +4,20 @@
 Builds the corpus documents that only Microsoft Word on Windows can produce.
 
 .DESCRIPTION
-Word's own PDF writer ("Save as PDF") and the Windows print driver ("Microsoft Print to PDF") are two
-different writers, both ubiquitous, and neither runs in the Linux container that build_corpus.py uses
-(W01 in docs/corpus-contributions.md). This script lays out the corpus's French invoice — the content of
-sources/invoice-fr.html, fictitious from end to end — as a native Word document, and writes it through both.
+Word's own PDF writer ("Save as PDF"), the Windows print driver ("Microsoft Print to PDF") and the PDF24
+virtual printer, which hands the print job to Ghostscript's pdfwrite, are three different writers of the
+same page, all common on office desktops, and none of them runs in the Linux container that
+build_corpus.py uses (W01 in docs/corpus-contributions.md). This script lays out the corpus's French
+invoice — the content of sources/invoice-fr.html, fictitious from end to end — as a native Word document,
+and writes it through all three.
 
-Run it deliberately, on Windows with Word installed, and review the diff: like every producer, Word changes
-its output from one version to the next. The versions it prints belong in tests/corpus/contributed.json,
-since build_corpus.py cannot regenerate these files and leaves them alone.
+Run it deliberately, on Windows with Word and PDF24 Creator installed, and review the diff: like every
+producer, these change their output from one version to the next. The versions it prints belong in
+tests/corpus/contributed.json, since build_corpus.py cannot regenerate these files and leaves them alone.
 
-The document carries no personal data: its author is set to "AdCodicem" explicitly, so the name of whoever
-runs the script never reaches the PDF, and the script prints the metadata of both files for review.
+The document carries no personal data: its author is set to "AdCodicem" explicitly, both printers' habit of
+stamping the Windows account that printed is dealt with where each allows it (below), and any file that
+still names that account — in its raw bytes or in a decompressed stream — is deleted.
 #>
 [CmdletBinding()]
 param(
@@ -27,6 +30,9 @@ Set-StrictMode -Version Latest
 $Blue = 0x64381F        # #1f3864 as a Word BGR colour
 $Grey = 0x666666
 $PrintDriver = 'Microsoft Print to PDF'
+$Pdf24Printer = 'PDF24'
+$Pdf24Profile = 'default/best'      # the profile PDF24's printer applies unless told otherwise
+$Pdf24Home = 'C:\Program Files\PDF24'
 
 function Set-Paragraphs {
     # Fills a range with one paragraph per line, then formats the first line as a caption.
@@ -61,11 +67,12 @@ function Move-AfterTables {
 }
 
 function Remove-DriverAuthor {
-    # The print driver writes the display name of the Windows account that printed into /Author, whatever the
-    # document says — here, a real person's name, in a file bound for a public repository. Each /Author token
-    # is overwritten in place by "(AdCodicem)" padded with whitespace to the same length: PDF allows any
-    # whitespace between tokens, so not one offset moves and everything else stays the driver's own bytes.
-    # The file is recorded as derived for that reason.
+    # The Microsoft print driver writes the display name of the Windows account that printed into /Author,
+    # whatever the document says — a real person's name, in a file bound for a public repository — and it
+    # offers no intermediate file where that could be set beforehand. Each /Author token is overwritten in
+    # place by "(AdCodicem)", or "()" when the original is shorter, padded with whitespace to the same length:
+    # PDF allows any whitespace between tokens, so not one offset moves and everything else stays the
+    # driver's own bytes. The file is recorded as derived for that reason.
     param([string] $Path)
 
     $bytes = [System.IO.File]::ReadAllBytes($Path)
@@ -82,9 +89,54 @@ function Remove-DriverAuthor {
     return $tokens.Count
 }
 
+function Wait-ForFile {
+    # A printer writes asynchronously: the file is ready once it exists and has stopped growing.
+    param([string] $Path, [string] $Writer, [int] $Seconds = 60)
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
+    $lastSize = -1
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (Test-Path $Path) {
+            $size = (Get-Item $Path).Length
+            if ($size -gt 0 -and $size -eq $lastSize) { return }
+            $lastSize = $size
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "$Writer wrote nothing complete to $Path within $Seconds seconds."
+}
+
+function Get-SearchableText {
+    # The raw bytes plus every Flate stream decoded, as Latin-1: a name can sit in a compressed object
+    # stream or in compressed XMP just as well as in plain /Info.
+    param([byte[]] $Bytes)
+
+    $latin1 = [System.Text.Encoding]::Latin1
+    $raw = $latin1.GetString($Bytes)
+    $parts = [System.Collections.Generic.List[string]]::new()
+    $parts.Add($raw)
+    foreach ($match in [regex]::Matches($raw, 'stream\r?\n')) {
+        $start = $match.Index + $match.Length
+        $end = $raw.IndexOf('endstream', $start, [StringComparison]::Ordinal)
+        if ($end -lt 0) { continue }
+        try {
+            $encoded = [System.IO.MemoryStream]::new($Bytes, $start, $end - $start)
+            $zlib = [System.IO.Compression.ZLibStream]::new($encoded, [System.IO.Compression.CompressionMode]::Decompress)
+            $output = [System.IO.MemoryStream]::new()
+            $zlib.CopyTo($output)
+            $parts.Add($latin1.GetString($output.ToArray()))
+        }
+        catch {
+            # Not Flate, or not decodable on its own (images, fonts in other filters): nothing to search.
+        }
+    }
+    return $parts -join "`n"
+}
+
 $outputs = @{
     SaveAs      = Join-Path $OutputDirectory 'word-invoice-fr.pdf'
     PrintDriver = Join-Path $OutputDirectory 'word-print-driver-invoice-fr.pdf'
+    Pdf24       = Join-Path $OutputDirectory 'pdf24-invoice-fr.pdf'
 }
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 foreach ($path in $outputs.Values) {
@@ -258,26 +310,37 @@ try {
     $word.ActivePrinter = $PrintDriver
     $missing = [System.Type]::Missing
     $doc.PrintOut($false, $false, 0, $outputs.PrintDriver, $missing, $missing, 0, 1, $missing, 0, $true, $true)
-
-    $deadline = [DateTime]::UtcNow.AddSeconds(60)
-    $lastSize = -1
-    while ([DateTime]::UtcNow -lt $deadline) {
-        if (Test-Path $outputs.PrintDriver) {
-            $size = (Get-Item $outputs.PrintDriver).Length
-            if ($size -gt 0 -and $size -eq $lastSize) { break }
-            $lastSize = $size
-        }
-        Start-Sleep -Milliseconds 500
-    }
-    if (-not (Test-Path $outputs.PrintDriver)) { throw "The print driver wrote nothing to $($outputs.PrintDriver)." }
+    Wait-ForFile $outputs.PrintDriver 'The print driver'
     $replaced = Remove-DriverAuthor $outputs.PrintDriver
 
+    # 3. PDF24: its printer driver (PScript5) turns the job into PostScript, which PDF24 hands to
+    #    Ghostscript's pdfwrite with the printer's profile. The job is printed to a file instead of PDF24's
+    #    pipe and converted by PDF24's own tool with that same profile — the same driver, profile and
+    #    Ghostscript, without the interactive assistant a printed job opens. Ghostscript copies the
+    #    PostScript's %%For comment, the Windows account that printed, into /Author and the XMP, so that
+    #    comment is set to AdCodicem in the PostScript first: the PDF itself is Ghostscript's, byte for byte.
+    $postscript = Join-Path $work 'pdf24-job.ps'
+    $word.ActivePrinter = $Pdf24Printer
+    $doc.PrintOut($false, $false, 0, $postscript, $missing, $missing, 0, 1, $missing, 0, $true, $true)
+    Wait-ForFile $postscript 'The PDF24 driver'
+
+    $latin1 = [System.Text.Encoding]::Latin1
+    $job = ([regex] '(?m)^%%For:[^\r\n]*').Replace($latin1.GetString([System.IO.File]::ReadAllBytes($postscript)), '%%For: AdCodicem')
+    [System.IO.File]::WriteAllBytes($postscript, $latin1.GetBytes($job))
+
+    $convert = Start-Process (Join-Path $Pdf24Home 'pdf24-DocTool.exe') -PassThru -ArgumentList @(
+        '-applyProfile', '-profile', $Pdf24Profile, '-noProgress', '-outputFile', "`"$($outputs.Pdf24)`"", "`"$postscript`"")
+    if (-not $convert.WaitForExit(120000)) { $convert.Kill(); throw 'PDF24 did not finish converting within two minutes.' }
+    Wait-ForFile $outputs.Pdf24 'PDF24'
+
     $versions = [ordered]@{
-        word    = "Microsoft Word $($word.Version) build $($word.Build)"
-        windows = & {
-            $current = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
-            "Windows 11 $($current.DisplayVersion) (build $($current.CurrentBuild).$($current.UBR))"
+        word        = "Microsoft Word $($word.Version) build $($word.Build)"
+        windows     = & {
+            $os = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+            "Windows 11 $($os.DisplayVersion) (build $($os.CurrentBuild).$($os.UBR))"
         }
+        pdf24       = "PDF24 Creator $((Get-Item (Join-Path $Pdf24Home 'pdf24.exe')).VersionInfo.ProductVersion)"
+        ghostscript = "Ghostscript $((Get-Item (Join-Path $Pdf24Home 'gs\bin\gswin64c.exe')).VersionInfo.ProductVersion)"
     }
     $doc.Close(0)                                                # wdDoNotSaveChanges
 }
@@ -297,8 +360,7 @@ $accountNames = @($env:USERNAME)
 try { $accountNames += (Get-LocalUser -Name $env:USERNAME -ErrorAction Stop).FullName } catch { }
 $accountNames = @($accountNames | Where-Object { $_ })
 foreach ($path in $outputs.Values) {
-    $bytes = [System.IO.File]::ReadAllBytes($path)
-    $latin1 = [System.Text.Encoding]::Latin1.GetString($bytes)
+    $latin1 = Get-SearchableText ([System.IO.File]::ReadAllBytes($path))
     $authors = [regex]::Matches($latin1, '/Author\s*(\((?:\\.|[^\\)])*\)|<[0-9A-Fa-f\s]*>)') | ForEach-Object { $_.Groups[1].Value }
     $foreign = @($authors | Where-Object { $_ -ne '(AdCodicem)' })
     $leaked = @($accountNames | Where-Object {
