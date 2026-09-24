@@ -7,20 +7,22 @@ and what closing a milestone requires of it — is in `docs/corpus.md`.
 
 The corpus covers four producers we can drive in a container — Chromium's Skia backend, LibreOffice,
 ReportLab and qpdf — three office writers driven on Windows — Word's Save as PDF, the Microsoft Print to
-PDF driver and the PDF24 printer — and 46 third-party files found in public sources under attribution-only
+PDF driver and the PDF24 printer — and 84 third-party files found in public sources under attribution-only
 licences: conformance fixtures from veraPDF and BFO, government documents from five countries and the EU,
-and regression files from other PDF libraries. `docs/corpus-sources.md` says where each came from, which
-other libraries' corpora were examined, and why most of them could not be used.
+specimen invoices from ERP and invoicing tools, and regression files from other PDF libraries.
+`docs/corpus-sources.md` says where each came from, which other libraries' corpora were examined, and why
+most of them could not be used.
 
 What public sources cannot give us is what arrives in a real inbox: a bank statement out of a Java stack,
-a supplier's Factur-X straight from its ERP, a contract signed through Yousign or DocuSign, a scan from
-the office copier with its OCR layer, or a file that broke something last week. Those almost always carry
-someone's name, so they cannot be found — only contributed, and anonymised. Each one that enters the corpus
-stays there, checked on every commit, for the life of the project.
+a supplier's Factur-X straight from its ERP with real data, a contract signed through Yousign or DocuSign,
+a scan as the office copier wrote it, or a file that broke something last week. Those almost always carry
+someone's address or account details, so they cannot be found — only contributed, and anonymised. Each one
+that enters the corpus stays there, checked on every commit, for the life of the project.
 
 The first three third-party files we added found a real defect within a minute — a validly compressed
-empty stream being read as a decoding failure. The next forty-six found a test that could not read a page
-count qpdf printed with a warning. That is the return on this.
+empty stream being read as a decoding failure. The search that brought the next seventy-six found a test
+that could not read a page count qpdf printed with a warning, and a reader that calls a sound stream
+truncated when its end falls just past an 8 KB window. That is the return on this.
 
 ## What is wanted
 
@@ -46,23 +48,24 @@ made, not because of what it says.
 
 ### What is already in, and what is still missing
 
-After a search of public sources on 2026-09-24 (`docs/corpus-sources.md`), the corpus holds something for
-every line. What is still wanted is what only a contribution can bring.
+After two passes over public sources on 2026-09-24 (`docs/corpus-sources.md`), the corpus holds something
+for every line, and for most of them several producers. What is still wanted is what only a contribution
+can bring: documents that went through a real inbox.
 
 | # | In the corpus | Still wanted |
 |---|---------------|--------------|
-| W01 | Word 2010, 2019 and Microsoft 365 Save as PDF; Print to PDF from Excel, untouched; our own invoice through Save as PDF, the print driver and PDF24 | Print to PDF from Word as someone else's machine wrote it — the driver stamps the account's name, so ours had to be neutralised |
-| W02 | InDesign, PageMaker through Distiller 5, Distiller 10 behind the PScript5 driver, LiveCycle Designer, Acrobat usage rights | PDFMaker for Word, and a recent Acrobat "Save As" with no InDesign in the chain: the public ones found named their author |
-| W03 | Xerox WorkCentre (JBIG2, no text), HP MFP with an Acrobat OCR layer, a scanner's CCITT G3 file, a 1999 CCITT import | A copier that writes its own OCR layer (Canon, Ricoh, Konica): the public ones found carried names or third-party rights |
-| W04 | Apache FOP and PDFBox output from invoicing tools, fictitious data only | **A real invoice or statement from a Java stack** — iText, JasperReports, SAP, Crystal |
-| W05 | A GPO certification signature, a qualified-seal PAdES B-LTA file, two Acrobat Reader signatures (test certificates) | **A commercial e-signature**: Yousign, DocuSign, Universign, Adobe Sign |
-| W06 | A really damaged GovDocs1 file, a scanner file that broke pikepdf, forms that broke pdf.js, hand-written hostile files | Anything that broke your own tools |
-| W07 | ZUGFeRD 1.0 and 2.0 through the Mustang library, a Factur-X visualisation | **A Factur-X from a real ERP**: the one public candidate named a person |
-| W08 | Blank XFA forms (IRS, USCIS), an HMCTS AcroForm, a Cerfa, JavaScript calculations | A form that is filled in — with fictitious values |
-| W09 | Arabic, Russian, Greek, Traditional Chinese, vertical Japanese without ToUnicode | Hebrew; Korean; Arabic with real shaping in a CID font |
-| W10 | PDF 1.2 from 1995–2000: Distiller 2, 3 and 4, Acrobat 3, RC4-40 | A PDFWriter or pre-Acrobat-3 file |
-| W11 | Nothing committed: three public references, hashed, in `docs/corpus-sources.md` | A decision on fetching one on demand for M13 |
-| W12 | PDF/A from PDFlib, Antenna House, Distiller, 3-Heights, BFO and Mustang, and a false claim, each with veraPDF's verdict | A PDF/A-3 from a real ERP with its validation report |
+| W01 | Word 2010, 2019 and Microsoft 365 Save as PDF; Word for Mac through Quartz; Print to PDF from Word and from Excel, untouched; our own invoice through Save as PDF, the print driver and PDF24 | — |
+| W02 | PDFMaker 5, 9.1, 10, 21 and 25 for Word; Distiller 2 to 10; InDesign; PageMaker; Illustrator; LiveCycle Designer; Acrobat Pro DC and Reader X re-saves; usage rights | — |
+| W03 | Two Xerox copiers with their own OCR layer, Xerox JBIG2 without text, an HP MFP with Acrobat's OCR, a scanner's CCITT G3 file, a 1999 CCITT import | A copier file untouched since the copier wrote it (the Xerox ones were later re-saved), from another brand — Canon, Ricoh, Konica |
+| W04 | JasperReports 7 on OpenPDF, iText 2.1.7 then PDFBox (weclapp), PDFBox 3 (Swiss QR-bill), PDFlib's Java binding, Apache FOP — all with fictitious data | **A real invoice or statement from a supplier or bank**: SAP, Crystal, a bank's own stack |
+| W05 | A GPO certification, DILA's Dictao signature, a qualified seal renewed by timestamps over two years, a PAdES B-LTA seal, two Acrobat Reader signatures | **A commercial e-signature**: Yousign, DocuSign, Universign, Adobe Sign |
+| W06 | A really damaged GovDocs1 file, a GovDocs1 error file, a scanner file that broke pikepdf, forms that broke pdf.js, SafeDocs lexer and dialect tests | Anything that broke your own tools |
+| W07 | Factur-X from weclapp and from Dynamics 365 (demo data), ZUGFeRD from GnuAccounting and from the Mustang library | A Factur-X a supplier's ERP actually sent, anonymised |
+| W08 | Blank XFA forms (IRS, USCIS, DoD, a Cerfa), JavaScript AcroForms (USCIS I-9, HMRC), a calculation order, an OmniForm form, tagged forms | A form that is filled in — with fictitious values |
+| W09 | Arabic, Russian, Greek, Traditional Chinese (2004 and 2017), vertical Japanese without ToUnicode | Hebrew; Korean; Arabic with real shaping in a CID font |
+| W10 | PDF 1.2 to 1.4 from 1995–2004: PDFWriter 3.02 and 4.05, Distiller 2, 3 (Windows and Mac), 4 and 6, PDFMaker 5, Acrobat 3, RC4-40 | A file from before 1996, PDF 1.0 or 1.1 |
+| W11 | Nothing committed: three public references, hashed, in `docs/corpus-sources.md` | A decision on fetching one on demand for M13 (ADR 32, proposed) |
+| W12 | PDF/A from PDFlib, Antenna House, Distiller, 3-Heights, BFO, Mustang, Aspose, OpenOffice and Word via PDFMaker, and a false claim, each with veraPDF's verdict | A PDF/A-3 from a real ERP with its validation report |
 
 ## What makes a usable sample
 
@@ -79,9 +82,11 @@ every line. What is still wanted is what only a contribution can bring.
 This repository is **public**. Everything committed to `tests/corpus/documents` or
 `tests/corpus/vendor` is published, indexed and irrevocable. Run through this list first:
 
-- [ ] **Visible content**: no names, addresses, account numbers, amounts you would not print in a
-      newspaper. Redacting in a PDF viewer often only draws a black rectangle over text that is still
-      there — check by selecting the text underneath, or by extracting it.
+- [ ] **Visible content**: no one's phone number, postal address or e-mail address, no account or
+      identity numbers, no health data, and no amounts you would not print in a newspaper. A person's
+      name alone is acceptable, and fabricated or specimen data is always fine. Redacting in a PDF viewer
+      often only draws a black rectangle over text that is still there — check by selecting the text
+      underneath, or by extracting it.
 - [ ] **Metadata**: `/Info` and XMP carry author, company, the local file path and sometimes the template
       used. Say so if you want them stripped; I will do it and record that the file was modified.
       A print driver writes its own: **Microsoft Print to PDF puts the display name of the Windows

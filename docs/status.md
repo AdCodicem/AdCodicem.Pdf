@@ -8,11 +8,11 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 251 unit (4 skipped by design: two corpus documents
-  recorded as unsupported until M2) + 123 integration (skipped without Docker) — **CI**:
+- **Builds**: yes, with no warnings — **Tests**: 332 unit (4 skipped by design: two corpus documents
+  recorded as unsupported until M2) + 196 integration (skipped without Docker) — **CI**:
   green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
-- **Corpus**: 68 documents, 9.7 MB — 19 generated here, 3 from Word and PDF24 on Windows, 46 third-party
-  files under attribution-only licences (38 added on 2026-09-24, see `docs/corpus-sources.md`). On the
+- **Corpus**: 106 documents, 15.4 MB — 19 generated here, 3 from Word and PDF24 on Windows, 84 third-party
+  files under attribution-only licences (76 added on 2026-09-24, see `docs/corpus-sources.md`). On the
   branch `claude/corpus-third-party-documents`, draft pull request [#25](https://github.com/AdCodicem/AdCodicem.Pdf/pull/25), not yet on `main`
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
@@ -111,7 +111,19 @@ previous ordering, where M2 was writing and M3 assembly.
   stream without its own entry, undefined references, malformed font XMP).
 - **Referees**: pikepdf for pages, qpdf 11.9.1 in the integration container for the verdict, poppler's
   `pdftotext` 24.02 for text — it disagrees with xpdf on one Arabic ligature —, veraPDF 1.30.2 for PDF/A:
-  seven claims upheld, two rejected.
+  thirteen of fifteen new claims upheld, two rejected.
+- **The rule on names was then relaxed**, at the maintainer's request: a person's name alone, a Windows user
+  ID or a photograph no longer disqualifies a file; a person's phone number, postal address or own e-mail
+  still does, as does health, bank or identity data; fabricated and specimen data is always fine. Every
+  file turned down for a name alone was examined again, and a critic went through the 117 earlier
+  rejections for the ones missed. **38 more documents entered**, 6.1 MB, filling what the first pass had
+  left open: copiers with their own OCR, JasperReports and other Java writers, PDFMaker 5 to 25, PDFWriter,
+  a Mac Distiller, Print to PDF from Word, weclapp and Dynamics 365 Factur-X, DILA's Dictao signature, a
+  qualified seal renewed by timestamps, XFA forms the reader can open today. What stays wanted is what
+  only an inbox holds: a real supplier or bank document, a commercial e-signature.
+- **For what cannot be redistributed** — ShareAlike sets, bug-report attachments, vendors' samples, W11's
+  heavy files — the maintainer chose fetching on demand: [ADR 32](adr/0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md),
+  proposed, not implemented. A manifest of URLs and hashes, a separate job, nothing committed.
 
 ### 2026-09-22 — Documentation for every release, and for the preview
 - **The request**: a preview package should come with its documentation; the site should open on the
@@ -512,7 +524,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T01~~ | ~~`TreatWarningsAsErrors` is off while the foundations settle~~ | Done: on across the solution, analysis at `latest-recommended` |
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures; 68 since 2026-09-24 |
-| T10 | **Narrowed on 2026-09-24**: Word, Acrobat, InDesign, LiveCycle, copier scans, PDF 1.2 archives, signatures and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing is what only an inbox holds: a real Java-stack invoice, a commercial e-signature, a Factur-X from an ERP, a copier's own OCR layer | Contributions, per the "still wanted" column of `docs/corpus-contributions.md` |
+| T10 | **Narrowed on 2026-09-24**: Word, PDFMaker, Acrobat, InDesign, LiveCycle, PDFWriter, copier scans with their own OCR, Java writers, ERP Factur-X samples, PDF 1.2 archives, signatures and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing is what only an inbox holds: a real invoice or statement from a supplier or bank, a commercial e-signature, a copier file untouched since the copier wrote it, Hebrew | Contributions, per the "still wanted" column of `docs/corpus-contributions.md`; ADR 32 (proposed) for files that can be used but not redistributed |
 | T21 | **The reader reports a truncated stream that is not.** When a stream's data ends inside the parser's 8 KB window but its `endstream` falls past the window's end, `PdfObjectParser.ReadStream` finds no `endstream` in the window and reports `stream.truncated`, cutting the stream at the window. Found on object 49 of the USGS Washington West topographic map (W11 reference, `docs/corpus-sources.md`): data from 68 to 8,185 in a 8,192-byte window; qpdf reads it cleanly. The same file also earns a `filter.failed` on its 14.9 MB Flate image, not yet explained | A synthetic regression test (a stream ending 1 to 10 bytes before 8 KB), then treat an `endstream` beyond the window like data beyond it when a stream-data provider exists |
 | T22 | W11 has no committed document, by decision: three public references are hashed in `docs/corpus-sources.md`. The memory promise needs one in CI | M13: fetch one on demand, pinned by SHA-256, as pdf.js and PDFBox do — or commit a smaller heavy case |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
