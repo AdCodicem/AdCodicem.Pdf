@@ -175,6 +175,41 @@ notices whose EUAlbertina fonts are embedded in full under an editable-embedding
 consolidated regulation whose only name is a typeface designer's credit inside a font, and the 1786
 engraving under ImageMagick's false PDF/A claim, whose only names are historical figures.
 
+## Leads for what is still missing, held back by their licence
+
+These files would fill a gap the corpus still has, and were not committed because their licence is unclear
+or excludes redistribution. They are listed so that a later session, or a rights holder asked directly,
+can reopen them. None has been through the full name screening.
+
+| W | Document | Where | What holds it back | What would clear it |
+|---|---|---|---|---|
+| W01, W08 | OPM OF-306, a Word for Microsoft 365 form later edited in Acrobat, with JavaScript fields | [opm.gov](https://www.opm.gov/forms/pdf_fill/of0306.pdf) | No OPM reuse statement was found, so public domain rests on 17 U.S.C. 105 alone — the same basis on which the OPM attachment in `us-federal/` was accepted | A consistent ruling on statute-only evidence |
+| W02 | UK OZEV plug-in vehicle grant sample invoice, Acrobat PDFMaker 21 for Word | [gov.uk](https://assets.publishing.service.gov.uk/media/62a21964d3bf7f036750b0d2/plug-in-vehicle-grant-portal-sample-invoice.pdf) | OGL v3 coverage not verified | Reading the publication page's licence line |
+| W03 | Scan from a Ricoh MP C3003 through 3-Heights, with a PDF/A claim | [pdf.js `issue5747.pdf`](https://github.com/mozilla/pdf.js/blob/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/issue5747.pdf) | A bug-report attachment; the repository's licence does not cover it | The reporter's permission |
+| W03 | Federal Reserve SR 01-15 attachment, OCR by ABBYY FineReader 8 | [federalreserve.gov](https://www.federalreserve.gov/BoardDocs/SRLetters/2001/sr0115a1.pdf) | The Board's reuse statement was not verified; a desktop scanner, not a copier | The Board's website policy |
+| W04 | SAP NetWeaver 7.40 form output | [pdf.js `bug1727053.pdf`](https://github.com/mozilla/pdf.js/blob/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs/bug1727053.pdf) | A Bugzilla attachment, no licence | The reporter's permission |
+| W04 | A real Oracle Reports invoice among Mustang's test files | [mustangproject test resources](https://github.com/ZUGFeRD/mustangproject/tree/master/library/src/test/resources) | No licence statement for test files; provenance unknown | The maintainer's account of where it came from |
+| W04 | A real Hetzner invoice, Apache FOP 1.0 | [ZUGFeRD/corpus `unstructured/`](https://github.com/ZUGFeRD/corpus/tree/master/unstructured) | Hetzner's document, addressed to a private person | Not recoverable |
+| W04 | Real Estonian invoices (Scoro, Axapta) in PdfPig's tests | [PdfPig test documents](https://github.com/UglyToad/PdfPig/tree/master/src/UglyToad.PdfPig.Tests/Integration/Documents) | Third parties' invoices under a code licence; real companies and accounts | Not recoverable |
+| W05 | Signed samples, including Ukrainian qualified signatures | [pdfcpu `testdata`](https://github.com/pdfcpu/pdfcpu/tree/master/pkg/testdata) | No licence stated for test data | The maintainer's statement |
+| W05 | Foxit PhantomPDF certification and approval signatures (self-signed) | [pdfium_tests `fx/mulobj/new/signature`](https://pdfium.googlesource.com/pdfium_tests) | Only the repository's BSD licence, for Foxit QA files | Foxit's or Google's statement |
+| W05 | Signatures from national trust services and ETSI plugtests | [EU DSS `dss-pades` resources](https://github.com/esig/dss/tree/master/dss-pades/src/test/resources) | LGPL-2.1 — clearly copyleft | Not under ADR 23 |
+| W05 | Sealed Official State Gazette PDFs (Spain) | [BOE legal notice](https://www.boe.es/informacion/aviso_legal/index.php) | The reuse licence adds conditions beyond attribution | Not under ADR 23 |
+| W05 | Signed samples built on a third-party base document | [node-signpdf `resources`](https://github.com/vbuch/node-signpdf/tree/HEAD/resources) | The base document is not the project's | Not recoverable |
+| W07 | Vendors' Factur-X and ZUGFeRD samples (intarsys, Symtrax, FNFE-MPE, 4s4u, FeRD) | [ZUGFeRD/corpus `ZUGFeRDv2/correct`](https://github.com/ZUGFeRD/corpus/tree/master/ZUGFeRDv2/correct) | Copies of packages whose originals are "All Rights Reserved" or registration-gated | Each vendor's permission |
+| W07 | FNFE-MPE's official Factur-X examples | [fnfe-mpe.org](https://fnfe-mpe.org/factur-x/factur-x_en/) | "All Rights Reserved" | FNFE-MPE's permission |
+| W07 | DWC and akretion samples among Mustang's tests ("© DWC 2025" on the page) | [mustangproject test resources](https://github.com/ZUGFeRD/mustangproject/tree/master/library/src/test/resources) | Third-party files under a code licence | Each producer's permission |
+| W09 | 2020 Census Hebrew language guide, InDesign, Hebrew Type 1 fonts | [census.gov](https://www2.census.gov/programs-surveys/decennial/2020/resources/language-materials/guides/Hebrew-Guide.pdf) | No Census reuse statement found, and the translation may be a contractor's; 1.68 MB | The Bureau's statement on its language materials |
+| W09 | USDA NIFA Title VI fact sheet in Hebrew | [nifa.usda.gov](https://www.nifa.usda.gov/title-vi-fact-sheet-hebrew) | The site refused every connection; not inspected | Another attempt |
+| W06 | Bug-report files in pdf.js (~980), PDFium, pdfplumber, PDFBox's JIRA downloads, and the SafeDocs issue-tracker corpus (>32,000) | see the survey table above | Attachments, licensed by nobody | Each reporter's permission |
+| W06 | Two real-world files in pdf-differences' UnknownFilter set (one a wine label) | [pdf-differences `UnknownFilter`](https://github.com/pdf-association/pdf-differences/tree/907fe96e52b73e491489eee545c47b119bf9989b/UnknownFilter) | Third parties' documents under the PDF Association's CC BY | Not recoverable |
+| W06 | US state documents and Canadian federal forms linked by pdf.js | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | State works are not public domain; Canada's reproduction terms are not attribution-only | Not under ADR 23 |
+
+Two good files were held back for a name rather than a licence, and could come back if their owners removed
+it: the PDF Association's `CompactedPDFSyntaxTest.pdf`, whose `/Author` names its author, and Docentric's
+Factur-X EXTENDED sample from Dynamics 365 — a real ERP export —, whose keywords carry an employee's first
+name.
+
 ## Traps met along the way
 
 - **Printers stamp who printed.** Microsoft Print to PDF writes the Windows account's display name into
