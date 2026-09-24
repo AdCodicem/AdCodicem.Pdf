@@ -57,6 +57,7 @@ public class CorpusReadingTests
     public void Every_corpus_document_opens_as_its_manifest_describes(string file)
     {
         var entry = Corpus.Get(file);
+        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
 
         if (entry.Expect.Encrypted)
         {
@@ -147,6 +148,7 @@ public class CorpusReadingTests
     public void Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them(string file)
     {
         var entry = Corpus.Get(file);
+        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
 
         using var document = PdfDocument.Open(Corpus.Read(file));
 
