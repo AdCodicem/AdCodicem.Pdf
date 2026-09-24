@@ -1,16 +1,126 @@
 Third-party documents in tests/corpus/vendor
 ============================================
 
+Every file below is used unmodified and renamed for legibility. tests/corpus/vendor.json records,
+for each one, the URL it was retrieved from, the date, and the SHA-256 of the bytes as published.
+Only licences that ask for nothing beyond attribution are accepted here (docs/adr/0023); how the
+files were found and checked is in docs/corpus-sources.md.
+
+Fonts embedded in these documents remain the property of their foundries and are distributed only
+inside the documents, under the embedding permission each font grants.
+
 vendor/verapdf/
     A small selection from the veraPDF corpus (https://github.com/veraPDF/veraPDF-corpus),
     licensed by the veraPDF Consortium under the Creative Commons Attribution 4.0
     International licence (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/).
 
-    The files are used unmodified as conformance fixtures and renamed for legibility;
-    tests/corpus/vendor.json records the original path of each one.
-
     The Isartor test suite, also present in that repository, is deliberately excluded:
     it arrived there under different terms.
 
-Everything else under tests/corpus is generated from our own sources and is covered by
-the repository's MIT licence.
+vendor/us-federal/
+    Works of the United States Government - Internal Revenue Service, Department of the
+    Treasury, National Institutes of Health, Office of Personnel Management, U.S. Citizenship
+    and Immigration Services and the Government Publishing Office - which are not subject to
+    copyright in the United States (17 U.S.C. 105).
+
+vendor/opf-format-corpus/
+    From the Open Preservation Foundation format-corpus
+    (https://github.com/openpreserve/format-corpus, commit 366f068).
+    - imagemagick-false-pdfa1b-jpx.pdf comes from pdfCabinetOfHorrors/, dedicated to the public
+      domain under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/).
+    - distiller3-dea-cfr-damaged.pdf comes from govdocs1-error-pdfs/, a copy of GovDocs1
+      document 303226 (Digital Corpora): 21 CFR Parts 1307-1308, a work of the United States
+      Government (Drug Enforcement Administration, typeset by the Government Printing Office),
+      not subject to copyright under 17 U.S.C. 105.
+
+vendor/uk-ogl/
+    Contains public sector information licensed under the Open Government Licence v3.0
+    (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
+    Crown copyright: Crown Commercial Service, HM Courts & Tribunals Service, HM Revenue &
+    Customs.
+
+vendor/fr-licence-ouverte/
+    Informations publiques réutilisées sous la Licence Ouverte / Open Licence d'Etalab
+    (https://www.etalab.gouv.fr/licence-ouverte-open-licence). Producteurs et dates de mise à jour :
+    - word2010-meae-paris-call-survey.pdf: Ministère de l'Europe et des Affaires étrangères,
+      data.gouv.fr, 2020-06-09.
+    - word365-dila-text-drawn-as-images.pdf: Direction de l'information légale et administrative,
+      echanges.dila.gouv.fr, 2025-11-26.
+    - print-to-pdf-excel-agec2025.pdf: Syndicat mixte Thann-Cernay gestion déchets ménagers et
+      assimilés, data.gouv.fr, 2026-03-24.
+    - libreoffice-cerfa-13983-form.pdf: formulaire Cerfa 13983*03, Ministère de l'agriculture,
+      service-public.gouv.fr, retrieved 2026-09-24.
+
+vendor/eu-publications/
+    (c) European Union, https://eur-lex.europa.eu/, 1998-2026. Reuse is authorised under
+    Commission Decision 2011/833/EU; the consolidated texts are published under CC BY 4.0
+    (https://creativecommons.org/licenses/by/4.0/). The EUAlbertina fonts are URW++'s, embedded
+    in full under their editable-embedding permission.
+
+vendor/lu-legilux/
+    Source: Legilux - Journal officiel du Grand-Duché de Luxembourg, Service central de
+    législation. Licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+
+vendor/jp-nta/
+    出典：国税庁ホームページ (National Tax Agency, https://www.nta.go.jp/), used under the
+    Public Data License 1.0 (公共データ利用規約 第1.0版), which is compatible with CC BY 4.0. The form
+    has been withdrawn from the agency's site; these are the bytes it served, as preserved by the
+    Internet Archive. Unmodified, and not presented as made by the government in any other form.
+
+vendor/pikepdf/
+    From the pikepdf test suite (https://github.com/pikepdf/pikepdf, commit 910e06b), whose
+    REUSE.toml licenses each file separately:
+    - scanner-ccitt-endofline.pdf: CC0 1.0, released by its author in pikepdf issue 601.
+    - handwritten-cyclic-toc.pdf: public domain dedication (CC-PDDC), pikepdf issue 677.
+
+vendor/pdf-association/
+    - handwritten-type3-recursion.pdf and handwritten-dict-is-stream.pdf come from
+      https://github.com/pdf-association/safedocs (commit 68f730a), licensed under the Apache
+      License 2.0 (LICENSES/Apache-2.0.txt), whose NOTICE reads: "Copyright 2021 PDF Association,
+      Inc. https://www.pdfa.org. This material is based upon work supported by the Defense
+      Advanced Research Projects Agency (DARPA) under Contract No. HR001119C0079."
+    - handwritten-indexed-colour-out-of-range.pdf comes from
+      https://github.com/pdf-association/pdf-differences (commit 907fe96); copyright by the PDF
+      Association, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+
+vendor/pyhanko/
+    From the pyHanko test suite (https://github.com/MatthiasValvekens/pyHanko, commit 4115c6e).
+    Copyright (c) 2020-2026 Matthias Valvekens. MIT licence (text below). The signing
+    certificates are fictitious test credentials.
+
+vendor/zugferd/
+    Licensed under the Apache License 2.0 (LICENSES/Apache-2.0.txt).
+    - mustang-zugferd2-en16931-invoice.pdf: https://github.com/ZUGFeRD/corpus (commit 404d575).
+    - mustang-zugferd1-basic-invoice.pdf: https://github.com/ZUGFeRD/mustangproject
+      (commit fed2d08), whose NOTICE reads: "Mustangproject Copyright 2014 Jochen Staerk".
+    - fop26-xrechnung-visualisation.pdf: https://github.com/ZUGFeRD/quba-viewer (commit 73a4af1),
+      whose NOTICE reads: "Quba-Viewer Copyright 2021 Jochen Staerk".
+
+vendor/docentric/
+    From https://github.com/Docentric/docentric-e-invoice-validator (commit a72ed0d).
+    Copyright (c) 2025 Docentric. MIT licence (text below).
+
+vendor/bfo/
+    From the BFO PDF/A-2 test suite (https://github.com/bfosupport/pdfa-testsuite, commit c22d802),
+    licensed under the Creative Commons Attribution 3.0 licence
+    (https://creativecommons.org/licenses/by/3.0/legalcode).
+
+The MIT licence, as it applies to vendor/pyhanko/ and vendor/docentric/:
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+    and associated documentation files (the "Software"), to deal in the Software without
+    restriction, including without limitation the rights to use, copy, modify, merge, publish,
+    distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or
+    substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+    BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+    DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Everything else under tests/corpus is generated from our own sources, or produced from them on
+Windows by build/build_word.ps1, and is covered by the repository's MIT licence.
