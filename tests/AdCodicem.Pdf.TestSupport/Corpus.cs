@@ -48,6 +48,20 @@ public sealed record CorpusExpectation
 
     /// <summary>The conformance level the document claims, to be verified once the conformance profiles exist (M12).</summary>
     public string? ClaimsConformance { get; init; }
+
+    /// <summary>Whether an independent validator (veraPDF) upholds the claimed conformance level (M12).</summary>
+    public bool? ConformanceValid { get; init; }
+
+    /// <summary>
+    /// Why the library cannot yet meet this document's expectations, and the milestone that will: the
+    /// acceptance tests skip the document with this reason instead of failing.
+    /// </summary>
+    /// <remarks>
+    /// A known gap is written down where the next session will read it — never deleted, never silent
+    /// (docs/corpus.md). The expectations themselves stay as the independent tool established them; only
+    /// the assertion waits for the milestone.
+    /// </remarks>
+    public string? Unsupported { get; init; }
 }
 
 /// <summary>One entry of the corpus manifest.</summary>
