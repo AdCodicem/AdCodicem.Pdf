@@ -20,24 +20,31 @@ vendor/verapdf/
 vendor/us-federal/
     Works of the United States Government - Internal Revenue Service, Department of the
     Treasury, National Institutes of Health, Office of Personnel Management, U.S. Citizenship
-    and Immigration Services and the Government Publishing Office - which are not subject to
-    copyright in the United States (17 U.S.C. 105).
+    and Immigration Services, the Government Publishing Office, the Department of Housing and
+    Urban Development, the Copyright Office, the Department of Agriculture, the Mine Safety and
+    Health Administration, the Centers for Disease Control and Prevention and the Department of
+    Defense - which are not subject to copyright in the United States (17 U.S.C. 105). Files a
+    publisher has withdrawn were taken from the Internet Archive's unmodified copies.
 
 vendor/opf-format-corpus/
     From the Open Preservation Foundation format-corpus
     (https://github.com/openpreserve/format-corpus, commit 366f068).
-    - imagemagick-false-pdfa1b-jpx.pdf comes from pdfCabinetOfHorrors/, dedicated to the public
-      domain under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/).
-    - distiller3-dea-cfr-damaged.pdf comes from govdocs1-error-pdfs/, a copy of GovDocs1
-      document 303226 (Digital Corpora): 21 CFR Parts 1307-1308, a work of the United States
-      Government (Drug Enforcement Administration, typeset by the Government Printing Office),
-      not subject to copyright under 17 U.S.C. 105.
+    - imagemagick-false-pdfa1b-jpx.pdf and the two pdfmaker9-word-distiller-*.pdf files come from
+      pdfCabinetOfHorrors/; quartz-word-mac2011-lorem-ipsum.pdf from variations/; and
+      reader10-openoffice32-annotated-object-streams.pdf and openoffice32-pdfa1a-embedded-lucida.pdf
+      from office-examples/. All are dedicated to the public domain under CC0 1.0
+      (https://creativecommons.org/publicdomain/zero/1.0/).
+    - distiller3-dea-cfr-damaged.pdf and pdfmaker5-distiller5-va-select-agents.pdf come from
+      govdocs1-error-pdfs/, copies of GovDocs1 documents 303226 and 225188 (Digital Corpora):
+      works of the United States Government (Drug Enforcement Administration, typeset by the
+      Government Printing Office; Department of Veterans Affairs), not subject to copyright
+      under 17 U.S.C. 105.
 
 vendor/uk-ogl/
     Contains public sector information licensed under the Open Government Licence v3.0
     (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
     Crown copyright: Crown Commercial Service, HM Courts & Tribunals Service, HM Revenue &
-    Customs.
+    Customs, Department of Health, Committee on Standards in Public Life, Home Office.
 
 vendor/fr-licence-ouverte/
     Informations publiques réutilisées sous la Licence Ouverte / Open Licence d'Etalab
@@ -50,6 +57,11 @@ vendor/fr-licence-ouverte/
       assimilés, data.gouv.fr, 2026-03-24.
     - libreoffice-cerfa-13983-form.pdf: formulaire Cerfa 13983*03, Ministère de l'agriculture,
       service-public.gouv.fr, retrieved 2026-09-24.
+    - pdfmaker-acrobat-cerfa-12156-form.pdf and livecycle-es9-cerfa-14880-xfa-form.pdf:
+      formulaires Cerfa 12156*06 and 14880*02, service-public.gouv.fr, retrieved 2026-09-24.
+    - fop-dictao-dila-signed-joafe-notice.pdf: Journal officiel des associations et fondations
+      d'entreprise, annonce n° 1244 du 22 septembre 2026, Direction de l'information légale et
+      administrative (open data DILA), retrieved 2026-09-24.
 
 vendor/eu-publications/
     (c) European Union, https://eur-lex.europa.eu/, 1998-2026. Reuse is authorised under
@@ -72,16 +84,24 @@ vendor/pikepdf/
     REUSE.toml licenses each file separately:
     - scanner-ccitt-endofline.pdf: CC0 1.0, released by its author in pikepdf issue 601.
     - handwritten-cyclic-toc.pdf: public domain dedication (CC-PDDC), pikepdf issue 677.
+    - livecycle-dod-dd293-aes128-xfa.pdf: DD Form 293, a US Department of Defense form, public
+      domain dedication (CC-PDDC).
 
 vendor/pdf-association/
-    - handwritten-type3-recursion.pdf and handwritten-dict-is-stream.pdf come from
+    - handwritten-type3-recursion.pdf, handwritten-dict-is-stream.pdf, handwritten-compacted-syntax.pdf,
+      handwritten-dual-startxref.pdf, handwritten-utf16le-strings.pdf and
+      handwritten-content-stream-indirect-refs.pdf come from
       https://github.com/pdf-association/safedocs (commit 68f730a), licensed under the Apache
       License 2.0 (LICENSES/Apache-2.0.txt), whose NOTICE reads: "Copyright 2021 PDF Association,
       Inc. https://www.pdfa.org. This material is based upon work supported by the Defense
       Advanced Research Projects Agency (DARPA) under Contract No. HR001119C0079."
-    - handwritten-indexed-colour-out-of-range.pdf comes from
-      https://github.com/pdf-association/pdf-differences (commit 907fe96); copyright by the PDF
-      Association, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+    - handwritten-indexed-colour-out-of-range.pdf and handwritten-inline-image-abbreviations.pdf
+      come from https://github.com/pdf-association/pdf-differences (commit 907fe96); copyright by
+      the PDF Association, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+    - pdflib-pps-kraxi-pdfa2a-pdfua1-invoice.pdf, indesign13-pdfua1-german-book-chapter.pdf and
+      indesign15-pdfua1-form.pdf come from the PDF/UA Reference Suite 1.1
+      (https://pdfa.org/resource/pdfua-reference-suite/), made freely available by the PDF
+      Association under CC BY 4.0.
 
 vendor/pyhanko/
     From the pyHanko test suite (https://github.com/MatthiasValvekens/pyHanko, commit 4115c6e).
@@ -91,8 +111,11 @@ vendor/pyhanko/
 vendor/zugferd/
     Licensed under the Apache License 2.0 (LICENSES/Apache-2.0.txt).
     - mustang-zugferd2-en16931-invoice.pdf: https://github.com/ZUGFeRD/corpus (commit 404d575).
-    - mustang-zugferd1-basic-invoice.pdf: https://github.com/ZUGFeRD/mustangproject
-      (commit fed2d08), whose NOTICE reads: "Mustangproject Copyright 2014 Jochen Staerk".
+    - gnuaccounting-mustang10-zugferd-rc-invoice.pdf: https://github.com/ZUGFeRD/corpus
+      (commit d891458).
+    - mustang-zugferd1-basic-invoice.pdf and itext-pdfbox-weclapp-facturx-en16931-invoice.pdf:
+      https://github.com/ZUGFeRD/mustangproject (commits fed2d08 and 9af931d), whose NOTICE reads:
+      "Mustangproject Copyright 2014 Jochen Staerk".
     - fop26-xrechnung-visualisation.pdf: https://github.com/ZUGFeRD/quba-viewer (commit 73a4af1),
       whose NOTICE reads: "Quba-Viewer Copyright 2021 Jochen Staerk".
 
@@ -100,12 +123,21 @@ vendor/docentric/
     From https://github.com/Docentric/docentric-e-invoice-validator (commit a72ed0d).
     Copyright (c) 2025 Docentric. MIT licence (text below).
 
+vendor/swissqrbill/
+    From the SwissQRBill test suite (https://github.com/manuelbl/SwissQRBill, commit ec67df3).
+    Copyright (c) 2017 Manuel Bleichenbacher. MIT licence (text below). The payer and creditor
+    data are SIX Interbank Clearing's published specimens.
+
+vendor/jasper-modular/
+    From https://github.com/hhdevr/jasper-modular-library (commit 4f1cbdf), the author's own
+    sample output, licensed under the Apache License 2.0 (LICENSES/Apache-2.0.txt).
+
 vendor/bfo/
     From the BFO PDF/A-2 test suite (https://github.com/bfosupport/pdfa-testsuite, commit c22d802),
     licensed under the Creative Commons Attribution 3.0 licence
     (https://creativecommons.org/licenses/by/3.0/legalcode).
 
-The MIT licence, as it applies to vendor/pyhanko/ and vendor/docentric/:
+The MIT licence, as it applies to vendor/pyhanko/, vendor/docentric/ and vendor/swissqrbill/:
 
     Permission is hereby granted, free of charge, to any person obtaining a copy of this software
     and associated documentation files (the "Software"), to deal in the Software without
