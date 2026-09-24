@@ -99,9 +99,10 @@ cd docs/website && npm ci && npm run build                          # the docume
 
 Corpus documents are produced by real generators available in the container — Chromium (Skia backend),
 LibreOffice, and Python producers from pypi — then committed, so tests never depend on the network.
-The one exception is the remote corpus (ADR 32): documents we may use but not redistribute, described in
-`tests/corpus/manifest.json` with origin `remote`, fetched by `tests/corpus/build/fetch_remote.py`, never
-committed, and tested by a separate nightly job. See `docs/corpus.md`.
+The one exception is the remote corpus (ADR 32): documents we may use but not redistribute, or that weigh
+over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetched by
+`tests/corpus/build/fetch_remote.py`, never committed, and tested by a separate nightly job. See
+`docs/corpus.md`.
 
 ## Conventions
 

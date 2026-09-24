@@ -8,9 +8,9 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 333 unit (4 skipped by design: two corpus documents
+- **Builds**: yes, with no warnings — **Tests**: 334 unit (4 skipped by design: two corpus documents
   recorded as unsupported until M2) + 196 integration (skipped without Docker); with the remote corpus
-  fetched, 355 unit (a fifth skip: the map waiting on T21) + 216 integration — **CI**:
+  fetched, 356 unit (a fifth skip: the map waiting on T21) + 216 integration — **CI**:
   green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
 - **Corpus**: 106 documents, 15.4 MB — 19 generated here, 3 from Word and PDF24 on Windows, 84 third-party
   files under attribution-only licences (76 added on 2026-09-24, see `docs/corpus-sources.md`). Beside it,
@@ -83,6 +83,19 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-24 — Size is a recommendation; over 2 MB a document goes remote
+- **The maintainer's rule**: the corpus search refused files over 2 MB, and so lost five that would have
+  filled real gaps — a PDF portfolio, a Canon scan with its own OCR, a tagged scan, two PDF/UA files. Size
+  no longer turns a document down. Keeping committed files small is a recommendation; a document over
+  2 MB is not committed, whatever its licence, and goes to the remote corpus, fetched from its public URL.
+  The private corpus stays for confidential documents only, never for heavy ones.
+- **Where it is written**: `corpus.md`, `corpus-contributions.md`, `tests/corpus/README.md`, `CLAUDE.md`,
+  and a second dated amendment to ADR 32 ("too large to commit" means over 2 MB). `corpus-sources.md`
+  keeps the rule the search applied, with the revision beside it. `corpus.md`'s vendor row still said
+  "no real person's name anywhere", from before the personal-data rule was relaxed; corrected.
+- **Enforced**: `A_committed_document_weighs_at_most_2_MB` fails on a committed file over the threshold.
+  The largest today is the generated 1,000-page journal, 1.56 MB.
 
 ### 2026-09-24 — One corpus manifest instead of four files
 - **Why**: 87 of the manifest's 106 entries were copies of `vendor.json` and `contributed.json` — two

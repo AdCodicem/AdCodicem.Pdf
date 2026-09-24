@@ -17,6 +17,10 @@ single corpus manifest, marked by `"origin": "remote"`, when `vendor.json` and `
 folded into it too. The decision below is unchanged; only the file that holds the entries is. Where it
 says `remote.json`, read the manifest's remote entries.
 
+Amended again the same day: "too large to commit" means **over 2 MB**. Below that size, keeping a document
+small is a recommendation; above it, a document is fetched on demand whatever its licence, and is never
+turned down for its size alone. `CorpusReadingTests` fails on a committed document over 2 MB.
+
 ## Context
 
 ADR 23 commits third-party documents only under attribution-only licences, and says in one sentence that

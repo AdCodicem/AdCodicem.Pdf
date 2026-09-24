@@ -71,7 +71,8 @@ handing it over, and which of the public and private corpora it belongs in.
 
 1. Add a generator to `build_corpus.py` if it can be produced. Otherwise, drop it under
    `documents/<use-case>/` — or, for a third party's file, under `vendor/<source>/`, with its licence added
-   to `NOTICE` — and describe it in `manifest.json`, by hand, after the entries marked `builtBy`.
+   to `NOTICE` — and describe it in `manifest.json`, by hand, after the entries marked `builtBy`. Keep it
+   small if you can; over 2 MB it is not committed at all, but described as a remote document (below).
 2. Write its entry, including what tests must observe: page count, whether it is well formed,
    which diagnostics the reader must report, and whatever later milestones will assert (text, attachments,
    form fields, conformance level).
@@ -100,7 +101,7 @@ more in the public corpus: strip it, check what its metadata still says about it
 
 Some public files are worth testing against but cannot be committed: attachments to other projects' bug
 reports, vendors' samples under "all rights reserved", ShareAlike sets whose licence would reach every
-derivative we make, and documents too large for the repository. ADR 32 keeps them out of git and in the
+derivative we make, and any document over 2 MB, whatever its licence. ADR 32 keeps them out of git and in the
 tests: the manifest describes them with origin `remote` and a mandatory `source.url` and `source.sha256`,
 and the test suite leaves out those whose file has not been fetched. The main job still reads their
 entries: `CorpusReadingTests.Remote_documents_are_pinned_and_kept_where_git_ignores_them` fails on a remote

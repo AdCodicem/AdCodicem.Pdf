@@ -34,6 +34,10 @@ A file entered the corpus only if it met all four. A file that failed one was re
 4. **Small**: at most 2 MB, usually a few hundred kilobytes. W11, where size is the point, is recorded
    below by reference and not committed.
 
+   The maintainer has since turned this rule into a threshold. Size no longer turns a document down: a
+   file over 2 MB that meets the other rules goes to the remote corpus (ADR 32) instead of being
+   committed. Five files had been refused on size alone, and were then reconsidered on that basis.
+
 Embedded fonts stay inside the documents under their own embedding permission: subsets always, complete
 fonts when their `fsType` allows embedding.
 

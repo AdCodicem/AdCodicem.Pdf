@@ -69,8 +69,11 @@ can bring: documents that went through a real inbox.
 
 ## What makes a usable sample
 
-- **Small.** One to five pages is plenty, except W11 where the size is the point. Under 2 MB unless the
-  document's weight is what we are testing.
+- **Small, preferably.** One to five pages is plenty, and a few hundred kilobytes is ideal: everyone who
+  clones the repository downloads the committed corpus. It is a recommendation, never a reason to turn a
+  document down. A file over 2 MB is simply not committed: it joins the remote corpus, fetched from its
+  public URL (below), so it has to be online somewhere first. The private corpus is for confidential
+  documents, never for heavy ones. For W11 the weight is the point.
 - **Whole.** Do not re-save it, do not "clean" it in Acrobat, do not run it through another tool. The
   producer's original bytes are the entire value; a file re-saved by another program is a sample of that
   other program.
@@ -130,7 +133,7 @@ attribution-only licence recorded in `tests/corpus/NOTICE` (ADR 23).
 ### Public but not redistributable — fetched on demand
 
 A file anyone can download but nobody may republish — a bug-report attachment, a vendor's sample, a
-ShareAlike document, a file too large to commit — is not committed at all. It is described in
+ShareAlike document, any file over 2 MB whatever its licence — is not committed at all. It is described in
 `tests/corpus/manifest.json` with origin `remote`, its URL and its SHA-256, fetched by
 `build/fetch_remote.py`, and tested every
 night by the `Remote corpus` workflow (ADR 32). Send the URL rather than the file; `tests/corpus/README.md`
