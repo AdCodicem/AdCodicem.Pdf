@@ -20,14 +20,14 @@ public class QpdfRefereeTests(RefereeContainer referee)
         Assert.SkipWhen(referee.Unavailable is not null, referee.Unavailable ?? string.Empty);
 
         var expected = Corpus.Get(file).Expect.RefereeCheckSucceeds;
-        var (exitCode, output) = await referee.RunAsync("qpdf", "--check", RefereeContainer.PathInContainer(file));
+        var (exitCode, stdout, stderr) = await referee.RunAsync("qpdf", "--check", RefereeContainer.PathInContainer(file));
 
         // The manifest records what this very command answered when the corpus was built. A disagreement
         // means the corpus has drifted, or the referee's version has — either way, something to look at
         // rather than something to assume.
         (exitCode == 0).Should().Be(
             expected!.Value,
-            $"qpdf --check on {file} said:\n{output}");
+            $"qpdf --check on {file} said:\n{stdout}{stderr}");
     }
 
     [Theory]
@@ -37,11 +37,13 @@ public class QpdfRefereeTests(RefereeContainer referee)
         Assert.SkipWhen(referee.Unavailable is not null, referee.Unavailable ?? string.Empty);
 
         var expected = Corpus.Get(file).Expect.Pages;
-        var (exitCode, output) = await referee.RunAsync(
+        var (exitCode, stdout, stderr) = await referee.RunAsync(
             "qpdf", "--show-npages", RefereeContainer.PathInContainer(file));
 
-        exitCode.Should().NotBe(2, $"qpdf could not count the pages of {file}:\n{output}");
-        int.Parse(output.Trim(), CultureInfo.InvariantCulture).Should().Be(expected!.Value, $"the manifest claims {expected} pages for {file}");
+        // Exit code 3 is a count delivered with warnings on standard error, which is still a count: files
+        // from the field often carry a /Size one too large or a stale linearization hint.
+        exitCode.Should().NotBe(2, $"qpdf could not count the pages of {file}:\n{stderr}");
+        int.Parse(stdout.Trim(), CultureInfo.InvariantCulture).Should().Be(expected!.Value, $"the manifest claims {expected} pages for {file}");
     }
 
     public static TheoryData<string> AllDocuments =>

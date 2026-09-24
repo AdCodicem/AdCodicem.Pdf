@@ -56,8 +56,12 @@ public sealed class RefereeContainer : IAsyncLifetime
         }
     }
 
-    /// <summary>Runs a command inside the container and returns its exit code and output.</summary>
-    public async Task<(long? ExitCode, string Output)> RunAsync(params string[] command)
+    /// <summary>Runs a command inside the container and returns its exit code and both output streams.</summary>
+    /// <remarks>
+    /// The streams are kept apart because a referee answers on one and complains on the other: qpdf prints a
+    /// page count on standard output and its warnings about the same file on standard error.
+    /// </remarks>
+    public async Task<(long? ExitCode, string Stdout, string Stderr)> RunAsync(params string[] command)
     {
         if (_container is null)
         {
@@ -65,7 +69,7 @@ public sealed class RefereeContainer : IAsyncLifetime
         }
 
         var result = await _container.ExecAsync(command).ConfigureAwait(false);
-        return (result.ExitCode, string.Concat(result.Stdout, result.Stderr));
+        return (result.ExitCode, result.Stdout, result.Stderr);
     }
 
     /// <summary>Maps a corpus-relative path to its path inside the container.</summary>
