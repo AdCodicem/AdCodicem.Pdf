@@ -95,8 +95,9 @@ previous ordering, where M2 was writing and M3 assembly.
   overwritten. With the corpus going from 27 documents to 112, 20,000 mutations per seed wrote tens of
   gigabytes. Reproduced locally: 30 GB in `/tmp` before the disk filled, and the tests then failed on
   I/O.
-- **Fix**: the input is saved only once a budget is exceeded. Measured again at 20,000 iterations: no file
-  written and no failure.
+- **Fix**: the input is saved only once a budget is exceeded. Measured again at 20,000 iterations over the
+  112-document corpus: 137 of 137 passed in 17 min 30 s, with no file written. That leaves room under
+  the workflow's 60-minute limit.
 
 ### 2026-09-24 — The leads held back by their licence: 82 more documents, 76 of them remote
 - **The request**: now that ADR 32 gives a place to files we may not redistribute, follow the leads
