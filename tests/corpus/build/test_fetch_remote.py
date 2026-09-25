@@ -32,9 +32,11 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def tar_of(members: dict[str, bytes], links: dict[str, str] | None = None, mode: str = "w") -> bytes:
+def tar_of(members: dict[str, bytes], links: dict[str, str] | None = None, mode: str = "w",
+           specials: dict[str, bytes] | None = None, form: int = tarfile.DEFAULT_FORMAT) -> bytes:
+    """A tar of regular members, symbolic links (name -> target) and special members (name -> tarfile type)."""
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode=mode) as archive:
+    with tarfile.open(fileobj=buffer, mode=mode, format=form) as archive:
         for name, data in members.items():
             info = tarfile.TarInfo(name)
             info.size = len(data)
@@ -43,6 +45,12 @@ def tar_of(members: dict[str, bytes], links: dict[str, str] | None = None, mode:
             info = tarfile.TarInfo(name)
             info.type = tarfile.SYMTYPE
             info.linkname = target
+            archive.addfile(info)
+        for name, kind in (specials or {}).items():
+            info = tarfile.TarInfo(name)
+            info.type = kind
+            if kind == tarfile.LNKTYPE:
+                info.linkname = next(iter(members))
             archive.addfile(info)
     return buffer.getvalue()
 
@@ -82,17 +90,24 @@ class FetchRemoteTests(unittest.TestCase):
         self.addCleanup(self.server.close)
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.root = Path(directory.name)
+        self.root = Path(directory.name) / "corpus"
+        self.root.mkdir()
+        # The fetcher's own scratch space, to prove it is left empty.
+        self.scratch = Path(directory.name) / "scratch"
+        self.scratch.mkdir()
         patches = [
             mock.patch.object(fetch_remote, "ROOT", self.root),
             mock.patch.object(fetch_remote, "MANIFEST", self.root / "manifest.json"),
             # A retried outage must cost attempts, not wall-clock time.
             mock.patch.object(fetch_remote.time, "sleep", lambda seconds: None),
             mock.patch.dict(os.environ, {"no_proxy": "127.0.0.1", "NO_PROXY": "127.0.0.1"}),
+            mock.patch.object(fetch_remote.tempfile, "tempdir", str(self.scratch)),
         ]
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
+        # In CI the fetcher would append its report to the job's summary: these runs are not the corpus's.
+        os.environ.pop("GITHUB_STEP_SUMMARY", None)
 
     def entry(self, name: str, url: str, data: bytes, archive: dict | None = None) -> dict:
         source = {"url": url, "sha256": sha(data), "bytes": len(data)}
@@ -205,6 +220,83 @@ class FetchRemoteTests(unittest.TestCase):
             self.assertIsNone(self.fetched(name))
             self.assertIn(reason, output)
 
+    def test_a_hard_link_or_device_member_is_refused(self) -> None:
+        tar = tar_of({"bag/data/GOOD.pdf": PDF + b"GOOD"},
+                     specials={"bag/data/HARD.pdf": tarfile.LNKTYPE, "bag/data/CHAR.pdf": tarfile.CHRTYPE})
+        self.server.routes["/bag.tar"] = (200, tar)
+
+        code, output = self.run_fetch(self.archived(["GOOD", "HARD", "CHAR"], tar))
+
+        self.assertEqual(code, 1)
+        self.assertEqual(output.count("is not a regular file"), 2)
+        self.assertIsNone(self.fetched("hard"))
+        self.assertIsNone(self.fetched("char"))
+
+    def test_an_archive_served_larger_than_pinned_is_refused_once_for_every_member(self) -> None:
+        tar = tar_of({"bag/data/T01_001.pdf": PDF + b"T01_001", "bag/data/T02_002.pdf": PDF + b"T02_002"})
+        self.server.routes["/bag.tar"] = (200, tar + b"\0")
+
+        code, output = self.run_fetch(self.archived(["T01_001", "T02_002"], tar))
+
+        self.assertEqual(code, 1)
+        self.assertEqual(output.count("the archive: the source now serves more than the pinned"), 2)
+        self.assertEqual(self.server.requests["/bag.tar"], 1)
+
+    def test_a_damaged_archive_is_refused_and_the_run_goes_on(self) -> None:
+        # Its hash is pinned, so the damage was reviewed; a header that cannot be read must still refuse the
+        # archive's members, never end the run before the documents that follow it.
+        whole = tar_of({"bag/data/T01_001.pdf": PDF + b"T01_001", "bag/data/T02_002.pdf": PDF * 200})
+        tar = whole[:3 * 512 + 1000]  # cut inside the second member's data
+        self.server.routes["/bag.tar"] = (200, tar)
+        self.server.routes["/one.pdf"] = (200, PDF)
+        entries = self.archived(["T01_001", "T02_002"], tar) + [self.entry("one", self.server.base + "/one.pdf", PDF)]
+
+        code, output = self.run_fetch(entries)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(output.count("refused"), 2)
+        self.assertEqual(self.fetched("one"), PDF)
+
+    def test_long_member_names_of_gnu_archives_are_found(self) -> None:
+        # RADAR's tar uses GNU long-name headers for paths over 100 bytes.
+        name = "T04_019_" + "trailer-wrong-xref-byte-offset-" * 4
+        long_path = f"10.22000-53/data/dataset/Test_Corpus/{name}.pdf"
+        tar = tar_of({long_path: PDF + b"long"}, form=tarfile.GNU_FORMAT)
+        self.server.routes["/bag.tar"] = (200, tar)
+        entry = self.entry("long", self.server.base + "/bag.tar", PDF + b"long",
+                           {"sha256": sha(tar), "bytes": len(tar), "member": long_path})
+
+        code, _ = self.run_fetch([entry])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.fetched("long"), PDF + b"long")
+
+    def test_only_missing_or_stale_members_are_copied_again(self) -> None:
+        names = ["T01_001", "T02_002", "T03_003"]
+        tar = tar_of({f"bag/data/{name}.pdf": PDF + name.encode() for name in names})
+        self.server.routes["/bag.tar"] = (200, tar)
+        entries = self.archived(names, tar)
+        self.run_fetch(entries)
+        (self.root / "remote" / "test" / "t01-001.pdf").unlink()
+        (self.root / "remote" / "test" / "t02-002.pdf").write_bytes(b"stale")
+
+        code, output = self.run_fetch(entries)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(output.count("fetched"), 2)
+        self.assertEqual(output.count("present"), 1)
+        self.assertEqual(self.server.requests["/bag.tar"], 2)
+        for name in names:
+            self.assertEqual(self.fetched(name.lower().replace("_", "-")), PDF + name.encode())
+
+    def test_the_archive_leaves_nothing_behind(self) -> None:
+        tar = tar_of({"bag/data/T01_001.pdf": PDF + b"T01_001"})
+        self.server.routes["/bag.tar"] = (200, tar)
+
+        self.run_fetch(self.archived(["T01_001"], tar))
+
+        self.assertEqual(list(self.scratch.iterdir()), [])
+
     def test_a_member_whose_bytes_changed_is_refused(self) -> None:
         tar = tar_of({"bag/data/T01_001.pdf": PDF + b"T01_00X"})
         self.server.routes["/bag.tar"] = (200, tar)
@@ -223,7 +315,7 @@ class FetchRemoteTests(unittest.TestCase):
         code, output = self.run_fetch(self.archived(["T01_001"], tar))
 
         self.assertEqual(code, 1)
-        self.assertIn("not an uncompressed tar", output)
+        self.assertIn("not a readable uncompressed tar", output)
 
     def test_a_member_is_written_only_where_its_entry_says(self) -> None:
         # A hostile name inside the archive must never become a path: the member is copied into the
@@ -262,7 +354,7 @@ class FetchRemoteTests(unittest.TestCase):
         self.assert_invalid([entry], "source.bytes is required")
 
     def test_a_member_path_must_stay_inside_its_archive(self) -> None:
-        for member in ("../outside.pdf", "/absolute.pdf", "bag\\data.pdf", "bag//data.pdf", ""):
+        for member in ("../outside.pdf", "/absolute.pdf", "bag\\data.pdf", "bag//data.pdf", "", "bag/\n.pdf", "bag/"):
             with self.subTest(member=member):
                 entry = self.archived(["T01_001"], b"tar")[0]
                 entry["source"]["archive"]["member"] = member
@@ -272,6 +364,11 @@ class FetchRemoteTests(unittest.TestCase):
         first, second = self.archived(["T01_001", "T02_002"], b"tar")
         second["source"]["archive"]["sha256"] = sha(b"another tar")
         self.assert_invalid([first, second], "pinned differently")
+
+    def test_a_pin_that_is_not_text_is_refused_as_an_invalid_manifest(self) -> None:
+        entry = self.archived(["T01_001"], b"tar")[0]
+        entry["source"]["archive"]["sha256"] = 5
+        self.assert_invalid([entry], "source.archive needs")
 
     def test_a_url_is_either_a_document_or_an_archive(self) -> None:
         member = self.archived(["T01_001"], b"tar")[0]

@@ -30,8 +30,9 @@ CC BY-SA 4.0, so remote at best (ADR 23):
   one-line description of the deviation, JHOVE 1.16.5's verdict and message, and whether Acrobat XI Pro
   opens it. It cites no ISO clause: mapping a deviation to a requirement is ours to do. It is the only test
   suite written by others for M2's structural profile.
-- **The files hold more than their authors' deviation.** In 43 of the 59 header and body files the edit left
-  the cross-reference offsets stale, so qpdf rebuilds the table; 15 of the 18 content-stream files start with
+- **The files hold more than their authors' deviation.** In 45 of the 59 header and body files the edit left
+  a table that no longer leads to its objects: qpdf rebuilds it in 43, and adjusts to a leading space in the
+  other two; 15 of the 18 content-stream files start with
   a space before `%PDF`. `qpdf --check` passes 14 of the 88. `qpdf --show-npages` finds one page in 73, none
   in four, three and nine in two page-tree files, and fails on nine. In one file (`T02-01_001`) no object is
   a catalogue at all; in five more the catalogue is there but the trailer does not lead to it, and qpdf gives
@@ -80,8 +81,8 @@ the member by its own.
   it; it copies at most `source.bytes` into the entry's `.part` file — never `extract`, never `extractall`,
   never a path read from the archive — then checks the member's SHA-256 as today. A refusal names the
   archive or the member it concerns, and concerns that entry only.
-- **Validation.** `load_entries` and the C# test require `source.bytes` on every remote entry (all 153 carry
-  it today). With `source.archive` they also require a 64-hex `sha256`, a positive `bytes` and a relative
+- **Validation.** `load_entries` and the C# test require `source.bytes` on every remote entry (all 242 carry
+  it). With `source.archive` they also require a 64-hex `sha256`, a positive `bytes` and a relative
   `member` without `..` or a leading `/`; every entry naming the same `source.url` carries the same archive
   pin, and no member is named twice.
 - **Nothing extracted is committed**, and nothing else in the archive is fetched. The spreadsheet is read by
@@ -102,20 +103,27 @@ the member by its own.
 - **Each gap names the milestone that will close it.** On implementation the reader met 69 entries as
   written and 19 were marked unsupported, all until M2: seven page trees that qpdf and the reader count
   differently, four faults the reader reads without a word (a root typed `/Pagez`, a page typed `/Font`,
-  generation 10000 in the table, a trailer without `/Size`), and six recoveries that differ from qpdf's —
+  generation 10000 in the table, a trailer without `/Size`), six recoveries that differ from qpdf's —
   among them four where the trailer's `/Root` is missing or broken and the reader rebuilds a sound index to
-  find the catalogue, rather than looking among the indexed objects first. None waits for M10: the edits
-  to the 13 content-operator cases also broke their lengths or offsets, which the reader meets; the
-  operator faults themselves (`BT`, `ET`, `Tf`, `Tj`, their operands and parentheses) become findings when
-  M10's interpreter exists.
+  find the catalogue, rather than looking among the indexed objects first —, and two references to an
+  object the file lacks, which qpdf takes as null, as the specification says, and after which the reader
+  rebuilds its whole index and reports a repair (T27). Those two came to light in review: the acceptance
+  test judged a clean file's diagnostics before walking its page tree, and now walks it — each page's
+  contents and resources resolved — first; no other document in the corpus changed. None waits for M10:
+  the edits to the 13 content-operator cases also broke their lengths or offsets, which the reader meets;
+  the operator faults themselves (`BT`, `ET`, `Tf`, `Tj`, `cm`, their operands and parentheses) become
+  findings when M10's interpreter exists.
 - **One file has no catalogue to recover**: the manifest's new `catalogRecoverable: false` says so, and the
   acceptance tests then require the reader to open it, report the rebuild, and hand back no catalogue
   rather than invent one.
-- **M2 then owes them**: its row for documents the manifest calls not clean covers the set, the 19 are named
-  in its acceptance conditions, and the slice that names a rule adds the expected finding to each entry, or
-  the reason the profile stays silent.
+- **M2 then owes them**: its row for documents the manifest calls not clean covers 72 of them, its row for
+  well-formed documents the 16 that qpdf passes or only warns about — so those may earn warnings, never
+  errors —, the 19 are named in its acceptance conditions, and the slice that names a rule adds the
+  expected finding to each entry, or the reason the profile stays silent.
 - **A source serving more bytes than pinned is refused, not reported unavailable** — found while writing the
-  fetcher's tests: a file that grew changed, it did not disappear.
+  fetcher's tests: a file that grew changed, it did not disappear. Review found one more: a pinned archive
+  with a damaged header past the first ended the whole run; every header is now read before any member is
+  copied, and a damaged archive refuses its own members only.
 - **Amended on acceptance**: ADR 32's URL rule and its description of `source`; the `source` bullet of
   `docs/corpus.md`; *Remote documents* in `tests/corpus/README.md`; `fetch_remote.py`'s docstring. Every
   remote entry now pins its size, which all of them already did.

@@ -58,8 +58,8 @@ public class CorpusReadingTests
             if (remote)
             {
                 var source = entry.TryGetProperty("source", out var value) ? value : default;
-                Text(source, "url").Should().MatchRegex(@"^https?://\S+$", $"{file} is fetched from its source");
-                Text(source, "sha256").Should().MatchRegex("^[0-9a-f]{64}$", $"{file} is pinned to its SHA-256");
+                Text(source, "url").Should().MatchRegex(@"\Ahttps?://\S+\z", $"{file} is fetched from its source");
+                Text(source, "sha256").Should().MatchRegex(@"\A[0-9a-f]{64}\z", $"{file} is pinned to its SHA-256");
                 Size(source, "bytes").Should().BePositive($"{file} is pinned to its exact size");
             }
         }
@@ -89,11 +89,11 @@ public class CorpusReadingTests
 
             if (source.TryGetProperty("archive", out var archive))
             {
-                Text(archive, "sha256").Should().MatchRegex("^[0-9a-f]{64}$", $"{file}: the archive is pinned to its SHA-256");
+                Text(archive, "sha256").Should().MatchRegex(@"\A[0-9a-f]{64}\z", $"{file}: the archive is pinned to its SHA-256");
                 Size(archive, "bytes").Should().BePositive($"{file}: the archive is pinned to its exact size");
 
                 var member = Text(archive, "member");
-                member.Should().MatchRegex(@"^(?!/)(?!.*\\)(?!(.*/)?\.{1,2}(/|$))(?!.*//)(?!.*/$).+$", $"{file}: the member stays inside its archive");
+                IsInsideItsArchive(member).Should().BeTrue($"{file}: the member '{member}' stays inside its archive");
                 members.Add($"{url} {member}").Should().BeTrue($"{file}: {member} is taken once");
 
                 pin = $"{Text(archive, "sha256")} {Size(archive, "bytes")}";
@@ -104,6 +104,17 @@ public class CorpusReadingTests
             pins[url].Should().Be(pin, $"{file}: {url} is pinned the same way by every entry naming it");
         }
     }
+
+    /// <summary>
+    /// The rule fetch_remote.py applies to a member's path, so that both validators accept exactly the same
+    /// names: relative, in POSIX form, with no control character and no empty, "." or ".." segment.
+    /// </summary>
+    private static bool IsInsideItsArchive(string? member) =>
+        !string.IsNullOrEmpty(member)
+        && member[0] != '/'
+        && !member.Contains('\\', StringComparison.Ordinal)
+        && !member.Any(character => character < ' ' || character == '\u007f')
+        && member.Split('/').All(segment => segment is not ("" or "." or ".."));
 
     private static string? Text(JsonElement parent, string name) =>
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value) ? value.GetString() : null;
@@ -167,8 +178,11 @@ public class CorpusReadingTests
         document.WasRepaired.Should().Be(entry.Expect.IndexRebuilt, $"{entry.Name}: unexpected rebuild state");
 
         // Judge the diagnostics on a full read, not on opening: a lying /Length is only discovered when
-        // the stream it describes is actually decoded, which is the lazy reader behaving as designed.
+        // the stream it describes is actually decoded, which is the lazy reader behaving as designed. The
+        // page tree is walked too, each page's contents and resources resolved: a reference to an object the
+        // file lacks is only followed there.
         ReadEverything(document);
+        var pages = entry.Expect.CatalogRecoverable ? CountPages(document) : 0;
 
         foreach (var code in entry.Expect.RequiredDiagnostics)
         {
@@ -188,7 +202,7 @@ public class CorpusReadingTests
 
         if (entry.Expect.Pages is { } expectedPages && entry.Expect.CatalogRecoverable)
         {
-            CountPages(document).Should().Be(expectedPages, $"{entry.Name}: page count");
+            pages.Should().Be(expectedPages, $"{entry.Name}: page count");
         }
     }
 
@@ -272,6 +286,7 @@ public class CorpusReadingTests
         else
         {
             document.Catalog.Should().BeNull($"{entry.Name}: no object in the file is a catalogue");
+            entry.Expect.Pages.Should().BeNull($"{entry.Name}: a file without a catalogue has no page count to expect");
         }
     }
 
@@ -319,8 +334,9 @@ public class CorpusReadingTests
     }
 
     /// <summary>
-    /// Walks the page tree. M1 has no page API — that is M5 — so the traversal lives here, which also
-    /// exercises reference resolution and inherited structure across every producer in the corpus.
+    /// Walks the page tree, resolving each page's contents and resources. M1 has no page API — that is M5 —
+    /// so the traversal lives here, which also exercises reference resolution and inherited structure across
+    /// every producer in the corpus.
     /// </summary>
     private static int CountPages(PdfDocument document)
     {
@@ -339,6 +355,7 @@ public class CorpusReadingTests
 
         if (kids is null)
         {
+            ResolvePageEntries(node);
             return node.IsOfType(PdfName.Page) ? 1 : 0;
         }
 
@@ -348,13 +365,36 @@ public class CorpusReadingTests
         {
             if (kids.Resolved(index).AsDictionary() is { } kid)
             {
-                total += kid.GetArray(PdfName.Kids) is null && !kid.IsOfType(PdfName.Pages)
-                    ? 1
-                    : CountPages(kid, visited, depth + 1);
+                if (kid.GetArray(PdfName.Kids) is null && !kid.IsOfType(PdfName.Pages))
+                {
+                    ResolvePageEntries(kid);
+                    total++;
+                }
+                else
+                {
+                    total += CountPages(kid, visited, depth + 1);
+                }
             }
         }
 
         return total;
+    }
+
+    private static void ResolvePageEntries(PdfDictionary page)
+    {
+        _ = page.GetDictionary(PdfName.Resources);
+
+        if (page.GetArray(PdfName.Contents) is { } contents)
+        {
+            for (var index = 0; index < contents.Count; index++)
+            {
+                _ = contents.Resolved(index);
+            }
+        }
+        else
+        {
+            _ = page.Get(PdfName.Contents);
+        }
     }
 
     private static string Describe(PdfDiagnostics diagnostics) =>

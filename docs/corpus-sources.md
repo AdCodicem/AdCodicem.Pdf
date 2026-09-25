@@ -85,7 +85,7 @@ fonts when their `fsType` allows embedding.
   taken, screened one by one, then every admitted file re-screened by one verifier told to reject on doubt.
   **124 entered**: 56 committed and 68 remote — one of them, a fact sheet too damaged to be screened whole,
   admitted afterwards by the maintainer's decision, with the exception written into its entry —; 160 were
-  refused, 89 of them the OPF's copy of a hand-built set whose bytes git had altered, and eight after the
+  refused, 89 of them the OPF's copy of a hand-built set whose bytes git had altered, and seven after the
   verifier's objections. The committed corpus then held 168 documents, 23.0 MB, and the remote corpus 154.
 - **The iPRES 2017 set, through ADR 33**: the 88 test files of that hand-built set, fetched out of the BagIt
   tar its authors deposited on RADAR, once `fetch_remote.py` could copy a member out of a pinned archive.
@@ -107,8 +107,9 @@ fonts when their `fsType` allows embedding.
   window grows), a new T25 (a `/Prev` 12 bytes off, dropped without a word), and five where the page tree
   or the catalogue is wrong and the reader is silent or counts differently from qpdf, until M2. Over the 88
   iPRES files it falls short on 19, all until M2: seven page trees it counts differently from qpdf, four
-  faults it reads without a word, and six recoveries that differ from qpdf's — in four, the reader
-  rebuilds a sound index to find a catalogue the trailer no longer leads to.
+  faults it reads without a word, six recoveries that differ from qpdf's — in four, the reader rebuilds a
+  sound index to find a catalogue the trailer no longer leads to —, and two references to an object the
+  file lacks, after which it rebuilds its whole index where qpdf takes null (T27).
 
 ## What entered the corpus
 
@@ -237,7 +238,8 @@ Word files, videos, a sound), signature dictionaries, the literal strings of eve
 inflatable stream including superseded revisions, and page images viewed wherever a file has no text
 layer. One independent verifier, told to reject on doubt, then went over the 131 files admitted, OCR
 included: it turned down six, moved a seventh to the remote corpus for the copyrighted tables in it, and
-flagged two more that were then excluded on doubt. Four of its finds were in text the first screen could
+flagged two more that were then excluded on doubt — one of which, the SAMHSA fact sheet, the maintainer
+later admitted to the remote corpus with a written exception (*In the remote corpus*). Four of its finds were in text the first screen could
 not reach — an e-mail address with a space after the `@`, a named nurse's extension split across two
 lines, contact details printed only inside a scan. Expectations come from the referees below, established
 on the files; the reader was then run against them.
@@ -427,15 +429,20 @@ and whether its index must be rebuilt were derived from qpdf's warnings, not fro
 was then run against them, and where it falls short the entry is marked unsupported, with the reason and
 the milestone that owes the fix.
 
-Rule 2 holds here in full: a remote document is screened for personal data exactly as a committed one.
-One exception was made, by the maintainer's decision of 2026-09-25, and is written into its entry (feature
-`partially-screened`): a SAMHSA fact sheet from GovDocs1, sent at some point through a text-mode transfer
-that turned each of its 1,904 CR and LF bytes into CR LF. Every stream's `/Length`, every offset and every
-Flate stream broke; its three content streams stop decoding after 18 to 96 bytes, so most of its text can
-be read by no decoder, and could not be screened. Everything readable is clean — the text recovered by
-undoing the line ends, the metadata, the annotations, a link to a SAMHSA centre — and the entry publishes
-no text from the document. What it adds is a whole file broken by a text-mode transfer, which nothing else
-in the corpus is.
+Rule 2 holds here with one exception: a remote document is screened for personal data exactly as a
+committed one. The exception was made by the maintainer's decision of 2026-09-25 and is written into its
+entry (feature `partially-screened`): a SAMHSA fact sheet from GovDocs1, sent at some point through a
+text-mode transfer that turned each of its CR and LF bytes into CR LF — 1,904 pairs, not one lone CR or LF
+left — and dropped every 0x1A byte, of which none is left where every other byte value occurs 398 times or
+more. Every stream's `/Length`, every offset and every Flate stream broke; as the file stands, its three
+content streams stop decoding after 18 to 96 bytes. Undoing the damage is a search with many answers: put
+back 0x1A bytes and single line ends, and the opening of each page and the third page's references read
+with certainty, but no attempt reached a stream's own checksum, and past those openings the
+reconstructions drift into text that cannot be trusted. What reads is clean — screening guidance and
+questions, citations of published authors, the metadata, the annotations, a link to a SAMHSA centre —; the
+rest could not be recovered with certainty and was not screened. The entry publishes nothing from the
+document beyond its publication name. What it adds is a whole file broken by a text-mode transfer, which
+nothing else in the corpus is.
 Rules 1, 3 and 4 are what the remote corpus relaxes, within limits the maintainer set in the third pass.
 Since nothing is redistributed, terms that restrict reuse do not keep a document out — conditions beyond
 attribution, non-commercial reproduction only, nothing beyond fair use, no modification or commercial
@@ -510,7 +517,7 @@ were established the same way, pages by `qpdf --show-npages`.
 | GovDocs1 error files | 21 | Six are federal work over 2 MB — the VHA coding handbook, the VA Kernel guide (464 pages, a PDF/A-1b claim veraPDF rejects on seven rules), a USGS earthquake map, a USFWS recovery plan, the 1994 Transportation Statistics report whose `/Producer` names Distiller 1.0.2 for Macintosh, a Reclamation EA —; one is a Census Bureau section whose tables are partly copyrighted by the firms that supplied them; thirteen are not shown to be federal staff's work: contractors (ORNL, JPL), PIARC, WARDA, the EU's delegation, IBM, Scholastic, an unnamed consultant; one, the SAMHSA fact sheet, is screened in part | IBM ID Workbench and XPP, Xyvision's Parlance Publisher, WordPerfect through PDFWriter 4, PageMaker 6.5, a `/Prev` 12 bytes off (T25), a whole file broken by a text-mode transfer |
 | JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalogue without `/Type`; a reference to object 0; a file whose tail was lost |
 
-Sixteen remote entries are recorded as unsupported. From the first three passes: the topographic map
+Thirty-five remote entries are recorded as unsupported. From the first three passes: the topographic map
 (T21), the 25-signature sheet and the 2015 BOE law (T23), the signed web capture (T24), the Axapta credit
 note and the `#00` form (M2). From the fourth: the hospital-bed guidance (T21), the VA Kernel guide and a
 poster (T23), the VHA handbook (T24), IBM's manual (T25), two catalogues without `/Type`, the wPDF chapter's
@@ -526,14 +533,16 @@ on RADAR in 2017 ([doi:10.22000/53](https://doi.org/10.22000/53), CC BY-SA 4.0),
 RADAR publishes — under ADR 33. Each derives from one page, "Hello PDF-world!" in Times-Italic, with one
 deviation from ISO 32000-1's structure: header 7, catalogue 7, page tree 9, page object 12, page resources
 6, content stream 18, cross-reference table 10, trailer 19. They hold no metadata and no other text, so the
-screen was short. Titles are our own words, from each file's difference with the base page; the authors'
-spreadsheet gives only each case's number, category and JHOVE 1.16.5's 2017 verdict, kept as features
+screen was short. Titles are our own words, from each file's difference with the base page; the entries
+take from the authors' spreadsheet only each case's number, category and JHOVE 1.16.5's 2017 verdict, kept
+as features
 (`ipres2017-t04-019`, `ipres2017-trailer`, `jhove-1.16.5-not-well-formed`) and never copied.
 
 Their expectations come from qpdf and pdftotext, as for the rest of the corpus; the 15 files with a space
 before `%PDF` expect the offset adjustment qpdf makes without a word. The edits often did more than their
-authors meant: in 43 of the 59 header and body files the offsets went stale, so qpdf rebuilds the table,
-and the operator faults of the content-stream cases came with broken lengths the reader does meet. One
+authors meant: in 45 of the 59 header and body files the table no longer leads to its objects — qpdf
+rebuilds it in 43 and adjusts to a leading space in the other two —, and the operator faults of the
+content-stream cases came with broken lengths or offsets the reader does meet. One
 file holds no catalogue at all, and its entry says so (`catalogRecoverable: false`): the reader must open
 it and hand back none.
 
@@ -549,6 +558,10 @@ it and hand back none.
   trailers whose `/Root` is missing, lacks its `R` or its generation, or points at the content stream —
   qpdf keeps its sound index and gives up, the reader rebuilds the index to find the catalogue, where it
   could look among the indexed objects first.
+- **Two references to an object the file lacks** (T27): a catalogue's `/Pages` and a page's `/Contents`.
+  qpdf takes each as null, as the specification says; the reader rebuilds its whole index looking for the
+  object and reports a repair on a file qpdf calls clean. The acceptance test found them only once it
+  walked each page's contents and resources before judging a clean file's diagnostics, which it now does.
 
 ## Traps met along the way
 

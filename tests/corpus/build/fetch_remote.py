@@ -57,9 +57,15 @@ def positive(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def hex64(value: object) -> bool:
+    return isinstance(value, str) and SHA256.fullmatch(value) is not None
+
+
 def valid_member(name: object) -> bool:
     """A member is named relative to the archive's root, in POSIX form, and never climbs out of it."""
     if not isinstance(name, str) or not name or name.startswith("/") or "\\" in name:
+        return False
+    if any(ord(character) < 32 or ord(character) == 127 for character in name):
         return False
     return all(part not in ("", ".", "..") for part in name.split("/"))
 
@@ -84,15 +90,17 @@ def load_entries() -> list[dict]:
     for entry in documents:
         name = entry.get("file", "")
         source = entry.get("source") or {}
+        if not isinstance(name, str) or not isinstance(source, dict):
+            raise InvalidManifest(f"'{name}': file is a path and source an object")
         if not re.fullmatch(r"remote/[a-z0-9-]+/[a-z0-9.-]+\.pdf", name) or ".." in name:
             raise InvalidManifest(f"'{name}': a remote document lives at remote/<source>/<name>.pdf")
         if name in seen:
             raise InvalidManifest(f"'{name}' is listed twice")
         seen.add(name)
         url = source.get("url", "")
-        if not re.fullmatch(r"https?://\S+", url):
+        if not isinstance(url, str) or not re.fullmatch(r"https?://\S+", url):
             raise InvalidManifest(f"'{name}': source.url is required")
-        if not SHA256.fullmatch(source.get("sha256", "")):
+        if not hex64(source.get("sha256")):
             raise InvalidManifest(f"'{name}': source.sha256 is required, as 64 lower-case hex digits")
         if not positive(source.get("bytes")):
             raise InvalidManifest(f"'{name}': source.bytes is required, the document's exact size")
@@ -104,7 +112,7 @@ def load_entries() -> list[dict]:
         archive = source.get("archive")
         pin = None
         if archive is not None:
-            if not isinstance(archive, dict) or not SHA256.fullmatch(archive.get("sha256", "")) \
+            if not isinstance(archive, dict) or not hex64(archive.get("sha256")) \
                     or not positive(archive.get("bytes")) or not valid_member(archive.get("member")):
                 raise InvalidManifest(f"'{name}': source.archive needs a sha256, a size in bytes and a relative member path")
             pin = (archive["sha256"], archive["bytes"])
@@ -193,12 +201,18 @@ class Archives:
             if state != "fetched":
                 self._opened[url] = (state, detail)
             else:
+                opened = None
                 try:
                     # Uncompressed only: its headers are then bounded by the pinned size, and a compressed
-                    # archive would be a new review rather than an accident. The SHA-256 matched first.
-                    self._opened[url] = tarfile.open(path, mode="r:")  # noqa: SIM115 - closed in close()
-                except tarfile.TarError as error:
-                    self._opened[url] = ("refused", f"the archive: not an uncompressed tar ({error})")
+                    # archive would be a new review rather than an accident. The SHA-256 matched first. Every
+                    # header is read here, so a damaged one refuses the archive rather than ending the run.
+                    opened = tarfile.open(path, mode="r:")  # noqa: SIM115 - closed in close()
+                    opened.getmembers()
+                    self._opened[url] = opened
+                except (tarfile.TarError, OSError) as error:
+                    if opened is not None:
+                        opened.close()
+                    self._opened[url] = ("refused", f"the archive: not a readable uncompressed tar ({error})")
         return self._opened[url]
 
     def close(self) -> None:
@@ -224,18 +238,22 @@ def copy_member(archive: tarfile.TarFile, entry: dict, target: Path) -> tuple[st
         return "refused", f"member {name}: size {member.size} differs from the pinned {source['bytes']}"
 
     digest = hashlib.sha256()
-    stream = archive.extractfile(member)
-    if stream is None:
-        return "refused", f"member {name} cannot be read"
-    with stream, target.open("wb") as out:
-        remaining = source["bytes"]
-        while remaining > 0:
-            block = stream.read(min(CHUNK, remaining))
-            if not block:
-                break
-            remaining -= len(block)
-            digest.update(block)
-            out.write(block)
+    try:
+        stream = archive.extractfile(member)
+        if stream is None:
+            return "refused", f"member {name} cannot be read"
+        with stream, target.open("wb") as out:
+            remaining = source["bytes"]
+            while remaining > 0:
+                block = stream.read(min(CHUNK, remaining))
+                if not block:
+                    break
+                remaining -= len(block)
+                digest.update(block)
+                out.write(block)
+    except (tarfile.TarError, OSError) as error:
+        target.unlink(missing_ok=True)
+        return "refused", f"member {name} cannot be read ({error})"
     if digest.hexdigest() != source["sha256"]:
         target.unlink(missing_ok=True)
         return "refused", (f"member {name}: sha256 {digest.hexdigest()}, the manifest pins {source['sha256']}: "
