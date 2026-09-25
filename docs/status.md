@@ -10,8 +10,8 @@ here.
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 481 unit (4 skipped by design: two corpus
   documents recorded as unsupported until M2) + 302 integration (skipped without Docker);
-  with the remote corpus fetched (151 of its 153 documents, see the journal), 804 unit (35 skipped by
-  design, on documents recorded as unsupported until M2 or until T21, T23, T24 or T25 is fixed) + 560
+  with the remote corpus fetched (all 153 of its documents, on the runner), 806 unit (35 skipped by
+  design, on documents recorded as unsupported until M2 or until T21, T23, T24 or T25 is fixed) + 563
   integration — **CI**: green on `main`, `OpenSSF Scorecard` included
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licences (56 of them from the Open Preservation Foundation's
@@ -22,7 +22,10 @@ here.
   which brought the remote corpus, was merged on 2026-09-24. Its first nightly run, on `main` on
   2026-09-25, passed every test (538 unit, 361 integration) but failed its last step: the Internet
   Archive's copy of the Massachusetts COVID-19 dashboard timed out three times, so it ran without that
-  one document. The same file downloads without trouble from here; one slow night is not yet a trend
+  one document. The same file downloads without trouble from here; one slow night is not yet a trend.
+  Run 2, dispatched by hand on `claude/format-corpus-integration-udjoo6` the same day, fetched all 153
+  documents and passed 806 unit
+  tests (35 skipped by design) and 563 integration tests
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
   T18 and T19
@@ -128,8 +131,9 @@ previous ordering, where M2 was writing and M3 assembly.
   qpdf says nothing about a MacBinary header or a `data:` URI before `%PDF`; those two files expect the
   offset adjustment anyway. Two files expect the rebuild only after a full read, as qpdf checks every
   offset at opening and the reader does not.
-- **Tests**: 481 unit and 302 integration without the remote corpus; with it, 804 and 560, all
-  green. Fetching the remote corpus from this session got 151 of 153: the two GitHub issue attachments of
+- **Tests**: 481 unit and 302 integration without the remote corpus; with 151 of its 153 documents, 804
+  and 560, all green; with all 153, on the runner (`Remote corpus` run 2), 806 and 563, all green.
+  Fetching the remote corpus from this session got 151 of 153: the two GitHub issue attachments of
   the third pass answer 403 to a cloud session, whose GitHub proxy lets it reach only its own repositories.
   The runner is not bound that way: the first nightly run fetched both.
 
