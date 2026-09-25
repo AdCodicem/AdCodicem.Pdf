@@ -121,8 +121,9 @@ previous ordering, where M2 was writing and M3 assembly.
 - **Documentation**: ADR 33 accepted, ADR 32 amended, `docs/corpus.md`, `tests/corpus/README.md`,
   `docs/corpus-contributions.md` and `docs/corpus-sources.md` brought in line; M2 has a new acceptance row;
   T26 is closed.
-- **`Remote corpus` run 3**, dispatched on `13c5861`: all 242 documents fetched on the runner, the 88 out of
-  one download of RADAR's tar; 1,145 unit tests (68 skipped by design) and 668 integration tests, all green.
+- **`Remote corpus` runs 3 and 4**, dispatched on `13c5861` and, after the review below, on `8513ff8`: all
+  242 documents fetched on the runner, the 88 out of one download of RADAR's tar; 1,145 unit tests (68, then
+  70 skipped by design) and 668 integration tests, all green both times, as was the pull request's CI.
 - **Review**: two independent checkers went over the code, the 89 entries and the documentation, and were
   right on each point kept. The fetcher ended the whole run on a pinned archive with a damaged header past
   the first — it now reads every header before copying any member, so a damaged archive refuses only its
