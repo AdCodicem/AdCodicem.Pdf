@@ -163,8 +163,10 @@ on in tests.
 - **Visual**: page images compared against approved references within a threshold.
 - **Benchmarks**: BenchmarkDotNet with `MemoryDiagnoser` throughout. An allocation regression is a
   regression.
-- **Security**: fuzzing of the lexer and parser seeded with the damaged corpus; no input may produce an
-  untyped exception, an infinite loop or an unbounded allocation.
+- **Security**: fuzzing of the lexer and parser seeded with the corpus; no input may produce an untyped
+  exception, an infinite loop or an unbounded allocation. Every commit mutates every small seed document a
+  little; each night mutates, far more deeply, the smallest document of each reader structure and a
+  rotating share of the others (`FuzzingSeeds`).
 
 ## 9. Compatibility and versioning
 

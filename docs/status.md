@@ -8,10 +8,10 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 482 unit (4 skipped by design: two corpus
+- **Builds**: yes, with no warnings — **Tests**: 486 unit (4 skipped by design: two corpus
   documents recorded as unsupported until M2) + 302 integration (skipped without Docker) + 23 for the
   remote corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
-  documents from here, all 242 on the runner, see the journal), 1,143 unit (70 skipped by design, on
+  documents from here, all 242 on the runner, see the journal), 1,147 unit (70 skipped by design, on
   documents recorded as unsupported until M2 or until T21, T23, T24 or T25 is fixed) + 665 integration — **CI**: green on `main`,
   `OpenSSF Scorecard` included
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -92,6 +92,32 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-25 — The nightly fuzzing campaign starts from one document per reader structure
+- **The question**: this branch, rebased on `main` after its fix for the fuzzing runner's disk, brings the
+  seed documents from 68 to 104, and the nightly campaign ran 20,000 mutations on every one of them, so
+  its cost grew with the corpus. The maintainer asked for a representative selection instead.
+- **What "representative" means here**: not the manifest's features — 428 of them among the 104 seeds, 310
+  held by a single document, so covering them all would still take 71 — but what the reader meets before
+  any content: the form of the index, object streams, linearization, the number of revisions, bytes before
+  the header, line endings, the filters it decodes itself, predictors, and damage. The 104 seeds have 32
+  such structures; one of them groups 43 documents.
+- **The selection** (`FuzzingSeeds`): each night fuzzes the smallest document of every structure, and 16 of
+  the others chosen by the run number, 48 documents today; every seed document is reached within five
+  nights. The core is computed from the files at each run, so a document bringing a new structure joins it
+  without anyone choosing it. Every commit still fuzzes every seed document, 60 mutations each, and a
+  nightly failure replays without `ADCODICEM_FUZZ_ROTATION` from the document and seed it names. Four tests
+  hold these rules; `fuzz.yml` passes the run number, and its `rotation` input takes `all` for a full
+  campaign by hand.
+- **Measured on the runner**, 20,000 mutations per seed document: `Fuzzing` run 12, on `e16645a` with all
+  104, passed in 12 min 06 s; run 13, on `066b024` with 48, passed in 5 min 15 s. The same night therefore
+  costs 43 % of what it did, and will stay near that as the corpus grows. The 17 min 30 s the fuzzing entry below
+  gives for 68 documents was measured elsewhere: no `Fuzzing` run came between run 11 and run 12.
+- **What it gives up**: a structure is not a syntax. Two files alike in all of the above can still differ in
+  their producer's spacing, comments or dictionary layout, which mutations exploit too; the rotating share
+  keeps those documents in play every few nights rather than every night. Choosing seeds by the reader
+  branches they reach, as `afl-cmin` does, would be more exact and needs a coverage run per document: a
+  later step if the signature proves too coarse.
 
 ### 2026-09-25 — ADR 33 accepted: the iPRES 2017 set and a fact sheet screened in part join the remote corpus
 - **The request**: the maintainer accepted ADR 33 — a remote document may be a member of a pinned archive —
