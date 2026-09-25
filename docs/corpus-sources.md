@@ -252,9 +252,13 @@ on the files; the reader was then run against them.
 - **89 for their bytes**: the iPRES 2017 hand-built set (`pdf-handbuilt-test-corpus/`), 87 files that each
   break one ISO 32000-1 structural requirement, and two reference files. Its authors published it on RADAR
   (doi:10.22000/53) under CC BY-SA 4.0 — so it would have been remote at best — but the OPF copies are not
-  those files: each lost the five carriage returns of its content stream when it was committed to git, so
-  its `/Length` and every later offset are wrong and every file shows damage its authors did not put there.
-  The RADAR tar was downloaded and compared: all 87 differ by exactly those bytes.
+  those files: each test file lost the five carriage returns of its content stream when it was committed to
+  git, so its `/Length` and every later offset are wrong and every file shows damage its authors did not put
+  there. The RADAR tar was downloaded and compared: all 87 differ by exactly those bytes. Of the reference
+  files, `hello_world.pdf`, the page every test file starts from, no longer matches the MD5 its authors list;
+  `minimal_test.pdf` does, but holds only a header and `%%EOF`. The tar has neither, and one test file the
+  OPF lacks, `T04_019`, a trailer pointing at the wrong cross-reference offset: 88 in all, to be fetched
+  from it once `fetch_remote.py` can open an archive (T26 in `docs/status.md`).
 - **68 for personal data**. 51 of the JHOVE files, journal articles, theses and posters from bug reports:
   49 print an author's, a contact's or a student's own e-mail address or direct line — three only inside a
   page image, two with a space after the `@` —, one is a repository deposit agreement with its author's
@@ -397,7 +401,7 @@ person, and files no one has yet screened or checked — most of them in the bug
 | W06, W08 | The rest of the files pdf.js links to: US state documents, Canadian forms, forms attached to Bugzilla | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | Terms that are not attribution-only, so remote at best; the third pass took three, and the attached forms are often filled in by real people | A personal-data screen each |
 | W08, W05 | A filled form with Reader usage rights and a signature, in EU DSS's resources (`pades-signed-filled-form.pdf`) | [EU DSS `dss-pades` resources](https://github.com/esig/dss/tree/master/dss-pades/src/test/resources) | LGPL-2.1, so remote at best; its field values were not screened in full | A full screen |
 | W06 | The PDF Association's Brotli prototype, a `/BrotliDecode` filter qpdf does not know, among pdf.js's test files | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | Not a bug-report file, but its licence was not checked | A look at the PDF Association's own repository |
-| W06 | The iPRES 2017 hand-built well-formedness set: 87 files, each breaking one ISO 32000-1 structural requirement (header, catalogue, page tree, page object, resources, content stream, cross-reference table, trailer), with a spreadsheet of the expected verdicts and JHOVE's actual ones — the closest thing to an external test suite for M2's structural profile | [RADAR, doi:10.22000/53](https://doi.org/10.22000/53) (the OPF copies are unusable: git removed five carriage returns from each) | CC BY-SA 4.0, so remote at best; RADAR serves the originals only as one BagIt tar of 613 KB (`radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content`), behind a terms prompt in its web interface, and `fetch_remote.py` fetches one file per URL | Archive members in `fetch_remote.py` (download the tar at a pinned SHA-256, extract the member, check its own), after reading RADAR's terms of use for automated download |
+| W06 | The iPRES 2017 hand-built well-formedness set: 88 files, each breaking one ISO 32000-1 structural requirement (header, catalogue, page tree, page object, resources, content stream, cross-reference table, trailer), with a spreadsheet of the expected verdicts and JHOVE's actual ones — the closest thing to an external test suite for M2's structural profile | [RADAR, doi:10.22000/53](https://doi.org/10.22000/53) (the OPF copies are unusable: git removed five carriage returns from each) | CC BY-SA 4.0, so remote at best; RADAR serves the originals only as one BagIt tar of 613 KB (`radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content`), byte-identical on two downloads, behind a terms prompt in its web interface, and `fetch_remote.py` fetches one file per URL. The terms (July 2019) charge nothing and ask only that the dataset's licence be honoured; they say nothing of automated download. The tar holds 88 test files, one more than the OPF's copy | **T26** (`docs/status.md`): archive members in `fetch_remote.py` — download the tar at a pinned SHA-256, extract the member, check its own — proposed before M2's slice 2 |
 
 Two good files first held back for a name rather than a licence — the PDF Association's
 `CompactedPDFSyntaxTest.pdf` and Docentric's Factur-X EXTENDED sample from Dynamics 365 — entered in the
@@ -596,7 +600,9 @@ rebuild scans the file by definition.
   missing objects —; bytes before `%PDF` (MacBinary, a `data:` URI), a header naming PDF 1.8, a reference
   to object 0, a trailer `/Size` equal to the highest object number, a byte missing after the header, an
   image whose `/Height` contradicts its data, a resource pointing at an object that does not exist; and
-  JHOVE's own verdict on 45 files, a second independent opinion to compare the validator with.
+  JHOVE's own verdict on 45 files, a second independent opinion to compare the validator with. Out of
+  reach until T26: the iPRES 2017 hand-built set, 88 files each breaking one structural requirement its
+  authors name — the one external test suite the structural profile could be measured against.
 - **M3, M4**: signatures to keep intact through an incremental update — a GPO certification, DILA's
   Dictao signature, a qualified seal renewed by timestamps over two years, PAdES B-LTA, Acrobat signatures.
   The third pass adds each PAdES baseline level on one page (B-B, B-LT, B-LTA); DocMDP P=1 and P=2 with
