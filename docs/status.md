@@ -86,6 +86,18 @@ previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
 
+### 2026-09-25 — The nightly fuzzing campaign filled its runner's disk
+- **Symptom**: run 11 of `Fuzzing` failed after 33 minutes with its step still "in progress" and no
+  log to download: the runner was lost, not a test.
+- **Cause**: `FuzzingTests.Survives` built its assertion messages with `Save(input, what)` inside the
+  interpolated reason. That string is built before the assertion runs, so **every** mutated input was
+  written to the temp directory, passing or not. The file name carries the seed, so nothing was
+  overwritten. With the corpus going from 27 documents to 112, 20,000 mutations per seed wrote tens of
+  gigabytes. Reproduced locally: 30 GB in `/tmp` before the disk filled, and the tests then failed on
+  I/O.
+- **Fix**: the input is saved only once a budget is exceeded. Measured again at 20,000 iterations: no file
+  written and no failure.
+
 ### 2026-09-24 — The leads held back by their licence: 82 more documents, 76 of them remote
 - **The request**: now that ADR 32 gives a place to files we may not redistribute, follow the leads
   `corpus-sources.md` had held back for their licence, and reconsider the five files once refused for size

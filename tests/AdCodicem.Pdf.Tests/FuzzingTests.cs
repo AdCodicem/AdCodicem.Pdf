@@ -143,14 +143,24 @@ public class FuzzingTests
 
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
+        // The reason strings are built before the assertion is evaluated, so the input is saved only once a
+        // budget is known to be exceeded. Saving it on every pass wrote each mutation to disk and filled the
+        // nightly runner's disk.
+        if (stopwatch.Elapsed < PerInputBudget && allocated < AllocationBudget)
+        {
+            return;
+        }
+
+        var saved = Save(input, what);
+
         stopwatch.Elapsed.Should().BeLessThan(
             PerInputBudget,
-            $"{what} must not take unbounded time. Input saved to {Save(input, what)}");
+            $"{what} must not take unbounded time. Input saved to {saved}");
 
         allocated.Should().BeLessThan(
             AllocationBudget,
             $"{what} allocated {allocated / 1024 / 1024} MB, which a file of {input.Length / 1024} KB must not "
-            + $"be able to ask for. Input saved to {Save(input, what)}");
+            + $"be able to ask for. Input saved to {saved}");
     }
 
     private static string Save(byte[] input, string what)
