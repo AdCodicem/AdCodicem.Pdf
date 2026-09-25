@@ -102,24 +102,51 @@ more in the public corpus: strip it, check what its metadata still says about it
 Some public files are worth testing against but cannot be committed: attachments to other projects' bug
 reports, vendors' samples under "all rights reserved", ShareAlike sets whose licence would reach every
 derivative we make, and any document over 2 MB, whatever its licence. ADR 32 keeps them out of git and in the
-tests: the manifest describes them with origin `remote` and a mandatory `source.url` and `source.sha256`,
-and the test suite leaves out those whose file has not been fetched. The main job still reads their
-entries: `CorpusReadingTests.Remote_documents_are_pinned_and_kept_where_git_ignores_them` fails on a remote
-entry outside `remote/`, on a file under `remote/` not marked remote, and on a missing URL or SHA-256.
+tests: the manifest describes them with origin `remote` and a mandatory `source.url`, `source.sha256` and
+`source.bytes`, and the test suite leaves out those whose file has not been fetched. The main job still reads
+their entries: `CorpusReadingTests.Remote_documents_are_pinned_and_kept_where_git_ignores_them` fails on a
+remote entry outside `remote/`, on a file under `remote/` not marked remote, and on a missing URL, SHA-256 or
+size.
+
+A document its publisher serves only inside an archive — the iPRES 2017 hand-built set, one BagIt tar on
+RADAR — is a **member** of that archive (ADR 33). Its entry keeps `source.sha256` and `source.bytes` for the
+document, points `source.url` at the archive, and pins the archive in `source.archive`:
+
+```jsonc
+"source": {
+  "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+  "sha256": "81cb5b5a…",                 // the document, as copied out
+  "bytes": 635,
+  "landingPage": "https://doi.org/10.22000/53",
+  "archive": {
+    "sha256": "33b2b451…",               // the archive, as downloaded
+    "bytes": 613888,
+    "member": "10.22000-53/data/dataset/Test_Corpus/T04_019_trailer-wrong-xref-byte-offset.pdf"
+  }
+}
+```
+
+The fetcher downloads an archive at most once a run, and only when one of its members is missing or stale;
+an outage costs one set of retries for all of them. It opens only an uncompressed tar whose hash matched,
+copies the named member into the entry's file — never to a path read from the archive — and checks the
+member's own hash. `CorpusReadingTests.A_document_taken_from_an_archive_pins_the_archive_and_itself` requires
+every entry naming an archive to pin it the same way, each member to be taken once, and its path to stay
+inside the archive. The fetcher's own rules are tested on every change, against a local server:
 
 ```bash
+python3 -m unittest discover -s tests/corpus/build -p "test_*.py"   # the fetcher's rules, no network
 python3 tests/corpus/build/fetch_remote.py          # fetch what is missing, verify what is present
 python3 tests/corpus/build/fetch_remote.py --list   # each document's state, nothing fetched
 dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
 ```
 
-A download whose SHA-256 differs from the pinned one is refused: the file changed at its source, so it is a
-new document, reviewed as one — never accepted by updating the hash. The `Remote corpus` workflow does the
+A download whose SHA-256 or size differs from the pinned one is refused: the file changed at its source, so
+it is a new document, reviewed as one — never accepted by updating the hash. The `Remote corpus` workflow does the
 same every night and by manual dispatch, and reports an unavailable document as such rather than as a
 failing test.
 
 To add one, choose an immutable URL — a repository commit, an Internet Archive `id_` copy, a permanent
-publisher URI — and write the entry as for any other document, with its file under `remote/<source>/`,
+publisher URI, or an archive deposit whose checksum its repository publishes — and write the entry as for any other document, with its file under `remote/<source>/`,
 origin `remote`, expectations established with independent tools, and `licence` saying why the file is
 remote rather than vendored. Titles and `textContains` strings are
 published with the manifest, so they carry no personal data. Then fetch it and record the referee's

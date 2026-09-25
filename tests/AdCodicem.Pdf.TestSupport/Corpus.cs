@@ -15,6 +15,13 @@ public sealed record CorpusExpectation
     /// <summary>Whether the reader is expected to rebuild the cross-reference index.</summary>
     public bool IndexRebuilt { get; init; }
 
+    /// <summary>
+    /// Whether a document catalogue can be recovered at all. False only when no object in the file is one and
+    /// the independent tool finds none either: the reader must then open the file and hand back no catalogue
+    /// rather than invent one.
+    /// </summary>
+    public bool CatalogRecoverable { get; init; } = true;
+
     /// <summary>Diagnostic codes the reader must report for this document.</summary>
     public string[] RequiredDiagnostics { get; init; } = [];
 

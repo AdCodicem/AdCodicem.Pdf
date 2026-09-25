@@ -4,10 +4,15 @@ Date: 2026-09-25
 
 ## Status
 
-Proposed on 2026-09-25, not implemented; tracked as T26 in `docs/status.md`. It extends
+Proposed on 2026-09-25 as T26 (`docs/status.md`), accepted the same day. It extends
 [32](0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md), which fetches one file per URL,
-and leaves the rest of it unchanged. Accepting it amends ADR 32, `docs/corpus.md`, `tests/corpus/README.md`
-and `fetch_remote.py`'s docstring, as listed under Consequences.
+and leaves the rest of it unchanged; ADR 32, `docs/corpus.md`, `tests/corpus/README.md` and
+`fetch_remote.py`'s docstring are amended accordingly.
+
+Implemented by `source.archive` in `tests/corpus/manifest.json`, the `Archives` class and `copy_member` in
+`tests/corpus/build/fetch_remote.py`, `tests/corpus/build/test_fetch_remote.py` — run by the main CI job
+against a local server —, `CorpusReadingTests.A_document_taken_from_an_archive_pins_the_archive_and_itself`,
+and the 88 entries under `remote/ipres2017/`. The first run fetched all 88 from one download of the tar.
 
 ## Context
 
@@ -28,8 +33,10 @@ CC BY-SA 4.0, so remote at best (ADR 23):
 - **The files hold more than their authors' deviation.** In 43 of the 59 header and body files the edit left
   the cross-reference offsets stale, so qpdf rebuilds the table; 15 of the 18 content-stream files start with
   a space before `%PDF`. `qpdf --check` passes 14 of the 88. `qpdf --show-npages` finds one page in 73, none
-  in four, three and nine in two page-tree files, and fails on nine. Two files have no catalogue to recover
-  (`T02-01_001`, `T04_011`: qpdf finds no `/Root`).
+  in four, three and nine in two page-tree files, and fails on nine. In one file (`T02-01_001`) no object is
+  a catalogue at all; in five more the catalogue is there but the trailer does not lead to it, and qpdf gives
+  up (`unable to find /Root dictionary`), and in three qpdf finds no trailer at all. The reader recovers the
+  catalogue in all eight.
 - **The OPF's copies are unusable** (`docs/corpus-sources.md`): git removed the five carriage returns of every
   test file and of the base document, `hello_world.pdf`, and the copy predates one test file, `T04_019`. The
   authors' own `Test_Corpus.md5`, inside the archive, lists exactly the OPF's 89 files and not `T04_019`.
@@ -84,23 +91,37 @@ the member by its own.
 ## Consequences
 
 - **The set enters as 88 remote entries**, `remote/ipres2017/<name lower-cased, _ as ->.pdf`, after a
-  personal-data screen, each member checked once against the bag's `manifest-md5.txt`. Expectations come
-  from the independent tools, as for any document: pages from `qpdf --show-npages`, the verdict from
-  `build_corpus.py --remote`, `clean` from qpdf — even where qpdf passes a file built broken, since M2 then
-  asks no error-severity finding of it, which is its rule: an error means readers disagree. The test-case
+  personal-data screen — the files hold no metadata, and their only text is "Hello PDF-world!" —, each
+  member checked once against the bag's `manifest-md5.txt`. Expectations come from the independent tools,
+  as for any document: pages from `qpdf --show-npages`, the verdict from `build_corpus.py --remote`, `clean`
+  from qpdf — even where qpdf passes a file built broken, since M2 then asks no error-severity finding of
+  it, which is its rule: an error means readers disagree. The 15 files with a space before `%PDF` expect the
+  offset adjustment qpdf makes without a word, as the corpus's other prefixed files do. The test-case
   number, the category and JHOVE's 2017 verdict are features, as for the JHOVE issue files: a second
   opinion, not a referee.
-- **Each gap names the milestone that will close it.** Entries the reader cannot yet meet are marked
-  unsupported: M2 for the 75 file, cross-reference, catalogue, page-tree, page-object, resource and
-  stream-object cases, M10 for the 13 content-operator cases (`BT`, `ET`, `Tf`, `Tj`, their operands and
-  parentheses), which need the content interpreter. The two files with no catalogue get a new expectation
-  that says so, with its test, rather than a marker no milestone would lift.
-- **M2 then owes them**: its row for documents the manifest calls not clean covers the set, and the slice
-  that names a rule adds the expected finding to each entry, or the reason the profile stays silent.
+- **Each gap names the milestone that will close it.** On implementation the reader met 69 entries as
+  written and 19 were marked unsupported, all until M2: seven page trees that qpdf and the reader count
+  differently, four faults the reader reads without a word (a root typed `/Pagez`, a page typed `/Font`,
+  generation 10000 in the table, a trailer without `/Size`), and six recoveries that differ from qpdf's —
+  among them four where the trailer's `/Root` is missing or broken and the reader rebuilds a sound index to
+  find the catalogue, rather than looking among the indexed objects first. None waits for M10: the edits
+  to the 13 content-operator cases also broke their lengths or offsets, which the reader meets; the
+  operator faults themselves (`BT`, `ET`, `Tf`, `Tj`, their operands and parentheses) become findings when
+  M10's interpreter exists.
+- **One file has no catalogue to recover**: the manifest's new `catalogRecoverable: false` says so, and the
+  acceptance tests then require the reader to open it, report the rebuild, and hand back no catalogue
+  rather than invent one.
+- **M2 then owes them**: its row for documents the manifest calls not clean covers the set, the 19 are named
+  in its acceptance conditions, and the slice that names a rule adds the expected finding to each entry, or
+  the reason the profile stays silent.
+- **A source serving more bytes than pinned is refused, not reported unavailable** — found while writing the
+  fetcher's tests: a file that grew changed, it did not disappear.
 - **Amended on acceptance**: ADR 32's URL rule and its description of `source`; the `source` bullet of
-  `docs/corpus.md`; *Remote documents* in `tests/corpus/README.md`; `fetch_remote.py`'s docstring.
+  `docs/corpus.md`; *Remote documents* in `tests/corpus/README.md`; `fetch_remote.py`'s docstring. Every
+  remote entry now pins its size, which all of them already did.
 - **Costs**: one more path through `fetch_remote.py`, 613 KB a night, and the archive pin repeated in 88
   entries. A top-level map of archives that entries reference would state it once, at the price of a
-  second place every script and test must read; the choice is left to the implementation.
+  second place every script and test must read; the implementation keeps the pin in each entry, and both
+  validators require every entry naming an archive to pin it the same way.
 - **What would reopen it**: RADAR replacing the deposit (a new version has a new URL, and is a new
   document), or terms that forbid automated download.

@@ -43,6 +43,11 @@ jobs:
             -- --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml \
                --results-directory TestResults
 
+      # fetch_remote.py meets the network only in the nightly job; its rules - pins, archives, refusals -
+      # are checked here on every change, against a local server (ADR 32, ADR 33).
+      - name: Test the remote corpus fetcher
+        run: python3 -m unittest discover -s tests/corpus/build -p "test_*.py"
+
       # A public repository uploads without a token — run 84 reported `Token length: 0` and the report
       # still arrived. The secret is read if it exists, which is what a private repository, or Codecov
       # refusing tokenless uploads, would need.
