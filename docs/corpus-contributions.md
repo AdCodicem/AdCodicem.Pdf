@@ -7,10 +7,11 @@ and what closing a milestone requires of it — is in `docs/corpus.md`.
 
 The corpus covers four producers we can drive in a container — Chromium's Skia backend, LibreOffice,
 ReportLab and qpdf — three office writers driven on Windows — Word's Save as PDF, the Microsoft Print to
-PDF driver and the PDF24 printer — and 90 third-party files found in public sources under attribution-only
+PDF driver and the PDF24 printer — and 146 third-party files found in public sources under attribution-only
 licences: conformance fixtures from veraPDF and BFO, government documents from five countries and the EU,
-specimen invoices from ERP and invoicing tools, and regression files from other PDF libraries. Another 86
-that we may use but not redistribute are fetched on demand and tested every night.
+specimen invoices from ERP and invoicing tools, regression files from other PDF libraries, and the Open
+Preservation Foundation's own test files. Another 153 that we may use but not redistribute are fetched on
+demand and tested every night.
 `docs/corpus-sources.md` says where each came from, which other libraries' corpora were examined, and why
 most of them could not be used.
 
@@ -25,7 +26,9 @@ empty stream being read as a decoding failure. The search that brought the next 
 that could not read a page count qpdf printed with a warning, and a reader that calls a sound stream
 truncated when its end falls just past an 8 KB window. The pass after it, eighty-two more, found the same
 window cutting objects longer than 8 KB, and each cross-reference section read through a window of up to
-64 KB, whatever its size. That is the return on this.
+64 KB, whatever its size. The fourth, the Open Preservation Foundation's format-corpus, found a `/Prev` a
+few bytes off that makes the reader drop a whole cross-reference section without a word. That is the
+return on this.
 
 ## What is wanted
 
@@ -51,7 +54,8 @@ made, not because of what it says.
 
 ### What is already in, and what is still missing
 
-After three passes over public sources on 2026-09-24 (`docs/corpus-sources.md`), the corpus holds something
+After three passes over public sources on 2026-09-24, and a fourth over the Open Preservation Foundation's
+format-corpus on 2026-09-25 (`docs/corpus-sources.md`), the corpus holds something
 for every line, and for most of them several producers. The third pass followed the leads held back by
 their licence, so most of what it found is remote: fetched on demand, never committed (ADR 32). What is
 still wanted is what only a contribution can bring: documents that went through a real inbox, and that we
@@ -59,18 +63,18 @@ may commit.
 
 | # | In the corpus | Still wanted |
 |---|---------------|--------------|
-| W01 | Word 2010, 2019 and Microsoft 365 Save as PDF; Word for Mac through Quartz; Print to PDF from Word and from Excel, untouched; our own invoice through Save as PDF, the print driver and PDF24; remote: Word 2010 and 2019 pages signed in PAdES, a Word for Microsoft 365 form finished in Acrobat, an Excel for Office 365 sheet under 24 signatures, a Print to PDF poster that an Adobe tool later updated | — |
-| W02 | PDFMaker 5, 9.1, 10, 21 and 25 for Word; Distiller 2 to 10; InDesign; PageMaker; Illustrator; LiveCycle Designer; Acrobat Pro DC and Reader X re-saves; usage rights; remote: PDFMaker 8.1, 11 and 23, FrameMaker through Distiller 6 and 10, Web Capture, Image Conversion, Photoshop, InDesign CS6, an Acrobat 9 portfolio with 3D models, dynamic XFA from LiveCycle ES 9 and 10 | — |
+| W01 | Word 2010, 2019 and Microsoft 365 Save as PDF; Word for Mac through Quartz; Print to PDF from Word and from Excel, untouched; our own invoice through Save as PDF, the print driver and PDF24; remote: Word 2010 and 2019 pages signed in PAdES, a Word for Microsoft 365 form finished in Acrobat, an Excel for Office 365 sheet under 24 signatures, a Print to PDF poster that an Adobe tool later updated; the OPF's Pages '09 through Quartz | — |
+| W02 | PDFMaker 5, 9.1, 10, 21 and 25 for Word; Distiller 2 to 10; InDesign; PageMaker; Illustrator; LiveCycle Designer; Acrobat Pro DC and Reader X re-saves; usage rights; remote: PDFMaker 8.1, 11 and 23, FrameMaker through Distiller 6 and 10, Web Capture, Image Conversion, Photoshop, InDesign CS6, an Acrobat 9 portfolio with 3D models, dynamic XFA from LiveCycle ES 9 and 10; the OPF's PDFMaker 7, 8, 10.1 and 11 and Acrobat 11 Image Conversion, InDesign CS (3.0), and from the remote corpus IBM ID Workbench, Xyvision and PageMaker 6.5 | — |
 | W03 | Two Xerox copiers with their own OCR layer, Xerox JBIG2 without text, an HP MFP with Acrobat's OCR, a scanner's CCITT G3 file, a 1999 CCITT import, ABBYY FineReader 8 OCR under CCITT G4 pages, a JBIG2 scan completed in DocuSign; remote: a Konica Minolta bizhub scan untouched, with the copier's own OCR, a Ricoh MP C3003 scan through 3-Heights, a Ricoh MP 5054 scan completed in DocuSign, a Canon scanner's own OCR in a damaged file, Kodak Capture and Epson scans, OmniPage and AbleDocs OCR in tagged scans | A copier file untouched since the copier wrote it that we may commit: the Xerox ones were later re-saved, and the Konica, Canon and Epson files are remote, the Canon one damaged |
 | W04 | JasperReports 7 on OpenPDF, iText 2.1.7 then PDFBox (weclapp), PDFBox 3 (Swiss QR-bill), PDFlib's Java binding, Apache FOP, PDFMaker 21 (a UK government sample invoice) — all with fictitious data; remote, real output: SAP NetWeaver (a statement and an invoice), Axapta, Scoro, a card statement from PDFlib on z/OS, a bank's AFP batch processor, a central bank's JasperReports on iText 2.1.0 | **A real invoice or statement from a supplier or bank** we may commit: every real one found is remote. Crystal Reports and Oracle: the two Oracle invoices found each gave a person's phone number |
 | W05 | A GPO certification, DILA's Dictao signature, a qualified seal renewed by timestamps over two years, a PAdES B-LTA seal, two Acrobat Reader signatures, **DocuSign's envelope seal on a GSA contract form**, node-signpdf's signature and unsigned placeholder; remote: Adobe Sign, Yousign's qualified seal, DocuSign twice more, Universign document timestamps, Foxit PhantomPDF certification and approval signatures, PAdES B-B to B-LTA, Slovak and Hungarian qualified seals, the Spanish gazette's seal, 24 signatures and a timestamp in one file, a certified dynamic XFA form, legacy `adbe.x509.rsa_sha1` and MD5 references | **A Yousign, Universign or Adobe Sign signature we may commit**: those found are remote, Universign's only as timestamps. A signature under a person's own certificate: those examined carried an e-mail address, a phone number or an identity number |
-| W06 | A really damaged GovDocs1 file, a GovDocs1 error file, a scanner file that broke pikepdf, forms that broke pdf.js, SafeDocs lexer and dialect tests, a signature `/Reason` that broke node-signpdf; remote: files that broke pdf.js, PDFBox, PDFium, pdfplumber, PdfPig, OCRmyPDF and EU DSS — truncations, a zeroed block, junk after `%%EOF`, a stale tail, object-stream indexes wrapped at 16 bits, corrupt Flate data and fonts | Anything that broke your own tools |
+| W06 | A really damaged GovDocs1 file, a GovDocs1 error file, a scanner file that broke pikepdf, forms that broke pdf.js, SafeDocs lexer and dialect tests, a signature `/Reason` that broke node-signpdf; remote: files that broke pdf.js, PDFBox, PDFium, pdfplumber, PdfPig, OCRmyPDF and EU DSS — truncations, a zeroed block, junk after `%%EOF`, a stale tail, object-stream indexes wrapped at 16 bits, corrupt Flate data and fonts; the OPF's Cabinet of Horrors (a byte missing, a header naming PDF 1.8, an image's /Height altered, an image pointing nowhere) and GovDocs1 files qpdf cannot finish; remote: 45 files filed against JHOVE under the error it raised — a MacBinary header, a data: URI prefix, a null kid, kids pointing at missing objects, a lost tail | Anything that broke your own tools |
 | W07 | Factur-X from weclapp and from Dynamics 365 (demo data), ZUGFeRD from GnuAccounting and from the Mustang library, the factur-x Python library's output; remote: the FNFE-MPE's French example, intarsys's EN 16931 and XRECHNUNG samples, DWC's generator through WeasyPrint, Symtrax, Konik, 4s4u's additional data, an Order-X purchase order, a UBL payload made hybrid by iText 9 | A Factur-X a supplier's ERP actually sent, anonymised: the two found, from Oracle Reports and from Business Central, carried a person's contact details |
 | W08 | Blank XFA forms (IRS, USCIS, DoD, a Cerfa), JavaScript AcroForms (USCIS I-9, HMRC), a calculation order, an OmniForm form, tagged forms; remote: dynamic XFA from LiveCycle ES 9 and 10, encrypted, one of them certified, OPM's OF-306 with date JavaScript and signature fields, an Acrobat radio-button form with NULs in its names, an XFA form filled with fictitious values inside a portfolio | A form that is filled in — with fictitious values — that we may commit |
 | W09 | Arabic, Russian, Greek, Traditional Chinese (2004 and 2017), vertical Japanese without ToUnicode; remote: Hebrew (a US Census guide, a USDA fact sheet), Arabic shaped into CID fonts by WeasyPrint, Chinese font names in GBK bytes, PDF 2.0 UTF-8 strings | Korean; Hebrew and shaped Arabic we may commit |
-| W10 | PDF 1.2 to 1.4 from 1995–2004: PDFWriter 3.02 and 4.05, Distiller 2, 3 (Windows and Mac), 4 and 6, PDFMaker 5, Acrobat 3, RC4-40; remote: a 1998 PDFWriter 3.02 file with its line ends stripped | A file from before 1996, PDF 1.0 or 1.1 |
+| W10 | PDF 1.2 to 1.4 from 1995–2004: PDFWriter 3.02 and 4.05, Distiller 2, 3 (Windows and Mac), 4 and 6, PDFMaker 5, Acrobat 3, RC4-40; remote: a 1998 PDFWriter 3.02 file with its line ends stripped; the OPF's GovDocs1 files from Distiller 4 and 5 and groff; remote: Xyvision's Parlance Publisher, and the 1994 Transportation Statistics report, whose /Producer names Distiller 1.0.2 for Macintosh over a PDF 1.3 update | A file from before 1996, PDF 1.0 or 1.1 |
 | W11 | Nothing committed, by design; remote: the US Code's Title 42 (9,302 pages), a USGS topographic map (one 63 MB page) and USGS Professional Paper 1 (147 MB of JPEG 2000 scans), fetched and tested every night; beside them a 4.7 MB portfolio, a 10.6 MB tagged scan, a CCITT image that decodes to 153 MB, 24 signatures in 48 updates | — (the map's acceptance waits on T21) |
-| W12 | PDF/A from PDFlib, Antenna House, Distiller, 3-Heights, BFO, Mustang, Aspose, OpenOffice and Word via PDFMaker, and two false claims, one from the factur-x Python library, each with veraPDF's verdict; remote: PDF/A-1a from callas pdfaPilot and Oracle Outside In, PDF/A-1b from Ghostscript, PDF/A-3 from Symtrax, Konik, intarsys and iText 9, PDF/A-4f and PDF/A-3u from WeasyPrint, claims veraPDF rejects from PDFMaker 11 and a gazette decree re-signed through iText, PDF/X-3 from Photoshop, PDF/UA-1 from AbleDocs and InDesign | A PDF/A-3 from a real ERP with its validation report, that we may commit |
+| W12 | PDF/A from PDFlib, Antenna House, Distiller, 3-Heights, BFO, Mustang, Aspose, OpenOffice and Word via PDFMaker, and two false claims, one from the factur-x Python library, each with veraPDF's verdict; remote: PDF/A-1a from callas pdfaPilot and Oracle Outside In, PDF/A-1b from Ghostscript, PDF/A-3 from Symtrax, Konik, intarsys and iText 9, PDF/A-4f and PDF/A-3u from WeasyPrint, claims veraPDF rejects from PDFMaker 11 and a gazette decree re-signed through iText, PDF/X-3 from Photoshop, PDF/UA-1 from AbleDocs and InDesign; the OPF's OpenOffice.org 3.2 PDF/A-1a and Acrobat 11 Image Conversion PDF/A-1b | A PDF/A-3 from a real ERP with its validation report, that we may commit |
 
 ## What makes a usable sample
 
