@@ -193,7 +193,7 @@ One entry per document. Everything except `expect` is provenance; `expect` is wh
 }
 ```
 
-Two rules about `expect`:
+Rules about `expect`:
 
 - **`refereeCheckSucceeds` is filled in by the build script**, which runs the very command the integration
   tests run — `qpdf --check` — rather than guessing what it ought to say. Damage and rejection differ:

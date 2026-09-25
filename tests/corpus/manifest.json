@@ -13194,11 +13194,11 @@
     },
     {
       "file": "remote/opf-format-corpus/quartz-word-samhsa-prevention-pathways-fact-sheet.pdf",
-      "title": "A SAMHSA Prevention Pathways fact sheet saved through the Mac OS X 10.2 Quartz writer, then sent through a text-mode transfer: every CR and LF became CR LF, so every stream's /Length, every offset and every Flate stream is broken",
+      "title": "A SAMHSA Prevention Pathways fact sheet saved through the Mac OS X 10.2 Quartz writer, then sent through a text-mode transfer that turned every CR and LF into CR LF and dropped every 0x1A byte, so every stream's /Length, every offset and every Flate stream is broken",
       "useCase": "damaged",
       "producer": "Microsoft Word, Mac OS X 10.2.6 Quartz PDFContext",
       "origin": "remote",
-      "licence": "Its author is not named, so public domain rests on the publisher alone; not shown to be the work of federal staff; byte-identical GovDocs1 capture via the OPF format-corpus, so fetched on demand rather than vendored (ADR 32). Screened in part, by the maintainer's decision of 2026-09-25: the three content streams break after 18 to 96 decoded bytes, so most of the page text cannot be read by any decoder and was not screened; everything readable (the text recovered by undoing the line ends, metadata, annotations, link) holds no personal data, and this entry publishes no text from the document",
+      "licence": "Its author is not named, so public domain rests on the publisher alone; not shown to be the work of federal staff; byte-identical GovDocs1 capture via the OPF format-corpus, so fetched on demand rather than vendored (ADR 32). Screened in part, by the maintainer's decision of 2026-09-25: as the file stands its three content streams stop decoding after 18 to 96 bytes; putting back the dropped bytes recovers the opening of each page and the references with certainty, but not the rest, which was not screened. Everything that reads — that text, the metadata, the annotations, the link — holds no personal data, and this entry publishes nothing from the document beyond its publication name",
       "source": {
         "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/govdocs1-error-pdfs/error_set_2/498264.pdf",
         "sha256": "72e804b6e4c2c196b80126dfa97e5f4ad877da5db97fb791d5fcaf71f83b041d",
@@ -13752,7 +13752,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: the catalogue's /Pages points at an object the file lacks; qpdf takes the reference as null, as the specification says, while the reader rebuilds its whole index looking for the object and reports a repair on a file qpdf calls clean (T27)"
       }
     },
     {
@@ -14057,7 +14058,7 @@
         "requiredDiagnostics": [],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false,
-        "unsupported": "M2: qpdf --show-npages counts one page and the reader none, without a word, on a page tree whose only kid is an object the file lacks; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
+        "unsupported": "M2: qpdf --show-npages counts one page and the reader none, after rebuilding its whole index to look for the missing kid, on a page tree whose only kid is an object the file lacks; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
       }
     },
     {
@@ -14538,7 +14539,7 @@
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false,
-        "unsupported": "M2: qpdf --show-npages counts one page and the reader none, on a page tree whose only page object is gone; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
+        "unsupported": "M2: qpdf --show-npages counts one page and the reader none, after rebuilding its whole index to look for it, on a page tree whose only page object is gone; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
       }
     },
     {
@@ -14750,7 +14751,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: the page's /Contents points at an object the file lacks; qpdf takes the reference as null, as the specification says, while the reader rebuilds its whole index looking for the object and reports a repair on a file qpdf calls clean (T27)"
       }
     },
     {
@@ -15001,7 +15003,6 @@
         "hand-written",
         "damaged-by-hand",
         "classic-xref-table",
-        "type1-font",
         "jhove-1.16.5-not-well-formed"
       ],
       "expect": {
@@ -15046,7 +15047,6 @@
         "hand-written",
         "damaged-by-hand",
         "classic-xref-table",
-        "type1-font",
         "jhove-1.16.5-well-formed-and-valid"
       ],
       "expect": {
@@ -15896,7 +15896,6 @@
         "ipres2017-cross-reference-table",
         "hand-written",
         "damaged-by-hand",
-        "classic-xref-table",
         "type1-font",
         "jhove-1.16.5-not-well-formed"
       ],

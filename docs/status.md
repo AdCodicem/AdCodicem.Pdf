@@ -9,10 +9,10 @@ here.
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Builds**: yes, with no warnings — **Tests**: 482 unit (4 skipped by design: two corpus
-  documents recorded as unsupported until M2) + 302 integration (skipped without Docker) + 16 for the
+  documents recorded as unsupported until M2) + 302 integration (skipped without Docker) + 23 for the
   remote corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
-  documents from here, see the journal), 1,143 unit (68 skipped by design, on documents recorded as
-  unsupported until M2 or until T21, T23, T24 or T25 is fixed) + 665 integration — **CI**: green on `main`,
+  documents from here, all 242 on the runner, see the journal), 1,143 unit (70 skipped by design, on
+  documents recorded as unsupported until M2 or until T21, T23, T24 or T25 is fixed) + 665 integration — **CI**: green on `main`,
   `OpenSSF Scorecard` included
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licences (56 of them from the Open Preservation Foundation's
@@ -101,7 +101,7 @@ previous ordering, where M2 was writing and M3 assembly.
   `source.bytes` still pin the document; an archive is downloaded at most once a run, only when a member is
   missing or stale, and its outcome, failure included, holds for every member; only an uncompressed tar
   whose hash matched is opened, and the member is copied into its entry's file, never extracted by its own
-  path. Every remote entry now pins its size. Its first tests — 16, against a local server, now run by the
+  path. Every remote entry now pins its size. Its first tests — against a local server, now run by the
   main CI job — found a defect older than ADR 33: a source serving more bytes than pinned was reported
   unavailable, not refused. Fixed: a file that grew changed, it did not disappear.
 - **The 88 iPRES files** came out of one download of RADAR's tar. They hold no metadata and one line of
@@ -110,19 +110,33 @@ previous ordering, where M2 was writing and M3 assembly.
   verdict as features, its text never copied. The reader met 69 as written. 19 are recorded as unsupported,
   all until M2, which now names them: seven page trees it counts differently from qpdf, four faults it
   reads without a word, six recoveries that differ from qpdf's — in four it rebuilds a sound index to find
-  a catalogue the trailer no longer leads to. One file holds no catalogue at all; a new expectation,
-  `catalogRecoverable: false`, asks the reader to open it and hand back none.
-- **The SAMHSA fact sheet**: its damage is now explained. A text-mode transfer turned each of its 1,904 CR
-  and LF bytes into CR LF — the file has not one lone CR or LF left —, which broke every stream's
-  `/Length`, every offset and every Flate stream. The reader meets qpdf's expectations: three pages, the
-  index rebuilt. The exception is written into its entry (feature `partially-screened`) and into
-  `docs/corpus-sources.md`; the entry publishes no text from the document.
+  a catalogue the trailer no longer leads to —, and two references to an object the file lacks, after
+  which it rebuilds its whole index where qpdf takes null (**T27**, new). One file holds no catalogue at
+  all; a new expectation, `catalogRecoverable: false`, asks the reader to open it and hand back none.
+- **The SAMHSA fact sheet**: a text-mode transfer turned each of its CR and LF bytes into CR LF — 1,904
+  pairs, not one lone CR or LF left — and dropped every 0x1A byte, which broke every stream's `/Length`,
+  every offset and every Flate stream. The reader meets qpdf's expectations: three pages, the index
+  rebuilt. The exception is written into its entry (feature `partially-screened`) and into
+  `docs/corpus-sources.md`; the entry publishes nothing from the document beyond its publication name.
 - **Documentation**: ADR 33 accepted, ADR 32 amended, `docs/corpus.md`, `tests/corpus/README.md`,
   `docs/corpus-contributions.md` and `docs/corpus-sources.md` brought in line; M2 has a new acceptance row;
   T26 is closed.
+- **`Remote corpus` run 3**, dispatched on `13c5861`: all 242 documents fetched on the runner, the 88 out of
+  one download of RADAR's tar; 1,145 unit tests (68 skipped by design) and 668 integration tests, all green.
+- **Review**: two independent checkers went over the code, the 89 entries and the documentation, and were
+  right on each point kept. The fetcher ended the whole run on a pinned archive with a damaged header past
+  the first — it now reads every header before copying any member, so a damaged archive refuses only its
+  own members —, and its tests wrote into the CI job's summary. Seven tests were added, for 23. Both
+  validators now accept exactly the same member names, and a pin that is not text is an invalid manifest.
+  The acceptance test judged a clean file's diagnostics before walking its page tree, which hid T27's two
+  files; it now walks the tree, each page's contents and resources resolved, first — no other document in
+  the corpus changed. The 69 and 19 the first commit gave were miscounted (it was 71 and 17); with T27's two
+  files they are right now. The SAMHSA file had lost its 0x1A bytes too: with them put back, more of its
+  text reads — the opening of each page and its references —, and is clean; the rest still cannot be
+  recovered with certainty, and the exception now says exactly that.
 - **Tests**: without the remote corpus, 482 unit and 302 integration; with 240 of its 242 documents — the two
-  GitHub issue attachments still answer 403 to this session —, 1,143 unit (68 skipped by design) and 665
-  integration, all green; the fetcher's 16 tests pass.
+  GitHub issue attachments still answer 403 to this session —, 1,143 unit (70 skipped by design) and 665
+  integration, all green; the fetcher's 23 tests pass.
 
 ### 2026-09-25 — The OPF format-corpus, file by file: 123 more documents, 56 of them committed
 - **The question**: the Open Preservation Foundation's format-corpus holds 293 PDFs; why had only nine
@@ -759,6 +773,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | T24 | **Opening reads each cross-reference section through a window of up to 64 KB, whatever the section's size.** Bounded, but proportional to the number of sections rather than to their size: opening the 218 KB signed Web Capture file from pdfcpu's test data, which has three sections, reads 117 KB — more than the quarter of the file the laziness test allows. The entry is recorded as unsupported with this reason | M13, with the other budgets: start a section's window small and grow it, as object windows already do — and keep what was read when it grows: the VHA coding handbook from GovDocs1 (2026-09-25) has one 273 KB table, read at 64 KB, then 256 KB, then to its end, 683 KB in all for a 2.2 MB file; also recorded as unsupported |
 | T25 | **A `/Prev` that misses its section drops it in silence.** `PdfFileReader.TryReadXRefChain` returns success as soon as one section was read, so when a later `/Prev` does not land on `xref` or on a cross-reference stream the older section is simply left out, with no rebuild — and with no diagnostic either when the offset falls inside the file; one past its end earns `xref.entry-out-of-range`. Found on IBM's QMF manual from GovDocs1 (remote): `/Prev 1569328` falls 12 bytes past the keyword, and the 4,106 entries of the main table are lost; qpdf reports `xref not found` and rebuilds. Recorded as unsupported with this reason | **Before M2 closes** — a validator cannot report what the reader hides: a synthetic regression test (a `/Prev` a few bytes off, and one pointing nowhere), then report the failed section and search near it or rebuild, as the reader already does for an object a few bytes off |
 | ~~T26~~ | ~~The remote corpus cannot take a file out of an archive, so the one external test suite for M2's structural profile stays out of reach~~ | Done on 2026-09-25: [ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md) accepted and implemented; the 88 files are in the remote corpus, 19 of them recorded as unsupported until M2 and named in its acceptance conditions |
+| T27 | **A reference to an object the file lacks makes the reader rebuild its whole index.** The specification says such a reference is null, and qpdf takes it so; the reader instead scans the file for the missing object — the lazy rebuild meant for an index that lost entries — and reports a repair on a file qpdf calls clean. Found on two iPRES 2017 files (remote): a catalogue whose `/Pages` and a page whose `/Contents` point at object 9, which does not exist. Both are recorded as unsupported with this reason. The acceptance test saw it only once it walked each page's contents and resources before judging a clean file's diagnostics; across the whole corpus, no other document was affected | Before M2 closes, since its acceptance conditions name both files: a synthetic regression test (a sound file with a reference past /Size, and one to a free entry), then rebuild only when the index gives reason to doubt it, and otherwise take the reference as null — a finding for M2, not a repair |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
