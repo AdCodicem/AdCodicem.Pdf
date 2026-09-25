@@ -19,8 +19,10 @@ here.
   documents we may use but not redistribute — never committed, fetched at a pinned SHA-256 and tested every
   night by the `Remote corpus` workflow (ADR 32, accepted). All 321 are described in one file,
   `tests/corpus/manifest.json`. Pull request [#25](https://github.com/AdCodicem/AdCodicem.Pdf/pull/25),
-  which brought the remote corpus, was merged on 2026-09-24; the nightly workflow had not run yet on
-  2026-09-25 (no run recorded on GitHub)
+  which brought the remote corpus, was merged on 2026-09-24. Its first nightly run, on `main` on
+  2026-09-25, passed every test (538 unit, 361 integration) but failed its last step: the Internet
+  Archive's copy of the Massachusetts COVID-19 dashboard timed out three times, so it ran without that
+  one document. The same file downloads without trouble from here; one slow night is not yet a trend
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
   T18 and T19
@@ -127,8 +129,9 @@ previous ordering, where M2 was writing and M3 assembly.
   offset adjustment anyway. Two files expect the rebuild only after a full read, as qpdf checks every
   offset at opening and the reader does not.
 - **Tests**: 481 unit and 302 integration without the remote corpus; with it, 804 and 560, all
-  green. Fetching the remote corpus from this session got 151 of 153: two GitHub issue attachments of the
-  third pass answered 403 here, which the first nightly run will confirm or not.
+  green. Fetching the remote corpus from this session got 151 of 153: the two GitHub issue attachments of
+  the third pass answer 403 to a cloud session, whose GitHub proxy lets it reach only its own repositories.
+  The runner is not bound that way: the first nightly run fetched both.
 
 ### 2026-09-25 — The nightly fuzzing campaign filled its runner's disk
 - **Symptom**: run 11 of `Fuzzing` failed after 33 minutes with its step still "in progress" and no
