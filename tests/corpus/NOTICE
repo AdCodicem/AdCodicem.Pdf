@@ -35,16 +35,36 @@ vendor/us-federal/
 vendor/opf-format-corpus/
     From the Open Preservation Foundation format-corpus
     (https://github.com/openpreserve/format-corpus, commit 366f068).
-    - imagemagick-false-pdfa1b-jpx.pdf and the two pdfmaker9-word-distiller-*.pdf files come from
-      pdfCabinetOfHorrors/; quartz-word-mac2011-lorem-ipsum.pdf from variations/; and
-      reader10-openoffice32-annotated-object-streams.pdf and openoffice32-pdfa1a-embedded-lucida.pdf
-      from office-examples/. All are dedicated to the public domain under CC0 1.0
-      (https://creativecommons.org/publicdomain/zero/1.0/).
-    - distiller3-dea-cfr-damaged.pdf and pdfmaker5-distiller5-va-select-agents.pdf come from
-      govdocs1-error-pdfs/, copies of GovDocs1 documents 303226 and 225188 (Digital Corpora):
-      works of the United States Government (Drug Enforcement Administration, typeset by the
-      Government Printing Office; Department of Veterans Affairs), not subject to copyright
-      under 17 U.S.C. 105.
+    - Dedicated to the public domain under CC0 1.0
+      (https://creativecommons.org/publicdomain/zero/1.0/), by the folder's own statement for
+      pdfCabinetOfHorrors/ ("All files in this folder: Creative Commons CC0") and by the repository's
+      ("All items are CC0 licenced unless otherwise stated") for the others:
+      - from pdfCabinetOfHorrors/: imagemagick-false-pdfa1b-jpx.pdf, every pdfmaker9-word-distiller-*.pdf
+        file, pdfmaker10-word-file-attachment-annotation.pdf, pdfmaker11-word-pdf17-header-says-18.pdf,
+        distiller7-pscript5-calisto-mt-not-embedded.pdf, distiller952-pscript5-kb-pdf-risk-inventory.pdf,
+        make-pdf-javascript-openaction.pdf (made with Didier Stevens' make-pdf) and the three
+        acrobat11-image-conversion-*.pdf files;
+      - from office-examples/: reader10-openoffice32-annotated-object-streams.pdf,
+        openoffice32-pdfa1a-embedded-lucida.pdf, libreoffice35rc3-writer-simple.pdf,
+        openoffice33-writer-simple.pdf and the openoffice32-writer-*.pdf files but the two below;
+      - from variations/: quartz-word-mac2011-lorem-ipsum.pdf, quartz-pages09-lorem-ipsum.pdf,
+        openoffice32-writer-lorem-ipsum.pdf and openoffice32-writer-lorem-ipsum-pdfa1.pdf;
+      - from ebooks/: the calibre*-*.pdf and ibooks-author*-*.pdf files.
+    - indesign-cs-puppet-guild-event-flyer.pdf comes from desktop-publishing/InDesign/; its author
+      waived all copyright and related rights to it in the README beside it (CC0 1.0).
+    - Copies of GovDocs1 documents (Digital Corpora) from govdocs1-error-pdfs/, works of the United
+      States Government not subject to copyright under 17 U.S.C. 105:
+      - distiller3-dea-cfr-damaged.pdf (303226): Drug Enforcement Administration, typeset by the
+        Government Printing Office;
+      - pdfmaker5-distiller5-va-select-agents.pdf (225188) and the other *-va-*.pdf files (032270,
+        427330, 137036, 160721, 503492, 421197, 436840, 436857, 459011): Department of Veterans Affairs;
+      - distiller7-pscript5-census-housing-units-2005.pdf (033689): Census Bureau;
+      - groff-distiller405-mac-usgs-gps-noise-spectra.pdf (427669) and
+        word9-distiller405-usgs-nwql-volatile-organics-methods.pdf (455746): US Geological Survey;
+      - distiller4-congress-hr1904-enrolled-bill.pdf (477139) and
+        distiller405-gpo-house-committee-markup.pdf (507618): the US Congress, printed by the Government
+        Printing Office;
+      - pdfmaker707-word-law-library-iraq-legal-history.pdf (504076): the Law Library of Congress.
 
 vendor/uk-ogl/
     Contains public sector information licensed under the Open Government Licence v3.0
