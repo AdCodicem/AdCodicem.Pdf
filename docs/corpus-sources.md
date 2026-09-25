@@ -83,8 +83,8 @@ fonts when their `fsType` allows embedding.
   reconsidered, **82 entered**: 6 committed and 76 remote. The committed corpus then held 112 documents, 16.8 MB.
 - **Fourth pass, the OPF format-corpus**: all 284 PDFs at the pinned commit that the first passes had not
   taken, screened one by one, then every admitted file re-screened by one verifier told to reject on doubt.
-  **123 entered**: 56 committed and 67 remote; 161 were refused, 89 of them because git had altered their
-  bytes and eight after the verifier's objections. The committed corpus now holds 168 documents, 23.0 MB,
+  **123 entered**: 56 committed and 67 remote; 161 were refused, 89 of them the OPF's copy of a hand-built set
+  whose bytes git had altered, and eight after the verifier's objections. The committed corpus now holds 168 documents, 23.0 MB,
   and the remote corpus 153.
 - **Referees**: page counts and attachments from pikepdf in the first two passes, from `qpdf --show-npages`
   in the last two; the `qpdf --check` verdict from qpdf 11.9.1 in the integration tests' container; text
@@ -249,16 +249,19 @@ on the files; the reader was then run against them.
 
 **67 remote**, 216 MB, listed under *In the remote corpus*. **161 refused**:
 
-- **89 for their bytes**: the iPRES 2017 hand-built set (`pdf-handbuilt-test-corpus/`), 87 files that each
-  break one ISO 32000-1 structural requirement, and two reference files. Its authors published it on RADAR
-  (doi:10.22000/53) under CC BY-SA 4.0 — so it would have been remote at best — but the OPF copies are not
-  those files: each test file lost the five carriage returns of its content stream when it was committed to
-  git, so its `/Length` and every later offset are wrong and every file shows damage its authors did not put
-  there. The RADAR tar was downloaded and compared: all 87 differ by exactly those bytes. Of the reference
-  files, `hello_world.pdf`, the page every test file starts from, no longer matches the MD5 its authors list;
-  `minimal_test.pdf` does, but holds only a header and `%%EOF`. The tar has neither, and one test file the
-  OPF lacks, `T04_019`, a trailer pointing at the wrong cross-reference offset: 88 in all, to be fetched
-  from it once `fetch_remote.py` can open an archive (T26 in `docs/status.md`).
+- **89 for their bytes**: the OPF's copy of the iPRES 2017 hand-built set (`pdf-handbuilt-test-corpus/`),
+  87 test files, each derived from one page with one deviation from ISO 32000-1's structure, and two
+  reference files. Its authors published it on RADAR (doi:10.22000/53) under CC BY-SA 4.0 — so it would have
+  been remote at best — but the OPF copies are not those files: each test file lost the five carriage
+  returns of its content stream when it was committed to git, so its `/Length` and every later offset are
+  wrong and every file shows damage its authors did not put there. The RADAR tar was downloaded and
+  compared: all 87 differ by exactly those bytes. So does `hello_world.pdf`, the page every test file
+  derives from: with its five carriage returns put back, it has the MD5 its authors list. `minimal_test.pdf`
+  is intact, but holds only a header and `%%EOF`. The tar has neither reference file, and one test file
+  the OPF lacks, `T04_019`, a trailer pointing at the wrong cross-reference offset — the authors' own
+  checksum list, inside the tar, names exactly the OPF's 89 files, so the copy predates it. The 88 test
+  files are to be fetched from the tar once `fetch_remote.py` can open an archive (T26 in `docs/status.md`,
+  proposed ADR 33).
 - **68 for personal data**. 51 of the JHOVE files, journal articles, theses and posters from bug reports:
   49 print an author's, a contact's or a student's own e-mail address or direct line — three only inside a
   page image, two with a space after the `@` —, one is a repository deposit agreement with its author's
@@ -401,7 +404,7 @@ person, and files no one has yet screened or checked — most of them in the bug
 | W06, W08 | The rest of the files pdf.js links to: US state documents, Canadian forms, forms attached to Bugzilla | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | Terms that are not attribution-only, so remote at best; the third pass took three, and the attached forms are often filled in by real people | A personal-data screen each |
 | W08, W05 | A filled form with Reader usage rights and a signature, in EU DSS's resources (`pades-signed-filled-form.pdf`) | [EU DSS `dss-pades` resources](https://github.com/esig/dss/tree/master/dss-pades/src/test/resources) | LGPL-2.1, so remote at best; its field values were not screened in full | A full screen |
 | W06 | The PDF Association's Brotli prototype, a `/BrotliDecode` filter qpdf does not know, among pdf.js's test files | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | Not a bug-report file, but its licence was not checked | A look at the PDF Association's own repository |
-| W06 | The iPRES 2017 hand-built well-formedness set: 88 files, each breaking one ISO 32000-1 structural requirement (header, catalogue, page tree, page object, resources, content stream, cross-reference table, trailer), with a spreadsheet of the expected verdicts and JHOVE's actual ones — the closest thing to an external test suite for M2's structural profile | [RADAR, doi:10.22000/53](https://doi.org/10.22000/53) (the OPF copies are unusable: git removed five carriage returns from each) | CC BY-SA 4.0, so remote at best; RADAR serves the originals only as one BagIt tar of 613 KB (`radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content`), byte-identical on two downloads, behind a terms prompt in its web interface, and `fetch_remote.py` fetches one file per URL. The terms (July 2019) charge nothing and ask only that the dataset's licence be honoured; they say nothing of automated download. The tar holds 88 test files, one more than the OPF's copy | **T26** (`docs/status.md`): archive members in `fetch_remote.py` — download the tar at a pinned SHA-256, extract the member, check its own — proposed before M2's slice 2 |
+| W06 | The iPRES 2017 hand-built well-formedness set: 88 files derived from one page, each with one deviation from ISO 32000-1's structure — and often more, as the edits left offsets stale in 43 of the 59 header and body files (header, catalogue, page tree, page object, resources, content stream, cross-reference table, trailer), with a spreadsheet giving each file's category and deviation, JHOVE 1.16.5's verdict and whether Acrobat XI Pro opens it — the closest thing to an external test suite for M2's structural profile | [RADAR, doi:10.22000/53](https://doi.org/10.22000/53) (the OPF copies are unusable: git removed five carriage returns from each) | CC BY-SA 4.0, so remote at best; RADAR serves the originals only as one BagIt tar of 613 KB (`radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content`), the 2017 deposit whose MD5 RADAR publishes, behind a terms prompt in its web interface, and `fetch_remote.py` fetches one file per URL. The terms (July 2019) charge nothing and ask only that the dataset's licence be honoured; they say nothing of automated download. The tar holds 88 test files, one more than the OPF's copy | **T26** (`docs/status.md`) and the proposed [ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md): archive members in `fetch_remote.py` — download the tar at a pinned SHA-256, copy the member out, check its own — proposed before M2's slice 2 |
 
 Two good files first held back for a name rather than a licence — the PDF Association's
 `CompactedPDFSyntaxTest.pdf` and Docentric's Factur-X EXTENDED sample from Dynamics 365 — entered in the
@@ -557,7 +560,7 @@ rebuild scans the file by definition.
 - **Git can change a PDF's bytes.** A PDF made only of ASCII, with no NUL in its first 8,000 bytes, looks
   like text to git, and a repository that normalises line endings strips its carriage returns: the
   `/Length` of each stream and every offset after it go wrong. The OPF's copies of the iPRES 2017 hand-built
-  set all lost five bytes that way, which the authors' own archive on RADAR shows; the repository has since
+  set lost five bytes each that way — all but `minimal_test.pdf`, which had none to lose — which the authors' own archive on RADAR shows; the repository has since
   added `* text=binary` to its `.gitattributes`. Every other OPF file admitted has a NUL early on or still
   holds its CR LF pairs, and passed `qpdf --check` where its producer left it sound.
 - **Referees count pages differently on a damaged page tree.** A kid that points at an object the file does
@@ -601,8 +604,8 @@ rebuild scans the file by definition.
   to object 0, a trailer `/Size` equal to the highest object number, a byte missing after the header, an
   image whose `/Height` contradicts its data, a resource pointing at an object that does not exist; and
   JHOVE's own verdict on 45 files, a second independent opinion to compare the validator with. Out of
-  reach until T26: the iPRES 2017 hand-built set, 88 files each breaking one structural requirement its
-  authors name — the one external test suite the structural profile could be measured against.
+  reach until T26: the iPRES 2017 hand-built set, 88 files each derived from one page with one deviation
+  its authors describe — the one external test suite the structural profile could be measured against.
 - **M3, M4**: signatures to keep intact through an incremental update — a GPO certification, DILA's
   Dictao signature, a qualified seal renewed by timestamps over two years, PAdES B-LTA, Acrobat signatures.
   The third pass adds each PAdES baseline level on one page (B-B, B-LT, B-LTA); DocMDP P=1 and P=2 with

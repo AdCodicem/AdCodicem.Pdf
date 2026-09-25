@@ -39,6 +39,7 @@ A settled decision is not reopened without new evidence — that is what writing
 | [30](0030-previews-on-every-merge-stable-releases-on-demand.md) | Previews on every merge, stable releases on demand | — |
 | [31](0031-versioned-documentation-stable-lines-and-the-preview.md) | Versioned documentation: stable lines, and the preview beside them | — |
 | [32](0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md) | Documents that cannot be redistributed are fetched on demand, never committed | — |
+| [33](0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md) | A remote document may be a member of a pinned archive — **proposed** | — |
 
 ## Decisions too small for a record of their own
 
