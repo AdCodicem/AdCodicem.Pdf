@@ -60,12 +60,57 @@ public class CorpusReadingTests
                 var source = entry.TryGetProperty("source", out var value) ? value : default;
                 Text(source, "url").Should().MatchRegex(@"^https?://\S+$", $"{file} is fetched from its source");
                 Text(source, "sha256").Should().MatchRegex("^[0-9a-f]{64}$", $"{file} is pinned to its SHA-256");
+                Size(source, "bytes").Should().BePositive($"{file} is pinned to its exact size");
             }
         }
-
-        static string? Text(JsonElement parent, string name) =>
-            parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value) ? value.GetString() : null;
     }
+
+    [Fact]
+    public void A_document_taken_from_an_archive_pins_the_archive_and_itself()
+    {
+        // ADR 33: the archive is pinned by every entry that names it, the same way, and each member is taken
+        // once, by a path that stays inside the archive — the fetcher never writes where a member's name says.
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Corpus.Root, "manifest.json")));
+        var pins = new Dictionary<string, string>(StringComparer.Ordinal);
+        var members = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var entry in manifest.RootElement.GetProperty("documents").EnumerateArray())
+        {
+            var file = entry.GetProperty("file").GetString();
+            var source = entry.TryGetProperty("source", out var value) ? value : default;
+            var url = Text(source, "url");
+
+            if (url is null || entry.GetProperty("origin").GetString() != "remote")
+            {
+                continue;
+            }
+
+            var pin = "document";
+
+            if (source.TryGetProperty("archive", out var archive))
+            {
+                Text(archive, "sha256").Should().MatchRegex("^[0-9a-f]{64}$", $"{file}: the archive is pinned to its SHA-256");
+                Size(archive, "bytes").Should().BePositive($"{file}: the archive is pinned to its exact size");
+
+                var member = Text(archive, "member");
+                member.Should().MatchRegex(@"^(?!/)(?!.*\\)(?!(.*/)?\.{1,2}(/|$))(?!.*//)(?!.*/$).+$", $"{file}: the member stays inside its archive");
+                members.Add($"{url} {member}").Should().BeTrue($"{file}: {member} is taken once");
+
+                pin = $"{Text(archive, "sha256")} {Size(archive, "bytes")}";
+            }
+
+            // One URL serves one thing: a document, or one archive pinned the same way by every entry.
+            pins.TryAdd(url, pin);
+            pins[url].Should().Be(pin, $"{file}: {url} is pinned the same way by every entry naming it");
+        }
+    }
+
+    private static string? Text(JsonElement parent, string name) =>
+        parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value) ? value.GetString() : null;
+
+    private static long Size(JsonElement parent, string name) =>
+        parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var size) ? size : 0;
 
     [Fact]
     public void A_committed_document_weighs_at_most_2_MB()
@@ -118,7 +163,7 @@ public class CorpusReadingTests
 
         stopwatch.Elapsed.Should().BeLessThan(OpenBudget, $"opening {entry.Name} must not take unbounded time");
 
-        document.Catalog.Required($"{entry.Name} has no document catalogue");
+        ExpectCatalog(document, entry, $"{entry.Name} has no document catalogue");
         document.WasRepaired.Should().Be(entry.Expect.IndexRebuilt, $"{entry.Name}: unexpected rebuild state");
 
         // Judge the diagnostics on a full read, not on opening: a lying /Length is only discovered when
@@ -141,7 +186,7 @@ public class CorpusReadingTests
             noise.Should().BeEmpty($"{entry.Name} is well formed but produced {Describe(document.Diagnostics)}");
         }
 
-        if (entry.Expect.Pages is { } expectedPages)
+        if (entry.Expect.Pages is { } expectedPages && entry.Expect.CatalogRecoverable)
         {
             CountPages(document).Should().Be(expectedPages, $"{entry.Name}: page count");
         }
@@ -202,17 +247,33 @@ public class CorpusReadingTests
 
         using var document = PdfDocument.Open(Corpus.Read(file));
 
-        document.Catalog.Required($"{entry.Name}: qpdf recovers a catalogue here, so must we");
+        ExpectCatalog(document, entry, $"{entry.Name}: qpdf recovers a catalogue here, so must we");
         ReadEverything(document);
         document.Diagnostics.Count.Should().BeGreaterThan(0, $"{entry.Name}: damage must never be silent");
 
-        if (entry.Expect.Pages is { } expectedPages)
+        if (entry.Expect.Pages is { } expectedPages && entry.Expect.CatalogRecoverable)
         {
             CountPages(document).Should().Be(expectedPages, $"{entry.Name}: recovered page count");
         }
     }
 
     public static TheoryData<string> AllDocuments => Theory(Corpus.Paths);
+
+    /// <summary>
+    /// A catalogue where one can be recovered, and none where the file holds none: the reader recovers what
+    /// is there and never invents what is not.
+    /// </summary>
+    private static void ExpectCatalog(PdfDocument document, CorpusDocument entry, string because)
+    {
+        if (entry.Expect.CatalogRecoverable)
+        {
+            document.Catalog.Required(because);
+        }
+        else
+        {
+            document.Catalog.Should().BeNull($"{entry.Name}: no object in the file is a catalogue");
+        }
+    }
 
     /// <summary>
     /// Lazy opening is promised for documents whose index can be read as written: rebuilding one means

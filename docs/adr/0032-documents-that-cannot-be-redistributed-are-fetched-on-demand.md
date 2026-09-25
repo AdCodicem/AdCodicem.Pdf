@@ -21,6 +21,13 @@ Amended again the same day: "too large to commit" means **over 2 MB**. Below tha
 small is a recommendation; above it, a document is fetched on demand whatever its licence, and is never
 turned down for its size alone. `CorpusReadingTests` fails on a committed document over 2 MB.
 
+Amended on 2026-09-25 by [ADR 33](0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md): a remote
+document may be a **member of an archive** its repository publishes only whole. `source.url` then serves the
+archive, pinned by `source.archive` (its SHA-256, its size, the member's path), while `source.sha256` and
+`source.bytes` still pin the document itself; such an archive must be shown immutable — a deposit whose
+checksum its repository publishes, or a URL of one of the three kinds below. Every remote entry now pins its
+size (`source.bytes`) as well as its SHA-256.
+
 ## Context
 
 ADR 23 commits third-party documents only under attribution-only licences, and says in one sentence that

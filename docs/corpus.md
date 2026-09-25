@@ -24,7 +24,7 @@ handing anything over, and where it goes.
 | Third-party documents found in public sources (`vendor/`) | Producers we will never run — Acrobat, InDesign, LiveCycle, copier firmware, a qualified-seal service — and damage from the wild | Attribution-only licence (ADR 23), no real person's contact or identity data anywhere, byte-identical to the publisher's copy, at most 2 MB; source URL and SHA-256 recorded; see `docs/corpus-sources.md` |
 | Contributed real documents | Everything the generators never do: legacy tooling, scanners, foreign-language typography, damaged files from the wild | No confidential content; origin and licence recorded; anonymised before committing |
 | Derived variants | Encryption, linearisation, object-stream rewrites, and deliberate damage | Derived by a recorded, repeatable transformation from a document already in the corpus |
-| Remote documents we may use but not redistribute (origin `remote`, ADR 32) | What only a bug report, a vendor's sample, a ShareAlike set or a file over 2 MB can give | Never committed, nor anything derived from them; fetched at a pinned SHA-256 from an immutable URL; tested by a separate job |
+| Remote documents we may use but not redistribute (origin `remote`, ADR 32) | What only a bug report, a vendor's sample, a ShareAlike set or a file over 2 MB can give | Never committed, nor anything derived from them; fetched at a pinned SHA-256 and size from an immutable URL, or copied out of a pinned archive (ADR 33); tested by a separate job |
 
 Documents are **committed**, not generated at test time: producer output changes with producer version, and
 a test suite that shifts under you is worse than no test suite. Regeneration is an explicit act, reviewed
@@ -32,9 +32,10 @@ like any other change. It also keeps CI free of any network dependency.
 
 The one exception is the **remote corpus** (ADR 32): documents whose licence forbids redistribution, or that
 weigh more than 2 MB. The manifest describes them like any other document, with origin `remote`
-and a mandatory `source.url` and `source.sha256`; `build/fetch_remote.py` downloads them into `remote/`,
-which git ignores, and refuses any file whose hash differs — a changed file is a new document, reviewed as
-one. The test suite leaves out the remote entries whose file is absent, so the main CI job fetches nothing,
+and a mandatory `source.url`, `source.sha256` and `source.bytes`; `build/fetch_remote.py` downloads them into
+`remote/`, which git ignores, and refuses any file whose hash or size differs — a changed file is a new
+document, reviewed as one. A document published only inside an archive is copied out of it (ADR 33): the
+archive is pinned too, downloaded at most once a run, and never extracted by its members' own paths. The test suite leaves out the remote entries whose file is absent, so the main CI job fetches nothing,
 finds nothing, and tests exactly what is committed. The `Remote corpus` workflow fetches them every night and runs both suites over
 them; a download failure is reported as such, never as a test failure. The manifest itself is public, so its
 titles and `textContains` strings carry no personal data, and it lists only files anyone can download.
@@ -103,7 +104,12 @@ Three fields serve that rule:
   for M12 to agree with.
 - `source` — for a third-party file, the URL it was retrieved from, the date and the SHA-256 of the bytes
   as published, so provenance is checkable without trusting the repository. For a remote document it is
-  mandatory, and it is what `fetch_remote.py` downloads and verifies.
+  mandatory, with the document's size in `bytes`, and it is what `fetch_remote.py` downloads and verifies.
+  When the document is published only inside an archive (ADR 33), `url` serves the archive and
+  `source.archive` pins it — its `sha256`, its `bytes`, and the `member` to copy out —, while `sha256` and
+  `bytes` still pin the document: provenance is then checked by hashing the download against the archive's
+  pin, then the member against the document's. `landingPage` gives the persistent identifier when there is
+  one, such as a DOI.
 
 ## Use-case categories
 
