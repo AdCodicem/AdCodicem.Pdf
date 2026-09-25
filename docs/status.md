@@ -8,16 +8,18 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 481 unit (4 skipped by design: two corpus
-  documents recorded as unsupported until M2) + 302 integration (skipped without Docker);
-  with the remote corpus fetched (all 153 of its documents, on the runner), 806 unit (35 skipped by
-  design, on documents recorded as unsupported until M2 or until T21, T23, T24 or T25 is fixed) + 563
-  integration — **CI**: green on `main`, `OpenSSF Scorecard` included
+- **Builds**: yes, with no warnings — **Tests**: 482 unit (4 skipped by design: two corpus
+  documents recorded as unsupported until M2) + 302 integration (skipped without Docker) + 16 for the
+  remote corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
+  documents from here, see the journal), 1,143 unit (68 skipped by design, on documents recorded as
+  unsupported until M2 or until T21, T23, T24 or T25 is fixed) + 665 integration — **CI**: green on `main`,
+  `OpenSSF Scorecard` included
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licences (56 of them from the Open Preservation Foundation's
-  format-corpus, added on 2026-09-25; see `docs/corpus-sources.md`). Beside it, a **remote corpus** of 153
-  documents we may use but not redistribute — never committed, fetched at a pinned SHA-256 and tested every
-  night by the `Remote corpus` workflow (ADR 32, accepted). All 321 are described in one file,
+  format-corpus, added on 2026-09-25; see `docs/corpus-sources.md`). Beside it, a **remote corpus** of 242
+  documents we may use but not redistribute — never committed, fetched at a pinned SHA-256 and size, 88 of
+  them copied out of their authors' archive (the iPRES 2017 hand-built set, ADR 33), and tested every night
+  by the `Remote corpus` workflow (ADR 32). All 410 are described in one file,
   `tests/corpus/manifest.json`. Pull request [#25](https://github.com/AdCodicem/AdCodicem.Pdf/pull/25),
   which brought the remote corpus, was merged on 2026-09-24. Its first nightly run, on `main` on
   2026-09-25, passed every test (538 unit, 361 integration) but failed its last step: the Internet
@@ -90,6 +92,37 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-25 — ADR 33 accepted: the iPRES 2017 set and a fact sheet screened in part join the remote corpus
+- **The request**: the maintainer accepted ADR 33 — a remote document may be a member of a pinned archive —
+  and admitted the SAMHSA fact sheet to the remote corpus, the exception to the personal-data screen
+  documented.
+- **The fetcher**: `source.archive` pins the archive (SHA-256, size, member) while `source.sha256` and
+  `source.bytes` still pin the document; an archive is downloaded at most once a run, only when a member is
+  missing or stale, and its outcome, failure included, holds for every member; only an uncompressed tar
+  whose hash matched is opened, and the member is copied into its entry's file, never extracted by its own
+  path. Every remote entry now pins its size. Its first tests — 16, against a local server, now run by the
+  main CI job — found a defect older than ADR 33: a source serving more bytes than pinned was reported
+  unavailable, not refused. Fixed: a file that grew changed, it did not disappear.
+- **The 88 iPRES files** came out of one download of RADAR's tar. They hold no metadata and one line of
+  text. Expectations from qpdf 11.9.1 in the referee container and from pdftotext; titles in our own words,
+  from each file's difference with the base page; the spreadsheet's case number, category and JHOVE
+  verdict as features, its text never copied. The reader met 69 as written. 19 are recorded as unsupported,
+  all until M2, which now names them: seven page trees it counts differently from qpdf, four faults it
+  reads without a word, six recoveries that differ from qpdf's — in four it rebuilds a sound index to find
+  a catalogue the trailer no longer leads to. One file holds no catalogue at all; a new expectation,
+  `catalogRecoverable: false`, asks the reader to open it and hand back none.
+- **The SAMHSA fact sheet**: its damage is now explained. A text-mode transfer turned each of its 1,904 CR
+  and LF bytes into CR LF — the file has not one lone CR or LF left —, which broke every stream's
+  `/Length`, every offset and every Flate stream. The reader meets qpdf's expectations: three pages, the
+  index rebuilt. The exception is written into its entry (feature `partially-screened`) and into
+  `docs/corpus-sources.md`; the entry publishes no text from the document.
+- **Documentation**: ADR 33 accepted, ADR 32 amended, `docs/corpus.md`, `tests/corpus/README.md`,
+  `docs/corpus-contributions.md` and `docs/corpus-sources.md` brought in line; M2 has a new acceptance row;
+  T26 is closed.
+- **Tests**: without the remote corpus, 482 unit and 302 integration; with 240 of its 242 documents — the two
+  GitHub issue attachments still answer 403 to this session —, 1,143 unit (68 skipped by design) and 665
+  integration, all green; the fetcher's 16 tests pass.
 
 ### 2026-09-25 — The OPF format-corpus, file by file: 123 more documents, 56 of them committed
 - **The question**: the Open Preservation Foundation's format-corpus holds 293 PDFs; why had only nine
@@ -725,7 +758,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | T23 | **The reader cuts an indirect object longer than its 8 KB window at the window's edge.** Found on two remote documents: object 458 of the EU DSS file with 24 signatures and a document timestamp, a DSS `/VRI` dictionary of 10,112 bytes, reported as a truncated object exactly 8 KB in; and object 14 of the BOE's 2015 law, a structure array of 8,694 bytes, reported as unexpected tokens at the same point, with 35 arrays like it. qpdf reads all of them whole. `PdfFileReader.TryParseObjectAt` does grow its window when the parser says an object ran out, but the parser has warned into the document's diagnostics by then. The same window as T21, met by an object rather than a stream. Both entries are recorded as unsupported with this reason, so the fix is checked against them every night. Since 2026-09-25 also the VA Kernel guide (object 10913, 14,188 bytes) and a JHOVE poster (object 2307, 8,248 bytes), both remote | **Before M2 closes** — a validator cannot build on invented syntax errors: a synthetic regression test (a dictionary and an array a few bytes over 8 KB), then find why a window that turns out too small still leaves a diagnostic behind, or is not grown at all |
 | T24 | **Opening reads each cross-reference section through a window of up to 64 KB, whatever the section's size.** Bounded, but proportional to the number of sections rather than to their size: opening the 218 KB signed Web Capture file from pdfcpu's test data, which has three sections, reads 117 KB — more than the quarter of the file the laziness test allows. The entry is recorded as unsupported with this reason | M13, with the other budgets: start a section's window small and grow it, as object windows already do — and keep what was read when it grows: the VHA coding handbook from GovDocs1 (2026-09-25) has one 273 KB table, read at 64 KB, then 256 KB, then to its end, 683 KB in all for a 2.2 MB file; also recorded as unsupported |
 | T25 | **A `/Prev` that misses its section drops it in silence.** `PdfFileReader.TryReadXRefChain` returns success as soon as one section was read, so when a later `/Prev` does not land on `xref` or on a cross-reference stream the older section is simply left out, with no rebuild — and with no diagnostic either when the offset falls inside the file; one past its end earns `xref.entry-out-of-range`. Found on IBM's QMF manual from GovDocs1 (remote): `/Prev 1569328` falls 12 bytes past the keyword, and the 4,106 entries of the main table are lost; qpdf reports `xref not found` and rebuilds. Recorded as unsupported with this reason | **Before M2 closes** — a validator cannot report what the reader hides: a synthetic regression test (a `/Prev` a few bytes off, and one pointing nowhere), then report the failed section and search near it or rebuild, as the reader already does for an object a few bytes off |
-| T26 | **The remote corpus cannot take a file out of an archive, so the one external test suite for M2's structural profile stays out of reach.** The iPRES 2017 hand-built set ([doi:10.22000/53](https://doi.org/10.22000/53), CC BY-SA 4.0, so remote) is 88 files derived from one page, each with one deviation from ISO 32000-1's structure, and a spreadsheet giving each file's category and deviation, JHOVE 1.16.5's verdict and whether Acrobat XI Pro opens it. The OPF's copies are unusable, and RADAR serves the originals only inside one BagIt tar of 613,888 bytes, whose MD5 is the archive checksum RADAR publishes: the 2017 deposit itself, so it can be pinned. `fetch_remote.py` fetches one file per URL, and reads `source.bytes` as the download's ceiling. RADAR's terms for data users ask nothing beyond the licence and say nothing of automated download | Proposed: **before M2's slice 2**, so the file and cross-reference rules meet the set as they are written. [ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md), proposed, gives the design — the archive and the member pinned separately, one download per run whose failure is remembered, a member copied out of a tar opened in `r:` mode and never extracted by its own path — and how the 88 entries are written: expectations from qpdf, the authors' case as a feature, unsupported until M2 for 75 files and M10 for 13 content-operator files. Accepting it is the decision expected |
+| ~~T26~~ | ~~The remote corpus cannot take a file out of an archive, so the one external test suite for M2's structural profile stays out of reach~~ | Done on 2026-09-25: [ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md) accepted and implemented; the 88 files are in the remote corpus, 19 of them recorded as unsupported until M2 and named in its acceptance conditions |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |

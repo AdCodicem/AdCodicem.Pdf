@@ -13193,6 +13193,56 @@
       }
     },
     {
+      "file": "remote/opf-format-corpus/quartz-word-samhsa-prevention-pathways-fact-sheet.pdf",
+      "title": "A SAMHSA Prevention Pathways fact sheet saved through the Mac OS X 10.2 Quartz writer, then sent through a text-mode transfer: every CR and LF became CR LF, so every stream's /Length, every offset and every Flate stream is broken",
+      "useCase": "damaged",
+      "producer": "Microsoft Word, Mac OS X 10.2.6 Quartz PDFContext",
+      "origin": "remote",
+      "licence": "Its author is not named, so public domain rests on the publisher alone; not shown to be the work of federal staff; byte-identical GovDocs1 capture via the OPF format-corpus, so fetched on demand rather than vendored (ADR 32). Screened in part, by the maintainer's decision of 2026-09-25: the three content streams break after 18 to 96 decoded bytes, so most of the page text cannot be read by any decoder and was not screened; everything readable (the text recovered by undoing the line ends, metadata, annotations, link) holds no personal data, and this entry publishes no text from the document",
+      "source": {
+        "url": "https://raw.githubusercontent.com/openpreserve/format-corpus/366f068cec399d0cdfd61fa473de3ab6dc858098/govdocs1-error-pdfs/error_set_2/498264.pdf",
+        "sha256": "72e804b6e4c2c196b80126dfa97e5f4ad877da5db97fb791d5fcaf71f83b041d",
+        "retrieved": "2026-09-25",
+        "bytes": 180381
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "acroform",
+        "acroform-no-fields",
+        "classic-xref-table",
+        "embedded-truetype",
+        "flate-image",
+        "link-annotation",
+        "outlines",
+        "pdf-1.5",
+        "popup-annotation",
+        "single-revision",
+        "truetype-font",
+        "type1-font",
+        "underline-annotation",
+        "xmp-metadata",
+        "govdocs1",
+        "govdocs1-error-set-2",
+        "real-world-damage",
+        "text-mode-transfer",
+        "stream-length-wrong",
+        "corrupt-content-streams",
+        "flate-data-corrupt",
+        "partially-screened"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
       "file": "remote/opf-format-corpus/usgs-earthquake-summary-map-honshu-2004.pdf",
       "title": "A USGS earthquake summary map (Honshu, October 2004): one PDF 1.2 page of 7.2 MB with no /Producer",
       "useCase": "report",
@@ -13227,6 +13277,3869 @@
           "plate subducts beneath the"
         ],
         "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t01-001-header-invalid-major-version.pdf",
+      "title": "iPRES 2017 hand-built case T01-001: the one-page Hello PDF-world! file with a header naming PDF 2.4",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "db3f4042745fa524c0543bf02daf435fd8939de12355ec6aa2ae80eea623ce98",
+        "bytes": 636,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T01_001_header-invalid-major-version.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t01-001",
+        "ipres2017-header",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t01-002-header-invalid-minor-version.pdf",
+      "title": "iPRES 2017 hand-built case T01-002: the one-page Hello PDF-world! file with a header naming PDF 1.9",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "b2572d82d6df00faf10c2dac1bf2e8e6c3257be8538cd3b81c29e45102df4c53",
+        "bytes": 636,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T01_002_header-invalid-minor-version.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t01-002",
+        "ipres2017-header",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t01-003-header-no-minor-version.pdf",
+      "title": "iPRES 2017 hand-built case T01-003: the one-page Hello PDF-world! file with a header reading %PDF-14, with no dot in the version",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "120424166da562d63baad6d10438ca68ce1f058800188dd4ab9e1a4987026871",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T01_003_header-no-minor-version.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t01-003",
+        "ipres2017-header",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t01-004-header-invalid-syntax-no-dash.pdf",
+      "title": "iPRES 2017 hand-built case T01-004: the one-page Hello PDF-world! file with a header without its hyphen (%PDF1.4)",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "6b49227deb6536dabe4ef6ff5724a653df0fd8a6daa6f04a931f5c5de7a93c73",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T01_004_header_invalid-syntax-no-dash.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t01-004",
+        "ipres2017-header",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t01-005-header-invalid-syntax-replace-char.pdf",
+      "title": "iPRES 2017 hand-built case T01-005: the one-page Hello PDF-world! file with a dot where the header's hyphen belongs (%PDF.1.4)",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "fca73410dc70f02f7f6404f57b27ffe48a7d960d5006c3509ba31c7696c8d4b0",
+        "bytes": 636,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T01_005_header-invalid-syntax-replace-char.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t01-005",
+        "ipres2017-header",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t01-006-header-invalid-syntax-no-pdf.pdf",
+      "title": "iPRES 2017 hand-built case T01-006: the one-page Hello PDF-world! file with a header without the letters PDF (%1.4)",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "ce70814d4063945085b6d6a067e2f79c68d8d6dd8ea3f387a40adf8ac4615c8c",
+        "bytes": 631,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T01_006_header-invalid-syntax-no-pdf.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t01-006",
+        "ipres2017-header",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t01-007-header-no-version-info.pdf",
+      "title": "iPRES 2017 hand-built case T01-007: the one-page Hello PDF-world! file with no header line at all",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "dc59bf700fb8875720d5d5ee3f8375131c58735fecc14b3bf8a95223957e678a",
+        "bytes": 627,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T01_007_header-no-version-info.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t01-007",
+        "ipres2017-header",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-01-001-document-catalog-no-document-catalog.pdf",
+      "title": "iPRES 2017 hand-built case T02-01-001: the one-page Hello PDF-world! file with no catalogue: the object is gone and the trailer's /Root points at nothing",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "4437f430e32863b74fcf88b4067b6e659f1b1a0ed7a0d44e0c0628b31416b1be",
+        "bytes": 589,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-01_001_document-catalog-No-document-catalog.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-01-001",
+        "ipres2017-catalogue",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": null,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "catalogRecoverable": false,
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-01-002-document-catalog-wrong-object-number.pdf",
+      "title": "iPRES 2017 hand-built case T02-01-002: the one-page Hello PDF-world! file with the catalogue renumbered 6 while the trailer's /Root still names 5",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "15c8091c67033464b8cbc0f93a6f440ab89ba7f2aea28668a7c6d3aa9984ff8e",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-01_002_document-catalog-wrong-object-number.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-01-002",
+        "ipres2017-catalogue",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": null,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-01-003-document-catalog-indirecte-pages-reference-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-01-003: the one-page Hello PDF-world! file with a catalogue without /Pages",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "4a3693816fb2672c6820124433634cdf7a62ee815f9b88e4ab29b498f7a37798",
+        "bytes": 622,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-01_003_document-catalog-indirecte-pages-reference-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-01-003",
+        "ipres2017-catalogue",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 0,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-01-004-document-catalog-incorrect-pages-reference.pdf",
+      "title": "iPRES 2017 hand-built case T02-01-004: the one-page Hello PDF-world! file with a catalogue whose /Pages points at an object the file lacks",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "de0828002b56a7a8459445c227001e76ad816f16d4df903c90072cb244b4d3aa",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-01_004_document-catalog-incorrect-pages-reference.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-01-004",
+        "ipres2017-catalogue",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 0,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-01-005-document-catalog-type-key-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-01-005: the one-page Hello PDF-world! file with a catalogue saying /Catalog without the /Type key",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "ad4ef477007e1bc1dd1ca7d6485df7226dc681bdcf1169388e06c975106705c8",
+        "bytes": 628,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-01_005_document-catalog-type-key-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-01-005",
+        "ipres2017-catalogue",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-01-006-document-catalog-wrong-type-key.pdf",
+      "title": "iPRES 2017 hand-built case T02-01-006: the one-page Hello PDF-world! file with a catalogue typed /Font",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "e74d6389b486b5e413c80533e9e9fcad4c87f5b9d3ec72b21088e1d543f6aa1d",
+        "bytes": 631,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-01_006_document-catalog-wrong-type-key.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-01-006",
+        "ipres2017-catalogue",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-01-007-document-catalog-type-key-value-pair-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-01-007: the one-page Hello PDF-world! file with a catalogue without /Type",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "d95101aa4e06df77ffa3153fdd6255262d358a2c0fcdacceb19d7102bc5f0496",
+        "bytes": 619,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-01_007_document-catalog-type-key-value-pair-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-01-007",
+        "ipres2017-catalogue",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-02-001-no-page-tree-node.pdf",
+      "title": "iPRES 2017 hand-built case T02-02-001: the one-page Hello PDF-world! file with no page tree root",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "716eea1de49246db918c45d3298117e4ad4d4d06881b1c66d93ff91bb1109ffb",
+        "bytes": 582,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-02_001_no-page-tree-node.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-02-001",
+        "ipres2017-page-tree",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 0,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-02-002-page-tree-kids-links-recursive.pdf",
+      "title": "iPRES 2017 hand-built case T02-02-002: the one-page Hello PDF-world! file with a page tree root listing itself as its only kid",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "b4d798f141b9dfd8b5c6cce83be9b5cccfbf42b656b3bd1e3e648d0aa2422fb6",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-02_002_page-tree-kids-links-recursive.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-02-002",
+        "ipres2017-page-tree",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: qpdf --show-npages counts one page and the reader none, without a word, on a page tree whose root lists itself as its only kid; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-02-003-page-tree-different-kids.pdf",
+      "title": "iPRES 2017 hand-built case T02-02-003: the one-page Hello PDF-world! file with a page tree root listing three kids with /Count 3: the page, the resources dictionary and a missing object",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "354e868c94e01b5933f163181f3354309218fb3e78a50bff45a123fbbd951389",
+        "bytes": 646,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-02_003_page-tree-different-kids.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-02-003",
+        "ipres2017-page-tree",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 3,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: qpdf --show-npages counts three pages and the reader two, on a page tree whose root lists the resources dictionary and a missing object as pages; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-02-004-page-tree-non-existing-object-as-kid.pdf",
+      "title": "iPRES 2017 hand-built case T02-02-004: the one-page Hello PDF-world! file with a page tree root whose only kid is an object the file lacks",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "d9af5e2853a0cbbb099300845bc779b277f4a835b39d61f0355ae54384e73596",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-02_004_page-tree-non-existing-object-as-kid.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-02-004",
+        "ipres2017-page-tree",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-not-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: qpdf --show-npages counts one page and the reader none, without a word, on a page tree whose only kid is an object the file lacks; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-02-005-page-tree-no-kids.pdf",
+      "title": "iPRES 2017 hand-built case T02-02-005: the one-page Hello PDF-world! file with a page tree root without /Kids",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "7d80eff5916d497b674aad5f80938189325589d2bcada447fcfe579b58ccd549",
+        "bytes": 621,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-02_005_page-tree-no-kids.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-02-005",
+        "ipres2017-page-tree",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: qpdf --show-npages counts one page and the reader none, on a page tree whose root has no /Kids; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-02-006-page-tree-no-type.pdf",
+      "title": "iPRES 2017 hand-built case T02-02-006: the one-page Hello PDF-world! file with a page tree root without /Type",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "da21b98c9aed497e481248ab7aa545a628e28b28c42cca7053bfd55a49d621c0",
+        "bytes": 622,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-02_006_page-tree-no-type.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-02-006",
+        "ipres2017-page-tree",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-02-007-page-tree-wrong-count.pdf",
+      "title": "iPRES 2017 hand-built case T02-02-007: the one-page Hello PDF-world! file with a page tree root claiming /Count 9 for one page",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "69eea6a9d1a59e1bd9c8b1aea20448deb5cc10fe812cd094577f3d609aa2e931",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-02_007_page-tree-wrong-count.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-02-007",
+        "ipres2017-page-tree",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 9,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true,
+        "unsupported": "M2: qpdf --show-npages counts nine pages, trusting /Count and the reader the one page there is, on a page tree whose root claims /Count 9; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-02-008-page-tree-node-no-count.pdf",
+      "title": "iPRES 2017 hand-built case T02-02-008: the one-page Hello PDF-world! file with a page tree root without /Count",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "bfb4eafaa5d18213eb87c200d645b90d528fc48d5dc80807bdcab8add80468be",
+        "bytes": 626,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-02_008_page-tree-node-no-count.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-02-008",
+        "ipres2017-page-tree",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 0,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: qpdf --show-npages counts none and the reader the one page there is, on a page tree whose root has no /Count; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-02-009-page-tree-wrong-type.pdf",
+      "title": "iPRES 2017 hand-built case T02-02-009: the one-page Hello PDF-world! file with a page tree root typed /Pagez",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "b9b0e77fa3dcc55d6348765a07a3b1adad72b1bc59511329af534da79abdc701",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-02_009_page-tree-wrong-type.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-02-009",
+        "ipres2017-page-tree",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: a page tree root typed /Pagez, which qpdf reports and the reader reads without a word"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-001-page-object-no-type.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-001: the one-page Hello PDF-world! file with a page without /Type",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "ef3e17ca8141d386bd1c8af3bcb21fca59ee7873b928965d9e605bf23a8f29eb",
+        "bytes": 623,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_001_page-object-no-type.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-001",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-002-page-object-wrong-type.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-002: the one-page Hello PDF-world! file with a page typed /Font",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "6b2f1390b85fe6663d98a99c82d0e06c1d55144799e2ece13245edf687938f6e",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_002_page-object-wrong-type.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-002",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: a page typed /Font, which qpdf reports and the reader reads without a word"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-003-page-object-no-parent.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-003: the one-page Hello PDF-world! file with a page without /Parent",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "b290d44d6129d62fcdc0b2688f2b375dce4df213c7f9de75f74ad196fd029526",
+        "bytes": 621,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_003_page-object-no-parent.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-003",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-004-page-object-wrong-parent.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-004: the one-page Hello PDF-world! file with a page whose /Parent is the resources dictionary",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "da766857100176f6a26136f641f446f36e340468711d2aea0260eb23f9b6de1d",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_004_page-object-wrong-parent.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-004",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-005-page-object-parent-contains-array.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-005: the one-page Hello PDF-world! file with a page whose /Parent is an array of two references",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "f52c953a25d2aa9197e66ddf613418b436e08a787a27fd6b94eaa1100cb5f4e0",
+        "bytes": 642,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_005_page-object-parent-contains-array.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-005",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-006-page-object-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-006: the one-page Hello PDF-world! file with no page object",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "4661687ee7c20120ae559d775535f85ffdec69b34ebf7b86f4804cf6c97bf2ab",
+        "bytes": 527,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_006_page-object-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-006",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: qpdf --show-npages counts one page and the reader none, on a page tree whose only page object is gone; the referees disagree on damaged trees (docs/corpus-sources.md), and M2's page-tree rules name the fault the count depends on"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-007-page-object-resources-wrong-object.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-007: the one-page Hello PDF-world! file with a page whose /Resources is the page tree root",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "bd6b5d6afd5f1f405ec95df6600be8b1b1f74a94687e1ed0fd85a2f3bd4ca339",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_007_page-object-resources-wrong-object.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-007",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-008-page-object-mediabox-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-008: the one-page Hello PDF-world! file with a page without /MediaBox",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "0258a7af9c760b64d077ca2dfa2859a585d8588da91421b4ce352057da48539b",
+        "bytes": 611,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_008_page-object-mediabox-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-008",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-009-page-object-mediabox-not-rectangle.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-009: the one-page Hello PDF-world! file with a /MediaBox of three numbers",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "6cc8856f0eb7af2efd13634ba5e9bc3db260d4aa1c4692eec0eef8509f5b9490",
+        "bytes": 632,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_009_page-object-mediabox-not-rectangle.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-009",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-010-page-object-missing-contents.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-010: the one-page Hello PDF-world! file with a page without /Contents",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "2d72a61e96b63274b016391920a9b61d70cb7a2b42d67ce35bc05f3f9fd3b12b",
+        "bytes": 617,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_010_page-object-missing-contents.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-010",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-011-page-object-wrong-contents-reference.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-011: the one-page Hello PDF-world! file with a page whose /Contents points at an object the file lacks",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "5a633f05ce878d79c2e6a9f4958f71117658825d8882f9f185e963c0c5eb15f8",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_011_page-object-wrong-contents-reference.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-011",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-03-012-page-object-resources-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-03-012: the one-page Hello PDF-world! file with a page without /Resources",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "7165aa107b6ec85029c9b7e2bdc3262ef63dad4d705bbc3f93e2c198217dbe77",
+        "bytes": 618,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-03_012_page-object-resources-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-03-012",
+        "ipres2017-page-object",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-04-01-001-resources-basefont-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-04-01-001: the one-page Hello PDF-world! file with a font without /BaseFont",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "0770015fd4d94e780bc8f2353df0b612659ff42bdaab707c8f55bb63a4e4a253",
+        "bytes": 611,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-04-01_001_resources-basefont-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-04-01-001",
+        "ipres2017-page-resources",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-04-01-002-resources-basefont-wrong-font.pdf",
+      "title": "iPRES 2017 hand-built case T02-04-01-002: the one-page Hello PDF-world! file with a font naming Wingdings, which is not one of the standard 14",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "eaf1ad8f71c60fe0b3b8c01d977d8cfef9610d7df5cfac8dc0c3cfe97b8f8931",
+        "bytes": 631,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-04-01_002_resources-basefont-wrong-font.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-04-01-002",
+        "ipres2017-page-resources",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-04-01-003-resources-type-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-04-01-003: the one-page Hello PDF-world! file with a font dictionary without /Type",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "fcf1f92efd13703cec9a1cc06a666c78457a24522536b7deacf17cbbdfc76b9c",
+        "bytes": 623,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-04-01_003_resources-type-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-04-01-003",
+        "ipres2017-page-resources",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-04-01-004-resources-wrong-declaration-type.pdf",
+      "title": "iPRES 2017 hand-built case T02-04-01-004: the one-page Hello PDF-world! file with a font dictionary typed /Page",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "7e06238eea7ac74ba2583efcb675d5ab9913fd908119745ce0816b397dc6998a",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-04-01_004_resources-wrong-declaration-type.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-04-01-004",
+        "ipres2017-page-resources",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-04-01-005-resources-subtype-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-04-01-005: the one-page Hello PDF-world! file with a font without /Subtype",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "68f51d24cdd2de8c9ca7dacec7e4d03824e4aadfc73594ece3669231c2aac1b4",
+        "bytes": 619,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-04-01_005_resources-subtype-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-04-01-005",
+        "ipres2017-page-resources",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-04-01-006-resources-subtype-wrong.pdf",
+      "title": "iPRES 2017 hand-built case T02-04-01-006: the one-page Hello PDF-world! file with a font whose /Subtype is /Type7, which does not exist",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "7e43cc2e43432dae64951aa89b6d100356c8c7458368ccade9c39835c9556d25",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-04-01_006_resources_subtype_wrong.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-04-01-006",
+        "ipres2017-page-resources",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-001-stream-bt-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-001: the one-page Hello PDF-world! file with a text object without BT, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "d3eba28e2d6cb2f32bf1b249cb0f2aad2b048503c381c900c344d2e33d15a6ea",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_001_Stream-BT-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-001",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-002-stream-et-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-002: the one-page Hello PDF-world! file with a text object without ET, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "166b746d7b397bcd83c9bfe3ce4d5b5f00e1c1f3c882950347a14eefefa89854",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_002_Stream-ET-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-002",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-003-stream-bt-and-et-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-003: the one-page Hello PDF-world! file with a text object without BT and ET, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "c61a9e8a9da818c02c8fd8a70f7bdc5952a12947c0681a88c9f36dbceb05b17c",
+        "bytes": 631,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_003_Stream-BT-and-ET-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-003",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-004-font-name-operator--missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-004: the one-page Hello PDF-world! file with a Tf operator without its font name, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "d0d31a97ea74c897ffa9f56d8d317c20b6c4e5cf50fdac5398bc3a0110ba6519",
+        "bytes": 631,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_004_Font-name-operator--missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-004",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-005-invalid-font-name-operator.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-005: the one-page Hello PDF-world! file with a Tf naming /F3, which the resources lack, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "4ead74a3af6ca742ae98df2aa21ba70967c184387e00ba99b77b05f766ad4b6e",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_005_invalid-Font-name-operator.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-005",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-006-font-size-operator-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-006: the one-page Hello PDF-world! file with a Tf whose size is a lone dot, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "fe5244033e01876e32328b32c467e44659f67d1926bba23fbb3fe0f9205de5d2",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_006_font-size-operator-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-006",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": true,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-007-invalid-font-size-operator.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-007: the one-page Hello PDF-world! file with a Tf asking for a 36,999,999-point font, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "4e8c352b9ba49efef9dba6027c0c62b41ccb2cd141a2cb628791dc03f2de18e9",
+        "bytes": 641,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_007_invalid-font-size-operator.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-007",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": true,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-008-font-set-operator-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-008: the one-page Hello PDF-world! file with a font name and size with no Tf operator, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "46a778f65942de15bac87deb6b58d32d15484fc8b2450bc0bfbf8dd4e45ac5cf",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_008_Font-set-operator-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-008",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-009-missing-open-paranthesis.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-009: the one-page Hello PDF-world! file with a string without its opening parenthesis, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "a3f0288e36a0bd9a25af77ad35da379e7f74fdb63ea5f3186b1fe96e802feef1",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_009_Missing_open_paranthesis.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-009",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-010-missing-closing-paranthesis.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-010: the one-page Hello PDF-world! file with a string without its closing parenthesis, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "da3a80f846a6855d138ccca9a7887478cc63d627cb74eb5b29d8ba6cf6d58105",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_010_Missing_closing_paranthesis.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-010",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-011-paranthesis-substituted-with-brackets.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-011: the one-page Hello PDF-world! file with a string written as an array for Tj, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "501764cc7401e329ca126c269fb5a363c222096048636d4d44a7a9e4fa8ecd13",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_011_paranthesis-substituted-with-brackets.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-011",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-012-text-show-operator-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-012: the one-page Hello PDF-world! file with a string with no Tj operator, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "0815224371cd9d57db5fda025c7b66a41daefb9df3bd1ef943b7a621c87e247a",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_012_text-show-operator-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-012",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-013-stream-keyword-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-013: the one-page Hello PDF-world! file with a content stream without the stream keyword, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "02b24a27d80fcf7fd8a60ec6347abf5712d30854918ed2998d432061a4814293",
+        "bytes": 629,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_013_stream-keyword-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-013",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-014-endstream-keyword-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-014: the one-page Hello PDF-world! file with a content stream without endstream, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "648db6d36b5a259b02d98305bfe7a12802ef2ad9215b9e146c59f54558ba6f40",
+        "bytes": 625,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_014_endstream-keyword-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-014",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-015-invalid-stream-length-in-dictionary.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-015: the one-page Hello PDF-world! file with a content stream whose /Length is 61.5",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "27e086a6f7e12282368b44d1f044f2dec9990bc93fcf731da730f86f02c7ea7e",
+        "bytes": 636,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_015_invalid-stream-length-in-dictionary.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-015",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-016-stream-length-missing-in-dictionary.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-016: the one-page Hello PDF-world! file with a content stream without /Length",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "aedca87632566f244c9aafae213036ec566b3d602b0bc8a87ebcd9a31fbdf361",
+        "bytes": 624,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_016_stream-length-missing-in-dictionary.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-016",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-017-bytes-between-endstream-endobj.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-017: the one-page Hello PDF-world! file with BT ET written between endstream and endobj, and a space before %PDF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "ff67f8e77b73d86cbf4d26eb7daec79b560391a60805f79efd2f4040f08be818",
+        "bytes": 640,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_017_bytes-between-endstream-endobj.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-017",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed",
+        "junk-before-header"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt",
+          "xref.offset-adjusted"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t02-05-01-018-position-information-missing.pdf",
+      "title": "iPRES 2017 hand-built case T02-05-01-018: the one-page Hello PDF-world! file with no cm operator to place the text",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "01a1bde64f119e86953b98e2707f75841d05db37c11facd71b071b735a314acb",
+        "bytes": 613,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T02-05-01_018_position-information-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t02-05-01-018",
+        "ipres2017-content-stream",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-001-no-cross-reference-table.pdf",
+      "title": "iPRES 2017 hand-built case T03-001: the one-page Hello PDF-world! file with no cross-reference table",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "01e4b3c8211fed19faa20ad721c40d51004abb83a02ca0f44a0711c896da6840",
+        "bytes": 508,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_001_no-cross-reference-table.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-001",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-002-xref-keyword-missing.pdf",
+      "title": "iPRES 2017 hand-built case T03-002: the one-page Hello PDF-world! file with a cross-reference table without the xref keyword",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "b9c3982d8efa89677106c9153a31efae62b45e7fc15fe1a8e14e037fa7fb796c",
+        "bytes": 632,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_002_xref-keyword-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-002",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-003-number-of-entries-missing.pdf",
+      "title": "iPRES 2017 hand-built case T03-003: the one-page Hello PDF-world! file with a subsection header without its entry count",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "6eaefc66a5abeffadcac3dc0e7bba2dd5ae851136150ee938dbc2c761b86b6da",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_003_number-of-entries-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-003",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-004-number-of-entries-too-many.pdf",
+      "title": "iPRES 2017 hand-built case T03-004: the one-page Hello PDF-world! file with a subsection claiming 9 entries for 6",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "842a5ea1480e8b50ec0cefade244e21f706e8c30b6aaae7c65253a898bced886",
+        "bytes": 636,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_004_number-of-entries-too-many.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-004",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-005-number-of-entries-too-few.pdf",
+      "title": "iPRES 2017 hand-built case T03-005: the one-page Hello PDF-world! file with a subsection claiming 3 entries for 6",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "1035d1cca1ab3b6fe9a115d642bddd5ccec99f4bddfc1758b367ce15b91cf0e3",
+        "bytes": 636,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_005_number-of-entries-too-few.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-005",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-006-offset-missing.pdf",
+      "title": "iPRES 2017 hand-built case T03-006: the one-page Hello PDF-world! file with one entry removed, the subsection claiming 3",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "c0ba31e0a94f793b93e7e1783590038a7b6e5bbf66dd02ceade1745e7ab04e04",
+        "bytes": 616,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_006_offset_missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-006",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-007-offset-wrong.pdf",
+      "title": "iPRES 2017 hand-built case T03-007: the one-page Hello PDF-world! file with one entry's offset 60 bytes early",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "3010c838873949d8f23fcba7b639bebbebfd96e3a9ba8cd337aee77496c65969",
+        "bytes": 636,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_007_offset_wrong.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-007",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: an entry 60 bytes early; qpdf rebuilds the table, the reader finds the object near the stated offset (xref.offset-adjusted) and keeps it; both recover the page, and M2's cross-reference rules settle which to expect"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-008-entry-offset-too-short.pdf",
+      "title": "iPRES 2017 hand-built case T03-008: the one-page Hello PDF-world! file with one entry's offset written in eight digits instead of ten",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "4f4fbbbfff4b903a0cdbed22098ae90fe8aa8cce562bdc354241cbf466dac734",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_008_entry-offset-too-short.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-008",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-009-invalid-keyword-entry.pdf",
+      "title": "iPRES 2017 hand-built case T03-009: the one-page Hello PDF-world! file with one entry typed x instead of n",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "d0d88acd0a0b6ab8fc63324de7fc2f919868d7f9f21fcc908227d928bad40c12",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_009_invalid-keyword-entry.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-009",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t03-010-wrong-generation-number.pdf",
+      "title": "iPRES 2017 hand-built case T03-010: the one-page Hello PDF-world! file with one entry with generation 10000",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "906485ca57446528e1a7cf9bcfdba60d55e0187d28aacd7cada74271d2c6dcfe",
+        "bytes": 636,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T03_010_wrong-generation-number.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t03-010",
+        "ipres2017-cross-reference-table",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: a cross-reference entry with generation 10000 for an object written as generation 0; qpdf rebuilds the table, the reader resolves the object without a word"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-001-eof-not-standalone.pdf",
+      "title": "iPRES 2017 hand-built case T04-001: the one-page Hello PDF-world! file with %%EOF on the line of the startxref offset",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "cf41e1eaddd24045cac4b4f82688c7891be6748d39189049476ff7d9f8076691",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_001_EOF-not-standalone.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-001",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-002-eof-missing.pdf",
+      "title": "iPRES 2017 hand-built case T04-002: the one-page Hello PDF-world! file with no %%EOF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "cf052e6d25e8c6435d2b3e4b1762a68b5e333df7cf140afdc4140390a439cff2",
+        "bytes": 631,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_002_EOF-missing.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-002",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-003-eof-incomplete-eo.pdf",
+      "title": "iPRES 2017 hand-built case T04-003: the one-page Hello PDF-world! file with an end marker reading %%EO",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "5377d43b5cbe2b88bee09ed217c6641caa0bd6fb3d4cade7d0e5f75a1661be2c",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_003_EOF-incomplete-EO.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-003",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-004-eof-incomplete-eof.pdf",
+      "title": "iPRES 2017 hand-built case T04-004: the one-page Hello PDF-world! file with an end marker reading EOF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "85f52927b98c6bdecab96abf3ca26cab0fec0acb81b86e6678ae6d718404e0e2",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_004_EOF-incomplete_EOF.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-004",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-005-eof-followed-by-junk-data.pdf",
+      "title": "iPRES 2017 hand-built case T04-005: the one-page Hello PDF-world! file with junk after %%EOF",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "a10090752ecdc2b3b1d7c9916caf548243ab61ed3cfa5771ec9ab802cb7987bf",
+        "bytes": 645,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_005_EOF-followed-by-junk-data.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-005",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-well-formed-and-valid"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": true
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-006-premature-eof.pdf",
+      "title": "iPRES 2017 hand-built case T04-006: the one-page Hello PDF-world! file with an extra %%EOF before the end",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "0ce6df3c766a8e657f36aa06f892f5d4d3b7280b70d1bb0f420beb6978476181",
+        "bytes": 642,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_006_premature-EOF.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-006",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-007-premature-eof-only.pdf",
+      "title": "iPRES 2017 hand-built case T04-007: the one-page Hello PDF-world! file with its only %%EOF before the end, none at the end",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "84183ec55a3d61463e580dcb9a02adbf37e89c47f552aca54f373e53db85ccdc",
+        "bytes": 637,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_007_premature-EOF-only.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-007",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-008-trailer-no-trailer-keyword.pdf",
+      "title": "iPRES 2017 hand-built case T04-008: the one-page Hello PDF-world! file with a trailer without the trailer keyword",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "c5fefc187c21836bbf295a343f9ae095063a8cdc25c41a9eace305d238e6829f",
+        "bytes": 629,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_008_trailer-no-trailer-keyword.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-008",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": null,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-009-trailer-no-opening-brackets.pdf",
+      "title": "iPRES 2017 hand-built case T04-009: the one-page Hello PDF-world! file with a trailer dictionary without <<",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "f15503aee6c4e0cbd0674b83301afe676744dc1531f7813409ea21e47bc82d50",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_009_trailer-no-opening-brackets.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-009",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": null,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-010-trailer-no-closing-brackets.pdf",
+      "title": "iPRES 2017 hand-built case T04-010: the one-page Hello PDF-world! file with a trailer dictionary without >>",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "a4909f7fd48e880b3256b2634919dd81bf408119960959897cf1114e9591d7f8",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_010_trailer-no-closing-brackets.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-010",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": null,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: a trailer dictionary without >>; qpdf finds no trailer, rebuilds and gives up, the reader reads the trailer anyway (syntax.unexpected-token) and recovers the page without rebuilding"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-011-trailer-no-root-key-value-pair.pdf",
+      "title": "iPRES 2017 hand-built case T04-011: the one-page Hello PDF-world! file with a trailer without /Root",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "61f3fde3b8dfc5790c9728214f16070a57d11d74dd9814bae9bbf185875b6654",
+        "bytes": 624,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_011_trailer-no-root-key-value-pair.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-011",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": null,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: a trailer without /Root; qpdf keeps its sound index and finds no catalogue, the reader rebuilds the index to look for one and finds object 5, where it could have looked among the indexed objects first"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-012-trailer-root-no-indirect-reference.pdf",
+      "title": "iPRES 2017 hand-built case T04-012: the one-page Hello PDF-world! file with a trailer /Root without its R",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "0b24b827afce58041676bdc855dc110a58e0df1b0765665957cd797aa44b21c2",
+        "bytes": 634,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_012_trailer-root-no-indirect-reference.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-012",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": null,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: a trailer /Root without its R; qpdf keeps its sound index and finds no catalogue, the reader rebuilds the index to look for one and finds object 5, where it could have looked among the indexed objects first"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-013-trailer-root-invalid-indirect-reference.pdf",
+      "title": "iPRES 2017 hand-built case T04-013: the one-page Hello PDF-world! file with a trailer /Root without its generation number",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "36d513926e5e4a043d2479b1e37dcc33664bc21e4d97c40eb285d3a44418291b",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_013_trailer-root-invalid-indirect-reference.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-013",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": null,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: a trailer /Root without its generation number; qpdf keeps its sound index and finds no catalogue, the reader rebuilds the index to look for one and finds object 5, where it could have looked among the indexed objects first"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-014-trailer-root-indirect-reference-to-wrong-object.pdf",
+      "title": "iPRES 2017 hand-built case T04-014: the one-page Hello PDF-world! file with a trailer /Root pointing at the content stream",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "cc64e25e4397d62f0d159f485aaea40c548bb466706710498ef58e9342ff8349",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_014_trailer-root-indirect-reference-to-wrong-object.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-014",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": null,
+        "clean": false,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": false,
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: a trailer /Root pointing at the content stream; qpdf keeps its sound index and finds no catalogue, the reader rebuilds the index to look for one and finds object 5, where it could have looked among the indexed objects first"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-015-trailer-no-size-key-value-pair.pdf",
+      "title": "iPRES 2017 hand-built case T04-015: the one-page Hello PDF-world! file with a trailer without /Size",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "2c6abb1d315754ed27e5e4dd73f4fe45e1fa2765d1ef8893e0d9b0d7f183abf7",
+        "bytes": 628,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_015_trailer-no-size-key-value-pair.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-015",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false,
+        "unsupported": "M2: a trailer without /Size, which qpdf reports and the reader reads without a word (as in handwritten-cyclic-toc)"
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-016-trailer-wrong-size-key-value-pair.pdf",
+      "title": "iPRES 2017 hand-built case T04-016: the one-page Hello PDF-world! file with a trailer /Size of 4 for 6 entries",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "5daa7ca81d12c34da3875ed7331bf265a838359212069164cff721be6efc688c",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_016_trailer-wrong-size-key-value-pair.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-016",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": true,
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-017-trailer-no-startxref-keyword.pdf",
+      "title": "iPRES 2017 hand-built case T04-017: the one-page Hello PDF-world! file with no startxref keyword",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "b94e51ea05fe6a1d49837d907347af5065af70a7d132010468f78137a3760ea2",
+        "bytes": 626,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_017_trailer-no-startxref-keyword.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-017",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-018-trailer-no-xref-byte-offset.pdf",
+      "title": "iPRES 2017 hand-built case T04-018: the one-page Hello PDF-world! file with no startxref offset",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "deae10001838d40993ffbf4c1f5b298ed9d1cf776601bffc8f44a9365f9428aa",
+        "bytes": 633,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_018_trailer-no-xref-byte-offset.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-018",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
+      }
+    },
+    {
+      "file": "remote/ipres2017/t04-019-trailer-wrong-xref-byte-offset.pdf",
+      "title": "iPRES 2017 hand-built case T04-019: the one-page Hello PDF-world! file with a startxref offset reading 45 instead of 452",
+      "useCase": "damaged",
+      "producer": "Hand-written for the iPRES 2017 well-formedness set (Lindlar, Tunnat and Wilson)",
+      "origin": "remote",
+      "licence": "CC BY-SA 4.0, Michelle Lindlar, Yvonne Tunnat and Carl Wilson, doi:10.22000/53: ShareAlike, so fetched on demand rather than vendored (ADR 32), and published only inside RADAR's BagIt archive, of which it is a member (ADR 33); hand-written test data, no personal data",
+      "source": {
+        "url": "https://www.radar-service.eu/radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content",
+        "sha256": "81cb5b5a81a3fbe3bf7bce5089c2b763e81ba46682828db41e213d0b59cc4498",
+        "bytes": 635,
+        "retrieved": "2026-09-25",
+        "landingPage": "https://doi.org/10.22000/53",
+        "archive": {
+          "sha256": "33b2b4510f70aae3f4c606ca087292fc506759bb917e3b9bf9663d74ffca4f43",
+          "bytes": 613888,
+          "member": "10.22000-53/data/dataset/Test_Corpus/T04_019_trailer-wrong-xref-byte-offset.pdf"
+        }
+      },
+      "features": [
+        "third-party",
+        "remote",
+        "ipres2017",
+        "ipres2017-t04-019",
+        "ipres2017-trailer",
+        "hand-written",
+        "damaged-by-hand",
+        "classic-xref-table",
+        "type1-font",
+        "jhove-1.16.5-not-well-formed"
+      ],
+      "expect": {
+        "pages": 1,
+        "clean": false,
+        "indexRebuilt": true,
+        "requiredDiagnostics": [
+          "xref.rebuilt"
+        ],
+        "hasExtractableText": true,
+        "textContains": [
+          "Hello PDF-world!"
+        ],
+        "refereeCheckSucceeds": false
       }
     }
   ]
