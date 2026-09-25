@@ -14,6 +14,10 @@ on:
         description: "Generated cases per property"
         required: false
         default: "50000"
+      rotation:
+        description: "Which share of the seed documents beyond the core to fuzz: a number, or 'all' for every one (default: the run number)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -36,9 +40,13 @@ jobs:
           dotnet-version: "10.0.x"
 
       # Seeded mutations of the corpus: a failure names the document and the seed, so it replays exactly.
+      # Each night fuzzes the smallest document of every reader structure and a share of the others chosen
+      # by the run number, so every seed document is reached within a few nights at a constant cost
+      # (FuzzingSeeds). A replay without the rotation includes every seed document.
       - name: Fuzz the reader and the parser
         env:
           ADCODICEM_FUZZ_ITERATIONS: ${{ github.event.inputs.iterations || '20000' }}
+          ADCODICEM_FUZZ_ROTATION: ${{ github.event.inputs.rotation || github.run_number }}
         run: |
           dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release \
             -- --filter-method '*Fuzz*'
