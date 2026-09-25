@@ -8,19 +8,19 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 346 unit (4 skipped by design: two corpus
-  documents recorded as unsupported until M2) + 208 integration (skipped without Docker);
-  with the remote corpus fetched, 539 unit (14 skipped by design, on documents recorded
-  as unsupported until M2 or until T21, T23 or T24 is fixed) + 363 integration — **CI**:
-  green, `OpenSSF Scorecard` included: it started for the first time on 2026-09-19 and published a report
-- **Corpus**: 112 committed documents, 16.8 MB — 19 generated here, 3 from Word and PDF24 on Windows, 90
-  third-party files under attribution-only licences (82 of them added on 2026-09-24, see
-  `docs/corpus-sources.md`). Beside it, a **remote corpus** of 86 documents we may use but not
-  redistribute — never committed, fetched at a pinned SHA-256 and tested every night by the
-  `Remote corpus` workflow (ADR 32, accepted). All 198 are described in one file,
-  `tests/corpus/manifest.json`. On the
-  branch `claude/corpus-third-party-documents`, draft pull request [#25](https://github.com/AdCodicem/AdCodicem.Pdf/pull/25), not yet on `main`;
-  the nightly workflow has therefore never run on GitHub
+- **Builds**: yes, with no warnings — **Tests**: 481 unit (4 skipped by design: two corpus
+  documents recorded as unsupported until M2) + 302 integration (skipped without Docker);
+  with the remote corpus fetched (151 of its 153 documents, see the journal), 804 unit (35 skipped by
+  design, on documents recorded as unsupported until M2 or until T21, T23, T24 or T25 is fixed) + 560
+  integration — **CI**: green on `main`, `OpenSSF Scorecard` included
+- **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
+  third-party files under attribution-only licences (56 of them from the Open Preservation Foundation's
+  format-corpus, added on 2026-09-25; see `docs/corpus-sources.md`). Beside it, a **remote corpus** of 153
+  documents we may use but not redistribute — never committed, fetched at a pinned SHA-256 and tested every
+  night by the `Remote corpus` workflow (ADR 32, accepted). All 321 are described in one file,
+  `tests/corpus/manifest.json`. Pull request [#25](https://github.com/AdCodicem/AdCodicem.Pdf/pull/25),
+  which brought the remote corpus, was merged on 2026-09-24; the nightly workflow had not run yet on
+  2026-09-25 (no run recorded on GitHub)
 - **Supply-chain score**: **6.6/10** as published on `6bacbb2`, up from 5.5. The branch below is measured
   to take it to **7.1**; everything above that needs repository settings or people, not code — see T15,
   T18 and T19
@@ -85,6 +85,50 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-25 — The OPF format-corpus, file by file: 123 more documents, 56 of them committed
+- **The question**: the Open Preservation Foundation's format-corpus holds 293 PDFs; why had only nine
+  entered? Because the passes of 2026-09-24 hunted for the W lines and took from it only what filled one;
+  the other 284 had never been examined, turned down or listed. The survey row calling the corpus usable
+  was also incomplete, and is corrected. **The request**: take in all that can be, committed where
+  possible, remote otherwise — the diversity of producers is the point.
+- **The screen**: all 284, by script and by eye — every page's text, metadata, annotations, form and XFA
+  values, attachments (spreadsheets, Word files, videos), signatures, the strings of every object and
+  every revision, and page images where there is no text layer, which caught an e-mail address printed
+  inside a scan. One independent verifier then re-screened the 131 files admitted, OCR included, told to
+  reject on doubt: it turned down six — a nurse's extension split over two lines, an e-mail with a space
+  after the `@`, contact details printed only in two scans, an essay on its author's own health, a
+  classroom-only licence —, moved a Census section with copyrighted tables to the remote corpus, and
+  flagged two more that were excluded on doubt: an iPhone video carrying where and when its identifiable
+  author filmed it, and a fact sheet too mangled to be read whole.
+- **56 committed** (6.2 MB): the Cabinet of Horrors' 16 remaining files and Acrobat 11's three Image
+  Conversion pages, the Save As corpus (OpenOffice.org 3.2 and 3.3, LibreOffice 3.5, RC4-128 with and
+  without an open password), Pages '09, iBooks Author, calibre through pyPdf and PoDoFo, an InDesign CS
+  flyer, and 15 GovDocs1 files that are federal staff's work (VA, Census, USGS, Congress, the Law Library).
+- **67 remote** (216 MB): two Cabinet files, 20 GovDocs1 files too large or not shown to be federal staff's
+  work, and 45 files filed against JHOVE, each under the error it raised.
+- **161 refused**: 68 for personal data — authors' e-mail addresses in 49 JHOVE files, named staff's
+  direct lines in GovDocs1 ones —, two for a restriction of purpose, one that could not be read whole, one
+  AppleDouble fork that is not a PDF, and **all 89 of the iPRES 2017 hand-built set**: git stripped five carriage returns from each OPF
+  copy, as the authors' archive on RADAR (CC BY-SA 4.0) shows byte for byte. The originals are the best
+  external test suite M2 could have, but RADAR serves them only as one tar; they are recorded as a lead.
+- **What the reader made of them**: none of the 131 first admitted crashed or hung it; of the 123 kept, 113
+  open as their entries say, and ten are
+  recorded as unsupported. **T25** (new): a trailer's `/Prev` 12 bytes past the older section's `xref`
+  keyword makes the reader drop that section — 4,106 entries of IBM's QMF manual — without a diagnostic,
+  where qpdf reports it and rebuilds. T21, T23 and T24 each gained a document: T24 from the other side, a
+  273 KB table read again from its start each time its window grows. Five files wait for M2, now named in
+  its acceptance conditions: two catalogues without `/Type`, a null kid in a page tree, and two trees whose
+  kids point at missing objects — qpdf, poppler and PDFium count those as blank pages, pikepdf and the
+  reader skip them.
+- **Expectations**: pages by `qpdf --show-npages` (pikepdf, used before, disagrees with it on five damaged
+  files), verdicts by qpdf 11.9.1 in the integration container, text by pdftotext, PDF/A by veraPDF 1.30.2.
+  qpdf says nothing about a MacBinary header or a `data:` URI before `%PDF`; those two files expect the
+  offset adjustment anyway. Two files expect the rebuild only after a full read, as qpdf checks every
+  offset at opening and the reader does not.
+- **Tests**: 481 unit and 302 integration without the remote corpus; with it, 804 and 560, all
+  green. Fetching the remote corpus from this session got 151 of 153: two GitHub issue attachments of the
+  third pass answered 403 here, which the first nightly run will confirm or not.
 
 ### 2026-09-25 — The nightly fuzzing campaign filled its runner's disk
 - **Symptom**: run 11 of `Fuzzing` failed after 33 minutes with its step still "in progress" and no
@@ -658,10 +702,11 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures; 68 since 2026-09-24 |
 | T10 | **Narrowed on 2026-09-24**: Word, PDFMaker, Acrobat, InDesign, LiveCycle, PDFWriter, copier scans with their own OCR, Java writers, ERP Factur-X samples, PDF 1.2 archives, signatures — DocuSign's among them since the third pass — and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing from what may be committed is what only an inbox holds: a real invoice or statement from a supplier or bank (real ones are in the remote corpus only), a Yousign, Universign or Adobe Sign signature, a copier file untouched since the copier wrote it, Hebrew | Contributions, per the "still wanted" column of `docs/corpus-contributions.md`; the remote corpus (ADR 32) for files that can be used but not redistributed |
-| T21 | **The reader reports a truncated stream that is not.** When a stream's data ends inside the parser's 8 KB window but its `endstream` falls past the window's end, `PdfObjectParser.ReadStream` finds no `endstream` in the window and reports `stream.truncated`, cutting the stream at the window. Found on object 49 of the USGS Washington West topographic map (W11 reference, `docs/corpus-sources.md`): data from 68 to 8,185 in a 8,192-byte window; qpdf reads it cleanly. The same file also earns a `filter.failed` on its 14.9 MB Flate image, not yet explained. The map is now in the remote corpus, recorded as unsupported with this reason, so the fix is checked against it every night | A synthetic regression test (a stream ending 1 to 10 bytes before 8 KB), then treat an `endstream` beyond the window like data beyond it when a stream-data provider exists |
+| T21 | **The reader reports a truncated stream that is not.** When a stream's data ends inside the parser's 8 KB window but its `endstream` falls past the window's end, `PdfObjectParser.ReadStream` finds no `endstream` in the window and reports `stream.truncated`, cutting the stream at the window. Found on object 49 of the USGS Washington West topographic map (W11 reference, `docs/corpus-sources.md`): data from 68 to 8,185 in a 8,192-byte window; qpdf reads it cleanly. The same file also earns a `filter.failed` on its 14.9 MB Flate image, not yet explained. The map is now in the remote corpus, recorded as unsupported with this reason, so the fix is checked against it every night. Since 2026-09-25 also the FDA hospital-bed guidance from GovDocs1 (remote): objects 604 and 2053, streams of about 8.1 KB whose `/Length` is right | A synthetic regression test (a stream ending 1 to 10 bytes before 8 KB), then treat an `endstream` beyond the window like data beyond it when a stream-data provider exists |
 | T22 | W11 has no committed document, by decision. All three of its references — 9,302 pages, one 63 MB page, and since the third pass of 2026-09-24 the heavy scan (USGS Professional Paper 1, 147 MB of JPEG 2000) — are in the remote corpus (ADR 32) and tested every night, but not in the main CI job | M13: state its memory budgets against the remote documents, and close only on a green `Remote corpus` run |
-| T23 | **The reader cuts an indirect object longer than its 8 KB window at the window's edge.** Found on two remote documents: object 458 of the EU DSS file with 24 signatures and a document timestamp, a DSS `/VRI` dictionary of 10,112 bytes, reported as a truncated object exactly 8 KB in; and object 14 of the BOE's 2015 law, a structure array of 8,694 bytes, reported as unexpected tokens at the same point, with 35 arrays like it. qpdf reads all of them whole. `PdfFileReader.TryParseObjectAt` does grow its window when the parser says an object ran out, but the parser has warned into the document's diagnostics by then. The same window as T21, met by an object rather than a stream. Both entries are recorded as unsupported with this reason, so the fix is checked against them every night | **Before M2 closes** — a validator cannot build on invented syntax errors: a synthetic regression test (a dictionary and an array a few bytes over 8 KB), then find why a window that turns out too small still leaves a diagnostic behind, or is not grown at all |
-| T24 | **Opening reads each cross-reference section through a window of up to 64 KB, whatever the section's size.** Bounded, but proportional to the number of sections rather than to their size: opening the 218 KB signed Web Capture file from pdfcpu's test data, which has three sections, reads 117 KB — more than the quarter of the file the laziness test allows. The entry is recorded as unsupported with this reason | M13, with the other budgets: start a section's window small and grow it, as object windows already do |
+| T23 | **The reader cuts an indirect object longer than its 8 KB window at the window's edge.** Found on two remote documents: object 458 of the EU DSS file with 24 signatures and a document timestamp, a DSS `/VRI` dictionary of 10,112 bytes, reported as a truncated object exactly 8 KB in; and object 14 of the BOE's 2015 law, a structure array of 8,694 bytes, reported as unexpected tokens at the same point, with 35 arrays like it. qpdf reads all of them whole. `PdfFileReader.TryParseObjectAt` does grow its window when the parser says an object ran out, but the parser has warned into the document's diagnostics by then. The same window as T21, met by an object rather than a stream. Both entries are recorded as unsupported with this reason, so the fix is checked against them every night. Since 2026-09-25 also the VA Kernel guide (object 10913, 14,188 bytes) and a JHOVE poster (object 2307, 8,248 bytes), both remote | **Before M2 closes** — a validator cannot build on invented syntax errors: a synthetic regression test (a dictionary and an array a few bytes over 8 KB), then find why a window that turns out too small still leaves a diagnostic behind, or is not grown at all |
+| T24 | **Opening reads each cross-reference section through a window of up to 64 KB, whatever the section's size.** Bounded, but proportional to the number of sections rather than to their size: opening the 218 KB signed Web Capture file from pdfcpu's test data, which has three sections, reads 117 KB — more than the quarter of the file the laziness test allows. The entry is recorded as unsupported with this reason | M13, with the other budgets: start a section's window small and grow it, as object windows already do — and keep what was read when it grows: the VHA coding handbook from GovDocs1 (2026-09-25) has one 273 KB table, read at 64 KB, then 256 KB, then to its end, 683 KB in all for a 2.2 MB file; also recorded as unsupported |
+| T25 | **A `/Prev` that misses its section drops it in silence.** `PdfFileReader.TryReadXRefChain` returns success as soon as one section was read, so when a later `/Prev` does not land on `xref` or on a cross-reference stream the older section is simply left out, with no diagnostic and no rebuild. Found on IBM's QMF manual from GovDocs1 (remote): `/Prev 1569328` falls 12 bytes past the keyword, and the 4,106 entries of the main table are lost; qpdf reports `xref not found` and rebuilds. Recorded as unsupported with this reason | **Before M2 closes** — a validator cannot report what the reader hides: a synthetic regression test (a `/Prev` a few bytes off, and one pointing nowhere), then report the failed section and search near it or rebuild, as the reader already does for an object a few bytes off |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |

@@ -1,7 +1,8 @@
 # Where the third-party corpus documents come from
 
 On 2026-09-24 the public internet was searched for the documents `docs/corpus-contributions.md` asks for
-(W01 to W12), and the test corpora of other PDF libraries were examined for the same purpose. This page
+(W01 to W12), and the test corpora of other PDF libraries were examined for the same purpose. On 2026-09-25
+a fourth pass took the Open Preservation Foundation's format-corpus, file by file. This page
 records the rules applied, what entered `tests/corpus/vendor` and what entered the remote corpus — used
 without being redistributed —, what was turned down and why, and what the search taught us.
 `tests/corpus/manifest.json` holds the per-file detail: source URL, retrieval date, SHA-256 of the
@@ -79,9 +80,15 @@ fonts when their `fsType` allows embedding.
   examined 113 candidates and recorded 158 further leads they left, each with its reason. Verifiers, again
   told to reject on doubt, upheld 79 of the 80 files proposed, and the integration set aside two more, one
   of which the maintainer then admitted. With the files once refused for size and a PDF/UA brochure
-  reconsidered, **82 entered**: 6 committed and 76 remote. The committed corpus now holds 112 documents, 16.8 MB.
-- **Referees**: page counts and attachments from pikepdf; the `qpdf --check` verdict from qpdf 11.9.1 in
-  the integration tests' container; text from poppler's `pdftotext` 24.02; conformance from veraPDF 1.30.2.
+  reconsidered, **82 entered**: 6 committed and 76 remote. The committed corpus then held 112 documents, 16.8 MB.
+- **Fourth pass, the OPF format-corpus**: all 284 PDFs at the pinned commit that the first passes had not
+  taken, screened one by one, then every admitted file re-screened by one verifier told to reject on doubt.
+  **123 entered**: 56 committed and 67 remote; 161 were refused, 89 of them because git had altered their
+  bytes and eight after the verifier's objections. The committed corpus now holds 168 documents, 23.0 MB,
+  and the remote corpus 153.
+- **Referees**: page counts and attachments from pikepdf in the first two passes, from `qpdf --show-npages`
+  in the last two; the `qpdf --check` verdict from qpdf 11.9.1 in the integration tests' container; text
+  from poppler's `pdftotext` 24.02; conformance from veraPDF 1.30.2.
 - **Our reader** opened every one of the 239 real PDFs downloaded along the way: 209 opened clean, 15
   encrypted ones were refused with the typed exception M11 will replace, 15 opened with repairs or warnings,
   and none crashed or hung. At least one of those warnings is a false alarm of the reader's own — a stream
@@ -91,7 +98,10 @@ fonts when their `fsType` allows embedding.
   crashed or hung it. It fell short on five, recorded as unsupported rather than fixed on this branch: an
   object longer than its 8 KB window is cut at the edge (T23, two files), each cross-reference section is
   read through a window of up to 64 KB whatever its size (T24, one file), and two files leave it silent
-  where qpdf reports damage.
+  where qpdf reports damage. In the fourth pass none of the 131 first admitted crashed or hung it either;
+  of the 123 kept, it falls short on ten, recorded as unsupported: T21 (one file), T23 (two), T24 (one: a 273 KB table read again each time its
+  window grows), a new T25 (a `/Prev` 12 bytes off, dropped without a word), and five where the page tree
+  or the catalogue is wrong and the reader is silent or counts differently from qpdf, until M2.
 
 ## What entered the corpus
 
@@ -206,6 +216,62 @@ public domain but not the publisher's bytes.
 | `us-federal/finereader8-frb-sr0115-examiner-guidance.pdf` | W03, W02 | ABBYY FineReader 8 OCR beneath 300 dpi CCITT G4 page images, tagged, in a linearized hybrid-reference file |
 | `uk-ogl/pdfmaker21-ozev-sample-invoice.pdf` | W02, W04 | PDFMaker 21 for Word, tagged, a "Sample" watermark in an Acrobat optional-content group set in a complete Arial |
 
+### Fourth pass: the Open Preservation Foundation's format-corpus, file by file
+
+The survey had marked the OPF format-corpus usable, and the first three passes took nine files from it,
+each to fill one W line. On 2026-09-25 the maintainer asked why the rest had not followed, and then for all
+of it that could come in: committed where possible, remote otherwise, because producer diversity is what
+the corpus is for. The record held no answer: none of the other 284 PDFs at the pinned commit had been
+examined, turned down or listed as a lead.
+
+Every one of the 284 was screened against the four rules — text of every page, `/Info`, XMP, annotations
+and their authors, form values, XFA datasets, embedded files (a Quattro Pro and a Lotus 1-2-3 sheet, two
+Word files, videos, a sound), signature dictionaries, the literal strings of every object and every
+inflatable stream including superseded revisions, and page images viewed wherever a file has no text
+layer. One independent verifier, told to reject on doubt, then went over the 131 files admitted, OCR
+included: it turned down six, moved a seventh to the remote corpus for the copyrighted tables in it, and
+flagged two more that were then excluded on doubt. Four of its finds were in text the first screen could
+not reach — an e-mail address with a space after the `@`, a named nurse's extension split across two
+lines, contact details printed only inside a scan. Expectations come from the referees below, established
+on the files; the reader was then run against them.
+
+**56 committed**, 6.2 MB, all under 1.1 MB:
+
+| Under `tests/corpus/vendor/opf-format-corpus/` | W | What it brings |
+|---|---|---|
+| The Cabinet of Horrors, 16 files: `pdfmaker9-word-distiller-*` (one byte missing, embedded QuickTime, external link, a Quattro Pro attachment, fonts in full and as subsets, three AES-128 permission variants and one under an open password nobody published), `pdfmaker10-word-file-attachment-annotation`, `pdfmaker11-word-pdf17-header-says-18`, `distiller7-pscript5-calisto-mt-not-embedded`, `distiller952-pscript5-kb-pdf-risk-inventory`, `make-pdf-javascript-openaction` | W02, W06, W12 | One feature isolated per file from the same Word document: AES-128 (R4) under three permission sets, an open password that cannot be supplied, JavaScript, attachments in the name tree and in an annotation, a movie, a link to another file, a header naming PDF 1.8, a byte removed so every offset is one out, fonts left out |
+| `acrobat11-image-conversion-*`, three files | W06, W12 | A PDF/A-1b page from Acrobat 11 Image Conversion, and two copies damaged on purpose: the image's `/Height` changed, the image pointed at an object that does not exist. veraPDF upholds all three claims |
+| The Save As corpus, 11 files: `openoffice32-writer-*` (a one-line document, Lucida Sans, PNG and TIFF images, PDF/A-1a, and 128-bit RC4 (R3) with and without an open password), `openoffice33-writer-simple`, `libreoffice35rc3-writer-simple` | W12 | OpenOffice.org 3.2 and 3.3 and LibreOffice 3.5 on one document, and OpenOffice's own RC4 handler with the password documented |
+| `quartz-pages09-lorem-ipsum`, `openoffice32-writer-lorem-ipsum` and `-pdfa1` | W01 | Pages '09 through Quartz, beside the Word for Mac variation already vendored |
+| `ibooks-author11-quartz-*` and `ibooks-author20-quartz-*`, six files; `calibre0857-pypdf-lorem-ipsum-ebook`, `calibre090-podofo-lorem-ipsum-ebook` | — | iBooks Author through Quartz, three of them under 40-bit RC4 (R2) with an open password; pyPdf and PoDoFo, two writers nothing else in the corpus uses |
+| `indesign-cs-puppet-guild-event-flyer` | W02 | InDesign CS (3.0) through Adobe PDF Library 6.0, waived to the public domain by its author |
+| GovDocs1 error files, 15: nine from the Department of Veterans Affairs (PDFMaker 5 to 8 for Word and PowerPoint, Distiller 5.0.5 behind `ADOBEPS4.DRV`, PScript5; one with eight incremental updates), one from the Census Bureau, two from the USGS (one typeset by groff), an enrolled bill, a House committee markup whose content streams pdftotext cannot finish, a Law Library of Congress report | W06, W10 | Federal staff's own work from 1999 to 2008, out of the Distiller 4 and 5 generation and a few producers no one else ships |
+
+**67 remote**, 216 MB, listed under *In the remote corpus*. **161 refused**:
+
+- **89 for their bytes**: the iPRES 2017 hand-built set (`pdf-handbuilt-test-corpus/`), 87 files that each
+  break one ISO 32000-1 structural requirement, and two reference files. Its authors published it on RADAR
+  (doi:10.22000/53) under CC BY-SA 4.0 — so it would have been remote at best — but the OPF copies are not
+  those files: each lost the five carriage returns of its content stream when it was committed to git, so
+  its `/Length` and every later offset are wrong and every file shows damage its authors did not put there.
+  The RADAR tar was downloaded and compared: all 87 differ by exactly those bytes.
+- **68 for personal data**. 51 of the JHOVE files, journal articles, theses and posters from bug reports:
+  49 print an author's, a contact's or a student's own e-mail address or direct line — three only inside a
+  page image, two with a space after the `@` —, one is a repository deposit agreement with its author's
+  phone number, e-mail and signature, and one is an essay in which its named author describes her own
+  health and her partner's. 16 of the GovDocs1 files: named staff's direct lines or extensions and own
+  e-mail addresses, from the VA (a nurse's extension among them), the CDC (in the XMP only), the GAO, a
+  state agency and contractors; directories of private e-mail addresses; a cadet newsletter naming minors
+  beside a phone number of unclear owner. And the rich-media sample from `fully-featured-pdf/`, excluded
+  on doubt: its embedded iPhone video carries the position and time at which an identifiable contributor
+  filmed it.
+- **Two for a restriction of purpose**: a JSTOR copy whose terms allow personal, non-commercial use only,
+  and a SHRP 2 report the National Academies let be reproduced for classroom and not-for-profit purposes
+  only.
+- **One that could not be checked**: a SAMHSA fact sheet whose content streams no renderer can finish;
+  what could be recovered is clean, the rest cannot be read, so it was excluded on doubt.
+- **One not a PDF**: a 213-byte macOS AppleDouble resource fork saved under a `.pdf` name.
+
 ### Our own, from Windows
 
 Our own additions for W01 are in `documents/invoice/`: the same fictitious invoice through Word's Save as
@@ -238,7 +304,7 @@ someone who did not own them.
 | BFO PDF/A suite | 34 | CC BY 3.0 | Yes |
 | PDF/UA Reference Suite (PDF Association) | 19 | CC BY 4.0 | Three members committed (2-02, 2-05, 2-10); three remote — 2-06, whose cover photograph is a third party's, and 2-08 and 2-09, publishers' textbook chapters, both over 2 MB as well; 2-01 refused for named people's health data, the papers and presentation for their authors' e-mail addresses |
 | PDF Association SafeDocs artefacts, pdf-differences | ~60 | Apache-2.0, CC BY 4.0 | Yes, the hand-written files; several others name their author |
-| OPF format-corpus | ~290 | CC0 by folder; GovDocs1 copies carry no licence of their own | The Cabinet of Horrors and the US federal GovDocs1 files |
+| OPF format-corpus | 293 | CC0 for what OPF's contributors made — the Cabinet of Horrors by its own statement, the Save As corpus, the ebooks and the Lorem Ipsum variations by the repository's default; GovDocs1 crawls and JHOVE bug attachments carry only their publishers' terms; the hand-built set is CC BY-SA 4.0 on RADAR | OPF's own files, and the GovDocs1 files that are federal staff's work: 64 committed since the fourth pass, 68 remote. The hand-built set's copies lost bytes to git |
 | pikepdf | 36 | Per file, in `REUSE.toml` | The CC0 and public-domain files; not the CC BY-SA ones |
 | qpdf | ~720 | Apache-2.0 for the maintainer's own files; nothing for issue attachments | The maintainer's own files |
 | pyHanko | ~130 | MIT; files generated by pyHanko against a fictitious test PKI | Yes |
@@ -331,6 +397,7 @@ person, and files no one has yet screened or checked — most of them in the bug
 | W06, W08 | The rest of the files pdf.js links to: US state documents, Canadian forms, forms attached to Bugzilla | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | Terms that are not attribution-only, so remote at best; the third pass took three, and the attached forms are often filled in by real people | A personal-data screen each |
 | W08, W05 | A filled form with Reader usage rights and a signature, in EU DSS's resources (`pades-signed-filled-form.pdf`) | [EU DSS `dss-pades` resources](https://github.com/esig/dss/tree/master/dss-pades/src/test/resources) | LGPL-2.1, so remote at best; its field values were not screened in full | A full screen |
 | W06 | The PDF Association's Brotli prototype, a `/BrotliDecode` filter qpdf does not know, among pdf.js's test files | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | Not a bug-report file, but its licence was not checked | A look at the PDF Association's own repository |
+| W06 | The iPRES 2017 hand-built well-formedness set: 87 files, each breaking one ISO 32000-1 structural requirement (header, catalogue, page tree, page object, resources, content stream, cross-reference table, trailer), with a spreadsheet of the expected verdicts and JHOVE's actual ones — the closest thing to an external test suite for M2's structural profile | [RADAR, doi:10.22000/53](https://doi.org/10.22000/53) (the OPF copies are unusable: git removed five carriage returns from each) | CC BY-SA 4.0, so remote at best; RADAR serves the originals only as one BagIt tar of 613 KB (`radar-backend/archives/JtlOdwQquZWDqQdq/versions/1/content`), behind a terms prompt in its web interface, and `fetch_remote.py` fetches one file per URL | Archive members in `fetch_remote.py` (download the tar at a pinned SHA-256, extract the member, check its own), after reading RADAR's terms of use for automated download |
 
 Two good files first held back for a name rather than a licence — the PDF Association's
 `CompactedPDFSyntaxTest.pdf` and Docentric's Factur-X EXTENDED sample from Dynamics 365 — entered in the
@@ -338,9 +405,9 @@ second pass, once a name alone no longer disqualified a file.
 
 ## In the remote corpus
 
-Eighty-six documents are used without being redistributed ([ADR 32](adr/0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md)):
+153 documents are used without being redistributed ([ADR 32](adr/0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md)):
 the manifest pins each one, with origin `remote`, to an immutable URL and a SHA-256, and the `Remote corpus`
-workflow fetches them — some 290 MB, half of it one scan — and runs both suites over them every night.
+workflow fetches them — some 500 MB, nearly a third of it one scan — and runs both suites over them every night.
 Their expectations were established like everyone else's — pages and verdicts by qpdf 11.9.1 in the
 integration tests' container, text by poppler's pdftotext 24.02, conformance by veraPDF 1.30.2 — on
 2026-09-24: ten during the day, 76 in the evening's third pass. For those 76, whether a file opens clean
@@ -411,8 +478,22 @@ purposes" only was left out.
 | — | wkhtmltopdf 0.12.5 on Qt 5 (`py-pdf/sample-files`) | CC BY-SA 4.0 | Another HTML-to-PDF engine: DejaVu CID subsets, one glyph per text operator in a y-down text matrix |
 | — | The PDF Association's hand-written PDF 2.0 example of UTF-8 strings (`pdf20examples`) | CC BY-SA 4.0 | UTF-8 text strings, which only PDF 2.0 allows, in `/Info`, outline titles, layer names, a page-label prefix and alternate text |
 
-Six remote entries are recorded as unsupported: the topographic map (T21), the 25-signature sheet and the
-2015 BOE law (T23), the signed web capture (T24), the Axapta credit note and the `#00` form (M2). The
+### From the OPF format-corpus
+
+The fourth pass added 67, all fetched from the OPF repository at its pinned commit. Their expectations
+were established the same way, pages by `qpdf --show-npages`.
+
+| Source | Files | Why remote | What they add |
+|---|---|---|---|
+| The Cabinet of Horrors | 2 | The AVI file is 2,053,552 bytes, just over the threshold; the Web Capture file quotes pages of the OPF website whose posts the folder's CC0 cannot be shown to cover | An uncompressed AVI behind a Screen annotation; Acrobat Web Capture pages appended to a Word document |
+| GovDocs1 error files | 20 | Six are federal work over 2 MB — the VHA coding handbook, the VA Kernel guide (464 pages, a PDF/A-1b claim veraPDF rejects on seven rules), a USGS earthquake map, a USFWS recovery plan, the 1994 Transportation Statistics report whose `/Producer` names Distiller 1.0.2 for Macintosh, a Reclamation EA —; one is a Census Bureau section whose tables are partly copyrighted by the firms that supplied them; thirteen are not shown to be federal staff's work: contractors (ORNL, JPL), PIARC, WARDA, the EU's delegation, IBM, Scholastic, an unnamed consultant | IBM ID Workbench and XPP, Xyvision's Parlance Publisher, WordPerfect through PDFWriter 4, PageMaker 6.5, a `/Prev` 12 bytes off (T25) |
+| JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalogue without `/Type`; a reference to object 0; a file whose tail was lost |
+
+Sixteen remote entries are recorded as unsupported. From the first three passes: the topographic map
+(T21), the 25-signature sheet and the 2015 BOE law (T23), the signed web capture (T24), the Axapta credit
+note and the `#00` form (M2). From the fourth: the hospital-bed guidance (T21), the VA Kernel guide and a
+poster (T23), the VHA handbook (T24), IBM's manual (T25), two catalogues without `/Type`, the wPDF chapter's
+null kid, and two page trees whose missing kids qpdf counts as pages (M2). The
 laziness test honours that mark, like the other acceptance tests; it skips encrypted documents visibly
 until M11 brings decryption, and it no longer applies to a document whose index must be rebuilt, since a
 rebuild scans the file by definition.
@@ -466,12 +547,34 @@ rebuild scans the file by definition.
   where qpdf reads both whole. And each cross-reference section is read through a window of up to 64 KB,
   whatever the section's size (T24): opening a 218 KB signed web capture with three sections reads 117 KB,
   bounded, but proportional to the number of sections. T23 is to be fixed before M2 closes, T24 in M13;
-  `docs/status.md` tracks all three.
+  `docs/status.md` tracks all three. The fourth pass met T24 from the other side: a section larger than
+  its first window is read again from its start each time the window grows, so a 273 KB table costs
+  683 KB of reads at opening.
+- **Git can change a PDF's bytes.** A PDF made only of ASCII, with no NUL in its first 8,000 bytes, looks
+  like text to git, and a repository that normalises line endings strips its carriage returns: the
+  `/Length` of each stream and every offset after it go wrong. The OPF's copies of the iPRES 2017 hand-built
+  set all lost five bytes that way, which the authors' own archive on RADAR shows; the repository has since
+  added `* text=binary` to its `.gitattributes`. Every other OPF file admitted has a NUL early on or still
+  holds its CR LF pairs, and passed `qpdf --check` where its producer left it sound.
+- **Referees count pages differently on a damaged page tree.** A kid that points at an object the file does
+  not contain is a blank letter-size page to qpdf, poppler and PDFium, and nothing at all to pikepdf and
+  our reader: 65 pages or 53 for one JHOVE file. pikepdf, which the first two passes used for page counts,
+  also counts one page where qpdf, poppler and the linearization dictionary count six, on a damaged
+  tiff2pdf scan. The fourth pass counts with `qpdf --show-npages`, the command the integration tests run,
+  and records the disagreement where the reader sides with pikepdf.
+- **qpdf is silent about bytes before the header.** A MacBinary header of 128 bytes, or a `data:` URI
+  prefix of 28 left by a browser, shifts every offset, and qpdf adjusts without a word. Both files are
+  recorded as not clean, with the offset adjustment the reader must report.
+- **Damage can wait for the object that holds it.** qpdf checks every cross-reference entry when it opens a
+  file; our reader, lazy by design, trusts the index until it reads an object that is not where the index
+  says, and rebuilds then. Two JHOVE files therefore expect no rebuild at opening and the rebuild
+  diagnostic after a full read, like PDFBOX-3947 before them.
 
 ## What the milestones can take from it
 
 - **M1**: none of the 239 real PDFs downloaded in the first pass crashed or hung the reader, nor any of
-  the 82 the third pass took in, and all 82 vendored files open as their entries say. Two hand-written
+  the 82 the third pass or the 131 the fourth pass first admitted, and every vendored file opens as its
+  entry says. Two hand-written
   files show it silent where qpdf reports damage; they are recorded as unsupported until M2. On the empty
   object of the compacted-syntax file, the reader and qpdf agree.
 - **M2**: the vendored files carry anomalies every reader tolerates and a validator should name without
@@ -487,7 +590,13 @@ rebuild scans the file by definition.
   the `%%EOF` marker, `startxref` past the end of the file, a text string whose byte-order mark precedes
   single-byte text, UTF-16BE strings opening with a language escape, a catalog `/Lang` of `(English)`,
   `/DecodeParms [null]`, a `/ToUnicode` that is a name, an inverted MediaBox, an indirect `/Rotate`, an
-  outline whose `/Last` is itself.
+  outline whose `/Last` is itself. The fourth pass adds T25, a `/Prev` 12 bytes off that drops a whole
+  section in silence, to be fixed before M2 closes; five files the reader must stop being silent or
+  divided about — two catalogues without `/Type`, a null kid in a page tree, two trees whose kids point at
+  missing objects —; bytes before `%PDF` (MacBinary, a `data:` URI), a header naming PDF 1.8, a reference
+  to object 0, a trailer `/Size` equal to the highest object number, a byte missing after the header, an
+  image whose `/Height` contradicts its data, a resource pointing at an object that does not exist; and
+  JHOVE's own verdict on 45 files, a second independent opinion to compare the validator with.
 - **M3, M4**: signatures to keep intact through an incremental update — a GPO certification, DILA's
   Dictao signature, a qualified seal renewed by timestamps over two years, PAdES B-LTA, Acrobat signatures.
   The third pass adds each PAdES baseline level on one page (B-B, B-LT, B-LTA); DocMDP P=1 and P=2 with
@@ -513,7 +622,10 @@ rebuild scans the file by definition.
   values are byte-swapped; EBCDIC codes in bitmap Type 3 fonts, and bitmap Type 3 fonts with no ToUnicode
   at all; word spaces present only as TJ kerning; UTF-8 strings in PDF 2.0; a real seven-column table; and
   a poster whose text is outlines, which must yield no text rather than noise.
-- **M11**: XFA forms from Designer 6.4, 6.5 and ES 9, one of them readable today; AcroForms driven by
+- **M11**: the fourth pass brings the security handlers side by side on one document: Acrobat 9's
+  AES-128 (R4) under three permission sets and under an open password nobody published, OpenOffice's
+  128-bit RC4 (R3) with and without the open password `password`, and Quartz's 40-bit RC4 (R2) behind it.
+  Before them, XFA forms from Designer 6.4, 6.5 and ES 9, one of them readable today; AcroForms driven by
   JavaScript; a calculation order; widgets without appearance streams. The third pass adds dynamic XFA,
   in two Canadian forms whose only PDF page is a placeholder; an XFA form filled with fictitious values and
   certified, inside the portfolio; OPM's OF-306, with date JavaScript and two unsigned signature fields;
@@ -529,7 +641,10 @@ rebuild scans the file by definition.
   claims of the Slovak seal and the re-signed BOE decree; it upholds PDF/A-4f in PDF 2.0, Symtrax's
   PDF/A-3a, the two gazettes' PDF/A-1a, Oracle Outside In's PDF/A-1a despite a broken `loca`, and three
   more PDF/UA-1 claims from the reference suite. A textbook chapter carries PDF/A and PDF/E output intents
-  with no claim at all: a case for D16.
+  with no claim at all: a case for D16. The fourth pass adds OpenOffice.org 3.2's PDF/A-1a, twice upheld;
+  Acrobat 11's Image Conversion PDF/A-1b, upheld on the intact page and — worth an opinion of our own —
+  on both copies damaged on purpose; a PDF/A-1b claim on a 464-page VA guide, rejected on seven rules; and
+  two claims veraPDF cannot parse at all, one on a file missing a byte after its header.
 - **M13**: the W11 references above, all three fetched every night — 9,302 pages, one 63 MB page, 125
   JPEG 2000 pages in 147 MB — and beside them a 35,000-pixel square CCITT image that decodes to 153 MB
   from 10.5 KB, 65,542 objects in one object stream, 48 incremental updates, an 82-page tagged scan of
