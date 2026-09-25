@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
@@ -88,9 +89,57 @@ public class FuzzingTests
         Mutate(original, seed: 7).Should().NotEqual(Mutate(original, seed: 8));
     }
 
+    [Fact]
+    public void Without_a_rotation_every_seed_document_is_fuzzed()
+    {
+        // Every commit runs this way, and so does the replay of a nightly failure.
+        FuzzingSeeds.ForRun(null).Should().Equal(FuzzingSeeds.All);
+        FuzzingSeeds.ForRun("all").Should().Equal(FuzzingSeeds.All);
+    }
+
+    [Fact]
+    public void Each_night_fuzzes_the_smallest_document_of_every_reader_structure()
+    {
+        var core = FuzzingSeeds.Core;
+        var structures = FuzzingSeeds.All.Select(FuzzingSeeds.SignatureOf).Distinct(StringComparer.Ordinal).ToList();
+
+        core.Select(FuzzingSeeds.SignatureOf).Should().OnlyHaveUniqueItems().And.HaveCount(structures.Count);
+
+        foreach (var file in core)
+        {
+            var size = new FileInfo(Corpus.PathOf(file)).Length;
+            var alike = FuzzingSeeds.All.Where(other => FuzzingSeeds.SignatureOf(other) == FuzzingSeeds.SignatureOf(file));
+
+            alike.Should().OnlyContain(
+                other => new FileInfo(Corpus.PathOf(other)).Length >= size,
+                $"{file} stands for its structure because nothing like it is smaller");
+        }
+
+        FuzzingSeeds.ForRun("12").Should().Contain(core);
+    }
+
+    [Fact]
+    public void Every_seed_document_is_fuzzed_within_one_rotation()
+    {
+        var reached = Enumerable.Range(0, FuzzingSeeds.Period)
+            .SelectMany(night => FuzzingSeeds.ForRun(night.ToString(CultureInfo.InvariantCulture)))
+            .ToHashSet(StringComparer.Ordinal);
+
+        reached.Should().BeEquivalentTo(FuzzingSeeds.All);
+    }
+
+    [Fact]
+    public void A_night_s_share_is_fixed_by_its_number_and_bounded()
+    {
+        FuzzingSeeds.ForRun("41").Should().Equal(FuzzingSeeds.ForRun("41"));
+        FuzzingSeeds.ForRun("41").Should().HaveCountLessThanOrEqualTo(FuzzingSeeds.Core.Count + FuzzingSeeds.RotatingShare);
+
+        var refused = () => FuzzingSeeds.ForRun("tonight");
+        refused.Should().Throw<InvalidOperationException>().WithMessage($"*{FuzzingSeeds.RotationVariable}*");
+    }
+
     /// <summary>
-    /// Small documents only: fuzzing is about the shape of the input, not its size, and a thousand-page
-    /// document would spend the budget on work rather than on variety.
+    /// Every seed document on a commit; the nightly campaign's selection when a rotation is set.
     /// </summary>
     public static TheoryData<string> SeedDocuments
     {
@@ -98,17 +147,9 @@ public class FuzzingTests
         {
             var data = new TheoryData<string>();
 
-            foreach (var document in Corpus.Documents)
+            foreach (var file in FuzzingSeeds.ForRun(Environment.GetEnvironmentVariable(FuzzingSeeds.RotationVariable)))
             {
-                if (document.Expect.Encrypted || document.Features.Contains("many-pages"))
-                {
-                    continue;
-                }
-
-                if (new FileInfo(Corpus.PathOf(document.File)).Length <= 120 * 1024)
-                {
-                    data.Add(document.File);
-                }
+                data.Add(file);
             }
 
             return data;
