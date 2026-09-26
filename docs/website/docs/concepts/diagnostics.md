@@ -24,6 +24,10 @@ if (document.Diagnostics.HasRepairs)
 The report is a returned value, not a log: it can be inspected, serialised, asserted on in your own tests,
 and used to decide whether to accept a file into your system.
 
+Diagnostics say what the reader did to read a file. To know what is wrong with the file itself — whether or
+not the reader could work around it —, [validate it](validation.md): findings are a separate verdict, with
+their own severities and rule identifiers that never reuse a diagnostic code.
+
 ## Severities
 
 | Severity | Meaning |

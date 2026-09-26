@@ -96,3 +96,20 @@ foreach (var entry in document.Diagnostics)
 ```
 
 Nothing above reads page content. It is read when, and only when, you ask for it.
+
+## Validating a document
+
+The reader opens damaged files and says what it repaired; the validator says what is wrong with a file,
+with rule identifiers you can filter on. It is being built rule by rule — see [Validation](concepts/validation.md).
+
+```csharp
+using AdCodicem.Pdf.Validation;
+
+var report = new PdfValidator().Validate(document);
+
+Console.WriteLine(report);                // structural 1: errors 0, warnings 1, information 0
+foreach (var finding in report.Findings)
+{
+    Console.WriteLine(finding);           // Warning file.eof-missing at offset 48213: …
+}
+```
