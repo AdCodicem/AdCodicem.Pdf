@@ -12,10 +12,9 @@ here.
   documents recorded as unsupported until M2, and the negative control of `readerLimits`, which has no
   document without the remote corpus) + 302 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
-  documents from here on 2026-09-26, all 242 on the runner), 1,264 unit (61 skipped by design, on documents
-  recorded as unsupported until M2 or until T24 or T25 is fixed) + 665 integration (measured on
-  2026-09-25: the sessions that fixed T21, T23 and T31 and implemented ADR 34 had no Docker, and added no
-  integration test) — **CI**:
+  documents from here on 2026-09-26, all 242 on the runner), 1,264 unit here and 1,266 on the runner (61
+  skipped by design, on documents recorded as unsupported until M2 or until T24 or T25 is fixed) + 668
+  integration, run 6 of `Remote corpus`, dispatched on the ADR 34 branch on 2026-09-26 — **CI**:
   green on `main`, `OpenSSF Scorecard` included
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licences (56 of them from the Open Preservation Foundation's
@@ -150,6 +149,10 @@ previous ordering, where M2 was writing and M3 assembly.
   The catalogue search caught a defect
   of its own before any commit: `reached ??= FindCatalog()` skipped the search whenever the expansion had
   already reached a guard.
+- **The remote corpus.** Run 6 of `Remote corpus`, dispatched on the branch on 2026-09-26, fetched all 242
+  documents and passed 1,266 unit tests (61 skipped by design) and 668 integration tests: the map reads
+  whole on the runner too, and the negative control holds there. It is the first run to include T21, T23,
+  T29 and T31's fixes as well.
 - **Measured.** The USGS map under 512 MB: opening reads 83 KB of 63.1 MB; decoding every stream takes
   1.8 s and allocates 1,785 MiB, its image's 328,608,000 bytes passing through an output that doubles to the
   bound and is copied out — memory for M13's budgets (T28, T33). The reader's benchmarks allocate what they
