@@ -16,9 +16,9 @@ namespace AdCodicem.Pdf.IO;
 /// </remarks>
 internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, IDisposable
 {
-    private const int InitialObjectWindow = 8 * 1024;
+    internal const int InitialObjectWindow = 8 * 1024;
     private const int MaxObjectWindow = 16 * 1024 * 1024;
-    private const int XRefWindow = 64 * 1024;
+    internal const int XRefWindow = 64 * 1024;
     private const int MaxXRefWindow = 64 * 1024 * 1024;
     private const int MaxXRefSections = 1024;
     private const int MaxSubsectionEntries = 50_000_000;
@@ -29,6 +29,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private const int ScanOverlap = 64;
     private const int MaxRepairObjects = 2_000_000;
 
+    /// <summary>Asks <see cref="TryParseObjectAt"/> for whatever object starts at an offset.</summary>
+    private const int AnyNumber = 0;
+
     private static ReadOnlySpan<byte> ObjKeyword => "obj"u8;
     private static ReadOnlySpan<byte> TrailerKeyword => "trailer"u8;
     private static ReadOnlySpan<byte> StartXRefKeyword => "startxref"u8;
@@ -36,6 +39,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     private readonly PdfFileSource _source;
     private readonly PdfDiagnostics _diagnostics;
+
+    /// <summary>
+    /// What parses through a window report until the window is known to have been large enough. Shared by
+    /// nested loads, each of which keeps or drops only what it recorded after its own mark.
+    /// </summary>
+    private readonly PdfDiagnostics _pending;
+
     private readonly PdfXRefTable _xref = new();
     private readonly Dictionary<PdfObjectId, PdfObject> _cache = [];
     private readonly Queue<PdfObjectId> _cacheOrder = new();
@@ -51,6 +61,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     {
         _source = source;
         _diagnostics = diagnostics;
+        _pending = new PdfDiagnostics { Capacity = diagnostics.Capacity };
         _cacheCapacity = Math.Max(64, cacheCapacity);
         _ownsSource = ownsSource;
 
@@ -111,6 +122,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         // Without this, "/Length 2147483647" would ask for two gigabytes of memory.
         var available = (int)Math.Clamp(_source.Length - absoluteOffset, 0, int.MaxValue);
         return new FileStreamData(_source, absoluteOffset, Math.Clamp(length, 0, available));
+    }
+
+    /// <inheritdoc/>
+    bool IPdfStreamDataProvider.IsEndStreamAt(long absoluteOffset)
+    {
+        // A source is only asked for bytes it has: a subclass need not accept an offset at its end.
+        if (absoluteOffset < 0 || absoluteOffset >= _source.Length)
+        {
+            return false;
+        }
+
+        Span<byte> tail = stackalloc byte[PdfObjectParser.EndStreamLookahead];
+        var read = _source.Read(absoluteOffset, tail);
+        return PdfObjectParser.IsEndStreamAt(tail[..read], 0);
     }
 
     /// <inheritdoc/>
@@ -272,18 +297,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return false;
             }
 
+            // Past the largest window, or at the end of the file, what the window holds is all there is.
+            var canGrow = windowSize < MaxXRefWindow && window.Length == windowSize;
             var truncated = false;
 
             while (!truncated)
             {
                 var token = lexer.Read();
 
+                // A token that reaches the window's edge may have been cut by it — "trai" of "trailer", "32"
+                // of "3270" — so it is read again in a larger window rather than taken for what it seems.
+                if (token.Kind == PdfTokenKind.EndOfInput || (canGrow && token.End >= span.Length))
+                {
+                    // The table runs past the window; the caller grows it and reads again.
+                    break;
+                }
+
                 if (token.IsKeyword(TrailerKeyword))
                 {
-                    var parser = new PdfObjectParser(window.Memory, absolute, this, _diagnostics, this);
-                    parser.Position = lexer.Position;
+                    if (!TryReadTrailer(window.Memory, absolute, lexer.Position, canGrow, out var trailer))
+                    {
+                        // A trailer cut by the window's edge would lose its /Root or its /Prev; the window
+                        // grows instead, as it does for a table that runs past it.
+                        break;
+                    }
 
-                    if (parser.ParseObject().AsDictionary() is { } trailer)
+                    if (trailer is not null)
                     {
                         _xref.MergeTrailer(trailer);
                         previous = trailer.GetInteger(PdfName.Prev) ?? -1;
@@ -293,12 +332,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     return true;
                 }
 
-                if (token.Kind == PdfTokenKind.EndOfInput)
-                {
-                    // The table runs past the window; the caller grows it and reads again.
-                    break;
-                }
-
                 if (token.Kind != PdfTokenKind.Integer)
                 {
                     return false;
@@ -306,6 +339,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 var first = token.Integer;
                 var countToken = lexer.Read();
+
+                if (countToken.Kind == PdfTokenKind.EndOfInput || (canGrow && countToken.End >= span.Length))
+                {
+                    break;
+                }
 
                 if (countToken.Kind != PdfTokenKind.Integer ||
                     countToken.Integer is < 0 or > MaxSubsectionEntries ||
@@ -324,6 +362,37 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             }
 
             windowSize = (int)Math.Min((long)windowSize * 4, MaxXRefWindow);
+        }
+    }
+
+    /// <summary>
+    /// Parses the trailer dictionary that starts at <paramref name="position"/> in a classic table's window.
+    /// Returns false, having reported nothing, when the dictionary runs past a window that can grow.
+    /// </summary>
+    private bool TryReadTrailer(
+        ReadOnlyMemory<byte> window, long absolute, int position, bool canGrow, out PdfDictionary? trailer)
+    {
+        trailer = null;
+        var mark = _pending.GetMark();
+
+        try
+        {
+            var parser = new PdfObjectParser(window, absolute, this, _pending, this);
+            parser.Position = position;
+            var parsed = parser.ParseObject();
+
+            if (parser.IsTruncated && canGrow)
+            {
+                return false;
+            }
+
+            _pending.MoveTo(_diagnostics, mark);
+            trailer = parsed.AsDictionary();
+            return true;
+        }
+        finally
+        {
+            _pending.RollBack(mark);
         }
     }
 
@@ -371,10 +440,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     {
         previous = -1;
 
-        using var window = _source.GetWindow(absolute, XRefWindow);
-        var parser = new PdfObjectParser(window.Memory, absolute, this, _diagnostics, this);
-
-        if (!parser.TryReadIndirectObject(out _, out var value) || value is not PdfStream stream)
+        // Parsed like any other object, through a window that grows when the dictionary runs past it; the
+        // data is read from the file when it is decoded.
+        if (!TryParseObjectAt(AnyNumber, absolute, out var value) || value is not PdfStream stream)
         {
             return false;
         }
@@ -535,7 +603,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             _diagnostics.Warn(
                 PdfDiagnosticCodes.XRefEntryOutOfRange, $"Object {id.Number} points outside the file.", offset);
         }
-        else if (TryParseObjectAt(id, offset, out var atRecordedOffset))
+        else if (TryParseObjectAt(id.Number, offset, out var atRecordedOffset))
         {
             return atRecordedOffset;
         }
@@ -543,7 +611,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         // Offsets are commonly off by a few bytes in files from careless tools, so the neighbourhood is
         // searched before the index is given up on entirely.
         if (TryFindObjectHeader(id.Number, offset, out var nearby) &&
-            TryParseObjectAt(id, nearby, out var relocated))
+            TryParseObjectAt(id.Number, nearby, out var relocated))
         {
             _diagnostics.Repair(
                 PdfDiagnosticCodes.XRefOffsetAdjusted,
@@ -563,16 +631,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         return _xref.TryGet(id.Number, out var entry) &&
                entry.Kind == XRefEntryKind.Regular &&
-               TryParseObjectAt(id, entry.Offset + _headerOffset, out var afterRebuild)
+               TryParseObjectAt(id.Number, entry.Offset + _headerOffset, out var afterRebuild)
             ? afterRebuild
             : PdfNull.Instance;
     }
 
     /// <summary>
     /// Parses the object at an exact offset, growing the window while the object runs past its end.
-    /// Returns false when nothing with the expected number is there.
+    /// Returns false when nothing with the expected <paramref name="number"/> is there; <see cref="AnyNumber"/>
+    /// accepts whatever object starts at the offset.
     /// </summary>
-    private bool TryParseObjectAt(PdfObjectId id, long offset, out PdfObject value)
+    /// <remarks>
+    /// What the parser notices is held back until an attempt is kept. An attempt that ran out of window
+    /// sees a cut token, a missing <c>endstream</c> or an object that stops mid-way: artefacts of the window,
+    /// not of the file, and reporting them would put a syntax error the file does not have in the document's
+    /// diagnostics — with the real ones reported once per attempt. What nested loads report, such as a
+    /// relocated <c>/Length</c> object, goes straight to the document's diagnostics and stays there.
+    /// </remarks>
+    private bool TryParseObjectAt(int number, long offset, out PdfObject value)
     {
         value = PdfNull.Instance;
 
@@ -582,25 +658,36 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
 
         var windowSize = InitialObjectWindow;
+        var mark = _pending.GetMark();
 
-        while (true)
+        try
         {
-            using var window = _source.GetWindow(offset, windowSize);
-            var parser = new PdfObjectParser(window.Memory, offset, this, _diagnostics, this);
-
-            if (!parser.TryReadIndirectObject(out var found, out var parsed) || found.Number != id.Number)
+            while (true)
             {
-                return false;
-            }
+                using var window = _source.GetWindow(offset, windowSize);
+                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this);
 
-            if (parser.IsTruncated && windowSize < MaxObjectWindow && window.Length == windowSize)
-            {
-                windowSize = (int)Math.Min((long)windowSize * 8, MaxObjectWindow);
-                continue;
-            }
+                if (!parser.TryReadIndirectObject(out var found, out var parsed) || (number != AnyNumber && found.Number != number))
+                {
+                    return false;
+                }
 
-            value = parsed;
-            return true;
+                if (parser.IsTruncated && windowSize < MaxObjectWindow && window.Length == windowSize)
+                {
+                    _pending.RollBack(mark);
+                    windowSize = (int)Math.Min((long)windowSize * 8, MaxObjectWindow);
+                    continue;
+                }
+
+                _pending.MoveTo(_diagnostics, mark);
+                value = parsed;
+                return true;
+            }
+        }
+        finally
+        {
+            // Whatever an attempt that was not kept noticed is dropped with it, however it ended.
+            _pending.RollBack(mark);
         }
     }
 

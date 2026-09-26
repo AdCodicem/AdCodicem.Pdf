@@ -25,8 +25,8 @@ The first three third-party files we added found a real defect within a minute �
 empty stream being read as a decoding failure. The search that brought the next seventy-six found a test
 that could not read a page count qpdf printed with a warning, and a reader that calls a sound stream
 truncated when its end falls just past an 8 KB window. The pass after it, eighty-two more, found the same
-window cutting objects longer than 8 KB, and each cross-reference section read through a window of up to
-64 KB, whatever its size. The fourth, the Open Preservation Foundation's format-corpus, found a `/Prev` a
+window cutting objects longer than 8 KB — both since fixed —, and each cross-reference section read
+through a window of up to 64 KB, whatever its size. The fourth, the Open Preservation Foundation's format-corpus, found a `/Prev` a
 few bytes off that makes the reader drop a whole cross-reference section without a word. That is the
 return on this.
 
