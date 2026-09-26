@@ -98,7 +98,7 @@ internal static class FlateFilter
                 ? new ZLibStream(input, CompressionMode.Decompress, leaveOpen: true)
                 : new DeflateStream(input, CompressionMode.Decompress, leaveOpen: true);
 
-            var output = new ArrayBufferWriter<byte>(PdfFilterLimits.InitialCapacity(Math.Max(1024, data.Length * 4L), maxLength));
+            var output = new PdfBoundedOutput(Math.Max(1024, data.Length * 4L), maxLength);
             var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
 
             try
@@ -115,8 +115,8 @@ internal static class FlateFilter
                     {
                         // Corrupt from here on. Anything already decoded is still usable, and losing the
                         // tail of a content stream beats losing the whole document.
-                        truncated = output.WrittenCount > 0;
-                        result = output.WrittenSpan.ToArray();
+                        truncated = output.Count > 0;
+                        result = output.ToArray();
                         return truncated;
                     }
 
@@ -125,15 +125,15 @@ internal static class FlateFilter
                         break;
                     }
 
-                    if (!PdfFilterLimits.TryWrite(output, buffer.AsSpan(0, read), maxLength))
+                    if (!output.TryWrite(buffer.AsSpan(0, read)))
                     {
                         limited = true;
-                        result = output.WrittenSpan.ToArray();
+                        result = output.ToArray();
                         return true;
                     }
                 }
 
-                result = output.WrittenSpan.ToArray();
+                result = output.ToArray();
                 return true;
             }
             finally

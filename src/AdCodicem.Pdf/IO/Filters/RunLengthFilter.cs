@@ -1,5 +1,3 @@
-using System.Buffers;
-
 namespace AdCodicem.Pdf.IO.Filters;
 
 /// <summary>Decodes the <c>RunLengthDecode</c> filter.</summary>
@@ -17,7 +15,7 @@ internal static class RunLengthFilter
         ReadOnlySpan<byte> data, out bool limited, int maxLength = PdfFilterLimits.MaxDecodedLength)
     {
         limited = false;
-        var output = new ArrayBufferWriter<byte>(PdfFilterLimits.InitialCapacity(data.Length * 2L, maxLength));
+        var output = new PdfBoundedOutput(data.Length * 2L, maxLength);
         var index = 0;
 
         while (index < data.Length)
@@ -34,7 +32,7 @@ internal static class RunLengthFilter
                 var count = control + 1;
                 var available = Math.Min(count, data.Length - index);
 
-                if (!PdfFilterLimits.TryWrite(output, data.Slice(index, available), maxLength))
+                if (!output.TryWrite(data.Slice(index, available)))
                 {
                     limited = true;
                     break;
@@ -50,20 +48,14 @@ internal static class RunLengthFilter
             }
 
             var repeat = 257 - control;
-            var value = data[index++];
-            var room = maxLength - output.WrittenCount;
-            var written = Math.Min(repeat, room);
-            var span = output.GetSpan(written)[..written];
-            span.Fill(value);
-            output.Advance(written);
 
-            if (written < repeat)
+            if (!output.TryFill(data[index++], repeat))
             {
                 limited = true;
                 break;
             }
         }
 
-        return output.WrittenSpan.ToArray();
+        return output.ToArray();
     }
 }

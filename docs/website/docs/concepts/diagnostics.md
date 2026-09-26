@@ -51,7 +51,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `object.redefined` | An object was defined more than once; the last definition won |
 | `filter.failed` | A filter could not be applied, and the data was left encoded |
 | `filter.unsupported` | The file names a filter the library does not implement |
-| `filter.limit-exceeded` | A stream decodes to more than the 256 MB the reader decodes; the first 256 MB were kept |
+| `filter.limit-exceeded` | A stream decodes to more than the 256 MB the reader decodes; decoding stopped there |
 
 The reader parses an object through a window of the file — 8 KB to start with — and reads it again
 through a larger one when it runs past the edge. What the smaller window saw there, such as a string
@@ -61,9 +61,10 @@ is reported: as `stream.truncated` when the file ends inside its data, as `strea
 `endstream` comes first.
 
 Decoding is bounded as well. A stream that decodes past 256 MB — a decompression bomb, or an image too
-large for one array — keeps its first 256 MB, and the report says so with a code of its own,
-`filter.limit-exceeded`: the limit is the reader's, not a fault of the file. One limit still shows as if it
-were the file's: an object longer than 16 MB is read through its first 16 MB.
+large for one array — stops there, and the report says so with a code of its own,
+`filter.limit-exceeded`: the limit is the reader's, not a fault of the file. Two limits still show as if
+they were the file's: an object longer than 16 MB is read through its first 16 MB, and a classic trailer
+longer than 64 KB through its first 64 KB.
 
 ## Exceptions, by contrast
 
@@ -80,7 +81,7 @@ and no loop exits on an offset that came from the file.
 That claim is tested rather than asserted. Besides the hand-written cases — a cross-reference chain that
 loops, a stream claiming two gigabytes, an object stream declaring a billion objects, containers nested
 twenty thousand deep, fifty thousand streams each taking its length from the next, a few megabytes of
-RunLength data that would decode to hundreds — a mutation campaign
+RunLength data that would decode to hundreds, predictor rows whose length overflows — a mutation campaign
 runs against the test corpus: bit flips, corrupted digits, truncations, spliced bytes and broken keywords,
 each input required to end either in a usable document or in a typed exception, inside a time and an
 allocation budget. A few thousand mutated documents go through
