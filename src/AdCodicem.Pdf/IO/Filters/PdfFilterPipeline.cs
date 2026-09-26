@@ -1,3 +1,4 @@
+using System.Globalization;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Objects;
 
@@ -14,7 +15,7 @@ internal static class PdfFilterPipeline
     /// to pixels only to encode it again is both slow and lossy. Callers that want pixels ask for them.
     /// </remarks>
     /// <param name="stream">The stream to decode.</param>
-    /// <param name="diagnostics">Receives what decoding met, if supplied.</param>
+    /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
     /// <exception cref="PdfLimitExceededException">
     /// The data decodes past its document's bound, and the document was opened to throw when it does.
     /// </exception>
@@ -23,10 +24,14 @@ internal static class PdfFilterPipeline
 
     /// <summary>Decodes a stream's data under the guards given, rather than those of its document.</summary>
     /// <param name="stream">The stream to decode.</param>
-    /// <param name="diagnostics">Receives what decoding met, if supplied.</param>
+    /// <param name="diagnostics">
+    /// Receives what decoding met; when none are supplied, the guard's document does, so that a stream read
+    /// from a document is never decoded in silence.
+    /// </param>
     /// <param name="guard">Bounds what each filter's output may be, and says what reaching it does.</param>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard)
     {
+        diagnostics ??= guard.DocumentDiagnostics;
         var data = stream.GetRawBytes();
         var filters = stream.Dictionary.GetRaw(PdfName.Filter).Resolved();
 
@@ -98,7 +103,7 @@ internal static class PdfFilterPipeline
 
         if (name == PdfName.FlateDecode)
         {
-            if (!FlateFilter.TryDecode(data, out var decoded, out var repaired, out var truncated, out var limited, maxLength))
+            if (!FlateFilter.TryDecode(data, out var decoded, out var repaired, out var ending, out var limited, maxLength))
             {
                 diagnostics?.Warn(PdfDiagnosticCodes.FilterFailed, "A Flate stream could not be decoded.", position);
                 return data;
@@ -109,14 +114,7 @@ internal static class PdfFilterPipeline
                 diagnostics?.Repair(PdfDiagnosticCodes.FilterFailed, "A Flate stream was not valid zlib data.", position);
             }
 
-            if (truncated)
-            {
-                diagnostics?.Warn(
-                    PdfDiagnosticCodes.FilterFailed,
-                    "A Flate stream was truncated; the decoded prefix was kept.",
-                    position);
-            }
-
+            ReportEnding(ending, diagnostics, position);
             ReportLimit(limited, name, diagnostics, position, guard);
             return ApplyPredictor(decoded, parameters, diagnostics, position);
         }
@@ -124,7 +122,18 @@ internal static class PdfFilterPipeline
         if (name == PdfName.LZWDecode)
         {
             var earlyChange = (int)(parameters.GetInteger(PdfName.EarlyChange) ?? 1);
-            var decoded = LzwFilter.Decode(data.Span, earlyChange is 0 ? 0 : 1, out var limited, maxLength);
+            var decoded = LzwFilter.Decode(data.Span, earlyChange is 0 ? 0 : 1, out var limited, out var undefinedCode, maxLength);
+
+            if (undefinedCode >= 0)
+            {
+                diagnostics?.Warn(
+                    PdfDiagnosticCodes.FilterFailed,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"An LZW stream uses code {undefinedCode}, which it has not defined; what decoded before it was kept."),
+                    position);
+            }
+
             ReportLimit(limited, name, diagnostics, position, guard);
             return ApplyPredictor(decoded, parameters, diagnostics, position);
         }
@@ -159,6 +168,37 @@ internal static class PdfFilterPipeline
         diagnostics?.Warn(
             PdfDiagnosticCodes.FilterUnsupported, $"The filter /{name.Value} is not supported.", position);
         return data;
+    }
+
+    /// <summary>
+    /// Reports a Flate stream whose data did not end where its format says it does. Whatever decoded was
+    /// kept; the report says whether any of the data was lost.
+    /// </summary>
+    private static void ReportEnding(FlateEnding ending, PdfDiagnostics? diagnostics, long position)
+    {
+        switch (ending)
+        {
+            case FlateEnding.ChecksumMissing:
+                diagnostics?.Repair(
+                    PdfDiagnosticCodes.FilterFailed,
+                    "A Flate stream ends before its checksum does; its data decoded whole, unchecked.",
+                    position);
+                break;
+
+            case FlateEnding.TailLost:
+                diagnostics?.Warn(
+                    PdfDiagnosticCodes.FilterFailed,
+                    "A Flate stream ends before its data does; what decoded before the end was kept.",
+                    position);
+                break;
+
+            case FlateEnding.Corrupt:
+                diagnostics?.Warn(
+                    PdfDiagnosticCodes.FilterFailed,
+                    "A Flate stream is corrupt; what decoded before the fault was found was kept.",
+                    position);
+                break;
+        }
     }
 
     /// <summary>

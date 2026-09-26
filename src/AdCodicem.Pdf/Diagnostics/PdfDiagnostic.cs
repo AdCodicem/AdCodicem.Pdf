@@ -68,7 +68,12 @@ public static class PdfDiagnosticCodes
     /// <summary>An object was defined more than once; the last definition won.</summary>
     public const string ObjectRedefined = "object.redefined";
 
-    /// <summary>A filter could not be applied and the data was left encoded.</summary>
+    /// <summary>
+    /// A filter's data is not what the filter says. Data that nothing could decode was left encoded; data that
+    /// decoded in part — a Flate stream that lost its tail, an LZW stream that uses a code it has not defined —
+    /// was kept as far as it went; data read despite a fault that lost nothing, such as a missing zlib header or
+    /// checksum, is reported as a repair. The message says which.
+    /// </summary>
     public const string FilterFailed = "filter.failed";
 
     /// <summary>A filter named by the file is not supported.</summary>
