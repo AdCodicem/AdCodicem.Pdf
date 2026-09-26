@@ -7,11 +7,14 @@ here.
 ## At a glance
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), in progress. Where it lives and
-  what its public API is was settled by ADR 36 before the first type was written.
+  what its public API is was settled by ADR 36 before the first type was written; slice 1 — the engine, the
+  report and `file.eof-missing` — is done, in pull request [#29](https://github.com/AdCodicem/AdCodicem.Pdf/pull/29).
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Tests**: 620 unit (5 skipped by design) + 302 integration (skipped without Docker) + 23 for the remote
-  corpus's fetcher; with the remote corpus fetched, 1,281 unit (61 skipped by design, on documents recorded
-  as unsupported until M2, T24, T25 or T27) + 668 integration.
+- **Tests**: 1,327 unit (7 skipped by design) + 302 integration (skipped without Docker) + 23 for the remote
+  corpus's fetcher. With the remote corpus: `Remote corpus` run 7, on #29's branch at `4aa6816` with all 242
+  documents, passed 2,844 unit (97 skipped by design, on documents recorded as unsupported until M2, T24, T25
+  or T27) and 668 integration tests; the review's four tests came after it. Here, with 233 of the 242 —
+  seven hosts reset this session's connections and the two GitHub attachments answer 403 —, 2,802 unit.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -52,27 +55,73 @@ here.
 | Indexing | synthetic, 1000 pages, ~4 MB | 229 µs | 393 KB |
 | Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
 | Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 2.4 MB |
+| Validating under the structural profile, the document already open | synthetic, 1000 pages | 86 ns | 232 B |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content.
+The validation row is one rule reading the file's last 1,024 bytes, whatever its size; it grows with each
+slice of M2.
 Indexing costs roughly 200 bytes per object, whatever the objects weigh. The third row is asserted as a
 budget in CI (`CorpusReadingTests`), so an allocation regression fails the build.
 
 ## Next concrete step
 
-M2 — document validation (`docs/milestones/M2.md`), in the order its debts impose:
+M2 — document validation (`docs/milestones/M2.md`), slice 1 done (#29). In the order its debts impose:
 
-1. **Slice 1** — findings, report, rule engine and one rule end to end, under ADR 36.
-2. **T32** as its own change: a Flate stream that lost its tail, or an LZW stream that stops at a code it
+1. **T32** as its own change: a Flate stream that lost its tail, or an LZW stream that stops at a code it
    never defined, decodes without a word — through `PdfStream.Decode`, public API the previews already ship.
-3. **T25**, then **T27**, before slice 2 (file and cross-reference rules) is baselined: a validator cannot
+2. **T25**, then **T27**, before slice 2 (file and cross-reference rules) is baselined: a validator cannot
    report what the reader hides, and T27's fix wants T25's report of a failed section as its reason to
    doubt the index.
-4. Slices 2 and 3, with **T34** in the object-graph rules; slices 4 to 6.
+3. Slice 2, which also answers for iPRES `t04-007` (a premature `%%EOF` before the trailer); slice 3 with
+   **T34** in the object-graph rules; slices 4 to 6. Each slice adds to the manifest's `findings` what its
+   rules report, and every document is held to exactly its list.
 
 A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 34) is the reader's limit,
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-26 — ADR 36 and M2's first slice: validation in the core, and `file.eof-missing`
+- **The question, then the decision.** Asked what came next, the answer was M2's first slice — but not before
+  settling where its public types live, since every merge publishes them: the roadmap put the engine in an
+  `AdCodicem.Pdf.Validation` satellite and `PdfRepair` in the core, driven by findings, which invariant 1 rules
+  out. The maintainer accepted ADR 36 — the engine and the structural profile in the core, the PDF/A and
+  PDF/UA profiles in `AdCodicem.Pdf.Conformance`, an identifier never published — and answered what it left
+  open: identifiers `family.name`, never a reader code; an instance with immutable options as the entry
+  point; the `PdfLimitExceededException` a caller asked for passes through; the engine internal until M12;
+  `file.eof-missing` read over the last 1,024 bytes; every corpus document held to exactly its findings.
+- **Previews carry no guarantee**, at the maintainer's request: an addition to ADR 30, said wherever a preview
+  is offered — the releasing guide, the README the package ships, the site's introduction and banners,
+  CONTRIBUTING, `CLAUDE.md` (which also dropped the fixed development branch it still named).
+- **What was built.** `PdfValidator` (stateless) and `PdfValidatorOptions`; `ValidationProfile.Structural`,
+  version 1; `PdfValidationReport`, which keeps at most `FindingCapacity` findings in the order found and
+  counts every one; `PdfValidationFinding`, `PdfValidationSeverity`, `PdfValidationLocation`,
+  `PdfValidationRuleIds`. One rule: `file.eof-missing`, a warning when no `%%EOF` lies in the file's last
+  1,024 bytes — the tolerance readers extend, not a reader guard, since a valid file ends with the marker —,
+  reading those bytes and nothing else. `docs/validation-rules.md` lists it, and a test holds the table to the
+  code.
+- **The corpus.** A manifest entry gains `expect.findings`, established from the file: eleven documents lack
+  the marker and declare it — the truncated invoice, five PDFBox and pdf.js files cut short or with junk
+  appended, two JHOVE files, and iPRES `t04-002` to `t04-004`, which qpdf accepts, so a warning is right there.
+  The other iPRES end-of-file cases stay silent, each for a reason M2 records; `t04-007` only because the file
+  is shorter than the window. `CorpusExpectation` refuses unknown keys; `build_corpus.py` writes the finding
+  for the tail it cuts.
+- **Tests.** The engine's order, capacity, counts, determinism and refusals; the rule on every shape of end of
+  file, the 1,024-byte edge one byte at a time, and the bytes it reads; a property over generated trailing
+  bytes; the identifiers' grammar; `CorpusValidationTests` over every document — reported on without a throw,
+  unsupported ones included, exactly the declared findings, no error on a well-formed file nor on a PDF/A
+  failure, the same report twice.
+- **On review.** Four reviewers — correctness, the repository's rules, the tests by mutation, the
+  documentation — and two skeptics on each of their 22 findings. Upheld and fixed: ten behaviours no test
+  held (six mutations checked killed afterwards), M2's account of three iPRES end-of-file cases and of the
+  acceptance row the strict one replaced, a stale comment, and this file. Refuted: a roadmap state, two
+  tests said to be vacuous, the skipping of unsupported entries. One was real and older than the change:
+  a `PdfFileSource` whose `Read` returns short counts misleads the whole reader, and now the rule — **T36**.
+- **Housekeeping.** This file's "At a glance", a week stale, re-checked against GitHub, nuget.org, Scorecard
+  and Codecov, and the journal summarised; T20 closed, T35 opened; the package's description, which promised
+  a writer, now says what it holds.
+- **Measured.** `ValidationBenchmarks`, ShortRun: 94 ns and 232 B for 10 pages, 86 ns and 232 B for 1,000.
+  The reader's benchmarks are unchanged: 231 µs and 392.92 KB to index 1,000 pages.
 
 ### 2026-09-26 — Every line of #28's change is covered
 - **The report.** Codecov found ten lines of the pull request's change that no test reached (97.3 % of the
@@ -363,4 +412,5 @@ The detail is in git and in the pull requests; what still matters is in the reco
 | T07 | The object cache evicts FIFO rather than LRU; names are interned through an intermediate string | M13, with measurements |
 | ~~T08~~ | ~~Fuzzing of the lexer and parser is not set up~~ | Done: in the suite per commit, and a nightly campaign |
 | T09 | A memory budget is now enforced in CI; a throughput budget is not | Throughput budget in M13 |
+| T36 | **A `PdfFileSource` whose `Read` returns fewer bytes than asked is taken as the end of the data.** `GetWindow` calls `Read` once, and every read built on it — the header and `startxref` searches, the cross-reference probes, object windows, `FileStreamData.GetBytes`, and now `file.eof-missing` — takes a short count as the end. The two built-in sources fill the buffer (the file one loops), so only a caller's own source can do it; then a sound file is rebuilt (`xref.rebuilt`), streams come back cut (`stream.truncated`) and the validator reports `file.eof-missing` on a file that ends with its marker — measured by the review of M2's first slice with a source serving at most 1,000 bytes a read. The public documentation of `Read` does not say it must fill the buffer | Make `GetWindow` and the direct reads loop until the buffer is full or `Read` returns 0, as `FileSource.Read` does, with a test through a source that returns short reads; say on `Read` what the reader expects |
 | T35 | **CodeQL runs as GitHub's default setup since 2026-09-22**, and `.github/workflows/codeql.yml` is disabled. The workflow ran the security *and* quality suites with four exclusions, each justified in `.github/codeql/codeql-config.yml`; the default setup does not read that file, so the exclusions no longer apply, and the query suite is whatever the repository's settings say — the line on CodeQL among the ADR index's *Decisions too small for a record of their own* may no longer describe what runs | The maintainer's choice: go back to the workflow (and disable the default setup), or keep the default setup and delete the workflow, its configuration and that record's line |
