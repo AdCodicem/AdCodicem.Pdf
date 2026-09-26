@@ -6,8 +6,8 @@
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <PackageId>AdCodicem.Pdf</PackageId>
-    <Description>Low-allocation PDF document writer for .NET: streaming file layout, TrueType embedding and tagged-PDF plumbing, with no native or managed dependencies.</Description>
-    <PackageTags>pdf;pdf-generation;streaming;aot</PackageTags>
+    <Description>Managed PDF toolkit for .NET with no dependencies: a tolerant, lazy reader that opens damaged third-party files and says what it repaired, and a validator whose findings carry stable rule identifiers. Writing, assembly and HTML to PDF are on the roadmap. Previews carry no compatibility guarantee.</Description>
+    <PackageTags>pdf;pdf-reader;pdf-parser;pdf-validation;aot;trimming</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
