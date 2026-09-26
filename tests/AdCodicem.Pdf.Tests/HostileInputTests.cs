@@ -278,6 +278,31 @@ public class HostileInputTests
         source.BytesRead.Should().BeLessThan(24L * 1024 * 1024);
     }
 
+    [Fact]
+    public void Decodes_a_run_length_stream_no_further_than_the_bound()
+    {
+        // 2.3 million pairs that each decode to 128 bytes: 294 MB out of 4.6 MB in, past the 256 MB any
+        // stream may decode to. RunLength had no bound at all.
+        const int Pairs = 2_300_000;
+        var data = new byte[(Pairs * 2) + 1];
+        for (var pair = 0; pair < Pairs; pair++)
+        {
+            data[2 * pair] = 0x81;
+            data[(2 * pair) + 1] = (byte)'A';
+        }
+
+        data[^1] = 0x80;
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfName.RunLengthDecode);
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(data));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Measure(() => stream.Decode(diagnostics));
+
+        decoded.Length.Should().Be(256 * 1024 * 1024);
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.FilterLimitExceeded);
+    }
+
     private static T Measure<T>(Func<T> action)
     {
         var stopwatch = Stopwatch.StartNew();

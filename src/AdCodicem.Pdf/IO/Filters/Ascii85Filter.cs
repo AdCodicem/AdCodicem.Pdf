@@ -5,9 +5,15 @@ namespace AdCodicem.Pdf.IO.Filters;
 /// <summary>Decodes the <c>ASCII85Decode</c> filter.</summary>
 internal static class Ascii85Filter
 {
-    public static byte[] Decode(ReadOnlySpan<byte> data)
+    /// <summary>
+    /// Decodes <paramref name="data"/>, keeping at most <paramref name="maxLength"/> bytes;
+    /// <paramref name="limited"/> says whether it decodes to more. A <c>z</c> alone decodes to four bytes.
+    /// </summary>
+    public static byte[] Decode(
+        ReadOnlySpan<byte> data, out bool limited, int maxLength = PdfFilterLimits.MaxDecodedLength)
     {
-        var output = new ArrayBufferWriter<byte>(Math.Max(16, data.Length * 4 / 5));
+        limited = false;
+        var output = new ArrayBufferWriter<byte>(PdfFilterLimits.InitialCapacity(Math.Max(16, data.Length * 4L / 5), maxLength));
         Span<byte> group = stackalloc byte[4];
 
         // The 'z' shortcut writes four zero bytes; allocated once here rather than inside the loop.
@@ -38,7 +44,12 @@ internal static class Ascii85Filter
 
             if (current == (byte)'z' && count == 0)
             {
-                output.Write(zeros);
+                if (!PdfFilterLimits.TryWrite(output, zeros, maxLength))
+                {
+                    limited = true;
+                    return output.WrittenSpan.ToArray();
+                }
+
                 continue;
             }
 
@@ -55,7 +66,12 @@ internal static class Ascii85Filter
                 continue;
             }
 
-            WriteGroup(output, tuple, 4, group);
+            if (!WriteGroup(output, tuple, 4, group, maxLength))
+            {
+                limited = true;
+                return output.WrittenSpan.ToArray();
+            }
+
             tuple = 0;
             count = 0;
         }
@@ -68,18 +84,18 @@ internal static class Ascii85Filter
                 tuple = (tuple * 85) + 84;
             }
 
-            WriteGroup(output, tuple, count - 1, group);
+            limited = !WriteGroup(output, tuple, count - 1, group, maxLength);
         }
 
         return output.WrittenSpan.ToArray();
     }
 
-    private static void WriteGroup(ArrayBufferWriter<byte> output, uint tuple, int bytes, Span<byte> group)
+    private static bool WriteGroup(ArrayBufferWriter<byte> output, uint tuple, int bytes, Span<byte> group, int maxLength)
     {
         group[0] = (byte)(tuple >> 24);
         group[1] = (byte)(tuple >> 16);
         group[2] = (byte)(tuple >> 8);
         group[3] = (byte)tuple;
-        output.Write(group[..bytes]);
+        return PdfFilterLimits.TryWrite(output, group[..bytes], maxLength);
     }
 }

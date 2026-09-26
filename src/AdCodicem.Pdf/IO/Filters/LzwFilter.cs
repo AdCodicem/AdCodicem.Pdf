@@ -15,15 +15,22 @@ internal static class LzwFilter
     private const int FirstFreeCode = 258;
     private const int MaxCodes = 4096;
 
-    public static byte[] Decode(ReadOnlySpan<byte> data, int earlyChange)
+    /// <summary>
+    /// Decodes <paramref name="data"/>, keeping at most <paramref name="maxLength"/> bytes;
+    /// <paramref name="limited"/> says whether it decodes to more.
+    /// </summary>
+    public static byte[] Decode(
+        ReadOnlySpan<byte> data, int earlyChange, out bool limited, int maxLength = PdfFilterLimits.MaxDecodedLength)
     {
+        limited = false;
+
         var table = new byte[MaxCodes][];
         for (var i = 0; i < 256; i++)
         {
             table[i] = [(byte)i];
         }
 
-        var output = new ArrayBufferWriter<byte>(Math.Max(1024, data.Length * 3));
+        var output = new ArrayBufferWriter<byte>(PdfFilterLimits.InitialCapacity(Math.Max(1024, data.Length * 3L), maxLength));
         var next = FirstFreeCode;
         var codeBits = 9;
         byte[]? previous = null;
@@ -70,12 +77,11 @@ internal static class LzwFilter
                     return output.WrittenSpan.ToArray();
                 }
 
-                if (output.WrittenCount + entry.Length > PdfFilterLimits.MaxDecodedLength)
+                if (!PdfFilterLimits.TryWrite(output, entry, maxLength))
                 {
+                    limited = true;
                     return output.WrittenSpan.ToArray();
                 }
-
-                output.Write(entry);
 
                 if (previous is not null && next < MaxCodes)
                 {

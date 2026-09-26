@@ -21,10 +21,23 @@ internal static class FlateFilter
     /// treating that as a failure would hand the caller the compressed bytes instead of the empty
     /// content it asked for.
     /// </remarks>
-    public static bool TryDecode(ReadOnlyMemory<byte> data, out byte[] decoded, out bool repaired, out bool truncated)
+    /// <param name="data">The encoded data.</param>
+    /// <param name="decoded">What was decoded, at most <paramref name="maxLength"/> bytes.</param>
+    /// <param name="repaired">Whether the data was not zlib as the specification says, and was read anyway.</param>
+    /// <param name="truncated">Whether the data turned corrupt part-way, and only what came before was kept.</param>
+    /// <param name="limited">Whether the data decodes to more than <paramref name="maxLength"/> bytes.</param>
+    /// <param name="maxLength">The most the data may decode to.</param>
+    public static bool TryDecode(
+        ReadOnlyMemory<byte> data,
+        out byte[] decoded,
+        out bool repaired,
+        out bool truncated,
+        out bool limited,
+        int maxLength = PdfFilterLimits.MaxDecodedLength)
     {
         repaired = false;
         truncated = false;
+        limited = false;
 
         if (data.IsEmpty)
         {
@@ -32,13 +45,13 @@ internal static class FlateFilter
             return true;
         }
 
-        if (TryInflate(data, zlibHeader: true, out decoded, out truncated))
+        if (TryInflate(data, zlibHeader: true, maxLength, out decoded, out truncated, out limited))
         {
             return true;
         }
 
         // A raw deflate stream, or a zlib header that was mangled.
-        if (TryInflate(data, zlibHeader: false, out decoded, out truncated))
+        if (TryInflate(data, zlibHeader: false, maxLength, out decoded, out truncated, out limited))
         {
             repaired = true;
             return true;
@@ -46,7 +59,7 @@ internal static class FlateFilter
 
         // Leading white space before the header happens when a generator miscounts /Length.
         var skipped = SkipLeadingWhitespace(data);
-        if (skipped > 0 && TryInflate(data[skipped..], zlibHeader: true, out decoded, out truncated))
+        if (skipped > 0 && TryInflate(data[skipped..], zlibHeader: true, maxLength, out decoded, out truncated, out limited))
         {
             repaired = true;
             return true;
@@ -69,9 +82,11 @@ internal static class FlateFilter
         return index;
     }
 
-    private static bool TryInflate(ReadOnlyMemory<byte> data, bool zlibHeader, out byte[] result, out bool truncated)
+    private static bool TryInflate(
+        ReadOnlyMemory<byte> data, bool zlibHeader, int maxLength, out byte[] result, out bool truncated, out bool limited)
     {
         truncated = false;
+        limited = false;
 
         var input = MemoryMarshal.TryGetArray(data, out var segment)
             ? new MemoryStream(segment.Array!, segment.Offset, segment.Count, writable: false)
@@ -83,7 +98,7 @@ internal static class FlateFilter
                 ? new ZLibStream(input, CompressionMode.Decompress, leaveOpen: true)
                 : new DeflateStream(input, CompressionMode.Decompress, leaveOpen: true);
 
-            var output = new ArrayBufferWriter<byte>(Math.Max(1024, data.Length * 4));
+            var output = new ArrayBufferWriter<byte>(PdfFilterLimits.InitialCapacity(Math.Max(1024, data.Length * 4L), maxLength));
             var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
 
             try
@@ -110,14 +125,12 @@ internal static class FlateFilter
                         break;
                     }
 
-                    if (output.WrittenCount + read > PdfFilterLimits.MaxDecodedLength)
+                    if (!PdfFilterLimits.TryWrite(output, buffer.AsSpan(0, read), maxLength))
                     {
-                        truncated = true;
+                        limited = true;
                         result = output.WrittenSpan.ToArray();
                         return true;
                     }
-
-                    output.Write(buffer.AsSpan(0, read));
                 }
 
                 result = output.WrittenSpan.ToArray();
