@@ -300,7 +300,10 @@ public class HostileInputTests
         var decoded = Measure(() => stream.Decode(diagnostics));
 
         decoded.Length.Should().Be(256 * 1024 * 1024);
-        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.FilterLimitExceeded);
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterLimitExceeded);
+        report.Message.Should().Be(
+            "The /RunLengthDecode data decodes to more than the 256 MB the reader decodes; decoding stopped there.");
     }
 
     private static T Measure<T>(Func<T> action)

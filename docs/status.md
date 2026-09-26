@@ -8,10 +8,10 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 538 unit (4 skipped by design: two corpus
+- **Builds**: yes, with no warnings — **Tests**: 560 unit (4 skipped by design: two corpus
   documents recorded as unsupported until M2) + 302 integration (skipped without Docker) + 23 for the
   remote corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
-  documents from here on 2026-09-26, all 242 on the runner), 1,199 unit (63 skipped by design, on documents
+  documents from here on 2026-09-26, all 242 on the runner), 1,221 unit (63 skipped by design, on documents
   recorded as unsupported until M2 or until T24, T25 or T28 is fixed) + 665 integration (measured on
   2026-09-25: the session that fixed T21 and T23 had no Docker, and added no integration test) — **CI**:
   green on `main`, `OpenSSF Scorecard` included
@@ -106,24 +106,45 @@ previous ordering, where M2 was writing and M3 assembly.
   word. Flate reported the bound as damage — "a Flate stream was truncated" — which is what made the
   USGS map, a sound file, look broken (T28). And each decoder sized its first buffer as a multiple of its
   input, a length the file chose, whatever the bound.
-- **The fix.** Every filter — Flate, LZW, RunLength, ASCII85, ASCIIHex — writes through one check, keeps
-  exactly the first 256 MB, and says whether it had more. The pipeline reports that under a new code,
-  `filter.limit-exceeded`, a warning worded as the reader's limit; `filter.failed` is left to data that is
-  corrupt. First buffers are capped by the bound. The bound is a parameter inside the library, so the tests
-  run at a kilobyte rather than decoding 256 MB each time.
-- **Tests.** Each filter swept from a one-byte bound to past its whole output: the first bytes kept,
-  exactly, and the bound reported once, only when met; a chain of Flate and RunLength that cannot multiply;
-  a corrupt Flate stream told apart from one reaching the bound; each expanding filter's first buffer
-  measured against a megabyte of input; and T31's own file, 4.6 MB of RunLength decoded to exactly 256 MB
-  at the real bound. Eleven mutations — each filter's bound removed in turn, the report dropped or turned
-  back into `filter.failed`, the partial write omitted, the first buffer uncapped — each fail a test.
+- **The fix.** Every filter keeps exactly the first 256 MB and says whether it had more. The four that can
+  expand their input — Flate, LZW, RunLength, ASCII85 — write into one bounded output, which grows to the
+  bound and no further and hands back a full buffer without copying it; ASCIIHex, whose output is at most
+  half its input, fills a fixed array capped at the bound. The pipeline reports reaching the bound under a
+  new code, `filter.limit-exceeded`, a warning worded as the reader's limit — decoding stopped there —;
+  `filter.failed` is left to data that is corrupt. The bound is a parameter inside the library, so the
+  tests run at a kilobyte rather than decoding 256 MB each time.
+- **Tests.** Each filter swept from a one-byte bound to past its whole output — Flate through its zlib, raw
+  and white-space paths, empty inputs of every filter —: the first bytes kept, exactly, the bound reported
+  once, only when met, beside what the data earns unbounded; a chain of Flate and RunLength that cannot
+  multiply; a corrupt Flate stream told apart from one reaching the bound; each expanding filter's first
+  buffer measured against a megabyte of input, and its whole allocation against a guess that lands 4 bytes
+  short of a 4 MB bound; a predictor keeping whole rows of a bounded output; three predictors whose rows
+  overflow; the bounded output's own rules; and T31's own file, 4.6 MB of RunLength decoded to exactly
+  256 MB at the real bound, with the message a user reads. Twenty-five mutations — eleven of the first
+  version, fourteen of the reviewed one, each filter's bound, the report, the bounded output's growth, the
+  predictor's checks — each fail a test.
 - **The map.** Object 155 of the USGS map now decodes to exactly 268,435,456 bytes with one
   `filter.limit-exceeded`, where it gave 268,429,626 and a truncated-stream warning. It stays unsupported
   for T28, whose remaining half — decoding such a stream a piece at a time — is M13's.
+- **On review.** Three reviewers went over the commit; of their twelve findings, each checked by two
+  others, eleven held outright and the twelfth — the doubled buffer — was judged a cost rather than a
+  defect by one of its checkers, and is fixed all the same. The bound
+  capped a decode's output, not its memory: the framework's buffer doubled past the bound, and a write of
+  nothing into a full one doubled it again — T31's own file allocated 809 MiB for 256 MB, a 1 MB Flate
+  stream 1,276 MiB. The bounded output allocates 528 and 508 MiB for them (measured), in arrays that double
+  up to the bound, go straight to it once within a quarter of it, and are handed back without a copy. Older than T31 and reachable from it: the predictor that
+  follows Flate and LZW took its row length from /Columns unchecked, so a 413-byte PDF hung
+  `PdfDocument.Open` for ever through its cross-reference stream (a row length that overflowed to zero),
+  another threw `OverflowException`, and a 12-byte stream allocated 512 MiB. The row length is now
+  computed without overflow and weighed against the data first; parameters describing rows the data
+  cannot hold leave it as decoded, with `filter.failed`. The report's wording, "the first 256 MB were
+  kept", was wrong after a predictor, which keeps whole rows; it now says decoding stopped there.
 - **Found on the way.** **T32**: a Flate stream whose tail was lost decodes to what is left, without a
   diagnostic. Measured: a zlib stream cut in half decodes 27,939 of its 58,890 bytes and reports nothing,
-  because .NET's inflater returns the end of its input as the end of the data. .NET 10 exposes no inflater
-  that says whether it reached the final block; the zlib trailer's Adler-32 can.
+  because .NET's inflater returns the end of its input as the end of the data; a complete but wrong
+  Adler-32 trailer is caught, a missing one is not. **T33**, from the review: every decoded object stream
+  stays in the reader's cache for the life of the document, so four object streams that each decode to
+  the bound hold 1 GB once `Open` returns.
 
 ### 2026-09-26 — T21 and T23: what a window too small for its object saw is dropped with it
 - **The defect.** The reader parses an object through an 8 KB window, and parses it again through one eight
@@ -920,9 +941,10 @@ previous ordering, where M2 was writing and M3 assembly.
 | T27 | **A reference to an object the file lacks makes the reader rebuild its whole index.** The specification says such a reference is null, and qpdf takes it so; the reader instead scans the file for the missing object — the lazy rebuild meant for an index that lost entries — and reports a repair on a file qpdf calls clean. Found on two iPRES 2017 files (remote): a catalogue whose `/Pages` and a page whose `/Contents` point at object 9, which does not exist. Both are recorded as unsupported with this reason. The acceptance test saw it only once it walked each page's contents and resources before judging a clean file's diagnostics; across the whole corpus, no other document was affected | Before M2 closes, since its acceptance conditions name both files: a synthetic regression test (a sound file with a reference past /Size, and one to a free entry), then rebuild only when the index gives reason to doubt it, and otherwise take the reference as null — a finding for M2, not a repair |
 | T28 | **A stream that decodes past 256 MB is cut at 256 MB.** `PdfFilterLimits.MaxDecodedLength` bounds every filter against decompression bombs, and a sound file can exceed it: the USGS topographic map (remote), whose 9,600 × 11,410 RGB image, object 155, decodes to 313 MB (measured with zlib). Until T31 the bound was reported as a truncated Flate stream; it is now reported as the reader's limit, `filter.limit-exceeded`, and the first 256 MB are kept. Recorded as unsupported with this reason | M13, with the memory budgets: decode such a stream a piece at a time rather than into one array |
 | ~~T29~~ | ~~**A chain of `/Length` references nests object loads as deep as the chain.** Resolving an indirect `/Length` loads that object while the first is being parsed, and a stream whose `/Length` points at a stream whose `/Length` points at another goes one level deeper each time. The cycle guard stops a loop, not a chain: 20,000 such objects overflow the stack and kill the process, which invariant 4 forbids. Older than T23's fix, reproduced on it~~ | Done on 2026-09-26: object loads nest at most 64 deep; the next one reads as null, is not cached, and is reported once as `syntax.depth-exceeded` with its offset. `HostileInputTests` reads a 50,000-level chain |
-| T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls It also parses each through that fixed window straight into the document's diagnostics, so a sound trailer longer than 64 KB earns a syntax error the file does not have | M13, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |
+| T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls It also parses each through that fixed window straight into the document's diagnostics, so a sound trailer longer than 64 KB earns a syntax error the file does not have. On opening, too, a classic trailer longer than 64 KB is read through its first 64 KB since T23's review bounded its window: a syntax error or keys dropped, depending on where the edge falls | M13, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |
 | ~~T31~~ | ~~**Two filters keep their bound badly.** `RunLengthDecode` has none: every two bytes in can decode to 128 out, so a 4.6 MB stream decodes to 294 MB, past the 256 MB `PdfFilterLimits.MaxDecodedLength`, with no diagnostic, and a Flate stream feeding it multiplies that by 64 — memory a hostile file chooses. `LZWDecode` stops at the bound in silence. Found by the review of T23's fix (a claim that every filter keeps the bound); older than it~~ | Done on 2026-09-26: every filter keeps exactly the first 256 MB and says whether it had more; the pipeline reports it as `filter.limit-exceeded`, the reader's limit; first buffers are capped by the bound |
-| T32 | **A Flate stream whose tail was lost decodes to what is left, in silence.** .NET's `ZLibStream` treats the end of its input as the end of the data, so no exception reaches `FlateFilter`, whose handling of a lost tail was written for one: a zlib stream cut in half decodes 27,939 of its 58,890 bytes with no diagnostic (measured). .NET 10 exposes no inflater that says whether the final block was reached | Before M2's stream rules ("filters decodable"): compare the zlib trailer's Adler-32 with what was decoded, and report a mismatch as a truncated stream; raw deflate, which has no trailer, stays unchecked |
+| T32 | **A Flate stream whose tail was lost decodes to what is left, in silence.** .NET's `ZLibStream` treats the end of its input as the end of the data, so no exception reaches `FlateFilter`, whose handling of a lost tail was written for one: a zlib stream cut in half decodes 27,939 of its 58,890 bytes with no diagnostic (measured). zlib does check a complete Adler-32 trailer — a wrong one throws, and is reported — but not a missing one, and the trailer cannot be found by position, since a stream's `/Length` often takes in the end-of-line after it. .NET 10 exposes no inflater that says whether it reached the final block | Before M2's stream rules ("filters decodable"): read the input through a stream that notices the inflater asking for bytes past the end of the data, which a complete stream never does, and report that as a truncated stream |
+| T33 | **Every decoded object stream stays cached for the life of the document.** `_objectStreams` in `PdfFileReader` has no bound and no eviction, and a rebuild decodes every object stream up front to index its objects. A damaged file of four object streams that each decode to the 256 MB bound (1.2 MB) holds 1 GB once `Open` returns (measured by the review of T31); a large sound document holds its object streams' decoded bytes however few objects are read, against invariant 2 | M13, with the memory budgets, and sooner for the hostile case if a file of the kind turns up: a budget on the decoded bytes the cache holds, evicting the oldest — an evicted stream is decoded again when one of its objects is asked for |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |

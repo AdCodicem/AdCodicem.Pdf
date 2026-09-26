@@ -1,5 +1,3 @@
-using System.Buffers;
-
 namespace AdCodicem.Pdf.IO.Filters;
 
 /// <summary>Decodes the <c>LZWDecode</c> filter.</summary>
@@ -30,7 +28,7 @@ internal static class LzwFilter
             table[i] = [(byte)i];
         }
 
-        var output = new ArrayBufferWriter<byte>(PdfFilterLimits.InitialCapacity(Math.Max(1024, data.Length * 3L), maxLength));
+        var output = new PdfBoundedOutput(Math.Max(1024, data.Length * 3L), maxLength);
         var next = FirstFreeCode;
         var codeBits = 9;
         byte[]? previous = null;
@@ -50,7 +48,7 @@ internal static class LzwFilter
 
                 if (code == EndOfDataCode)
                 {
-                    return output.WrittenSpan.ToArray();
+                    return output.ToArray();
                 }
 
                 if (code == ClearCode)
@@ -74,13 +72,13 @@ internal static class LzwFilter
                 }
                 else
                 {
-                    return output.WrittenSpan.ToArray();
+                    return output.ToArray();
                 }
 
-                if (!PdfFilterLimits.TryWrite(output, entry, maxLength))
+                if (!output.TryWrite(entry))
                 {
                     limited = true;
-                    return output.WrittenSpan.ToArray();
+                    return output.ToArray();
                 }
 
                 if (previous is not null && next < MaxCodes)
@@ -97,6 +95,6 @@ internal static class LzwFilter
             }
         }
 
-        return output.WrittenSpan.ToArray();
+        return output.ToArray();
     }
 }

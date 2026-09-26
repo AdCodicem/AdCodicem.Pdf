@@ -108,7 +108,7 @@ internal static class PdfFilterPipeline
             }
 
             ReportLimit(limited, name, diagnostics, position, maxLength);
-            return ApplyPredictor(decoded, parameters);
+            return ApplyPredictor(decoded, parameters, diagnostics, position);
         }
 
         if (name == PdfName.LZWDecode)
@@ -116,7 +116,7 @@ internal static class PdfFilterPipeline
             var earlyChange = (int)(parameters.GetInteger(PdfName.EarlyChange) ?? 1);
             var decoded = LzwFilter.Decode(data.Span, earlyChange is 0 ? 0 : 1, out var limited, maxLength);
             ReportLimit(limited, name, diagnostics, position, maxLength);
-            return ApplyPredictor(decoded, parameters);
+            return ApplyPredictor(decoded, parameters, diagnostics, position);
         }
 
         if (name == PdfName.ASCII85Decode)
@@ -162,12 +162,13 @@ internal static class PdfFilterPipeline
             var bound = maxLength % (1024 * 1024) == 0 ? $"{maxLength / (1024 * 1024)} MB" : $"{maxLength} bytes";
             diagnostics?.Warn(
                 PdfDiagnosticCodes.FilterLimitExceeded,
-                $"The /{name.Value} data decodes to more than the {bound} the reader decodes; the first {bound} were kept.",
+                $"The /{name.Value} data decodes to more than the {bound} the reader decodes; decoding stopped there.",
                 position);
         }
     }
 
-    private static ReadOnlyMemory<byte> ApplyPredictor(byte[] decoded, PdfDictionary? parameters)
+    private static ReadOnlyMemory<byte> ApplyPredictor(
+        byte[] decoded, PdfDictionary? parameters, PdfDiagnostics? diagnostics, long position)
     {
         if (parameters is null)
         {
@@ -176,13 +177,25 @@ internal static class PdfFilterPipeline
 
         var predictor = (int)parameters.GetInteger(PdfName.Predictor, 1);
 
-        return predictor <= 1
-            ? decoded
-            : PredictorTransform.Apply(
+        if (predictor <= 1)
+        {
+            return decoded;
+        }
+
+        if (!PredictorTransform.TryApply(
                 decoded,
                 predictor,
                 (int)parameters.GetInteger(PdfName.Colors, 1),
                 (int)parameters.GetInteger(PdfName.BitsPerComponent, 8),
-                (int)parameters.GetInteger(PdfName.Columns, 1));
+                (int)Math.Clamp(parameters.GetInteger(PdfName.Columns, 1), 1, int.MaxValue),
+                out var result))
+        {
+            diagnostics?.Warn(
+                PdfDiagnosticCodes.FilterFailed,
+                "The predictor's parameters describe rows longer than the decoded data; the data was left as decoded.",
+                position);
+        }
+
+        return result;
     }
 }

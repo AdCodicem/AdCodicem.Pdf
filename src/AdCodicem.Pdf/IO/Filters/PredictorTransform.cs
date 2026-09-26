@@ -10,11 +10,22 @@ namespace AdCodicem.Pdf.IO.Filters;
 /// </remarks>
 internal static class PredictorTransform
 {
-    public static byte[] Apply(byte[] data, int predictor, int colors, int bitsPerComponent, int columns)
+    /// <summary>
+    /// Undoes the predictor into <paramref name="result"/>, or returns false, the data untouched, when the
+    /// parameters describe rows the data cannot hold even once.
+    /// </summary>
+    /// <remarks>
+    /// The parameters come from the file. A /Columns of sixty million would size two rows of 240 MB for a
+    /// stream of twelve bytes, and one whose row length overflows would loop for ever or throw; the row
+    /// length is computed without overflow and weighed against the data before anything is allocated.
+    /// </remarks>
+    public static bool TryApply(byte[] data, int predictor, int colors, int bitsPerComponent, int columns, out byte[] result)
     {
-        if (predictor <= 1)
+        result = data;
+
+        if (predictor <= 1 || data.Length == 0)
         {
-            return data;
+            return true;
         }
 
         colors = Math.Clamp(colors, 1, 32);
@@ -26,11 +37,19 @@ internal static class PredictorTransform
         columns = Math.Max(columns, 1);
 
         var bytesPerPixel = Math.Max(1, colors * bitsPerComponent / 8);
-        var rowLength = (columns * colors * bitsPerComponent + 7) / 8;
+        var rowLength = (((long)columns * colors * bitsPerComponent) + 7) / 8;
 
-        return predictor == 2
-            ? ApplyTiff(data, colors, bitsPerComponent, rowLength)
-            : ApplyPng(data, bytesPerPixel, rowLength);
+        // A TIFF-predicted row is the row itself; a PNG-predicted one carries a byte saying how it was
+        // predicted.
+        if (rowLength + (predictor == 2 ? 0 : 1) > data.Length)
+        {
+            return false;
+        }
+
+        result = predictor == 2
+            ? ApplyTiff(data, colors, bitsPerComponent, (int)rowLength)
+            : ApplyPng(data, bytesPerPixel, (int)rowLength);
+        return true;
     }
 
     private static byte[] ApplyTiff(byte[] data, int colors, int bitsPerComponent, int rowLength)
