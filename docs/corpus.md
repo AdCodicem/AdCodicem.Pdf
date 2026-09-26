@@ -75,8 +75,11 @@ Its shape is written down in `tests/corpus/manifest.schema.json` (JSON Schema, d
 manifest names in its `"$schema"` key, so that an editor completes, describes and checks every field while
 it is typed. `CorpusManifestSchemaTests` holds the manifest — and `private.json`, where there is one — to it
 in CI: every key at every level must be one the schema knows; a use case, an origin, a diagnostic code or a
-rule identifier must be one that exists; a remote document must carry its pinned source; a raised reader
-limit must raise its default. The same tests hold the schema to what reads the manifest — the model in
+rule identifier must be one that exists; a remote document must carry its pinned source and live under
+`remote/<source>/`, as `fetch_remote.py` requires; no path has a `.`, `..` or empty segment; a raised reader
+limit must raise its default, and replaces a skip rather than sitting beside one; every committed and remote
+entry carries the referee's verdict, which only a private entry — no script writes one for it — may leave out.
+The patterns end with `$(?!\n)` and name their characters, so that the editor, .NET and Python agree. The same tests hold the schema to what reads the manifest — the model in
 `tests/AdCodicem.Pdf.TestSupport/Corpus.cs`, `PdfDiagnosticCodes`, `PdfValidationRuleIds` and
 `PdfReaderLimits.Default` —, so the three cannot drift apart. What a schema cannot see across entries — a
 file listed twice, an archive pinned two ways — stays with `fetch_remote.py` and `CorpusReadingTests`.
@@ -96,6 +99,7 @@ file listed twice, an archive pinned two ways — stays with `fetch_remote.py` a
     "clean": true,                       // no repair and no warning
     "indexRebuilt": false,
     "requiredDiagnostics": [],
+    "refereeCheckSucceeds": true,        // qpdf --check's verdict, written by build_corpus.py
     "textContains": ["Facture", "TVA 20", "Total TTC"]
   }
 }
