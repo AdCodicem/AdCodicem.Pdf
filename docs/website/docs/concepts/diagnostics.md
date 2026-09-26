@@ -51,7 +51,11 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `object.redefined` | An object was defined more than once; the last definition won |
 | `filter.failed` | A filter could not be applied, and the data was left encoded |
 | `filter.unsupported` | The file names a filter the library does not implement |
-| `filter.limit-exceeded` | A stream decodes to more than the 256 MB the reader decodes; decoding stopped there |
+| `limit.decoded-stream` | A stream decodes to more than `MaxDecodedStreamLength`; the part within it was kept |
+| `limit.object` | An object is longer than `MaxObjectLength`, its stream data aside; the part within it was parsed |
+| `limit.xref-section-length` | A classic cross-reference table is longer than `MaxXRefSectionLength`; the entries within it were read |
+| `limit.xref-section-count` | The chain of cross-reference sections is longer than `MaxXRefSectionCount`; the newest were read |
+| `limit.trailer` | A trailer, or a cross-reference stream's dictionary, is longer than `MaxTrailerLength`; the part within it was parsed |
 
 The reader parses an object through a window of the file — 8 KB to start with — and reads it again
 through a larger one when it runs past the edge. What the smaller window saw there, such as a string
@@ -60,23 +64,26 @@ the object holds, not where a window happened to end. A stream whose declared le
 is reported: as `stream.truncated` when the file ends inside its data, as `stream.length-invalid` when its
 `endstream` comes first.
 
-Decoding is bounded as well. A stream that decodes past 256 MB — a decompression bomb, or an image too
-large for one array — stops there, and the report says so with a code of its own,
-`filter.limit-exceeded`: the limit is the reader's, not a fault of the file. Two limits still show as if
-they were the file's: an object longer than 16 MB is read through its first 16 MB, and a classic trailer
-longer than 64 KB through its first 64 KB.
+Growing windows, and decoding, are bounded. The five `limit.*` codes report the reader's own limits, not
+faults of the file: a valid document can reach them — a large-format scan decodes past the 256 MB a stream
+may decode to by default — and each message names the property of `PdfReaderLimits` that lifts it. What
+fits within the limit is kept. See [Reader limits](reader-limits.md).
 
 ## Exceptions, by contrast
 
 Exceptions are reserved for what makes the operation impossible: the input is not a PDF
 (`PdfFormatException`), or it is encrypted and cannot be opened with the credentials given
-(`PdfEncryptedException`). Anything the reader can work around is a diagnostic, never an exception.
+(`PdfEncryptedException`). Anything the reader can work around is a diagnostic, never an exception —
+unless you ask for one: with `PdfReaderOptions.ThrowOnLimit`, reaching a reader limit throws
+`PdfLimitExceededException` from whichever operation reached it.
 
 ## Hostile input
 
 A PDF arrives from outside your system, so the reader treats every value in it as an attempt. No
 allocation is sized by a number read from the file without a checked bound, no recursion is unbounded,
-and no loop exits on an offset that came from the file.
+and no loop exits on an offset that came from the file. The bounds a valid document can reach are the
+[reader limits](reader-limits.md), on by default: raise them for a document you know, and keep
+`PdfReaderLimits.Unbounded` for documents you trust.
 
 That claim is tested rather than asserted. Besides the hand-written cases — a cross-reference chain that
 loops, a stream claiming two gigabytes, an object stream declaring a billion objects, containers nested

@@ -75,7 +75,8 @@ handing it over, and which of the public and private corpora it belongs in.
    small if you can; over 2 MB it is not committed at all, but described as a remote document (below).
 2. Write its entry, including what tests must observe: page count, whether it is well formed,
    which diagnostics the reader must report, and whatever later milestones will assert (text, attachments,
-   form fields, conformance level).
+   form fields, conformance level). A valid document that exceeds a default reader limit also gets
+   `readerLimits`, the limits it is opened with (`docs/corpus.md`).
 3. Establish the page count with an **independent tool**, never with our own reader — an expectation
    derived from the code under test proves nothing.
 4. Record the origin and the licence. Contributed documents must carry no confidential content.

@@ -25,6 +25,9 @@ Nothing is parsed until something asks for it, and stream data is not even read 
 before. This is asserted by a test that counts how many bytes are read from the file while opening a
 500 KB document: opening reads a small fraction of it.
 
+When it is decoded, a stream decodes under the [limits](reader-limits.md) of the document it came from,
+however long after opening — so with `ThrowOnLimit` set, `Decode()` can throw long after `Open` returned.
+
 Copying a stream between documents — merging, assembling, stamping — moves the **encoded** bytes as they
 are, with no decompress/recompress cycle in between.
 
@@ -41,6 +44,9 @@ using var document = PdfDocument.Open("catalogue.pdf", new PdfReaderOptions
     DiagnosticCapacity = 5_000,
 });
 ```
+
+The same options carry the [reader limits](reader-limits.md), which bound what one file may make the reader
+hold.
 
 ## Measured
 

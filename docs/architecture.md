@@ -41,14 +41,15 @@ IO/           PdfLexer (tokens), PdfObjectParser (objects), Filters/ (Flate with
               ASCII85, ASCIIHex, RunLength, DCT and JPX passed through), XRef/ (classic tables,
               cross-reference streams, object streams, the /Prev chain, rebuilding),
               PdfWriter (forward-only output).
-Documents/    PdfDocument (open, save), PdfPage, PdfPageCollection, attribute inheritance,
-              cross-document deep copy, assembly.
+Documents/    PdfDocument (open, save), PdfReaderOptions and PdfReaderLimits, PdfPage,
+              PdfPageCollection, attribute inheritance, cross-document deep copy, assembly.
 Fonts/        TrueType and OpenType parsing, metrics, subsetting, Type0/CIDFontType2 embedding,
               the ToUnicode CMap, the font registry and family resolution.
 Content/      Content stream writing; the content stream interpreter used by extraction (M8).
 Structure/    The logical structure tree (tagged PDF), marked content, the parent tree.
 Security/     RC4 and AES decryption and encryption, permissions.
-Diagnostics/  PdfDiagnostics: anomalies, repairs, conformance losses.
+Diagnostics/  PdfDiagnostics: anomalies, repairs, guards reached, conformance losses; PdfException
+              and its typed subclasses.
 ```
 
 ### 3.1 The read path
@@ -61,8 +62,13 @@ Diagnostics/  PdfDiagnostics: anomalies, repairs, conformance losses.
    number. Every repair is recorded in the diagnostics.
 3. **Lazy resolution** — `PdfReference.Resolve()` reads and parses the object on demand. A bounded cache
    avoids reparsing hot objects (the page tree, shared resources) without ever retaining the whole document.
-4. **Streams** — stream data is neither read nor decoded until the caller asks. A stream copied from one
-   document to another travels **encoded**, with no decompress/recompress cycle.
+4. **Streams** — stream data is neither read nor decoded until the caller asks, and then decodes under the
+   limits of the document it came from; a stream built in memory decodes under the defaults. A stream copied
+   from one document to another travels **encoded**, with no decompress/recompress cycle.
+5. **Guards** — every read sized by the file is bounded. A bound a valid file can exceed — a stream's
+   decoded length, an object's length, a cross-reference section's length and their number, a trailer's
+   length — is a `PdfReaderLimits` option, on by default and reported under its own `limit.*` code when
+   reached; a bound only an invalid file reaches is an internal constant (ADR 34).
 
 ### 3.2 The write path
 
@@ -111,7 +117,9 @@ goes wrong. No intermediate layer may drop it.
 ## 5. Memory and CPU strategy
 
 - **Memory budget**: consumption follows the complexity of the **page** being processed, never the size of
-  the document. A ten-thousand-page report must generate in the footprint of a ten-page one.
+  the document. A ten-thousand-page report must generate in the footprint of a ten-page one. One decoded
+  stream is still held whole, up to `PdfReaderLimits.MaxDecodedStreamLength` and at most `Array.MaxLength`,
+  until M13 decodes a piece at a time (T28), in native memory if a measurement asks for it (ADR 35).
 - **Pooling**: write buffers, glyph arrays and layout boxes come from `ArrayPool<T>` or dedicated pools.
   What is rented is returned, exceptions included.
 - **Structs and spans**: computed CSS values, metrics, rectangles and positions are structs. Parsing works
@@ -143,6 +151,7 @@ layout:
 | The input is not a PDF, or is unreadable even after repair | `PdfException` |
 | The caller asks for the impossible (a page that does not exist, a wrong password) | A typed exception |
 | The file is imperfect but usable | An entry in `PdfDiagnostics`, processing continues |
+| A reader guard is reached — by a valid but exceptional file, or a hostile one | A `limit.*` warning naming the `PdfReaderLimits` property that lifts it, and what fits is kept; `PdfLimitExceededException` instead, from whichever operation reached it, when the caller set `ThrowOnLimit` |
 | A CSS feature is unsupported | An entry in the diagnostics, degraded rendering, never a failure |
 | An operation breaks a conformance guarantee | An entry in the diagnostics, with the precise cause |
 
@@ -164,7 +173,7 @@ on in tests.
 - **Benchmarks**: BenchmarkDotNet with `MemoryDiagnoser` throughout. An allocation regression is a
   regression.
 - **Security**: fuzzing of the lexer and parser seeded with the corpus; no input may produce an untyped
-  exception, an infinite loop or an unbounded allocation. Every commit mutates every small seed document a
+  exception, an infinite loop or an unbounded allocation under the default limits. Every commit mutates every small seed document a
   little; each night mutates, far more deeply, the smallest document of each reader structure and a
   rotating share of the others (`FuzzingSeeds`).
 

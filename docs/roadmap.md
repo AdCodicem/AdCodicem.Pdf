@@ -250,7 +250,11 @@ M2 rule engine, delivered in stages.
 **Goal**: deliver the frugality the library promises, with numbers.
 **Deliverables**: global resource deduplication, recompression, subsetting of inherited fonts,
 linearisation; a benchmark campaign with performance budgets enforced in CI; Native AOT and trimming
-validation; fuzzing of the lexer and parser.
+validation; fuzzing of the lexer and parser. A decode that yields a stream a piece at a time, so that a
+stream past `Array.MaxLength` can be read and `MaxDecodedStreamLength` bounds the memory held at once rather
+than a stream's length (T28, ADR 34; in native memory if a measurement asks for it, ADR 35); a budget on the
+cache of decoded object streams (T33); cross-reference sections and the rebuild's trailer scan read through
+windows grown on demand (T24, T30).
 
 **Acceptance**
 - Published budgets for throughput and allocation hold on the `stress` documents, and CI fails when a
@@ -259,6 +263,7 @@ validation; fuzzing of the lexer and parser.
 - A Native AOT executable opens, transforms and writes every corpus document.
 - A fuzzing campaign over the lexer and parser, seeded with the `damaged` documents, finds no untyped
   exception, hang or unbounded allocation.
+- Under `PdfReaderLimits.Unbounded`, a stream that decodes past 2 GB is read whole.
 
 ## M14 — Satellites: rasterisation and signing
 

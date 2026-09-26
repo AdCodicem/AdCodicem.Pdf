@@ -6,6 +6,11 @@ This library parses files that arrive from outside your system. A malformed PDF 
 hang, or allocate without bound is not a robustness bug — it is a denial of service in whatever service
 embeds it. Those reports are treated as security reports.
 
+"Without bound" means past the reader's limits in force. They are on by default; an application that
+raises them, or chooses `PdfReaderLimits.Unbounded` for documents it trusts, lets a file use what those
+limits allow, and that is by design. A file that makes the reader exceed a limit it is under is a
+vulnerability.
+
 So are: reading outside the bounds of the input, following a reference in a file to a resource on the
 machine, and anything that lets a document's content influence what the host process does beyond
 returning data.

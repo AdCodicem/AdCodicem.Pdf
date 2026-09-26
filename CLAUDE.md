@@ -65,9 +65,11 @@ third-party PDFs, table of contents, bookmarks, continuous pagination).
    No LINQ, no `string.Split`, no closures, no boxing on those paths. Elsewhere, readability wins.
 4. **Everything read from a third-party file is hostile.** No allocation sized by a value from the file
    without a checked bound, no unbounded recursion, no loop whose exit depends on an offset that was read.
-   A malformed PDF produces a diagnostic, never a crash and never a denial of service.
+   A malformed PDF produces a diagnostic, never a crash and never a denial of service — under the limits in
+   force, which are on by default (invariant 12).
 5. **Anomalies go into `PdfDiagnostics`**, not into a logger and not into an exception, as long as reading
-   can continue. Exceptions are for what makes the operation impossible.
+   can continue. Exceptions are for what makes the operation impossible, and for a guard reached when the
+   caller asked for one (`PdfReaderOptions.ThrowOnLimit`).
 6. **Determinism**: same inputs, same bytes out. The only permitted sources of variation are supplied
    explicitly by the caller (creation date, document identifier).
 7. **Conformance**: PDF/A and the tagged structure are preserved, or their loss is reported explicitly.
@@ -80,6 +82,11 @@ third-party PDFs, table of contents, bookmarks, continuous pagination).
 11. **No milestone closes without both test levels and updated documentation.** Unit tests for the
     behaviour, integration tests for anything an independent tool must confirm, and the documentation
     site brought in line with what now exists. Code without either is unfinished, not ahead of schedule.
+12. **Every PDF valid under ISO 32000 is readable.** A bound a valid file can exceed is a guard: on by
+    default, reported under its own `limit.*` code when reached, with a message that names the
+    `PdfReaderLimits` property that lifts it. A bound only an invalid file reaches stays an internal
+    constant, with the reason no valid file reaches it written where it is declared. A new bound is
+    classified when it is added (ADR 34).
 
 ## Development environment
 
@@ -113,6 +120,9 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   public API. A rule that is genuinely wrong for this codebase is suppressed **where it fires**, with a
   written justification — never by adding to a global `NoWarn` list.
 - One public type per file. `sealed` by default. `internal` until an API is deliberately made public.
+- **Unsafe code only where a measurement asks for it** (ADR 35): the benchmark or measurement ships with it,
+  it stays in a few named types behind a safe API, `AllowUnsafeBlocks` is enabled per project on first use,
+  and every unsafe block says in a comment what keeps it in bounds.
 - PDF object model types carry the `Pdf` prefix; types internal to the HTML engine do not.
 - Tests: **xUnit v3**, **AwesomeAssertions** (`value.Should().Be(…)`), **NSubstitute** for the few real
   seams, **FsCheck** for what must hold over every input rather than over a table of examples,
