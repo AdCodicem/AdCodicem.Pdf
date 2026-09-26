@@ -8,7 +8,8 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), in progress. Where it lives and
   what its public API is was settled by ADR 36 before the first type was written; slice 1 — the engine, the
-  report and `file.eof-missing` — is done, in pull request [#29](https://github.com/AdCodicem/AdCodicem.Pdf/pull/29).
+  report and `file.eof-missing` — is done, merged with [#29](https://github.com/AdCodicem/AdCodicem.Pdf/pull/29) on
+  2026-09-26.
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
 - **Tests**: 1,327 unit (7 skipped by design) + 302 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher. With the remote corpus: `Remote corpus` run 7, on #29's branch at `4aa6816` with all 242
