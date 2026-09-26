@@ -301,9 +301,10 @@ public class HostileInputTests
 
         decoded.Length.Should().Be(256 * 1024 * 1024);
         var report = diagnostics.Should().ContainSingle().Which;
-        report.Code.Should().Be(PdfDiagnosticCodes.FilterLimitExceeded);
+        report.Code.Should().Be(PdfDiagnosticCodes.LimitDecodedStream);
         report.Message.Should().Be(
-            "The /RunLengthDecode data decodes to more than the 256 MB the reader decodes; decoding stopped there.");
+            "The /RunLengthDecode data decodes to more than 256 MB; decoding stopped there. " +
+            "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
     }
 
     private static T Measure<T>(Func<T> action)

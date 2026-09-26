@@ -9,7 +9,7 @@ internal static class AsciiHexFilter
     /// input, and is bounded all the same, like every filter's.
     /// </summary>
     public static byte[] Decode(
-        ReadOnlySpan<byte> data, out bool limited, int maxLength = PdfFilterLimits.MaxDecodedLength)
+        ReadOnlySpan<byte> data, out bool limited, int maxLength)
     {
         limited = false;
         var buffer = new byte[Math.Min((data.Length / 2) + 1, Math.Max(maxLength, 0))];

@@ -8,7 +8,7 @@ internal static class Ascii85Filter
     /// <paramref name="limited"/> says whether it decodes to more. A <c>z</c> alone decodes to four bytes.
     /// </summary>
     public static byte[] Decode(
-        ReadOnlySpan<byte> data, out bool limited, int maxLength = PdfFilterLimits.MaxDecodedLength)
+        ReadOnlySpan<byte> data, out bool limited, int maxLength)
     {
         limited = false;
         var output = new PdfBoundedOutput(Math.Max(16, data.Length * 4L / 5), maxLength);

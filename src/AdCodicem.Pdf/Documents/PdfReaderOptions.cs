@@ -20,4 +20,28 @@ public sealed record PdfReaderOptions
     /// security milestone; until then, failing loudly beats returning unreadable content.
     /// </summary>
     public bool ThrowOnEncrypted { get; init; } = true;
+
+    /// <summary>
+    /// Gets the reader's guards: bounds a valid document may exceed, set against hostile input. A stream
+    /// read from the document decodes under them too, however long after opening.
+    /// </summary>
+    public PdfReaderLimits Limits
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = PdfReaderLimits.Default;
+
+    /// <summary>
+    /// Gets a value indicating whether reaching one of the <see cref="Limits"/> throws a
+    /// <see cref="Diagnostics.PdfLimitExceededException"/> rather than keeping what fits and reporting it.
+    /// </summary>
+    /// <remarks>
+    /// Reading is lazy, so the exception can come from any operation that reads: <see cref="PdfDocument.Open(string, PdfReaderOptions?)"/>,
+    /// resolving an object, decoding a stream.
+    /// </remarks>
+    public bool ThrowOnLimit { get; init; }
 }

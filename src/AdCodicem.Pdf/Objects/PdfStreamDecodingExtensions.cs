@@ -12,9 +12,22 @@ public static class PdfStreamDecodingExtensions
     /// <param name="stream">The stream to decode.</param>
     /// <param name="diagnostics">Receives anomalies met while decoding, if supplied.</param>
     /// <remarks>
+    /// <para>
     /// Decoding stops at an image filter: a stream encoded with <c>DCTDecode</c> comes back as the JPEG it
     /// already is, rather than as pixels nobody asked for.
+    /// </para>
+    /// <para>
+    /// A stream read from a document decodes under that document's
+    /// <see cref="Documents.PdfReaderOptions.Limits"/>; one built in memory, under
+    /// <see cref="Documents.PdfReaderLimits.Default"/>. Data that decodes past the bound is kept up to it and
+    /// reported as <see cref="PdfDiagnosticCodes.LimitDecodedStream"/> in <paramref name="diagnostics"/> — or,
+    /// when none are supplied and the stream was read from a document, in the document's own.
+    /// </para>
     /// </remarks>
+    /// <exception cref="PdfLimitExceededException">
+    /// The data decodes past its document's bound, and the document was opened with
+    /// <see cref="Documents.PdfReaderOptions.ThrowOnLimit"/>.
+    /// </exception>
     public static ReadOnlyMemory<byte> Decode(this PdfStream stream, PdfDiagnostics? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(stream);

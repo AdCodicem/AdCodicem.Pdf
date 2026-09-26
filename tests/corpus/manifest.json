@@ -4455,6 +4455,9 @@
         "linearized",
         "xref-stream"
       ],
+      "readerLimits": {
+        "maxDecodedStreamLength": 536870912
+      },
       "expect": {
         "pages": 1,
         "clean": true,
@@ -4464,7 +4467,6 @@
         "textContains": [
           "WASHINGTON WEST QUADRANGLE"
         ],
-        "unsupported": "T28: object 155, a 9,600 by 11,410 RGB image, decodes to 313 MB, past the 256 MB any stream may decode to; the reader keeps the first 256 MB and reports its own limit, filter.limit-exceeded, since T31. Recorded in docs/status.md, for M13",
         "refereeCheckSucceeds": false
       }
     },

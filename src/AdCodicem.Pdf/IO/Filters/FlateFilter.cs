@@ -33,7 +33,7 @@ internal static class FlateFilter
         out bool repaired,
         out bool truncated,
         out bool limited,
-        int maxLength = PdfFilterLimits.MaxDecodedLength)
+        int maxLength)
     {
         repaired = false;
         truncated = false;

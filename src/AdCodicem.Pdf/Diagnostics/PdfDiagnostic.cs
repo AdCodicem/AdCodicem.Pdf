@@ -75,8 +75,33 @@ public static class PdfDiagnosticCodes
     public const string FilterUnsupported = "filter.unsupported";
 
     /// <summary>
-    /// A stream decodes to more than the reader will decode, and only the part within that bound was kept:
-    /// a limit of the reader's, set against decompression bombs, not damage in the file.
+    /// A stream decodes to more than <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, and only
+    /// the part within it was kept. Like every <c>limit.*</c> code, the guard is the reader's, not damage in
+    /// the file.
     /// </summary>
-    public const string FilterLimitExceeded = "filter.limit-exceeded";
+    public const string LimitDecodedStream = "limit.decoded-stream";
+
+    /// <summary>
+    /// An object is longer than <see cref="Documents.PdfReaderLimits.MaxObjectLength"/>, and only the part
+    /// within it was parsed.
+    /// </summary>
+    public const string LimitObject = "limit.object";
+
+    /// <summary>
+    /// A classic cross-reference section is longer than
+    /// <see cref="Documents.PdfReaderLimits.MaxXRefSectionLength"/>, and only the entries within it were read.
+    /// </summary>
+    public const string LimitXRefSectionLength = "limit.xref-section-length";
+
+    /// <summary>
+    /// The chain of cross-reference sections is longer than
+    /// <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/>, and the older sections were not read.
+    /// </summary>
+    public const string LimitXRefSectionCount = "limit.xref-section-count";
+
+    /// <summary>
+    /// A trailer, or a cross-reference stream's dictionary, is longer than
+    /// <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/>, and only the part within it was parsed.
+    /// </summary>
+    public const string LimitTrailer = "limit.trailer";
 }

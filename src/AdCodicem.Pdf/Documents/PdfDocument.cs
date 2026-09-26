@@ -45,6 +45,9 @@ public sealed class PdfDocument : IDisposable
     public bool IsEncrypted => Trailer.ContainsKey(PdfName.Encrypt);
 
     /// <summary>Opens a document from a file, reading its contents on demand.</summary>
+    /// <exception cref="PdfLimitExceededException">
+    /// Indexing reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// </exception>
     public static PdfDocument Open(string path, PdfReaderOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
@@ -52,10 +55,16 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>Opens a document from bytes already in memory.</summary>
+    /// <exception cref="PdfLimitExceededException">
+    /// Indexing reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// </exception>
     public static PdfDocument Open(ReadOnlyMemory<byte> bytes, PdfReaderOptions? options = null) =>
         Open(PdfFileSource.FromMemory(bytes), options, ownsSource: true);
 
     /// <summary>Opens a document from a stream. A non-seekable stream is buffered in full.</summary>
+    /// <exception cref="PdfLimitExceededException">
+    /// Indexing reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// </exception>
     public static PdfDocument Open(Stream stream, PdfReaderOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -63,18 +72,39 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>Opens a document from a source the caller keeps ownership of.</summary>
+    /// <exception cref="PdfLimitExceededException">
+    /// Indexing reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// </exception>
     public static PdfDocument Open(PdfFileSource source, PdfReaderOptions? options, bool ownsSource)
     {
         ArgumentNullException.ThrowIfNull(source);
         options ??= PdfReaderOptions.Default;
 
-        if (source.Length == 0)
+        var diagnostics = new PdfDiagnostics { Capacity = options.DiagnosticCapacity };
+        var guard = new PdfLimitGuard(options.Limits, options.ThrowOnLimit, diagnostics);
+        PdfFileReader reader;
+
+        try
         {
-            throw new PdfFormatException("The input is empty.");
+            if (source.Length == 0)
+            {
+                throw new PdfFormatException("The input is empty.");
+            }
+
+            reader = new PdfFileReader(source, diagnostics, guard, options.ObjectCacheCapacity, ownsSource);
+        }
+        catch
+        {
+            // Opening failed before a reader existed to own the source — an empty input, or a guard reached
+            // while indexing by a document opened to throw on one —, so the source is released here.
+            if (ownsSource)
+            {
+                source.Dispose();
+            }
+
+            throw;
         }
 
-        var diagnostics = new PdfDiagnostics { Capacity = options.DiagnosticCapacity };
-        var reader = new PdfFileReader(source, diagnostics, options.ObjectCacheCapacity, ownsSource);
         if (reader.ObjectCount == 0)
         {
             reader.Dispose();
@@ -93,6 +123,9 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>Returns the object with the given identifier, reading it if it is not already in memory.</summary>
+    /// <exception cref="PdfLimitExceededException">
+    /// Reading it reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// </exception>
     public PdfObject GetObject(PdfObjectId id)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

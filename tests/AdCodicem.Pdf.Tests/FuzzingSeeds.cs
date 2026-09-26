@@ -31,7 +31,10 @@ internal static class FuzzingSeeds
 
     private static readonly Lazy<IReadOnlyList<Seed>> Seeds = new(Load);
 
-    /// <summary>Gets every seed document: small, not encrypted, and not one of the many-page references.</summary>
+    /// <summary>
+    /// Gets every seed document: small, not encrypted, not one of the many-page references, and read under the
+    /// default limits.
+    /// </summary>
     internal static IReadOnlyList<string> All => [.. Seeds.Value.Select(seed => seed.File)];
 
     /// <summary>Gets the smallest seed document of each reader structure, which every night fuzzes.</summary>
@@ -91,7 +94,9 @@ internal static class FuzzingSeeds
 
         foreach (var document in Corpus.Documents)
         {
-            if (document.Expect.Encrypted || document.Features.Contains("many-pages"))
+            // A document read under raised limits would take the campaign past the time and memory budgets
+            // it asserts, which hold under the defaults the mutants are opened with.
+            if (document.Expect.Encrypted || document.Features.Contains("many-pages") || document.ReaderLimits is not null)
             {
                 continue;
             }
