@@ -23,6 +23,10 @@ The reader is built and tested, and validation is being built; writing, assembly
 ahead, and any minor version may still change the API. The [roadmap](/project/roadmap) says what exists and
 what does not, and [status](/project/status) says where the work actually stands today.
 
+**A preview carries no guarantee at all.** Its API, its behaviour and any of its features may change or
+disappear in the next preview, without notice and without a deprecation period; compatibility promises hold
+between stable releases only. If you depend on a preview, pin its exact version.
+
 :::
 
 ## Why another PDF library

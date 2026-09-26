@@ -56,6 +56,9 @@ Merging does not release. A merge into `main` publishes a **preview** package, s
 as soon as it lands; a stable release is a deliberate, manual run of the `Release` workflow, and that is
 what writes the changelog and the tag. [`docs/releasing.md`](docs/releasing.md) has the detail.
 
+A preview carries no guarantee: an API that no stable release has shipped may be reshaped or withdrawn by
+the next merge, and a preview already on nuget.org is not a reason to keep it.
+
 ## What a change must carry
 
 The project's [definition of done](docs/roadmap.md) applies to contributions too:

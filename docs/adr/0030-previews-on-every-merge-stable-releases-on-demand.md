@@ -48,6 +48,13 @@ that has to be deliberate, so it is the one you have to select.
 
 Both live in `release.yml` so that one trusted-publishing policy covers them.
 
+*Added 2026-09-26, at the maintainer's request, without reopening the above:* **a preview carries no
+guarantee.** It is a build of `main` offered for trying out. Its API, its behaviour and any of its features
+may change or disappear in the next preview, without notice and without a deprecation period. Compatibility
+promises — semantic versioning, and the public API checked against the last release by package validation —
+hold between stable releases only. Work on `main` is therefore free to reshape or withdraw an API no stable
+release has shipped, and a preview is never a reason to keep one.
+
 The preview number states where a preview sits rather than predicting what it will be called. After
 `v0.1.0` the previews are `0.1.1-preview.n`; if the commits contain a `feat:`, the stable release is
 `0.2.0`, and `0.1.1-preview.n` still sorts between the two. Deriving the exact future number would mean
