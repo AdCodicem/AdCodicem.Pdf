@@ -17,6 +17,11 @@ const sidebars = {
     },
     {
       type: 'category',
+      label: 'Research',
+      items: ['research/2026-09-feature-survey'],
+    },
+    {
+      type: 'category',
       label: 'Milestones',
       items: ['milestones/M1', 'milestones/M2', 'milestones/M4'],
     },
