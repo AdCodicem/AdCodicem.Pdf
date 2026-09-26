@@ -4,6 +4,8 @@ using System.Text.Json.Serialization;
 namespace AdCodicem.Pdf.TestSupport;
 
 /// <summary>What the manifest says about one corpus document.</summary>
+/// <remarks>A misspelt expectation fails loading rather than being ignored, and so never passes by default.</remarks>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record CorpusExpectation
 {
     /// <summary>Page count, established by an independent tool, or null when nothing is recoverable.</summary>
@@ -24,6 +26,16 @@ public sealed record CorpusExpectation
 
     /// <summary>Diagnostic codes the reader must report for this document.</summary>
     public string[] RequiredDiagnostics { get; init; } = [];
+
+    /// <summary>
+    /// The validation rules that report on this document, by identifier, under the default profile (M2) —
+    /// exactly these, no more and no fewer. Left out, none: a sound document earns no finding.
+    /// </summary>
+    /// <remarks>
+    /// Established from the file, never from the validator: a search of its last bytes for
+    /// <c>file.eof-missing</c>, the referee's report or the file's documented damage for the rules that follow.
+    /// </remarks>
+    public string[] Findings { get; init; } = [];
 
     /// <summary>
     /// Whether <c>qpdf --check</c> finds nothing wrong with the file.

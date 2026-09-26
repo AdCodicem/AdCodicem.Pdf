@@ -202,6 +202,9 @@ Rules about `expect`:
   document it has no password for is refused although nothing is wrong with it.
 - **Establish the rest with an independent tool**, never with our own reader. An expectation derived from the
   code under test proves nothing. `pikepdf`, `qpdf --check` and `pdftotext` are the referees in use.
+- **`findings` lists the validation rules the document earns** (M2), by identifier, and is left out when it
+  earns none — which a sound document should. Establish each from the file itself: `file.eof-missing` when
+  no `%%EOF` lies in its last 1,024 bytes. The test holds every document to exactly its list.
 - **`catalogRecoverable: false` is for a file with no catalogue at all** — no object in it is one, and the
   referee finds none either. The tests then expect the reader to open the file and hand back no catalogue
   rather than invent one. Every other entry leaves the field out.

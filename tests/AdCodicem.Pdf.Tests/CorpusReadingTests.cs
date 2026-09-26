@@ -350,7 +350,7 @@ public class CorpusReadingTests
     /// The options a corpus document is opened with: the defaults, with the limits its entry raises.
     /// Encrypted documents still throw, as <see cref="PdfReaderOptions.Default"/> has them.
     /// </summary>
-    private static PdfReaderOptions OptionsFor(CorpusDocument entry) =>
+    internal static PdfReaderOptions OptionsFor(CorpusDocument entry) =>
         entry.ReaderLimits is { } raised
             ? PdfReaderOptions.Default with { Limits = LimitsFor(raised) }
             : PdfReaderOptions.Default;
