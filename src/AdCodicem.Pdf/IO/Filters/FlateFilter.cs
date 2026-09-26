@@ -12,7 +12,10 @@ namespace AdCodicem.Pdf.IO.Filters;
 /// </remarks>
 internal static class FlateFilter
 {
-    /// <summary>The length of a zlib header without a preset dictionary, which is all a PDF stream can use.</summary>
+    /// <summary>
+    /// The length of a zlib header without a preset dictionary. A PDF stream has no way to supply one: a
+    /// header that asks for one fails as zlib, and is read as the other forms are.
+    /// </summary>
     private const int ZlibHeaderLength = 2;
 
     /// <summary>
@@ -110,16 +113,17 @@ internal static class FlateFilter
                 {
                     read = decompressor.Read(buffer, 0, buffer.Length);
                 }
-                catch (InvalidDataException) when (input.ReadPastEnd)
+                catch (Exception exception) when (IsInflaterFault(exception) && input.ReadPastEnd)
                 {
                     // A host that sets System.IO.Compression.UseStrictValidation has the framework throw where
                     // the data stops short. That is the lost tail the input noticed, handled as it is below.
                     break;
                 }
-                catch (InvalidDataException)
+                catch (Exception exception) when (IsInflaterFault(exception))
                 {
                     // Corrupt from here on. Anything already decoded is still usable, and losing the
-                    // tail of a content stream beats losing the whole document.
+                    // tail of a content stream beats losing the whole document. What the read that met the
+                    // fault had decoded is lost with it (T40).
                     ending = FlateEnding.Corrupt;
                     result = output.ToArray();
                     return output.Count > 0;
@@ -191,11 +195,19 @@ internal static class FlateFilter
                 }
             }
         }
-        catch (InvalidDataException)
+        catch (Exception exception) when (IsInflaterFault(exception))
         {
             return false;
         }
 
         return !input.ReadPastEnd && total == decoded;
     }
+
+    /// <summary>
+    /// Determines whether an exception is the inflater's complaint about its data: an
+    /// <see cref="InvalidDataException"/> for data it cannot decode, or the <see cref="IOException"/> its zlib
+    /// raises for what it cannot go on with, such as a header that asks for a preset dictionary. The input is
+    /// memory, and never throws either.
+    /// </summary>
+    private static bool IsInflaterFault(Exception exception) => exception is InvalidDataException or IOException;
 }

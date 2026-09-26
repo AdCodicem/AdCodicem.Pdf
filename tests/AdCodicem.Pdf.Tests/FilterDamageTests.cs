@@ -23,6 +23,8 @@ public class FilterDamageTests
     private const string TailLost = "A Flate stream ends before its data does; what decoded before the end was kept.";
     private const string ChecksumMissing = "A Flate stream ends before its checksum does; its data decoded whole, unchecked.";
     private const string NotZlib = "A Flate stream was not valid zlib data.";
+    private const string Corrupt = "A Flate stream is corrupt; decoding stopped at the fault, losing up to the last 64 KB decoded before it.";
+    private const string NotDecoded = "A Flate stream could not be decoded.";
 
     /// <summary>The length of zlib's Adler-32 checksum, which ends a zlib stream.</summary>
     private const int ChecksumLength = 4;
@@ -157,6 +159,63 @@ public class FilterDamageTests
     }
 
     [Theory]
+    [InlineData(0xBB)]
+    [InlineData(0x20)]
+    public void Reports_a_zlib_header_that_asks_for_a_preset_dictionary_instead_of_throwing(int flags)
+    {
+        // A PDF stream cannot supply a preset dictionary. Its zlib raises an IOException rather than an
+        // InvalidDataException for a header that asks for one; it escaped the filter, and a document whose
+        // object stream or cross-reference stream began so could not be opened at all.
+        var compressed = Compress(ContentStream(50), CompressionLevel.Optimal);
+        compressed[1] = (byte)flags;
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(compressed, PdfName.FlateDecode, diagnostics);
+
+        decoded.ToArray().Should().Equal(compressed, "data nothing could decode is left encoded");
+        Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Warning, NotDecoded));
+    }
+
+    [Fact]
+    public void Decodes_damaged_data_with_nowhere_to_report_it()
+    {
+        // A stream built in memory and decoded without diagnostics has no document to report to: it decodes
+        // as far as it goes all the same, and nothing is thrown for want of a report.
+        var plain = ContentStream(100);
+        var compressed = Compress(plain, CompressionLevel.Optimal);
+        byte[][] damaged =
+        [
+            compressed.AsSpan(0, compressed.Length / 2).ToArray(),
+            compressed.AsSpan(0, compressed.Length - ChecksumLength).ToArray(),
+            NineBitCodes(256, 'A', 300),
+        ];
+
+        foreach (var data in damaged)
+        {
+            var dictionary = new PdfDictionary();
+            dictionary.Set(PdfName.Filter, data.Length < 16 ? PdfName.LZWDecode : PdfName.FlateDecode);
+            var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(data));
+
+            var decoded = stream.Decode();
+
+            decoded.Length.Should().BeGreaterThan(0);
+        }
+    }
+
+    [Fact]
+    public void Never_takes_raw_deflate_that_ran_out_for_a_zlib_stream_that_lost_its_checksum()
+    {
+        // Four bytes that are not a zlib header, read as raw deflate: a stored block that ran out. Past its
+        // first two bytes lies an empty last block, which a zlib stream's body could be — but raw deflate has
+        // no checksum to lose.
+        var diagnostics = new PdfDiagnostics();
+
+        Decode([0x00, 0x00, 0x03, 0x00], PdfName.FlateDecode, diagnostics);
+
+        Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Repair, NotZlib) + "; " + Report(PdfDiagnosticSeverity.Warning, TailLost));
+    }
+
+    [Theory]
     [InlineData(0, ChecksumMissing)]
     [InlineData(1, TailLost)]
     [InlineData(100, TailLost)]
@@ -197,8 +256,7 @@ public class FilterDamageTests
 
         decoded.Length.Should().BeGreaterThan(0);
         plain.AsSpan().StartsWith(decoded).Should().BeTrue();
-        Describe(diagnostics).Should().Be(
-            Report(PdfDiagnosticSeverity.Warning, "A Flate stream is corrupt; what decoded before the fault was found was kept."));
+        Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Warning, Corrupt));
     }
 
     [Fact]
@@ -226,10 +284,11 @@ public class FilterDamageTests
     public void Telling_a_lost_checksum_from_lost_data_keeps_nothing_it_decodes_the_second_time()
     {
         // A zlib stream that ran out is read again as raw deflate to learn whether its last block was whole.
-        // That second reading keeps nothing: decoding 4 MB whose checksum is missing allocates what decoding
-        // them whole does, give or take the inflater's own buffers — not a second 4 MB.
-        const int Length = 4 * 1024 * 1024;
-        var compressed = Compress(new byte[Length], CompressionLevel.Optimal);
+        // That second reading keeps nothing, and copies nothing: decoding 2 MB of data that does not compress,
+        // whose checksum is missing, allocates what decoding them whole does, give or take the inflater's own
+        // objects — not a second output, nor a copy of the 2 MB body.
+        const int Length = 2 * 1024 * 1024;
+        var compressed = Compress(RandomBytes(Length), CompressionLevel.Optimal);
         var withoutChecksum = compressed.AsSpan(0, compressed.Length - ChecksumLength).ToArray();
         Decode(compressed, PdfName.FlateDecode, new PdfDiagnostics());
         var diagnostics = new PdfDiagnostics();
@@ -241,7 +300,7 @@ public class FilterDamageTests
         var decoded = Decode(withoutChecksum, PdfName.FlateDecode, diagnostics);
         var cut = GC.GetAllocatedBytesForCurrentThread() - beforeCut;
 
-        (cut - whole).Should().BeLessThan(128 * 1024);
+        (cut - whole).Should().BeLessThan(16 * 1024);
         decoded.Length.Should().Be(Length);
         Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Repair, ChecksumMissing));
     }
@@ -327,6 +386,58 @@ public class FilterDamageTests
         Describe(diagnostics).Should().Be(undefined < 0 ? string.Empty : Report(PdfDiagnosticSeverity.Warning, LzwUndefined(undefined)));
     }
 
+    /// <summary>
+    /// Codes after a table that held "AB", "BC" and "CD" was cleared and 'X' read: 258 is again the next to define,
+    /// while the table still holds what it defined before the clear.
+    /// </summary>
+    [Theory]
+    [InlineData(258, "ABCDXXXY", -1)]
+    [InlineData(259, "ABCDX", 259)]
+    [InlineData(260, "ABCDX", 260)]
+    public void Decodes_nothing_the_table_held_before_it_was_cleared(int code, string expected, int undefined)
+    {
+        // A clear starts the table again but leaves its old entries in place: 258 after it is the sequence
+        // being defined, "XX", not the "AB" it held before, and 259 and 260 are not defined at all.
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(NineBitCodes(256, 'A', 'B', 'C', 'D', 256, 'X', code, 'Y', 257), PdfName.LZWDecode, diagnostics);
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be(expected);
+        Describe(diagnostics).Should().Be(undefined < 0 ? string.Empty : Report(PdfDiagnosticSeverity.Warning, LzwUndefined(undefined)));
+    }
+
+    [Fact]
+    public void Extends_a_longer_sequence_with_its_first_byte_when_its_code_is_the_one_being_defined()
+    {
+        // 'A', 'B', then 258 ("AB") defines 259 as "BA"; 260 is being defined by that very sequence: "AB" and
+        // its own first byte, "ABA" — not its last.
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(NineBitCodes(256, 'A', 'B', 258, 260, 257), PdfName.LZWDecode, diagnostics);
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be("ABABABA");
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Reads_an_lzw_stream_whose_code_width_grows_on_time_when_it_says_so()
+    {
+        // /EarlyChange 0 grows the code width one code later than the default. Read with the default, the
+        // same data is read at the wrong width from the 511th code on.
+        var plain = ContentStream(40);
+        var encoded = LzwEncode(plain, earlyChange: 0);
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.EarlyChange, PdfInteger.Create(0));
+        var onTime = new PdfDiagnostics();
+
+        var decoded = Decode(encoded, PdfName.LZWDecode, onTime, parameters).ToArray();
+        var early = Decode(encoded, PdfName.LZWDecode, new PdfDiagnostics()).ToArray();
+
+        decoded.Should().Equal(plain);
+        onTime.Should().BeEmpty();
+        early.Should().NotEqual(plain);
+    }
+
     [Theory]
     [InlineData(258)]
     [InlineData(300)]
@@ -370,20 +481,32 @@ public class FilterDamageTests
         sound.Should().BeEmpty();
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Reports_a_document_s_flate_stream_that_lost_its_tail_where_its_data_starts(bool callerCollects)
+    /// <summary>Damaged data a producer wrote whole, with a /Length that matches it: each report, its severity and message.</summary>
+    public static TheoryData<string, bool> DocumentDamages => new()
     {
-        // A producer that wrote half its compressed data, with a /Length that matches what it wrote. The report
-        // goes where the caller asks, or to the document when the caller passes nowhere, and names where the
-        // data starts.
+        { "tail", false }, { "tail", true },
+        { "checksum", false }, { "checksum", true },
+        { "lzw", false }, { "lzw", true },
+    };
+
+    [Theory]
+    [MemberData(nameof(DocumentDamages))]
+    public void Reports_a_document_s_damaged_stream_where_its_data_starts(string damage, bool callerCollects)
+    {
+        // The report goes where the caller asks, or to the document when the caller passes nowhere, and names
+        // where the data starts. The data travels in hex, so that the file stays text.
         var compressed = Compress(ContentStream(100), CompressionLevel.Optimal);
-        var hex = Convert.ToHexString(compressed.AsSpan(0, compressed.Length / 2)) + ">";
+        var (filter, data, severity, message) = damage switch
+        {
+            "tail" => ("/FlateDecode", compressed.AsSpan(0, compressed.Length / 2).ToArray(), PdfDiagnosticSeverity.Warning, TailLost),
+            "checksum" => ("/FlateDecode", compressed.AsSpan(0, compressed.Length - ChecksumLength).ToArray(), PdfDiagnosticSeverity.Repair, ChecksumMissing),
+            _ => ("/LZWDecode", NineBitCodes(256, 'A', 'B', 300, 257), PdfDiagnosticSeverity.Warning, LzwUndefined(300)),
+        };
+        var hex = Convert.ToHexString(data) + ">";
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .Stream(3, "/Filter [/ASCIIHexDecode /FlateDecode]", hex)
+            .Stream(3, $"/Filter [/ASCIIHexDecode {filter}]", hex)
             .BuildClassic(rootNumber: 1);
         var dataStart = file.AsSpan().IndexOf(Encoding.ASCII.GetBytes(hex));
 
@@ -395,9 +518,33 @@ public class FilterDamageTests
         (callerCollects ? document.Diagnostics : collected).Should().BeEmpty();
         var report = (callerCollects ? collected : document.Diagnostics).Should().ContainSingle().Which;
         report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
-        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
-        report.Message.Should().Be(TailLost);
+        report.Severity.Should().Be(severity);
+        report.Message.Should().Be(message);
         report.Position.Should().Be(dataStart);
+    }
+
+    [Fact]
+    public void Says_nothing_of_the_tail_a_guard_of_the_reader_cut_off()
+    {
+        // A /Length far too short sends the reader looking for endstream, which lies past the largest window
+        // MaxObjectLength allows: the object is kept as far as the window went, and the guard is reported.
+        // That the Flate data then runs out is the reader's doing, not the file's.
+        var compressed = Compress(RandomBytes(100_000), CompressionLevel.Optimal);
+        var hex = Convert.ToHexString(compressed) + ">";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, $"<< /Filter [/ASCIIHexDecode /FlateDecode] /Length 10 >>\nstream\n{hex}\nendstream")
+            .BuildClassic(rootNumber: 1);
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = 64 * 1024 } };
+
+        using var cut = PdfDocument.Open(file, options);
+        using var whole = PdfDocument.Open(file);
+        cut.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(cut.Diagnostics);
+        whole.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(whole.Diagnostics).Length.Should().Be(100_000);
+
+        cut.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        whole.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.StreamLengthInvalid);
     }
 
     private static string LzwUndefined(int code) =>
@@ -423,10 +570,16 @@ public class FilterDamageTests
     private static string Describe(PdfDiagnostics diagnostics) =>
         string.Join("; ", diagnostics.Select(d => $"{d.Severity} {d.Code}: {d.Message}"));
 
-    private static ReadOnlyMemory<byte> Decode(byte[] data, PdfName filter, PdfDiagnostics diagnostics)
+    private static ReadOnlyMemory<byte> Decode(byte[] data, PdfName filter, PdfDiagnostics diagnostics, PdfDictionary? parameters = null)
     {
         var dictionary = new PdfDictionary();
         dictionary.Set(PdfName.Filter, filter);
+
+        if (parameters is not null)
+        {
+            dictionary.Set(PdfName.DecodeParms, parameters);
+        }
+
         return new PdfStream(dictionary, PdfStreamData.FromMemory(data)).Decode(diagnostics);
     }
 
@@ -480,8 +633,11 @@ public class FilterDamageTests
         return compressed.ToArray();
     }
 
-    /// <summary>Encodes as the PDF variant of LZW does, with early change: a clear first, the end-of-data code last.</summary>
-    private static byte[] LzwEncode(byte[] data)
+    /// <summary>
+    /// Encodes as the PDF variant of LZW does: a clear first, the end-of-data code last, and the code width
+    /// growing one code early when <paramref name="earlyChange"/> is 1.
+    /// </summary>
+    private static byte[] LzwEncode(byte[] data, int earlyChange = 1)
     {
         var table = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var i = 0; i < 256; i++)
@@ -507,7 +663,7 @@ public class FilterDamageTests
             codes.Add((table[current], bits));
             table[extended] = next++;
 
-            if (next + 1 > 1 << bits && bits < 12)
+            if (next + earlyChange > 1 << bits && bits < 12)
             {
                 bits++;
             }

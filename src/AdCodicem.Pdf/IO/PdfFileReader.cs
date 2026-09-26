@@ -800,6 +800,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     }
 
                     ReachLimit(limit, LimitSubject(number, maxWindow), offset);
+                    MarkCutByGuard(parsed, offset + window.Length);
                 }
 
                 _pending.MoveTo(_diagnostics, mark);
@@ -811,6 +812,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         {
             // Whatever an attempt that was not kept noticed is dropped with it, however it ended.
             _pending.RollBack(mark);
+        }
+    }
+
+    /// <summary>
+    /// Marks a stream whose data reaches the edge of the window a guard stopped at: the reader cut it there,
+    /// where its <c>endstream</c> was still to be found, and its lost tail is the guard's, not the file's.
+    /// </summary>
+    private static void MarkCutByGuard(PdfObject parsed, long windowEnd)
+    {
+        if (parsed is PdfStream { Data: FileStreamData data } && data.Position + data.Length >= windowEnd)
+        {
+            data.MarkCutByGuard();
         }
     }
 
@@ -1183,12 +1196,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private sealed class FileStreamData(PdfFileSource source, long offset, int length, PdfLimitGuard guard) : PdfStreamData
     {
         private byte[]? _bytes;
+        private bool _cutByGuard;
 
         public override int Length => length;
 
         public override long Position => offset;
 
         internal override PdfLimitGuard LimitGuard => guard;
+
+        internal override bool CutByGuard => _cutByGuard;
+
+        public void MarkCutByGuard() => _cutByGuard = true;
 
         public override ReadOnlyMemory<byte> GetBytes()
         {

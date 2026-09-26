@@ -68,12 +68,15 @@ the object holds, not where a window happened to end. A stream whose declared le
 is reported: as `stream.truncated` when the file ends inside its data, as `stream.length-invalid` when its
 `endstream` comes first.
 
-Damaged stream data decodes as far as it goes, and what decoded is kept — never in silence. A Flate stream
-whose tail was lost, as a file cut short or a producer that stopped writing leaves it, is a warning: what
-decoded before the end is all there is. A Flate stream that lost only the zlib checksum after its last block
-decoded whole, unchecked, and is a repair, as a stream with no zlib header at all is. An LZW stream that uses
-a code it has not defined is a warning naming the code: decoding stops there, since what follows cannot be
-read reliably. An LZW stream without its end-of-data code is taken as complete, as other readers take it.
+Damaged stream data decodes as far as it goes, and what decoded is kept, with a report. A Flate stream whose
+tail was lost, as a file cut short or a producer that stopped writing leaves it, is a warning: what decoded
+before the end is all there is. A Flate stream that lost only the zlib checksum after its last block decoded
+whole, unchecked, and is a repair, as a stream with no zlib header at all is. A Flate stream that turns
+corrupt is a warning too; decoding stops at the fault, and the last stretch decoded before it, up to 64 KB, is
+lost with it. An LZW stream that uses a code it has not defined is a warning naming the code: decoding stops
+there, since what follows cannot be read reliably. An LZW stream without its end-of-data code is taken as
+complete, as other readers take it. A stream the reader itself cut at one of its limits is reported as that
+limit, not as a lost tail.
 
 ```text
 Warning filter.failed at 59534: A Flate stream ends before its data does; what decoded before the end was kept.
@@ -81,7 +84,8 @@ Repair filter.failed at 63982: A Flate stream ends before its checksum does; its
 ```
 
 These reports go to the diagnostics you pass to `Decode`. A stream read from a document and decoded without
-any reports to the document's own `Diagnostics`, so decoding is never silent.
+any reports to the document's own `Diagnostics`, so that a document's stream never decodes in silence; a
+stream you built in memory and decode without any has nowhere to report, and reports nothing.
 
 Growing windows, and decoding, are bounded. The five `limit.*` codes report the reader's own limits, not
 faults of the file: a valid document can reach them — a large-format scan decodes past the 256 MB a stream

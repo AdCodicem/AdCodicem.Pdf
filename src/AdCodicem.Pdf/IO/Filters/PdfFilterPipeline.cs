@@ -42,11 +42,9 @@ internal static class PdfFilterPipeline
 
         var parameters = stream.Dictionary.GetRaw(PdfName.DecodeParms).Resolved();
 
-        var position = stream.Data.Position;
-
         if (filters is PdfName single)
         {
-            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics, position, guard);
+            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics, stream.Data, guard);
         }
 
         if (filters is not PdfArray chain)
@@ -73,7 +71,7 @@ internal static class PdfFilterPipeline
                 return data;
             }
 
-            data = ApplyOne(name, data, stepParameters, diagnostics, position, guard);
+            data = ApplyOne(name, data, stepParameters, diagnostics, stream.Data, guard);
         }
 
         return data;
@@ -91,9 +89,11 @@ internal static class PdfFilterPipeline
         ReadOnlyMemory<byte> data,
         PdfDictionary? parameters,
         PdfDiagnostics? diagnostics,
-        long position,
+        PdfStreamData source,
         PdfLimitGuard guard)
     {
+        var position = source.Position;
+
         if (IsImageFilter(name))
         {
             return data;
@@ -114,7 +114,12 @@ internal static class PdfFilterPipeline
                 diagnostics?.Repair(PdfDiagnosticCodes.FilterFailed, "A Flate stream was not valid zlib data.", position);
             }
 
-            ReportEnding(ending, diagnostics, position);
+            // Data a guard of the reader's cut ends early because the reader stopped reading it, which the guard
+            // reported: that it ran out says nothing of the file.
+            ReportEnding(
+                source.CutByGuard && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing ? FlateEnding.Whole : ending,
+                diagnostics,
+                position);
             ReportLimit(limited, name, diagnostics, position, guard);
             return ApplyPredictor(decoded, parameters, diagnostics, position);
         }
@@ -195,7 +200,7 @@ internal static class PdfFilterPipeline
             case FlateEnding.Corrupt:
                 diagnostics?.Warn(
                     PdfDiagnosticCodes.FilterFailed,
-                    "A Flate stream is corrupt; what decoded before the fault was found was kept.",
+                    "A Flate stream is corrupt; decoding stopped at the fault, losing up to the last 64 KB decoded before it.",
                     position);
                 break;
         }

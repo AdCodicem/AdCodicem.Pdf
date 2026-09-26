@@ -15,9 +15,15 @@ internal enum FlateEnding
     /// </summary>
     ChecksumMissing,
 
-    /// <summary>The data ended before its last block: its tail was lost, and what decoded before the end was kept.</summary>
+    /// <summary>
+    /// The data ended before the end of its last block: its tail was lost, and what decoded before the end was
+    /// kept.
+    /// </summary>
     TailLost,
 
-    /// <summary>The data turned corrupt, and what decoded before the fault was found was kept.</summary>
+    /// <summary>
+    /// The data turned corrupt. Decoding stopped at the fault, and what decoded before it was kept, less what the
+    /// read that met the fault had decoded — at most one read's worth (T40).
+    /// </summary>
     Corrupt,
 }
