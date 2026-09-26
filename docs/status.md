@@ -102,11 +102,20 @@ not a fault of the file: the rules on it report at most, as information, that it
 - **What it found at once.** A feature listed twice on one entry (removed), and three committed files taken
   out of the PDF/UA reference zip whose `source.url` names the member after the URL — allowed, in exactly
   that form, for committed files only: `fetch_remote.py` downloads a remote URL as it stands.
-- **Tests.** `CorpusManifestSchemaTests`: the manifest and any `private.json` follow the schema; nine sound
-  entries accepted and thirty-five refused, each one mistake away from a sound one; and the schema held to
-  what reads the manifest — the model's properties, `PdfDiagnosticCodes`, `PdfValidationRuleIds`,
-  `PdfReaderLimits.Default` —, so that neither can change without the other. Two mutations of the schema
-  (a property dropped, a limit's minimum changed) each fail a test. Validation is `JsonSchema.Net` 9.4.0, MIT,
+- **Tests.** `CorpusManifestSchemaTests`: the manifest and any `private.json` follow the schema; twelve sound
+  entries accepted; sixty refused, each one mistake away from a sound one and each required to fail on the
+  keyword that names its mistake, three whole manifests refused, and every required key left out once; and
+  the schema held to what reads the manifest — the model's properties, every `PdfReaderLimits` guard and its
+  default, `PdfDiagnosticCodes`, `PdfValidationRuleIds` —, so that neither can change without the other.
+  Eleven mutations of the schema, one per rule the review found unpinned, each fail a test.
+- **On review.** Two reviewers — the schema's correctness and portability, the tests' teeth — and two
+  skeptics on each of their eleven findings. Taken: a referee's verdict no script writes for a private entry
+  is no longer required of one; a remote path follows `fetch_remote.py`'s `remote/<source>/<name>.pdf`, and no
+  path may pass through `..`; the patterns end with `$(?!\n)` and use explicit ASCII classes, since .NET and
+  Python let `$` match before a final line feed and the three engines disagree on `\S`; a raised limit may not
+  sit beside a skip, nor a page count beside an unrecoverable catalogue; `docs/corpus.md`'s example gained
+  the verdict the schema asks for; and a refused case that failed for a reason other than its own —
+  renaming `features` also made a required key go missing — now adds its unknown key beside it. Validation is `JsonSchema.Net` 9.4.0, MIT,
   a dependency of the unit tests only; the framework exports schemas but does not validate against one.
   Python's reference validator agreed with it on the manifest.
 ### 2026-09-26 — CodeQL left to GitHub's default setup, and the merged branches
