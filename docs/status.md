@@ -8,12 +8,14 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 560 unit (4 skipped by design: two corpus
-  documents recorded as unsupported until M2) + 302 integration (skipped without Docker) + 23 for the
-  remote corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
-  documents from here on 2026-09-26, all 242 on the runner), 1,221 unit (63 skipped by design, on documents
-  recorded as unsupported until M2 or until T24, T25 or T28 is fixed) + 665 integration (measured on
-  2026-09-25: the session that fixed T21 and T23 had no Docker, and added no integration test) — **CI**:
+- **Builds**: yes, with no warnings — **Tests**: 603 unit (5 skipped by design: two corpus
+  documents recorded as unsupported until M2, and the negative control of `readerLimits`, which has no
+  document without the remote corpus) + 302 integration (skipped without Docker) + 23 for the remote
+  corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
+  documents from here on 2026-09-26, all 242 on the runner), 1,264 unit (61 skipped by design, on documents
+  recorded as unsupported until M2 or until T24 or T25 is fixed) + 665 integration (measured on
+  2026-09-25: the sessions that fixed T21, T23 and T31 and implemented ADR 34 had no Docker, and added no
+  integration test) — **CI**:
   green on `main`, `OpenSSF Scorecard` included
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licences (56 of them from the Open Preservation Foundation's
@@ -89,8 +91,9 @@ corpus document from any of the four producers earns an error-severity finding, 
 file earns no *structural* one. T21 and T23 are fixed, so an object's diagnostics no longer carry syntax
 errors its window invented (the rebuild's trailer scan still reads through a fixed window, T30). T25, which
 M2's exit criteria name, and T27, which its acceptance conditions name, remain, and belong with its
-cross-reference and object-graph slices. T31 is fixed: every filter keeps the 256 MB bound and reports
-reaching it as the reader's limit. **T32** belongs with M2's stream rules at the latest: a Flate stream
+cross-reference and object-graph slices. T31 is fixed, and ADR 34 made the reader's bounds options
+(`PdfReaderLimits`), each reported under its own `limit.*` code: M2's stream rules must read such a code as
+the reader's limit, not a fault of the file. **T32** belongs with M2's stream rules at the latest: a Flate stream
 whose tail was lost decodes to what is left, without a word.
 
 **The milestones were renumbered** when validation and repair were inserted: validation is now M2 (right
@@ -98,6 +101,66 @@ after reading) and repair M4 (right after writing). Numbers in commits older tha
 previous ordering, where M2 was writing and M3 assembly.
 
 ## Journal
+
+### 2026-09-26 — ADR 34: every valid PDF is readable, and the reader's guards are options
+- **The rule.** Asked whether the 256 MB decoding bound came from the specification — it does not —, the
+  maintainer set one: every PDF valid under the specification must be readable; guards may protect against
+  the exceptional cases it allows, and options must be able to lift them. ADR 34 records it, and makes it
+  invariant 12. ADR 35, accepted alongside, allows unsafe code where a measurement asks for it; no code uses
+  it yet, and `AllowUnsafeBlocks` stays off.
+- **What implements it.** `PdfReaderLimits`, an immutable record on `PdfReaderOptions.Limits`, holds the
+  five bounds a valid file can exceed: what a stream decodes to (256 MB), an object's length (16 MB), a
+  classic cross-reference section's length (64 MB), the number of sections (1,024), a trailer's length
+  (64 KB). `Default` keeps them, `Unbounded` takes them to `Array.MaxLength` and `int.MaxValue`; zero or
+  less is refused, more than an array holds is taken as that. Reaching one keeps what fits and warns under
+  its own code — `limit.decoded-stream`, `limit.object`, `limit.xref-section-length`,
+  `limit.xref-section-count`, `limit.trailer`, replacing T31's `filter.limit-exceeded` before any release —
+  whose message ends "Raise PdfReaderLimits.<property> to read past it." `PdfReaderOptions.ThrowOnLimit`
+  makes it a `PdfLimitExceededException` instead, carrying the code, the property, its value and the
+  offset. A stream read from a document carries that document's guard, so it decodes under its limits
+  however long after opening, and reports to the document's diagnostics when its caller passed none.
+- **Details that decide behaviour.** What the parser met where a guard cut an object is the reader's, not
+  the file's, and is dropped for the guard's own report. An object, a section or a trailer is reported once,
+  however often it is read again; with `ThrowOnLimit` it throws each time. A rebuild that reaches a guard
+  finishes its index before throwing, since a rebuild is never run twice. `PdfDocument.Open` releases a
+  source it was given to own when it throws — which it failed to do before on an empty input.
+- **Bounds that were not bounds.** A cross-reference stream was parsed through one 64 KB window that never
+  grew: a dictionary past it — a long `/Index` — sent the file to a rebuild without a word; it now grows up
+  to `MaxTrailerLength`, a cross-reference stream's dictionary being its trailer. The section count was
+  reported as `xref.chain-cycle`, a loop it is not. A classic table cut at its maximum was reported not at
+  all, and one whose `trailer` keyword the maximum cut was taken for a malformed table. A trailer cut by a
+  table at its maximum was kept cut, where a smaller window would have re-read it through its own.
+- **The corpus.** A manifest entry may give the limits it is opened with, in `readerLimits`, beside
+  `expect` — a setting, not an observation —, modelled with unknown keys refused. The USGS topographic map
+  is opened with `maxDecodedStreamLength` at 512 MB and reads whole and clean: object 155 decodes to
+  328,608,000 bytes. It loses its unsupported mark, and meets the laziness test for the first time: opening
+  reads 83 KB of its 63.1 MB. A negative control on the remote corpus opens every such entry
+  with the defaults — each limit reached must be one its entry raises — and with `ThrowOnLimit`, which must
+  throw from `Decode`, after `Open` succeeded. Fuzzing seeds leave such entries out, their budgets holding
+  under the defaults.
+- **Tests.** `ReaderLimitsTests`, 40 cases: each guard reached (what is kept, the code, the
+  message, the offset, and nothing else reported where the parser would have), raised (read whole, nothing
+  reported) and thrown (from `Open` or from the later operation, with the exception's four properties);
+  a stream decoded without diagnostics; an object read again after the cache let it go; a rebuild that
+  reaches a guard while expanding object streams, and while looking for the catalogue; an object read no
+  further than its bound; the table's keywords and its trailer at the bound; the presets, the refusals and
+  the clamp, and an FsCheck property over every `int`. Thirty-five mutations — each report, bound, preset,
+  refusal, deferral and fallback — each fail a test; two needed a test of their own (a bound that falls
+  where the parser would report a cut, a length stated in kilobytes), and five were rewritten to compile.
+  The catalogue search caught a defect
+  of its own before any commit: `reached ??= FindCatalog()` skipped the search whenever the expansion had
+  already reached a guard.
+- **Measured.** The USGS map under 512 MB: opening reads 83 KB of 63.1 MB; decoding every stream takes
+  1.8 s and allocates 1,785 MiB, its image's 328,608,000 bytes passing through an output that doubles to the
+  bound and is copied out — memory for M13's budgets (T28, T33). The reader's benchmarks allocate what they
+  did (392.86 KB to index 1,000 pages, 5,964.54 KB to read them); their times, on a short run, stay within
+  its spread.
+- **Documentation.** ADR 34 and 35, and the ADR index; `CLAUDE.md` (invariant 12, invariants 4 and 5
+  qualified, a convention on unsafe code); `ARCHITECTURE.md`, `docs/architecture.md`, `SECURITY.md` (what
+  "without bound" means once limits can be raised); the site's new *Reader limits* page, *Diagnostics*,
+  *Lazy reading* and the introduction; `docs/corpus.md` (whose example still showed fields the model never
+  had), `docs/corpus-contributions.md`, `docs/corpus-sources.md`, `tests/corpus/README.md`; the M2 stream
+  rule and M13's deliverables in `docs/roadmap.md`; T28, T30, T31 and T33 below.
 
 ### 2026-09-26 — T31: every filter keeps the bound, and says when it reached it
 - **The defect.** `PdfFilterLimits.MaxDecodedLength`, 256 MB, was kept by two filters of five. RunLength
@@ -939,12 +1002,12 @@ previous ordering, where M2 was writing and M3 assembly.
 | T25 | **A `/Prev` that misses its section drops it in silence.** `PdfFileReader.TryReadXRefChain` returns success as soon as one section was read, so when a later `/Prev` does not land on `xref` or on a cross-reference stream the older section is simply left out, with no rebuild — and with no diagnostic either when the offset falls inside the file; one past its end earns `xref.entry-out-of-range`. Found on IBM's QMF manual from GovDocs1 (remote): `/Prev 1569328` falls 12 bytes past the keyword, and the 4,106 entries of the main table are lost; qpdf reports `xref not found` and rebuilds. Recorded as unsupported with this reason | **Before M2 closes** — a validator cannot report what the reader hides: a synthetic regression test (a `/Prev` a few bytes off, and one pointing nowhere), then report the failed section and search near it or rebuild, as the reader already does for an object a few bytes off |
 | ~~T26~~ | ~~The remote corpus cannot take a file out of an archive, so the one external test suite for M2's structural profile stays out of reach~~ | Done on 2026-09-25: [ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md) accepted and implemented; the 88 files are in the remote corpus, 19 of them recorded as unsupported until M2 and named in its acceptance conditions |
 | T27 | **A reference to an object the file lacks makes the reader rebuild its whole index.** The specification says such a reference is null, and qpdf takes it so; the reader instead scans the file for the missing object — the lazy rebuild meant for an index that lost entries — and reports a repair on a file qpdf calls clean. Found on two iPRES 2017 files (remote): a catalogue whose `/Pages` and a page whose `/Contents` point at object 9, which does not exist. Both are recorded as unsupported with this reason. The acceptance test saw it only once it walked each page's contents and resources before judging a clean file's diagnostics; across the whole corpus, no other document was affected | Before M2 closes, since its acceptance conditions name both files: a synthetic regression test (a sound file with a reference past /Size, and one to a free entry), then rebuild only when the index gives reason to doubt it, and otherwise take the reference as null — a finding for M2, not a repair |
-| T28 | **A stream that decodes past 256 MB is cut at 256 MB.** `PdfFilterLimits.MaxDecodedLength` bounds every filter against decompression bombs, and a sound file can exceed it: the USGS topographic map (remote), whose 9,600 × 11,410 RGB image, object 155, decodes to 313 MB (measured with zlib). Until T31 the bound was reported as a truncated Flate stream; it is now reported as the reader's limit, `filter.limit-exceeded`, and the first 256 MB are kept. Recorded as unsupported with this reason | M13, with the memory budgets: decode such a stream a piece at a time rather than into one array |
+| T28 | **A stream that decodes past about 2 GB cannot be read whole, whatever the options.** A decoded stream is returned as `ReadOnlyMemory<byte>`, which holds at most `Array.MaxLength` bytes. Below that the bound is an option since ADR 34, `PdfReaderLimits.MaxDecodedStreamLength`, 256 MB by default: the USGS topographic map (remote), whose 9,600 × 11,410 RGB image decodes to 328,608,000 bytes, reads whole with `readerLimits` at 512 MB, and the defaults keep its first 256 MB and report `limit.decoded-stream`. Past the ceiling, even `PdfReaderLimits.Unbounded` keeps the first 2 GB and reports the same code. No corpus document reaches it | M13, with the memory budgets: decode such a stream a piece at a time rather than into one array, in native memory if a measurement asks for it (ADR 35) |
 | ~~T29~~ | ~~**A chain of `/Length` references nests object loads as deep as the chain.** Resolving an indirect `/Length` loads that object while the first is being parsed, and a stream whose `/Length` points at a stream whose `/Length` points at another goes one level deeper each time. The cycle guard stops a loop, not a chain: 20,000 such objects overflow the stack and kill the process, which invariant 4 forbids. Older than T23's fix, reproduced on it~~ | Done on 2026-09-26: object loads nest at most 64 deep; the next one reads as null, is not cached, and is reported once as `syntax.depth-exceeded` with its offset. `HostileInputTests` reads a 50,000-level chain |
-| T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls It also parses each through that fixed window straight into the document's diagnostics, so a sound trailer longer than 64 KB earns a syntax error the file does not have. On opening, too, a classic trailer longer than 64 KB is read through its first 64 KB since T23's review bounded its window: a syntax error or keys dropped, depending on where the edge falls | M13, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |
-| ~~T31~~ | ~~**Two filters keep their bound badly.** `RunLengthDecode` has none: every two bytes in can decode to 128 out, so a 4.6 MB stream decodes to 294 MB, past the 256 MB `PdfFilterLimits.MaxDecodedLength`, with no diagnostic, and a Flate stream feeding it multiplies that by 64 — memory a hostile file chooses. `LZWDecode` stops at the bound in silence. Found by the review of T23's fix (a claim that every filter keeps the bound); older than it~~ | Done on 2026-09-26: every filter keeps exactly the first 256 MB and says whether it had more; the pipeline reports it as `filter.limit-exceeded`, the reader's limit; first buffers are capped by the bound |
+| T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls It also parses each through that fixed window straight into the document's diagnostics, so a sound trailer longer than 64 KB earns a syntax error the file does not have when a rebuild scans for it. The scan keeps its fixed window whatever `PdfReaderLimits.MaxTrailerLength` says, so raising the option adds no amplification; on opening, a trailer past 64 KB is now reported as `limit.trailer` and read whole under a raised `MaxTrailerLength` (ADR 34) | M13, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |
+| ~~T31~~ | ~~**Two filters keep their bound badly.** `RunLengthDecode` has none: every two bytes in can decode to 128 out, so a 4.6 MB stream decodes to 294 MB, past the 256 MB `PdfFilterLimits.MaxDecodedLength`, with no diagnostic, and a Flate stream feeding it multiplies that by 64 — memory a hostile file chooses. `LZWDecode` stops at the bound in silence. Found by the review of T23's fix (a claim that every filter keeps the bound); older than it~~ | Done on 2026-09-26: every filter keeps exactly the first 256 MB and says whether it had more; the pipeline reports it as `filter.limit-exceeded`, the reader's limit (renamed `limit.decoded-stream` by ADR 34, before any release); first buffers are capped by the bound |
 | T32 | **A Flate stream whose tail was lost decodes to what is left, in silence.** .NET's `ZLibStream` treats the end of its input as the end of the data, so no exception reaches `FlateFilter`, whose handling of a lost tail was written for one: a zlib stream cut in half decodes 27,939 of its 58,890 bytes with no diagnostic (measured). zlib does check a complete Adler-32 trailer — a wrong one throws, and is reported — but not a missing one, and the trailer cannot be found by position, since a stream's `/Length` often takes in the end-of-line after it. .NET 10 exposes no inflater that says whether it reached the final block | Before M2's stream rules ("filters decodable"): read the input through a stream that notices the inflater asking for bytes past the end of the data, which a complete stream never does, and report that as a truncated stream |
-| T33 | **Every decoded object stream stays cached for the life of the document.** `_objectStreams` in `PdfFileReader` has no bound and no eviction, and a rebuild decodes every object stream up front to index its objects. A damaged file of four object streams that each decode to the 256 MB bound (1.2 MB) holds 1 GB once `Open` returns (measured by the review of T31); a large sound document holds its object streams' decoded bytes however few objects are read, against invariant 2 | M13, with the memory budgets, and sooner for the hostile case if a file of the kind turns up: a budget on the decoded bytes the cache holds, evicting the oldest — an evicted stream is decoded again when one of its objects is asked for |
+| T33 | **Every decoded object stream stays cached for the life of the document.** `_objectStreams` in `PdfFileReader` has no bound and no eviction, and a rebuild decodes every object stream up front to index its objects. A damaged file of four object streams that each decode to the 256 MB bound (1.2 MB) holds 1 GB once `Open` returns (measured by the review of T31), and raising `PdfReaderLimits.MaxDecodedStreamLength` (ADR 34) multiplies that; a large sound document holds its object streams' decoded bytes however few objects are read, against invariant 2 | M13, with the memory budgets, and sooner for the hostile case if a file of the kind turns up: a budget on the decoded bytes the cache holds, evicting the oldest — an evicted stream is decoded again when one of its objects is asked for |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
