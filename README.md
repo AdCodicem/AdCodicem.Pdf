@@ -33,6 +33,26 @@ need: a fully managed engine whose memory use follows the complexity of a page, 
 - **Honest about damaged input.** Real-world PDFs are frequently malformed; the reader repairs what it can
   and reports precisely what it did.
 
+## Features
+
+<!-- features:start -->
+| What it does | State |
+|---|---|
+| Opens any PDF without loading it: memory follows what is read, not the size of the file | ✅ Available |
+| Opens damaged files — rebuilds a broken index, relocates misplaced objects — and reports every repair as a structured diagnostic | ✅ Available |
+| Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding | 🚧 In progress — M2 |
+| Merge that keeps bookmarks, links, forms, layers, named destinations, attachments and page labels | 📅 Planned — M6 |
+| Exhibit stamps ("Pièce n° 12") and Bates numbering, tagged as artifacts so accessible files stay so | 📅 Planned — M9 |
+| HTML and CSS to PDF with a fully managed engine: no browser, no native PDF engine, no external process | 📅 Planned — M12 |
+| Tagged, accessible PDF: PDF/UA-1 | 📅 Planned — M13 |
+| PDF/A-3 and Factur-X / ZUGFeRD: profile-aware embedding, EN 16931 and French rules, a typed invoice model | 📅 Planned — M14 |
+| True redaction, search-and-redact for personal data, and sanitisation of hidden content | 📅 Planned — M19 |
+| A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one | ✅ Available |
+| MIT licence, no revenue threshold, no per-developer fee | ✅ Available |
+
+Every feature, planned ones included, and how the library compares with other PDF libraries: [Features and comparison](https://adcodicem.github.io/AdCodicem.Pdf/features), as of 2026-09-26.
+<!-- features:end -->
+
 ## Packages
 
 One package exists today, and it holds the object model, the tolerant lazy reader and the document

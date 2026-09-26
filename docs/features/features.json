@@ -1,0 +1,102 @@
+{
+  "$comment": "What the library does and will do, each feature tied to the roadmap milestones that deliver it. The feature tables in README.md and docs/website/docs/features.md are generated from this file and docs/features/comparison.json; FeatureTablesTests holds them to it, and holds each status to its milestones' state in docs/roadmap.md. Regenerate with: ADCODICEM_UPDATE_FEATURE_TABLES=1 dotnet test --project tests/AdCodicem.Pdf.Tests -c Release --filter-class '*FeatureTablesTests'",
+  "asOf": "2026-09-26",
+  "groups": [
+    {
+      "title": "Reading and validation",
+      "features": [
+        { "id": "lazy-reading", "name": "Opens any PDF without loading it: memory follows what is read, not the size of the file", "milestones": ["M1"], "status": "available", "headline": true },
+        { "id": "tolerant-reading", "name": "Opens damaged files — rebuilds a broken index, relocates misplaced objects — and reports every repair as a structured diagnostic", "milestones": ["M1"], "status": "available", "headline": true },
+        { "id": "hostile-input", "name": "Guards against hostile files, on by default, each lifted by an option so that every valid PDF stays readable", "milestones": ["M1"], "status": "available" },
+        { "id": "filters", "name": "Every standard filter and index form: Flate with predictors, LZW, ASCII85, ASCIIHex, RunLength, cross-reference and object streams, hybrid files", "milestones": ["M1"], "status": "available" },
+        { "id": "structural-validation", "name": "Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding", "milestones": ["M2"], "status": "in-progress", "headline": true },
+        { "id": "arlington-rules", "name": "Object-shape rules generated from the PDF Association's Arlington model, version-aware", "milestones": ["M2"], "status": "planned" },
+        { "id": "revisions", "name": "Revision history, what each signature covers, and changes made after signing, without cryptography", "milestones": ["M4"], "status": "planned" },
+        { "id": "repair", "name": "Repair, conservative (incremental) or full rebuild, with a report of what was changed and what was lost", "milestones": ["M5"], "status": "planned" }
+      ]
+    },
+    {
+      "title": "Writing",
+      "features": [
+        { "id": "streaming-writer", "name": "Forward-only streaming writer: full rewrite or incremental update, object and cross-reference streams", "milestones": ["M3"], "status": "planned" },
+        { "id": "output-version", "name": "PDF 1.7 or PDF 2.0 output, the caller's choice, the version raised and reported when a merge needs it", "milestones": ["M3"], "status": "planned" },
+        { "id": "determinism", "name": "Deterministic output: the same inputs give the same bytes", "milestones": ["M3"], "status": "planned" },
+        { "id": "cancellation", "name": "Cancellation and progress for every long operation", "milestones": ["M3"], "status": "planned" }
+      ]
+    },
+    {
+      "title": "Assembly and case files",
+      "features": [
+        { "id": "pages", "name": "Insert, remove, reorder, rotate and extract pages, inherited attributes kept", "milestones": ["M6"], "status": "planned" },
+        { "id": "merge-fidelity", "name": "Merge that keeps bookmarks, links, forms, layers, named destinations, attachments and page labels", "milestones": ["M6"], "status": "planned", "headline": true },
+        { "id": "attachments", "name": "Attachments and associated files, at document, page and annotation level", "milestones": ["M6"], "status": "planned" },
+        { "id": "split", "name": "Split by bookmark, size, page count or separator page; images to pages without re-encoding", "milestones": ["M7"], "status": "planned" },
+        { "id": "stamps", "name": "Watermarks, stamps, headers, footers, overlay, N-up and imposition on existing documents", "milestones": ["M9"], "status": "planned" },
+        { "id": "exhibits", "name": "Exhibit stamps (\"Pièce n° 12\") and Bates numbering, tagged as artifacts so accessible files stay so", "milestones": ["M9"], "status": "planned", "headline": true },
+        { "id": "annotations", "name": "Annotations with generated appearances, selective flattening, and optional content (layers)", "milestones": ["M11"], "status": "planned" },
+        { "id": "case-files", "name": "Legal case files: a piece model, the inventory of exhibits, court-portal presets, e-mail to PDF", "milestones": ["M18"], "status": "planned" }
+      ]
+    },
+    {
+      "title": "HTML to PDF",
+      "features": [
+        { "id": "html-engine", "name": "HTML and CSS to PDF with a fully managed engine: no browser, no native PDF engine, no external process", "milestones": ["M12"], "status": "planned", "headline": true },
+        { "id": "paged-media", "name": "Paged media: margin boxes, running headers, page groups, cross-references, tables of contents, footnotes, columns", "milestones": ["M12"], "status": "planned" },
+        { "id": "typography", "name": "Contract-grade typography: Unicode line breaking, bidirectional text, hyphenation, OpenType features, per-character font fallback", "milestones": ["M8", "M12"], "status": "planned" },
+        { "id": "batch", "name": "Batch generation of thousands of documents with compiled templates and shared caches", "milestones": ["M12"], "status": "planned" },
+        { "id": "safe-resources", "name": "Resources loaded deny-by-default: no request a template did not earn, no file outside its root", "milestones": ["M12"], "status": "planned" },
+        { "id": "fonts", "name": "Font subsetting and embedding, WOFF2, an embedded OFL font set", "milestones": ["M8"], "status": "planned" },
+        { "id": "barcodes", "name": "Vector barcodes and payment codes: QR, Data Matrix, GS1-128, PDF417, EAN, SEPA QR, Swiss QR-bill", "milestones": ["M10"], "status": "planned" },
+        { "id": "html-forms", "name": "Fillable forms generated from HTML inputs", "milestones": ["M17"], "status": "planned" },
+        { "id": "docx", "name": "Word documents (DOCX) to PDF through the HTML engine", "milestones": ["M31"], "status": "planned" }
+      ]
+    },
+    {
+      "title": "Accessibility, archiving and e-invoicing",
+      "features": [
+        { "id": "tagged-pdf", "name": "Tagged, accessible PDF: PDF/UA-1", "milestones": ["M13"], "status": "planned", "headline": true },
+        { "id": "facturx", "name": "PDF/A-3 and Factur-X / ZUGFeRD: profile-aware embedding, EN 16931 and French rules, a typed invoice model", "milestones": ["M14"], "status": "planned", "headline": true },
+        { "id": "pdfa-profiles", "name": "PDF/A-2 generation; PDF/A-1 to 4 and PDF/UA-1 validation profiles", "milestones": ["M20"], "status": "planned" },
+        { "id": "pdfa-conversion", "name": "Conversion of received documents to PDF/A, with a report of what could not be converted", "milestones": ["M21"], "status": "planned" },
+        { "id": "pdf2-conformance", "name": "PDF/UA-2, Well-Tagged PDF and PDF/A-4", "milestones": ["M28"], "status": "planned" }
+      ]
+    },
+    {
+      "title": "Extraction and analysis",
+      "features": [
+        { "id": "extraction", "name": "Text with positions and reading order, tables with a confidence score, images, metadata, attachments", "milestones": ["M15"], "status": "planned" },
+        { "id": "search-export", "name": "Search with positions; Markdown, JSON, ALTO and hOCR export anchored to pages, for AI pipelines", "milestones": ["M15"], "status": "planned" },
+        { "id": "comparison", "name": "Comparison of two versions of a document, and field extraction by template", "milestones": ["M24"], "status": "planned" }
+      ]
+    },
+    {
+      "title": "Security and signatures",
+      "features": [
+        { "id": "encryption", "name": "Password encryption and decryption, RC4 to AES-256, permissions; AES-GCM read", "milestones": ["M16"], "status": "planned" },
+        { "id": "forms", "name": "AcroForms: fill, flatten, create fields; FDF, XFDF and JSON exchange; batch filling", "milestones": ["M16"], "status": "planned" },
+        { "id": "redaction", "name": "True redaction, search-and-redact for personal data, and sanitisation of hidden content", "milestones": ["M19"], "status": "planned", "headline": true },
+        { "id": "signing", "name": "PAdES signing (B-B, B-T), time stamps, certification, remote signing through the CSC API", "milestones": ["M26"], "status": "planned" },
+        { "id": "ltv-validation", "name": "Long-term signatures (B-LT, B-LTA) and validation of received signatures against the EU trusted lists", "milestones": ["M27"], "status": "planned" }
+      ]
+    },
+    {
+      "title": "Scans, images and output",
+      "features": [
+        { "id": "imaging", "name": "Managed JBIG2, JPEG 2000 and CCITT decoding; an OCR text layer from any engine", "milestones": ["M22"], "status": "planned" },
+        { "id": "optimisation", "name": "Deduplication, recompression, downsampling to a target size, linearisation", "milestones": ["M23"], "status": "planned" },
+        { "id": "rasterisation", "name": "Pages rendered to images", "milestones": ["M25"], "status": "planned" },
+        { "id": "print", "name": "Print production: PDF/X-4, PDF/VT, CMYK and spot colours", "milestones": ["M29"], "status": "planned" },
+        { "id": "typesetting", "name": "Vertical writing, ruby and MathML", "milestones": ["M30"], "status": "planned" }
+      ]
+    },
+    {
+      "title": "Platform",
+      "features": [
+        { "id": "no-dependency", "name": "A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one", "milestones": ["M1"], "status": "available", "headline": true },
+        { "id": "aot", "name": "Native AOT, trimming and browser WebAssembly, verified on every corpus document", "milestones": ["M23"], "status": "planned" },
+        { "id": "cli", "name": "A command-line tool, as a dotnet tool and a Native AOT binary", "milestones": ["M6"], "status": "planned" },
+        { "id": "mit", "name": "MIT licence, no revenue threshold, no per-developer fee", "milestones": ["M0"], "status": "available", "headline": true }
+      ]
+    }
+  ]
+}
