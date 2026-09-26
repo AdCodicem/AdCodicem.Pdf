@@ -71,6 +71,33 @@ public sealed record CorpusExpectation
     public string? Unsupported { get; init; }
 }
 
+/// <summary>
+/// The reader's guards a corpus document is opened with, where it is valid and exceeds a default (ADR 34):
+/// each property left out keeps the default of the property of <c>PdfReaderLimits</c> it is named after.
+/// </summary>
+/// <remarks>
+/// Not an expectation: <see cref="CorpusDocument.Expect"/> holds what an independent tool established, and a
+/// raised limit is a setting chosen for the document. A misspelt limit fails loading rather than being ignored.
+/// </remarks>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record CorpusReaderLimits
+{
+    /// <summary>What one stream may decode to, in bytes.</summary>
+    public int? MaxDecodedStreamLength { get; init; }
+
+    /// <summary>The longest object, the data of a stream aside, in bytes.</summary>
+    public int? MaxObjectLength { get; init; }
+
+    /// <summary>The longest classic cross-reference section, in bytes.</summary>
+    public int? MaxXRefSectionLength { get; init; }
+
+    /// <summary>The most cross-reference sections in a chain.</summary>
+    public int? MaxXRefSectionCount { get; init; }
+
+    /// <summary>The longest trailer, in bytes.</summary>
+    public int? MaxTrailerLength { get; init; }
+}
+
 /// <summary>One entry of the corpus manifest.</summary>
 public sealed record CorpusDocument
 {
@@ -87,6 +114,12 @@ public sealed record CorpusDocument
     public string Licence { get; init; } = "unknown";
 
     public string[] Features { get; init; } = [];
+
+    /// <summary>
+    /// The limits the document is opened with, or null for the defaults: a valid document that exceeds a
+    /// default is read under a raised one, rather than skipped (ADR 34).
+    /// </summary>
+    public CorpusReaderLimits? ReaderLimits { get; init; }
 
     public CorpusExpectation Expect { get; init; } = new();
 

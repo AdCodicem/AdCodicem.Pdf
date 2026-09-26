@@ -21,6 +21,9 @@ public class CorpusReadingTests
 
     private static readonly string[] CorpusFolders = ["documents", "vendor", "private", "remote"];
 
+    /// <summary>How the corpus model reads the manifest: the key <c>readerLimits</c> is its <c>ReaderLimits</c>.</summary>
+    private static readonly JsonSerializerOptions ManifestOptions = new() { PropertyNameCaseInsensitive = true };
+
     [Fact]
     public void The_corpus_manifest_describes_every_document_present()
     {
@@ -164,12 +167,12 @@ public class CorpusReadingTests
         if (entry.Expect.Encrypted)
         {
             // Decryption arrives in M11; until then the refusal must be typed and immediate.
-            FluentThrow<PdfEncryptedException>(() => PdfDocument.Open(Corpus.Read(file)));
+            FluentThrow<PdfEncryptedException>(() => PdfDocument.Open(Corpus.Read(file), OptionsFor(entry)));
             return;
         }
 
         var stopwatch = Stopwatch.StartNew();
-        using var document = PdfDocument.Open(Corpus.Read(file));
+        using var document = PdfDocument.Open(Corpus.Read(file), OptionsFor(entry));
         stopwatch.Stop();
 
         stopwatch.Elapsed.Should().BeLessThan(OpenBudget, $"opening {entry.Name} must not take unbounded time");
@@ -217,7 +220,7 @@ public class CorpusReadingTests
         var source = new CountingSource(Corpus.Read(file));
         var size = source.Length;
 
-        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        using var document = PdfDocument.Open(source, OptionsFor(entry), ownsSource: false);
         document.Catalog.Required();
 
         var readAtOpen = source.BytesRead;
@@ -237,7 +240,7 @@ public class CorpusReadingTests
         // Per-thread, not process-wide: the suite runs in parallel and a process-wide counter would
         // measure whatever else happens to be running.
         var before = GC.GetAllocatedBytesForCurrentThread();
-        using (var document = PdfDocument.Open(bytes))
+        using (var document = PdfDocument.Open(bytes, OptionsFor(entry)))
         {
             CountPages(document).Should().Be(entry.Expect.Pages!.Value);
         }
@@ -259,7 +262,7 @@ public class CorpusReadingTests
         var entry = Corpus.Get(file);
         Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
 
-        using var document = PdfDocument.Open(Corpus.Read(file));
+        using var document = PdfDocument.Open(Corpus.Read(file), OptionsFor(entry));
 
         ExpectCatalog(document, entry, $"{entry.Name}: qpdf recovers a catalogue here, so must we");
         ReadEverything(document);
@@ -271,7 +274,111 @@ public class CorpusReadingTests
         }
     }
 
+    [Fact]
+    public void A_raised_reader_limit_raises_a_default_and_replaces_a_skip()
+    {
+        // Read raw, as the pins are: the only document with raised limits so far is remote, and the main job
+        // never sees it otherwise.
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Corpus.Root, "manifest.json")));
+
+        foreach (var entry in manifest.RootElement.GetProperty("documents").EnumerateArray())
+        {
+            if (!entry.TryGetProperty("readerLimits", out var value))
+            {
+                continue;
+            }
+
+            var file = entry.GetProperty("file").GetString();
+            var raised = value.Deserialize<CorpusReaderLimits>(ManifestOptions)!;
+            var limits = LimitsFor(raised);
+
+            // ADR 34: a valid document the defaults cannot read whole is read under a raised limit, not
+            // skipped, and a limit set to its default, or below, raises nothing.
+            entry.GetProperty("expect").TryGetProperty("unsupported", out _).Should().BeFalse(
+                $"{file}: a document read under raised limits is read, not skipped");
+            Raises(raised.MaxDecodedStreamLength, limits.MaxDecodedStreamLength, PdfReaderLimits.Default.MaxDecodedStreamLength, file);
+            Raises(raised.MaxObjectLength, limits.MaxObjectLength, PdfReaderLimits.Default.MaxObjectLength, file);
+            Raises(raised.MaxXRefSectionLength, limits.MaxXRefSectionLength, PdfReaderLimits.Default.MaxXRefSectionLength, file);
+            Raises(raised.MaxXRefSectionCount, limits.MaxXRefSectionCount, PdfReaderLimits.Default.MaxXRefSectionCount, file);
+            Raises(raised.MaxTrailerLength, limits.MaxTrailerLength, PdfReaderLimits.Default.MaxTrailerLength, file);
+            limits.Should().NotBe(PdfReaderLimits.Default, $"{file}: readerLimits raises at least one limit");
+        }
+
+        static void Raises(int? raised, int applied, int byDefault, string? file)
+        {
+            if (raised is not null)
+            {
+                applied.Should().BeGreaterThan(byDefault, $"{file}: a limit in readerLimits raises its default");
+            }
+        }
+    }
+
+    [Theory(SkipTestWithoutData = true)]
+    [MemberData(nameof(DocumentsReadUnderRaisedLimits))]
+    public void A_document_read_under_raised_limits_reaches_a_default_one(string file)
+    {
+        // The negative control of readerLimits: under the defaults the document is cut, and says which
+        // property to raise, so an override that is no longer needed does not outlive its reason.
+        var entry = Corpus.Get(file);
+        var raised = LimitsFor(entry.ReaderLimits!);
+
+        using (var document = PdfDocument.Open(Corpus.Read(file)))
+        {
+            ReadEverything(document);
+            var reached = document.Diagnostics.Where(diagnostic => diagnostic.Code.StartsWith("limit.", StringComparison.Ordinal)).ToList();
+
+            reached.Should().NotBeEmpty($"{entry.Name} is read under raised limits, so the defaults must cut it");
+            reached.Should().OnlyContain(
+                diagnostic => NamesARaisedLimit(diagnostic.Message, raised),
+                $"{entry.Name}: each limit reached is one its entry raises");
+        }
+
+        // Opened to throw, the same document throws from whichever operation reaches the guard — here the
+        // decoding, long after opening succeeded.
+        using var strict = PdfDocument.Open(Corpus.Read(file), PdfReaderOptions.Default with { ThrowOnLimit = true });
+        var thrown = FluentActions.Invoking(() => ReadEverything(strict)).Should().Throw<PdfLimitExceededException>().Which;
+        NamesARaisedLimit($"PdfReaderLimits.{thrown.LimitName}", raised).Should().BeTrue(
+            $"{entry.Name}: {thrown.LimitName} is not among the limits its entry raises");
+    }
+
     public static TheoryData<string> AllDocuments => Theory(Corpus.Paths);
+
+    public static TheoryData<string> DocumentsReadUnderRaisedLimits =>
+        Theory(Corpus.PathsWhere(document => document.ReaderLimits is not null));
+
+    /// <summary>
+    /// The options a corpus document is opened with: the defaults, with the limits its entry raises.
+    /// Encrypted documents still throw, as <see cref="PdfReaderOptions.Default"/> has them.
+    /// </summary>
+    private static PdfReaderOptions OptionsFor(CorpusDocument entry) =>
+        entry.ReaderLimits is { } raised
+            ? PdfReaderOptions.Default with { Limits = LimitsFor(raised) }
+            : PdfReaderOptions.Default;
+
+    private static PdfReaderLimits LimitsFor(CorpusReaderLimits raised)
+    {
+        var limits = PdfReaderLimits.Default;
+
+        return limits with
+        {
+            MaxDecodedStreamLength = raised.MaxDecodedStreamLength ?? limits.MaxDecodedStreamLength,
+            MaxObjectLength = raised.MaxObjectLength ?? limits.MaxObjectLength,
+            MaxXRefSectionLength = raised.MaxXRefSectionLength ?? limits.MaxXRefSectionLength,
+            MaxXRefSectionCount = raised.MaxXRefSectionCount ?? limits.MaxXRefSectionCount,
+            MaxTrailerLength = raised.MaxTrailerLength ?? limits.MaxTrailerLength,
+        };
+    }
+
+    private static bool NamesARaisedLimit(string message, PdfReaderLimits raised)
+    {
+        var defaults = PdfReaderLimits.Default;
+
+        return (raised.MaxDecodedStreamLength != defaults.MaxDecodedStreamLength && message.Contains("PdfReaderLimits.MaxDecodedStreamLength", StringComparison.Ordinal))
+            || (raised.MaxObjectLength != defaults.MaxObjectLength && message.Contains("PdfReaderLimits.MaxObjectLength", StringComparison.Ordinal))
+            || (raised.MaxXRefSectionLength != defaults.MaxXRefSectionLength && message.Contains("PdfReaderLimits.MaxXRefSectionLength", StringComparison.Ordinal))
+            || (raised.MaxXRefSectionCount != defaults.MaxXRefSectionCount && message.Contains("PdfReaderLimits.MaxXRefSectionCount", StringComparison.Ordinal))
+            || (raised.MaxTrailerLength != defaults.MaxTrailerLength && message.Contains("PdfReaderLimits.MaxTrailerLength", StringComparison.Ordinal));
+    }
 
     /// <summary>
     /// A catalogue where one can be recovered, and none where the file holds none: the reader recovers what

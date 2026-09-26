@@ -18,7 +18,7 @@ internal static class LzwFilter
     /// <paramref name="limited"/> says whether it decodes to more.
     /// </summary>
     public static byte[] Decode(
-        ReadOnlySpan<byte> data, int earlyChange, out bool limited, int maxLength = PdfFilterLimits.MaxDecodedLength)
+        ReadOnlySpan<byte> data, int earlyChange, out bool limited, int maxLength)
     {
         limited = false;
 

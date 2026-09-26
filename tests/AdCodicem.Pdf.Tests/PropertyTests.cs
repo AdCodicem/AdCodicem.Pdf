@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
+using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using FsCheck;
@@ -187,6 +188,51 @@ public class PropertyTests
 
         Draw(DefaultSeed).Should().Equal(Draw(DefaultSeed));
         Draw(DefaultSeed).Should().NotEqual(Draw(DefaultSeed + 1));
+    }
+
+    [Fact]
+    public void A_reader_limit_is_refused_at_zero_or_less_and_otherwise_held_within_what_the_reader_can_hold()
+    {
+        // ADR 34: a guard below one lets nothing be read, and one past Array.MaxLength asks for an array no
+        // runtime allocates. The count has no such ceiling. Every int, the edges FsCheck favours included.
+        Check.One(Settings, Prop.ForAll(ArbMap.Default.ArbFor<int>(), value =>
+        {
+            if (value <= 0)
+            {
+                return Refused(() => PdfReaderLimits.Default with { MaxDecodedStreamLength = value })
+                    && Refused(() => PdfReaderLimits.Default with { MaxObjectLength = value })
+                    && Refused(() => PdfReaderLimits.Default with { MaxXRefSectionLength = value })
+                    && Refused(() => PdfReaderLimits.Default with { MaxXRefSectionCount = value })
+                    && Refused(() => PdfReaderLimits.Default with { MaxTrailerLength = value });
+            }
+
+            var length = Math.Min(value, Array.MaxLength);
+            var limits = PdfReaderLimits.Default with
+            {
+                MaxDecodedStreamLength = value,
+                MaxObjectLength = value,
+                MaxXRefSectionLength = value,
+                MaxXRefSectionCount = value,
+                MaxTrailerLength = value,
+            };
+
+            return limits.MaxDecodedStreamLength == length && limits.MaxObjectLength == length
+                && limits.MaxXRefSectionLength == length && limits.MaxXRefSectionCount == value
+                && limits.MaxTrailerLength == length;
+        }));
+
+        static bool Refused(Func<PdfReaderLimits> setting)
+        {
+            try
+            {
+                setting();
+                return false;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return true;
+            }
+        }
     }
 
     /// <summary>

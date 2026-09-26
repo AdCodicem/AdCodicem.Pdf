@@ -1,5 +1,7 @@
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.Objects;
 
@@ -161,7 +163,7 @@ public class FilterTests
             var output = DecodeWithin(encoded, PdfName.Get(filter), bound, diagnostics).ToArray();
             var kept = decoded.AsSpan(0, Math.Min(bound, decoded.Length)).ToArray();
             var expected = bound < decoded.Length
-                ? string.Join(";", unbounded.Select(d => d.Code).Append(PdfDiagnosticCodes.FilterLimitExceeded))
+                ? string.Join(";", unbounded.Select(d => d.Code).Append(PdfDiagnosticCodes.LimitDecodedStream))
                 : baseline;
             var codes = string.Join(";", diagnostics.Select(d => d.Code));
 
@@ -238,7 +240,7 @@ public class FilterTests
 
         (GC.GetAllocatedBytesForCurrentThread() - before).Should().BeLessThan(Bound + (Bound / 2));
         output.Length.Should().Be(Bound);
-        diagnostics.Contains(PdfDiagnosticCodes.FilterLimitExceeded).Should().BeTrue();
+        diagnostics.Contains(PdfDiagnosticCodes.LimitDecodedStream).Should().BeTrue();
     }
 
     [Fact]
@@ -268,13 +270,13 @@ public class FilterTests
         for (var bound = 5; bound <= 50; bound++)
         {
             var diagnostics = new PdfDiagnostics();
-            var output = PdfFilterPipeline.Decode(stream, diagnostics, bound).ToArray();
+            var output = PdfFilterPipeline.Decode(stream, diagnostics, Within(bound)).ToArray();
             var rows = bound / 5;
             var reported = diagnostics.Select(d => d.Code).ToArray();
 
             if (output.Length != rows * 4 || (rows > 0 && output[^1] != (byte)(4 * rows)) ||
                 reported.Length != (bound < 50 ? 1 : 0) ||
-                (bound < 50 && !diagnostics[0].Message.EndsWith("decoding stopped there.", StringComparison.Ordinal)))
+                (bound < 50 && !diagnostics[0].Message.Contains("decoding stopped there.", StringComparison.Ordinal)))
             {
                 failures.Add($"bound {bound}: {output.Length} bytes, [{string.Join(";", reported)}]");
             }
@@ -384,11 +386,13 @@ public class FilterTests
         var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(compressed.ToArray()));
         var diagnostics = new PdfDiagnostics();
 
-        var output = PdfFilterPipeline.Decode(stream, diagnostics, maxLength: 10_000);
+        var output = PdfFilterPipeline.Decode(stream, diagnostics, Within(10_000));
 
         output.Length.Should().Be(10_000);
         diagnostics.Should().ContainSingle()
-            .Which.Message.Should().StartWith("The /RunLengthDecode data decodes to more than the 10000 bytes");
+            .Which.Message.Should().Be(
+                "The /RunLengthDecode data decodes to more than 10,000 bytes; decoding stopped there. " +
+                "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
     }
 
     [Fact]
@@ -401,7 +405,7 @@ public class FilterTests
         DecodeWithin(FlateZlib, PdfName.FlateDecode, 10, bounded);
 
         corrupt.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed);
-        bounded.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.FilterLimitExceeded);
+        bounded.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
     }
 
     [Fact]
@@ -489,8 +493,11 @@ public class FilterTests
     {
         var dictionary = new PdfDictionary();
         dictionary.Set(PdfName.Filter, filter);
-        return PdfFilterPipeline.Decode(new PdfStream(dictionary, PdfStreamData.FromMemory(data)), diagnostics, maxLength);
+        return PdfFilterPipeline.Decode(new PdfStream(dictionary, PdfStreamData.FromMemory(data)), diagnostics, Within(maxLength));
     }
+
+    private static PdfLimitGuard Within(int maxLength) =>
+        new(PdfReaderLimits.Default with { MaxDecodedStreamLength = maxLength }, throwOnLimit: false);
 
     private static byte[] Compress(byte[] data)
     {

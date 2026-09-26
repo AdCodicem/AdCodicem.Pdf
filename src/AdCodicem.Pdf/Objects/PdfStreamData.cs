@@ -19,6 +19,12 @@ public abstract class PdfStreamData
     /// </summary>
     public virtual long Position => -1;
 
+    /// <summary>
+    /// Gets the guards decoding the data works under: those of the document it was read from, however long
+    /// after opening it is decoded, or the defaults for data that never came from one.
+    /// </summary>
+    internal virtual IO.PdfLimitGuard LimitGuard => IO.PdfLimitGuard.Default;
+
     /// <summary>Returns the encoded bytes, exactly as they appear in the file.</summary>
     public abstract ReadOnlyMemory<byte> GetBytes();
 
