@@ -173,6 +173,61 @@ public class HostileInputTests
         document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.SyntaxDepthExceeded).Should().ContainSingle();
     }
 
+    [Theory]
+    [InlineData(3, "an object the index lists as free")]
+    [InlineData(1000, "an object the index does not list")]
+    public void Reports_a_chain_that_runs_too_deep_into_an_object_with_no_offset_without_a_position(int end, string what)
+    {
+        // Sixty-four streams, each taking its /Length from the next; the last takes it from object end, loaded
+        // one level past the deepest the reader follows. That object has no offset to report.
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        AddLengthChain(builder, first: 4, streams: 64, end: $"{end} 0 R");
+
+        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1));
+        document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxDepthExceeded, what)
+            .Which.Position.Should().Be(-1);
+    }
+
+    [Fact]
+    public void Reports_chains_that_run_too_deep_once()
+    {
+        // Two chains, each deeper than the reader follows: the second reaches the same limit, and the report
+        // already made says all there is to say.
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        AddLengthChain(builder, first: 3, streams: 70, end: "1");
+        AddLengthChain(builder, first: 100, streams: 70, end: "1");
+
+        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1));
+        document.GetObject(new PdfObjectId(3)).AsStream().Required();
+        document.GetObject(new PdfObjectId(100)).AsStream().Required();
+
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxDepthExceeded).Should().ContainSingle();
+    }
+
+    [Fact]
+    public void Does_not_take_a_keyword_the_probe_saw_cut_for_a_cross_reference_table()
+    {
+        // The section is probed through 32 bytes, which 28 spaces and "xref" fill: the probe sees "xref", but the
+        // token is "xrefs". The table's own window reads it whole and refuses it, and the index is rebuilt.
+        var written = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildClassic(rootNumber: 1);
+        var text = Encoding.Latin1.GetString(written);
+        var bytes = Encoding.Latin1.GetBytes(text.Replace("\nxref\n0 3", "\n" + new string(' ', 28) + "xrefs\n0 3", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
     [Fact]
     public void Opening_a_chain_of_trailers_that_never_close_reads_a_bounded_amount()
     {
@@ -305,6 +360,19 @@ public class HostileInputTests
         report.Message.Should().Be(
             "The /RunLengthDecode data decodes to more than 256 MB; decoding stopped there. " +
             "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
+    }
+
+    /// <summary>
+    /// Adds <paramref name="streams"/> streams from object <paramref name="first"/> on, each taking its /Length
+    /// from the next, the last from <paramref name="end"/>.
+    /// </summary>
+    private static void AddLengthChain(TestPdfBuilder builder, int first, int streams, string end)
+    {
+        for (var number = first; number < first + streams; number++)
+        {
+            var length = number + 1 < first + streams ? $"{number + 1} 0 R" : end;
+            builder.WithObject(number, $"<< /Length {length} >>\nstream\nx\nendstream");
+        }
     }
 
     private static T Measure<T>(Func<T> action)

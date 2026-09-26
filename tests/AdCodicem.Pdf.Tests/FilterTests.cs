@@ -116,6 +116,58 @@ public class FilterTests
         Text(Decode(encoded, PdfName.LZWDecode)).Should().Be("-----A---B");
     }
 
+    [Fact]
+    public void Stops_an_lzw_stream_at_a_code_it_has_not_defined()
+    {
+        // "A", a clear, then code 300: after a clear the table holds only the 258 fixed codes, and there is no
+        // previous sequence to extend, so the code means nothing. What came before it is kept; that the
+        // stream was corrupt goes unsaid, as a Flate stream's lost tail does (T32).
+        var encoded = NineBitCodes(256, 'A', 256, 300, 'B');
+
+        Text(Decode(encoded, PdfName.LZWDecode)).Should().Be("A");
+    }
+
+    [Fact]
+    public void Decodes_an_empty_predicted_stream_to_nothing_and_reports_nothing()
+    {
+        // Rows longer than the data are a fault of the parameters, except when there is no data at all.
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(12));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(4));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(Compress([]), PdfName.FlateDecode, parameters, diagnostics);
+
+        decoded.Length.Should().Be(0);
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Leaves_data_without_a_predictor_as_it_decodes()
+    {
+        // Parameters that name no predictor, or predictor 1, change nothing, whatever else they say.
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(1));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(4));
+        byte[] data = [2, 1, 2, 3, 4, 2, 1, 2, 3, 4];
+
+        Decode(Compress(data), PdfName.FlateDecode, parameters).ToArray().Should().Equal(data);
+    }
+
+    [Fact]
+    public void Cuts_a_stream_decoded_with_nowhere_to_report_to_its_bound()
+    {
+        // A stream built in memory, decoded without diagnostics, has no document to report to: it is cut all
+        // the same, and nothing is thrown for want of a report.
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfName.ASCIIHexDecode);
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory("48656C6C6F>"u8.ToArray()));
+
+        var decoded = PdfFilterPipeline.Decode(stream, diagnostics: null, Within(3));
+
+        decoded.ToArray().Should().Equal("Hel"u8.ToArray());
+    }
+
     /// <summary>Encoded data in each decoding filter, and all it decodes to.</summary>
     public static TheoryData<string, byte[], byte[]> Encoded => new()
     {
@@ -498,6 +550,34 @@ public class FilterTests
 
     private static PdfLimitGuard Within(int maxLength) =>
         new(PdfReaderLimits.Default with { MaxDecodedStreamLength = maxLength }, throwOnLimit: false);
+
+    /// <summary>Packs LZW codes nine bits each, most significant bit first, as the filter reads them.</summary>
+    private static byte[] NineBitCodes(params int[] codes)
+    {
+        var bytes = new List<byte>();
+        var buffer = 0;
+        var count = 0;
+
+        foreach (var code in codes)
+        {
+            buffer = (buffer << 9) | code;
+            count += 9;
+
+            while (count >= 8)
+            {
+                bytes.Add((byte)(buffer >> (count - 8)));
+                count -= 8;
+                buffer &= (1 << count) - 1;
+            }
+        }
+
+        if (count > 0)
+        {
+            bytes.Add((byte)(buffer << (8 - count)));
+        }
+
+        return [.. bytes];
+    }
 
     private static byte[] Compress(byte[] data)
     {
