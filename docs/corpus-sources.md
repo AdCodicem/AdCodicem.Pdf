@@ -96,11 +96,11 @@ fonts when their `fsType` allows embedding.
 - **Our reader** opened every one of the 239 real PDFs downloaded along the way: 209 opened clean, 15
   encrypted ones were refused with the typed exception M11 will replace, 15 opened with repairs or warnings,
   and none crashed or hung. At least one of those warnings is a false alarm of the reader's own — a stream
-  whose `endstream` falls just past its 8 KB window is reported truncated (T21 in `docs/status.md`) — and
+  whose `endstream` falls just past its 8 KB window is reported truncated (T21 in `docs/status.md`, fixed since) — and
   the others were not all checked against qpdf: a Cerfa reported truncated may be the same defect.
   In the third pass the reader was run over every file taken in, against expectations qpdf had set. None
   crashed or hung it. It fell short on five, recorded as unsupported rather than fixed on this branch: an
-  object longer than its 8 KB window is cut at the edge (T23, two files), each cross-reference section is
+  object longer than its 8 KB window is cut at the edge (T23, two files, fixed since), each cross-reference section is
   read through a window of up to 64 KB whatever its size (T24, one file), and two files leave it silent
   where qpdf reports damage. In the fourth pass none of the 131 first admitted crashed or hung it either;
   of the 124 kept, it falls short on ten, recorded as unsupported: T21 (one file), T23 (two), T24 (one: a 273 KB table read again each time its
@@ -467,9 +467,9 @@ purposes" only was left out.
 | W05, W02, W12 | The Slovak National Security Authority's supervision scheme under its qualified seal, from EU DSS | LGPL-2.1, and no reuse licence from the authority | A certification signature (DocMDP P=2 with FieldMDP, MD5 references) saved by Acrobat 11 into a linearized file; a PDF/A-1a claim veraPDF rejects |
 | W05 | Two ETSI plugtest files, from Hungary and France, in EU DSS | LGPL-2.1 | Two qualified seals, RSA then ECDSA, each followed by a document timestamp, and a Producer written as a byte-order mark before single-byte text; a PAdES-EPES signature with claimed roles under SHA-512, then two document timestamps |
 | W05 | A Notepad printout re-signed over seven years, from EU DSS | LGPL-2.1 | A 2013 signature, document timestamps in 2013 and 2019, a 2020 signature in RSASSA-PSS: five incremental updates, two `startxref` one byte early |
-| W05, W11 | An Excel sheet with 24 signatures and a document timestamp, from EU DSS | LGPL-2.1 | 48 incremental updates; a DSS of 31 certificates, 29 OCSP responses and 24 VRI entries. Unsupported for T23: the 10,112-byte `/VRI` dictionary is cut at 8 KB |
+| W05, W11 | An Excel sheet with 24 signatures and a document timestamp, from EU DSS | LGPL-2.1 | 48 incremental updates; a DSS of 31 certificates, 29 OCSP responses and 24 VRI entries. Its 10,112-byte `/VRI` dictionary crosses the reader's 8 KB window, which made it unsupported for T23 until that was fixed on 2026-09-26 |
 | W05, W06 | EU DSS's infinite-loop regression file (DSS-1872) | LGPL-2.1, over a chart under CC BY-SA | A signed update nobody can reach: `startxref` past the end of the file, wrong offsets, a signature widget that is its own `/Parent`; it hung xpdf 4.00 |
-| W05, W02 | The Spanish Official State Gazette: a 2015 law, a 2026 royal decree, and a decree re-signed among EU DSS's resources | The BOE's reuse terms add conditions beyond attribution; the third is LGPL-2.1 as well | The gazette's seal — `adbe.pkcs7.sha1`, no signed attributes, an RFC 3161 timestamp as an unsigned attribute — over PDF/A-1a claims veraPDF upholds; the law is unsupported for T23 (36 structure arrays of about 8.7 KB); the re-signed decree adds a test signature, and veraPDF rejects its claim |
+| W05, W02 | The Spanish Official State Gazette: a 2015 law, a 2026 royal decree, and a decree re-signed among EU DSS's resources | The BOE's reuse terms add conditions beyond attribution; the third is LGPL-2.1 as well | The gazette's seal — `adbe.pkcs7.sha1`, no signed attributes, an RFC 3161 timestamp as an unsigned attribute — over PDF/A-1a claims veraPDF upholds; the law's 36 structure arrays of about 8.7 KB each cross the reader's 8 KB window, which made it unsupported for T23 until that was fixed on 2026-09-26; the re-signed decree adds a test signature, and veraPDF rejects its claim |
 | W05, W03 | Commercial e-signatures: a DocuSign envelope export (EU DSS), a Maine contract amendment completed in DocuSign, an Adobe Sign test agreement (pdfcpu issue 389), a Yousign-sealed test page (qpdf issue 1469) | LGPL-2.1 over DocuSign's own form; a state work with no reuse statement; two issue attachments | Beside the committed GSA file: DocuSign's seal extended by a DSS and a Czech demo TSA's document timestamp; a Ricoh copier scan on rotated pages sealed through iTextSharp; an ETSI.CAdES.detached certification under AES-128 with an empty user password; a qualified e-seal written by a full rewrite, over read-only fields |
 | W05 | Three Foxit PhantomPDF signatures, from pdfium_tests | Foxit's QA files; the repository's BSD licence covers the PDFium authors' own work | Certification and approval signatures written in a single full save, the byte range covering the whole file, CMS without signed attributes; in one, a BBox of garbage reals inside the signed bytes leaves a string open to the end of the file |
 | W05 | An OpenOffice.org page signed twice by node-signpdf | The base document is W3C's test file, whose licence is not node-signpdf's | Two signatures in two updates, CMS signed attributes not in DER order, `startxref` on the line end before each `xref` |
@@ -493,7 +493,7 @@ purposes" only was left out.
 | W09 | US Census Bureau 2020 language guide in Hebrew | No reuse statement found; possibly a contractor's translation | Hebrew right to left in Adobe Hebrew Type 1 subsets, tagged with `/Lang he` |
 | W09 | USDA Title VI fact sheet in Hebrew, from an Internet Archive capture | The USDA reserves the symbol on its banner; the translation's provenance is unknown | Hebrew from Word through PDFMaker 23, in TrueType and CID subsets beside the Census guide's Type 1; Hebrew outline titles |
 | W11 | United States Code 2023, Title 42 | 37.6 MB, too large to commit | 9,302 pages and a GPO signature in an incremental update; opening, decoding every stream and walking the page tree took 0.8 s on the development machine |
-| W11 | US Topo map, Washington West, 2023 | 63.1 MB, too large to commit | One page with a 109.5-megapixel image; recorded as unsupported until T21, the false truncated-stream report it exposed, is fixed |
+| W11 | US Topo map, Washington West, 2023 | 63.1 MB, too large to commit | One page with a 109.5-megapixel image. The false truncated-stream report it first exposed (T21) is fixed; it stays unsupported for T28: the image decodes to 313 MB, past the 256 MB bound every filter keeps, and is reported as a truncated Flate stream |
 | W11, W03 | USGS Professional Paper 1 (1902), scanned in 2017 | 146.7 MB, too large to commit | 125 JPEG 2000 page images under an invisible OmniPage 19 OCR layer, tagged; linearization hints that point past the end of the file |
 | W11, W06 | A tiff2pdf image of 35,000 × 35,000 pixels, from OCRmyPDF | CC BY-SA 4.0 | 10.5 KB of CCITT G4 that decodes to 153 MB, on an 8,400-point page under a PDF 1.1 header |
 | W12 | Ghostscript 10 output claiming PDF/A-1b (`py-pdf/sample-files`) | CC BY-SA 4.0 | Type 1C subsets without ToUnicode, word spaces only as TJ kerning, an AdobeRGB output intent; veraPDF upholds the claim |
@@ -517,11 +517,12 @@ were established the same way, pages by `qpdf --show-npages`.
 | GovDocs1 error files | 21 | Six are federal work over 2 MB — the VHA coding handbook, the VA Kernel guide (464 pages, a PDF/A-1b claim veraPDF rejects on seven rules), a USGS earthquake map, a USFWS recovery plan, the 1994 Transportation Statistics report whose `/Producer` names Distiller 1.0.2 for Macintosh, a Reclamation EA —; one is a Census Bureau section whose tables are partly copyrighted by the firms that supplied them; thirteen are not shown to be federal staff's work: contractors (ORNL, JPL), PIARC, WARDA, the EU's delegation, IBM, Scholastic, an unnamed consultant; one, the SAMHSA fact sheet, is screened in part | IBM ID Workbench and XPP, Xyvision's Parlance Publisher, WordPerfect through PDFWriter 4, PageMaker 6.5, a `/Prev` 12 bytes off (T25), a whole file broken by a text-mode transfer |
 | JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalogue without `/Type`; a reference to object 0; a file whose tail was lost |
 
-Thirty-five remote entries are recorded as unsupported. From the first three passes: the topographic map
-(T21), the 25-signature sheet and the 2015 BOE law (T23), the signed web capture (T24), the Axapta credit
-note and the `#00` form (M2). From the fourth: the hospital-bed guidance (T21), the VA Kernel guide and a
-poster (T23), the VHA handbook (T24), IBM's manual (T25), two catalogues without `/Type`, the wPDF chapter's
-null kid, and two page trees whose missing kids qpdf counts as pages (M2). From the iPRES 2017 set, the
+Thirty remote entries are recorded as unsupported. From the first three passes: the topographic map
+(T28), the signed web capture (T24), the Axapta credit note and the `#00` form (M2). From the fourth: the
+VHA handbook (T24), IBM's manual (T25), two catalogues without `/Type`, the wPDF chapter's null kid, and two
+page trees whose missing kids qpdf counts as pages (M2). Five more were, until T21 and T23 were fixed on
+2026-09-26: the hospital-bed guidance (T21), the 25-signature sheet, the 2015 BOE law, the VA Kernel guide
+and a poster (T23). From the iPRES 2017 set, the
 19 described below (M2). The laziness test honours that mark, like the other acceptance tests; it skips encrypted documents visibly
 until M11 brings decryption, and it no longer applies to a document whose index must be rebuilt, since a
 rebuild scans the file by definition.
@@ -611,8 +612,9 @@ it and hand back none.
   DSS `/VRI` dictionary in a 25-signature file, 36 structure arrays of about 8.7 KB in a 2015 BOE law —
   where qpdf reads both whole. And each cross-reference section is read through a window of up to 64 KB,
   whatever the section's size (T24): opening a 218 KB signed web capture with three sections reads 117 KB,
-  bounded, but proportional to the number of sections. T23 is to be fixed before M2 closes, T24 in M13;
-  `docs/status.md` tracks all three. The fourth pass met T24 from the other side: a section larger than
+  bounded, but proportional to the number of sections. T24 is for M13; T21 and T23 were fixed on
+  2026-09-26 — what an attempt through a window too small for its object notices is now dropped with it,
+  and the file is asked for the bytes after a stream's data. `docs/status.md` tracks all three. The fourth pass met T24 from the other side: a section larger than
   its first window is read again from its start each time the window grows, so a 273 KB table costs
   683 KB of reads at opening.
 - **Git can change a PDF's bytes.** A PDF made only of ASCII, with no NUL in its first 8,000 bytes, looks
@@ -648,7 +650,7 @@ it and hand back none.
   well-formed XML, an empty `/Lang`, a `/Lang` that contradicts the text, UTF-16LE text strings, two
   `startxref` lines, a `/MarkInfo` pointing at the page tree, `/Info` and XMP that disagree.
   `docs/milestones/M2.md` lists them among its acceptance conditions. The third pass adds T23, an indirect
-  object longer than the parser's 8 KB window cut at its edge, to be fixed before M2 closes; two more
+  object longer than the parser's 8 KB window cut at its edge (fixed on 2026-09-26); two more
   files where the reader is silent while qpdf reports damage — an `/Info` object without `endobj`, names
   containing `#00`; an object stream destroyed by a zeroed block, which the reader finds only when it
   reaches it; and more anomalies to name — `startxref` on the line end before `xref`, an update glued to

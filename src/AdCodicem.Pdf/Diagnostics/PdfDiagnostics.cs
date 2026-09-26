@@ -59,6 +59,32 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     public void Warn(string code, string message, long position = -1) =>
         Add(PdfDiagnosticSeverity.Warning, code, message, position);
 
+    /// <summary>Records where the entries stand, so that what follows can be kept or dropped as one.</summary>
+    internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed);
+
+    /// <summary>Drops every entry recorded since <paramref name="mark"/>, suppressed ones included.</summary>
+    internal void RollBack(PdfDiagnosticsMark mark)
+    {
+        _entries.RemoveRange(mark.Count, _entries.Count - mark.Count);
+        _suppressed = mark.Suppressed;
+    }
+
+    /// <summary>
+    /// Moves every entry recorded since <paramref name="mark"/> into <paramref name="target"/>, which applies
+    /// its own capacity, and drops them from this instance.
+    /// </summary>
+    internal void MoveTo(PdfDiagnostics target, PdfDiagnosticsMark mark)
+    {
+        for (var i = mark.Count; i < _entries.Count; i++)
+        {
+            var entry = _entries[i];
+            target.Add(entry.Severity, entry.Code, entry.Message, entry.Position);
+        }
+
+        target._suppressed += _suppressed - mark.Suppressed;
+        RollBack(mark);
+    }
+
     /// <summary>Determines whether any entry carries the given code.</summary>
     public bool Contains(string code)
     {

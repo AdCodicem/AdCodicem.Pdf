@@ -52,6 +52,12 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `filter.failed` | A filter could not be applied, and the data was left encoded |
 | `filter.unsupported` | The file names a filter the library does not implement |
 
+What a code describes is the file, never the way it was read. The reader parses an object through a
+window of the file — 8 KB to start with — and reads it again through a larger one when it runs past the
+edge; what the smaller window saw there, such as a string without its end or a stream without its
+`endstream`, is dropped with that attempt. An object or a stream that the file really cuts short is still
+reported, once.
+
 ## Exceptions, by contrast
 
 Exceptions are reserved for what makes the operation impossible: the input is not a PDF

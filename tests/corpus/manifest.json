@@ -4464,7 +4464,7 @@
         "textContains": [
           "WASHINGTON WEST QUADRANGLE"
         ],
-        "unsupported": "T21: the reader reports a stream truncated at its 8 KB window boundary that qpdf reads whole, and a Flate failure on the 14.9 MB image not yet explained; both are recorded in docs/status.md and must be fixed before M13 relies on this document",
+        "unsupported": "T28: object 155, a 9,600 by 11,410 RGB image, decodes to 313 MB, past the 256 MB bound every filter keeps against decompression bombs; the reader keeps the first 256 MB and reports a truncated Flate stream, which the file is not. Recorded in docs/status.md, for M13",
         "refereeCheckSucceeds": false
       }
     },
@@ -5075,7 +5075,6 @@
           "Devilsaur",
           "Bracers"
         ],
-        "unsupported": "T23: the reader cuts an indirect object longer than its 8 KB window at the window's edge and reports a truncated object at exactly 8 KB into object 458, the DSS /VRI dictionary (10,112 bytes), which qpdf reads whole; recorded in docs/status.md, to be fixed before M2 closes",
         "refereeCheckSucceeds": true
       }
     },
@@ -5377,7 +5376,6 @@
         ],
         "claimsConformance": "PDF/A-1a",
         "conformanceValid": true,
-        "unsupported": "T23: the reader cuts an indirect object longer than its 8 KB window at the window's edge and reports unexpected tokens at exactly 8 KB into object 14, a structure array, and 35 like it (8,694 bytes), which qpdf reads whole; recorded in docs/status.md, to be fixed before M2 closes",
         "refereeCheckSucceeds": true
       }
     },
@@ -10519,7 +10517,6 @@
           "partnership with representatives from the hospital bed",
           "clinical guidance is provided for discussion and"
         ],
-        "unsupported": "T21: the reader reports two streams of about 8.1 KB (objects 604 and 2053) as running past the end of the file, though each /Length is right and qpdf reads both whole: their endstream falls just past the 8 KB window; recorded in docs/status.md",
         "refereeCheckSucceeds": true
       }
     },
@@ -12379,7 +12376,6 @@
           "initial cancellation package was overoptimistic",
           "tool that synthesizes plausible"
         ],
-        "unsupported": "T23: the reader cuts an indirect object longer than its 8 KB window at the window's edge and reports the file ending inside it (object 2307, 8,248 bytes), which qpdf reads whole; recorded in docs/status.md, to be fixed before M2 closes",
         "refereeCheckSucceeds": true
       }
     },
@@ -12918,7 +12914,6 @@
         ],
         "claimsConformance": "PDF/A-1b",
         "conformanceValid": false,
-        "unsupported": "T23: the reader cuts an indirect object longer than its 8 KB window at the window's edge and reports the file ending inside it (object 10913, 14,188 bytes), which qpdf reads whole; recorded in docs/status.md, to be fixed before M2 closes",
         "refereeCheckSucceeds": false
       }
     },

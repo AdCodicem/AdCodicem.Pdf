@@ -13,4 +13,10 @@ internal interface IPdfStreamDataProvider
 {
     /// <summary>Creates stream data for <paramref name="length"/> bytes at <paramref name="absoluteOffset"/>.</summary>
     PdfStreamData Create(long absoluteOffset, int length);
+
+    /// <summary>
+    /// Determines whether an <c>endstream</c> keyword starts at <paramref name="absoluteOffset"/>, after at
+    /// most a few bytes of white space. The parser asks when that keyword may lie past the end of its buffer.
+    /// </summary>
+    bool IsEndStreamAt(long absoluteOffset);
 }

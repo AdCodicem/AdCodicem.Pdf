@@ -147,6 +147,26 @@ public class PropertyTests
     }
 
     [Fact]
+    public void An_object_reads_the_same_wherever_the_window_edge_falls_in_it()
+    {
+        // WindowEdgeTests slides a few fixed objects across the reader's 8 KB window one byte at a time.
+        // Here the objects are drawn — values nested and escaped, alone or in a dictionary, an array or a
+        // stream — and the edge falls anywhere after the filler that pushes them to it: the reader must
+        // find what the parser finds when it sees the whole object, and report what that parse reports.
+        var cases =
+            from shape in ObjectsAround(PdfValues(depth: 3))
+            from cut in Gen.Choose(-2, shape.After.Length + "\nendobj\n".Length + 2)
+            select (shape.Before, shape.After, cut);
+
+        Check.One(Settings, Prop.ForAll(cases.ToArbitrary(), c =>
+        {
+            var filler = PdfFileReader.InitialObjectWindow - "5 0 obj\n".Length - c.Before.Length - c.cut;
+
+            return filler < 0 || WindowEdgeTests.ReadAndCompare(c.Before + new string('x', filler) + c.After) is null;
+        }));
+    }
+
+    [Fact]
     public void A_property_failure_replays_from_its_seed()
     {
         // The guarantee the remarks above claim, asserted rather than assumed: the same seed draws the
@@ -167,6 +187,85 @@ public class PropertyTests
 
         Draw(DefaultSeed).Should().Equal(Draw(DefaultSeed));
         Draw(DefaultSeed).Should().NotEqual(Draw(DefaultSeed + 1));
+    }
+
+    /// <summary>
+    /// PDF values as their syntax: every kind of scalar, arrays and dictionaries up to <paramref name="depth"/>
+    /// levels deep, with the separators real producers use. Containers hold at most five items, so an
+    /// object stays well inside the window before its filler is added.
+    /// </summary>
+    private static Gen<string> PdfValues(int depth)
+    {
+        var number = Gen.Choose(-99_999, 99_999);
+        var integer = number.Select(value => value.ToString(CultureInfo.InvariantCulture));
+        var real = Gen.Zip(number, Gen.Choose(0, 9_999))
+            .Select(pair => string.Create(CultureInfo.InvariantCulture, $"{pair.Item1}.{pair.Item2}"));
+        var name = Gen.Elements("/Type", "/A", "/LongerName", "/Name#20With#23Escapes", "/x1", "/");
+        var literal = Gen.ArrayOf(Gen.Elements('a', 'Z', ' ', '(', ')', '\\', '\n', '\r', '7'))
+            .Select(chars => "(" + EscapeLiteral(chars) + ")");
+        var hex = Gen.ArrayOf(Gen.Elements('0', '9', 'a', 'F', ' ', '\n')).Select(chars => "<" + new string(chars) + ">");
+        var keyword = Gen.Elements("true", "false", "null");
+        var reference = Gen.Zip(Gen.Choose(1, 99_999), Gen.Choose(0, 3)).Select(pair => $"{pair.Item1} {pair.Item2} R");
+        var scalar = Gen.OneOf(integer, real, name, literal, hex, keyword, reference);
+
+        if (depth == 0)
+        {
+            return scalar;
+        }
+
+        var inner = PdfValues(depth - 1);
+        var separator = Gen.Elements(" ", "\n", "\r\n", "  ", "%comment\n");
+        var count = Gen.Choose(0, 5);
+        var array = count.SelectMany(n => Gen.ArrayOf(Gen.Zip(inner, separator), n))
+            .Select(items => "[" + string.Concat(items.Select(item => item.Item1 + item.Item2)) + "]");
+        var dictionary = count.SelectMany(n => Gen.ArrayOf(Gen.Zip(name.Where(key => key != "/"), inner), n))
+            .Select(entries => "<<" + string.Concat(entries.Select(entry => $" {entry.Item1} {entry.Item2}")) + " >>");
+
+        return Gen.Frequency((4, scalar), (1, array), (1, dictionary));
+    }
+
+    /// <summary>
+    /// Objects built around a value, as what comes before a filler and what comes after it: the value
+    /// alone after a comment, in a dictionary, in an array, or in a stream's dictionary with the stream's
+    /// data and the end-of-line forms around it.
+    /// </summary>
+    private static Gen<(string Before, string After)> ObjectsAround(Gen<string> values)
+    {
+        var data = Gen.ArrayOf(Gen.Elements('a', 'q', 'z', ' ', '\n', '\r', '0')).Select(chars => new string(chars));
+        var afterDictionary = Gen.Elements("\n", "\r\n", " ");
+        var afterKeyword = Gen.Elements("\r\n", "\n");
+        var beforeEnd = Gen.Elements("\n", "\r\n", "\r", " ", string.Empty);
+
+        var stream =
+            from value in values
+            from bytes in data
+            from first in afterDictionary
+            from second in afterKeyword
+            from third in beforeEnd
+            select ("<< /Pad (", $") /V {value} /Length {bytes.Length} >>{first}stream{second}{bytes}{third}endstream");
+
+        return Gen.OneOf(
+            values.Select(value => ("%", "\n" + value)),
+            values.Select(value => ("<< /Pad (", ") /V " + value + " >>")),
+            values.Select(value => ("[(", ") " + value + "]")),
+            stream);
+    }
+
+    private static string EscapeLiteral(char[] chars)
+    {
+        var text = new StringBuilder(chars.Length * 2);
+
+        foreach (var c in chars)
+        {
+            if (c is '(' or ')' or '\\')
+            {
+                text.Append('\\');
+            }
+
+            text.Append(c);
+        }
+
+        return text.ToString();
     }
 
     private static bool IsWellFormedUtf16(string value)

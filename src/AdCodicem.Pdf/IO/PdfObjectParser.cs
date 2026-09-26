@@ -19,6 +19,12 @@ internal ref struct PdfObjectParser
     /// </summary>
     private const int MaxDepth = 128;
 
+    /// <summary>The most white space accepted between a stream's data and its <c>endstream</c> keyword.</summary>
+    private const int MaxEndStreamGap = 4;
+
+    /// <summary>How many bytes after a stream's data can decide whether <c>endstream</c> follows it.</summary>
+    internal const int EndStreamLookahead = MaxEndStreamGap + 9;
+
     private static ReadOnlySpan<byte> EndStreamKeyword => "endstream"u8;
 
     private readonly ReadOnlyMemory<byte> _memory;
@@ -44,7 +50,11 @@ internal ref struct PdfObjectParser
         _streamData = streamData;
     }
 
-    /// <summary>Gets a value indicating whether the input ended in the middle of an object.</summary>
+    /// <summary>
+    /// Gets a value indicating whether the input ended where it may have cut an object short — a larger
+    /// buffer could read differently. A caller that can offer one should; a caller whose buffer is the
+    /// whole input keeps what was read.
+    /// </summary>
     public readonly bool IsTruncated => _truncated;
 
     /// <summary>Gets or sets the position in the buffer.</summary>
@@ -84,8 +94,20 @@ internal ref struct PdfObjectParser
         value = ParseObject();
 
         var afterValue = _lexer.Position;
-        if (!_lexer.Read().IsKeyword("endobj"u8))
+        var next = _lexer.Read();
+
+        if (!next.IsKeyword("endobj"u8))
         {
+            // A value followed by the end of the buffer, or by a token the end of the buffer may have cut,
+            // may itself have been cut there: a string that lost its closing parenthesis, a dictionary whose
+            // "stream" keyword lies beyond. Containers say so on their own; a lone value cannot, so the
+            // caller is told to look further. A stream is exempt: its data is expected to run past the
+            // buffer, and the reader serves it from the file.
+            if (value is not PdfStream && (next.Kind == PdfTokenKind.EndOfInput || next.End >= _memory.Length))
+            {
+                _truncated = true;
+            }
+
             _lexer.Position = afterValue;
         }
 
@@ -94,6 +116,13 @@ internal ref struct PdfObjectParser
 
     private PdfObject ParseValue(PdfToken token, int depth)
     {
+        // A value that reaches the end of the buffer may go on past it: "12" of "1234", a string without
+        // its closing delimiter, the "<" of a "<<".
+        if (token.Kind != PdfTokenKind.EndOfInput && token.End >= _memory.Length)
+        {
+            _truncated = true;
+        }
+
         switch (token.Kind)
         {
             case PdfTokenKind.EndOfInput:
@@ -142,12 +171,20 @@ internal ref struct PdfObjectParser
         // "12 0 R" is only distinguishable from "12" by looking two tokens ahead.
         var saved = _lexer.Position;
         var second = _lexer.Read();
+        var third = second.Kind == PdfTokenKind.Integer ? _lexer.Read() : second;
 
-        if (second.Kind == PdfTokenKind.Integer && _lexer.Read().IsKeyword("R"u8) &&
+        if (second.Kind == PdfTokenKind.Integer && third.IsKeyword("R"u8) &&
             token.Integer is > 0 and <= int.MaxValue &&
             second.Integer is >= 0 and <= ushort.MaxValue)
         {
             return new PdfReference(new PdfObjectId((int)token.Integer, (int)second.Integer), _source);
+        }
+
+        // The buffer ended before the look-ahead could tell: "12 0" may be all there is, or what a
+        // window's edge left of "12 0 R".
+        if (third.Kind == PdfTokenKind.EndOfInput)
+        {
+            _truncated = true;
         }
 
         _lexer.Position = saved;
@@ -256,10 +293,20 @@ internal ref struct PdfObjectParser
 
     private PdfStream ReadStream(PdfDictionary dictionary)
     {
+        var span = _memory.Span;
+        var keywordEnd = _lexer.Position;
+
         _lexer.SkipStreamEndOfLine();
 
-        var span = _memory.Span;
         var dataStart = _lexer.Position;
+
+        // The end-of-line after "stream" is not data. A buffer that ends on the keyword, or on the carriage
+        // return of a CR LF, cannot say where the data starts; a larger one can.
+        if (dataStart >= span.Length && (dataStart == keywordEnd || span[dataStart - 1] != (byte)'\n'))
+        {
+            _truncated = true;
+        }
+
         var declared = dictionary.GetInteger(PdfName.Length);
         var length = declared is >= 0 and <= int.MaxValue ? (int)declared.Value : -1;
 
@@ -272,7 +319,7 @@ internal ref struct PdfObjectParser
             return Finish(dictionary, dataStart, length, span.Length);
         }
 
-        if (length < 0 || beyondBuffer || !IsEndStreamAt(span, dataStart + length))
+        if (length < 0 || beyondBuffer || !ConfirmsLength(span, dataStart + length))
         {
             var recovered = FindEndStream(span, dataStart);
 
@@ -317,7 +364,28 @@ internal ref struct PdfObjectParser
         return new PdfStream(dictionary, data);
     }
 
-    private static bool IsEndStreamAt(ReadOnlySpan<byte> span, long position)
+    /// <summary>
+    /// Determines whether the declared length is confirmed by an <c>endstream</c> keyword where the data
+    /// ends. When the keyword may lie across the end of the buffer, the file is asked rather than the buffer:
+    /// a stream whose data ends a few bytes short of the window's edge is not a truncated stream.
+    /// </summary>
+    private readonly bool ConfirmsLength(ReadOnlySpan<byte> span, int dataEnd)
+    {
+        if (IsEndStreamAt(span, dataEnd))
+        {
+            return true;
+        }
+
+        return _streamData is not null &&
+               dataEnd + (long)EndStreamLookahead > span.Length &&
+               _streamData.IsEndStreamAt(_baseOffset + dataEnd);
+    }
+
+    /// <summary>
+    /// Determines whether <c>endstream</c> starts at <paramref name="position"/>, after at most
+    /// <see cref="MaxEndStreamGap"/> bytes of white space.
+    /// </summary>
+    internal static bool IsEndStreamAt(ReadOnlySpan<byte> span, long position)
     {
         if (position < 0 || position > span.Length)
         {
@@ -327,7 +395,7 @@ internal ref struct PdfObjectParser
         var index = (int)position;
 
         // Conforming files put an end-of-line before "endstream"; some put nothing, some put spaces.
-        var limit = Math.Min(index + 4, span.Length);
+        var limit = Math.Min(index + MaxEndStreamGap, span.Length);
         while (index < limit && PdfCharacters.IsWhitespace(span[index]))
         {
             index++;
