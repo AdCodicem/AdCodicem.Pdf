@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.Tests;
@@ -174,22 +175,52 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(3, "an object the index lists as free")]
-    [InlineData(1000, "an object the index does not list")]
-    public void Reports_a_chain_that_runs_too_deep_into_an_object_with_no_offset_without_a_position(int end, string what)
+    [InlineData("free")]
+    [InlineData("unlisted")]
+    [InlineData("compressed")]
+    public void Reports_a_chain_that_runs_too_deep_into_an_object_with_no_offset_without_a_position(string end)
     {
-        // Sixty-four streams, each taking its /Length from the next; the last takes it from object end, loaded
-        // one level past the deepest the reader follows. That object has no offset to report.
+        // Sixty-four streams, each taking its /Length from the next; the last takes it from an object loaded one
+        // level past the deepest the reader follows, which has no offset of its own to report: one the index
+        // lists as free, one it does not list, one stored in an object stream.
         var builder = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
-        AddLengthChain(builder, first: 4, streams: 64, end: $"{end} 0 R");
 
-        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1));
+        if (end == "compressed")
+        {
+            builder.WithObject(3, "1");
+        }
+
+        AddLengthChain(builder, first: 4, streams: 64, end: end == "unlisted" ? "1000 0 R" : "3 0 R");
+        var file = end == "compressed"
+            ? builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [3])
+            : builder.BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file);
         document.GetObject(new PdfObjectId(4)).AsStream().Required();
 
-        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxDepthExceeded, what)
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxDepthExceeded)
             .Which.Position.Should().Be(-1);
+    }
+
+    [Fact]
+    public void Reports_a_chain_that_runs_too_deep_where_the_object_it_stops_at_starts()
+    {
+        // Sixty-five streams: the sixty-fifth is loaded one level past the deepest the reader follows, and is
+        // reported where it starts in the file, bytes before the header included.
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        AddLengthChain(builder, first: 3, streams: 65, end: "1");
+        byte[] file = [.. "junk before the header\n"u8, .. builder.BuildClassic(rootNumber: 1)];
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(3)).AsStream().Required();
+
+        var stoppedAt = Encoding.Latin1.GetString(file).IndexOf("\n67 0 obj", StringComparison.Ordinal) + 1;
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxDepthExceeded)
+            .Which.Position.Should().Be(stoppedAt);
     }
 
     [Fact]
@@ -213,14 +244,14 @@ public class HostileInputTests
     [Fact]
     public void Does_not_take_a_keyword_the_probe_saw_cut_for_a_cross_reference_table()
     {
-        // The section is probed through 32 bytes, which 28 spaces and "xref" fill: the probe sees "xref", but the
+        // The section is probed through a few bytes, which spaces and "xref" fill: the probe sees "xref", but the
         // token is "xrefs". The table's own window reads it whole and refuses it, and the index is rebuilt.
         var written = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
             .BuildClassic(rootNumber: 1);
         var text = Encoding.Latin1.GetString(written);
-        var bytes = Encoding.Latin1.GetBytes(text.Replace("\nxref\n0 3", "\n" + new string(' ', 28) + "xrefs\n0 3", StringComparison.Ordinal));
+        var bytes = Encoding.Latin1.GetBytes(text.Replace("\nxref\n0 3", "\n" + new string(' ', PdfFileReader.XRefProbeLength - "xref".Length) + "xrefs\n0 3", StringComparison.Ordinal));
 
         using var document = PdfDocument.Open(bytes);
 
