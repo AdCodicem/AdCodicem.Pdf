@@ -1,0 +1,24 @@
+{
+  "$comment": "How AdCodicem.Pdf compares with other PDF products. Every claim about another product names its source; a value nobody could establish from public sources is 'unknown'. Our own column is derived from docs/features/features.json through each capability's 'ours' features. Regenerate the tables with: ADCODICEM_UPDATE_FEATURE_TABLES=1 dotnet test --project tests/AdCodicem.Pdf.Tests -c Release",
+  "asOf": "2026-09-26",
+  "products": [
+    {
+      "id": "adcodicem",
+      "name": "AdCodicem.Pdf",
+      "shortName": "AdCodicem.Pdf",
+      "url": "https://github.com/AdCodicem/AdCodicem.Pdf",
+      "stack": ".NET 10",
+      "licence": "MIT",
+      "pricingModel": "Free",
+      "runtime": "Fully managed; no native binary, browser or external process",
+      "htmlToPdf": "Own managed engine (planned, M12)",
+      "maintenance": "Active; previews only, before 1.0",
+      "bestAt": "Reading and assembling third-party PDFs frugally, then generating business documents from HTML without a browser.",
+      "sources": []
+    }
+  ],
+  "matrix": {
+    "products": [],
+    "capabilities": []
+  }
+}

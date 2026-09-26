@@ -2,6 +2,7 @@
 const sidebars = {
   documentation: [
     'introduction',
+    'features',
     {
       type: 'category',
       label: 'Concepts',
