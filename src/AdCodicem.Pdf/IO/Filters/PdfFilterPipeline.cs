@@ -186,12 +186,8 @@ internal static class PdfFilterPipeline
             return decoded;
         }
 
+        // No predictor, or predictor 1, leaves the data as it is: the transform says so itself.
         var predictor = (int)parameters.GetInteger(PdfName.Predictor, 1);
-
-        if (predictor <= 1)
-        {
-            return decoded;
-        }
 
         if (!PredictorTransform.TryApply(
                 decoded,
