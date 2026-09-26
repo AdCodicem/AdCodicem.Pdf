@@ -53,7 +53,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `syntax.truncated-object` | The file ended in the middle of an object |
 | `syntax.depth-exceeded` | Nesting went deeper than the reader will follow |
 | `object.redefined` | An object was defined more than once; the last definition won |
-| `filter.failed` | A filter could not be applied, and the data was left encoded |
+| `filter.failed` | A filter's data is damaged: left encoded when nothing could be decoded, kept as far as it decoded otherwise, and a repair when nothing was lost |
 | `filter.unsupported` | The file names a filter the library does not implement |
 | `limit.decoded-stream` | A stream decodes to more than `MaxDecodedStreamLength`; the part within it was kept |
 | `limit.object` | An object is longer than `MaxObjectLength`, its stream data aside; the part within it was parsed |
@@ -67,6 +67,21 @@ without its end or a stream without its `endstream`, is dropped with that attemp
 the object holds, not where a window happened to end. A stream whose declared length the file cannot hold
 is reported: as `stream.truncated` when the file ends inside its data, as `stream.length-invalid` when its
 `endstream` comes first.
+
+Damaged stream data decodes as far as it goes, and what decoded is kept — never in silence. A Flate stream
+whose tail was lost, as a file cut short or a producer that stopped writing leaves it, is a warning: what
+decoded before the end is all there is. A Flate stream that lost only the zlib checksum after its last block
+decoded whole, unchecked, and is a repair, as a stream with no zlib header at all is. An LZW stream that uses
+a code it has not defined is a warning naming the code: decoding stops there, since what follows cannot be
+read reliably. An LZW stream without its end-of-data code is taken as complete, as other readers take it.
+
+```text
+Warning filter.failed at 59534: A Flate stream ends before its data does; what decoded before the end was kept.
+Repair filter.failed at 63982: A Flate stream ends before its checksum does; its data decoded whole, unchecked.
+```
+
+These reports go to the diagnostics you pass to `Decode`. A stream read from a document and decoded without
+any reports to the document's own `Diagnostics`, so decoding is never silent.
 
 Growing windows, and decoding, are bounded. The five `limit.*` codes report the reader's own limits, not
 faults of the file: a valid document can reach them — a large-format scan decodes past the 256 MB a stream
