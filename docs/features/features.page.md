@@ -20,10 +20,10 @@ guarantee at all**: its API may change or disappear in the next preview.
 
 ## Where it stands out
 
-- **Nothing but managed code.** The core package has no dependency at all, NuGet or native, and the HTML
-  engine is our own: no headless browser to ship, start and patch, no native PDF engine to deploy per
-  platform, no external process. Everything that needs a dependency lives in a satellite package you add
-  knowingly.
+- **No browser, no native PDF engine, no external process.** The core package has no dependency at all,
+  NuGet or native, and the HTML engine is our own, written in C#: there is no headless browser to ship, start
+  and patch. It will use SkiaSharp and HarfBuzzSharp for images and text shaping; everything that needs a
+  dependency lives in a satellite package you add knowingly.
 - **Memory follows what you read, not the size of the file.** Opening a document reads its index and
   nothing else: indexing a thousand-page document costs 229 µs and 393 KB, and reading every page of it
   afterwards 6.2 ms and 5.9 MB (BenchmarkDotNet, `docs/status.md`). The writer only moves forward.

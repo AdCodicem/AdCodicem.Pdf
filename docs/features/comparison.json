@@ -15,10 +15,1373 @@
       "maintenance": "Active; previews only, before 1.0",
       "bestAt": "Reading and assembling third-party PDFs frugally, then generating business documents from HTML without a browser.",
       "sources": []
+    },
+    {
+      "id": "pdfsharp",
+      "name": "PDFsharp and MigraDoc",
+      "shortName": "PDFsharp",
+      "url": "https://www.pdfsharp.com/",
+      "stack": ".NET",
+      "licence": "MIT, or paid attribution-free licence",
+      "pricingModel": "Free (MIT); paid support plans, attribution-free licence and PsX add-ons on request",
+      "runtime": "Fully managed (Core build); GDI+/WPF builds Windows-only",
+      "htmlToPdf": "none",
+      "maintenance": "Active (6.2.4 Jan 2026; 7.0 preview Mar 2026)",
+      "bestAt": "Free MIT library for code-built PDFs (drawing API, MigraDoc layout) and for merging, splitting and editing PDFs.",
+      "sources": [
+        "https://www.nuget.org/packages/PDFsharp",
+        "https://api.nuget.org/v3-flatcontainer/pdfsharp/index.json",
+        "https://docs.pdfsharp.net/General/Overview/Whats-New.html",
+        "https://docs.pdfsharp.net/PDFsharp/Overview/Features.html"
+      ]
+    },
+    {
+      "id": "questpdf",
+      "name": "QuestPDF",
+      "shortName": "QuestPDF",
+      "url": "https://www.questpdf.com/",
+      "stack": ".NET",
+      "licence": "Source-available Community or commercial",
+      "pricingModel": "Free under revenue threshold; else perpetual per-entity licence with annual update renewal",
+      "runtime": "Native Skia and qpdf binaries per platform, via P/Invoke",
+      "htmlToPdf": "none",
+      "maintenance": "Active (2026.9.1, Sep 2026)",
+      "bestAt": "Code-first fluent C# layout of business documents to PDF, including PDF/A-2/3, PDF/UA-1 and ZUGFeRD invoices.",
+      "sources": [
+        "https://www.nuget.org/packages/QuestPDF/",
+        "https://github.com/QuestPDF/QuestPDF/releases",
+        "https://github.com/QuestPDF/QuestPDF/releases/tag/2026.9.1",
+        "https://github.com/QuestPDF/QuestPDF/releases/tag/2026.7.0"
+      ]
+    },
+    {
+      "id": "pdfpig",
+      "name": "PdfPig",
+      "shortName": "PdfPig",
+      "url": "https://github.com/UglyToad/PdfPig",
+      "stack": ".NET",
+      "licence": "Apache-2.0",
+      "pricingModel": "Free, open source",
+      "runtime": "Fully managed; Skia rendering is a separate native add-on",
+      "htmlToPdf": "none",
+      "maintenance": "Active (0.1.16, Aug 2026; pre-1.0)",
+      "bestAt": "Extracting positioned letters and words, with layout analysis and reading order, from existing PDFs in pure C#.",
+      "sources": [
+        "https://github.com/UglyToad/PdfPig",
+        "https://github.com/UglyToad/PdfPig/wiki",
+        "https://github.com/UglyToad/PdfPig/wiki/FAQ",
+        "https://github.com/UglyToad/PdfPig/wiki/Forms-(AcroForms)"
+      ]
+    },
+    {
+      "id": "itext",
+      "name": "iText 9",
+      "shortName": "iText",
+      "url": "https://itextpdf.com/",
+      "stack": ".NET, Java",
+      "licence": "AGPL-3.0 or commercial",
+      "pricingModel": "Free under AGPL; otherwise an annual subscription by volume, or OEM; some add-ons commercial only",
+      "runtime": "Managed; the OCR add-on is native, rendering an external CLI",
+      "htmlToPdf": "Own managed engine (add-on pdfHTML)",
+      "maintenance": "Active (9.7.0, Jul 2026)",
+      "bestAt": "Mature library, strongest at PAdES signing and validation, PDF/A-1 to 4, PDF/UA-1 and 2, and forms; add-ons for HTML, redaction and OCR.",
+      "sources": [
+        "https://www.nuget.org/packages/itext",
+        "https://www.nuget.org/packages/itext.pdfsweep",
+        "https://www.nuget.org/packages/itext.pdfocr.tesseract4",
+        "https://www.nuget.org/packages/itext.pdfocr.onnx.abstract"
+      ]
+    },
+    {
+      "id": "aspose",
+      "name": "Aspose.PDF for .NET",
+      "shortName": "Aspose",
+      "url": "https://products.aspose.com/pdf/net/",
+      "stack": ".NET",
+      "licence": "Proprietary (Aspose EULA)",
+      "pricingModel": "Perpetual per developer or site with a year of updates; or metered pay-per-use",
+      "runtime": "Managed; System.Drawing.Common, or the .Drawing variant",
+      "htmlToPdf": "Own engine (no browser)",
+      "maintenance": "Active (26.9.0, Sep 2026)",
+      "bestAt": "Broad commercial SDK: creation, conversion to and from Office formats, forms, signatures, redaction, PDF/A, PDF/UA and ZUGFeRD.",
+      "sources": [
+        "https://www.nuget.org/packages/Aspose.PDF",
+        "https://www.nuget.org/packages/Aspose.PDF.Drawing",
+        "https://releases.aspose.com/pdf/net/",
+        "https://releases.aspose.com/pdf/net/release-notes/2026/"
+      ]
+    },
+    {
+      "id": "syncfusion",
+      "name": "Syncfusion PDF Library",
+      "shortName": "Syncfusion",
+      "url": "https://www.syncfusion.com/document-sdk/net-pdf-library",
+      "stack": ".NET",
+      "licence": "Proprietary EULA; free Community Licence",
+      "pricingModel": "Per developer per year + annual document-volume tier; free Community Licence",
+      "runtime": "Managed core; bundled Chromium for HTML; native add-ons",
+      "htmlToPdf": "Bundled Blink (Chromium 147), separate packages",
+      "maintenance": "Active (34.2.9, Sep 2026)",
+      "bestAt": "Broad commercial SDK: edit, forms, PAdES B-LTA signing and validation, PDF/A-1 to 4, Factur-X, Blink HTML",
+      "sources": [
+        "https://www.nuget.org/packages/Syncfusion.Pdf.Net.Core",
+        "https://api.nuget.org/v3-flatcontainer/syncfusion.pdf.net.core/index.json",
+        "https://www.nuget.org/packages/Syncfusion.Pdf.NET",
+        "https://www.nuget.org/packages/Syncfusion.HtmlToPdfConverter.Net.Linux"
+      ]
+    },
+    {
+      "id": "ironpdf",
+      "name": "IronPDF",
+      "shortName": "IronPDF",
+      "url": "https://ironpdf.com/",
+      "stack": ".NET",
+      "licence": "Proprietary commercial (Iron EULA)",
+      "pricingModel": "Perpetual tiers by devs/locations/projects, 1 yr updates; monthly and enterprise options",
+      "runtime": "Native CEF + PDFium/qpdf binaries, or IronPdfEngine Docker",
+      "htmlToPdf": "Chromium (bundled CEF 109; CEF 131 option)",
+      "maintenance": "Active (2026.9.2, Sep 2026)",
+      "bestAt": "Pixel-faithful Chromium HTML/Razor to PDF from .NET, with a broad commercial API for editing, signing, PDF/A and PDF/UA.",
+      "sources": [
+        "https://www.nuget.org/packages/IronPdf",
+        "https://ironpdf.com/licensing/",
+        "https://ironpdf.com/features/",
+        "https://ironpdf.com/product-updates/changelog/"
+      ]
+    },
+    {
+      "id": "apryse",
+      "name": "Apryse SDK",
+      "shortName": "Apryse",
+      "url": "https://apryse.com/",
+      "stack": ".NET over a native core",
+      "licence": "Proprietary (commercial licence key)",
+      "pricingModel": "Custom quote; modular base package plus add-ons, by volume and deployment; free trial",
+      "runtime": "Native PDFNetC core per platform behind a .NET wrapper",
+      "htmlToPdf": "Chromium (separate HTML2PDF module)",
+      "maintenance": "Active (12.1.0, Aug 2026)",
+      "bestAt": "Broad commercial toolkit: rendering, editing, conversion, forms, signatures, PDF/A, redaction and OCR from one native core.",
+      "sources": [
+        "https://apryse.com/pricing",
+        "https://www.nuget.org/packages/PDFTron.NET.x64",
+        "https://docs.apryse.com/core/changelogs/version-12/12-0-0"
+      ]
+    },
+    {
+      "id": "nutrient",
+      "name": "Nutrient .NET SDK (GdPicture.NET)",
+      "shortName": "Nutrient",
+      "url": "https://www.nutrient.io/sdk/dotnet/",
+      "stack": ".NET",
+      "licence": "Proprietary (GdPicture.NET 14 EULA)",
+      "pricingModel": "Annual or multiyear subscription, quoted by component and use case; 30-day trial",
+      "runtime": "Managed .NET plus native runtimes; Chrome for HTML",
+      "htmlToPdf": "Chromium (external headless Chrome)",
+      "maintenance": "Active (14.4.9, Sep 2026)",
+      "bestAt": "Wide .NET document-imaging suite: PDF editing, OCR, barcodes, PDF/A and PDF/UA conversion, signatures and e-invoice embedding.",
+      "sources": [
+        "https://www.nutrient.io/sdk/pricing/",
+        "https://www.nuget.org/packages/GdPicture.API/14.4.9",
+        "https://www.nutrient.io/guides/dotnet/conversion/html-to-pdf/"
+      ]
+    },
+    {
+      "id": "docotic",
+      "name": "Docotic.Pdf",
+      "shortName": "Docotic",
+      "url": "https://bitmiracle.com/pdf-library/",
+      "stack": ".NET",
+      "licence": "Proprietary (commercial)",
+      "pricingModel": "Perpetual per app, per server or unbound; unlimited developers; 1 year of updates",
+      "runtime": "Managed .NET; HTML add-on drives headless Chrome",
+      "htmlToPdf": "Chromium (free HtmlToPdf add-on)",
+      "maintenance": "Active (9.9 May 2026; dev builds Sep 2026)",
+      "bestAt": "Managed .NET library for editing, text extraction, forms, signatures and PDF/A, with a free Chrome-based HTML add-on.",
+      "sources": [
+        "https://bitmiracle.com/pdf-library/licenses/",
+        "https://www.nuget.org/packages/BitMiracle.Docotic.Pdf",
+        "https://bitmiracle.com/pdf-library/html-pdf/"
+      ]
+    },
+    {
+      "id": "gembox",
+      "name": "GemBox.Pdf",
+      "shortName": "GemBox",
+      "url": "https://www.gemboxsoftware.com/pdf",
+      "stack": ".NET",
+      "licence": "Proprietary (GemBox EULA)",
+      "pricingModel": "Perpetual per-developer tiers, royalty-free; 1 year of updates; free mode (2 pages)",
+      "runtime": ".NET plus SkiaSharp/HarfBuzz native; Chromium for HTML",
+      "htmlToPdf": "Chromium (bundled GemBox.Pdf.Html packages)",
+      "maintenance": "Active (2026.9.116, Sep 2026)",
+      "bestAt": "Simple .NET API to read, edit, sign and redact PDFs, with a free two-page mode that may be used commercially.",
+      "sources": [
+        "https://www.gemboxsoftware.com/pdf/pricelist",
+        "https://www.nuget.org/packages/GemBox.Pdf",
+        "https://www.gemboxsoftware.com/pdf/examples/c-sharp-vb-net-convert-html-to-pdf/212"
+      ]
+    },
+    {
+      "id": "chromium",
+      "name": "Chromium through PuppeteerSharp or Playwright",
+      "shortName": "Chromium",
+      "url": "https://www.puppeteersharp.com/",
+      "stack": ".NET client, Chromium",
+      "licence": "MIT clients; BSD-3-Clause Chromium",
+      "pricingModel": "Free, open source",
+      "runtime": "External Chromium process; Playwright adds a Node.js driver",
+      "htmlToPdf": "Chromium (headless Page.printToPDF)",
+      "maintenance": "Active (PuppeteerSharp 25.12.0, Sep 2026)",
+      "bestAt": "Browser-grade HTML, CSS and JavaScript to PDF from .NET via headless Chromium; cannot open or modify existing PDFs.",
+      "sources": [
+        "https://www.nuget.org/packages/PuppeteerSharp",
+        "https://www.nuget.org/packages/Microsoft.Playwright",
+        "https://www.nuget.org/packages/PuppeteerSharp.Cdp",
+        "https://github.com/hardkoded/puppeteer-sharp/releases"
+      ]
+    },
+    {
+      "id": "wkhtmltopdf",
+      "name": "wkhtmltopdf (DinkToPdf, Rotativa)",
+      "shortName": "wkhtmltopdf",
+      "url": "https://wkhtmltopdf.org/",
+      "stack": "C++ with .NET wrappers",
+      "licence": "LGPL-3.0 (.NET wrappers MIT)",
+      "pricingModel": "Free (open source)",
+      "runtime": "Native wkhtmltopdf binary or libwkhtmltox per platform",
+      "htmlToPdf": "QtWebKit (WebKit of about 2012)",
+      "maintenance": "Archived (Jan 2023)",
+      "bestAt": "Long the default free HTML to PDF command-line tool; now archived, with SSRF flaw CVE-2022-35583 left unpatched.",
+      "sources": [
+        "https://github.com/wkhtmltopdf/wkhtmltopdf",
+        "https://github.com/wkhtmltopdf/packaging",
+        "https://wkhtmltopdf.org/status.html"
+      ]
+    },
+    {
+      "id": "gotenberg",
+      "name": "Gotenberg",
+      "shortName": "Gotenberg",
+      "url": "https://gotenberg.dev/",
+      "stack": "Go service in Docker",
+      "licence": "MIT",
+      "pricingModel": "Free (open source), sponsor-funded; no paid tier",
+      "runtime": "Docker container (Chromium, LibreOffice) over HTTP",
+      "htmlToPdf": "Chromium (bundled headless)",
+      "maintenance": "Active (8.37.0, Sep 2026)",
+      "bestAt": "Self-hosted HTTP API bundling Chromium and LibreOffice for HTML and Office to PDF, plus merge, split, PDF/A and encryption.",
+      "sources": [
+        "https://gotenberg.dev/",
+        "https://github.com/gotenberg/gotenberg/releases",
+        "https://pkg.go.dev/github.com/gotenberg/gotenberg/v8"
+      ]
+    },
+    {
+      "id": "pdfbox",
+      "name": "Apache PDFBox",
+      "shortName": "PDFBox",
+      "url": "https://pdfbox.apache.org/",
+      "stack": "Java",
+      "licence": "Apache-2.0",
+      "pricingModel": "Free (open source)",
+      "runtime": "JVM (Java 8+), pure Java",
+      "htmlToPdf": "none",
+      "maintenance": "Active (3.0.8, Jul 2026)",
+      "bestAt": "Mature open-source Java library to read, edit, sign and render PDFs, with Preflight for PDF/A-1b validation.",
+      "sources": [
+        "https://pdfbox.apache.org/",
+        "https://repo1.maven.org/maven2/org/apache/pdfbox/pdfbox/maven-metadata.xml"
+      ]
+    },
+    {
+      "id": "qpdf",
+      "name": "qpdf",
+      "shortName": "qpdf",
+      "url": "https://qpdf.readthedocs.io/",
+      "stack": "C++",
+      "licence": "Apache-2.0",
+      "pricingModel": "Free (open source)",
+      "runtime": "Native C++ library and CLI (zlib, libjpeg)",
+      "htmlToPdf": "none",
+      "maintenance": "Active (12.4.1, Aug 2026)",
+      "bestAt": "Structural PDF transformation: linearisation, encryption, merge and split, repair, and JSON inspection of PDF internals.",
+      "sources": [
+        "https://qpdf.readthedocs.io/en/stable/release-notes.html",
+        "https://qpdf.readthedocs.io/en/stable/license.html",
+        "https://qpdf.readthedocs.io/en/stable/installation.html"
+      ]
+    },
+    {
+      "id": "mupdf",
+      "name": "MuPDF and PyMuPDF",
+      "shortName": "MuPDF",
+      "url": "https://mupdf.com/",
+      "stack": "C, with Python and .NET bindings",
+      "licence": "AGPL-3.0 or commercial (.NET: NC/comm.)",
+      "pricingModel": "Free under AGPL; commercial licence quoted (OEM per copy, subscription or custom)",
+      "runtime": "Native C library per platform (Python, .NET bindings)",
+      "htmlToPdf": "Own engine (CSS2 subset, Story API)",
+      "maintenance": "Active (MuPDF 1.28.5, Sep 2026)",
+      "bestAt": "Fast rendering and text extraction, with a light HTML/CSS layout engine and bindings for Python and .NET.",
+      "sources": [
+        "https://artifex.com/licensing",
+        "https://mupdf.com/releases/history",
+        "https://www.nuget.org/packages/MuPDF.NET"
+      ]
+    },
+    {
+      "id": "pdfcpu",
+      "name": "pdfcpu",
+      "shortName": "pdfcpu",
+      "url": "https://pdfcpu.io/",
+      "stack": "Go",
+      "licence": "Apache-2.0",
+      "pricingModel": "Free (open source)",
+      "runtime": "Pure Go (no cgo); Go library or static CLI binary",
+      "htmlToPdf": "none",
+      "maintenance": "Active (v0.15.0, Aug 2026)",
+      "bestAt": "Pure-Go PDF processing: validate, merge, split, encrypt, stamp and optimise, as a library or a static CLI.",
+      "sources": [
+        "https://github.com/pdfcpu/pdfcpu",
+        "https://pkg.go.dev/github.com/pdfcpu/pdfcpu"
+      ]
+    },
+    {
+      "id": "weasyprint",
+      "name": "WeasyPrint",
+      "shortName": "WeasyPrint",
+      "url": "https://weasyprint.org/",
+      "stack": "Python",
+      "licence": "BSD-3-Clause",
+      "pricingModel": "Free (open source); optional paid professional support",
+      "runtime": "CPython 3.10+ with native Pango, HarfBuzz, Fontconfig",
+      "htmlToPdf": "Own engine (Python, no JavaScript)",
+      "maintenance": "Active (70.0, Sep 2026)",
+      "bestAt": "Browser-free HTML/CSS paged-media to PDF engine in Python, with PDF/A and PDF/UA output variants.",
+      "sources": [
+        "https://pypi.org/project/weasyprint/",
+        "https://doc.courtbouillon.org/weasyprint/stable/changelog.html",
+        "https://github.com/Kozea/WeasyPrint/blob/main/LICENSE"
+      ]
+    },
+    {
+      "id": "prince",
+      "name": "Prince",
+      "shortName": "Prince",
+      "url": "https://www.princexml.com/",
+      "stack": "Native binary",
+      "licence": "Proprietary (YesLogic EULA)",
+      "pricingModel": "Annual site licence by document type/volume; one-time server/desktop; OEM; free non-comm.",
+      "runtime": "Native binary per platform, run as an external process",
+      "htmlToPdf": "Own native engine (optional JavaScript)",
+      "maintenance": "Active (Prince 17, Sep 2026)",
+      "bestAt": "High-fidelity CSS paged-media typesetting of HTML and XML, used for books, reports and business documents.",
+      "sources": [
+        "https://www.princexml.com/releases/17/",
+        "https://www.princexml.com/purchase/",
+        "https://www.princexml.com/purchase/license_faq/"
+      ]
     }
   ],
   "matrix": {
-    "products": [],
-    "capabilities": []
+    "products": [
+      "itext",
+      "aspose",
+      "syncfusion",
+      "pdfsharp",
+      "questpdf",
+      "pdfpig",
+      "ironpdf",
+      "chromium"
+    ],
+    "capabilities": [
+      {
+        "id": "managed",
+        "name": "Managed core: no native binary, browser or external process",
+        "ours": [
+          "no-dependency"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "Core ships as managed DLLs (io, kernel, layout, forms, pdfa, pdfua, sign, svg, barcodes, styledxmlparser), and pdfHTML is also managed. The exceptions are pdfOCR, which needs native OCR runtimes, and pdfRender, which is an external CLI",
+            "source": "https://www.nuget.org/packages/itext"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "Managed assemblies only (no native runtimes in the NuGet packages), no browser or external process. On non-Windows .NET 8+ use the Aspose.PDF.Drawing variant, because the main package relies on System.Drawing.Common. Optional OCR brings in Aspose.OCR, which uses native ONNX Runtime",
+            "source": "https://docs.aspose.com/pdf/net/drawing/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "Core package is managed; HTML needs bundled Blink; raster (PDFium), OCR (Tesseract), Imaging (SkiaSharp) are native",
+            "source": "https://www.nuget.org/packages/Syncfusion.Pdf.Net.Core"
+          },
+          "pdfsharp": {
+            "value": "yes",
+            "note": "Core build is pure managed C# (net8/9/10, netstandard2.0); GDI+ and WPF builds are Windows-only",
+            "source": "https://www.nuget.org/packages/PDFsharp"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "P/Invokes bundled native libraries per platform: a custom Skia build (m154) and qpdf (12.4.1).",
+            "source": "https://github.com/QuestPDF/QuestPDF/releases/tag/2026.9.1"
+          },
+          "pdfpig": {
+            "value": "yes",
+            "note": "Pure C#, no native code; only the optional Skia rendering add-on is native (filter add-ons are managed).",
+            "source": "https://www.nuget.org/packages/PdfPig"
+          },
+          "ironpdf": {
+            "value": "no",
+            "note": "Needs native packages (IronPdf.Native.Chrome.*, IronSoftware.Native.PdfModel) or the remote IronPdfEngine container",
+            "source": "https://www.nuget.org/packages/IronPdf"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Drives an external Chromium process from downloaded browser binaries; Playwright .NET also runs a Node.js driver",
+            "source": "https://playwright.dev/dotnet/docs/browsers"
+          }
+        },
+        "oursNote": "The core has no dependency at all. The HTML engine (M12) will use SkiaSharp and HarfBuzzSharp, native libraries, for images and text shaping, and the rasteriser (M25) Skia (ADR 43)."
+      },
+      {
+        "id": "aot",
+        "name": "Native AOT, documented",
+        "ours": [
+          "aot"
+        ],
+        "values": {
+          "itext": {
+            "value": "partial",
+            "note": "The 9.2.0 release notes claim Native AOT support for iText Core, but only in .NET MAUI (iOS/macOS), and 9.3.0 improved MAUI compatibility. The netstandard2.0/net461 assemblies carry no trimming or AOT-compatibility markings. Nothing is documented for server or console Native AOT, or for the add-ons",
+            "source": "https://kb.itextpdf.com/itext/release-itext-core-9-2-0"
+          },
+          "aspose": {
+            "value": "unknown",
+            "note": "The system requirements, release notes and docs say nothing about Native AOT or trimming. In a 2023 vendor-forum thread, a user found that PublishTrimmed broke Aspose.PDF 22.12 with a TypeLoadException until trimming was turned off. No vendor statement for Aspose.PDF was found (a 2023 'unsupported' answer was about Aspose.Cells)",
+            "source": "https://forum.aspose.com/t/aspose-pdf-library-throwing-unhandled-exception-system-typeloadexception-cannot-load-type-system-void-mscorlib-while-running-in-docker-container/260545"
+          },
+          "syncfusion": {
+            "value": "unknown",
+            "note": "No Native AOT or trimming statement in docs or release notes; 34.2.9 assembly has no IsAotCompatible metadata",
+            "source": "https://www.nuget.org/packages/Syncfusion.Pdf.Net.Core"
+          },
+          "pdfsharp": {
+            "value": "partial",
+            "note": "No documented AOT support; 6.2.4 net10.0 PdfSharp.dll declares IsAotCompatible (net8.0 only IsTrimmable)",
+            "source": "https://github.com/empira/PDFsharp/pull/171"
+          },
+          "questpdf": {
+            "value": "yes",
+            "note": "2026.7.0 added full Native AOT and trimming support (IsAotCompatible on net8.0+); native Skia/qpdf still ship.",
+            "source": "https://github.com/QuestPDF/QuestPDF/releases/tag/2026.7.0"
+          },
+          "pdfpig": {
+            "value": "yes",
+            "note": "IsAotCompatible on net8.0+, IsTrimmable on net6.0+ (v0.1.10, #939); text exporters need unreferenced code.",
+            "source": "https://github.com/UglyToad/PdfPig/releases/tag/v0.1.10"
+          },
+          "ironpdf": {
+            "value": "no",
+            "note": "Vendor's .NET 8 article lists IronPDF as not Native AOT compatible because it embeds the Chromium runtime",
+            "source": "https://ironsoftware.com/suite/blog/comparison/dotnet-8-pdf-generation-library/"
+          },
+          "chromium": {
+            "value": "partial",
+            "note": "PuppeteerSharp states AOT support (PuppeteerSharp.Cdp for Chrome-only); Playwright .NET AOT issue #2714 still open",
+            "source": "https://github.com/hardkoded/puppeteer-sharp/blob/master/README.md"
+          }
+        },
+        "oursNote": "The core is written for Native AOT and trimming (invariant 1); verifying it on every corpus document is M23's."
+      },
+      {
+        "id": "repair",
+        "name": "Opens damaged files by rebuilding the index",
+        "ours": [
+          "tolerant-reading"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "PdfReader rebuilds the xref when reading it throws (HasRebuiltXref) and fixes object offsets (HasFixedXref). StrictnessLevel controls how lenient it is",
+            "source": "https://api.itextpdf.com/iText/dotnet/9.3.0/classi_text_1_1_kernel_1_1_pdf_1_1_pdf_reader.html"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "Document.Repair(RepairOptions); PdfFileSanitization.RebuildXrefAndTrailer added in 22.8 (PDFNET-50528 'Add method for rebuild xref table')",
+            "source": "https://releases.aspose.com/pdf/net/release-notes/2022/aspose-pdf-for-net-22-8-release-notes/"
+          },
+          "syncfusion": {
+            "value": "partial",
+            "note": "OpenAndRepair overload fixes basic cross-reference offset errors; docs say it cannot repair complex corruption",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/open-pdf-file"
+          },
+          "pdfsharp": {
+            "value": "no",
+            "note": "Tolerates misnumbered xref entries but never rebuilds the xref; a missing startxref or bad offset throws",
+            "source": "https://github.com/empira/PDFsharp/blob/master/src/foundation/src/PDFsharp/src/PdfSharp/Pdf.IO/Parser.cs"
+          },
+          "questpdf": {
+            "value": "partial",
+            "note": "Undocumented: DocumentOperation runs qpdf with its default xref recovery; warnings don't throw; no report.",
+            "source": "https://github.com/QuestPDF/QuestPDF.Native.Qpdf/blob/main/manual/cli.rst"
+          },
+          "pdfpig": {
+            "value": "yes",
+            "note": "Lenient parsing by default; if the xref cannot be read it brute-forces objects and xref sections.",
+            "source": "https://github.com/UglyToad/PdfPig/blob/master/src/UglyToad.PdfPig/Parser/FileStructure/XrefBruteForcer.cs"
+          },
+          "ironpdf": {
+            "value": "no",
+            "note": "No repair API; vendor troubleshooting says IronPDF cannot parse a corrupted PDF",
+            "source": "https://ironpdf.com/troubleshooting/ironpdf-can-not-open-parse-a-specific-pdf-file/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Generates PDFs from web pages only; no API opens or rebuilds existing PDFs",
+            "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
+          }
+        },
+        "oursNote": "Every repair is reported as a structured diagnostic."
+      },
+      {
+        "id": "htmlToPdf",
+        "name": "HTML and CSS to PDF",
+        "ours": [
+          "html-engine"
+        ],
+        "values": {
+          "itext": {
+            "value": "add-on",
+            "note": "The pdfHTML add-on (itext.pdfhtml) is 'not based on any browser engine implementation'. It can output tagged PDF, PDF/A or PDF/UA",
+            "source": "https://github.com/itext/itext-pdfhtml-dotnet"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "Built-in HTML/CSS engine via HtmlLoadOptions (print/screen media, SVG, font embedding, logical structure via CreateLogicalStructure since 25.12). No Chromium or external process",
+            "source": "https://docs.aspose.com/pdf/net/convert-html-to-pdf/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "Bundled Blink (Chromium 147) packages; URL, HTML string and SVG input; TOC, bookmarks, forms, headers/footers",
+            "source": "https://help.syncfusion.com/document-processing/pdf/conversions/html-to-pdf/net/features"
+          },
+          "pdfsharp": {
+            "value": "no",
+            "note": "FAQ: no HTML-to-PDF converter and none planned; only the third-party HtmlRenderer.PdfSharp",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Overview/FAQ.html"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "Code-first C# API only; full HTML/CSS not planned, an HTML subset sits in the backlog; community add-ons only.",
+            "source": "https://github.com/QuestPDF/QuestPDF/discussions/995"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "The wiki lists 'Converting HTML or other document formats to PDF' under things you can't do.",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "Bundled Chromium (CEF 109; CEF 131 in IronPdf.UpdatedChrome): HTML, files, URLs, Razor/CSHTML, JavaScript",
+            "source": "https://ironpdf.com/troubleshooting/updated-chrome-rendering/"
+          },
+          "chromium": {
+            "value": "yes",
+            "note": "page.pdf()/PdfAsync prints the page in headless Chromium (Blink layout, JavaScript executed)",
+            "source": "https://playwright.dev/dotnet/docs/api/class-page"
+          }
+        }
+      },
+      {
+        "id": "pagedMedia",
+        "name": "CSS paged media beyond page size and margins",
+        "ours": [
+          "paged-media"
+        ],
+        "values": {
+          "itext": {
+            "value": "add-on",
+            "note": "Through pdfHTML: @page rules with margin boxes (e.g. @bottom-right) and counter(page)/counter(pages), running elements (CssRunningManager in the pdfHTML source), and target-counter/target-counters since pdfHTML 3.0.3",
+            "source": "https://kb.itextpdf.com/itext/chapter-2-defining-styles-with-css"
+          },
+          "aspose": {
+            "value": "unknown",
+            "note": "CSS @page rules can override PageInfo (HtmlLoadOptions.IsPriorityCssPageRule), so page size and margins can come from CSS. Margin boxes, running headers, page counters, cross-references and footnotes are not documented for Aspose.PDF. break-inside: avoid was unsupported in 2022 (enhancement PDFNET-51824), still unresolved in July 2023",
+            "source": "https://reference.aspose.com/pdf/net/aspose.pdf/htmlloadoptions/"
+          },
+          "syncfusion": {
+            "value": "unknown",
+            "note": "Docs cover page size, margins, print media type and API headers/footers; no @page or margin-box support documented",
+            "source": "https://help.syncfusion.com/document-processing/pdf/conversions/html-to-pdf/net/features"
+          },
+          "pdfsharp": {
+            "value": "no",
+            "note": "No HTML/CSS engine; MigraDoc does headers, footers, page fields and TOC through its own object model",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Overview/FAQ.html"
+          },
+          "questpdf": {
+            "value": "n/a",
+            "note": "No HTML/CSS input; the C# API has repeating headers/footers, page numbers, page references and TOC.",
+            "source": "https://github.com/QuestPDF/QuestPDF/discussions/995"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "No HTML/CSS engine and no layout engine at all.",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "partial",
+            "note": "@page size/margins honoured; running headers and page numbers via HtmlHeaderFooter API; margin boxes undocumented",
+            "source": "https://ironpdf.com/troubleshooting/override-css-page-rules-renderingoptions/"
+          },
+          "chromium": {
+            "value": "partial",
+            "note": "@page margin boxes with page/pages counters since Chrome 131; string-set, target-counter, float: footnote unsupported",
+            "source": "https://developer.chrome.com/blog/print-margins"
+          }
+        }
+      },
+      {
+        "id": "assemble",
+        "name": "Merge, split and reorder pages",
+        "ours": [
+          "pages",
+          "merge-fidelity"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "PdfMerger and CopyPagesTo merge documents. PdfSplitter splits by page numbers, size or outlines. PdfDocument.MovePage reorders pages. Tiling and N-up are done through PdfCanvas transforms",
+            "source": "https://kb.itextpdf.com/itext/chapter-6-reusing-existing-pdf-documents-net"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "Merge, split, move/reorder, insert, delete and extract pages through PageCollection or the PdfFileEditor facade",
+            "source": "https://docs.aspose.com/pdf/net/move-pages/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "Merge, split, import, reorder, remove and rotate pages",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-pages"
+          },
+          "pdfsharp": {
+            "value": "yes",
+            "note": "Modify, merge and split existing PDF files: import, insert, move and remove pages",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Overview/Features.html"
+          },
+          "questpdf": {
+            "value": "yes",
+            "note": "DocumentOperation (qpdf) MergeFile and TakePages: ranges, any order, reverse, even/odd; split by saving selections.",
+            "source": "https://www.questpdf.com/concepts/document-operations.html"
+          },
+          "pdfpig": {
+            "value": "yes",
+            "note": "PdfMerger merges files with per-file page selection; AddPage(document, n) copies pages to split or reorder.",
+            "source": "https://github.com/UglyToad/PdfPig/blob/master/src/UglyToad.PdfPig/Writer/PdfMerger.cs"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "Merge, AppendPdf/PrependPdf/InsertPdf, CopyPages, RemovePages and split",
+            "source": "https://ironpdf.com/how-to/merge-or-split-pdfs/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "pageRanges only selects pages of the PDF being generated; no merge/split/reorder of existing PDFs",
+            "source": "https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/Page.pdl"
+          }
+        }
+      },
+      {
+        "id": "stamp",
+        "name": "Stamps and watermarks on existing pages",
+        "ours": [
+          "stamps"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "Text or image watermarks with transparency (PdfExtGState) are added to existing pages through PdfCanvas in stamping mode",
+            "source": "https://kb.itextpdf.com/itext/how-to-watermark-pdfs-using-text-or-images"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "TextStamp, ImageStamp and PdfPageStamp via Page.AddStamp on existing pages; WatermarkArtifact; PdfFileStamp facade",
+            "source": "https://docs.aspose.com/pdf/net/text-stamps-in-the-pdf-file/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "Text and image watermarks drawn on existing pages, plus watermark annotations",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-watermarks"
+          },
+          "pdfsharp": {
+            "value": "yes",
+            "note": "XGraphics.FromPdfPage with Append/Prepend draws text or images on existing pages; vendor Watermark sample",
+            "source": "https://github.com/empira/PDFsharp-samples-1.5/blob/master/samples/core/Watermark/Program.cs"
+          },
+          "questpdf": {
+            "value": "yes",
+            "note": "OverlayFile/UnderlayFile put pages of another PDF over/under chosen pages (watermark example); no direct text call.",
+            "source": "https://www.questpdf.com/concepts/document-operations.html"
+          },
+          "pdfpig": {
+            "value": "partial",
+            "note": "Can draw text, shapes and JPEG/PNG over copied pages; no stamp API or opacity; README: edits 'very limited'.",
+            "source": "https://github.com/UglyToad/PdfPig"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "TextStamper, ImageStamper, HtmlStamper, BarcodeStamper and ApplyWatermark on existing pages",
+            "source": "https://ironpdf.com/how-to/stamp-text-image/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Watermarks only via HTML/CSS or header/footer templates while generating; cannot open existing PDF pages",
+            "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
+          }
+        }
+      },
+      {
+        "id": "extractText",
+        "name": "Text extraction",
+        "ours": [
+          "extraction"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "PdfTextExtractor with location-based and simple strategies. The commercial pdfCalligraph add-on advertises extraction for writing systems with compound characters",
+            "source": "https://api.itextpdf.com/iText/dotnet/9.3.0/classi_text_1_1_kernel_1_1_pdf_1_1_canvas_1_1_parser_1_1_pdf_text_extractor.html"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "TextAbsorber, TextFragmentAbsorber and ParagraphAbsorber (paragraph extraction)",
+            "source": "https://docs.aspose.com/pdf/net/extract-text-from-all-pdf/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "Plain and layout-preserving extraction; lines, words and glyphs with bounds, font and colour",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-text-extraction"
+          },
+          "pdfsharp": {
+            "value": "add-on",
+            "note": "Core gives only raw content-stream characters via CLexer; PsX Text Extractor (separate licence) does extraction",
+            "source": "https://www.pdfsharp.com/Offers"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "Reading existing PDFs, including text extraction, is only a Future item on the vendor roadmap.",
+            "source": "https://www.questpdf.com/roadmap.html"
+          },
+          "pdfpig": {
+            "value": "yes",
+            "note": "Core purpose: positioned letters, word extractors, page segmenters, reading-order detection.",
+            "source": "https://github.com/UglyToad/PdfPig"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "ExtractAllText and ExtractTextFromPage(s); images too; JSON export since 2025.12.2",
+            "source": "https://ironpdf.com/how-to/extract-text-and-images/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "No API reads existing PDFs; headless mode cannot navigate to a PDF document",
+            "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
+          }
+        }
+      },
+      {
+        "id": "forms",
+        "name": "Fill and flatten AcroForms",
+        "ours": [
+          "forms"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "PdfAcroForm fills AcroForm fields and flattens them fully or partially (FlattenFields, PartialFormFlattening). XFDF is supported (XfdfObjectFactory). Core can fill XFA data (XfaForm), but flattening dynamic XFA needs the commercial pdfXFA add-on",
+            "source": "https://api.itextpdf.com/iText/dotnet/9.3.0/classi_text_1_1_forms_1_1_pdf_acro_form.html"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "Fill AcroForm fields through document.Form; flatten with Field.Flatten, Form.Flatten or Document.Flatten. XFA fields can be filled, or the form converted to AcroForm",
+            "source": "https://reference.aspose.com/pdf/net/aspose.pdf.forms/form/flatten/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "Create, fill and flatten AcroForm fields; fills XFA through the AcroForm API (EnableXfaFormFill)",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-forms"
+          },
+          "pdfsharp": {
+            "value": "add-on",
+            "note": "Core AcroForm support is limited, with no flatten API; PsX Forms (separate licence) creates and manages forms",
+            "source": "https://www.pdfsharp.com/Offers"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "Basic AcroForm support (create fields, read values) is only a Future roadmap item; no form operations exist.",
+            "source": "https://www.questpdf.com/roadmap.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "AcroForm fields are read-only; the wiki lists populating AcroForms under things you can't do (#797).",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "Fill AcroForm text, checkbox, combo and radio fields via Form.FindFormField; flatten with PdfDocument.Flatten",
+            "source": "https://ironpdf.com/how-to/edit-forms/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "HTML form automation only; no API to fill or flatten AcroForm fields in a PDF",
+            "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
+          }
+        }
+      },
+      {
+        "id": "encrypt",
+        "name": "Password encryption, AES-256",
+        "ours": [
+          "encryption"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "Password and certificate encryption through WriterProperties, from RC4 up to AES-256. AES-GCM (ISO/TS 32003) and MAC integrity protection (ISO/TS 32004) since 9.0",
+            "source": "https://api.itextpdf.com/iText/dotnet/9.3.0/classi_text_1_1_kernel_1_1_pdf_1_1_writer_properties.html"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "Document.Encrypt with CryptoAlgorithm.AESx256 (also RC4-40, RC4-128 and AES-128); public-certificate encryption added in 25.7",
+            "source": "https://reference.aspose.com/pdf/net/aspose.pdf/cryptoalgorithm/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "RC4 40/128, AES 128/256, and AES-GCM 256 (PDF 2.0 only); passwords and permissions",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-security"
+          },
+          "pdfsharp": {
+            "value": "yes",
+            "note": "RC4 40/128, AES-128 (default) and AES-256 (PDF 2.0); passwords and permissions",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Encryption.html"
+          },
+          "questpdf": {
+            "value": "yes",
+            "note": "DocumentOperation.Encrypt with 40-, 128- or 256-bit (AES-256) keys and permission flags; Decrypt too.",
+            "source": "https://www.questpdf.com/concepts/document-operations.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "Only reads encrypted files given a password (RC4/AES); the writer has no encryption.",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "User/owner passwords and permissions; RC4-128 by default, AES-128/AES-256 via EncryptionType since 2026.8.1",
+            "source": "https://ironpdf.com/how-to/pdf-permissions-passwords/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Page.printToPDF has no password, permission or encryption parameter",
+            "source": "https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/Page.pdl"
+          }
+        }
+      },
+      {
+        "id": "sign",
+        "name": "Digital signatures",
+        "ours": [
+          "signing"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "PdfPadesSigner covers PAdES B-B, B-T, B-LT and B-LTA, and ProlongSignatures adds LTV data. It needs the BouncyCastle adapter package",
+            "source": "https://api.itextpdf.com/iText/dotnet/9.3.0/classi_text_1_1_signatures_1_1_pdf_pades_signer.html"
+          },
+          "aspose": {
+            "value": "partial",
+            "note": "Creates PKCS#1, PKCS#7 and PKCS#7-detached signatures with RSA, DSA or ECDSA keys. PKCS#1 and PKCS#7 are always SHA-1; SHA-2 (and SHA-3 for ECDSA) apply only to detached signatures. Also supports external/HSM signing and TSA timestamps. PAdES and ETSI.CAdES.detached are not documented; staff said in February 2022 that Aspose.PDF 'does not meet PADES standards' (PDFNET-42596). A Signature.UseLtv flag exists. A 2024 report of non-compliant PAdES LTV signatures (PDFNET-58018) was answered in January 2025 only by adding SHA-256 for ExternalSignature. B-LT/B-LTA are not documented",
+            "source": "https://docs.aspose.com/pdf/net/digitally-sign-pdf-file/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "CAdES/PAdES signatures, timestamps, LTV (DSS) and PAdES B-LTA archive timestamps; external/HSM signing",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-digitalsignature"
+          },
+          "pdfsharp": {
+            "value": "partial",
+            "note": "Since 6.2.0: adbe.pkcs7.detached CMS signatures with optional RFC 3161 timestamp; no PAdES, no DSS/LTV",
+            "source": "https://github.com/empira/PDFsharp/blob/master/src/foundation/src/PDFsharp/src/PdfSharp/Pdf.Signatures/DigitalSignatureHandler.cs"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "X.509 signing is only a Future roadmap item; no PAdES or LTV.",
+            "source": "https://www.questpdf.com/roadmap.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "No signing; signature fields can only be read, as AcroSignatureField.",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "partial",
+            "note": "PFX/X509Certificate2 or HSM (PKCS#11), ECDSA, RFC 3161 timestamps; no documented PAdES baseline or LTV (DSS)",
+            "source": "https://ironpdf.com/how-to/signing/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "No signing parameter in Page.printToPDF and no PDF manipulation API",
+            "source": "https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/Page.pdl"
+          }
+        }
+      },
+      {
+        "id": "verifySig",
+        "name": "Validation of received signatures",
+        "ours": [
+          "ltv-validation"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "SignatureValidator arrived in 8.0.5 as experimental and was finalized in 9.0. It checks integrity, the certificate chain up to trust anchors, OCSP/CRL revocation, timestamps and document revisions (MDP). EU trusted lists (LOTL) arrived in 9.3 and non-EU lists in 9.6",
+            "source": "https://api.itextpdf.com/iText/dotnet/9.3.0/namespacei_text_1_1_signatures_1_1_validation.html"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "VerifySignature, plus TryVerifySignature (26.7), check integrity and compromise. ValidationOptions add certificate-chain and OCSP/CRL revocation checks (25.1/25.4). No documented LTV/DSS-based long-term validation",
+            "source": "https://docs.aspose.com/pdf/net/digitally-sign-pdf-file/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "ValidateSignature: modification, certificate chain, timestamp and OCSP/CRL revocation, custom trusted list",
+            "source": "https://www.syncfusion.com/blogs/post/sign-verify-pdf-signatures-in-csharp"
+          },
+          "pdfsharp": {
+            "value": "no",
+            "note": "Signature API only signs (IDigitalSigner, DigitalSignatureHandler); no integrity, chain or revocation checks",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Signatures.html"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "Cannot inspect existing PDFs; signing and content inspection are only Future roadmap items.",
+            "source": "https://www.questpdf.com/roadmap.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "Signature fields are exposed as form fields only; no integrity, certificate or revocation checks.",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "VerifyPdfSignatures: integrity, trust chain, revocation, algorithm strength (2026.3.1); no LTV validation documented",
+            "source": "https://ironpdf.com/product-updates/changelog/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Cannot open existing PDFs; headless mode cannot navigate to a PDF document",
+            "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
+          }
+        },
+        "oursNote": "M4, earlier and without cryptography, will report what each signature covers and what changed after it."
+      },
+      {
+        "id": "pdfaCreate",
+        "name": "PDF/A generation",
+        "ours": [
+          "facturx",
+          "pdfa-profiles"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "PDF/A-1a/1b, 2a/2b/2u, 3a/3b/3u, 4, 4e and 4f, through PdfADocument",
+            "source": "https://api.itextpdf.com/iText/dotnet/9.3.0/classi_text_1_1_kernel_1_1_pdf_1_1_pdf_a_conformance.html"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "Converts to PDF/A-1a/1b, 2a/2b/2u, 3a/3b/3u, 4, 4e and 4f",
+            "source": "https://docs.aspose.com/pdf/net/convert-pdf-to-pdfa/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "Creates PDF/A-1a/b, 2a/b/u, 3a/b/u, 4/4e/4f; ConvertToPDFA converts existing files (Imaging package on .NET Core)",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-pdf-conformance"
+          },
+          "pdfsharp": {
+            "value": "partial",
+            "note": "'Very early state': 6.2.4 SetPdfA writes PDF/A-1a for new tagged documents only; 7.0 preview adds PdfAManager",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Archiving.html"
+          },
+          "questpdf": {
+            "value": "yes",
+            "note": "PDF/A-2a/2b/2u and 3a/3b/3u; PDF/A-1 is commented out of the enum; no PDF/A-4.",
+            "source": "https://github.com/QuestPDF/QuestPDF/blob/main/src/dotnet/library/QuestPDF/Infrastructure/DocumentSettings.cs"
+          },
+          "pdfpig": {
+            "value": "yes",
+            "note": "ArchiveStandard writes PDF/A-1b, 2b, 3b; the 1a/2a/3a options only add an empty StructTreeRoot.",
+            "source": "https://github.com/UglyToad/PdfPig/blob/master/src/UglyToad.PdfPig/Writer/PdfAStandard.cs"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "SaveAsPdfA/ConvertToPdfA from HTML or existing PDFs: PDF/A-1a/1b, 2a/2b, 3a/3b, 4/4e/4f (default 3b)",
+            "source": "https://ironpdf.com/object-reference/api/IronPdf.PdfAVersions.html"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Page.printToPDF offers no PDF/A conformance option",
+            "source": "https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/Page.pdl"
+          }
+        }
+      },
+      {
+        "id": "pdfaValidate",
+        "name": "PDF/A validation of any document",
+        "ours": [
+          "pdfa-profiles"
+        ],
+        "values": {
+          "itext": {
+            "value": "partial",
+            "note": "Conformance is enforced only on documents written through PdfADocument (created or stamped), which throws PdfAConformanceException on a violation. The vendor says client code is still responsible for full compliance. The docs describe no standalone validator that reports on arbitrary files, including the 9.6 conformance-checking rework",
+            "source": "https://api.itextpdf.com/iText/dotnet/9.3.0/classi_text_1_1_pdfa_1_1_pdf_a_document.html"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "Document.Validate(log, PdfFormat) on any document writes an XML log of problems. PDF/A-1b to PDF/A-4 conversion and validation were improved in 26.8",
+            "source": "https://docs.aspose.com/pdf/net/convert-pdf-to-pdfa/"
+          },
+          "syncfusion": {
+            "value": "no",
+            "note": "Only reads the declared Conformance level; 2021 validation feature request still undelivered",
+            "source": "https://www.syncfusion.com/feedback/22470/support-for-validate-the-pdf-standard-conformance-documents"
+          },
+          "pdfsharp": {
+            "value": "no",
+            "note": "Docs: 'PDFsharp cannot check whether an existing file is PDF/A-conforming'; vendor uses veraPDF",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Archiving.html"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "Docs send users to external veraPDF; built-in veraPDF validation is only a Future roadmap item.",
+            "source": "https://www.questpdf.com/roadmap.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "No validator; features cover reading, extraction and basic creation only.",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "no",
+            "note": "No validation API in PdfDocument; the vendor's PDF/A tutorial says to validate with veraPDF or Acrobat Preflight",
+            "source": "https://ironpdf.com/tutorials/pdfa-archiving-csharp/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Generator only; cannot open or validate existing PDFs",
+            "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
+          }
+        }
+      },
+      {
+        "id": "pdfua",
+        "name": "Tagged, accessible PDF (PDF/UA)",
+        "ours": [
+          "tagged-pdf"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "PDF/UA-1 and PDF/UA-2, with automated conformance checks at creation (UA-1 since 8.0.4, UA-2 since 9.2). WellTaggedPdfDocument (WTPDF) and colour-contrast checks were added in 9.6",
+            "source": "https://kb.itextpdf.com/itext/release-itext-core-9-2-0"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "PDF/UA-1 only: tagged-PDF API, auto-tagging, and validation with PdfFormat.PDF_UA_1. PdfFormat has no PDF/UA-2 member",
+            "source": "https://docs.aspose.com/pdf/net/create-tagged-pdf/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "Tagged PDF stated PDF/UA-1 compliant, plus PDF/UA-2 and WTPDF; auto-tagging (alt text still manual)",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-tagged-pdf"
+          },
+          "pdfsharp": {
+            "value": "yes",
+            "note": "PDF/UA-1 via UAManager and StructureBuilder, tagging by hand around XGraphics drawing",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Accessibility.html"
+          },
+          "questpdf": {
+            "value": "yes",
+            "note": "PDF/UA-1 via semantic tagging, with automatic table tagging; PDF/UA-2 is on the roadmap.",
+            "source": "https://www.questpdf.com/concepts/accessibility.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "No tagging API; the A-level PDF/A option writes an empty structure tree plus MarkInfo.",
+            "source": "https://github.com/UglyToad/PdfPig/blob/master/src/UglyToad.PdfPig/Writer/PdfA1ARuleBuilder.cs"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "PDF/UA-1 and PDF/UA-2 (2025.12.2); SaveAsPdfUA tags existing PDFs, RenderHtmlAsPdfUA recommended for full tagging",
+            "source": "https://ironpdf.com/how-to/pdfua/"
+          },
+          "chromium": {
+            "value": "partial",
+            "note": "Tagged PDF (Chrome 85+, Tagged/generateTaggedPDF option); no PDF/UA conformance claim; tags depend on the HTML",
+            "source": "https://blog.chromium.org/2020/07/using-chrome-to-generate-more.html"
+          }
+        }
+      },
+      {
+        "id": "facturx",
+        "name": "Factur-X and ZUGFeRD",
+        "ours": [
+          "facturx"
+        ],
+        "values": {
+          "itext": {
+            "value": "partial",
+            "note": "Core gives PDF/A-3 with associated files, but the developer must embed factur-x.xml and add the ZUGFeRD XMP schema by hand, as the vendor article shows. There is no current dedicated add-on: the old pdfInvoice add-on covered ZUGFeRD 1.0 and was last released in 2018, for iText 7.1",
+            "source": "https://itextpdf.com/blog/technical-notes/creating-zugferd-itext"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "Built in: attach factur-x.xml via FileSpecification with AFRelationship.Alternative, then convert with PdfFormat.ZUGFeRD to PDF/A-3B. You supply the invoice XML yourself",
+            "source": "https://docs.aspose.com/pdf/net/attach-zugferd/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "ZUGFeRD 1.0, 2.0 and Factur-X profiles (to EN16931, XRechnung) on PDF/A-3b; caller supplies the XML",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-zugferd-invoice"
+          },
+          "pdfsharp": {
+            "value": "add-on",
+            "note": "PsX Factur-X (separate licence, delivered as source): Factur-X/ZUGFeRD e-invoices",
+            "source": "https://www.pdfsharp.com/Offers"
+          },
+          "questpdf": {
+            "value": "yes",
+            "note": "Generate PDF/A-3b, then AddAttachment (XML) and ExtendMetadata (XMP); caller supplies both. Docs: ZUGFeRD 2.1.",
+            "source": "https://www.questpdf.com/examples/zugferd.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "Embedded files are read-only; the writer cannot attach files, so no Factur-X despite PDF/A-3b output.",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "Since v2024.10: caller's XML embedded in PDF/A-3 with ZUGFeRD/Factur-X XMP via EmbedFileConfiguration",
+            "source": "https://ironpdf.com/how-to/pdfa/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Page.printToPDF has no PDF/A-3, file attachment or XMP option",
+            "source": "https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/Page.pdl"
+          }
+        }
+      },
+      {
+        "id": "redact",
+        "name": "True redaction",
+        "ours": [
+          "redaction"
+        ],
+        "values": {
+          "itext": {
+            "value": "add-on",
+            "note": "The pdfSweep add-on (AGPL or commercial) removes the underlying text, image and vector content in a region. Regex-based cleanup is also available (RegexBasedCleanupStrategy)",
+            "source": "https://itextpdf.com/products/pdf-redaction-pdfsweep"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "RedactionAnnotation.Redact() flattens the annotation and removes the text and images under it; HiddenDataSanitizer (25.11) removes hidden data",
+            "source": "https://reference.aspose.com/pdf/net/aspose.pdf.annotations/redactionannotation/methods/redact"
+          },
+          "syncfusion": {
+            "value": "add-on",
+            "note": "True removal of text and graphics; existing PDFs on .NET Core need Syncfusion.Pdf.Imaging.Net.Core (same licence)",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-redaction"
+          },
+          "pdfsharp": {
+            "value": "no",
+            "note": "FAQ: no content-manipulation API beyond low-level CLexer; 7.0 preview only adds a Redact annotation type",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Overview/FAQ.html"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "The full DocumentOperation list has no redaction, and the product cannot inspect page content.",
+            "source": "https://www.questpdf.com/concepts/document-operations.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "PdfTextRemover strips text for OCR preprocessing; its docs say it 'should not be used to redact content'.",
+            "source": "https://github.com/UglyToad/PdfPig/blob/master/src/UglyToad.PdfPig/Writer/PdfTextRemover.cs"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "RedactTextOnAllPages removes matched text; RedactRegions* black out rectangles (image/path removal not detailed)",
+            "source": "https://ironpdf.com/how-to/redact-text/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Cannot open or modify existing PDFs",
+            "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
+          }
+        }
+      },
+      {
+        "id": "ocr",
+        "name": "OCR of scanned pages",
+        "ours": [
+          "imaging"
+        ],
+        "values": {
+          "itext": {
+            "value": "add-on",
+            "note": "The pdfOCR add-on (AGPL or commercial) runs Tesseract 4 (itext.pdfocr.tesseract4: a library that targets net461 only, or an external executable) or ONNX models (PaddleOCR, EasyOCR, docTR) on ONNX Runtime. Output is PDF or PDF/A-3u",
+            "source": "https://kb.itextpdf.com/itext/installing-itext-pdfocr-for-net-developers"
+          },
+          "aspose": {
+            "value": "add-on",
+            "note": "OcrTextAbsorber (Aspose.Pdf.Ocr, since 26.6) returns recognised plain text. Since 26.7 it needs the separately installed Aspose.OCR NuGet package, which is based on ONNX Runtime. Alternatively, Document.Convert(CallBackGetHocr) adds hOCR text from an OCR engine you supply",
+            "source": "https://releases.aspose.com/pdf/net/release-notes/2026/aspose-pdf-for-net-26-7-release-notes/"
+          },
+          "syncfusion": {
+            "value": "add-on",
+            "note": "Syncfusion.PDF.OCR.Net.Core: Tesseract and Leptonica native binaries, same Document SDK licence",
+            "source": "https://www.nuget.org/packages/Syncfusion.PDF.OCR.Net.Core"
+          },
+          "pdfsharp": {
+            "value": "no",
+            "note": "Not in the feature list or the PsX add-ons; the library cannot render pages",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Overview/Features.html"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "No OCR anywhere; reading content of existing PDFs is not supported at all.",
+            "source": "https://www.questpdf.com/concepts/document-operations.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "No OCR engine; it only exports existing text to hOCR, ALTO or PageXML.",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "add-on",
+            "note": "PdfDocument.PerformOcr() requires the separately licensed IronOcr package",
+            "source": "https://ironpdf.com/object-reference/api/IronPdf.PdfDocument.html"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "No PDF input and no OCR component",
+            "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
+          }
+        },
+        "oursNote": "M22 writes the text layer from any engine's output; the engine itself is the caller's (ADR 42)."
+      },
+      {
+        "id": "raster",
+        "name": "Pages rendered to images",
+        "ours": [
+          "rasterisation"
+        ],
+        "values": {
+          "itext": {
+            "value": "add-on",
+            "note": "The pdfRender add-on is commercial only. There is no native C# version: from .NET it is called as a CLI executable in an external process",
+            "source": "https://kb.itextpdf.com/itext/how-do-i-use-pdfrender-in-a-net-environment"
+          },
+          "aspose": {
+            "value": "yes",
+            "note": "PngDevice, JpegDevice, TiffDevice, BmpDevice, GifDevice and EmfDevice; SVG via SvgSaveOptions",
+            "source": "https://docs.aspose.com/pdf/net/convert-pdf-to-images-format/"
+          },
+          "syncfusion": {
+            "value": "add-on",
+            "note": "Syncfusion.PdfToImageConverter.Net.Core: native PDFium plus SkiaSharp, same licence",
+            "source": "https://www.nuget.org/packages/Syncfusion.PdfToImageConverter.Net.Core"
+          },
+          "pdfsharp": {
+            "value": "no",
+            "note": "FAQ: 'cannot render PDF files'; the vendor points to GhostScript for page images",
+            "source": "https://docs.pdfsharp.net/PDFsharp/Overview/FAQ.html"
+          },
+          "questpdf": {
+            "value": "partial",
+            "note": "Renders its own documents to PNG, JPEG or WEBP (and SVG) at a set DPI; cannot render existing PDFs.",
+            "source": "https://www.questpdf.com/concepts/generating-output.html"
+          },
+          "pdfpig": {
+            "value": "add-on",
+            "note": "Core cannot render; PdfPig.Rendering.Skia is a separate package by co-maintainer BobLd, using native SkiaSharp.",
+            "source": "https://www.nuget.org/packages/PdfPig.Rendering.Skia/"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "RasterizeToImageFiles and ToBitmap/PageToBitmap",
+            "source": "https://ironpdf.com/how-to/rasterize-pdf-to-images/"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "Screenshots render web pages, not PDF pages; headless mode cannot navigate to a PDF document",
+            "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
+          }
+        }
+      },
+      {
+        "id": "barcodes",
+        "name": "Barcodes and QR codes",
+        "ours": [
+          "barcodes"
+        ],
+        "values": {
+          "itext": {
+            "value": "yes",
+            "note": "itext.barcodes ships in the core package: Code 128, EAN/UPC, Code 39, Codabar, Interleaved 2 of 5, MSI, POSTNET, PDF417, DataMatrix and QR (the QR encoder is based on zxing code)",
+            "source": "https://api.itextpdf.com/iText/dotnet/9.3.0/namespacei_text_1_1_barcodes.html"
+          },
+          "aspose": {
+            "value": "partial",
+            "note": "Built in only as BarcodeField.AddBarcode, which draws a Code 128 barcode into a barcode form field and makes it read-only. For other symbologies (QR and the like), the vendor uses the separately licensed Aspose.BarCode to generate an image and insert it",
+            "source": "https://reference.aspose.com/pdf/net/aspose.pdf.forms/barcodefield/"
+          },
+          "syncfusion": {
+            "value": "yes",
+            "note": "Built in: Code 11/32/39/93/128, Codabar, EAN-8/13, UPC, QR, Data Matrix, PDF417",
+            "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-barcode"
+          },
+          "pdfsharp": {
+            "value": "yes",
+            "note": "PdfSharp.BarCodes ships in the package: Code 3 of 9, Interleaved 2 of 5, OMR; DataMatrix is a stub; no QR",
+            "source": "https://github.com/empira/PDFsharp/blob/master/src/foundation/src/PDFsharp/src/PdfSharp.BarCodes/Drawing.BarCodes/CodeDataMatrix.cs"
+          },
+          "questpdf": {
+            "value": "no",
+            "note": "Not built in: docs show drawing SVG from third-party ZXing.Net, installed separately.",
+            "source": "https://www.questpdf.com/api-reference/barcodes.html"
+          },
+          "pdfpig": {
+            "value": "no",
+            "note": "No barcode or QR generation; creation covers text, paths, images and links only.",
+            "source": "https://github.com/UglyToad/PdfPig/wiki"
+          },
+          "ironpdf": {
+            "value": "yes",
+            "note": "Built-in BarcodeStamper for QR Code, Code128 and Code39; other symbologies need the separate IronBarcode",
+            "source": "https://ironpdf.com/object-reference/api/IronPdf.Editing.BarcodeStamper.html"
+          },
+          "chromium": {
+            "value": "no",
+            "note": "No barcode feature; only via third-party JS/SVG placed in the HTML",
+            "source": "https://github.com/hardkoded/puppeteer-sharp/blob/master/README.md"
+          }
+        }
+      }
+    ]
   }
 }
