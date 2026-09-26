@@ -38,7 +38,7 @@ function PreviewBanner({className, label}) {
     <Banner className={className}>
       <div>
         You are reading the documentation of the preview <b>{label}</b>, built from <code>main</code> and not
-        released yet.
+        released yet. A preview carries no guarantee: what it documents may change or disappear in the next one.
       </div>
       <div className="margin-top--md">
         For the version <code>dotnet add package</code> installs, see the{' '}
@@ -58,7 +58,8 @@ function PrereleaseBanner({className, label}) {
     <Banner className={className}>
       <div>
         No stable version has been released yet. This documents the preview <b>{label}</b>, built from{' '}
-        <code>main</code>:
+        <code>main</code>. A preview carries no guarantee: what it documents may change or disappear in the
+        next one.
       </div>
       <div className="margin-top--sm">
         <code>dotnet add package AdCodicem.Pdf --prerelease</code>

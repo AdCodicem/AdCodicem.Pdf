@@ -140,6 +140,17 @@ will be `0.2.0`, and every `0.1.1-preview.n` still sorts correctly between `0.1.
 number only ever increases, so previews never collide, and nothing has to be deleted from nuget.org —
 which is just as well, because nothing can be.
 
+### What a preview promises: nothing
+
+A preview is a build of `main` offered for trying out, and **carries no guarantee**. Its API, its behaviour
+and any of its features may change or disappear in the next preview, without notice and without a
+deprecation period. Compatibility promises — semantic versioning, and the public API checked against the
+last stable release by package validation — hold **between stable releases only**. An application that
+depends on a preview should pin its exact version, and read the commits before moving to the next (ADR 30).
+
+This is what lets work on `main` reshape or withdraw an API that no stable release has shipped: a preview
+already on nuget.org is never a reason to keep one.
+
 ### The stable release is a decision, and it is taken by hand
 
 **Actions → Release → Run workflow**, setting **What to publish** to `stable`. The dropdown defaults to

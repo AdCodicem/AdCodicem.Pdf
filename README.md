@@ -55,6 +55,10 @@ installable:
 dotnet add package AdCodicem.Pdf --prerelease
 ```
 
+**A preview carries no guarantee.** Its API, its behaviour and any of its features may change or disappear
+in the next preview, without notice. Compatibility promises hold between stable releases only; if you
+depend on a preview, pin its exact version.
+
 ## Building
 
 Requires the .NET 10 SDK.

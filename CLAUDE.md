@@ -139,7 +139,9 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
 - Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`) — **these
   decide the version**: semantic-release reads them on every merge to `main`, so a malformed message
   produces no release rather than an untidy log. CI rejects one on a pull request.
-- Development branch: `claude/nuget-pdf-html-dotnet-msyz8z`.
+- Branches: one per session, merged into `main` through a pull request; `main` is protected by a ruleset.
+- **A preview carries no guarantee** (ADR 30): an API no stable release has shipped may be reshaped or
+  withdrawn by the next merge. Compatibility is owed between stable releases only.
 
 ## Known traps
 
