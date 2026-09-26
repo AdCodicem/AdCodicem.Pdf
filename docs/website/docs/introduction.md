@@ -19,9 +19,9 @@ and whenever `main` has moved past the latest release, the **Preview** button sh
 
 :::warning Before 1.0
 
-The reader is built and tested; writing, assembly and the HTML engine are ahead, and any minor version may
-still change the API. The [roadmap](/project/roadmap) says what exists and what does not, and
-[status](/project/status) says where the work actually stands today.
+The reader is built and tested, and validation is being built; writing, assembly and the HTML engine are
+ahead, and any minor version may still change the API. The [roadmap](/project/roadmap) says what exists and
+what does not, and [status](/project/status) says where the work actually stands today.
 
 :::
 
@@ -55,12 +55,13 @@ its content.
 ## Packages
 
 One package exists today; the others are planned, and the milestone that brings each one is on the
-[roadmap](/project/roadmap).
+[roadmap](/project/roadmap). Validation is part of the core package, not a satellite of its own; the
+satellite brings the PDF/A and PDF/UA profiles.
 
 | Package | Contents | Available |
 |---|---|---|
-| `AdCodicem.Pdf` | Object model, lazy reader, streaming writer, pages, fonts, logical structure | Published — the object model and the reader so far |
-| `AdCodicem.Pdf.Validation` | The validation rule engine and its profiles | Planned, M2 |
+| `AdCodicem.Pdf` | Object model, lazy reader, validation, streaming writer, pages, fonts, logical structure | Published — the object model, the reader and the first validation rules so far |
+| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the validation engine | Planned, M12 |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | Planned, M7 |
 | `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration | Planned, M7 |
 | `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD | Planned, M12 |

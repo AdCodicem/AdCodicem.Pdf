@@ -35,13 +35,18 @@ need: a fully managed engine whose memory use follows the complexity of a page, 
 
 ## Packages
 
-| Package | Contents |
-|---|---|
-| `AdCodicem.Pdf` | Object model, lazy reader, streaming writer, pages, fonts, logical structure |
-| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF |
-| `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration |
+One package exists today, and it holds the object model, the tolerant lazy reader and the document
+validator. Everything else is planned, in the order `docs/roadmap.md` gives.
 
-Further packages (validation, Factur-X, rasterisation, signing) are planned — see `docs/roadmap.md`.
+| Package | Contents | State |
+|---|---|---|
+| `AdCodicem.Pdf` | Object model, lazy reader, validation; then writer, pages, fonts, logical structure | Published as previews |
+| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | Planned, M7 |
+| `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration | Planned, M7 |
+| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA validation profiles | Planned, M12 |
+| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD | Planned, M12 |
+| `AdCodicem.Pdf.Rendering` | Rasterisation | Planned, M14 |
+| `AdCodicem.Pdf.Signing` | PAdES signing | Planned, M14 |
 
 Every merge into `main` publishes a preview to nuget.org, so the current state of the library is always
 installable:

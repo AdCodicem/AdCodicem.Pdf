@@ -69,7 +69,7 @@ scanning when the index is wrong or absent; `PdfDiagnostics`; the corpus harness
 **Goal**: given any document the reader can open, produce a structured, machine-readable verdict on what
 is wrong with it — separately from whether it could be read at all.
 
-**Deliverables**: the `AdCodicem.Pdf.Validation` package; a rule engine (`IValidationRule`,
+**Deliverables**: in the core, under `AdCodicem.Pdf.Validation` (ADR 36), a rule engine (`IValidationRule`,
 `ValidationProfile`, `PdfValidator`) whose findings carry a stable rule identifier, a severity, the object
 they concern and a remedy hint; a `PdfValidationReport` that serialises; and the **structural profile** —
 file structure, object graph integrity, page tree consistency, stream integrity, font embedding, resource
@@ -81,7 +81,8 @@ conformance profiles extend them (M12), and callers filter on them.
 **Acceptance**
 - Every well-formed corpus document, from all four producers, validates with **no error-severity finding**.
   A validator that calls Chromium's or LibreOffice's output broken is a wrong validator, not a strict one.
-- Each `damaged/*` document produces the findings its manifest declares, with stable rule identifiers.
+- Every document produces exactly the findings its manifest declares, with stable rule identifiers — a
+  damaged one its damage, a sound one nothing it did not declare.
 - The vendored conformance fixtures discriminate: a file that is structurally sound but PDF/A-invalid
   produces **no** structural error. Conformance verdicts must not leak into the structural profile — they
   belong to M12.
@@ -234,7 +235,7 @@ filling, flattening, field appearances.
 **Goal**: regulatory conformance, guaranteed and checkable.
 **Deliverables**: PDF/A-2b and PDF/A-3b generation (ICC profile, XMP, rendering constraints); Factur-X and
 ZUGFeRD embedding and extraction; conformance actively preserved when merging; PDF/A and PDF/UA profiles for the
-M2 rule engine, delivered in stages.
+M2 rule engine, delivered in stages in the `AdCodicem.Pdf.Conformance` satellite (ADR 36).
 
 **Acceptance**
 - Documents we generate pass veraPDF for the claimed conformance level, with no error.
