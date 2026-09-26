@@ -11,11 +11,12 @@ here.
   report and `file.eof-missing` — is done, merged with [#29](https://github.com/AdCodicem/AdCodicem.Pdf/pull/29) on
   2026-09-26.
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Tests**: 1,327 unit (7 skipped by design) + 302 integration (skipped without Docker) + 23 for the remote
+- **Tests**: 1,457 unit (8 skipped by design) + 452 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher. With the remote corpus: `Remote corpus` run 7, on #29's branch at `4aa6816` with all 242
   documents, passed 2,844 unit (97 skipped by design, on documents recorded as unsupported until M2, T24, T25
-  or T27) and 668 integration tests; the review's four tests came after it. Here, with 233 of the 242 —
-  seven hosts reset this session's connections and the two GitHub attachments answer 403 —, 2,802 unit.
+  or T27) and 668 integration tests. Here, on T32's branch with 233 of the 242 — seven hosts reset this
+  session's connections and the two GitHub attachments answer 403 —, 2,932 unit (98 skipped by design) and
+  1,034 integration, the latter in a local referee container.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -61,30 +62,84 @@ here.
 | Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
 | Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 2.4 MB |
 | Validating under the structural profile, the document already open | synthetic, 1000 pages | 86 ns | 232 B |
+| Decoding a whole Flate content stream | 4 MB decoded, about 330 KB encoded | 8.3 ms | 13.1 MB |
+| Decoding the same stream without its checksum, or its last byte | 4 MB decoded | 11.7 ms | 13.1 MB |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content.
 The validation row is one rule reading the file's last 1,024 bytes, whatever its size; it grows with each
 slice of M2.
 Indexing costs roughly 200 bytes per object, whatever the objects weigh. The third row is asserted as a
-budget in CI (`CorpusReadingTests`), so an allocation regression fails the build.
+budget in CI (`CorpusReadingTests`), so an allocation regression fails the build. A stream that ran out is
+read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams only; the
+second reading keeps nothing. What a 4 MB decode allocates is the output doubling towards its size, T28's
+and M13's business.
 
 ## Next concrete step
 
 M2 — document validation (`docs/milestones/M2.md`), slice 1 done (#29). In the order its debts impose:
 
-1. **T32** as its own change: a Flate stream that lost its tail, or an LZW stream that stops at a code it
-   never defined, decodes without a word — through `PdfStream.Decode`, public API the previews already ship.
-2. **T25**, then **T27**, before slice 2 (file and cross-reference rules) is baselined: a validator cannot
+1. **T25**, then **T27**, before slice 2 (file and cross-reference rules) is baselined: a validator cannot
    report what the reader hides, and T27's fix wants T25's report of a failed section as its reason to
-   doubt the index.
-3. Slice 2, which also answers for iPRES `t04-007` (a premature `%%EOF` before the trailer); slice 3 with
-   **T34** in the object-graph rules; slices 4 to 6. Each slice adds to the manifest's `findings` what its
+   doubt the index. T32 is done, on its own branch.
+2. Slice 2, which also answers for iPRES `t04-007` (a premature `%%EOF` before the trailer); slice 3 with
+   **T34** in the object-graph rules; **T37** and **T38** before slice 4, whose stream rules check declared
+   lengths and whether filters decode; slices 4 to 6. Each slice adds to the manifest's `findings` what its
    rules report, and every document is held to exactly its list.
 
 A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 34) is the reader's limit,
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-26 — T32: a Flate stream that lost its tail, and an LZW code never defined, are reported
+- **The defect.** .NET's inflater takes the end of its input for the end of the data: a Flate stream cut
+  short decoded to what was left, and nothing reached `FlateFilter`'s handling of a lost tail, written for an
+  exception that never came. An LZW stream stopped in silence at a code it had not defined — and a code past
+  the next one to define was worse than silent: decoded as if it were that code, it made up data.
+- **Measured before designing.** The framework's inflater, on some 166,000 cases — every cut of streams of
+  thirteen sizes, four compression levels and three kinds of data, read through five buffer sizes —, never
+  asks its source for bytes past the end of a complete stream, zlib or raw, whatever follows it, and always
+  does, or throws, for a cut one. .NET 10 has an `AppContext` switch, `System.IO.Compression.UseStrictValidation`,
+  that makes it throw instead; it is process-wide and the host's to set, not the library's, and a host that
+  sets it gets the same reports. qpdf, the referee, warns "input stream is complete but output may still be
+  valid" for a lost tail and for a lost checksum alike, errs on an undefined LZW code, accepts an LZW stream
+  without its end-of-data code — and does not check zlib's checksum at all.
+- **The fix.** The encoded bytes are read through `FlateInput`, which records a request past their end. A
+  zlib stream that ran out has its body read again as raw deflate, keeping nothing, to say which it lost: its
+  checksum only — a repair, the data decoded whole — or its tail — a warning, what decoded before the end was
+  kept. Corrupt data keeps its own report, reworded: "is corrupt", no longer "was truncated". What a Flate
+  stream decodes to is unchanged. The LZW decoder decodes a code up to the next one to define, stops at any
+  other, keeps what came before and names the code; a stream without its end-of-data code is still taken as
+  complete. And `Decode()` given no diagnostics now reports what it met to the document's own, as a reached
+  limit already did (ADR 34): through the public API the previews ship, a damaged stream is never silent.
+- **The corpus.** Ten of the 401 documents readable here report a Flate stream that ran out — 50 streams, 40
+  of them in NIDA's *Heads Up* —, all of them declared damaged, none of them silent before. Against qpdf,
+  in a new integration test over every document readable without a password (`FlateRefereeTests`): every
+  stream qpdf finds cut short, the reader reports at the same offset; the six only the reader reports are
+  streams whose length qpdf had to recover, so that the two read different bytes — four cut by the end of the
+  file, which qpdf treats as empty; the Census abstract's object 66, whose checksum lost its last byte, a carriage return, to an
+  end-of-line conversion, where qpdf takes in the line feed after it and ignores the checksum it then misreads;
+  and SAMHSA's object 27, whose `/Length` is 28 bytes short, which qpdf notices and the reader does not
+  (**T37**). The truncated invoice now requires `stream.truncated` and `filter.failed`, the cut falling in
+  its last Flate stream's data.
+- **Tests.** `FilterDamageTests`: four payloads cut at every byte — at 2,000 places and every byte of both ends
+  for the longer ones —, each cut reported as
+  a lost tail or a lost checksum, the bytes kept always the start of the data; whole streams followed by
+  whatever a `/Length` takes in, without a word; a lost checksum told from lost data at three compression
+  levels — the last byte of the body may hold only the end-of-block code, so data may be unfinished without
+  a byte of output lost —; raw deflate and white space before the header; a bound reached before the cut,
+  which says nothing of the cut; the second reading's allocation; `IsWholeDeflate` and `FlateInput`
+  directly; LZW codes on either side of the next to define, a first code with nothing before it, codes past
+  nine bits, a missing end-of-data code; and a document's stream reported where its data starts, to the
+  caller or to the document. Two tests that pinned the silence now pin the report.
+- **Measured.** `FilterBenchmarks`, ShortRun: a whole stream decodes as before — 81.6 µs and 86.41 KB for
+  64 KB, 8.3 ms and 13,413.59 KB for 4 MB, against 81.9 µs and 8.3 ms with the same allocations before the
+  change. A stream that ran out costs 1.4 to 1.6 times that, and 0.4 KB more.
+- **Found on the way.** **T37**: a stream whose data runs past the parser's window has its `/Length` taken as
+  it is, so a wrong one goes unnoticed — sixteen in the SAMHSA fact sheet by qpdf's count, eight by the
+  reader's. **T38**: a zlib stream whose checksum is wrong throws from the read that meets it, and what that
+  read decoded — up to 64 KB, or all of a small stream, which is then left encoded — is lost with it, where
+  qpdf, which does not check the checksum, keeps the data.
 
 ### 2026-09-26 — The corpus manifest has a JSON schema
 - **Why.** Asked whether a schema was worth having, the answer was yes, in a pull request of its own: the
@@ -441,9 +496,11 @@ The detail is in git and in the pull requests; what still matters is in the reco
 | ~~T29~~ | ~~**A chain of `/Length` references nests object loads as deep as the chain.** Resolving an indirect `/Length` loads that object while the first is being parsed, and a stream whose `/Length` points at a stream whose `/Length` points at another goes one level deeper each time. The cycle guard stops a loop, not a chain: 20,000 such objects overflow the stack and kill the process, which invariant 4 forbids. Older than T23's fix, reproduced on it~~ | Done on 2026-09-26: object loads nest at most 64 deep; the next one reads as null, is not cached, and is reported once as `syntax.depth-exceeded` with its offset. `HostileInputTests` reads a 50,000-level chain |
 | T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls It also parses each through that fixed window straight into the document's diagnostics, so a sound trailer longer than 64 KB earns a syntax error the file does not have when a rebuild scans for it. The scan keeps its fixed window whatever `PdfReaderLimits.MaxTrailerLength` says, so raising the option adds no amplification; on opening, a trailer past 64 KB is now reported as `limit.trailer` and read whole under a raised `MaxTrailerLength` (ADR 34) | M13, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |
 | ~~T31~~ | ~~**Two filters keep their bound badly.** `RunLengthDecode` has none: every two bytes in can decode to 128 out, so a 4.6 MB stream decodes to 294 MB, past the 256 MB `PdfFilterLimits.MaxDecodedLength`, with no diagnostic, and a Flate stream feeding it multiplies that by 64 — memory a hostile file chooses. `LZWDecode` stops at the bound in silence. Found by the review of T23's fix (a claim that every filter keeps the bound); older than it~~ | Done on 2026-09-26: every filter keeps exactly the first 256 MB and says whether it had more; the pipeline reports it as `filter.limit-exceeded`, the reader's limit (renamed `limit.decoded-stream` by ADR 34, before any release); first buffers are capped by the bound |
-| T32 | **A Flate stream whose tail was lost decodes to what is left, in silence.** .NET's `ZLibStream` treats the end of its input as the end of the data, so no exception reaches `FlateFilter`, whose handling of a lost tail was written for one: a zlib stream cut in half decodes 27,939 of its 58,890 bytes with no diagnostic (measured). zlib does check a complete Adler-32 trailer — a wrong one throws, and is reported — but not a missing one, and the trailer cannot be found by position, since a stream's `/Length` often takes in the end-of-line after it. .NET 10 exposes no inflater that says whether it reached the final block. LZW has the same silence: a stream that uses a code it never defined stops there and keeps what came before, without a word (pinned by `FilterTests.Stops_an_lzw_stream_at_a_code_it_has_not_defined`, found while covering #28's patch) | Before M2's stream rules ("filters decodable"): read the input through a stream that notices the inflater asking for bytes past the end of the data, which a complete stream never does, and report that as a truncated stream; and have the LZW decoder report the code it could not read |
+| ~~T32~~ | ~~**A Flate stream whose tail was lost decodes to what is left, in silence.** .NET's `ZLibStream` treats the end of its input as the end of the data, so no exception reaches `FlateFilter`, whose handling of a lost tail was written for one: a zlib stream cut in half decodes 27,939 of its 58,890 bytes with no diagnostic (measured). zlib does check a complete Adler-32 trailer — a wrong one throws, and is reported — but not a missing one, and the trailer cannot be found by position, since a stream's `/Length` often takes in the end-of-line after it. .NET 10 exposes no inflater that says whether it reached the final block. LZW has the same silence: a stream that uses a code it never defined stops there and keeps what came before, without a word (pinned by `FilterTests.Stops_an_lzw_stream_at_a_code_it_has_not_defined`, found while covering #28's patch)~~ | Done on 2026-09-26: `FlateInput` notices the inflater asking past the end of its input; a zlib stream that ran out is read again as raw deflate, keeping nothing, to tell a lost checksum (a repair) from a lost tail (a warning); the LZW decoder stops at a code past the next one to define as at any undefined code, and names it. `Decode()` reports to the document when given nowhere to report. `FlateRefereeTests` holds the reader to qpdf on every corpus document readable without a password |
 | T33 | **Every decoded object stream stays cached for the life of the document.** `_objectStreams` in `PdfFileReader` has no bound and no eviction, and a rebuild decodes every object stream up front to index its objects. A damaged file of four object streams that each decode to the 256 MB bound (1.2 MB) holds 1 GB once `Open` returns (measured by the review of T31), and raising `PdfReaderLimits.MaxDecodedStreamLength` (ADR 34) multiplies that; a large sound document holds its object streams' decoded bytes however few objects are read, against invariant 2 | M13, with the memory budgets, and sooner for the hostile case if a file of the kind turns up: a budget on the decoded bytes the cache holds, evicting the oldest — an evicted stream is decoded again when one of its objects is asked for |
 | T34 | **An object stream whose `/DecodeParms` names an object stored in that same stream reads that object as null, in silence, for good.** Decoding the stream resolves the parameter while the stream is being loaded; `GetObjectStream` marks it as unavailable meanwhile, so the object reads as null, and `GetObject` caches the null with no diagnostic. Any parameter the pipeline reads can do it: `/Predictor`, and `/EarlyChange` for LZW, always; `/Colors`, `/BitsPerComponent` and `/Columns` once there is a predictor above 1. Found by the review of #28's coverage; older than it | M2's object-graph rules: report the self-reference, and do not cache a null the reader produced while an object stream was still being loaded |
+| T37 | **A stream whose data runs past the parser's window has its `/Length` taken as it is.** `PdfObjectParser.ReadStream` confirms a declared length by the `endstream` after it only when the data ends inside the window, or a few bytes past it: a longer stream is read as long as it says, checking it "would mean reading the data". A wrong length then cuts the data short or takes in what follows, in silence — until T32, which now reports the Flate data that ran out. Found on SAMHSA's prevention fact sheet (remote): qpdf recovers the length of sixteen streams, the reader reports eight, and object 27, 28 bytes short, reads as a Flate stream that lost its tail | Before M2's stream rules ("declared length matches reality"): ask the file for the few bytes after the declared end, as a stream ending near the window's edge already does, and read a stream whose `endstream` is not there through a window that finds it, within `MaxObjectLength` |
+| T38 | **A zlib stream whose checksum is wrong loses what the read that met the checksum decoded.** The framework throws `InvalidDataException` from that read, so up to 64 KB of good data go with it — and all of a stream that decodes to less, which is then "could not be decoded" and left encoded. qpdf does not check the checksum and keeps the data; the Census statistical abstract's object 66 (remote), whose checksum lost its last byte to an end-of-line conversion, is one byte of `/Length` away from it. Pinned as it stands by `FilterDamageTests.Reports_a_zlib_stream_whose_checksum_is_wrong_as_corrupt`, on a stream long enough to keep a prefix | Before M2's stream rules ("filters decodable"): when a zlib stream fails at its end, read its body as raw deflate, keep all of it, and report the checksum that disagrees |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |

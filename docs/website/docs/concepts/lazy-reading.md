@@ -27,6 +27,9 @@ before. This is asserted by a test that counts how many bytes are read from the 
 
 When it is decoded, a stream decodes under the [limits](reader-limits.md) of the document it came from,
 however long after opening — so with `ThrowOnLimit` set, `Decode()` can throw long after `Open` returned.
+What decoding meets — a stream that lost its tail, a limit reached — is reported when it is met, in the
+diagnostics you pass to `Decode`, or in the document's own when you pass none: a damaged stream nobody
+decodes is never reported, since nothing reads it.
 
 Copying a stream between documents — merging, assembling, stamping — moves the **encoded** bytes as they
 are, with no decompress/recompress cycle in between.
