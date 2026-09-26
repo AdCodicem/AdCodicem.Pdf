@@ -173,6 +173,18 @@ internal static partial class FeatureTables
             text.Append('\n');
         }
 
+        var notes = comparison.Matrix.Capabilities.Where(capability => !string.IsNullOrEmpty(capability.OursNote)).ToList();
+
+        if (notes.Count > 0)
+        {
+            text.Append("\nOn AdCodicem.Pdf's column:\n\n");
+
+            foreach (var capability in notes)
+            {
+                text.Append("- ").Append(capability.Name).Append(": ").Append(capability.OursNote).Append('\n');
+            }
+        }
+
         return text.ToString().TrimEnd('\n');
     }
 
@@ -289,7 +301,12 @@ internal static partial class FeatureTables
 
     internal sealed record Matrix(IReadOnlyList<string> Products, IReadOnlyList<Capability> Capabilities);
 
-    internal sealed record Capability(string Id, string Name, IReadOnlyList<string> Ours, IReadOnlyDictionary<string, Answer> Values);
+    internal sealed record Capability(
+        string Id,
+        string Name,
+        IReadOnlyList<string> Ours,
+        IReadOnlyDictionary<string, Answer> Values,
+        string? OursNote = null);
 
     internal sealed record Answer(string Value, string Note, string Source);
 }
