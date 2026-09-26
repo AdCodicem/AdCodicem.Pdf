@@ -463,7 +463,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             _pending.RollBack(mark);
         }
 
-        return TryParseAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value) ? value.AsDictionary() : null;
+        // The trailer starts inside the window, so inside the file: a direct object is always parsed there,
+        // and one that is not a dictionary is no trailer.
+        _ = TryParseAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value);
+        return value.AsDictionary();
     }
 
     private bool ReadSubsection(ref PdfLexer lexer, int first, int count)
