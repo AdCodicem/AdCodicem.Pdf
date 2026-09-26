@@ -7,6 +7,7 @@ const sidebars = {
     'corpus',
     'corpus-contributions',
     'corpus-sources',
+    'validation-rules',
     'releasing',
     'status',
     {

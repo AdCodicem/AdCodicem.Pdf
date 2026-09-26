@@ -135,6 +135,19 @@ public sealed class PdfDocument : IDisposable
     /// <summary>Returns the object numbers the file defines.</summary>
     public IEnumerable<int> ObjectNumbers => _reader.ObjectNumbers;
 
+    /// <summary>Gets the bytes the document is read from, for the validation rules that look at the file itself.</summary>
+    internal PdfFileSource Source
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _reader.Source;
+        }
+    }
+
+    /// <summary>Throws if the document was disposed, for an operation that would otherwise fail later.</summary>
+    internal void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
     /// <inheritdoc/>
     public void Dispose()
     {
