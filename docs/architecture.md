@@ -20,10 +20,10 @@ ordinary composition of the two paths.
 
 | Package | Role | Dependencies |
 |---|---|---|
-| `AdCodicem.Pdf` | Object model, reader, writer, pages, fonts, logical structure, security, diagnostics | **none** |
+| `AdCodicem.Pdf` | Object model, reader, writer, pages, fonts, logical structure, security, diagnostics, validation and its structural profile | **none** |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | AngleSharp, HarfBuzzSharp, SkiaSharp |
 | `AdCodicem.Pdf.AspNetCore` | DI registration, `IResult`, MVC integration | `AdCodicem.Pdf.Html` |
-| `AdCodicem.Pdf.Validation` | PDF/A and PDF/UA validator | `AdCodicem.Pdf` |
+| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the core's validation engine | `AdCodicem.Pdf` |
 | `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD: embedding, extraction, validation | `AdCodicem.Pdf` |
 | `AdCodicem.Pdf.Rendering` | PDF → image rasterisation (late satellite) | SkiaSharp |
 | `AdCodicem.Pdf.Signing` | PAdES (late satellite) | `AdCodicem.Pdf` |
@@ -50,7 +50,14 @@ Structure/    The logical structure tree (tagged PDF), marked content, the paren
 Security/     RC4 and AES decryption and encryption, permissions.
 Diagnostics/  PdfDiagnostics: anomalies, repairs, guards reached, conformance losses; PdfException
               and its typed subclasses.
+Validation/   PdfValidator, the rule engine and the structural profile: findings with stable rule
+              identifiers, a severity, a location and a remedy hint (ADR 36). The PDF/A and PDF/UA
+              profiles are the Conformance satellite's.
 ```
+
+Diagnostics and findings answer different questions. A diagnostic is the reader's account of what it did
+to read a file — a repair, a guard reached; a finding is the validator's verdict on the file. They have
+separate types, separate severity scales, and vocabularies that never share a code.
 
 ### 3.1 The read path
 

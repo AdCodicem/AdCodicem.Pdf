@@ -42,6 +42,7 @@ A settled decision is not reopened without new evidence — that is what writing
 | [33](0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md) | A remote document may be a member of a pinned archive | — |
 | [34](0034-every-valid-pdf-is-readable-and-the-readers-guards-are.md) | Every valid PDF is readable, and the reader's guards are options | — |
 | [35](0035-unsafe-code-where-a-measurement-asks-for-it.md) | Unsafe code, where a measurement asks for it | — |
+| [36](0036-validation-lives-in-the-core-conformance-in-a-satellite.md) | Validation lives in the core, and the conformance profiles in a satellite | — |
 
 ## Decisions too small for a record of their own
 

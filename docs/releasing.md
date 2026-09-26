@@ -2,39 +2,31 @@
 
 ## Package identifiers
 
-Confirmed, and all seven were unclaimed on nuget.org when checked on 2026-09-13:
+Confirmed, and all seven were unclaimed on nuget.org when checked on 2026-09-13. ADR 36 renamed the
+validation satellite on 2026-09-26, before it was ever published: the rule engine and the structural profile
+live in the core, and the satellite carries the PDF/A and PDF/UA profiles only.
 
 | Package | Contents | Ships from |
 |---|---|---|
-| `AdCodicem.Pdf` | Object model, reader, writer, pages, fonts, logical structure | M1 |
-| `AdCodicem.Pdf.Validation` | The validation rule engine and its profiles | M2 |
+| `AdCodicem.Pdf` | Object model, reader, validation and its structural profile; then writer, pages, fonts, logical structure | M1 |
+| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the validation engine | M12 |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting | M7 |
 | `AdCodicem.Pdf.AspNetCore` | Dependency injection and `IResult` integration | M7.6 |
 | `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD | M12 |
 | `AdCodicem.Pdf.Rendering` | Rasterisation | M14 |
 | `AdCodicem.Pdf.Signing` | PAdES | M14 |
 
-The first packages shipped on **2026-09-19**: `AdCodicem.Pdf` `0.1.1-preview.10` through
-`0.1.1-preview.13`, previews from `main`. The other six identifiers are still unclaimed, and ship with the
-milestones above.
+The first packages shipped on **2026-09-19**: `AdCodicem.Pdf` `0.1.1-preview.10` and following, previews from
+`main`. The six other identifiers are still unclaimed, and ship with the milestones above.
 
-**Reserve the `AdCodicem.*` prefix** on nuget.org — now due, since packages exist under it. It stops anyone
-else publishing under the name, and marks the packages as coming from a verified owner — on nuget.org and
-in Visual Studio.
-
-There is no button for it. The [procedure](https://learn.microsoft.com/nuget/nuget-org/id-prefix-reservation)
-is an email to **account@nuget.org** giving the owner's **display name** on nuget.org — the same account
-that owns the trusted-publishing policy — and the prefix requested. Send it from the address registered on
-that account; the team may ask identifying questions before accepting. The prefix is requested *private*
-(the default): a *public* prefix keeps the verified mark but lets anyone publish under it.
-
-What nuget.org weighs: that the prefix clearly identifies its owner, is not a common word and is at least
-four characters, and that packages under it carry consistent identifying metadata and a licence declared
-with the `license` element rather than `licenseUrl`. `Directory.Build.props` already gives every package
-`Authors` = `AdCodicem`, `PackageLicenseExpression` = `MIT`, and an embedded icon (`assets/icon.png`, packed
-as `PackageIcon`). Packages the owner already published under the prefix get the mark retroactively.
-What waiting risks is someone else publishing under the name first: a reservation leaves other owners'
-existing packages in place.
+**The `AdCodicem.*` prefix is reserved** on nuget.org: by 2026-09-26 its search API marks `AdCodicem.Pdf` as
+verified. Nobody else can publish under the name, and every package under it shows a verified owner — on
+nuget.org and in Visual Studio. For the record, the
+[procedure](https://learn.microsoft.com/nuget/nuget-org/id-prefix-reservation) is an email to
+**account@nuget.org** giving the owner's display name and the prefix; nuget.org weighs that the prefix
+identifies its owner and that packages under it carry consistent metadata and a licence declared with the
+`license` element, which `Directory.Build.props` gives every package (`Authors`, `PackageLicenseExpression`,
+an embedded `PackageIcon`).
 
 ## Versioning — computed from the commits
 

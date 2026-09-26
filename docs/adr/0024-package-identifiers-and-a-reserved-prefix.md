@@ -4,7 +4,10 @@ Date: 2026-09-13
 
 ## Status
 
-Accepted
+Accepted. Amended by [36](0036-validation-lives-in-the-core-conformance-in-a-satellite.md) on 2026-09-26:
+`.Validation` becomes `.Conformance`, for the PDF/A and PDF/UA profiles (M12), since the validation engine
+itself lives in the core. The prefix was reserved on nuget.org by 2026-09-26: the search API marks
+`AdCodicem.Pdf` as verified.
 
 ## Context
 
