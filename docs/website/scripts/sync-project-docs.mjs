@@ -15,7 +15,7 @@ const destination = path.join(import.meta.dirname, "..", "project");
 
 // What the site publishes, relative to docs/. Everything else there — the site itself, the DocFX
 // configuration — is not a project document.
-const directories = ["adr", "milestones"];
+const directories = ["adr", "milestones", "research"];
 
 // The blank templates are for writing records, not for reading.
 const excluded = new Set(["adr/adr-template.md", "milestones/_template.md"]);
