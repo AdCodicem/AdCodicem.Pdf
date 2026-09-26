@@ -29,4 +29,13 @@
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
   </ItemGroup>
 
+  <ItemGroup Label="Comparison">
+    <!-- Referenced by benchmarks/AdCodicem.Pdf.Benchmarks.Comparison only, to measure this library against
+         others on the same documents; never by src/ or the tests. iText is AGPL-3.0: the project that uses it
+         is never packed or distributed. -->
+    <PackageVersion Include="PdfPig" Version="0.1.16" />
+    <PackageVersion Include="PDFsharp" Version="6.2.4" />
+    <PackageVersion Include="itext" Version="9.7.0" />
+  </ItemGroup>
+
 </Project>
