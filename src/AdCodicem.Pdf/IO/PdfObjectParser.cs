@@ -86,6 +86,13 @@ internal ref struct PdfObjectParser
             number.Integer is <= 0 or > int.MaxValue ||
             generation.Integer is < 0 or > ushort.MaxValue)
         {
+            // A header the end of the buffer reached — white space up to it, "5 0 o" — may be whole in a
+            // larger one.
+            if (keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= _memory.Length)
+            {
+                _truncated = true;
+            }
+
             _lexer.Position = start;
             return false;
         }
@@ -314,9 +321,17 @@ internal ref struct PdfObjectParser
 
         if (beyondBuffer && _streamData is not null)
         {
-            // The data lives past the window the reader gave us; the declared length is all we have, and
-            // the reader will notice if it is wrong when the bytes are eventually read.
-            return Finish(dictionary, dataStart, length, span.Length);
+            // The data lives past the window the reader gave us, and the declared length is taken as it is:
+            // checking it would mean reading the data.
+            if (_baseOffset + dataStart + (long)length <= _streamData.SourceLength)
+            {
+                return Finish(dictionary, dataStart, length, span.Length);
+            }
+
+            // Unless the file cannot hold it. Then only a window that reaches the end of the file can say
+            // whether the data stops at an "endstream" — the length is wrong — or at the end of the file —
+            // the stream is cut —, and the search below says which once the reader has offered one.
+            _truncated = true;
         }
 
         if (length < 0 || beyondBuffer || !ConfirmsLength(span, dataStart + length))

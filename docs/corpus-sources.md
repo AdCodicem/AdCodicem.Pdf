@@ -103,7 +103,7 @@ fonts when their `fsType` allows embedding.
   object longer than its 8 KB window is cut at the edge (T23, two files, fixed since), each cross-reference section is
   read through a window of up to 64 KB whatever its size (T24, one file), and two files leave it silent
   where qpdf reports damage. In the fourth pass none of the 131 first admitted crashed or hung it either;
-  of the 124 kept, it falls short on ten, recorded as unsupported: T21 (one file), T23 (two), T24 (one: a 273 KB table read again each time its
+  of the 124 kept, it fell short on ten, recorded as unsupported — seven since T21 and T23 were fixed: T21 (one file), T23 (two), T24 (one: a 273 KB table read again each time its
   window grows), a new T25 (a `/Prev` 12 bytes off, dropped without a word), and five where the page tree
   or the catalogue is wrong and the reader is silent or counts differently from qpdf, until M2. Over the 88
   iPRES files it falls short on 19, all until M2: seven page trees it counts differently from qpdf, four
@@ -493,7 +493,7 @@ purposes" only was left out.
 | W09 | US Census Bureau 2020 language guide in Hebrew | No reuse statement found; possibly a contractor's translation | Hebrew right to left in Adobe Hebrew Type 1 subsets, tagged with `/Lang he` |
 | W09 | USDA Title VI fact sheet in Hebrew, from an Internet Archive capture | The USDA reserves the symbol on its banner; the translation's provenance is unknown | Hebrew from Word through PDFMaker 23, in TrueType and CID subsets beside the Census guide's Type 1; Hebrew outline titles |
 | W11 | United States Code 2023, Title 42 | 37.6 MB, too large to commit | 9,302 pages and a GPO signature in an incremental update; opening, decoding every stream and walking the page tree took 0.8 s on the development machine |
-| W11 | US Topo map, Washington West, 2023 | 63.1 MB, too large to commit | One page with a 109.5-megapixel image. The false truncated-stream report it first exposed (T21) is fixed; it stays unsupported for T28: the image decodes to 313 MB, past the 256 MB bound every filter keeps, and is reported as a truncated Flate stream |
+| W11 | US Topo map, Washington West, 2023 | 63.1 MB, too large to commit | One page with a 109.5-megapixel image. The false truncated-stream report it first exposed (T21) is fixed; it stays unsupported for T28: the image decodes to 313 MB, past the 256 MB bound the Flate filter keeps, and is reported as a truncated Flate stream |
 | W11, W03 | USGS Professional Paper 1 (1902), scanned in 2017 | 146.7 MB, too large to commit | 125 JPEG 2000 page images under an invisible OmniPage 19 OCR layer, tagged; linearization hints that point past the end of the file |
 | W11, W06 | A tiff2pdf image of 35,000 × 35,000 pixels, from OCRmyPDF | CC BY-SA 4.0 | 10.5 KB of CCITT G4 that decodes to 153 MB, on an 8,400-point page under a PDF 1.1 header |
 | W12 | Ghostscript 10 output claiming PDF/A-1b (`py-pdf/sample-files`) | CC BY-SA 4.0 | Type 1C subsets without ToUnicode, word spaces only as TJ kerning, an AdobeRGB output intent; veraPDF upholds the claim |

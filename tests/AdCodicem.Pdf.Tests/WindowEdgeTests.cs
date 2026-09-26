@@ -102,39 +102,44 @@ public class WindowEdgeTests
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    [InlineData(4)]
-    [InlineData(5)]
-    [InlineData(6)]
-    [InlineData(7)]
-    [InlineData(8)]
-    [InlineData(9)]
-    [InlineData(10)]
-    public void A_stream_ending_just_before_the_window_edge_is_confirmed_without_a_larger_window(int shortOfEdge)
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    [InlineData("\r")]
+    [InlineData("    ")]
+    public void A_stream_ending_just_before_the_window_edge_is_confirmed_without_a_larger_window(string endOfLine)
     {
-        // T21's shape: the data ends inside the window, or right at its edge as in the FDA guidance's object
-        // 2053, and its "endstream" lies across or past the edge. The reader
-        // asks the file for the few bytes after the data instead of parsing the object again through a
-        // window eight times larger — which the file, padded past that size, would otherwise serve.
-        var bytes = new TestPdfBuilder()
-            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .WithObject(ObjectNumber, StreamEndingAt(Window - shortOfEdge, "\n"))
-            .WithObject(6, "(" + new string('p', 12 * Window) + ")")
-            .BuildClassic(rootNumber: 1);
+        // T21's shape: the data ends 0 to 10 bytes short of the window's edge — the hospital-bed guidance's
+        // objects 604 and 2053 end 2 bytes short and right on it, before a CR LF — and its "endstream" lies
+        // across or past the edge. The reader asks the file for the 13 bytes after the data instead of
+        // parsing the object again through a window eight times larger, which the file, padded past that
+        // size, would otherwise serve.
+        var failures = new List<string>();
 
-        using var source = new CountingSource(bytes);
-        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
-        var beforeLoading = source.BytesRead;
+        for (var shortOfEdge = 0; shortOfEdge <= 10; shortOfEdge++)
+        {
+            var bytes = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .WithObject(ObjectNumber, StreamEndingAt(Window - shortOfEdge, endOfLine))
+                .WithObject(6, "(" + new string('p', 12 * Window) + ")")
+                .BuildClassic(rootNumber: 1);
 
-        var stream = document.GetObject(new PdfObjectId(ObjectNumber)).AsStream().Required();
+            using var source = new StrictCountingSource(bytes);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            var beforeLoading = source.BytesRead;
 
-        (source.BytesRead - beforeLoading).Should().BeLessThanOrEqualTo(Window + PdfObjectParser.EndStreamLookahead);
-        stream.GetRawBytes().Length.Should().Be(Window - shortOfEdge - DataStart(Window - shortOfEdge));
-        document.Diagnostics.Should().BeEmpty();
+            var stream = document.GetObject(new PdfObjectId(ObjectNumber)).AsStream().Required();
+            var read = source.BytesRead - beforeLoading;
+            var length = stream.GetRawBytes().Length;
+
+            if (read > Window + 13 || length != Window - shortOfEdge - DataStart(Window - shortOfEdge) ||
+                document.Diagnostics.Count > 0)
+            {
+                failures.Add($"{shortOfEdge} bytes short: read {read} bytes, data of {length}, {document.Diagnostics.Count} diagnostics");
+            }
+        }
+
+        failures.Should().BeEmpty($"{Describe(endOfLine)} must not cost a larger window");
     }
 
     [Fact]
@@ -203,18 +208,22 @@ public class WindowEdgeTests
         document.Diagnostics.Should().OnlyContain(d => d.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
     }
 
-    [Fact]
-    public void A_classic_table_reads_whole_wherever_its_window_edge_falls_near_its_trailer()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_classic_table_reads_whole_wherever_its_window_edge_falls_near_its_trailer(bool anomalous)
     {
         // The table's window is 64 KB. Its edge is slid over the end of the first subsection, the header
         // of the second, its rows, the "trailer" keyword and the dictionary, one byte at a time: a trailer
-        // cut there lost its /Root, and a cut keyword or subsection header made the table unreadable.
+        // cut there lost its /Root, and a cut keyword or subsection header made the table unreadable. An
+        // anomalous trailer — a key that is not a name — is reported exactly once, wherever the edge falls.
         var failures = new List<string>();
         var edges = new HashSet<int>();
+        var expected = anomalous ? PdfDiagnosticCodes.SyntaxUnexpectedToken : string.Empty;
 
-        for (var shift = 0; shift <= 200; shift++)
+        for (var shift = 0; shift <= 220; shift++)
         {
-            var file = LongTable(shift);
+            var file = LongTable(shift, anomalous);
             var cut = PdfFileReader.XRefWindow - (file.RegionStart - file.XRefOffset);
 
             if (cut < 0 || cut > file.RegionEnd - file.RegionStart)
@@ -225,7 +234,7 @@ public class WindowEdgeTests
             edges.Add(cut);
             using var document = PdfDocument.Open(file.Bytes);
 
-            if (document.WasRepaired || document.Diagnostics.Count > 0 ||
+            if (document.WasRepaired || string.Join(";", document.Diagnostics.Select(d => d.Code)) != expected ||
                 document.Trailer.GetInteger(PdfName.Size) != file.Size ||
                 document.Catalog?.IsOfType(PdfName.Catalog) != true)
             {
@@ -235,40 +244,151 @@ public class WindowEdgeTests
         }
 
         // A sweep that never reached the region would pass on anything.
-        edges.Should().HaveCount(LongTable(0).RegionEnd - LongTable(0).RegionStart + 1);
+        edges.Should().HaveCount(LongTable(0, anomalous).RegionEnd - LongTable(0, anomalous).RegionStart + 1);
         failures.Should().BeEmpty();
     }
 
     [Theory]
-    [InlineData(9 * 1024)]
-    [InlineData(70 * 1024)]
-    public void A_cross_reference_stream_whose_dictionary_outgrows_the_window_is_read_whole(int padding)
+    [InlineData(-7)]
+    [InlineData(5)]
+    public void A_cross_reference_stream_whose_length_is_wrong_is_read_whole_and_reported(int error)
     {
-        // A cross-reference stream was parsed through one fixed 64 KB window: a dictionary longer than
-        // that — a long /Index, here a padding entry — lost its end and the section was dropped. It is now
-        // parsed like any object, from 8 KB up.
+        // 2,000 rows of 7 bytes: data past the 8 KB object window, inside the 64 KB a cross-reference stream
+        // is read through, so its /Length is checked against the data — a first version of this change,
+        // parsing it from 8 KB, took the length on trust and dropped the rows it did not cover. The
+        // catalogue is in the last row.
+        const int Size = 2000;
+        var text = new StringBuilder("%PDF-1.7\n");
+        var pages = text.Length;
+        text.Append("1 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var catalog = text.Length;
+        text.Append(CultureInfo.InvariantCulture, $"{Size - 1} 0 obj\n<< /Type /Catalog /Pages 1 0 R >>\nendobj\n");
+        var xref = text.Length;
+
+        var rows = new List<byte>(Size * 7);
+        for (var number = 0; number < Size; number++)
+        {
+            rows.AddRange(number switch
+            {
+                1 => XRefRow(pages),
+                Size - 1 => XRefRow(catalog),
+                _ => [0, 0, 0, 0, 0, 0, 0],
+            });
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"{Size} 0 obj\n<< /Type /XRef /Size {Size} /W [1 4 2] /Root {Size - 1} 0 R ")
+            .Append(CultureInfo.InvariantCulture, $"/Length {rows.Count + error} >>\nstream\n")
+            .Append(Encoding.Latin1.GetString(rows.ToArray()))
+            .Append(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n");
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        document.WasRepaired.Should().BeFalse();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_after_more_white_space_than_the_object_window_is_read_from_the_index()
+    {
         var text = new StringBuilder("%PDF-1.7\n");
         var catalog = text.Length;
         text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
         var pages = text.Length;
         text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
         var xref = text.Length;
+        text.Append(' ', Window + 800);
 
-        byte[] rows = [0, 0, 0, 0, 0, 0xFF, 0xFF, .. Row(catalog), .. Row(pages), .. Row(xref)];
-        text.Append("3 0 obj\n<< /Type /XRef /Size 4 /W [1 4 2] /Pad (").Append('x', padding)
-            .Append(CultureInfo.InvariantCulture, $") /Root 1 0 R /Length {rows.Length} >>\nstream\n")
+        byte[] rows = [0, 0, 0, 0, 0, 0xFF, 0xFF, .. XRefRow(catalog), .. XRefRow(pages), .. XRefRow(xref)];
+        text.Append(CultureInfo.InvariantCulture, $"3 0 obj\n<< /Type /XRef /Size 4 /W [1 4 2] /Root 1 0 R /Length {rows.Length} >>\nstream\n")
             .Append(Encoding.Latin1.GetString(rows))
-            .Append("\nendstream\nendobj\n")
-            .Append(CultureInfo.InvariantCulture, $"startxref\n{xref}\n%%EOF\n");
+            .Append(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n");
 
         using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
 
         document.WasRepaired.Should().BeFalse();
-        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Trailer.GetInteger(PdfName.Size).Should().Be(4);
         document.Diagnostics.Should().BeEmpty();
+    }
 
-        static byte[] Row(int offset) => [1, (byte)(offset >> 24), (byte)(offset >> 16), (byte)(offset >> 8), (byte)offset, 0, 0];
+    [Fact]
+    public void An_object_whose_header_lies_past_the_window_is_read_where_the_index_says()
+    {
+        // The index points at white space that runs past the 8 KB window before the object's header: the
+        // header the edge cut is read again in a larger window, not searched for nearby and then rebuilt.
+        var text = new StringBuilder("%PDF-1.7\n");
+        var catalog = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var padded = text.Length;
+        text.Append(' ', Window + 100).Append("3 0 obj\n(padded)\nendobj\n");
+        var xref = text.Length;
+        text.Append("xref\n0 4\n0000000000 65535 f\r\n")
+            .Append(CultureInfo.InvariantCulture, $"{catalog:D10} 00000 n\r\n{pages:D10} 00000 n\r\n{padded:D10} 00000 n\r\n")
+            .Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+
+        using var document = PdfDocument.Open(Encoding.ASCII.GetBytes(text.ToString()));
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>();
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(40)]
+    [InlineData(15_000)]
+    public void A_stream_the_end_of_the_file_cuts_short_is_reported_once(int kept)
+    {
+        // A declared length the file cannot hold is no longer taken as it is and quietly shortened: a window
+        // that reaches the end of the file finds no "endstream", and says the stream was cut.
+        var complete = Encoding.ASCII.GetBytes(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n" +
+            "2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\n" +
+            "3 0 obj << /Length 20000 >>\nstream\n" + new string('d', 20000) + "\nendstream\nendobj\n");
+        var dataStart = Encoding.ASCII.GetString(complete).IndexOf("stream\n", StringComparison.Ordinal) + "stream\n".Length;
+
+        using var document = PdfDocument.Open(complete.AsMemory(0, dataStart + kept));
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+
+        stream.GetRawBytes().Length.Should().Be(kept);
+        document.Diagnostics.Where(d => d.Code.StartsWith("stream.", StringComparison.Ordinal))
+            .Should().ContainSingle()
+            .Which.Code.Should().Be(PdfDiagnosticCodes.StreamTruncated);
+    }
+
+    [Fact]
+    public void A_stream_whose_length_the_file_cannot_hold_is_read_to_its_endstream()
+    {
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(ObjectNumber, "<< /Length 999999 >>\nstream\nshort\nendstream")
+            .WithObject(6, "(" + new string('p', 3 * Window) + ")")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(bytes);
+        var stream = document.GetObject(new PdfObjectId(ObjectNumber)).AsStream().Required();
+
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("short");
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Fact]
+    public void A_stream_the_file_cuts_short_is_reported_without_asking_the_source_past_its_end()
+    {
+        // The file ends inside "endstream". The reader asks the file for the bytes after the data, and a
+        // source may refuse a read that runs past its end: it must be asked only for the six there are.
+        var bytes = Encoding.ASCII.GetBytes(
+            "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n" +
+            "2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\n" +
+            "3 0 obj << /Length 5 >> stream\nhello\nendst");
+
+        using var document = PdfDocument.Open(new StrictCountingSource(bytes), options: null, ownsSource: true);
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().StartWith("hello");
+        document.Diagnostics.Contains(PdfDiagnosticCodes.StreamTruncated).Should().BeTrue();
     }
 
     /// <summary>
@@ -281,7 +401,8 @@ public class WindowEdgeTests
         var whole = new PdfDiagnostics();
         var expected = Canonical(new PdfObjectParser(Encoding.Latin1.GetBytes(body), diagnostics: whole).ParseObject());
 
-        using var document = PdfDocument.Open(Document(body));
+        // Through a source that refuses any read past its end, which is all the reader may ever ask for.
+        using var document = PdfDocument.Open(new StrictCountingSource(Document(body)), options: null, ownsSource: true);
         var actual = Canonical(document.GetObject(new PdfObjectId(ObjectNumber)));
 
         if (actual != expected)
@@ -336,8 +457,9 @@ public class WindowEdgeTests
     /// A classic table of 3,272 entries in two subsections, then its trailer, with rows of the standard
     /// twenty bytes. <paramref name="shift"/> spaces after the first subsection's header move everything
     /// after it, one byte each; the region is from the first subsection's last two rows to the trailer's end.
+    /// An <paramref name="anomalous"/> trailer holds a key that is not a name.
     /// </summary>
-    private static (byte[] Bytes, int XRefOffset, int RegionStart, int RegionEnd, int Size) LongTable(int shift)
+    private static (byte[] Bytes, int XRefOffset, int RegionStart, int RegionEnd, int Size) LongTable(int shift, bool anomalous)
     {
         const int First = 3270;
         const int Second = 2;
@@ -364,12 +486,16 @@ public class WindowEdgeTests
         var regionStart = text.Length - 40;
         text.Append(First).Append(' ').Append(Second).Append('\n');
         text.Append("0000000000 00000 f\r\n0000000000 00000 f\r\n");
-        text.Append("trailer\n<< /Size ").Append(size).Append(" /Root 1 0 R >>\n");
+        text.Append("trailer\n<< /Size ").Append(size).Append(anomalous ? " 12" : string.Empty).Append(" /Root 1 0 R >>\n");
         var regionEnd = text.Length;
         text.Append("startxref\n").Append(xref).Append("\n%%EOF\n");
 
         return (Encoding.ASCII.GetBytes(text.ToString()), xref, regionStart, regionEnd, size);
     }
+
+    /// <summary>A row of a cross-reference stream with fields 1, 4 and 2 bytes wide: an object at an offset.</summary>
+    private static byte[] XRefRow(int offset) =>
+        [1, (byte)(offset >> 24), (byte)(offset >> 16), (byte)(offset >> 8), (byte)offset, 0, 0];
 
     /// <summary>A form of an object that two parses agree on exactly when they found the same object.</summary>
     private static string Canonical(PdfObject value)
@@ -432,32 +558,4 @@ public class WindowEdgeTests
         " " => "a space",
         _ => "nothing",
     } + " before endstream";
-
-    private sealed class CountingSource : PdfFileSource
-    {
-        private readonly PdfFileSource _inner;
-
-        public CountingSource(byte[] data) => _inner = FromMemory(data);
-
-        public long BytesRead { get; private set; }
-
-        public override long Length => _inner.Length;
-
-        public override int Read(long offset, Span<byte> buffer)
-        {
-            var read = _inner.Read(offset, buffer);
-            BytesRead += read;
-            return read;
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                _inner.Dispose();
-            }
-
-            base.Dispose(disposing);
-        }
-    }
 }

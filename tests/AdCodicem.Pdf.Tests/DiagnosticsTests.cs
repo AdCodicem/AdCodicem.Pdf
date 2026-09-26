@@ -1,4 +1,7 @@
+using System.Text;
 using AdCodicem.Pdf.Diagnostics;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -66,6 +69,33 @@ public class DiagnosticsTests
 
         report.Select(d => d.Code).Should().Equal("nested");
         pending.Count.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(5000, 1500, 0)]
+    [InlineData(100, 100, 1400)]
+    public void The_reader_holds_back_as_many_diagnostics_as_the_document_keeps(int capacity, int kept, int suppressed)
+    {
+        // An object of 1,500 keys that are not names, longer than the first window, so the first attempt
+        // is dropped: what the kept one reports is bounded by the document's capacity, not by the buffer's.
+        var body = new StringBuilder("<<");
+        for (var i = 0; i < 1500; i++)
+        {
+            body.Append(" 1");
+        }
+
+        body.Append(" /Pad (").Append('x', 9 * 1024).Append(") >>");
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, body.ToString())
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(bytes, new PdfReaderOptions { DiagnosticCapacity = capacity });
+        document.GetObject(new PdfObjectId(5)).AsDictionary().Required();
+
+        document.Diagnostics.Count.Should().Be(kept);
+        document.Diagnostics.SuppressedCount.Should().Be(suppressed);
     }
 
     [Fact]

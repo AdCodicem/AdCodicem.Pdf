@@ -11,6 +11,9 @@ namespace AdCodicem.Pdf.IO;
 /// </remarks>
 internal interface IPdfStreamDataProvider
 {
+    /// <summary>Gets the length of the file the stream data is read from.</summary>
+    long SourceLength { get; }
+
     /// <summary>Creates stream data for <paramref name="length"/> bytes at <paramref name="absoluteOffset"/>.</summary>
     PdfStreamData Create(long absoluteOffset, int length);
 

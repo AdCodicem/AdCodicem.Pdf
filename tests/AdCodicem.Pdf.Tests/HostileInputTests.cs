@@ -173,6 +173,111 @@ public class HostileInputTests
         document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.SyntaxDepthExceeded).Should().ContainSingle();
     }
 
+    [Fact]
+    public void Opening_a_chain_of_trailers_that_never_close_reads_a_bounded_amount()
+    {
+        // Each section's trailer opens an array that never closes, so it runs past the window's edge and on
+        // to the end of the file, through every section after it and a megabyte of comment. A cut trailer
+        // is read again through a window of its own, which stops at 64 KB: growing the table's window to the
+        // end of the file for each of the hundred sections read about 300 MB.
+        const int Sections = 100;
+        var text = new StringBuilder("%PDF-1.7\n");
+        var catalog = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var previous = -1;
+
+        for (var section = 0; section < Sections; section++)
+        {
+            var xref = text.Length;
+            text.Append("xref\n0 3\n0000000000 65535 f\r\n")
+                .Append(CultureInfo.InvariantCulture, $"{catalog:D10} 00000 n\r\n{pages:D10} 00000 n\r\n")
+                .Append("trailer\n<< /Size 3 /Root 1 0 R ")
+                .Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $"/Prev {previous} "))
+                .Append("/Open [\n");
+            previous = xref;
+        }
+
+        text.Append('%').Append('x', 1024 * 1024).Append('\n');
+        text.Append(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n");
+        var bytes = Encoding.ASCII.GetBytes(text.ToString());
+
+        using var source = new StrictCountingSource(bytes);
+        using var document = Measure(() => PdfDocument.Open(source, options: null, ownsSource: false));
+
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        source.BytesRead.Should().BeLessThan(Sections * 256L * 1024);
+    }
+
+    [Fact]
+    public void Opening_a_chain_of_hybrid_sections_whose_streams_never_close_reads_a_bounded_amount()
+    {
+        // Every section of the chain names, in /XRefStm, a cross-reference stream of its own whose
+        // dictionary opens an array that never closes and runs on to the end of the file. Each is parsed
+        // through windows that stop at 64 KB, so the chain costs a bounded read per section, not one the
+        // size of the file.
+        const int Sections = 100;
+        var text = new StringBuilder("%PDF-1.7\n");
+        var catalog = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        var streams = new long[Sections];
+        for (var section = 0; section < Sections; section++)
+        {
+            streams[section] = text.Length;
+            text.Append(CultureInfo.InvariantCulture, $"{section + 3} 0 obj\n<< /Type /XRef /W [1 4 2] /Open [\n");
+        }
+
+        text.Append('%').Append('x', 1024 * 1024).Append('\n');
+        var previous = -1;
+
+        for (var section = 0; section < Sections; section++)
+        {
+            var xref = text.Length;
+            text.Append("xref\n0 3\n0000000000 65535 f\r\n")
+                .Append(CultureInfo.InvariantCulture, $"{catalog:D10} 00000 n\r\n{pages:D10} 00000 n\r\n")
+                .Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 3 /Root 1 0 R /XRefStm {streams[section]} ")
+                .Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $"/Prev {previous} "))
+                .Append(">>\n");
+            previous = xref;
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n");
+        var bytes = Encoding.ASCII.GetBytes(text.ToString());
+
+        using var source = new StrictCountingSource(bytes);
+        using var document = Measure(() => PdfDocument.Open(source, options: null, ownsSource: false));
+
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        source.BytesRead.Should().BeLessThan(Sections * 256L * 1024);
+    }
+
+    [Fact]
+    public async Task Survives_a_string_longer_than_the_largest_window()
+    {
+        // A string that never closes runs to the end of every window, so each attempt asks for a larger
+        // one; only the 16 MB bound ends that. The load runs on its own task so that a missing bound fails
+        // the test instead of hanging the run.
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "(" + new string('x', 17 * 1024 * 1024))
+            .BuildClassic(rootNumber: 1);
+
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var cancellation = TestContext.Current.CancellationToken;
+        var load = Task.Run(() => document.GetObject(new PdfObjectId(5)), cancellation);
+
+        var first = await Task.WhenAny(load, Task.Delay(Budget, cancellation));
+        first.Should().BeSameAs(load, "the window stops growing at 16 MB");
+        (await load).Should().BeOfType<PdfString>().Which.Length.Should().BeLessThanOrEqualTo(16 * 1024 * 1024);
+        source.BytesRead.Should().BeLessThan(24L * 1024 * 1024);
+    }
+
     private static T Measure<T>(Func<T> action)
     {
         var stopwatch = Stopwatch.StartNew();
