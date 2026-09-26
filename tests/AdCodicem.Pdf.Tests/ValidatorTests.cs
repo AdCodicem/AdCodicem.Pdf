@@ -51,14 +51,22 @@ public class ValidatorTests
     [Fact]
     public void Findings_come_in_the_profile_s_order_then_in_the_order_each_rule_found_them()
     {
-        var profile = Profile(
-            new ReportingRule("test.first", PdfValidationSeverity.Warning, 2),
-            new ReportingRule("test.second", PdfValidationSeverity.Error, 1),
-            new ReportingRule("test.third", PdfValidationSeverity.Information, 2));
+        var profile = new ValidationProfile(
+            "ordered",
+            2,
+            [
+                new ReportingRule("test.first", PdfValidationSeverity.Warning, 2),
+                new ReportingRule("test.second", PdfValidationSeverity.Error, 1),
+                new ReportingRule("test.third", PdfValidationSeverity.Information, 2),
+            ]);
         using var document = PdfDocument.Open(SoundFile());
 
         var report = new PdfValidator(new PdfValidatorOptions { Profile = profile }).Validate(document);
 
+        profile.RuleIds.Should().Equal("test.first", "test.second", "test.third");
+        report.ProfileName.Should().Be("ordered");
+        report.ProfileVersion.Should().Be(2);
+        report.ToString().Should().Be("ordered 2: errors 1, warnings 2, information 2");
         report.Findings.Select(finding => (finding.RuleId, finding.Message)).Should().Equal(
             ("test.first", "Finding 1 of test.first."),
             ("test.first", "Finding 2 of test.first."),
@@ -98,6 +106,9 @@ public class ValidatorTests
         report.Contains("test.late").Should().BeTrue();
         report.HasErrors.Should().BeTrue();
         report.Contains("test.absent").Should().BeFalse();
+
+        var askingForNothing = () => report.Contains(null!);
+        askingForNothing.Should().Throw<ArgumentNullException>();
     }
 
     [Fact]
@@ -151,6 +162,19 @@ public class ValidatorTests
     }
 
     [Fact]
+    public void Validating_a_disposed_document_throws_before_any_rule_runs()
+    {
+        // Whatever the rules read: one that never touches the file must not validate a closed document either.
+        var document = PdfDocument.Open(SoundFile());
+        document.Dispose();
+        var profile = Profile(new ReportingRule("test.blind", PdfValidationSeverity.Warning, 1));
+
+        var validating = () => new PdfValidator(new PdfValidatorOptions { Profile = profile }).Validate(document);
+
+        validating.Should().Throw<ObjectDisposedException>();
+    }
+
+    [Fact]
     public void Validating_no_document_throws()
     {
         var validating = () => new PdfValidator().Validate(null!);
@@ -176,6 +200,16 @@ public class ValidatorTests
             new ReportingRule("test.twice", PdfValidationSeverity.Error, 1));
 
         building.Should().Throw<ArgumentException>().WithMessage("*test.twice*");
+    }
+
+    [Fact]
+    public void A_profile_needs_a_name_and_a_version_of_at_least_one()
+    {
+        var unnamed = () => new ValidationProfile("", 1, []);
+        var unversioned = () => new ValidationProfile("test", 0, []);
+
+        unnamed.Should().Throw<ArgumentException>();
+        unversioned.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Fact]
@@ -224,10 +258,11 @@ public class ValidatorTests
 
         atOffset.ToString().Should().Be("Warning file.eof-missing at offset 1234: Missing.");
         atObject.ToString().Should().Be("Error object.test at object 12 1: Broken.");
-        PdfValidationLocation.OfObject(new PdfObjectId(7), 99).ToString().Should().Be("object 7 0, at offset 99");
+        PdfValidationLocation.OfObject(new PdfObjectId(7, 2), 99).ToString().Should().Be("object 7 2, at offset 99");
         default(PdfValidationLocation).ToString().Should().Be("the document");
         default(PdfValidationLocation).IsDocument.Should().BeTrue();
         PdfValidationLocation.AtPosition(0).IsDocument.Should().BeFalse();
+        PdfValidationLocation.OfObject(new PdfObjectId(12, 1)).IsDocument.Should().BeFalse();
     }
 
     [Fact]
