@@ -346,7 +346,6 @@ def damage_lying_length(data: bytes) -> bytes:
     return data[: match.start(1)] + replacement + data[match.end(1) :]
 
 
-# name -> (transformation, diagnostic codes the reader must report, whether the index must be rebuilt)
 # Each damage: how it is done, the diagnostic codes the reader must report, whether the index is rebuilt, and
 # the validation findings the default profile must report (M2) — established from the damage itself, never by
 # the validator: cutting the tail takes the %%EOF marker with it.
