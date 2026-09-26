@@ -356,7 +356,9 @@ DAMAGES = {
     # Shifting every offset also moves the cross-reference section startxref points at, so the whole
     # index has to be rebuilt rather than each object relocated.
     "shifted-offsets": (damage_shift_offsets, ["xref.rebuilt"], True, []),
-    "truncated-tail": (damage_truncate, ["xref.rebuilt"], True, ["file.eof-missing"]),
+    # The cut falls inside the data of the invoice's last Flate stream: the stream runs past the end of the
+    # file, and its data ends before its last block does (T32) — qpdf keeps nothing of it, the reader the prefix.
+    "truncated-tail": (damage_truncate, ["xref.rebuilt", "stream.truncated", "filter.failed"], True, ["file.eof-missing"]),
     "junk-prefix": (damage_junk_prefix, ["xref.offset-adjusted"], False, []),
     # A wrong /Length is only noticed when the stream is actually read: that is the lazy reader working
     # as designed, so the acceptance test reads every object before checking the diagnostics.
