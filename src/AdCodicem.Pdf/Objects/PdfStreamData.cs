@@ -25,6 +25,12 @@ public abstract class PdfStreamData
     /// </summary>
     internal virtual IO.PdfLimitGuard LimitGuard => IO.PdfLimitGuard.Default;
 
+    /// <summary>
+    /// Gets a value indicating whether the reader cut the data at one of its guards, rather than finding it
+    /// cut in the file: decoding it then says nothing of the tail it lost, which the guard already reported.
+    /// </summary>
+    internal virtual bool CutByGuard => false;
+
     /// <summary>Returns the encoded bytes, exactly as they appear in the file.</summary>
     public abstract ReadOnlyMemory<byte> GetBytes();
 
