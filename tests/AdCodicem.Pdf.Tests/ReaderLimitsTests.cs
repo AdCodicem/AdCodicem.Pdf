@@ -82,6 +82,25 @@ public class ReaderLimitsTests
         setting.Should().Throw<ArgumentNullException>();
     }
 
+    [Fact]
+    public void A_guard_already_at_the_most_the_reader_can_hold_does_not_ask_to_be_raised()
+    {
+        // Past about 2 GB a stream cannot be held in one piece, whatever the options (T28): the report says so
+        // rather than send the caller after a property that can go no higher. One below is still raised.
+        var diagnostics = new PdfDiagnostics();
+        var unbounded = new PdfLimitGuard(PdfReaderLimits.Unbounded, throwOnLimit: false);
+        var justBelow = new PdfLimitGuard(PdfReaderLimits.Default with { MaxXRefSectionCount = int.MaxValue - 1 }, throwOnLimit: false);
+
+        unbounded.Reach(PdfLimit.DecodedStream, diagnostics, "Cut.", 7);
+        unbounded.Reach(PdfLimit.XRefSectionCount, diagnostics, "Cut.", 8);
+        justBelow.Reach(PdfLimit.XRefSectionCount, diagnostics, "Cut.", 9);
+
+        diagnostics.Select(entry => entry.Message).Should().Equal(
+            "Cut. PdfReaderLimits.MaxDecodedStreamLength is already at the most the reader can hold.",
+            "Cut. PdfReaderLimits.MaxXRefSectionCount is already at the most the reader can hold.",
+            "Cut. Raise PdfReaderLimits.MaxXRefSectionCount to read past it.");
+    }
+
     [Theory]
     [MemberData(nameof(Guards))]
     public void Reaching_a_guard_keeps_what_fits_and_names_the_property_that_lifts_it(string guard)
