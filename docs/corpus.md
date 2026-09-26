@@ -82,9 +82,10 @@ anything about is not part of the corpus.
   "features": ["xref-stream", "object-streams", "type0-subset", "utf16-metadata"],
   "expect": {
     "pages": 2,
-    "opensWithoutRepair": true,
-    "textContains": ["Facture", "TVA 20", "Total TTC"],
-    "diagnostics": []
+    "clean": true,                       // no repair and no warning
+    "indexRebuilt": false,
+    "requiredDiagnostics": [],
+    "textContains": ["Facture", "TVA 20", "Total TTC"]
   }
 }
 ```
@@ -95,11 +96,17 @@ from M10, conformance verdicts from M12. An expectation is
 never weakened to make a test pass — either the library is fixed, or the expectation is corrected with the
 reason recorded in the commit message.
 
-Three fields serve that rule:
+Four fields serve that rule:
 
 - `unsupported` — the reason the library cannot yet meet the entry's expectations, and the milestone that
   will. The acceptance tests skip the document with that reason in their output; the expectations stay as
   the independent tool established them.
+- `readerLimits` — beside `expect`, not in it, since it is a setting chosen rather than an observation:
+  the reader limits the document is opened with, when it is valid but exceeds a default one (ADR 34), such
+  as `"readerLimits": { "maxDecodedStreamLength": 536870912 }`. Its keys are the properties of
+  `PdfReaderLimits` in camel case, in bytes or sections, and each must raise its default; a misspelt one
+  fails loading. The document is then read, not skipped, and a test run on the remote corpus checks that the
+  defaults still cut it, so that a raise outlives no reason. Every other document is opened with the defaults.
 - `conformanceValid` — veraPDF's verdict on the PDF/A level the document claims (`claimsConformance`),
   for M12 to agree with.
 - `source` — for a third-party file, the URL it was retrieved from, the date and the SHA-256 of the bytes
@@ -138,7 +145,9 @@ verified by this test"*. A milestone is closed when, and only when:
 4. `docs/status.md` records the measurements rather than promising them.
 
 A document that cannot be handled and is not going to be handled in this milestone is not deleted: its
-expectation is recorded as unsupported (`expect.unsupported`), with the milestone that will address it.
+expectation is recorded as unsupported (`expect.unsupported`), with the milestone that will address it. A
+document that is valid but exceeds a default reader limit is not such a document: it is opened under the
+limit its `readerLimits` raises, and counts as read.
 Silence is not an option; a known gap must be written down where the next session will read it. A
 milestone is not closed while an entry still names it as the one that will.
 

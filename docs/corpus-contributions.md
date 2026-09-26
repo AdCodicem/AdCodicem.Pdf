@@ -73,7 +73,7 @@ may commit.
 | W08 | Blank XFA forms (IRS, USCIS, DoD, a Cerfa), JavaScript AcroForms (USCIS I-9, HMRC), a calculation order, an OmniForm form, tagged forms; remote: dynamic XFA from LiveCycle ES 9 and 10, encrypted, one of them certified, OPM's OF-306 with date JavaScript and signature fields, an Acrobat radio-button form with NULs in its names, an XFA form filled with fictitious values inside a portfolio | A form that is filled in — with fictitious values — that we may commit |
 | W09 | Arabic, Russian, Greek, Traditional Chinese (2004 and 2017), vertical Japanese without ToUnicode; remote: Hebrew (a US Census guide, a USDA fact sheet), Arabic shaped into CID fonts by WeasyPrint, Chinese font names in GBK bytes, PDF 2.0 UTF-8 strings | Korean; Hebrew and shaped Arabic we may commit |
 | W10 | PDF 1.2 to 1.4 from 1995–2004: PDFWriter 3.02 and 4.05, Distiller 2, 3 (Windows and Mac), 4 and 6, PDFMaker 5, Acrobat 3, RC4-40; remote: a 1998 PDFWriter 3.02 file with its line ends stripped; the OPF's GovDocs1 files from Distiller 4 and 5 and groff; remote: Xyvision's Parlance Publisher, and the 1994 Transportation Statistics report, whose /Producer names Distiller 1.0.2 for Macintosh over a PDF 1.3 update | A file from before 1996, PDF 1.0 or 1.1 |
-| W11 | Nothing committed, by design; remote: the US Code's Title 42 (9,302 pages), a USGS topographic map (one 63 MB page) and USGS Professional Paper 1 (147 MB of JPEG 2000 scans), fetched and tested every night; beside them a 4.7 MB portfolio, a 10.6 MB tagged scan, a CCITT image that decodes to 153 MB, 24 signatures in 48 updates | — (the map's acceptance waits on T28, a decoding bound of the reader's) |
+| W11 | Nothing committed, by design; remote: the US Code's Title 42 (9,302 pages), a USGS topographic map (one 63 MB page) and USGS Professional Paper 1 (147 MB of JPEG 2000 scans), fetched and tested every night; beside them a 4.7 MB portfolio, a 10.6 MB tagged scan, a CCITT image that decodes to 153 MB, 24 signatures in 48 updates | — (the map is read whole under a raised decoding limit, `readerLimits`, since ADR 34) |
 | W12 | PDF/A from PDFlib, Antenna House, Distiller, 3-Heights, BFO, Mustang, Aspose, OpenOffice and Word via PDFMaker, and two false claims, one from the factur-x Python library, each with veraPDF's verdict; remote: PDF/A-1a from callas pdfaPilot and Oracle Outside In, PDF/A-1b from Ghostscript, PDF/A-3 from Symtrax, Konik, intarsys and iText 9, PDF/A-4f and PDF/A-3u from WeasyPrint, claims veraPDF rejects from PDFMaker 11 and a gazette decree re-signed through iText, PDF/X-3 from Photoshop, PDF/UA-1 from AbleDocs and InDesign; the OPF's OpenOffice.org 3.2 PDF/A-1a and Acrobat 11 Image Conversion PDF/A-1b | A PDF/A-3 from a real ERP with its validation report, that we may commit |
 
 ## What makes a usable sample
@@ -171,7 +171,8 @@ I will not publish a file into the public corpus on my own judgement.
 
 ## The manifest entry
 
-One entry per document. Everything except `expect` is provenance; `expect` is what the tests assert.
+One entry per document. `expect` is what the tests assert; `readerLimits`, when there is one, is how the
+document is opened; everything else is provenance.
 
 ```jsonc
 {
@@ -204,6 +205,11 @@ Rules about `expect`:
 - **`catalogRecoverable: false` is for a file with no catalogue at all** — no object in it is one, and the
   referee finds none either. The tests then expect the reader to open the file and hand back no catalogue
   rather than invent one. Every other entry leaves the field out.
+- **A valid document that exceeds a default reader limit gets `readerLimits`, not `unsupported`.** Establish
+  the size that crosses the limit independently — the referee reads the document whole, and zlib or qpdf
+  measures what a stream decodes to —, then give the smallest round value that reads it: 512 MB for a
+  313 MB image, never `Unbounded`. The field sits beside `expect`, since it is a setting rather than an
+  observation (ADR 34).
 - **Never weaken it to make a test pass.** Either the library is wrong and gets fixed, or the expectation
   was wrong and gets corrected with the reason in the commit message.
 

@@ -41,7 +41,8 @@ wrong and reports it. The upper path arrives with the milestones in [`docs/roadm
    Indexing a thousand-page document costs a few hundred kilobytes.
 3. **Every byte from a third-party file is hostile.** No allocation sized by a value read from the file
    without a checked bound, no unbounded recursion, no loop whose exit depends on an offset. A malformed
-   PDF produces a diagnostic, never a crash.
+   PDF produces a diagnostic, never a crash. A bound that a valid file can exceed is an option, on by
+   default, so that every valid PDF can still be read (ADR 34).
 
 The rest — the layering, the conformance strategy, the threading model — follows from those, and is
 written out in [`docs/architecture.md`](docs/architecture.md).

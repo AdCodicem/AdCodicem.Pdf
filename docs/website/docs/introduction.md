@@ -49,6 +49,8 @@ its content.
   e-invoicing, designed in from the start rather than bolted on.
 - **Honest about damaged input.** Real files are frequently malformed; the reader repairs what it can and
   reports precisely what it did.
+- **Every valid PDF is readable.** The guards against hostile files are on by default, reported when a
+  document reaches one, and lifted by an option.
 
 ## Packages
 
