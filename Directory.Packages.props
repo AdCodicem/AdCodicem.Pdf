@@ -20,6 +20,9 @@
          xunit.extensibility.execution below 3.0.0 and would drag xUnit v2 into a v3 suite. The library
          itself is runner-agnostic, so a property runs inside an ordinary fact. -->
     <PackageVersion Include="FsCheck" Version="3.4.0" />
+    <!-- Holds the corpus manifest to its JSON schema (tests/corpus/manifest.schema.json). The framework exports
+         schemas but does not validate against one, and the core must not take the dependency; the tests may. -->
+    <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
   </ItemGroup>
 
   <ItemGroup Label="Benchmark">
