@@ -40,7 +40,7 @@ public class FilterTests
     }
 
     [Fact]
-    public void Keeps_what_it_could_decode_of_a_truncated_flate_stream()
+    public void Keeps_what_it_could_decode_of_a_truncated_flate_stream_and_says_so()
     {
         var diagnostics = new PdfDiagnostics();
         var truncated = FlateZlib.AsSpan(0, 20).ToArray();
@@ -49,6 +49,9 @@ public class FilterTests
 
         decoded.Should().NotBeEmpty();
         FlateText.Should().StartWith(decoded);
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
     }
 
     [Fact]
@@ -117,14 +120,20 @@ public class FilterTests
     }
 
     [Fact]
-    public void Stops_an_lzw_stream_at_a_code_it_has_not_defined()
+    public void Stops_an_lzw_stream_at_a_code_it_has_not_defined_and_says_so()
     {
         // "A", a clear, then code 300: after a clear the table holds only the 258 fixed codes, and there is no
-        // previous sequence to extend, so the code means nothing. What came before it is kept; that the
-        // stream was corrupt goes unsaid, as a Flate stream's lost tail does (T32).
+        // previous sequence to extend, so the code means nothing. What came before it is kept, and the code
+        // is reported (T32).
         var encoded = NineBitCodes(256, 'A', 256, 300, 'B');
+        var diagnostics = new PdfDiagnostics();
 
-        Text(Decode(encoded, PdfName.LZWDecode)).Should().Be("A");
+        Text(Decode(encoded, PdfName.LZWDecode, diagnostics: diagnostics)).Should().Be("A");
+
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Message.Should().Be("An LZW stream uses code 300, which it has not defined; what decoded before it was kept.");
     }
 
     [Fact]

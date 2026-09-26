@@ -17,10 +17,22 @@ internal static class LzwFilter
     /// Decodes <paramref name="data"/>, keeping at most <paramref name="maxLength"/> bytes;
     /// <paramref name="limited"/> says whether it decodes to more.
     /// </summary>
+    /// <remarks>
+    /// Data that uses a code it has not defined is corrupt from there on: decoding stops, what came before is
+    /// kept, and <paramref name="undefinedCode"/> says which code it was. Data that ends without the
+    /// end-of-data code is taken as complete, as other readers take it — qpdf among them —, since nothing
+    /// tells it from data whose encoder left the code out.
+    /// </remarks>
+    /// <param name="data">The encoded data.</param>
+    /// <param name="earlyChange">1 when the code width grows one code early, as by default; 0 otherwise.</param>
+    /// <param name="limited">Whether the data decodes to more than <paramref name="maxLength"/> bytes.</param>
+    /// <param name="undefinedCode">The code decoding stopped at because the data had not defined it, or -1.</param>
+    /// <param name="maxLength">The most the data may decode to.</param>
     public static byte[] Decode(
-        ReadOnlySpan<byte> data, int earlyChange, out bool limited, int maxLength)
+        ReadOnlySpan<byte> data, int earlyChange, out bool limited, out int undefinedCode, int maxLength)
     {
         limited = false;
+        undefinedCode = -1;
 
         var table = new byte[MaxCodes][];
         for (var i = 0; i < 256; i++)
@@ -65,13 +77,17 @@ internal static class LzwFilter
                 {
                     entry = known;
                 }
-                else if (previous is not null)
+                else if (code == next && previous is not null)
                 {
-                    // The encoder used a code it defined in the very sequence being decoded.
+                    // The encoder used the code it was defining with this very sequence: the previous one,
+                    // followed by its own first byte.
                     entry = [.. previous, previous[0]];
                 }
                 else
                 {
+                    // A code the table does not hold, and is not about to: past the next one to be defined, or
+                    // the next one with no sequence before it to define it from.
+                    undefinedCode = code;
                     return output.ToArray();
                 }
 

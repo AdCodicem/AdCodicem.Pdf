@@ -10,18 +10,27 @@ public static class PdfStreamDecodingExtensions
     /// Applies the stream's filters and returns the decoded data.
     /// </summary>
     /// <param name="stream">The stream to decode.</param>
-    /// <param name="diagnostics">Receives anomalies met while decoding, if supplied.</param>
+    /// <param name="diagnostics">
+    /// Receives anomalies met while decoding. When none are supplied, a stream read from a document reports
+    /// them in the document's own <see cref="Documents.PdfDocument.Diagnostics"/>, and one built in memory
+    /// reports nothing.
+    /// </param>
     /// <remarks>
     /// <para>
     /// Decoding stops at an image filter: a stream encoded with <c>DCTDecode</c> comes back as the JPEG it
     /// already is, rather than as pixels nobody asked for.
     /// </para>
     /// <para>
+    /// Data that is damaged decodes as far as it can, and what decoded is kept: a Flate stream that lost its
+    /// tail, or an LZW stream that uses a code it has not defined, comes back as what came before, reported as
+    /// <see cref="PdfDiagnosticCodes.FilterFailed"/>. Data that nothing could decode comes back encoded,
+    /// reported under the same code.
+    /// </para>
+    /// <para>
     /// A stream read from a document decodes under that document's
     /// <see cref="Documents.PdfReaderOptions.Limits"/>; one built in memory, under
     /// <see cref="Documents.PdfReaderLimits.Default"/>. Data that decodes past the bound is kept up to it and
-    /// reported as <see cref="PdfDiagnosticCodes.LimitDecodedStream"/> in <paramref name="diagnostics"/> — or,
-    /// when none are supplied and the stream was read from a document, in the document's own.
+    /// reported as <see cref="PdfDiagnosticCodes.LimitDecodedStream"/>.
     /// </para>
     /// </remarks>
     /// <exception cref="PdfLimitExceededException">

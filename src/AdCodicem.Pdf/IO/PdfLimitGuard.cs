@@ -23,6 +23,12 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     /// <summary>The guards in force when a document supplies none: the default bounds, reported as warnings.</summary>
     public static PdfLimitGuard Default { get; } = new(PdfReaderLimits.Default, throwOnLimit: false);
 
+    /// <summary>
+    /// Gets where what an operation meets is reported when it was given nowhere to report: the diagnostics of
+    /// the document the guard belongs to, or null for a stream built in memory.
+    /// </summary>
+    public PdfDiagnostics? DocumentDiagnostics => documentDiagnostics;
+
     /// <summary>Gets the bound <paramref name="limit"/> stands at.</summary>
     public int Bound(PdfLimit limit) => limit switch
     {

@@ -386,7 +386,9 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "stream.truncated",
+          "filter.failed"
         ],
         "findings": [
           "file.eof-missing"
