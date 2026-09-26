@@ -41,8 +41,18 @@ public static class PdfDiagnosticCodes
     /// <summary>The cross-reference table was rebuilt by scanning the whole file.</summary>
     public const string XRefRebuilt = "xref.rebuilt";
 
-    /// <summary>An object was not at the offset the cross-reference table claimed.</summary>
+    /// <summary>
+    /// An object, or a cross-reference section the chain names, was not at the offset the file claimed, and was
+    /// found nearby.
+    /// </summary>
     public const string XRefOffsetAdjusted = "xref.offset-adjusted";
+
+    /// <summary>
+    /// A cross-reference section the chain names, through <c>/Prev</c> or <c>/XRefStm</c>, is neither where
+    /// it is named nor near it. The objects only it indexes are missing from the index, which is rebuilt by
+    /// scanning the file when one of them is asked for.
+    /// </summary>
+    public const string XRefSectionMissing = "xref.section-missing";
 
     /// <summary>The chain of previous cross-reference sections looped back on itself.</summary>
     public const string XRefChainCycle = "xref.chain-cycle";

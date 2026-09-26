@@ -10676,16 +10676,15 @@
       "expect": {
         "pages": 429,
         "clean": false,
-        "indexRebuilt": true,
+        "indexRebuilt": false,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.offset-adjusted"
         ],
         "hasExtractableText": true,
         "textContains": [
           "using this information and the product",
           "duplication or disclosure restricted"
         ],
-        "unsupported": "T25: the trailer's /Prev points 12 bytes past the older section's xref keyword; the reader drops that section and the 4,106 entries it holds without a word, where qpdf reports it and rebuilds; recorded in docs/status.md, to be fixed before M02 closes",
         "refereeCheckSucceeds": false
       }
     },

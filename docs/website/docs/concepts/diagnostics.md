@@ -44,7 +44,8 @@ Codes are stable: they are part of the public contract, because callers filter o
 | Code | Raised when |
 |---|---|
 | `xref.rebuilt` | The index was rebuilt by scanning the whole file |
-| `xref.offset-adjusted` | An object was not where the index said, and was found nearby |
+| `xref.offset-adjusted` | An object, or a cross-reference section the chain names, was not where the file said, and was found nearby |
+| `xref.section-missing` | A cross-reference section `/Prev` or `/XRefStm` names is neither there nor nearby; what only it indexed is found by rebuilding the index when it is asked for |
 | `xref.chain-cycle` | The chain of previous sections looped |
 | `xref.entry-out-of-range` | An entry pointed outside the file |
 | `stream.length-invalid` | A stream's declared length did not match where its data ended |

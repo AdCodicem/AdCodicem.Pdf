@@ -249,6 +249,7 @@
             "enum": [
               "xref.rebuilt",
               "xref.offset-adjusted",
+              "xref.section-missing",
               "xref.chain-cycle",
               "xref.entry-out-of-range",
               "stream.length-invalid",

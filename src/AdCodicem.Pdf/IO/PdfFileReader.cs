@@ -34,6 +34,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private const int HeaderSearchLength = 4096;
     private const int TailSearchLength = 4096;
     private const int NearbySearchRadius = 512;
+
+    /// <summary>
+    /// The most places near missing cross-reference sections that are tried as one, over a whole document. Real
+    /// files miss by a few bytes, with the section the nearest candidate; a file packed with object headers
+    /// there, or with sections that all miss, gets no more attempts. Not a guard a valid file can reach: a valid
+    /// file's sections are where its chain names them.
+    /// </summary>
+    private const int MaxRelocationCandidates = 32;
     private const int ScanChunkSize = 1024 * 1024;
     private const int ScanOverlap = 64;
     private const int MaxRepairObjects = 2_000_000;
@@ -79,6 +87,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private long _headerOffset;
     private bool _repaired;
     private bool _nestingReported;
+
+    /// <summary>How many places have been tried for sections of the chain that were not where it named them.</summary>
+    private int _relocationCandidatesTried;
 
     public PdfFileReader(
         PdfFileSource source, PdfDiagnostics diagnostics, PdfLimitGuard guard, int cacheCapacity, bool ownsSource)
@@ -282,11 +293,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         return token.Kind == PdfTokenKind.Integer && token.Integer >= 0 ? token.Integer : -1;
     }
 
+    /// <summary>
+    /// Reads the chain of cross-reference sections from the newest, following each <c>/Prev</c> and the
+    /// <c>/XRefStm</c> of a hybrid file.
+    /// </summary>
+    /// <remarks>
+    /// A section the chain names must be read, or the objects only it indexes are lost. One that is not where
+    /// it is named is looked for nearby, as an object is. One that cannot be found is reported and leaves the
+    /// index incomplete: the chain stops at a missing <c>/Prev</c> and goes on past a missing <c>/XRefStm</c>,
+    /// and an object the index then lacks is looked for by rebuilding it, when it is asked for. Nothing is
+    /// rebuilt at opening that nobody asks for.
+    /// </remarks>
+    /// <param name="startOffset">The offset <c>startxref</c> gives.</param>
     private bool TryReadXRefChain(long startOffset)
     {
         var visited = new HashSet<long>();
         var offset = startOffset;
         var sections = 0;
+        var naming = "startxref";
 
         while (offset >= 0)
         {
@@ -311,19 +335,158 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             if (!TryReadXRefSection(offset, out var previous, out var hybrid))
             {
-                return sections > 1;
+                // The first section is where startxref says, and one that is not there leaves no index to
+                // complete: the file is scanned whole, which is reported. A later one is named by the section
+                // before it.
+                if (sections == 1)
+                {
+                    return false;
+                }
+
+                if (!TryRelocateXRefSection(offset, naming, out previous, out hybrid))
+                {
+                    ReportMissingSection(naming, offset);
+                    break;
+                }
             }
 
-            if (hybrid >= 0 && visited.Add(hybrid))
+            if (hybrid >= 0 && visited.Add(hybrid) &&
+                !TryReadXRefSection(hybrid, out _, out _) &&
+                !TryRelocateXRefSection(hybrid, "/XRefStm", out _, out _))
             {
-                // A hybrid-reference file keeps a classic table for old readers and a stream for the rest.
-                TryReadXRefSection(hybrid, out _, out _);
+                // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
+                // the stream, the objects it indexes are missing, and the chain goes on through /Prev.
+                ReportMissingSection("/XRefStm", hybrid);
             }
 
             offset = previous;
+            naming = "/Prev";
         }
 
         return _xref.Count > 0;
+    }
+
+    /// <summary>Reports a section of the chain that could not be found.</summary>
+    private void ReportMissingSection(string naming, long offset)
+    {
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.XRefSectionMissing,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The cross-reference section {naming} names at offset {offset + _headerOffset} is not there, nor near it; the objects only it indexes are looked for by rebuilding the index."),
+            offset + _headerOffset);
+    }
+
+    /// <summary>
+    /// Looks for a cross-reference section near the offset the chain named, where a careless writer's
+    /// arithmetic leaves it: a classic table's <c>xref</c> keyword, or the header of an object that reads as a
+    /// cross-reference stream, nearest first.
+    /// </summary>
+    /// <remarks>
+    /// The search spans <see cref="NearbySearchRadius"/> bytes either side, as an object's does, and tries at most
+    /// <see cref="MaxRelocationCandidates"/> places in all, over the whole document: each is read through a window
+    /// of up to 64 KB, the file chooses how many headers lie near a section, and a chain can name a section for
+    /// each of its <see cref="PdfReaderLimits.MaxXRefSectionCount"/> links.
+    /// </remarks>
+    private bool TryRelocateXRefSection(long offset, string naming, out long previous, out long hybrid)
+    {
+        previous = -1;
+        hybrid = -1;
+
+        var absolute = offset + _headerOffset;
+
+        if (absolute < 0 || absolute >= _source.Length)
+        {
+            return false;
+        }
+
+        var start = Math.Max(0, absolute - NearbySearchRadius);
+        var length = (int)Math.Min(NearbySearchRadius * 2, _source.Length - start);
+        var candidates = new List<long>();
+
+        using (var window = _source.GetWindow(start, length))
+        {
+            FindSectionCandidates(window.Memory.Span, start, candidates);
+        }
+
+        candidates.Sort((left, right) => Math.Abs(left - absolute).CompareTo(Math.Abs(right - absolute)));
+
+        foreach (var candidate in candidates)
+        {
+            if (candidate == absolute)
+            {
+                continue;
+            }
+
+            if (_relocationCandidatesTried++ >= MaxRelocationCandidates)
+            {
+                break;
+            }
+
+            if (TryReadXRefSection(candidate - _headerOffset, out previous, out hybrid))
+            {
+                _diagnostics.Repair(
+                    PdfDiagnosticCodes.XRefOffsetAdjusted,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The cross-reference section {naming} names at offset {absolute} was found {candidate - absolute} bytes from there."),
+                    candidate);
+                return true;
+            }
+        }
+
+        previous = -1;
+        hybrid = -1;
+        return false;
+    }
+
+    /// <summary>
+    /// Collects where a cross-reference section could start in <paramref name="span"/>: an <c>xref</c> keyword
+    /// standing on its own — not the end of <c>startxref</c> —, and every object header.
+    /// </summary>
+    private static void FindSectionCandidates(ReadOnlySpan<byte> span, long start, List<long> candidates)
+    {
+        var searchFrom = 0;
+
+        while (searchFrom < span.Length)
+        {
+            var index = span[searchFrom..].IndexOf("xref"u8);
+            if (index < 0)
+            {
+                break;
+            }
+
+            var position = searchFrom + index;
+            var end = position + 4;
+
+            if ((position == 0 || !PdfCharacters.IsRegular(span[position - 1])) &&
+                (end == span.Length || !PdfCharacters.IsRegular(span[end])))
+            {
+                candidates.Add(start + position);
+            }
+
+            searchFrom = end;
+        }
+
+        searchFrom = 0;
+
+        while (searchFrom < span.Length)
+        {
+            var index = span[searchFrom..].IndexOf(ObjKeyword);
+            if (index < 0)
+            {
+                break;
+            }
+
+            var position = searchFrom + index;
+
+            if (TryReadHeaderBackwards(span, position, out _, out var headerStart))
+            {
+                candidates.Add(start + headerStart);
+            }
+
+            searchFrom = position + ObjKeyword.Length;
+        }
     }
 
     private bool TryReadXRefSection(long offset, out long previous, out long hybrid)
