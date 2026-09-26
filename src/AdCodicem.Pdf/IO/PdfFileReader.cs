@@ -108,6 +108,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <summary>Gets the object numbers the file defines.</summary>
     public IEnumerable<int> ObjectNumbers => _xref.Entries.Keys;
 
+    /// <summary>Gets the bytes the file is read from.</summary>
+    public PdfFileSource Source => _source;
+
     /// <inheritdoc/>
     public PdfObject GetObject(PdfObjectId id)
     {

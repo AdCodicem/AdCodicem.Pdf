@@ -4,6 +4,7 @@ using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 using FsCheck;
 using FsCheck.Fluent;
 
@@ -233,6 +234,31 @@ public class PropertyTests
                 return true;
             }
         }
+    }
+
+    [Fact]
+    public void The_end_of_file_rule_reports_exactly_when_the_last_1024_bytes_hold_no_marker()
+    {
+        // Whatever follows a sound file's own marker — white space, NULs, junk, more markers, pieces of one —
+        // the rule answers what a plain search of the file's last 1,024 bytes answers. Half the cases fall
+        // around the edge, where the marker leaves that window one byte at a time.
+        var sound = ValidatorTests.SoundFile();
+        var lengths = Gen.OneOf(Gen.Choose(0, 1100), Gen.Choose(1010, 1026));
+        var trailing =
+            from length in lengths
+            from bytes in Gen.ArrayOf(Gen.Elements((byte)' ', (byte)'\n', (byte)0, (byte)'%', (byte)'E', (byte)'O', (byte)'F', (byte)'x'), length)
+            select bytes;
+
+        Check.One(Settings, Prop.ForAll(trailing.ToArbitrary(), bytes =>
+        {
+            byte[] file = [.. sound, .. bytes];
+            using var document = PdfDocument.Open(file);
+            var reported = new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.FileEofMissing);
+
+            var searched = Math.Min(1024, file.Length);
+            var tail = Encoding.Latin1.GetString(file, file.Length - searched, searched);
+            return reported == !tail.Contains("%%EOF", StringComparison.Ordinal);
+        }));
     }
 
     /// <summary>
