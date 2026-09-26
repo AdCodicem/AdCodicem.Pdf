@@ -8,11 +8,11 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 612 unit (5 skipped by design: two corpus
+- **Builds**: yes, with no warnings — **Tests**: 620 unit (5 skipped by design: two corpus
   documents recorded as unsupported until M2, and the negative control of `readerLimits`, which has no
   document without the remote corpus) + 302 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
-  documents from here on 2026-09-26, all 242 on the runner), 1,273 unit here — 1,266 on the runner, before
+  documents from here on 2026-09-26, all 242 on the runner), 1,281 unit here — 1,266 on the runner, before
   the coverage tests — (61 skipped by design, on documents recorded as unsupported until M2 or until T24
   or T25 is fixed) + 668
   integration, run 6 of `Remote corpus`, dispatched on the ADR 34 branch on 2026-09-26 — **CI**:
@@ -106,16 +106,24 @@ previous ordering, where M2 was writing and M3 assembly.
 - **The report.** Codecov found ten lines of the pull request's change that no test reached (97.3 % of the
   patch). Measured the same way here — the unit suite with CI's coverage command, without the remote
   corpus, intersected with the lines the change adds — it gave the same ten.
-- **Two were duplicated or unreachable, and went.** The pipeline skipped the predictor transform for
-  predictor 1, which the transform already does; and a cut trailer's re-read tested an offset that is
-  inside the file by construction. Neither change alters behaviour.
-- **Eight were behaviour without a test**, and have one: an LZW stream stopping at a code it has not
-  defined; an empty stream with a predictor, which must not be taken for rows too long for their data;
-  parameters naming predictor 1; a stream cut with nowhere to report; a guard at the most the reader can
-  hold; a chain of lengths running too deep into an object with no offset, and two such chains reported
-  once; and a keyword the section's 32-byte probe saw as `xref` that is `xrefs`. Each test fails when
-  its branch is mutated (eight mutations). The LZW case is silent corruption, like a Flate stream's lost
-  tail, and is recorded under T32.
+- **One was unreachable, and went**: a cut trailer's re-read tested an offset that is inside the file by
+  construction, for any source whose length holds.
+- **The rest were behaviour without a test**, and have one: an LZW stream stopping at a code it has not
+  defined; an empty stream with a predictor, which must not be taken for rows too long for their data; the
+  predictor transform left alone without a predictor; a stream cut with nowhere to report; a guard at the
+  most the reader can hold; a chain of lengths running too deep — into an object with no offset (free,
+  unlisted, compressed), into one with an offset, bytes before the header included, and twice, reported
+  once —; and a keyword the section's probe saw as `xref` that is `xrefs`. Each test fails when its branch
+  is mutated (thirteen mutations). The LZW case is silent corruption, like a Flate stream's lost tail, and
+  is recorded under T32.
+- **On review.** Three reviewers in their own worktrees, each finding checked by two more. The first
+  version also dropped the pipeline's own check for a stream without a predictor, as a duplicate of the
+  transform's — and it was not one: without it, `/Colors`, `/BitsPerComponent` and `/Columns` were read,
+  and resolving a reference there could rebuild the index, throw a guard or change what other objects read
+  as. The check is back, with a test that a parameter nothing reads is not resolved; the transform's own
+  guard is tested directly. Also from the review: nothing asserted where a too-deep object with an offset
+  is reported, and the probe's length is now a named constant the test is built from. Found on the way,
+  older than the pull request: **T34**.
 
 ### 2026-09-26 — ADR 34: every valid PDF is readable, and the reader's guards are options
 - **The rule.** Asked whether the 256 MB decoding bound came from the specification — it does not —, the
@@ -1027,6 +1035,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T31~~ | ~~**Two filters keep their bound badly.** `RunLengthDecode` has none: every two bytes in can decode to 128 out, so a 4.6 MB stream decodes to 294 MB, past the 256 MB `PdfFilterLimits.MaxDecodedLength`, with no diagnostic, and a Flate stream feeding it multiplies that by 64 — memory a hostile file chooses. `LZWDecode` stops at the bound in silence. Found by the review of T23's fix (a claim that every filter keeps the bound); older than it~~ | Done on 2026-09-26: every filter keeps exactly the first 256 MB and says whether it had more; the pipeline reports it as `filter.limit-exceeded`, the reader's limit (renamed `limit.decoded-stream` by ADR 34, before any release); first buffers are capped by the bound |
 | T32 | **A Flate stream whose tail was lost decodes to what is left, in silence.** .NET's `ZLibStream` treats the end of its input as the end of the data, so no exception reaches `FlateFilter`, whose handling of a lost tail was written for one: a zlib stream cut in half decodes 27,939 of its 58,890 bytes with no diagnostic (measured). zlib does check a complete Adler-32 trailer — a wrong one throws, and is reported — but not a missing one, and the trailer cannot be found by position, since a stream's `/Length` often takes in the end-of-line after it. .NET 10 exposes no inflater that says whether it reached the final block. LZW has the same silence: a stream that uses a code it never defined stops there and keeps what came before, without a word (pinned by `FilterTests.Stops_an_lzw_stream_at_a_code_it_has_not_defined`, found while covering #28's patch) | Before M2's stream rules ("filters decodable"): read the input through a stream that notices the inflater asking for bytes past the end of the data, which a complete stream never does, and report that as a truncated stream; and have the LZW decoder report the code it could not read |
 | T33 | **Every decoded object stream stays cached for the life of the document.** `_objectStreams` in `PdfFileReader` has no bound and no eviction, and a rebuild decodes every object stream up front to index its objects. A damaged file of four object streams that each decode to the 256 MB bound (1.2 MB) holds 1 GB once `Open` returns (measured by the review of T31), and raising `PdfReaderLimits.MaxDecodedStreamLength` (ADR 34) multiplies that; a large sound document holds its object streams' decoded bytes however few objects are read, against invariant 2 | M13, with the memory budgets, and sooner for the hostile case if a file of the kind turns up: a budget on the decoded bytes the cache holds, evicting the oldest — an evicted stream is decoded again when one of its objects is asked for |
+| T34 | **An object stream whose `/DecodeParms` names an object stored in that same stream reads that object as null, in silence, for good.** Decoding the stream resolves the parameter while the stream is being loaded; `GetObjectStream` marks it as unavailable meanwhile, so the object reads as null, and `GetObject` caches the null with no diagnostic. Any parameter the pipeline reads can do it: `/Predictor`, and `/EarlyChange` for LZW, always; `/Colors`, `/BitsPerComponent` and `/Columns` once there is a predictor above 1. Found by the review of #28's coverage; older than it | M2's object-graph rules: report the self-reference, and do not cache a null the reader produced while an object stream was still being loaded |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |
