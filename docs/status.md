@@ -8,10 +8,10 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 518 unit (4 skipped by design: two corpus
+- **Builds**: yes, with no warnings — **Tests**: 519 unit (4 skipped by design: two corpus
   documents recorded as unsupported until M2) + 302 integration (skipped without Docker) + 23 for the
-  remote corpus's fetcher (Python, against a local server); with the remote corpus fetched (238 of its 242
-  documents from here on 2026-09-26, all 242 on the runner), 1,177 unit (63 skipped by design, on documents
+  remote corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
+  documents from here on 2026-09-26, all 242 on the runner), 1,180 unit (63 skipped by design, on documents
   recorded as unsupported until M2 or until T24, T25 or T28 is fixed) + 665 integration (measured on
   2026-09-25: the session that fixed T21 and T23 had no Docker, and added no integration test) — **CI**:
   green on `main`, `OpenSSF Scorecard` included
@@ -148,13 +148,15 @@ previous ordering, where M2 was writing and M3 assembly.
   about 5 %, is larger than any difference. Allocation grows by the pending buffer, created once per
   document — 392.71 KB to 392.73–392.79 KB — and by nothing per object.
 - **Found on the way.** **T29**: a chain of streams each taking its `/Length` from the next nests object
-  loads as deep as the chain, and 20,000 of them overflow the stack and kill the process — older than
-  this change, reproduced on it. **T30**: a rebuild parses a 64 KB window at every `trailer` keyword in the
-  file; 80,000 of them open in 0.3 s, so the cost is linear, but it is 8,000 bytes read per byte of file.
-  And a top-level string that never ends now grows its window up to 16 MB, as an unterminated container
-  already did: bounded in memory, not in the number of such objects. Last, a stream whose data runs past
-  the window is still taken at its declared length unchecked; checking it now costs 13 bytes, which M2's
-  stream rules ("declared length matches reality") can use.
+  loads as deep as the chain, and 20,000 of them overflow the stack and kill the process — older than this
+  change, reproduced on it, and fixed in the commit after it: loads nest at most 64 deep, the next one reads
+  as null, uncached, and the document reports it once as `syntax.depth-exceeded`. A 50,000-level chain now
+  reads in milliseconds; with the bound removed, the same test brings the test host down. **T30**: a rebuild
+  parses a 64 KB window at every `trailer` keyword in the file; 80,000 of them open in 0.3 s, so the cost is
+  linear, but it is 8,000 bytes read per byte of file. And a top-level string that never ends now grows its
+  window up to 16 MB, as an unterminated container already did: bounded in memory, not in the number of such
+  objects. Last, a stream whose data runs past the window is still taken at its declared length unchecked;
+  checking it now costs 13 bytes, which M2's stream rules ("declared length matches reality") can use.
 
 ### 2026-09-25 — The nightly fuzzing campaign starts from one document per reader structure
 - **The question**: this branch, rebased on `main` after its fix for the fuzzing runner's disk, brings the
@@ -865,7 +867,7 @@ previous ordering, where M2 was writing and M3 assembly.
 | ~~T26~~ | ~~The remote corpus cannot take a file out of an archive, so the one external test suite for M2's structural profile stays out of reach~~ | Done on 2026-09-25: [ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md) accepted and implemented; the 88 files are in the remote corpus, 19 of them recorded as unsupported until M2 and named in its acceptance conditions |
 | T27 | **A reference to an object the file lacks makes the reader rebuild its whole index.** The specification says such a reference is null, and qpdf takes it so; the reader instead scans the file for the missing object — the lazy rebuild meant for an index that lost entries — and reports a repair on a file qpdf calls clean. Found on two iPRES 2017 files (remote): a catalogue whose `/Pages` and a page whose `/Contents` point at object 9, which does not exist. Both are recorded as unsupported with this reason. The acceptance test saw it only once it walked each page's contents and resources before judging a clean file's diagnostics; across the whole corpus, no other document was affected | Before M2 closes, since its acceptance conditions name both files: a synthetic regression test (a sound file with a reference past /Size, and one to a free entry), then rebuild only when the index gives reason to doubt it, and otherwise take the reference as null — a finding for M2, not a repair |
 | T28 | **A stream that decodes past 256 MB is reported as a truncated Flate stream.** `PdfFilterLimits.MaxDecodedLength` bounds every filter against decompression bombs, and the Flate filter reports reaching it exactly as it reports a corrupt stream: "A Flate stream was truncated; the decoded prefix was kept." Found on the USGS topographic map (remote), whose 9,600 × 11,410 RGB image, object 155, decodes to 313 MB (measured with zlib); the file is sound. Recorded as unsupported with this reason | M13, with the memory budgets: decode such a stream a piece at a time rather than into one array; meanwhile, report the bound as the reader's limit, not as damage in the file |
-| T29 | **A chain of `/Length` references nests object loads as deep as the chain.** Resolving an indirect `/Length` loads that object while the first is being parsed, and a stream whose `/Length` points at a stream whose `/Length` points at another goes one level deeper each time. The cycle guard stops a loop, not a chain: 20,000 such objects overflow the stack and kill the process, which invariant 4 forbids. Older than T23's fix, reproduced on it | Now: bound how deep loads may nest, and let the deepest one read as null, with a diagnostic |
+| ~~T29~~ | ~~**A chain of `/Length` references nests object loads as deep as the chain.** Resolving an indirect `/Length` loads that object while the first is being parsed, and a stream whose `/Length` points at a stream whose `/Length` points at another goes one level deeper each time. The cycle guard stops a loop, not a chain: 20,000 such objects overflow the stack and kill the process, which invariant 4 forbids. Older than T23's fix, reproduced on it~~ | Done on 2026-09-26: object loads nest at most 64 deep; the next one reads as null, is not cached, and is reported once as `syntax.depth-exceeded` with its offset. `HostileInputTests` reads a 50,000-level chain |
 | T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls | M13, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -133,6 +134,43 @@ public class HostileInputTests
 
         document.GetObject(new PdfObjectId(2)).Required();
         document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Survives_a_chain_of_lengths_longer_than_the_stack_is_deep()
+    {
+        // Each stream takes its /Length from the next, so reading the first loads the second while it is
+        // being parsed, which loads the third: 50,000 levels took the process down with the stack.
+        const int Chain = 50_000;
+        var text = new StringBuilder("%PDF-1.7\n");
+        var offsets = new long[Chain + 3];
+
+        offsets[1] = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        offsets[2] = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        for (var number = 3; number < Chain + 3; number++)
+        {
+            offsets[number] = text.Length;
+            var length = number + 1 < Chain + 3 ? $"{number + 1} 0 R" : "1";
+            text.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Length {length} >>\nstream\nx\nendstream\nendobj\n");
+        }
+
+        var xref = text.Length;
+        text.Append(CultureInfo.InvariantCulture, $"xref\n0 {Chain + 3}\n0000000000 65535 f\r\n");
+        for (var number = 1; number < Chain + 3; number++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"{offsets[number]:D10} 00000 n\r\n");
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {Chain + 3} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+
+        using var document = PdfDocument.Open(Encoding.ASCII.GetBytes(text.ToString()));
+        var first = Measure(() => document.GetObject(new PdfObjectId(3)));
+
+        first.AsStream().Required().GetRawBytes().Length.Should().Be(1);
+        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.SyntaxDepthExceeded).Should().ContainSingle();
     }
 
     private static T Measure<T>(Func<T> action)

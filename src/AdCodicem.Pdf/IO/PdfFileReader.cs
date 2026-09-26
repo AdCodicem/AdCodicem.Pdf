@@ -32,6 +32,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <summary>Asks <see cref="TryParseObjectAt"/> for whatever object starts at an offset.</summary>
     private const int AnyNumber = 0;
 
+    /// <summary>
+    /// Deepest chain of objects loaded while loading another. Real documents stay within a handful — a stream
+    /// in an object stream whose <c>/Length</c> is indirect is three —; each level costs a dozen frames.
+    /// </summary>
+    private const int MaxNestedLoads = 64;
+
     private static ReadOnlySpan<byte> ObjKeyword => "obj"u8;
     private static ReadOnlySpan<byte> TrailerKeyword => "trailer"u8;
     private static ReadOnlySpan<byte> StartXRefKeyword => "startxref"u8;
@@ -56,6 +62,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     private long _headerOffset;
     private bool _repaired;
+    private bool _nestingReported;
 
     public PdfFileReader(PdfFileSource source, PdfDiagnostics diagnostics, int cacheCapacity, bool ownsSource)
     {
@@ -105,6 +112,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         try
         {
+            // Loading an object can load another — an indirect /Length is resolved while its stream is
+            // parsed — and a file can chain such objects as long as it likes, each a level deeper on the
+            // stack. Past a depth no real document comes near, the next one reads as null rather than taking
+            // the process with it. Nothing is cached, so the same object loaded from a shallower place reads
+            // normally.
+            if (_loading.Count > MaxNestedLoads)
+            {
+                ReportNestingTooDeep(id);
+                return PdfNull.Instance;
+            }
+
             var value = LoadObject(id);
             Cache(id, value);
             return value;
@@ -113,6 +131,25 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         {
             _loading.Remove(id);
         }
+    }
+
+    private void ReportNestingTooDeep(PdfObjectId id)
+    {
+        // Once is enough: the same chain is met again each time an attempt that reached it is repeated.
+        if (_nestingReported)
+        {
+            return;
+        }
+
+        _nestingReported = true;
+        var position = _xref.TryGet(id.Number, out var entry) && entry.Kind == XRefEntryKind.Regular
+            ? entry.Offset + _headerOffset
+            : -1;
+
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.SyntaxDepthExceeded,
+            $"Object {id.Number} is reached through more nested objects than the reader will follow, and reads as null.",
+            position);
     }
 
     /// <inheritdoc/>
