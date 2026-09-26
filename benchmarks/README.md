@@ -23,3 +23,10 @@ dotnet run --configuration Release --project benchmarks/{{ProjectName}}.Benchmar
 Or trigger the `Benchmarks` GitHub Actions workflow manually (Actions tab →
 Benchmarks → Run workflow) to get results as a downloadable artifact —
 useful before a release, or when investigating a suspected regression.
+
+## Comparison with other libraries
+
+`AdCodicem.Pdf.Benchmarks.Comparison` measures this library against PdfPig, PDFsharp and iText on the same
+corpus documents. It is a project of its own so that third-party packages never enter the benchmarks CI
+budgets depend on; its `README.md` says what is measured and what the numbers do not say, and the
+`Comparison benchmarks` workflow produces the figures the documentation publishes.

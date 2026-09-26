@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Measures this library against others on the same documents. Kept apart from AdCodicem.Pdf.Benchmarks,
+       which tracks our own regressions, so that third-party packages never enter the projects the budgets
+       and CI depend on. Nothing here is shipped: the project is not packable, and iText's AGPL applies to
+       distributing it, which nobody does. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AdCodicem.Pdf.Benchmarks.Comparison</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="PdfPig" />
+    <PackageReference Include="PDFsharp" />
+    <PackageReference Include="itext" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/AdCodicem.Pdf/AdCodicem.Pdf.csproj" />
+  </ItemGroup>
+
+</Project>

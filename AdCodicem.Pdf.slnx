@@ -12,5 +12,6 @@
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/AdCodicem.Pdf.Benchmarks/AdCodicem.Pdf.Benchmarks.csproj" />
+    <Project Path="benchmarks/AdCodicem.Pdf.Benchmarks.Comparison/AdCodicem.Pdf.Benchmarks.Comparison.csproj" />
   </Folder>
 </Solution>
