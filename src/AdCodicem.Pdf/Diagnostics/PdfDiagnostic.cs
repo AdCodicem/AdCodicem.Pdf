@@ -73,4 +73,10 @@ public static class PdfDiagnosticCodes
 
     /// <summary>A filter named by the file is not supported.</summary>
     public const string FilterUnsupported = "filter.unsupported";
+
+    /// <summary>
+    /// A stream decodes to more than the reader will decode, and only the part within that bound was kept:
+    /// a limit of the reader's, set against decompression bombs, not damage in the file.
+    /// </summary>
+    public const string FilterLimitExceeded = "filter.limit-exceeded";
 }

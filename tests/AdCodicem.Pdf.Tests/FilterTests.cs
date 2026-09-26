@@ -114,6 +114,134 @@ public class FilterTests
         Text(Decode(encoded, PdfName.LZWDecode)).Should().Be("-----A---B");
     }
 
+    /// <summary>Encoded data in each decoding filter, and all it decodes to.</summary>
+    public static TheoryData<string, byte[], byte[]> Encoded => new()
+    {
+        { "FlateDecode", FlateZlib, Encoding.ASCII.GetBytes(FlateText) },
+        { "LZWDecode", [0x80, 0x0B, 0x60, 0x50, 0x22, 0x0C, 0x0C, 0x85, 0x01], "-----A---B"u8.ToArray() },
+        { "RunLengthDecode", [0x01, 0x48, 0x49, 0xFC, 0x41, 0x80], "HIAAAAA"u8.ToArray() },
+        { "ASCII85Decode", "87cURD]i,\"Ebo7~>"u8.ToArray(), "Hello World"u8.ToArray() },
+        { "ASCII85Decode", "zz~>"u8.ToArray(), new byte[8] },
+        { "ASCIIHexDecode", "48656C6C6F>"u8.ToArray(), "Hello"u8.ToArray() },
+        { "ASCIIHexDecode", "4A5>"u8.ToArray(), [0x4A, 0x50] },
+    };
+
+    [Theory]
+    [MemberData(nameof(Encoded))]
+    public void Keeps_exactly_what_the_bound_allows_and_reports_only_a_bound_it_met(
+        string filter, byte[] encoded, byte[] decoded)
+    {
+        // Every bound from one byte to past the whole output: the first bytes up to the bound are kept,
+        // and the bound is reported — once, as the reader's limit — only when the data goes past it.
+        var failures = new List<string>();
+
+        for (var bound = 1; bound <= decoded.Length + 1; bound++)
+        {
+            var diagnostics = new PdfDiagnostics();
+            var output = DecodeWithin(encoded, PdfName.Get(filter), bound, diagnostics).ToArray();
+            var kept = decoded.AsSpan(0, Math.Min(bound, decoded.Length)).ToArray();
+            var reports = bound < decoded.Length ? 1 : 0;
+
+            if (!output.AsSpan().SequenceEqual(kept) || diagnostics.Count != reports ||
+                (reports == 1 && !diagnostics.Contains(PdfDiagnosticCodes.FilterLimitExceeded)))
+            {
+                failures.Add($"bound {bound}: kept {output.Length} bytes, {diagnostics.Count} diagnostics");
+            }
+        }
+
+        failures.Should().BeEmpty($"/{filter} must keep the first bytes up to its bound");
+    }
+
+    /// <summary>A megabyte or more of input in each expanding filter, each decoding to more than a kilobyte.</summary>
+    public static TheoryData<string, byte[]> LargeInputs
+    {
+        get
+        {
+            var runs = new byte[(1 << 20) + 1];
+            for (var i = 0; i + 1 < runs.Length; i += 2)
+            {
+                runs[i] = 0x81;
+                runs[i + 1] = (byte)'A';
+            }
+
+            runs[^1] = 0x80;
+            var stored = new byte[2 << 20];
+            new Random(17).NextBytes(stored);
+            using var compressed = new MemoryStream();
+            using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.NoCompression, leaveOpen: true))
+            {
+                zlib.Write(stored);
+            }
+
+            return new()
+            {
+                { "RunLengthDecode", runs },
+                { "LZWDecode", new byte[1 << 20] },
+                { "ASCII85Decode", Encoding.ASCII.GetBytes(new string('z', 1 << 20)) },
+                { "FlateDecode", compressed.ToArray() },
+            };
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(LargeInputs))]
+    public void A_filter_s_first_buffer_is_sized_by_its_bound_not_by_its_input(string filter, byte[] encoded)
+    {
+        // Each decoder guesses its output from its input, a length the file chose: two to four times
+        // several megabytes here. The guess is capped by the bound, a kilobyte.
+        var diagnostics = new PdfDiagnostics();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        var output = DecodeWithin(encoded, PdfName.Get(filter), 1024, diagnostics);
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().BeLessThan(512 * 1024);
+        output.Length.Should().Be(1024);
+    }
+
+    [Fact]
+    public void Bounds_each_filter_of_a_chain_so_that_they_cannot_multiply()
+    {
+        // A Flate stream holding RunLength data: 2,000 pairs that each decode to 128 bytes. Flate stays
+        // within the bound; RunLength, which would multiply it, stops at the bound too.
+        var runs = new byte[4001];
+        for (var pair = 0; pair < 2000; pair++)
+        {
+            runs[2 * pair] = 0x81;
+            runs[(2 * pair) + 1] = (byte)'A';
+        }
+
+        runs[^1] = 0x80;
+        using var compressed = new MemoryStream();
+        using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(runs);
+        }
+
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.FlateDecode, PdfName.RunLengthDecode]));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(compressed.ToArray()));
+        var diagnostics = new PdfDiagnostics();
+
+        var output = PdfFilterPipeline.Decode(stream, diagnostics, maxLength: 10_000);
+
+        output.Length.Should().Be(10_000);
+        diagnostics.Should().ContainSingle()
+            .Which.Message.Should().StartWith("The /RunLengthDecode data decodes to more than the 10000 bytes");
+    }
+
+    [Fact]
+    public void Tells_a_corrupt_flate_stream_from_one_that_reaches_the_bound()
+    {
+        var corrupt = new PdfDiagnostics();
+        var bounded = new PdfDiagnostics();
+
+        DecodeWithin([0x01, 0x02, 0x03, 0x04, 0x05, 0x06], PdfName.FlateDecode, 1000, corrupt);
+        DecodeWithin(FlateZlib, PdfName.FlateDecode, 10, bounded);
+
+        corrupt.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed);
+        bounded.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.FilterLimitExceeded);
+    }
+
     [Fact]
     public void Undoes_a_png_up_predictor()
     {
@@ -191,6 +319,13 @@ public class FilterTests
         }
 
         return new PdfStream(dictionary, PdfStreamData.FromMemory(data)).Decode(diagnostics);
+    }
+
+    private static ReadOnlyMemory<byte> DecodeWithin(byte[] data, PdfName filter, int maxLength, PdfDiagnostics diagnostics)
+    {
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, filter);
+        return PdfFilterPipeline.Decode(new PdfStream(dictionary, PdfStreamData.FromMemory(data)), diagnostics, maxLength);
     }
 
     private static string Text(ReadOnlyMemory<byte> data) => Encoding.ASCII.GetString(data.Span);

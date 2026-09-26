@@ -13,7 +13,11 @@ internal static class PdfFilterPipeline
     /// Image filters are left in place on purpose: a JPEG inside a PDF is already a JPEG, and decoding it
     /// to pixels only to encode it again is both slow and lossy. Callers that want pixels ask for them.
     /// </remarks>
-    public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics)
+    /// <param name="stream">The stream to decode.</param>
+    /// <param name="diagnostics">Receives what decoding met, if supplied.</param>
+    /// <param name="maxLength">The most each filter's output may be; tests lower it.</param>
+    public static ReadOnlyMemory<byte> Decode(
+        PdfStream stream, PdfDiagnostics? diagnostics, int maxLength = PdfFilterLimits.MaxDecodedLength)
     {
         var data = stream.GetRawBytes();
         var filters = stream.Dictionary.GetRaw(PdfName.Filter).Resolved();
@@ -29,7 +33,7 @@ internal static class PdfFilterPipeline
 
         if (filters is PdfName single)
         {
-            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics, position);
+            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics, position, maxLength);
         }
 
         if (filters is not PdfArray chain)
@@ -56,7 +60,7 @@ internal static class PdfFilterPipeline
                 return data;
             }
 
-            data = ApplyOne(name, data, stepParameters, diagnostics, position);
+            data = ApplyOne(name, data, stepParameters, diagnostics, position, maxLength);
         }
 
         return data;
@@ -74,7 +78,8 @@ internal static class PdfFilterPipeline
         ReadOnlyMemory<byte> data,
         PdfDictionary? parameters,
         PdfDiagnostics? diagnostics,
-        long position)
+        long position,
+        int maxLength)
     {
         if (IsImageFilter(name))
         {
@@ -83,7 +88,7 @@ internal static class PdfFilterPipeline
 
         if (name == PdfName.FlateDecode)
         {
-            if (!FlateFilter.TryDecode(data, out var decoded, out var repaired, out var truncated))
+            if (!FlateFilter.TryDecode(data, out var decoded, out var repaired, out var truncated, out var limited, maxLength))
             {
                 diagnostics?.Warn(PdfDiagnosticCodes.FilterFailed, "A Flate stream could not be decoded.", position);
                 return data;
@@ -102,29 +107,37 @@ internal static class PdfFilterPipeline
                     position);
             }
 
+            ReportLimit(limited, name, diagnostics, position, maxLength);
             return ApplyPredictor(decoded, parameters);
         }
 
         if (name == PdfName.LZWDecode)
         {
             var earlyChange = (int)(parameters.GetInteger(PdfName.EarlyChange) ?? 1);
-            var decoded = LzwFilter.Decode(data.Span, earlyChange is 0 ? 0 : 1);
+            var decoded = LzwFilter.Decode(data.Span, earlyChange is 0 ? 0 : 1, out var limited, maxLength);
+            ReportLimit(limited, name, diagnostics, position, maxLength);
             return ApplyPredictor(decoded, parameters);
         }
 
         if (name == PdfName.ASCII85Decode)
         {
-            return Ascii85Filter.Decode(data.Span);
+            var decoded = Ascii85Filter.Decode(data.Span, out var limited, maxLength);
+            ReportLimit(limited, name, diagnostics, position, maxLength);
+            return decoded;
         }
 
         if (name == PdfName.ASCIIHexDecode)
         {
-            return AsciiHexFilter.Decode(data.Span);
+            var decoded = AsciiHexFilter.Decode(data.Span, out var limited, maxLength);
+            ReportLimit(limited, name, diagnostics, position, maxLength);
+            return decoded;
         }
 
         if (name == PdfName.RunLengthDecode)
         {
-            return RunLengthFilter.Decode(data.Span);
+            var decoded = RunLengthFilter.Decode(data.Span, out var limited, maxLength);
+            ReportLimit(limited, name, diagnostics, position, maxLength);
+            return decoded;
         }
 
         if (name == PdfName.Crypt)
@@ -136,6 +149,22 @@ internal static class PdfFilterPipeline
         diagnostics?.Warn(
             PdfDiagnosticCodes.FilterUnsupported, $"The filter /{name.Value} is not supported.", position);
         return data;
+    }
+
+    /// <summary>
+    /// Reports that a filter stopped at the bound: a limit of the reader's, which the file may well be
+    /// within its rights to exceed, and not damage in it.
+    /// </summary>
+    private static void ReportLimit(bool limited, PdfName name, PdfDiagnostics? diagnostics, long position, int maxLength)
+    {
+        if (limited)
+        {
+            var bound = maxLength % (1024 * 1024) == 0 ? $"{maxLength / (1024 * 1024)} MB" : $"{maxLength} bytes";
+            diagnostics?.Warn(
+                PdfDiagnosticCodes.FilterLimitExceeded,
+                $"The /{name.Value} data decodes to more than the {bound} the reader decodes; the first {bound} were kept.",
+                position);
+        }
     }
 
     private static ReadOnlyMemory<byte> ApplyPredictor(byte[] decoded, PdfDictionary? parameters)
