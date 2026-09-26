@@ -4732,7 +4732,7 @@
           "Java Application Platform SDK Update 5 Released"
         ],
         "refereeCheckSucceeds": true,
-        "unsupported": "T24: the reader reads each cross-reference section through a window of up to 64 KB whatever the section's size, so opening this 218 KB file with three sections reads 117 KB, more than the quarter the laziness test allows; bounded, but proportional to the number of sections. Recorded in docs/status.md, for M13"
+        "unsupported": "T24: the reader reads each cross-reference section through a window of up to 64 KB whatever the section's size, so opening this 218 KB file with three sections reads 117 KB, more than the quarter the laziness test allows; bounded, but proportional to the number of sections. Recorded in docs/status.md, for M23"
       }
     },
     {
@@ -12273,7 +12273,7 @@
         ],
         "hasExtractableText": true,
         "claimsConformance": "PDF/A-1b",
-        "unsupported": "M2: One of the page tree's kids point at objects the file does not contain; qpdf, poppler and PDFium count each as a blank letter-size page (13 in all), pikepdf and the reader skip them (12); whether such a kid is a page is validation's call, and M5's page API must settle it",
+        "unsupported": "M2: One of the page tree's kids point at objects the file does not contain; qpdf, poppler and PDFium count each as a blank letter-size page (13 in all), pikepdf and the reader skip them (12); whether such a kid is a page is validation's call, and M6's page API must settle it",
         "refereeCheckSucceeds": false
       }
     },
@@ -12323,7 +12323,7 @@
           "shared history of depopulation and disinvestment",
           "implications for both mental and physical"
         ],
-        "unsupported": "M2: Twelve of the page tree's kids point at objects the file does not contain; qpdf, poppler and PDFium count each as a blank letter-size page (65 in all), pikepdf and the reader skip them (53); whether such a kid is a page is validation's call, and M5's page API must settle it",
+        "unsupported": "M2: Twelve of the page tree's kids point at objects the file does not contain; qpdf, poppler and PDFium count each as a blank letter-size page (65 in all), pikepdf and the reader skip them (53); whether such a kid is a page is validation's call, and M6's page API must settle it",
         "refereeCheckSucceeds": false
       }
     },
@@ -12885,7 +12885,7 @@
           "may differ from official coding guidelines based",
           "outcomes and statistical analysis"
         ],
-        "unsupported": "T24: the main cross-reference table (13,666 entries, 273 KB) is larger than the first window, and each time the window grows the section is read again from its start, so opening reads 683 KB of this 2.2 MB file, more than the quarter the laziness test allows; recorded in docs/status.md, for M13",
+        "unsupported": "T24: the main cross-reference table (13,666 entries, 273 KB) is larger than the first window, and each time the window grows the section is read again from its start, so opening reads 683 KB of this 2.2 MB file, more than the quarter the laziness test allows; recorded in docs/status.md, for M23",
         "refereeCheckSucceeds": false
       }
     },

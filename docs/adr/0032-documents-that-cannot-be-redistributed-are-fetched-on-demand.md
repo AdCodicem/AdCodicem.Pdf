@@ -43,9 +43,9 @@ files it cannot redistribute:
   "All Rights Reserved" or behind a registration form.
 - **ShareAlike sets** — `py-pdf/sample-files`, much of OCRmyPDF's and pikepdf's test data, the PDF
   Association's PDF 2.0 examples. They could be committed, but ShareAlike then reaches every derivative
-  we commit — a damaged copy made by `build_corpus.py`, a repaired or merged golden file from M3 to M5, an
+  we commit — a damaged copy made by `build_corpus.py`, a repaired or merged golden file from M3 to M6, an
   image on the site — and nothing in the corpus pipeline keeps a derivative apart from its source.
-- **Documents too large to commit** — the W11 references for M13 (T22), 37 to 147 MB each.
+- **Documents too large to commit** — the W11 references for M23 (T22), 37 to 147 MB each.
 
 Other projects faced the same problem and did not commit: pdf.js keeps a `.link` file per document and
 checks each download against an MD5 in its manifest; PDFBox downloads JIRA attachments at build time,
@@ -83,7 +83,7 @@ and test them in a separate job — and we will commit none of them, nor anythin
 ## Consequences
 
 - **The gaps a contribution was the only way to fill become testable**: the SAP output, the Ricoh scan,
-  vendors' Factur-X files, ShareAlike sets, and W11's heavy documents for M13.
+  vendors' Factur-X files, ShareAlike sets, and W11's heavy documents for M23.
 - **No licence reaches the repository.** Using a file for tests means copying it onto a test machine,
   which is lower-risk than redistributing it but not nothing; publicly posted files used for testing, with
   their source cited, are the scope.

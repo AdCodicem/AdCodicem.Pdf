@@ -64,7 +64,7 @@ public class CorpusValidationTests
     [MemberData(nameof(ConformanceFailures))]
     public void Conformance_failures_are_not_structural_errors(string file)
     {
-        // veraPDF finds these PDF/A-invalid; the structural profile must not: conformance is M12's business.
+        // veraPDF finds these PDF/A-invalid; the structural profile must not: conformance is M20's business.
         var entry = Corpus.Get(file);
         Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
 
@@ -119,7 +119,7 @@ public class CorpusValidationTests
     /// <summary>
     /// Opens a corpus document as its entry says — under its raised reader limits, if any — and validates it
     /// under the default profile. An encrypted document is opened too: its structure is readable without its
-    /// key, which only its content needs (M11).
+    /// key, which only its content needs (M16).
     /// </summary>
     private static PdfValidationReport Validate(CorpusDocument entry)
     {

@@ -38,7 +38,7 @@ public partial class ValidationRuleIdTests
     [Fact]
     public void Every_rule_identifier_is_run_by_a_profile_and_every_rule_has_a_public_identifier()
     {
-        // Until M12 brings the conformance profiles, the structural profile is the only one.
+        // Until M20 brings the conformance profiles, the structural profile is the only one.
         ValidationProfile.Structural.RuleIds.Should().BeEquivalentTo(Constants(typeof(PdfValidationRuleIds)));
     }
 

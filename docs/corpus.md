@@ -106,8 +106,8 @@ file listed twice, an archive pinned two ways — stays with `fetch_remote.py` a
 ```
 
 `expect` grows as milestones land: page count and repair status from M1, validation findings from M2,
-round-trip fidelity from M3, repaired-equals-original from M4, merge invariants from M5, extracted text
-from M10, conformance verdicts from M12. An expectation is
+round-trip fidelity from M3, repaired-equals-original from M5, merge invariants from M6, extracted text
+from M15, conformance verdicts from M20. An expectation is
 never weakened to make a test pass — either the library is fixed, or the expectation is corrected with the
 reason recorded in the commit message.
 
@@ -123,7 +123,7 @@ Five fields serve that rule:
   fails loading. The document is then read, not skipped, and a test run on the remote corpus checks that the
   defaults still cut it, so that a raise outlives no reason. Every other document is opened with the defaults.
 - `conformanceValid` — veraPDF's verdict on the PDF/A level the document claims (`claimsConformance`),
-  for M12 to agree with.
+  for M20 to agree with.
 - `findings` — the validation rules that report on the document under the default profile (M2), by
   identifier: exactly these, no more and no fewer, and none when the field is left out. A sound document
   that earns a warning nobody declared fails as surely as a damaged one that earns nothing. Like every

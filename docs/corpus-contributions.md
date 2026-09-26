@@ -38,16 +38,16 @@ Priority **1** blocks a milestone, **2** materially improves one, **3** is oppor
 |---|----------|----------------|----------|----------|
 | W01 | **Microsoft Word → PDF**, both variants: "Save as PDF" *and* "Microsoft Print to PDF" | Two different writers, both ubiquitous; the print driver in particular produces structures nothing else does | M1, M2 | 1 |
 | W02 | **Adobe** output: Acrobat, Distiller or an InDesign export | The reference implementation's own conventions, including its take on object streams and metadata | M1, M2 | 1 |
-| W03 | **A scan from your office copier** (Xerox, Canon, Ricoh, Konica…), ideally one with an OCR text layer and one without | Image-only pages, CCITT and JPEG encodings, and the invisible-text layer OCR adds — extraction must tell them apart | M2, M10 | 1 |
-| W04 | **An invoice or statement received from a supplier or bank** | These come out of Java stacks (iText, JasperReports, SAP, Crystal) we cannot run here, and they are the highest-volume documents the library will read | M1, M2, M10 | 1 |
-| W05 | **A PDF signed electronically** (Yousign, DocuSign, Universign, a qualified provider…) | The only way to prove that conservative repair and incremental update leave a signature intact | M3, M4 | 1 |
-| W06 | **Anything that broke one of your tools** — failed to open, opened wrong, printed wrong | Impossible to synthesise faithfully, and the most valuable file in any corpus | M1, M2, M4 | 1 |
-| W07 | **A real Factur-X or ZUGFeRD invoice** from a supplier's ERP | Real ones differ from published samples in the details that matter: attachment relationship, XMP extension schema, PDF/A-3 claim | M12 | 2 |
-| W08 | **An interactive form you actually use** — an administrative form, a Cerfa, an internal one | Field appearances, calculated fields, and the XFA forms that Adobe's tooling still emits | M11 | 2 |
-| W09 | **A document in a non-Latin script**: Arabic or Hebrew (right to left), Greek, Cyrillic, or CJK | Shaping, bidirectional text and CID font handling cannot be judged on French alone | M6, M10 | 2 |
+| W03 | **A scan from your office copier** (Xerox, Canon, Ricoh, Konica…), ideally one with an OCR text layer and one without | Image-only pages, CCITT and JPEG encodings, and the invisible-text layer OCR adds — extraction must tell them apart | M2, M15 | 1 |
+| W04 | **An invoice or statement received from a supplier or bank** | These come out of Java stacks (iText, JasperReports, SAP, Crystal) we cannot run here, and they are the highest-volume documents the library will read | M1, M2, M15 | 1 |
+| W05 | **A PDF signed electronically** (Yousign, DocuSign, Universign, a qualified provider…) | The only way to prove that conservative repair and incremental update leave a signature intact | M3, M5 | 1 |
+| W06 | **Anything that broke one of your tools** — failed to open, opened wrong, printed wrong | Impossible to synthesise faithfully, and the most valuable file in any corpus | M1, M2, M5 | 1 |
+| W07 | **A real Factur-X or ZUGFeRD invoice** from a supplier's ERP | Real ones differ from published samples in the details that matter: attachment relationship, XMP extension schema, PDF/A-3 claim | M14 | 2 |
+| W08 | **An interactive form you actually use** — an administrative form, a Cerfa, an internal one | Field appearances, calculated fields, and the XFA forms that Adobe's tooling still emits | M16 | 2 |
+| W09 | **A document in a non-Latin script**: Arabic or Hebrew (right to left), Greek, Cyrillic, or CJK | Shaping, bidirectional text and CID font handling cannot be judged on French alone | M8, M15 | 2 |
 | W10 | **An old archive document**, PDF 1.2 to 1.4, ideally pre-2005 | Encodings, font formats and structures that no current producer emits but that archives are full of | M1, M2 | 2 |
-| W11 | **A very large document**: a heavy scan, a catalogue, a plan | Memory behaviour is a promise, and promises need a document that would break a careless implementation | M13 | 3 |
-| W12 | **A PDF/A produced by someone else's tooling**, with its validation report if you have one | An independent opinion on conformance, to check ours against | M12 | 3 |
+| W11 | **A very large document**: a heavy scan, a catalogue, a plan | Memory behaviour is a promise, and promises need a document that would break a careless implementation | M23 | 3 |
+| W12 | **A PDF/A produced by someone else's tooling**, with its validation report if you have one | An independent opinion on conformance, to check ours against | M20 | 3 |
 
 Nothing here needs to be pretty, recent, or a good example. A file is interesting because of how it was
 made, not because of what it says.

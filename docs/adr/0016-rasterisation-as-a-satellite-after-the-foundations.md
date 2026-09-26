@@ -9,12 +9,12 @@ Accepted
 ## Context
 
 It will reuse the content stream interpreter
-written for extraction (M10). Until then, visual tests rely on an external tool in CI.
+written for extraction (M15). Until then, visual tests rely on an external tool in CI.
 
 ## Decision
 
 We will it will reuse the content stream interpreter
-written for extraction (M10). Until then, visual tests rely on an external tool in CI.
+written for extraction (M15). Until then, visual tests rely on an external tool in CI.
 
 ## Consequences
 

@@ -23,7 +23,7 @@ first public type was written, the project's own documents disagreed on where th
 
 - `docs/roadmap.md`, `docs/releasing.md`, the site's introduction and ADR 24 put "the validation rule engine
   and its profiles" in a satellite, `AdCodicem.Pdf.Validation`, shipped in M2;
-- `docs/roadmap.md` also puts `PdfRepair` (M4) **in the core**, driven by the M2 findings, and ADR 22 says
+- `docs/roadmap.md` also puts `PdfRepair` (M5) **in the core**, driven by the M2 findings, and ADR 22 says
   every repair is justified by a finding;
 - invariant 1 forbids the core any dependency, so a core `PdfRepair` cannot consume findings a satellite
   defines;
@@ -46,7 +46,7 @@ rules of their own.
 We will build validation into the core, and keep a satellite for the conformance profiles only.
 
 - **Where.** The finding model, the rule engine and the structural profile are part of `AdCodicem.Pdf`, in
-  the namespace `AdCodicem.Pdf.Validation`. M2 ships no new package. The PDF/A and PDF/UA profiles (M12) go
+  the namespace `AdCodicem.Pdf.Validation`. M2 ships no new package. The PDF/A and PDF/UA profiles (M20) go
   to a satellite named **`AdCodicem.Pdf.Conformance`**: the identifier `AdCodicem.Pdf.Validation` was never
   published — nuget.org answered 404 for it on 2026-09-26 — and keeping it for the satellite would name an
   assembly like a namespace of the core that it does not contain.
@@ -59,7 +59,7 @@ We will build validation into the core, and keep a satellite for the conformance
   (`^[a-z][a-z0-9]*(-[a-z0-9]+)*\.[a-z][a-z0-9]*(-[a-z0-9]+)*$`): `file.eof-missing`,
   `page-tree.count-mismatch`. The family is the structural profile's — `file`, `xref`, `object`,
   `page-tree`, `stream`, `font`, `resource`, `annotation`, `metadata`, `security` — and never a profile's
-  name, since a rule runs in every profile that includes it; M12's rules take families of their own. One
+  name, since a rule runs in every profile that includes it; M20's rules take families of their own. One
   identifier names one rule, with one severity. No identifier equals a reader diagnostic code; a test holds
   both rules, and `docs/validation-rules.md` lists every identifier with its severity, its meaning, and the
   diagnostic codes a rule reads, if any.
@@ -81,14 +81,14 @@ We will build validation into the core, and keep a satellite for the conformance
   no time, no path and nothing the document did not decide (invariant 6).
 - **The engine stays internal** until it is deliberately made public: `IValidationRule`,
   `ValidationContext` and the construction of a profile are internal, so callers use the built-in profiles
-  and cannot yet write rules. M12's satellite is the first consumer that needs them public, and decides
+  and cannot yet write rules. M20's satellite is the first consumer that needs them public, and decides
   their shape then.
 - **A profile has a name and a version.** The structural profile is `structural`, version 1. A stable release
   that changes what the profile reports increments it; previews do not (ADR 30).
 
 ## Consequences
 
-- `PdfRepair` (M4) can take findings as its input, as ADR 22 wants, without the core depending on anything.
+- `PdfRepair` (M5) can take findings as its input, as ADR 22 wants, without the core depending on anything.
 - The structural rules read the reader's internals directly, and the public API grows only by what callers
   use. The price is that the core carries the rule engine and the structural profile — code a caller who
   never validates still ships. Both are managed, dependency-free and trimmed away when unused.
@@ -120,5 +120,5 @@ We will build validation into the core, and keep a satellite for the conformance
   `docs/releasing.md`, the site's introduction, `README.md`, `docs/milestones/M2.md`, and T16 in
   `docs/status.md`.
 - **What would reopen it**: the structural profile growing heavy enough that trimming does not remove it
-  from applications that never validate, measured; or M12 showing the conformance profiles need the
+  from applications that never validate, measured; or M20 showing the conformance profiles need the
   reader's internals as much as the structural one does.

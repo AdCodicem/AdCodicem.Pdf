@@ -4,7 +4,8 @@ Date: 2026-09-12
 
 ## Status
 
-Accepted
+Accepted; amended on 2026-09-26 by [43](0043-skia-in-html-and-rendering-and-text-analysis-is-ours.md),
+which also allows Skia in `.Rendering` and makes bidirectional analysis and line breaking ours.
 
 ## Context
 

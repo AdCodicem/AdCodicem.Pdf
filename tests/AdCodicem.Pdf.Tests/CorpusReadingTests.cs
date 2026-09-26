@@ -166,7 +166,7 @@ public class CorpusReadingTests
 
         if (entry.Expect.Encrypted)
         {
-            // Decryption arrives in M11; until then the refusal must be typed and immediate.
+            // Decryption arrives in M16; until then the refusal must be typed and immediate.
             FluentThrow<PdfEncryptedException>(() => PdfDocument.Open(Corpus.Read(file), OptionsFor(entry)));
             return;
         }
@@ -215,7 +215,7 @@ public class CorpusReadingTests
     {
         var entry = Corpus.Get(file);
         Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
-        Assert.SkipWhen(entry.Expect.Encrypted, $"{entry.Name}: an encrypted document is refused at opening until M11");
+        Assert.SkipWhen(entry.Expect.Encrypted, $"{entry.Name}: an encrypted document is refused at opening until M16");
 
         var source = new CountingSource(Corpus.Read(file));
         var size = source.Length;
@@ -441,7 +441,7 @@ public class CorpusReadingTests
     }
 
     /// <summary>
-    /// Walks the page tree, resolving each page's contents and resources. M1 has no page API — that is M5 —
+    /// Walks the page tree, resolving each page's contents and resources. M1 has no page API — that is M6 —
     /// so the traversal lives here, which also exercises reference resolution and inherited structure across
     /// every producer in the corpus.
     /// </summary>

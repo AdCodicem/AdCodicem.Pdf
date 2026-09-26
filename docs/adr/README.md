@@ -43,9 +43,20 @@ A settled decision is not reopened without new evidence — that is what writing
 | [34](0034-every-valid-pdf-is-readable-and-the-readers-guards-are.md) | Every valid PDF is readable, and the reader's guards are options | — |
 | [35](0035-unsafe-code-where-a-measurement-asks-for-it.md) | Unsafe code, where a measurement asks for it | — |
 | [36](0036-validation-lives-in-the-core-conformance-in-a-satellite.md) | Validation lives in the core, and the conformance profiles in a satellite | — |
+| [37](0037-out-of-scope-active-content-and-pdf-to-office.md) | Out of scope: active content, and PDF to Office | — |
+| [38](0038-the-html-engine-loads-resources-deny-by-default.md) | The HTML engine loads resources deny-by-default | — |
+| [39](0039-forward-references-late-filled-xobjects-and-two-bounded-passes.md) | Forward references: late-filled XObjects, and two bounded passes | — |
+| [40](0040-the-caller-chooses-pdf-1-7-or-2-0-output.md) | The caller chooses PDF 1.7 or PDF 2.0 output | — |
+| [41](0041-cryptography-lives-in-satellites.md) | Cryptography lives in satellites | — |
+| [42](0042-image-codecs-and-scans.md) | Image codecs and scans | — |
+| [43](0043-skia-in-html-and-rendering-and-text-analysis-is-ours.md) | Skia in `.Html` and `.Rendering`, and text analysis is ours | — |
+| [44](0044-object-shape-rules-generated-from-the-arlington-model.md) | Object-shape rules generated from the Arlington model | — |
 
 ## Decisions too small for a record of their own
 
+- Milestones are **numbered in the order they are worked** (since 2026-09-26): a milestone inserted later
+  renumbers those after it, everywhere in the repository, and `docs/roadmap.md` keeps the mapping from the
+  numbers older commits use.
 - The layout engine works in **CSS pixels**; conversion to points (`× 0.75`) happens only when painting.
 - The PDF coordinate system starts bottom-left and layout works top-left: the conversion lives in exactly
   one place, in painting.

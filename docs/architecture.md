@@ -18,15 +18,25 @@ ordinary composition of the two paths.
 
 ## 2. Package split
 
-| Package | Role | Dependencies |
-|---|---|---|
-| `AdCodicem.Pdf` | Object model, reader, writer, pages, fonts, logical structure, security, diagnostics, validation and its structural profile | **none** |
-| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | AngleSharp, HarfBuzzSharp, SkiaSharp |
-| `AdCodicem.Pdf.AspNetCore` | DI registration, `IResult`, MVC integration | `AdCodicem.Pdf.Html` |
-| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the core's validation engine | `AdCodicem.Pdf` |
-| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD: embedding, extraction, validation | `AdCodicem.Pdf` |
-| `AdCodicem.Pdf.Rendering` | PDF → image rasterisation (late satellite) | SkiaSharp |
-| `AdCodicem.Pdf.Signing` | PAdES (late satellite) | `AdCodicem.Pdf` |
+| Package | Role | Dependencies | Milestone |
+|---|---|---|---|
+| `AdCodicem.Pdf` | Object model, reader, writer, revisions, pages, fonts, logical structure, security (password handler, AES-GCM), CCITT decoding, OCR text layer, redaction, diagnostics, validation and its structural profile | **none** | M1 onwards |
+| `AdCodicem.Pdf.Tool` | The command-line tool: a `dotnet tool` and a Native AOT binary | `AdCodicem.Pdf` and the satellites it drives | from M6 |
+| `AdCodicem.Pdf.Barcodes` | QR, Data Matrix, Code 128, GS1-128, PDF417, EAN and UPC as vectors; EPC and Swiss QR-bill payloads | `AdCodicem.Pdf` | M10 |
+| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | AngleSharp, HarfBuzzSharp, SkiaSharp | M12 |
+| `AdCodicem.Pdf.AspNetCore` | DI registration, `IResult`, MVC integration | `AdCodicem.Pdf.Html` | M12 |
+| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD: embedding, extraction, validation, the invoice model | `AdCodicem.Pdf`, `AdCodicem.Pdf.Html` for renditions | M14 |
+| `AdCodicem.Pdf.CaseFile` | The case-file model, inventories, court-portal presets, e-mail to PDF | `AdCodicem.Pdf`, `AdCodicem.Pdf.Html` | M18 |
+| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the core's validation engine | `AdCodicem.Pdf` | M20 |
+| `AdCodicem.Pdf.Imaging` | JBIG2, JPEG 2000 and JPEG decoders; lossless CCITT G4 and JBIG2 encoders (ADR 42) | `AdCodicem.Pdf` | M22 |
+| `AdCodicem.Pdf.Compare` | Text and visual comparison, zone templates | `AdCodicem.Pdf` | M24 |
+| `AdCodicem.Pdf.Rendering` | PDF → image rasterisation | SkiaSharp, `AdCodicem.Pdf.Imaging` | M25 |
+| `AdCodicem.Pdf.Signing` | PAdES signing, long-term validation and signature validation, the public-key security handler (ADR 41) | `AdCodicem.Pdf`, `System.Security.Cryptography.Pkcs` | M26, M27 |
+| `AdCodicem.Pdf.Docx` | DOCX to HTML for the HTML engine | `AdCodicem.Pdf.Html`, `DocumentFormat.OpenXml` | M31 |
+
+Two more are named by their milestones without a package identifier yet: the optional hyphenation patterns
+(M12.2), whose licences are reviewed language by language, and the colour-management engine of print
+production (M29).
 
 The rule: **the core depends on nothing**. That is what guarantees its Native AOT compatibility, its
 memory profile and its reuse on a server as much as in a serverless function. Any temptation to let Skia,
@@ -45,7 +55,7 @@ Documents/    PdfDocument (open, save), PdfReaderOptions and PdfReaderLimits, Pd
               PdfPageCollection, attribute inheritance, cross-document deep copy, assembly.
 Fonts/        TrueType and OpenType parsing, metrics, subsetting, Type0/CIDFontType2 embedding,
               the ToUnicode CMap, the font registry and family resolution.
-Content/      Content stream writing; the content stream interpreter used by extraction (M8).
+Content/      Content stream writing; the content stream interpreter used by extraction (M15).
 Structure/    The logical structure tree (tagged PDF), marked content, the parent tree.
 Security/     RC4 and AES decryption and encryption, permissions.
 Diagnostics/  PdfDiagnostics: anomalies, repairs, guards reached, conformance losses; PdfException
@@ -126,7 +136,7 @@ goes wrong. No intermediate layer may drop it.
 - **Memory budget**: consumption follows the complexity of the **page** being processed, never the size of
   the document. A ten-thousand-page report must generate in the footprint of a ten-page one. One decoded
   stream is still held whole, up to `PdfReaderLimits.MaxDecodedStreamLength` and at most `Array.MaxLength`,
-  until M13 decodes a piece at a time (T28), in native memory if a measurement asks for it (ADR 35).
+  until M23 decodes a piece at a time (T28), in native memory if a measurement asks for it (ADR 35).
 - **Pooling**: write buffers, glyph arrays and layout boxes come from `ArrayPool<T>` or dedicated pools.
   What is rented is returned, exceptions included.
 - **Structs and spans**: computed CSS values, metrics, rectangles and positions are structs. Parsing works

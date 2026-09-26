@@ -84,7 +84,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
   map is opened with a decoded-stream bound of 512 MB and must read whole. Every other document is tested
   with the defaults.
 - **Past the implementation's ceiling the rule is not yet met.** A stream that decodes past about 2 GB needs
-  a decode that yields its output a piece at a time; that is T28, for M13, and until then
+  a decode that yields its output a piece at a time; that is T28, for M23, and until then
   `limit.decoded-stream` reports it even under `Unbounded`.
 
 ## Consequences
@@ -99,7 +99,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
 - With `ThrowOnLimit`, any lazy operation — resolving an object, decoding a stream — may throw after `Open`
   returned; a caller who sets it must be ready for that wherever the document is used.
 - `Unbounded` is for documents the application trusts. Raised guards let a file make the reader hold what
-  it asks for, up to the new bounds; and until M13 bounds the cache of decoded object streams (T33), raising
+  it asks for, up to the new bounds; and until M23 bounds the cache of decoded object streams (T33), raising
   `MaxDecodedStreamLength` multiplies what that cache can hold.
 - A classic trailer that ends within the window its table was read through is read whole whatever its
   length: the guard bounds how far the reader follows one past that window, which is where the cost is.
@@ -114,7 +114,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
 - **Amended on acceptance**: invariants 4 and 5 of `CLAUDE.md`, and invariant 12 added; `ARCHITECTURE.md`,
   `docs/architecture.md` and `SECURITY.md` on bounds; `docs/corpus.md`, `docs/corpus-contributions.md` and
   `tests/corpus/README.md` for `readerLimits`; the site's *Diagnostics* and *Lazy reading* pages, and a new
-  page, *Reader limits*; the M2 stream rule and M13's deliverables.
-- **What would reopen it**: a streaming decode (M13), after which `MaxDecodedStreamLength` would bound memory
+  page, *Reader limits*; the M2 stream rule and M23's deliverables.
+- **What would reopen it**: a streaming decode (M23), after which `MaxDecodedStreamLength` would bound memory
   held at once rather than the length of a stream; or evidence that most callers read trusted input, which
   would argue for `Unbounded` as the default.

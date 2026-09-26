@@ -37,7 +37,7 @@ alternatives and what would reopen it. The identifiers below are the ones commit
 | D01 | Fully managed rendering: AngleSharp (HTML5 parsing) → our own CSS engine and layout → our own PDF writer |
 | D02 | Full scope: generation **and** manipulation (assembly, content, extraction, forms, security, optimisation) |
 | D03 | Target content: business documents plus a chosen subset of modern CSS (flex, simple grid, SVG, paged media) |
-| D04 | SkiaSharp and HarfBuzzSharp allowed — in `AdCodicem.Pdf.Html` only, never in the core |
+| D04 | SkiaSharp and HarfBuzzSharp allowed — in `AdCodicem.Pdf.Html` (and Skia in `.Rendering`, ADR 43), never in the core |
 | D05 | We write the PDF writer ourselves: full control over compression, conformance and streaming |
 | D06 | Designed in from the start: headers/footers/numbering/links/bookmarks, PDF/A-3 and Factur-X, PDF/UA (tagged) |
 | D07 | API: facade plus immutable options plus ASP.NET Core dependency injection |
@@ -50,7 +50,7 @@ alternatives and what would reopen it. The identifiers below are the ones commit
 | D14 | Full text extraction: positioned glyphs → lines and paragraphs → tables, preferring the tagged structure where it exists |
 | D15 | PDF → image rasterisation: a satellite package, after the foundations |
 | D16 | Conformance actively preserved through manipulation, plus a built-in PDF/A and PDF/UA validator |
-| D17 | Signing: space reserved in the writer (incremental update, existing signatures preserved); PAdES later |
+| D17 | Signing: space reserved in the writer (incremental update, existing signatures preserved); PAdES in M26 and M27 |
 
 First business priority after the foundations: **assembling case files** (generated pages plus
 third-party PDFs, table of contents, bookmarks, continuous pagination).
@@ -151,5 +151,5 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
 - A non-ASCII PDF text string must be written as **UTF-16BE with a byte order mark**, or accented text
   breaks in every reader.
 - A stream `/Length` may be an **indirect reference**; that is what makes streaming output possible.
-- Page attributes (`Resources`, `MediaBox`, `Rotate`) are **inherited** through the page tree: always go
-  through inherited resolution, never read the page dictionary directly.
+- Page attributes (`Resources`, `MediaBox`, `CropBox`, `Rotate`) are **inherited** through the page tree: always
+  go through inherited resolution, never read the page dictionary directly.

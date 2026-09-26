@@ -152,7 +152,7 @@ internal static class PdfFilterPipeline
 
         if (name == PdfName.Crypt)
         {
-            // The identity crypt filter is a no-op; anything else needs the security handler (M9).
+            // The identity crypt filter is a no-op; anything else needs the security handler (M16).
             return data;
         }
 
