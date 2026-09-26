@@ -250,7 +250,7 @@ public class CorpusManifestSchemaTests
         ["a raised reader limit beside a skip"] = (() => Committed().With(entry =>
         {
             entry["readerLimits"] = new JsonObject { ["maxDecodedStreamLength"] = 536870912 };
-            entry["expect"]!["unsupported"] = "M13: read it whole.";
+            entry["expect"]!["unsupported"] = "M23: read it whole.";
         }), "not"),
 
         // Paths.

@@ -292,7 +292,7 @@
         },
         "textContains": {
           "type": "array",
-          "description": "Text that extraction must find (M10).",
+          "description": "Text that extraction must find (M15).",
           "items": {
             "type": "string",
             "minLength": 1
@@ -301,7 +301,7 @@
         },
         "attachments": {
           "type": "array",
-          "description": "Embedded files the document carries (M10).",
+          "description": "Embedded files the document carries (M15).",
           "items": {
             "type": "string",
             "minLength": 1
@@ -310,7 +310,7 @@
         },
         "formFields": {
           "type": "array",
-          "description": "Interactive form fields the document declares (M11).",
+          "description": "Interactive form fields the document declares (M16).",
           "items": {
             "type": "string",
             "minLength": 1
@@ -319,7 +319,7 @@
         },
         "hasExtractableText": {
           "type": "boolean",
-          "description": "False for an image-only document, which must report no text rather than noise (M10)."
+          "description": "False for an image-only document, which must report no text rather than noise (M15)."
         },
         "claimsConformance": {
           "type": "string",
@@ -328,7 +328,7 @@
         },
         "conformanceValid": {
           "type": "boolean",
-          "description": "Whether veraPDF upholds the claimed level (M12)."
+          "description": "Whether veraPDF upholds the claimed level (M20)."
         },
         "unsupported": {
           "type": "string",

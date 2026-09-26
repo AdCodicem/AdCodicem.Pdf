@@ -109,10 +109,10 @@ the member by its own.
   object the file lacks, which qpdf takes as null, as the specification says, and after which the reader
   rebuilds its whole index and reports a repair (T27). Those two came to light in review: the acceptance
   test judged a clean file's diagnostics before walking its page tree, and now walks it — each page's
-  contents and resources resolved — first; no other document in the corpus changed. None waits for M10:
+  contents and resources resolved — first; no other document in the corpus changed. None waits for M15:
   the edits to the 13 content-operator cases also broke their lengths or offsets, which the reader meets;
   the operator faults themselves (`BT`, `ET`, `Tf`, `Tj`, `cm`, their operands and parentheses) become
-  findings when M10's interpreter exists.
+  findings when M15's interpreter exists.
 - **One file has no catalogue to recover**: the manifest's new `catalogRecoverable: false` says so, and the
   acceptance tests then require the reader to open it, report the rebuild, and hand back no catalogue
   rather than invent one.

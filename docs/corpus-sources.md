@@ -94,7 +94,7 @@ fonts when their `fsType` allows embedding.
   in the last two; the `qpdf --check` verdict from qpdf 11.9.1 in the integration tests' container; text
   from poppler's `pdftotext` 24.02; conformance from veraPDF 1.30.2.
 - **Our reader** opened every one of the 239 real PDFs downloaded along the way: 209 opened clean, 15
-  encrypted ones were refused with the typed exception M11 will replace, 15 opened with repairs or warnings,
+  encrypted ones were refused with the typed exception M16 will replace, 15 opened with repairs or warnings,
   and none crashed or hung. At least one of those warnings is a false alarm of the reader's own — a stream
   whose `endstream` falls just past its 8 KB window is reported truncated (T21 in `docs/status.md`, fixed since) — and
   the others were not all checked against qpdf: a Cerfa reported truncated may be the same defect.
@@ -302,7 +302,7 @@ still says E — which makes it a W06 file as much as a W01 one.
 
 All three are US federal works. Publishers reissue such files, so the hash says which bytes a
 measurement was taken on. All three are now in the remote corpus (below), fetched and tested every night
-at these hashes: the heavy scan joined the other two in the third pass, so M13 can state its memory
+at these hashes: the heavy scan joined the other two in the third pass, so M23 can state its memory
 budgets against every one of them.
 
 ## What other PDF libraries ship
@@ -525,7 +525,7 @@ page trees whose missing kids qpdf counts as pages (M2). Five more were, until T
 2026-09-26: the hospital-bed guidance (T21), the 25-signature sheet, the 2015 BOE law, the VA Kernel guide
 and a poster (T23). From the iPRES 2017 set, the
 19 described below (M2). The laziness test honours that mark, like the other acceptance tests; it skips encrypted documents visibly
-until M11 brings decryption, and it no longer applies to a document whose index must be rebuilt, since a
+until M16 brings decryption, and it no longer applies to a document whose index must be rebuilt, since a
 rebuild scans the file by definition.
 
 ### From RADAR: the iPRES 2017 hand-built set
@@ -613,7 +613,7 @@ it and hand back none.
   DSS `/VRI` dictionary in a 25-signature file, 36 structure arrays of about 8.7 KB in a 2015 BOE law —
   where qpdf reads both whole. And each cross-reference section is read through a window of up to 64 KB,
   whatever the section's size (T24): opening a 218 KB signed web capture with three sections reads 117 KB,
-  bounded, but proportional to the number of sections. T24 is for M13; T21 and T23 were fixed on
+  bounded, but proportional to the number of sections. T24 is for M23; T21 and T23 were fixed on
   2026-09-26 — what an attempt through a window too small for its object notices is now dropped with it,
   and the file is asked for the bytes after a stream's data. `docs/status.md` tracks all three. The fourth pass met T24 from the other side: a section larger than
   its first window is read again from its start each time the window grows, so a 273 KB table costs
@@ -668,7 +668,7 @@ it and hand back none.
   through ADR 33, the iPRES 2017 hand-built set: 88 files each derived from one page with one deviation its
   authors describe, 19 of them recorded as unsupported until M2 — the one external test suite the
   structural profile can be measured against.
-- **M3, M4**: signatures to keep intact through an incremental update — a GPO certification, DILA's
+- **M3, M5**: signatures to keep intact through an incremental update — a GPO certification, DILA's
   Dictao signature, a qualified seal renewed by timestamps over two years, PAdES B-LTA, Acrobat signatures.
   The third pass adds each PAdES baseline level on one page (B-B, B-LT, B-LTA); DocMDP P=1 and P=2 with
   FieldMDP and legacy MD5 object digests; the legacy `adbe.x509.rsa_sha1` and `adbe.pkcs7.sha1`
@@ -678,10 +678,10 @@ it and hand back none.
   by a full rewrite. And files a signer must neither mistake nor break: an unsigned placeholder whose
   `/ByteRange` holds name tokens, a `/Reason` containing the word `trailer`, damage inside a signed byte
   range, a signed update that `startxref` cannot reach.
-- **M5**: Acrobat 9's signed portfolio — a `/Collection` with a schema and folders, a Flash navigator,
+- **M6**: Acrobat 9's signed portfolio — a `/Collection` with a schema and folders, a Flash navigator,
   five embedded PDFs among them a certified XFA form and 3D models — is the first portfolio a case-file
   assembly will meet; beside it, the Massachusetts dashboard's chain of ten revisions.
-- **M10**: extraction will meet text drawn as images, OCR layers — Acrobat's and two copiers' own, with
+- **M15**: extraction will meet text drawn as images, OCR layers — Acrobat's and two copiers' own, with
   horizontal scaling up to 2000 % —, vertical Japanese without ToUnicode, Arabic on which xpdf and poppler
   disagree — xpdf reads "الضرائب", poppler "الرضائب" —, the PDF24 file where ToUnicode says E and no glyph
   is drawn, a compacted-syntax file from which xpdf 4.00 extracts nothing while poppler and PDFium do,
@@ -693,7 +693,7 @@ it and hand back none.
   values are byte-swapped; EBCDIC codes in bitmap Type 3 fonts, and bitmap Type 3 fonts with no ToUnicode
   at all; word spaces present only as TJ kerning; UTF-8 strings in PDF 2.0; a real seven-column table; and
   a poster whose text is outlines, which must yield no text rather than noise.
-- **M11**: the fourth pass brings the security handlers side by side on one document: Acrobat 9's
+- **M16**: the fourth pass brings the security handlers side by side on one document: Acrobat 9's
   AES-128 (R4) under three permission sets and under an open password nobody published, OpenOffice's
   128-bit RC4 (R3) with and without the open password `password`, and Quartz's 40-bit RC4 (R2) behind it.
   Before them, XFA forms from Designer 6.4, 6.5 and ES 9, one of them readable today; AcroForms driven by
@@ -701,7 +701,7 @@ it and hand back none.
   in two Canadian forms whose only PDF page is a placeholder; an XFA form filled with fictitious values and
   certified, inside the portfolio; OPM's OF-306, with date JavaScript and two unsigned signature fields;
   radio buttons whose export value holds a NUL; read-only fields under a Yousign seal.
-- **M12**: veraPDF 1.30.2 upholds thirteen of the fifteen PDF/A claims among the new files, and PDFlib's
+- **M20**: veraPDF 1.30.2 upholds thirteen of the fifteen PDF/A claims among the new files, and PDFlib's
   PDF/UA-1 claim. It rejects two: the 2015 consolidated text (rules 6.4-3 and 6.2.3.3-1) and ImageMagick's
   claim (6.7.3-8, 6.1.8-1, 6.7.3-1, 6.2.3.3-1). It passes the 2019 notice despite its malformed font XMP,
   which is worth an opinion of our own. With the third pass, the corpus holds Factur-X in every profile —
@@ -716,7 +716,7 @@ it and hand back none.
   Acrobat 11's Image Conversion PDF/A-1b, upheld on the intact page and — worth an opinion of our own —
   on both copies damaged on purpose; a PDF/A-1b claim on a 464-page VA guide, rejected on seven rules; and
   two claims veraPDF cannot parse at all, one on a file missing a byte after its header.
-- **M13**: the W11 references above, all three fetched every night — 9,302 pages, one 63 MB page, 125
+- **M23**: the W11 references above, all three fetched every night — 9,302 pages, one 63 MB page, 125
   JPEG 2000 pages in 147 MB — and beside them a 35,000-pixel square CCITT image that decodes to 153 MB
   from 10.5 KB, 65,542 objects in one object stream, 48 incremental updates, an 82-page tagged scan of
   10.6 MB; and T24, which ties the bytes read at opening to the number of cross-reference sections.

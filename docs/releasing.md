@@ -4,20 +4,28 @@
 
 Confirmed, and all seven were unclaimed on nuget.org when checked on 2026-09-13. ADR 36 renamed the
 validation satellite on 2026-09-26, before it was ever published: the rule engine and the structural profile
-live in the core, and the satellite carries the PDF/A and PDF/UA profiles only.
+live in the core, and the satellite carries the PDF/A and PDF/UA profiles only. The revision of the roadmap
+the same day added six more, all unclaimed on nuget.org when checked that day, and all under the reserved
+prefix.
 
 | Package | Contents | Ships from |
 |---|---|---|
-| `AdCodicem.Pdf` | Object model, reader, validation and its structural profile; then writer, pages, fonts, logical structure | M1 |
-| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the validation engine | M12 |
-| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting | M7 |
-| `AdCodicem.Pdf.AspNetCore` | Dependency injection and `IResult` integration | M7.6 |
-| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD | M12 |
-| `AdCodicem.Pdf.Rendering` | Rasterisation | M14 |
-| `AdCodicem.Pdf.Signing` | PAdES | M14 |
+| `AdCodicem.Pdf` | Object model, reader, validation and its structural profile; then writer, revisions, pages, fonts, logical structure | M1 |
+| `AdCodicem.Pdf.Tool` | The command-line tool | M6 |
+| `AdCodicem.Pdf.Barcodes` | Vector barcodes and payment codes | M10 |
+| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting | M12 |
+| `AdCodicem.Pdf.AspNetCore` | Dependency injection and `IResult` integration | M12.6 |
+| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD | M14 |
+| `AdCodicem.Pdf.CaseFile` | Legal case files | M18 |
+| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the validation engine | M20 |
+| `AdCodicem.Pdf.Imaging` | Image decoders and lossless encoders | M22 |
+| `AdCodicem.Pdf.Compare` | Comparison and templates | M24 |
+| `AdCodicem.Pdf.Rendering` | Rasterisation | M25 |
+| `AdCodicem.Pdf.Signing` | PAdES, long-term signatures, signature validation | M26 |
+| `AdCodicem.Pdf.Docx` | DOCX to HTML | M31 |
 
 The first packages shipped on **2026-09-19**: `AdCodicem.Pdf` `0.1.1-preview.10` and following, previews from
-`main`. The six other identifiers are still unclaimed, and ship with the milestones above.
+`main`. The twelve other identifiers are still unclaimed, and ship with the milestones above.
 
 **The `AdCodicem.*` prefix is reserved** on nuget.org: by 2026-09-26 its search API marks `AdCodicem.Pdf` as
 verified. Nobody else can publish under the name, and every package under it shows a verified owner — on

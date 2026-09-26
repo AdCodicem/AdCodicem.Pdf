@@ -23,7 +23,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Milestones',
-      items: ['milestones/M1', 'milestones/M2', 'milestones/M4'],
+      items: ['milestones/M1', 'milestones/M2', 'milestones/M5'],
     },
   ],
 };

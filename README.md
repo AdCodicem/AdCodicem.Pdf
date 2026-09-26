@@ -40,13 +40,19 @@ validator. Everything else is planned, in the order `docs/roadmap.md` gives.
 
 | Package | Contents | State |
 |---|---|---|
-| `AdCodicem.Pdf` | Object model, lazy reader, validation; then writer, pages, fonts, logical structure | Published as previews |
-| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | Planned, M7 |
-| `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration | Planned, M7 |
-| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA validation profiles | Planned, M12 |
-| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD | Planned, M12 |
-| `AdCodicem.Pdf.Rendering` | Rasterisation | Planned, M14 |
-| `AdCodicem.Pdf.Signing` | PAdES signing | Planned, M14 |
+| `AdCodicem.Pdf` | Object model, lazy reader, validation, streaming writer, revisions, pages, fonts, logical structure, security, extraction, redaction | Published as previews |
+| `AdCodicem.Pdf.Tool` | The command-line tool | Planned, M6 |
+| `AdCodicem.Pdf.Barcodes` | Vector barcodes and payment codes | Planned, M10 |
+| `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | Planned, M12 |
+| `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration | Planned, M12 |
+| `AdCodicem.Pdf.FacturX` | Factur-X and ZUGFeRD | Planned, M14 |
+| `AdCodicem.Pdf.CaseFile` | Legal case files: pieces, inventories, court-portal presets | Planned, M18 |
+| `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the validation engine | Planned, M20 |
+| `AdCodicem.Pdf.Imaging` | Image decoders and lossless encoders for scans | Planned, M22 |
+| `AdCodicem.Pdf.Compare` | Comparison and templates | Planned, M24 |
+| `AdCodicem.Pdf.Rendering` | Rasterisation | Planned, M25 |
+| `AdCodicem.Pdf.Signing` | PAdES signing, long-term signatures, signature validation | Planned, M26 |
+| `AdCodicem.Pdf.Docx` | DOCX to HTML | Planned, M31 |
 
 Every merge into `main` publishes a preview to nuget.org, so the current state of the library is always
 installable:

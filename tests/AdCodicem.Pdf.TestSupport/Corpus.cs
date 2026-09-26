@@ -53,22 +53,22 @@ public sealed record CorpusExpectation
 
     public string? Password { get; init; }
 
-    /// <summary>Text that extraction must find, once extraction exists (M10).</summary>
+    /// <summary>Text that extraction must find, once extraction exists (M15).</summary>
     public string[]? TextContains { get; init; }
 
-    /// <summary>Embedded files the document carries (M10).</summary>
+    /// <summary>Embedded files the document carries (M15).</summary>
     public string[]? Attachments { get; init; }
 
-    /// <summary>Interactive form fields the document declares (M11).</summary>
+    /// <summary>Interactive form fields the document declares (M16).</summary>
     public string[]? FormFields { get; init; }
 
-    /// <summary>False for image-only documents, which must report no text rather than noise (M10).</summary>
+    /// <summary>False for image-only documents, which must report no text rather than noise (M15).</summary>
     public bool? HasExtractableText { get; init; }
 
-    /// <summary>The conformance level the document claims, to be verified once the conformance profiles exist (M12).</summary>
+    /// <summary>The conformance level the document claims, to be verified once the conformance profiles exist (M20).</summary>
     public string? ClaimsConformance { get; init; }
 
-    /// <summary>Whether an independent validator (veraPDF) upholds the claimed conformance level (M12).</summary>
+    /// <summary>Whether an independent validator (veraPDF) upholds the claimed conformance level (M20).</summary>
     public bool? ConformanceValid { get; init; }
 
     /// <summary>
