@@ -91,6 +91,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <summary>How many places have been tried for sections of the chain that were not where it named them.</summary>
     private int _relocationCandidatesTried;
 
+    /// <summary>
+    /// Whether the index may lack objects the file defines: a section the chain names could not be found, a
+    /// guard stopped the chain or a table before its end, or a cross-reference stream holds fewer rows than it
+    /// declares. Only then is an object the index lacks looked for by rebuilding it; otherwise a reference to it
+    /// is null, as the specification says.
+    /// </summary>
+    private bool _indexIncomplete;
+
     public PdfFileReader(
         PdfFileSource source, PdfDiagnostics diagnostics, PdfLimitGuard guard, int cacheCapacity, bool ownsSource)
     {
@@ -323,7 +331,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             if (++sections > _guard.Bound(PdfLimit.XRefSectionCount))
             {
                 // Each incremental save adds a section, so a long chain is a sound file saved often; the newest
-                // sections, read first, are the ones that win.
+                // sections, read first, are the ones that win, and what only the older ones index is found by
+                // rebuilding the index when it is asked for.
+                _indexIncomplete = true;
                 ReachLimit(
                     PdfLimit.XRefSectionCount,
                     string.Create(
@@ -366,9 +376,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         return _xref.Count > 0;
     }
 
-    /// <summary>Reports a section of the chain that could not be found.</summary>
+    /// <summary>Reports a section of the chain that could not be found, and marks the index incomplete.</summary>
     private void ReportMissingSection(string naming, long offset)
     {
+        _indexIncomplete = true;
         _diagnostics.Warn(
             PdfDiagnosticCodes.XRefSectionMissing,
             string.Create(
@@ -554,8 +565,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     if (ReadTrailer(window.Memory, absolute, lexer.Position, windowFull) is { } trailer)
                     {
                         _xref.MergeTrailer(trailer);
-                        previous = trailer.GetInteger(PdfName.Prev) ?? -1;
-                        hybrid = trailer.GetInteger(PdfName.XRefStm) ?? -1;
+                        previous = SectionOffset(trailer, PdfName.Prev, absolute);
+                        hybrid = SectionOffset(trailer, PdfName.XRefStm, absolute);
                     }
 
                     return true;
@@ -588,6 +599,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             {
                 if (windowFull)
                 {
+                    _indexIncomplete = true;
                     ReachLimit(
                         PdfLimit.XRefSectionLength,
                         $"The cross-reference table runs past {PdfLimitGuard.FormatLength(maxWindow)}; only the entries within it were read.",
@@ -744,8 +756,35 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
 
         _xref.MergeTrailer(dictionary);
-        previous = dictionary.GetInteger(PdfName.Prev) ?? -1;
+        previous = SectionOffset(dictionary, PdfName.Prev, absolute);
         return true;
+    }
+
+    /// <summary>
+    /// Reads the offset a section's <c>/Prev</c> or <c>/XRefStm</c> gives, or -1 when it gives none.
+    /// </summary>
+    /// <remarks>
+    /// The specification makes it a direct integer. Anything else — tiff2pdf writes <c>/Prev 576066 0 R</c> —
+    /// names no section: it is not resolved, which would load an object while the index is still being read,
+    /// and the sections it should have named are reported missing, to be looked for by rebuilding the index.
+    /// </remarks>
+    private long SectionOffset(PdfDictionary trailer, PdfName key, long section)
+    {
+        var value = trailer.GetRaw(key);
+
+        if (value is null or PdfInteger)
+        {
+            return value is PdfInteger offset ? offset.Value : -1;
+        }
+
+        _indexIncomplete = true;
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.XRefSectionMissing,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The /{key.Value} of the cross-reference section at offset {section} is not an offset; the sections it names are looked for by rebuilding the index."),
+            section);
+        return -1;
     }
 
     private void ReadXRefStreamRows(
@@ -756,6 +795,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         int first,
         int count)
     {
+        if ((long)count * rowLength > data.Length - position)
+        {
+            // Rows the data does not hold index nothing: the objects they stood for are the index's to find.
+            _indexIncomplete = true;
+        }
+
         for (var i = 0; i < count && position + rowLength <= data.Length; i++, position += rowLength)
         {
             var row = data.Slice(position, rowLength);
@@ -811,7 +856,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     {
         if (!_xref.TryGet(id.Number, out var entry))
         {
-            if (_repaired)
+            // A reference to an object the file does not define is null (ISO 32000-1, 7.3.10): only an index
+            // that may have lost entries is rebuilt to look for it, once.
+            if (_repaired || !_indexIncomplete)
             {
                 return PdfNull.Instance;
             }
