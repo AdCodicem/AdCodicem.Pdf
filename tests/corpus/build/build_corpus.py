@@ -43,6 +43,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ROOT / "sources"
 DOCUMENTS = ROOT / "documents"
 MANIFEST = ROOT / "manifest.json"
+# How the manifest names its schema: relative to itself, so an editor finds it in any checkout.
+SCHEMA_REFERENCE = "./manifest.schema.json"
 
 # The mark on the manifest entries this script writes, and may therefore replace.
 BUILT_BY = "build_corpus.py"
@@ -438,8 +440,10 @@ def clear_generated_documents(kept: list[dict]) -> None:
 
 
 def write_manifest(versions: dict[str, str], entries: list[dict]) -> None:
+    # "$schema" points editors at the schema the tests hold the manifest to (tests/corpus/manifest.schema.json).
     MANIFEST.write_text(
-        json.dumps({"producers": versions, "documents": entries}, indent=2, ensure_ascii=False) + "\n",
+        json.dumps({"$schema": SCHEMA_REFERENCE, "producers": versions, "documents": entries}, indent=2,
+                   ensure_ascii=False) + "\n",
         encoding="utf-8", newline="\n")
 
     ours = sum(1 for entry in entries if is_ours(entry))

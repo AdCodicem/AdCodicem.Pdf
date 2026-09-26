@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AdCodicem.Pdf corpus manifest",
+  "description": "Every document of the test corpus, what the tests must observe on it, and where it comes from (docs/corpus.md). Also the shape of tests/corpus/private.json. CorpusManifestSchemaTests holds the manifest to this schema, and this schema to the model in tests/AdCodicem.Pdf.TestSupport/Corpus.cs and to the library's codes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "documents"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This schema, for editors: ./manifest.schema.json."
+    },
+    "producers": {
+      "type": "object",
+      "description": "The versions of the producers build_corpus.py last ran, by name.",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "documents": {
+      "type": "array",
+      "description": "One entry per document.",
+      "items": {
+        "$ref": "#/$defs/document"
+      }
+    }
+  },
+  "$defs": {
+    "document": {
+      "type": "object",
+      "description": "One corpus document. expect is what the tests assert; readerLimits how it is opened; the rest is provenance.",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "title",
+        "useCase",
+        "producer",
+        "origin",
+        "licence",
+        "features",
+        "expect"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "The document's path under tests/corpus: documents/ for our own, vendor/ for a committed third party's, remote/ for one fetched on demand (ADR 32), private/ in private.json.",
+          "anyOf": [
+            {
+              "pattern": "^(documents|vendor|remote)/[a-z0-9._/-]+\\.pdf$"
+            },
+            {
+              "pattern": "^private/.+\\.pdf$"
+            }
+          ]
+        },
+        "builtBy": {
+          "type": "string",
+          "description": "The script that writes the file, when one does; build_corpus.py replaces only its own entries.",
+          "enum": [
+            "build_corpus.py",
+            "build_word.ps1"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the document is, in our own words."
+        },
+        "useCase": {
+          "type": "string",
+          "description": "What the document is, not which feature it exercises (docs/corpus.md, use-case categories).",
+          "enum": [
+            "invoice",
+            "report",
+            "contract",
+            "form",
+            "scan",
+            "archival",
+            "damaged",
+            "stress"
+          ]
+        },
+        "producer": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The software that wrote the file, with its version when known."
+        },
+        "origin": {
+          "type": "string",
+          "description": "generated here, contributed as it is, derived from another document, or remote: fetched on demand, never committed (ADR 32).",
+          "enum": [
+            "generated",
+            "contributed",
+            "derived",
+            "remote"
+          ]
+        },
+        "licence": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Under what terms the document is used; for a remote one, why it is remote rather than vendored."
+        },
+        "features": {
+          "type": "array",
+          "description": "What the document exercises, as short tags; each tag once.",
+          "items": {
+            "type": "string",
+            "pattern": "^\\S+$"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "readerLimits": {
+          "$ref": "#/$defs/readerLimits"
+        },
+        "expect": {
+          "$ref": "#/$defs/expectation"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "remote"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "required": [
+              "source"
+            ],
+            "properties": {
+              "file": {
+                "pattern": "^remote/"
+              },
+              "source": {
+                "required": [
+                  "bytes"
+                ],
+                "properties": {
+                  "url": {
+                    "pattern": "^https?://\\S+$"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "file": {
+                "not": {
+                  "pattern": "^remote/"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "expectation": {
+      "type": "object",
+      "description": "What the tests must observe on the document, each established by an independent tool or from the file itself, never by our own code.",
+      "additionalProperties": false,
+      "required": [
+        "clean",
+        "indexRebuilt",
+        "requiredDiagnostics",
+        "refereeCheckSucceeds"
+      ],
+      "properties": {
+        "pages": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "The page count an independent tool establishes (qpdf --show-npages), or null when it recovers nothing."
+        },
+        "clean": {
+          "type": "boolean",
+          "description": "Whether the file is well formed: a clean document earns no repair and no warning from the reader."
+        },
+        "indexRebuilt": {
+          "type": "boolean",
+          "description": "Whether the reader must rebuild the cross-reference index."
+        },
+        "catalogRecoverable": {
+          "const": false,
+          "description": "Only for a file with no catalogue at all, which the reader must open and hand back none; every other entry leaves the field out."
+        },
+        "requiredDiagnostics": {
+          "type": "array",
+          "description": "Diagnostic codes the reader must report (PdfDiagnosticCodes).",
+          "items": {
+            "enum": [
+              "xref.rebuilt",
+              "xref.offset-adjusted",
+              "xref.chain-cycle",
+              "xref.entry-out-of-range",
+              "stream.length-invalid",
+              "stream.truncated",
+              "syntax.unexpected-token",
+              "syntax.truncated-object",
+              "syntax.depth-exceeded",
+              "object.redefined",
+              "filter.failed",
+              "filter.unsupported",
+              "limit.decoded-stream",
+              "limit.object",
+              "limit.xref-section-length",
+              "limit.xref-section-count",
+              "limit.trailer"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "findings": {
+          "type": "array",
+          "description": "The validation rules that report on the document under the default profile (PdfValidationRuleIds) — exactly these; left out, none.",
+          "items": {
+            "enum": [
+              "file.eof-missing"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "refereeCheckSucceeds": {
+          "type": "boolean",
+          "description": "Whether qpdf --check finds nothing wrong, recorded by build_corpus.py from the very command the integration tests run."
+        },
+        "encrypted": {
+          "type": "boolean",
+          "description": "Whether the document is encrypted."
+        },
+        "password": {
+          "type": "string",
+          "description": "The password that opens it; empty for an owner password alone."
+        },
+        "textContains": {
+          "type": "array",
+          "description": "Text that extraction must find (M10).",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "attachments": {
+          "type": "array",
+          "description": "Embedded files the document carries (M10).",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "formFields": {
+          "type": "array",
+          "description": "Interactive form fields the document declares (M11).",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "hasExtractableText": {
+          "type": "boolean",
+          "description": "False for an image-only document, which must report no text rather than noise (M10)."
+        },
+        "claimsConformance": {
+          "type": "string",
+          "pattern": "^PDF/(A-[1-4][abuef]?|UA-[12])$",
+          "description": "The conformance level the document claims, such as PDF/A-3b."
+        },
+        "conformanceValid": {
+          "type": "boolean",
+          "description": "Whether veraPDF upholds the claimed level (M12)."
+        },
+        "unsupported": {
+          "type": "string",
+          "pattern": "^[MT][0-9]+: \\S",
+          "description": "Why the library cannot yet meet the expectations, starting with the milestone or debt row that will, such as 'M2: …': the acceptance tests skip the document with this reason."
+        }
+      },
+      "dependentRequired": {
+        "password": [
+          "encrypted"
+        ],
+        "conformanceValid": [
+          "claimsConformance"
+        ]
+      }
+    },
+    "readerLimits": {
+      "type": "object",
+      "description": "The reader limits a valid document that exceeds a default is opened with (ADR 34): each named after a property of PdfReaderLimits, and each must raise its default.",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "maxDecodedStreamLength": {
+          "type": "integer",
+          "description": "What one stream may decode to, in bytes.",
+          "exclusiveMinimum": 268435456,
+          "maximum": 2147483647
+        },
+        "maxObjectLength": {
+          "type": "integer",
+          "description": "The longest object, the data of a stream aside, in bytes.",
+          "exclusiveMinimum": 16777216,
+          "maximum": 2147483647
+        },
+        "maxXRefSectionLength": {
+          "type": "integer",
+          "description": "The longest classic cross-reference section, in bytes.",
+          "exclusiveMinimum": 67108864,
+          "maximum": 2147483647
+        },
+        "maxXRefSectionCount": {
+          "type": "integer",
+          "description": "The most cross-reference sections in a chain.",
+          "exclusiveMinimum": 1024,
+          "maximum": 2147483647
+        },
+        "maxTrailerLength": {
+          "type": "integer",
+          "description": "The longest trailer, in bytes.",
+          "exclusiveMinimum": 65536,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "description": "Where a third party's file was retrieved, so provenance is checkable without trusting the repository; mandatory for a remote document, which fetch_remote.py downloads and verifies.",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "sha256",
+        "retrieved"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^https?://\\S+( \\(member [^()]+\\))?$",
+          "description": "Where the bytes are published — or the archive they are a member of (ADR 33). A committed file taken out of an archive may name its member after the URL, as '(member name.pdf)'; a remote one never, since fetch_remote.py downloads the URL as it stands."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "The SHA-256 of the document's bytes as published."
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The document's exact size."
+        },
+        "retrieved": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "When it was retrieved, as YYYY-MM-DD."
+        },
+        "landingPage": {
+          "type": "string",
+          "pattern": "^https?://\\S+$",
+          "description": "The page that presents it, or a persistent identifier such as a DOI."
+        },
+        "archive": {
+          "$ref": "#/$defs/archive"
+        }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "description": "The pinned archive a remote document is a member of (ADR 33): the download is checked against this pin, the member against the document's.",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "bytes",
+        "member"
+      ],
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "The archive's SHA-256."
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The archive's exact size."
+        },
+        "member": {
+          "type": "string",
+          "pattern": "^(?!(.*/)?\\.\\.?(/|$))[^/\\\\\\u0000-\\u001F\\u007F]+(/[^/\\\\\\u0000-\\u001F\\u007F]+)*$",
+          "description": "The member's path inside the archive: relative, POSIX, with no control character and no empty, '.' or '..' segment."
+        }
+      }
+    }
+  }
+}
