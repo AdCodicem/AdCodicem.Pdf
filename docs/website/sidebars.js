@@ -5,7 +5,7 @@ const sidebars = {
     {
       type: 'category',
       label: 'Concepts',
-      items: ['concepts/lazy-reading', 'concepts/diagnostics', 'concepts/reader-limits'],
+      items: ['concepts/lazy-reading', 'concepts/diagnostics', 'concepts/reader-limits', 'concepts/validation'],
     },
     {
       // Generated from the XML documentation comments by DocFX before every build, so it cannot drift
