@@ -142,16 +142,61 @@ public class FilterTests
         diagnostics.Should().BeEmpty();
     }
 
-    [Fact]
-    public void Leaves_data_without_a_predictor_as_it_decodes()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Leaves_data_without_a_predictor_as_it_decodes(bool namesPredictorOne)
     {
-        // Parameters that name no predictor, or predictor 1, change nothing, whatever else they say.
+        // Parameters that name no predictor, or predictor 1, change nothing, whatever else they say: these
+        // bytes read as PNG rows would come out changed.
         var parameters = new PdfDictionary();
-        parameters.Set(PdfName.Predictor, PdfInteger.Create(1));
+        if (namesPredictorOne)
+        {
+            parameters.Set(PdfName.Predictor, PdfInteger.Create(1));
+        }
+
         parameters.Set(PdfName.Columns, PdfInteger.Create(4));
         byte[] data = [2, 1, 2, 3, 4, 2, 1, 2, 3, 4];
 
         Decode(Compress(data), PdfName.FlateDecode, parameters).ToArray().Should().Equal(data);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void The_predictor_transform_leaves_data_alone_without_a_predictor(int predictor)
+    {
+        byte[] data = [2, 1, 2, 3, 4];
+
+        PredictorTransform.TryApply(data, predictor, colors: 1, bitsPerComponent: 8, columns: 4, out var result).Should().BeTrue();
+
+        result.Should().BeSameAs(data);
+    }
+
+    [Theory]
+    [InlineData("/Columns 99 0 R")]
+    [InlineData("/Predictor 1 /Colors 99 0 R /BitsPerComponent 99 0 R")]
+    public void Does_not_read_the_parameters_of_a_predictor_the_stream_does_not_have(string parameters)
+    {
+        // Without a predictor, /Columns and its kin mean nothing, and object 99 is not in the file: resolving
+        // it would rebuild the whole index for a parameter nothing reads. The Flate data travels in hex, so
+        // that the file stays text.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(
+                3,
+                $"/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms [null << {parameters} >>]",
+                Convert.ToHexString(Compress("Hello"u8.ToArray())) + ">")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file);
+        var decoded = document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        Text(decoded).Should().Be("Hello");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
     }
 
     [Fact]
