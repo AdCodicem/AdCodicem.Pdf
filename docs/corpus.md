@@ -51,6 +51,7 @@ committed document over 2 MB.
 ```
 tests/corpus/
   manifest.json          the index: one entry per document, whoever produced it
+  manifest.schema.json   the JSON schema the manifest is held to
   sources/               the inputs documents are generated from (HTML, ODT, scripts)
   build/                 the generation scripts and their recorded producer versions
   documents/             the committed PDF files, by category
@@ -70,12 +71,22 @@ container commands that make those verdicts the integration tests' own.
 One entry per document. The manifest is the contract: tests read it, and a document nobody asserts
 anything about is not part of the corpus.
 
+Its shape is written down in `tests/corpus/manifest.schema.json` (JSON Schema, draft 2020-12), which the
+manifest names in its `"$schema"` key, so that an editor completes, describes and checks every field while
+it is typed. `CorpusManifestSchemaTests` holds the manifest — and `private.json`, where there is one — to it
+in CI: every key at every level must be one the schema knows; a use case, an origin, a diagnostic code or a
+rule identifier must be one that exists; a remote document must carry its pinned source; a raised reader
+limit must raise its default. The same tests hold the schema to what reads the manifest — the model in
+`tests/AdCodicem.Pdf.TestSupport/Corpus.cs`, `PdfDiagnosticCodes`, `PdfValidationRuleIds` and
+`PdfReaderLimits.Default` —, so the three cannot drift apart. What a schema cannot see across entries — a
+file listed twice, an archive pinned two ways — stays with `fetch_remote.py` and `CorpusReadingTests`.
+
 ```jsonc
 {
   "file": "documents/invoice/chromium-invoice-fr.pdf",
   "builtBy": "build_corpus.py",          // the script that writes the file, if one does
   "title": "French invoice with VAT breakdown",
-  "useCase": "invoice",                  // invoice | report | contract | form | scan | archival | mixed
+  "useCase": "invoice",                  // invoice | report | contract | form | scan | archival | damaged | stress
   "producer": "Chromium 147 (Skia PDF backend)",
   "origin": "generated",                 // generated | contributed | derived | remote
   "licence": "MIT (generated from our own source)",

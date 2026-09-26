@@ -85,6 +85,29 @@ not a fault of the file: the rules on it report at most, as information, that it
 
 ## Journal
 
+### 2026-09-26 — The corpus manifest has a JSON schema
+- **Why.** Asked whether a schema was worth having, the answer was yes, in a pull request of its own: the
+  manifest is written by hand for every contributed or remote document, and M2's slices now edit its
+  `findings` across dozens of entries; the model refused unknown keys inside `expect` and `readerLimits` only,
+  so a misspelt `feature` on an entry dropped the document out of every selection by feature in silence.
+- **What.** `tests/corpus/manifest.schema.json`, draft 2020-12, named by the manifest's `"$schema"` so that an
+  editor applies it as it is typed: no unknown key at any level; the eight use-case categories and four
+  origins; the reader's seventeen diagnostic codes and the validation rules as enumerations; a remote
+  document with its pinned source and size, under `remote/`, and nothing else there; pins as lower-case hex;
+  archive members relative with no `..`; a raised reader limit above its default; `catalogRecoverable` only
+  as false; `conformanceValid` only beside a claim, `password` only beside `encrypted`; an `unsupported`
+  reason naming its milestone or debt row. `build_corpus.py` keeps the key when it rewrites the manifest,
+  byte for byte.
+- **What it found at once.** A feature listed twice on one entry (removed), and three committed files taken
+  out of the PDF/UA reference zip whose `source.url` names the member after the URL — allowed, in exactly
+  that form, for committed files only: `fetch_remote.py` downloads a remote URL as it stands.
+- **Tests.** `CorpusManifestSchemaTests`: the manifest and any `private.json` follow the schema; nine sound
+  entries accepted and thirty-five refused, each one mistake away from a sound one; and the schema held to
+  what reads the manifest — the model's properties, `PdfDiagnosticCodes`, `PdfValidationRuleIds`,
+  `PdfReaderLimits.Default` —, so that neither can change without the other. Two mutations of the schema
+  (a property dropped, a limit's minimum changed) each fail a test. Validation is `JsonSchema.Net` 9.4.0, MIT,
+  a dependency of the unit tests only; the framework exports schemas but does not validate against one.
+  Python's reference validator agreed with it on the manifest.
 ### 2026-09-26 — CodeQL left to GitHub's default setup, and the merged branches
 - **T35, the maintainer's choice**: GitHub's default setup stays; `.github/workflows/codeql.yml`, disabled
   since 2026-09-22, and `.github/codeql/codeql-config.yml` are deleted, and the ADR index says what runs now.

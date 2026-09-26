@@ -11,12 +11,18 @@ vendor/           third-party files, by source, used unmodified under the terms 
 remote/           documents we may use but not redistribute, put there by build/fetch_remote.py (ADR 32);
                   ignored by git, never committed
 manifest.json     the index: one entry per document, with what tests must observe
+manifest.schema.json  the JSON schema the manifest is held to, and the one editors apply to it
 ```
 
 `manifest.json` describes every document once, whoever produced it. `build/build_corpus.py` writes the
 entries of what it generates, marked `"builtBy": "build_corpus.py"`, and replaces only those. Every other
 entry is written by hand — third-party files, documents from `build/build_word.ps1` or from the field,
 remote documents — and the script adds nothing to it but the referee's verdict.
+
+Write entries with an editor that reads JSON Schema — Visual Studio Code does, from the manifest's own
+`"$schema"` key: it completes the field names, explains each, and flags a misspelt key, a use case that is
+not a category or a diagnostic code the reader does not have before any test runs. `CorpusManifestSchemaTests`
+checks the same rules in CI.
 
 ## Regenerating
 
