@@ -11822,8 +11822,9 @@
       "expect": {
         "pages": 6,
         "clean": false,
-        "indexRebuilt": true,
+        "indexRebuilt": false,
         "requiredDiagnostics": [
+          "xref.section-missing",
           "xref.rebuilt"
         ],
         "hasExtractableText": false,
@@ -11859,8 +11860,9 @@
       "expect": {
         "pages": 4,
         "clean": false,
-        "indexRebuilt": true,
+        "indexRebuilt": false,
         "requiredDiagnostics": [
+          "xref.section-missing",
           "xref.rebuilt"
         ],
         "hasExtractableText": false,
@@ -13781,8 +13783,7 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: the catalog's /Pages points at an object the file lacks; qpdf takes the reference as null, as the specification says, while the reader rebuilds its whole index looking for the object and reports a repair on a file qpdf calls clean (T27)"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -14780,8 +14781,7 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: the page's /Contents points at an object the file lacks; qpdf takes the reference as null, as the specification says, while the reader rebuilds its whole index looking for the object and reports a repair on a file qpdf calls clean (T27)"
+        "refereeCheckSucceeds": false
       }
     },
     {

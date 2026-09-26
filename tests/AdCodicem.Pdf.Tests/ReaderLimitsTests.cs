@@ -221,17 +221,18 @@ public class ReaderLimitsTests
     [Fact]
     public void A_rebuild_that_reaches_a_guard_finishes_the_index_before_it_throws()
     {
-        // Objects 11 and 13 live in object streams the index does not describe, so asking for 13 rebuilds it.
-        // The first object stream decodes past the bound; the second is where 13 is. A rebuild abandoned at the
-        // first would have left 13 out of the index for good, since a rebuild is never run twice.
+        // Objects 11 and 13 live in object streams the index does not describe, and the index is incomplete,
+        // so asking for 13 rebuilds it. The first object stream decodes past the bound; the second is where 13
+        // is. A rebuild abandoned at the first would have left 13 out of the index for good, since a rebuild is
+        // never run twice.
         var header = "11 0 ";
         var packed = header + "(" + new string('y', 2000) + ")";
-        var file = new TestPdfBuilder()
+        var file = WithIncompleteIndex(new TestPdfBuilder()
             .WithObject(1, Catalog)
             .WithObject(2, Pages)
             .Stream(10, $"/Type /ObjStm /N 1 /First {header.Length} /Filter /ASCIIHexDecode", Hex(packed))
             .Stream(12, "/Type /ObjStm /N 1 /First 5", "13 0 (found)")
-            .BuildClassic(rootNumber: 1);
+            .BuildClassic(rootNumber: 1));
         var options = new PdfReaderOptions
         {
             Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1000 },
@@ -250,14 +251,15 @@ public class ReaderLimitsTests
     public void A_rebuild_that_reaches_a_guard_looking_for_the_catalog_still_finds_it()
     {
         // Object 1, the catalog the index names, is redefined as null after the file's end, where only a
-        // rebuild sees it. Rebuilding then looks for another catalog among every object, and object 3 on
-        // the way reaches the object bound; the search goes on to object 4 before the guard throws.
-        var written = new TestPdfBuilder()
+        // rebuild sees it; the index is incomplete, so asking for an object it lacks rebuilds it. Rebuilding
+        // then looks for another catalog among every object, and object 3 on the way reaches the object
+        // bound; the search goes on to object 4 before the guard throws.
+        var written = WithIncompleteIndex(new TestPdfBuilder()
             .WithObject(1, Catalog)
             .WithObject(2, Pages)
             .WithObject(3, LongArray)
             .WithObject(4, Catalog)
-            .BuildClassic(rootNumber: 1);
+            .BuildClassic(rootNumber: 1));
         byte[] file = [.. written, .. "1 0 obj\nnull\nendobj\n"u8];
         var options = new PdfReaderOptions
         {
@@ -602,5 +604,17 @@ public class ReaderLimitsTests
             Disposed = true;
             base.Dispose(disposing);
         }
+    }
+
+    /// <summary>
+    /// Gives the trailer a <c>/Prev</c> that names no section, so that the index may lack objects (T25) and an
+    /// object it does not hold is looked for by rebuilding it (T27), rather than read as null.
+    /// </summary>
+    private static byte[] WithIncompleteIndex(byte[] file)
+    {
+        var trailer = file.AsSpan().LastIndexOf("trailer\n<<"u8);
+        trailer.Should().BeGreaterThan(0);
+        var at = trailer + "trailer\n<<".Length;
+        return [.. file.AsSpan(0, at), .. " /Prev 1 0 R"u8, .. file.AsSpan(at)];
     }
 }
