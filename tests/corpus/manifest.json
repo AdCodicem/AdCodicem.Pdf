@@ -1,4 +1,5 @@
 {
+  "$schema": "./manifest.schema.json",
   "producers": {
     "chromium": "Chromium 141.0.7390.37",
     "libreoffice": "LibreOffice 24.2.7.2 420(Build:2)",
@@ -2560,8 +2561,7 @@
         "user-unit",
         "unknown-content-operator-with-large-dict-operand",
         "non-embedded-type1",
-        "crlf-line-endings",
-        "empty-indirect-object"
+        "crlf-line-endings"
       ],
       "expect": {
         "pages": 1,
