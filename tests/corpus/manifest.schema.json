@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "AdCodicem.Pdf corpus manifest",
-  "description": "Every document of the test corpus, what the tests must observe on it, and where it comes from (docs/corpus.md). Also the shape of tests/corpus/private.json. CorpusManifestSchemaTests holds the manifest to this schema, and this schema to the model in tests/AdCodicem.Pdf.TestSupport/Corpus.cs and to the library's codes.",
+  "description": "Every document of the test corpus, what the tests must observe on it, and where it comes from (docs/corpus.md). Also the shape of tests/corpus/private.json. CorpusManifestSchemaTests holds the manifest to this schema, and this schema to the model in tests/AdCodicem.Pdf.TestSupport/Corpus.cs and to the library's codes. Patterns end with $(?!\\n), so that .NET, Python and an editor's ECMAScript engine agree that a value ending in a line feed does not match.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -46,15 +46,18 @@
       "properties": {
         "file": {
           "type": "string",
-          "description": "The document's path under tests/corpus: documents/ for our own, vendor/ for a committed third party's, remote/ for one fetched on demand (ADR 32), private/ in private.json.",
+          "description": "The document's path under tests/corpus: documents/ for our own, vendor/ for a committed third party's, remote/<source>/ for one fetched on demand (ADR 32), private/ in private.json. No '.', '..' or empty segment.",
           "anyOf": [
             {
-              "pattern": "^(documents|vendor|remote)/[a-z0-9._/-]+\\.pdf$"
+              "pattern": "^(documents|vendor|remote)/[a-z0-9._/-]+\\.pdf$(?!\\n)"
             },
             {
-              "pattern": "^private/.+\\.pdf$"
+              "pattern": "^private/[^\\\\\\u0000-\\u001F\\u007F]+\\.pdf$(?!\\n)"
             }
-          ]
+          ],
+          "not": {
+            "pattern": "(^|/)\\.{1,2}(/|$)|//"
+          }
         },
         "builtBy": {
           "type": "string",
@@ -105,10 +108,10 @@
         },
         "features": {
           "type": "array",
-          "description": "What the document exercises, as short tags; each tag once.",
+          "description": "What the document exercises, as short tags of printable ASCII; each tag once.",
           "items": {
             "type": "string",
-            "pattern": "^\\S+$"
+            "pattern": "^[!-~]+$(?!\\n)"
           },
           "uniqueItems": true,
           "minItems": 1
@@ -141,7 +144,10 @@
             ],
             "properties": {
               "file": {
-                "pattern": "^remote/"
+                "pattern": "^remote/[a-z0-9-]+/[a-z0-9.-]+\\.pdf$(?!\\n)",
+                "not": {
+                  "pattern": "\\.\\."
+                }
               },
               "source": {
                 "required": [
@@ -149,7 +155,7 @@
                 ],
                 "properties": {
                   "url": {
-                    "pattern": "^https?://\\S+$"
+                    "pattern": "^https?://[!-~]+$(?!\\n)"
                   }
                 }
               }
@@ -164,6 +170,45 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "file": {
+                "pattern": "^private/"
+              }
+            },
+            "required": [
+              "file"
+            ]
+          },
+          "else": {
+            "properties": {
+              "expect": {
+                "required": [
+                  "refereeCheckSucceeds"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "readerLimits"
+            ]
+          },
+          "then": {
+            "properties": {
+              "expect": {
+                "not": {
+                  "required": [
+                    "unsupported"
+                  ]
+                }
+              }
+            }
+          }
         }
       ]
     },
@@ -174,8 +219,7 @@
       "required": [
         "clean",
         "indexRebuilt",
-        "requiredDiagnostics",
-        "refereeCheckSucceeds"
+        "requiredDiagnostics"
       ],
       "properties": {
         "pages": {
@@ -196,7 +240,7 @@
         },
         "catalogRecoverable": {
           "const": false,
-          "description": "Only for a file with no catalogue at all, which the reader must open and hand back none; every other entry leaves the field out."
+          "description": "Only for a file with no catalogue at all, which the reader must open and hand back none; such a file has no page count to expect. Every other entry leaves the field out."
         },
         "requiredDiagnostics": {
           "type": "array",
@@ -236,7 +280,7 @@
         },
         "refereeCheckSucceeds": {
           "type": "boolean",
-          "description": "Whether qpdf --check finds nothing wrong, recorded by build_corpus.py from the very command the integration tests run."
+          "description": "Whether qpdf --check finds nothing wrong, recorded by build_corpus.py from the very command the integration tests run. Required of every entry but a private one, which no script writes."
         },
         "encrypted": {
           "type": "boolean",
@@ -279,7 +323,7 @@
         },
         "claimsConformance": {
           "type": "string",
-          "pattern": "^PDF/(A-[1-4][abuef]?|UA-[12])$",
+          "pattern": "^PDF/(A-[1-4][abuef]?|UA-[12])$(?!\\n)",
           "description": "The conformance level the document claims, such as PDF/A-3b."
         },
         "conformanceValid": {
@@ -299,7 +343,23 @@
         "conformanceValid": [
           "claimsConformance"
         ]
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "catalogRecoverable"
+            ]
+          },
+          "then": {
+            "properties": {
+              "pages": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "readerLimits": {
       "type": "object",
@@ -351,12 +411,12 @@
       "properties": {
         "url": {
           "type": "string",
-          "pattern": "^https?://\\S+( \\(member [^()]+\\))?$",
+          "pattern": "^https?://[!-~]+( \\(member [^()]+\\))?$(?!\\n)",
           "description": "Where the bytes are published — or the archive they are a member of (ADR 33). A committed file taken out of an archive may name its member after the URL, as '(member name.pdf)'; a remote one never, since fetch_remote.py downloads the URL as it stands."
         },
         "sha256": {
           "type": "string",
-          "pattern": "^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$(?!\\n)",
           "description": "The SHA-256 of the document's bytes as published."
         },
         "bytes": {
@@ -366,12 +426,12 @@
         },
         "retrieved": {
           "type": "string",
-          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$(?!\\n)",
           "description": "When it was retrieved, as YYYY-MM-DD."
         },
         "landingPage": {
           "type": "string",
-          "pattern": "^https?://\\S+$",
+          "pattern": "^https?://[!-~]+$(?!\\n)",
           "description": "The page that presents it, or a persistent identifier such as a DOI."
         },
         "archive": {
@@ -391,7 +451,7 @@
       "properties": {
         "sha256": {
           "type": "string",
-          "pattern": "^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$(?!\\n)",
           "description": "The archive's SHA-256."
         },
         "bytes": {
@@ -401,7 +461,7 @@
         },
         "member": {
           "type": "string",
-          "pattern": "^(?!(.*/)?\\.\\.?(/|$))[^/\\\\\\u0000-\\u001F\\u007F]+(/[^/\\\\\\u0000-\\u001F\\u007F]+)*$",
+          "pattern": "^(?!(.*/)?\\.\\.?(/|$))[^/\\\\\\u0000-\\u001F\\u007F]+(/[^/\\\\\\u0000-\\u001F\\u007F]+)*$(?!\\n)",
           "description": "The member's path inside the archive: relative, POSIX, with no control character and no empty, '.' or '..' segment."
         }
       }
