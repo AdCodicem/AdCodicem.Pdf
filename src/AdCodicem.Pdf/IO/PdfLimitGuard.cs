@@ -16,7 +16,7 @@ namespace AdCodicem.Pdf.IO;
 /// <param name="throwOnLimit">Whether reaching one throws rather than warns.</param>
 /// <param name="documentDiagnostics">
 /// Where a guard reached is reported when the operation that reached it was given nowhere to report: a stream
-/// decoded without diagnostics is still cut, and the cut is never silent.
+/// read from the document and decoded without diagnostics is still cut, and the cut is reported there.
 /// </param>
 internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, PdfDiagnostics? documentDiagnostics = null)
 {

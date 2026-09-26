@@ -22,6 +22,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     internal const int InitialObjectWindow = 8 * 1024;
     internal const int XRefWindow = 64 * 1024;
 
+    /// <summary>How much of a section is read to tell a classic table from a cross-reference stream.</summary>
+    internal const int XRefProbeLength = 32;
+
     /// <summary>
     /// Most entries a subsection may claim. Not a guard a valid file reaches: a classic table holds its rows
     /// within <see cref="PdfReaderLimits.MaxXRefSectionLength"/>, a stream within its decoded length, and a
@@ -332,7 +335,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return false;
         }
 
-        using (var probe = _source.GetWindow(absolute, 32))
+        using (var probe = _source.GetWindow(absolute, XRefProbeLength))
         {
             var lexer = new PdfLexer(probe.Memory.Span);
             if (lexer.Read().IsKeyword("xref"u8))
@@ -463,8 +466,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             _pending.RollBack(mark);
         }
 
-        // The trailer starts inside the window, so inside the file: a direct object is always parsed there,
-        // and one that is not a dictionary is no trailer.
+        // The trailer starts inside the window, so inside the file as long as the source's length holds;
+        // where nothing can be parsed the value is null, and anything that is not a dictionary is no trailer.
         _ = TryParseAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value);
         return value.AsDictionary();
     }
