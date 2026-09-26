@@ -42,11 +42,15 @@ here.
 - **Repository settings**: the "Default" ruleset on `main` asks for a pull request with one code-owner
   approval and every review thread resolved, linear history, CodeQL and coverage of at least 61 %; it
   requires no status check by name, and only administrators bypass it. CodeQL runs as GitHub's default setup
-  since 2026-09-22; `.github/workflows/codeql.yml` is disabled, so its configuration no longer applies (T35).
+  since 2026-09-22; the repository's own workflow and configuration, disabled since then, were deleted on
+  2026-09-26 at the maintainer's choice (T35).
 - **Branches**: five merged branches are still on the remote and hold nothing `main` needs —
   `claude/dependabot-prs-review-p3mx79`, `claude/nuget-pdf-html-dotnet-msyz8z`,
   `claude/package-preview-deployment-h0lakt`, `claude/scorecard-improvement-4ckfxd`,
-  `claude/scorecard-pipeline-47mgrj`. Deleting them is the maintainer's to do.
+  `claude/scorecard-pipeline-47mgrj`. The maintainer asked for their deletion on 2026-09-26, but this
+  session's git proxy refuses to delete a branch the session did not create (HTTP 403), so it is the
+  maintainer's to do; their tips are `c5b0a19`, `d597294`, `e0c5aba`, `cd31f84` and `637772e`, should one be
+  wanted back.
 
 ### Current measurements (BenchmarkDotNet, ShortRun)
 
@@ -80,6 +84,17 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-26 — CodeQL left to GitHub's default setup, and the merged branches
+- **T35, the maintainer's choice**: GitHub's default setup stays; `.github/workflows/codeql.yml`, disabled
+  since 2026-09-22, and `.github/codeql/codeql-config.yml` are deleted, and the ADR index says what runs now.
+  Nothing that depends on CodeQL changes: the default setup posts the check runs Scorecard's SAST reads — 10/10
+  on `74ce382`, already under the default setup — and meets the ruleset's code-scanning rule, as #29's checks
+  show. The four queries the configuration excluded may now raise alerts; the index says to dismiss them with
+  the reason the deleted file gave, which git keeps.
+- **The five merged branches** stay on the remote: asked to delete them, this session was refused by its git
+  proxy (HTTP 403), which lets it push only to the branches it created. Their tips are recorded under
+  *At a glance*.
 
 ### 2026-09-26 — ADR 36 and M2's first slice: validation in the core, and `file.eof-missing`
 - **The question, then the decision.** Asked what came next, the answer was M2's first slice — but not before
@@ -413,4 +428,4 @@ The detail is in git and in the pull requests; what still matters is in the reco
 | ~~T08~~ | ~~Fuzzing of the lexer and parser is not set up~~ | Done: in the suite per commit, and a nightly campaign |
 | T09 | A memory budget is now enforced in CI; a throughput budget is not | Throughput budget in M13 |
 | T36 | **A `PdfFileSource` whose `Read` returns fewer bytes than asked is taken as the end of the data.** `GetWindow` calls `Read` once, and every read built on it — the header and `startxref` searches, the cross-reference probes, object windows, `FileStreamData.GetBytes`, and now `file.eof-missing` — takes a short count as the end. The two built-in sources fill the buffer (the file one loops), so only a caller's own source can do it; then a sound file is rebuilt (`xref.rebuilt`), streams come back cut (`stream.truncated`) and the validator reports `file.eof-missing` on a file that ends with its marker — measured by the review of M2's first slice with a source serving at most 1,000 bytes a read. The public documentation of `Read` does not say it must fill the buffer | Make `GetWindow` and the direct reads loop until the buffer is full or `Read` returns 0, as `FileSource.Read` does, with a test through a source that returns short reads; say on `Read` what the reader expects |
-| T35 | **CodeQL runs as GitHub's default setup since 2026-09-22**, and `.github/workflows/codeql.yml` is disabled. The workflow ran the security *and* quality suites with four exclusions, each justified in `.github/codeql/codeql-config.yml`; the default setup does not read that file, so the exclusions no longer apply, and the query suite is whatever the repository's settings say — the line on CodeQL among the ADR index's *Decisions too small for a record of their own* may no longer describe what runs | The maintainer's choice: go back to the workflow (and disable the default setup), or keep the default setup and delete the workflow, its configuration and that record's line |
+| ~~T35~~ | ~~CodeQL runs as GitHub's default setup since 2026-09-22, while `.github/workflows/codeql.yml`, disabled, and its configuration stayed in the repository~~ | Done on 2026-09-26, the maintainer's choice: the default setup stays, and the workflow, its configuration and the ADR index's line about them are gone; the index now says what runs, and what to do if one of the four queries once excluded raises an alert |
