@@ -37,6 +37,8 @@ public class EndOfFileMarkerRuleTests
         finding.Message.Should().Be($"The file does not end with an end-of-file marker: no %%EOF in its last {file.Length} bytes.");
         finding.Remedy.Should().NotBeNullOrWhiteSpace();
         report.HasErrors.Should().BeFalse("a file every reader opens is not broken for lacking its marker");
+        report.HasWarnings.Should().BeTrue();
+        report.WarningCount.Should().Be(1);
     }
 
     [Fact]

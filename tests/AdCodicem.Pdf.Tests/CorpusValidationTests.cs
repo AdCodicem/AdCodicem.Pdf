@@ -103,6 +103,19 @@ public class CorpusValidationTests
         }
     }
 
+    [Theory]
+    [InlineData("""{"file":"x.pdf","title":"t","expect":{"finding":["file.eof-missing"]}}""")]
+    [InlineData("""{"file":"x.pdf","title":"t","readerLimits":{"maxObjectLenght":1}}""")]
+    public void A_misspelt_expectation_or_reader_limit_fails_loading(string entry)
+    {
+        // Ignored, "finding" would leave the entry declaring no finding, and a sound-looking document would pass
+        // for the wrong reason: the model refuses what it does not know, under the options the corpus loads with.
+        var loading = () => System.Text.Json.JsonSerializer.Deserialize<CorpusDocument>(
+            entry, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        loading.Should().Throw<System.Text.Json.JsonException>();
+    }
+
     /// <summary>
     /// Opens a corpus document as its entry says — under its raised reader limits, if any — and validates it
     /// under the default profile. An encrypted document is opened too: its structure is readable without its
