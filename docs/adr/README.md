@@ -53,8 +53,12 @@ A settled decision is not reopened without new evidence — that is what writing
 - A stream copied between documents travels **encoded**, with no decompress/recompress cycle.
 - A dictionary entry whose value is null is dropped on parse: the specification says it is equivalent to an
   absent entry, and every later stage is spared a null it would have to ignore.
-- CodeQL runs the security *and* quality suite: its quality queries find real defects here. The four that
-  are wrong for this codebase are excluded in `.github/codeql/codeql-config.yml`, each with its reason,
-  because C# has no in-source CodeQL suppression.
+- CodeQL runs as GitHub's **default setup**, on every pull request and every push to `main`, with the query
+  suite chosen in the repository's settings; the repository keeps no CodeQL workflow or configuration of its
+  own (since 2026-09-26, T35). Until then a workflow ran the security *and* quality suites with four queries
+  excluded as wrong for this codebase — `cs/path-combine`, `cs/catch-of-all-exceptions`,
+  `cs/linq/missed-where`, `cs/complex-block`. If the default setup raises one of them, the alert is dismissed
+  in the Security tab with that reason (git history keeps the configuration that gave each one), rather than
+  configured away again.
 - The document `/ID` is derived from content, or supplied by the caller, never random — determinism comes
   first, and a random identifier would make fingerprint tests impossible.
