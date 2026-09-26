@@ -347,16 +347,19 @@ def damage_lying_length(data: bytes) -> bytes:
 
 
 # name -> (transformation, diagnostic codes the reader must report, whether the index must be rebuilt)
+# Each damage: how it is done, the diagnostic codes the reader must report, whether the index is rebuilt, and
+# the validation findings the default profile must report (M2) — established from the damage itself, never by
+# the validator: cutting the tail takes the %%EOF marker with it.
 DAMAGES = {
-    "no-xref": (damage_remove_xref, ["xref.rebuilt"], True),
+    "no-xref": (damage_remove_xref, ["xref.rebuilt"], True, []),
     # Shifting every offset also moves the cross-reference section startxref points at, so the whole
     # index has to be rebuilt rather than each object relocated.
-    "shifted-offsets": (damage_shift_offsets, ["xref.rebuilt"], True),
-    "truncated-tail": (damage_truncate, ["xref.rebuilt"], True),
-    "junk-prefix": (damage_junk_prefix, ["xref.offset-adjusted"], False),
+    "shifted-offsets": (damage_shift_offsets, ["xref.rebuilt"], True, []),
+    "truncated-tail": (damage_truncate, ["xref.rebuilt"], True, ["file.eof-missing"]),
+    "junk-prefix": (damage_junk_prefix, ["xref.offset-adjusted"], False, []),
     # A wrong /Length is only noticed when the stream is actually read: that is the lazy reader working
     # as designed, so the acceptance test reads every object before checking the diagnostics.
-    "lying-length": (damage_lying_length, ["stream.length-invalid"], False),
+    "lying-length": (damage_lying_length, ["stream.length-invalid"], False, []),
 }
 
 
@@ -620,7 +623,7 @@ def main() -> int:
            expect={"pages": stress_pages, "clean": True, "indexRebuilt": False, "requiredDiagnostics": []})
 
     original = invoice.read_bytes()
-    for name, (damage, expected_codes, rebuild) in DAMAGES.items():
+    for name, (damage, expected_codes, rebuild, findings) in DAMAGES.items():
         damaged = DOCUMENTS / "damaged" / f"invoice-{name}.pdf"
         damaged.parent.mkdir(parents=True, exist_ok=True)
         damaged.write_bytes(damage(original))
@@ -630,11 +633,14 @@ def main() -> int:
         recovered = referee_page_count(damaged)
         accepted = referee_check_succeeds(damaged)
 
+        expect = {"pages": recovered, "clean": False, "indexRebuilt": rebuild, "requiredDiagnostics": expected_codes}
+        if findings:
+            expect["findings"] = findings
+        expect["refereeCheckSucceeds"] = accepted
+
         record(damaged, title=f"Invoice damaged on purpose: {name.replace('-', ' ')}", useCase="invoice",
                producer=f"derived from {invoice.name}", origin="derived",
-               licence="MIT (derived from our own document)", features=[f"damage-{name}"],
-               expect={"pages": recovered, "clean": False, "indexRebuilt": rebuild,
-                       "requiredDiagnostics": expected_codes, "refereeCheckSucceeds": accepted})
+               licence="MIT (derived from our own document)", features=[f"damage-{name}"], expect=expect)
 
     # Every other document comes last, untouched but for the referee's verdict: it cannot be regenerated,
     # only attributed.

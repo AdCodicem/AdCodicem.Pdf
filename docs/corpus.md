@@ -96,7 +96,7 @@ from M10, conformance verdicts from M12. An expectation is
 never weakened to make a test pass — either the library is fixed, or the expectation is corrected with the
 reason recorded in the commit message.
 
-Four fields serve that rule:
+Five fields serve that rule:
 
 - `unsupported` — the reason the library cannot yet meet the entry's expectations, and the milestone that
   will. The acceptance tests skip the document with that reason in their output; the expectations stay as
@@ -109,6 +109,12 @@ Four fields serve that rule:
   defaults still cut it, so that a raise outlives no reason. Every other document is opened with the defaults.
 - `conformanceValid` — veraPDF's verdict on the PDF/A level the document claims (`claimsConformance`),
   for M12 to agree with.
+- `findings` — the validation rules that report on the document under the default profile (M2), by
+  identifier: exactly these, no more and no fewer, and none when the field is left out. A sound document
+  that earns a warning nobody declared fails as surely as a damaged one that earns nothing. Like every
+  expectation it comes from the file, not from the validator: for `file.eof-missing`, a search of the
+  file's last 1,024 bytes; for the rules that follow, the referee's report or the damage the document was
+  made with. `build_corpus.py` writes it for the documents it damages.
 - `source` — for a third-party file, the URL it was retrieved from, the date and the SHA-256 of the bytes
   as published, so provenance is checkable without trusting the repository. For a remote document it is
   mandatory, with the document's size in `bytes`, and it is what `fetch_remote.py` downloads and verifies.

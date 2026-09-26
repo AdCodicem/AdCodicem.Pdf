@@ -387,6 +387,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.eof-missing"
+        ],
         "refereeCheckSucceeds": false
       }
     },
@@ -6533,6 +6536,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.eof-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "pdf.js"
@@ -6997,6 +7003,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.eof-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Diretrizes do diagnóstico e tratamento da crise hipertensiva em crianças",
@@ -7042,6 +7051,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.eof-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -7192,6 +7204,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.eof-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "FY 2011–12 Adopted Budget",
@@ -7235,6 +7250,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.eof-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -11530,6 +11548,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.eof-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "dissertation submitted in partial",
@@ -11576,6 +11597,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.eof-missing"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -16394,6 +16418,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.eof-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -16437,6 +16464,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.eof-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -16480,6 +16510,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.eof-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
