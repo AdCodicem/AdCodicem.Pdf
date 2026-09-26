@@ -172,7 +172,8 @@ I will not publish a file into the public corpus on my own judgement.
 ## The manifest entry
 
 One entry per document. `expect` is what the tests assert; `readerLimits`, when there is one, is how the
-document is opened; everything else is provenance.
+document is opened; everything else is provenance. `tests/corpus/manifest.schema.json` gives every field its
+type, its allowed values and a description, and an editor that reads JSON Schema applies it as you type.
 
 ```jsonc
 {
