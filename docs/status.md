@@ -8,10 +8,10 @@ here.
 
 - **Current milestone**: M2 — Document validation (`docs/milestones/M2.md`), not started
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Builds**: yes, with no warnings — **Tests**: 519 unit (4 skipped by design: two corpus
+- **Builds**: yes, with no warnings — **Tests**: 524 unit (4 skipped by design: two corpus
   documents recorded as unsupported until M2) + 302 integration (skipped without Docker) + 23 for the
   remote corpus's fetcher (Python, against a local server); with the remote corpus fetched (240 of its 242
-  documents from here on 2026-09-26, all 242 on the runner), 1,180 unit (63 skipped by design, on documents
+  documents from here on 2026-09-26, all 242 on the runner), 1,185 unit (63 skipped by design, on documents
   recorded as unsupported until M2 or until T24, T25 or T28 is fixed) + 665 integration (measured on
   2026-09-25: the session that fixed T21 and T23 had no Docker, and added no integration test) — **CI**:
   green on `main`, `OpenSSF Scorecard` included
@@ -86,9 +86,11 @@ budget in CI (`CorpusReadingTests`), so an allocation regression fails the build
 M2 — document validation (`docs/milestones/M2.md`). Its first slice is the findings, the report and the
 rule engine end to end with a single trivial rule; the acceptance to keep in view is that no well-formed
 corpus document from any of the four producers earns an error-severity finding, and that a PDF/A-invalid
-file earns no *structural* one. T21 and T23 are fixed, so the reader's diagnostics no longer carry syntax
-errors a window invented; T25 and T27, which M2's acceptance conditions also name, remain, and belong with
-its cross-reference and object-graph slices.
+file earns no *structural* one. T21 and T23 are fixed, so an object's diagnostics no longer carry syntax
+errors its window invented (the rebuild's trailer scan still reads through a fixed window, T30). T25, which
+M2's exit criteria name, and T27, which its acceptance conditions name, remain, and belong with its
+cross-reference and object-graph slices. **Before them, T31**: a RunLength stream decodes without any
+bound, so a hostile file can exhaust memory.
 
 **The milestones were renumbered** when validation and repair were inserted: validation is now M2 (right
 after reading) and repair M4 (right after writing). Numbers in commits older than 2026-09-13 refer to the
@@ -104,10 +106,9 @@ previous ordering, where M2 was writing and M3 assembly.
   8 KB was reported once per attempt. Reading the code for the fix showed worse: some cuts were never
   noticed, and the object was kept cut without a word — a top-level string or name longer than the window,
   a reference cut after `12 0`, a `stream` keyword or the CR LF after it across the edge (the stream came
-  back a dictionary, or its data one byte early). And two windows never grew: a classic table's trailer
-  across the edge of the table's 64 KB window lost its `/Root` or `/Prev`, and a `trailer` keyword or
-  subsection header cut there made the whole table unreadable, so a sound file was rebuilt; a
-  cross-reference stream's dictionary was read through one fixed 64 KB window.
+  back a dictionary, or its data one byte early). And a classic table's window never grew for what ended
+  it: a trailer across the edge of the table's 64 KB window lost its `/Root` or `/Prev`, and a `trailer`
+  keyword or subsection header cut there made the whole table unreadable, so a sound file was rebuilt.
 - **The fix.**
   - The parser reports into a pending buffer (a `PdfDiagnostics` with internal marks), and only the
     attempt that is kept reaches the document's diagnostics. Nested loads — an indirect `/Length` resolved
@@ -119,23 +120,47 @@ previous ordering, where M2 was writing and M3 assembly.
     of `stream`), a buffer that ends on `stream` or on the CR of its CR LF.
   - A stream whose data ends inside the window, but whose `endstream` may lie past it, is confirmed by
     asking the file for the 13 bytes after the data — not through a window eight times larger.
-  - A classic table's window grows when a token or the trailer reaches its edge. A cross-reference stream
-    is parsed like any object, from 8 KB up, so opening now reads 8 KB of it where it read 64 KB.
+  - A classic table's window grows when a token reaches its edge, and a trailer the edge cut is parsed
+    again where it starts, through a window of its own that stops at 64 KB.
+  - An object header the window's edge cut — past more than 8 KB of white space — is read again in a
+    larger window, not searched for nearby and then rebuilt.
+  - A stream whose declared length the file cannot hold is no longer quietly shortened: the parser asks for
+    a window that reaches the end of the file and reports what it finds there — `stream.truncated` when the
+    file ends inside the data, `stream.length-invalid` when `endstream` comes first.
 - **Tests.** `WindowEdgeTests` slides nine objects across the window's edge one byte at a time — a
   dictionary and an array holding every construct, streams with each end-of-line form, strings, a name, a
   reference — and compares each read with what the parser makes of the whole object: the same object, the
   same diagnostics. Beside it: a stream ending 0 to 10 bytes before the edge, confirmed with at most 13
   bytes read past the window (T21's shape; the hospital-bed guidance's object 2053 ends exactly on the
   edge); the table's 64 KB edge slid over its last rows, a subsection header, the `trailer` keyword and the
-  dictionary, 125 positions; an anomaly inside a long object reported once; an object the file really cuts
-  short still reported, once; a repair by a nested load surviving the attempt that is dropped; a
-  cross-reference stream whose dictionary outgrows 8 KB and 64 KB; and the pending buffer's rules. A
+  dictionary, 125 positions, with a sound trailer and with one holding a key that is not a name, reported
+  once wherever the edge falls; an anomaly inside a long object reported once; an object the file really
+  cuts short still reported, once; a repair by a nested load surviving the attempt that is dropped;
+  headers past more than 8 KB of white space; a cross-reference stream whose `/Length` is wrong; streams
+  whose length the file cannot hold, cut or lying; the pending buffer's rules, and its capacity following
+  `DiagnosticCapacity` through the reader; a string longer than the 16 MB window bound; and two chains of a
+  hundred sections whose trailers, or whose cross-reference streams, never close. Every read in the
+  window tests goes through a source that refuses to be asked past its end. A
   property in `PropertyTests` draws the objects instead — nested, escaped, alone or in a dictionary, an
   array or a stream — and lets the edge fall anywhere; 21,000 cases over three seeds found nothing.
 - **Checked that they have teeth.** Each piece of the fix was disabled in turn, ten mutations, and each
   one fails at least one test. That is how the first version of the table test was caught passing on
   nothing: its rows were 21 bytes, not 20, so the edge never reached the region it was meant to sweep. It
   now counts the positions it exercised.
+- **On review.** Four independent reviewers — correctness, the repository's invariants, the tests, the
+  documentation — went over the first commit, and each of their fifteen findings was checked against the
+  code and a test before it was acted on; none was wrong. The first version asked the source for 13 bytes after a stream's data even when fewer
+  were left, and a third-party `PdfFileSource` may refuse that: opening a truncated file threw. It grew a
+  classic table's window up to 64 MB for a trailer that never closes, once per section of a chain — about
+  10 GB of parsing for a crafted 5 MB file —, and parsed cross-reference streams from 8 KB, which left their
+  `/Length` unchecked whenever their data ran past 8 KB: a short one dropped rows and forced a rebuild. It
+  let a header after more than 8 KB of white space fail instead of growing the window, and it claimed on
+  the site that every object the file cuts short is reported, which was not so. All are fixed above, with
+  their tests; the cross-reference stream keeps its fixed 64 KB window. Four mutations the suite did not
+  catch — a look-ahead of 10 bytes, a trailer's anomaly dropped, the 16 MB bound removed, the pending
+  buffer at its default capacity — are caught now. The same reviews found **T31**, older than this work:
+  RunLength streams decode without any bound, 64 bytes out for 2 in, and LZW stops at the bound in
+  silence.
 - **The corpus.** The five remote documents recorded as unsupported for T21 and T23 — the hospital-bed
   guidance, the 25-signature sheet, the 2015 BOE law, the VA Kernel guide and the poster — pass every test
   that reads them, the laziness test included. The topographic map's T21 report is gone as well, but the
@@ -861,14 +886,15 @@ previous ordering, where M2 was writing and M3 assembly.
 | T10 | **Narrowed on 2026-09-24**: Word, PDFMaker, Acrobat, InDesign, LiveCycle, PDFWriter, copier scans with their own OCR, Java writers, ERP Factur-X samples, PDF 1.2 archives, signatures — DocuSign's among them since the third pass — and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing from what may be committed is what only an inbox holds: a real invoice or statement from a supplier or bank (real ones are in the remote corpus only), a Yousign, Universign or Adobe Sign signature, a copier file untouched since the copier wrote it, Hebrew | Contributions, per the "still wanted" column of `docs/corpus-contributions.md`; the remote corpus (ADR 32) for files that can be used but not redistributed |
 | ~~T21~~ | ~~**The reader reports a truncated stream that is not.** When a stream's data ends inside the parser's 8 KB window but its `endstream` falls past the window's end, `PdfObjectParser.ReadStream` finds no `endstream` in the window and reports `stream.truncated`, cutting the stream at the window. Found on object 49 of the USGS Washington West topographic map (W11 reference, `docs/corpus-sources.md`): data from 68 to 8,185 in a 8,192-byte window; qpdf reads it cleanly. The same file also earns a `filter.failed` on its 14.9 MB Flate image, not yet explained. The map is now in the remote corpus, recorded as unsupported with this reason, so the fix is checked against it every night. Since 2026-09-25 also the FDA hospital-bed guidance from GovDocs1 (remote): objects 604 and 2053, streams of about 8.1 KB whose `/Length` is right~~ | Done on 2026-09-26: the attempt through a window too small for its stream is dropped with what it reported, and a stream whose `endstream` may lie past the window is confirmed by 13 bytes read from the file. The hospital-bed guidance is supported; the map is unsupported for T28 instead |
 | T22 | W11 has no committed document, by decision. All three of its references — 9,302 pages, one 63 MB page, and since the third pass of 2026-09-24 the heavy scan (USGS Professional Paper 1, 147 MB of JPEG 2000) — are in the remote corpus (ADR 32) and tested every night, but not in the main CI job | M13: state its memory budgets against the remote documents, and close only on a green `Remote corpus` run |
-| ~~T23~~ | ~~**The reader cuts an indirect object longer than its 8 KB window at the window's edge.** Found on two remote documents: object 458 of the EU DSS file with 24 signatures and a document timestamp, a DSS `/VRI` dictionary of 10,112 bytes, reported as a truncated object exactly 8 KB in; and object 14 of the BOE's 2015 law, a structure array of 8,694 bytes, reported as unexpected tokens at the same point, with 35 arrays like it. qpdf reads all of them whole. `PdfFileReader.TryParseObjectAt` does grow its window when the parser says an object ran out, but the parser has warned into the document's diagnostics by then. The same window as T21, met by an object rather than a stream. Both entries are recorded as unsupported with this reason, so the fix is checked against them every night. Since 2026-09-25 also the VA Kernel guide (object 10913, 14,188 bytes) and a JHOVE poster (object 2307, 8,248 bytes), both remote~~ | Done on 2026-09-26: only the attempt that is kept reports, a cut at the buffer's end is noticed wherever it falls, and the classic table and the cross-reference stream grow their windows too. The four documents are supported |
+| ~~T23~~ | ~~**The reader cuts an indirect object longer than its 8 KB window at the window's edge.** Found on two remote documents: object 458 of the EU DSS file with 24 signatures and a document timestamp, a DSS `/VRI` dictionary of 10,112 bytes, reported as a truncated object exactly 8 KB in; and object 14 of the BOE's 2015 law, a structure array of 8,694 bytes, reported as unexpected tokens at the same point, with 35 arrays like it. qpdf reads all of them whole. `PdfFileReader.TryParseObjectAt` does grow its window when the parser says an object ran out, but the parser has warned into the document's diagnostics by then. The same window as T21, met by an object rather than a stream. Both entries are recorded as unsupported with this reason, so the fix is checked against them every night. Since 2026-09-25 also the VA Kernel guide (object 10913, 14,188 bytes) and a JHOVE poster (object 2307, 8,248 bytes), both remote~~ | Done on 2026-09-26: only the attempt that is kept reports, a cut at the buffer's end is noticed wherever it falls, a classic table's window grows for a cut keyword and a cut trailer is parsed again in a window of its own, up to 64 KB. The four documents are supported. The rebuild's trailer scan keeps its fixed window (T30) |
 | T24 | **Opening reads each cross-reference section through a window of up to 64 KB, whatever the section's size.** Bounded, but proportional to the number of sections rather than to their size: opening the 218 KB signed Web Capture file from pdfcpu's test data, which has three sections, reads 117 KB — more than the quarter of the file the laziness test allows. The entry is recorded as unsupported with this reason | M13, with the other budgets: start a section's window small and grow it, as object windows already do — and keep what was read when it grows: the VHA coding handbook from GovDocs1 (2026-09-25) has one 273 KB table, read at 64 KB, then 256 KB, then to its end, 683 KB in all for a 2.2 MB file; also recorded as unsupported |
 | T25 | **A `/Prev` that misses its section drops it in silence.** `PdfFileReader.TryReadXRefChain` returns success as soon as one section was read, so when a later `/Prev` does not land on `xref` or on a cross-reference stream the older section is simply left out, with no rebuild — and with no diagnostic either when the offset falls inside the file; one past its end earns `xref.entry-out-of-range`. Found on IBM's QMF manual from GovDocs1 (remote): `/Prev 1569328` falls 12 bytes past the keyword, and the 4,106 entries of the main table are lost; qpdf reports `xref not found` and rebuilds. Recorded as unsupported with this reason | **Before M2 closes** — a validator cannot report what the reader hides: a synthetic regression test (a `/Prev` a few bytes off, and one pointing nowhere), then report the failed section and search near it or rebuild, as the reader already does for an object a few bytes off |
 | ~~T26~~ | ~~The remote corpus cannot take a file out of an archive, so the one external test suite for M2's structural profile stays out of reach~~ | Done on 2026-09-25: [ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md) accepted and implemented; the 88 files are in the remote corpus, 19 of them recorded as unsupported until M2 and named in its acceptance conditions |
 | T27 | **A reference to an object the file lacks makes the reader rebuild its whole index.** The specification says such a reference is null, and qpdf takes it so; the reader instead scans the file for the missing object — the lazy rebuild meant for an index that lost entries — and reports a repair on a file qpdf calls clean. Found on two iPRES 2017 files (remote): a catalogue whose `/Pages` and a page whose `/Contents` point at object 9, which does not exist. Both are recorded as unsupported with this reason. The acceptance test saw it only once it walked each page's contents and resources before judging a clean file's diagnostics; across the whole corpus, no other document was affected | Before M2 closes, since its acceptance conditions name both files: a synthetic regression test (a sound file with a reference past /Size, and one to a free entry), then rebuild only when the index gives reason to doubt it, and otherwise take the reference as null — a finding for M2, not a repair |
-| T28 | **A stream that decodes past 256 MB is reported as a truncated Flate stream.** `PdfFilterLimits.MaxDecodedLength` bounds every filter against decompression bombs, and the Flate filter reports reaching it exactly as it reports a corrupt stream: "A Flate stream was truncated; the decoded prefix was kept." Found on the USGS topographic map (remote), whose 9,600 × 11,410 RGB image, object 155, decodes to 313 MB (measured with zlib); the file is sound. Recorded as unsupported with this reason | M13, with the memory budgets: decode such a stream a piece at a time rather than into one array; meanwhile, report the bound as the reader's limit, not as damage in the file |
+| T28 | **A stream that decodes past 256 MB is reported as a truncated Flate stream.** `PdfFilterLimits.MaxDecodedLength` bounds the Flate filter against decompression bombs, and it reports reaching the bound exactly as it reports a corrupt stream: "A Flate stream was truncated; the decoded prefix was kept." Found on the USGS topographic map (remote), whose 9,600 × 11,410 RGB image, object 155, decodes to 313 MB (measured with zlib); the file is sound. Recorded as unsupported with this reason | M13, with the memory budgets: decode such a stream a piece at a time rather than into one array; meanwhile, report the bound as the reader's limit, not as damage in the file |
 | ~~T29~~ | ~~**A chain of `/Length` references nests object loads as deep as the chain.** Resolving an indirect `/Length` loads that object while the first is being parsed, and a stream whose `/Length` points at a stream whose `/Length` points at another goes one level deeper each time. The cycle guard stops a loop, not a chain: 20,000 such objects overflow the stack and kill the process, which invariant 4 forbids. Older than T23's fix, reproduced on it~~ | Done on 2026-09-26: object loads nest at most 64 deep; the next one reads as null, is not cached, and is reported once as `syntax.depth-exceeded` with its offset. `HostileInputTests` reads a 50,000-level chain |
-| T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls | M13, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |
+| T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls It also parses each through that fixed window straight into the document's diagnostics, so a sound trailer longer than 64 KB earns a syntax error the file does not have | M13, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |
+| T31 | **Two filters keep their bound badly.** `RunLengthDecode` has none: every two bytes in can decode to 128 out, so a 4.6 MB stream decodes to 294 MB, past the 256 MB `PdfFilterLimits.MaxDecodedLength`, with no diagnostic, and a Flate stream feeding it multiplies that by 64 — memory a hostile file chooses. `LZWDecode` stops at the bound in silence. Found by the review of T23's fix (a claim that every filter keeps the bound); older than it | Now, beside T28: the bound in every filter, and reaching it reported as the reader's limit rather than as damage in the file |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
 | T13 | The integration suite has one referee (qpdf); veraPDF, pdftotext and a rasteriser join it as their milestones arrive | M10, M12, M14 |

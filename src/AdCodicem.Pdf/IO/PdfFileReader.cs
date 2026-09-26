@@ -29,8 +29,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private const int ScanOverlap = 64;
     private const int MaxRepairObjects = 2_000_000;
 
-    /// <summary>Asks <see cref="TryParseObjectAt"/> for whatever object starts at an offset.</summary>
-    private const int AnyNumber = 0;
+    /// <summary>Asks <see cref="TryParseAt"/> for a direct object, with no object header: a trailer.</summary>
+    private const int DirectObject = -1;
+
+    /// <summary>
+    /// Largest window a classic trailer cut by its table's window is parsed again through. Real ones are a
+    /// few hundred bytes. Without the bound, one that never closes would cost a read the size of the file,
+    /// once for every section of a chain.
+    /// </summary>
+    private const int MaxTrailerWindow = 64 * 1024;
 
     /// <summary>
     /// Deepest chain of objects loaded while loading another. Real documents stay within a handful — a stream
@@ -153,6 +160,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     }
 
     /// <inheritdoc/>
+    long IPdfStreamDataProvider.SourceLength => _source.Length;
+
+    /// <inheritdoc/>
     PdfStreamData IPdfStreamDataProvider.Create(long absoluteOffset, int length)
     {
         // A declared length is a claim made by the file, so it is clamped to what the file can hold.
@@ -164,14 +174,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <inheritdoc/>
     bool IPdfStreamDataProvider.IsEndStreamAt(long absoluteOffset)
     {
-        // A source is only asked for bytes it has: a subclass need not accept an offset at its end.
+        // A source is only asked for bytes it has, as GetWindow does: a subclass need not accept an offset
+        // or a length that runs past its end.
         if (absoluteOffset < 0 || absoluteOffset >= _source.Length)
         {
             return false;
         }
 
         Span<byte> tail = stackalloc byte[PdfObjectParser.EndStreamLookahead];
-        var read = _source.Read(absoluteOffset, tail);
+        var available = (int)Math.Min(tail.Length, _source.Length - absoluteOffset);
+        var read = _source.Read(absoluteOffset, tail[..available]);
         return PdfObjectParser.IsEndStreamAt(tail[..read], 0);
     }
 
@@ -352,14 +364,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (token.IsKeyword(TrailerKeyword))
                 {
-                    if (!TryReadTrailer(window.Memory, absolute, lexer.Position, canGrow, out var trailer))
-                    {
-                        // A trailer cut by the window's edge would lose its /Root or its /Prev; the window
-                        // grows instead, as it does for a table that runs past it.
-                        break;
-                    }
-
-                    if (trailer is not null)
+                    if (ReadTrailer(window.Memory, absolute, lexer.Position, canGrow) is { } trailer)
                     {
                         _xref.MergeTrailer(trailer);
                         previous = trailer.GetInteger(PdfName.Prev) ?? -1;
@@ -404,12 +409,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>
     /// Parses the trailer dictionary that starts at <paramref name="position"/> in a classic table's window.
-    /// Returns false, having reported nothing, when the dictionary runs past a window that can grow.
     /// </summary>
-    private bool TryReadTrailer(
-        ReadOnlyMemory<byte> window, long absolute, int position, bool canGrow, out PdfDictionary? trailer)
+    /// <remarks>
+    /// A trailer cut by the window's edge would lose its /Root or its /Prev. It is parsed again where it
+    /// starts, through a window of its own that stops at <see cref="MaxTrailerWindow"/> — not by growing the
+    /// table's, which a dictionary that never closes would grow to the size of the file, for every section
+    /// of a chain.
+    /// </remarks>
+    private PdfDictionary? ReadTrailer(ReadOnlyMemory<byte> window, long absolute, int position, bool canGrow)
     {
-        trailer = null;
         var mark = _pending.GetMark();
 
         try
@@ -418,19 +426,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             parser.Position = position;
             var parsed = parser.ParseObject();
 
-            if (parser.IsTruncated && canGrow)
+            if (!parser.IsTruncated || !canGrow)
             {
-                return false;
+                _pending.MoveTo(_diagnostics, mark);
+                return parsed.AsDictionary();
             }
-
-            _pending.MoveTo(_diagnostics, mark);
-            trailer = parsed.AsDictionary();
-            return true;
         }
         finally
         {
             _pending.RollBack(mark);
         }
+
+        return TryParseAt(absolute + position, DirectObject, MaxTrailerWindow, out var value) ? value.AsDictionary() : null;
     }
 
     private bool ReadSubsection(ref PdfLexer lexer, int first, int count)
@@ -477,9 +484,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     {
         previous = -1;
 
-        // Parsed like any other object, through a window that grows when the dictionary runs past it; the
-        // data is read from the file when it is decoded.
-        if (!TryParseObjectAt(AnyNumber, absolute, out var value) || value is not PdfStream stream)
+        // One window of 64 KB holds the data of all but the largest cross-reference streams, so the parser
+        // checks their /Length against the data rather than taking it on trust, as it must for data that
+        // lies past its window.
+        using var window = _source.GetWindow(absolute, XRefWindow);
+        var parser = new PdfObjectParser(window.Memory, absolute, this, _diagnostics, this);
+
+        if (!parser.TryReadIndirectObject(out _, out var value) || value is not PdfStream stream)
         {
             return false;
         }
@@ -674,9 +685,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     }
 
     /// <summary>
-    /// Parses the object at an exact offset, growing the window while the object runs past its end.
-    /// Returns false when nothing with the expected <paramref name="number"/> is there; <see cref="AnyNumber"/>
-    /// accepts whatever object starts at the offset.
+    /// Parses object <paramref name="number"/> at an exact offset, growing the window while the object runs
+    /// past its end. Returns false when nothing with that number is there.
+    /// </summary>
+    private bool TryParseObjectAt(int number, long offset, out PdfObject value) =>
+        TryParseAt(offset, number, MaxObjectWindow, out value);
+
+    /// <summary>
+    /// Parses what starts at an exact offset — object <paramref name="number"/>, or a direct object for
+    /// <see cref="DirectObject"/> —, growing the window while it runs past its end, up to
+    /// <paramref name="maxWindow"/>. Returns false when nothing with the expected number is there.
     /// </summary>
     /// <remarks>
     /// What the parser notices is held back until an attempt is kept. An attempt that ran out of window
@@ -685,7 +703,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// diagnostics — with the real ones reported once per attempt. What nested loads report, such as a
     /// relocated <c>/Length</c> object, goes straight to the document's diagnostics and stays there.
     /// </remarks>
-    private bool TryParseObjectAt(int number, long offset, out PdfObject value)
+    private bool TryParseAt(long offset, int number, int maxWindow, out PdfObject value)
     {
         value = PdfNull.Instance;
 
@@ -694,7 +712,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return false;
         }
 
-        var windowSize = InitialObjectWindow;
+        var windowSize = Math.Min(InitialObjectWindow, maxWindow);
         var mark = _pending.GetMark();
 
         try
@@ -703,16 +721,34 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             {
                 using var window = _source.GetWindow(offset, windowSize);
                 var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this);
+                PdfObject parsed;
 
-                if (!parser.TryReadIndirectObject(out var found, out var parsed) || (number != AnyNumber && found.Number != number))
+                if (number == DirectObject)
+                {
+                    parsed = parser.ParseObject();
+                }
+                else if (!parser.TryReadIndirectObject(out var found, out parsed))
+                {
+                    // An object header the window's edge cut is read again in a larger one; anything else
+                    // that is not an object header is not the object.
+                    if (!parser.IsTruncated || windowSize >= maxWindow || window.Length < windowSize)
+                    {
+                        return false;
+                    }
+
+                    _pending.RollBack(mark);
+                    windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
+                    continue;
+                }
+                else if (found.Number != number)
                 {
                     return false;
                 }
 
-                if (parser.IsTruncated && windowSize < MaxObjectWindow && window.Length == windowSize)
+                if (parser.IsTruncated && windowSize < maxWindow && window.Length == windowSize)
                 {
                     _pending.RollBack(mark);
-                    windowSize = (int)Math.Min((long)windowSize * 8, MaxObjectWindow);
+                    windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
                     continue;
                 }
 

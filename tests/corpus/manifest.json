@@ -4464,7 +4464,7 @@
         "textContains": [
           "WASHINGTON WEST QUADRANGLE"
         ],
-        "unsupported": "T28: object 155, a 9,600 by 11,410 RGB image, decodes to 313 MB, past the 256 MB bound every filter keeps against decompression bombs; the reader keeps the first 256 MB and reports a truncated Flate stream, which the file is not. Recorded in docs/status.md, for M13",
+        "unsupported": "T28: object 155, a 9,600 by 11,410 RGB image, decodes to 313 MB, past the 256 MB bound the Flate filter keeps against decompression bombs; the reader keeps the first 256 MB and reports a truncated Flate stream, which the file is not. Recorded in docs/status.md, for M13",
         "refereeCheckSucceeds": false
       }
     },
