@@ -66,13 +66,33 @@ public class CrossReferenceRuleTests
             .Should().Contain("does not give a first object number and a count of rows");
     }
 
-    [Fact]
-    public void A_cross_reference_stream_whose_widths_are_out_of_range_is_malformed()
+    [Theory]
+    [InlineData("/W [1 9 2]", "cannot be read: its /W gives a field a width outside 0 to 8 bytes.")]
+    [InlineData("/W [1 4]", "cannot be read: its /W does not give the widths of three fields.")]
+    [InlineData("/W [0 0 0]", "cannot be read: its /W gives rows of no bytes.")]
+    [InlineData("/W [1 4 2] /Index [0 -1]", "is malformed: its /Index gives a subsection a count of rows out of range.")]
+    public void A_cross_reference_stream_whose_widths_or_ranges_cannot_be_read_is_malformed(string layout, string fault)
     {
-        var file = Replace(XRefStreamFile(), "/W [1 4 2]", "/W [1 9 2]");
+        var file = Replace(XRefStreamFile(), "/W [1 4 2]", layout);
 
         Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message
-            .Should().EndWith("cannot be read: its /W gives a field a width outside 0 to 8 bytes.");
+            .Should().StartWith("The cross-reference stream at offset ").And.EndWith(fault);
+    }
+
+    [Theory]
+    [InlineData("/Extra", "a name")]
+    [InlineData("1.5", "a real number")]
+    [InlineData("(rows)", "a string")]
+    [InlineData("<41>", "a string")]
+    [InlineData("[", "an array delimiter")]
+    [InlineData(">>", "the end of a dictionary")]
+    [InlineData(")", "a byte that starts no token")]
+    public void A_table_holding_something_else_where_a_subsection_should_start_says_what(string text, string what)
+    {
+        var file = PdfTemplate.SoundWith("{row:3}\ntrailer", "{row:3}\n" + text + "\ntrailer");
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
+            $": it holds {what} at offset {PdfTemplate.OffsetOf(file, text + "\ntrailer")}, where a subsection or the trailer should start.");
     }
 
     [Fact]
@@ -113,6 +133,8 @@ public class CrossReferenceRuleTests
     [InlineData("99999", "The cross-reference section /Prev names at offset 99999 is not there, nor within 512 bytes of it: the offset lies outside the file.")]
     [InlineData("12 0 R", "The /Prev of the cross-reference section at offset {update} is the reference 12 0 R, not an offset.")]
     [InlineData("-1", "The /Prev of the cross-reference section at offset {update} is the integer -1, not an offset.")]
+    [InlineData("/Offset", "The /Prev of the cross-reference section at offset {update} is the name /Offset, not an offset.")]
+    [InlineData("1.5", "The /Prev of the cross-reference section at offset {update} is a value of type real, not an offset.")]
     public void A_section_prev_names_where_none_is_is_not_found(string prev, string message)
     {
         var file = PdfTemplate.Build(Updated.Replace("/Prev {xref:1}", "/Prev " + prev, StringComparison.Ordinal));
@@ -292,17 +314,47 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData("/Type /ObjStm", "/Type /XObject", "is a stream that is not of /Type /ObjStm")]
-    [InlineData("/N 2", "/N 9", "its /N declares 9 objects, more than its /First of")]
-    public void An_object_stream_that_cannot_serve_its_objects_is_reported_once(string text, string replacement, string fault)
+    [InlineData("/Type /ObjStm", "/Type/XObject", "Object 4, where the index places 2 objects, is a stream that is not of /Type /ObjStm.")]
+    [InlineData("/N 2", "/N 9", "Object stream 4, where the index places 2 objects, cannot be read: its /N declares 9 objects, more than its /First of")]
+    [InlineData("/N 2", "/X 2", "Object stream 4, where the index places 2 objects, cannot be read: its /N or its /First is missing or negative.")]
+    [InlineData("/Type /ObjStm /N 2 /First ", "/Type/ObjStm/N 2/First 999", "Object stream 4, where the index places 2 objects, cannot be read: it decodes to")]
+    public void An_object_stream_that_cannot_serve_its_objects_is_reported_once(string text, string replacement, string message)
     {
+        replacement.Length.Should().Be(text.Length, "every offset after the object stream stays right");
         var file = Replace(XRefStreamFile(), text, replacement);
 
         var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
 
         finding.Severity.Should().Be(PdfValidationSeverity.Error);
         finding.Location.Object.Should().Be(new PdfObjectId(4));
-        finding.Message.Should().StartWith($"Object 4, where the index places 2 objects, {fault}");
+        finding.Message.Should().StartWith(message);
+    }
+
+    [Fact]
+    public void Objects_placed_in_an_object_stream_the_index_does_not_hold_are_reported_with_it()
+    {
+        // The rows of objects 2 and 3 name object stream 7 rather than 4.
+        var file = Replace(XRefStreamFile(), "\u0002\0\0\0\u0004", "\u0002\0\0\0\u0007");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(7));
+        finding.Message.Should().Be("The index places 2 objects in object stream 7, which it does not hold as an object.");
+    }
+
+    [Fact]
+    public void An_object_placed_in_an_object_stream_itself_packed_is_reported_with_that_stream()
+    {
+        // The row of object 2 names object 3, which the index places in object stream 4.
+        var content = Encoding.Latin1.GetString(XRefStreamFile());
+        var row = content.IndexOf("\u0002\0\0\0\u0004", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(content[..(row + 4)] + "\u0003" + content[(row + 5)..]);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(3));
+        finding.Message.Should().Be(
+            "The index places 1 object in object stream 3, which it places in object stream 4 in turn: an object stream cannot be stored in another.");
     }
 
     [Fact]

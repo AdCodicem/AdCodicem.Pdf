@@ -35,9 +35,6 @@ internal sealed class ValidationContext
     /// <summary>Gets the bytes of the file, for the rules that look at the file itself rather than its objects.</summary>
     public PdfFileSource Source => Document.Source;
 
-    /// <summary>Gets the reader behind the document, for the rules that judge the file's own index.</summary>
-    public PdfFileReader Reader => Document.Reader;
-
     /// <summary>Gets what the file's own structure looked like as the document opened.</summary>
     public FileStructure Structure => Document.Reader.Structure;
 
