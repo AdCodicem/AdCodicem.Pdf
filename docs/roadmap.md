@@ -42,7 +42,7 @@ pull requests use is at the end of this file. What the library deliberately does
 | M21 | Converting received documents to PDF/A | L | M5, M11, M19, M20 | to do |
 | M22 | Imaging and OCR | XL | M8, M15 | to do |
 | M23 | Optimisation, performance, hardening | L | M12, M15, M22 | to do |
-| M24 | Comparison and templates | M | M14, M15, M16, M19 | to do |
+| M24 | Comparison and templates | M | M14, M15, M16, M19, M22 | to do |
 | M25 | Rasterisation | L | M15, M22 | to do |
 | M26 | Signing | L | M4, M16 | to do |
 | M27 | Long-term signatures and signature validation | XL | M26 | to do |
