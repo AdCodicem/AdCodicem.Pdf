@@ -164,9 +164,20 @@ public sealed class TestPdfBuilder
 
         writer.WriteLine("trailer");
         var previous = pointPreviousAtSelf ? xrefOffset : previousStartXRef;
-        writer.WriteLine($"<< /Size 64 /Root {rootNumber} 0 R /Prev {previous} >>");
+        var size = Math.Max(FindSize(original), updates.Max(update => update.Number) + 1);
+        writer.WriteLine($"<< /Size {size} /Root {rootNumber} 0 R /Prev {previous} >>");
         writer.WriteStartXRef(xrefOffset);
         return writer.ToArray();
+    }
+
+    /// <summary>The <c>/Size</c> the newest trailer gives, which an update counts on from.</summary>
+    private static int FindSize(byte[] data)
+    {
+        var text = Encoding.Latin1.GetString(data);
+        var index = text.LastIndexOf("/Size ", StringComparison.Ordinal);
+        var rest = text[(index + "/Size ".Length)..];
+        var end = rest.IndexOfAny([' ', '/', '>', '\r', '\n']);
+        return int.Parse(end < 0 ? rest : rest[..end], CultureInfo.InvariantCulture);
     }
 
     private static long FindStartXRef(byte[] data)
