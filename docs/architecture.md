@@ -22,6 +22,7 @@ ordinary composition of the two paths.
 |---|---|---|---|
 | `AdCodicem.Pdf` | Object model, reader, writer, revisions, pages, fonts, logical structure, security (password handler, AES-GCM), CCITT decoding, OCR text layer, redaction, diagnostics, validation and its structural profile | **none** | M1 onwards |
 | `AdCodicem.Pdf.Tool` | The command-line tool: a `dotnet tool` and a Native AOT binary | `AdCodicem.Pdf` and the satellites it drives | from M6 |
+| `AdCodicem.Pdf.Fonts` | Data only: the OFL set — Liberation Sans, Serif and Mono, four styles each — as WOFF2, referenced by `AdCodicem.Pdf.Html`; the core carries Liberation Sans regular itself, so that it can stamp a PDF/A document alone (T04; sizes and the OFL checks confirmed by M8's ADR) | `AdCodicem.Pdf` | M8 |
 | `AdCodicem.Pdf.Barcodes` | QR, Data Matrix, Code 128, GS1-128, PDF417, EAN and UPC as vectors; EPC and Swiss QR-bill payloads | `AdCodicem.Pdf` | M10 |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | AngleSharp, HarfBuzzSharp, SkiaSharp | M12 |
 | `AdCodicem.Pdf.AspNetCore` | DI registration, `IResult`, MVC integration | `AdCodicem.Pdf.Html` | M12 |
@@ -57,7 +58,8 @@ Fonts/        TrueType and OpenType parsing, metrics, subsetting, Type0/CIDFontT
               the ToUnicode CMap, the font registry and family resolution.
 Content/      Content stream writing; the content stream interpreter used by extraction (M15).
 Structure/    The logical structure tree (tagged PDF), marked content, the parent tree.
-Security/     RC4 and AES decryption and encryption, permissions.
+Security/     RC4 and AES decryption and encryption, permissions; MD5, RC4 and AES managed wherever
+              the platform lacks them, browser WebAssembly first (ADR 41).
 Diagnostics/  PdfDiagnostics: anomalies, repairs, guards reached, conformance losses; PdfException
               and its typed subclasses.
 Validation/   PdfValidator, the rule engine and the structural profile: findings with stable rule

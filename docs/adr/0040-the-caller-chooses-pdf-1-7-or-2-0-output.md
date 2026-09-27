@@ -7,6 +7,10 @@ Date: 2026-09-26
 Accepted on 2026-09-26, by the maintainer, before the writer (M3) exists. It sets the version policy M3
 implements, and the PDF/UA part M13 targets.
 
+Amended on 2026-09-27, by the maintainer, while M3 was specified: with no version chosen, a document read from a
+file keeps its declared version and a new document is written as 1.7 (the Decision's second bullet), where M3
+had planned 1.7 for every full rewrite.
+
 ## Context
 
 Two families of standards now pull the writer apart:
@@ -29,6 +33,9 @@ We will let the caller choose the output version, and target PDF/UA-1 first.
 - **The writer** writes PDF 1.7 or PDF 2.0, as the caller's options say. It computes the minimum version the
   document's features need, raises the output to it when a merge or a feature requires it, and reports the
   raise as a diagnostic — never silently. `/Extensions` entries of every input are unioned and written.
+- **With no version chosen**, a document read from a file keeps its declared version — the later of its header
+  and its catalogue's `/Version` —, raised only to the minimum its features need; a new document is written as
+  1.7. A document is never written below the version it declared.
 - **In 2.0 output**, XMP is the authoritative metadata, the deprecated information-dictionary entries are not
   written, and text strings may be UTF-8. In 1.7 output both metadata forms are written and kept in step.
 - **M13 targets PDF/UA-1**, which works with PDF/A-3 and Factur-X; **PDF/UA-2, Well-Tagged PDF and PDF/A-4
@@ -40,6 +47,10 @@ We will let the caller choose the output version, and target PDF/UA-1 first.
   spares a retrofit of the writer later.
 - An accessible Factur-X invoice (PDF/A-3a and PDF/UA-1) is possible from M14.
 - Every milestone that adds a feature states the minimum version it needs, so the computation stays whole.
+- A document claiming PDF/A-1, 2 or 3 — parts built on PDF 1.4 and 1.7, whose files declare `%PDF-1.n` —
+  cannot keep its claim in 2.0 output: when the caller chooses 2.0 the writer obeys and reports the claim lost
+  (`write.conformance-lost`, invariant 7). That is one more reason a document read from a file keeps its own
+  version unless the caller chooses another.
 - **Rejected** — PDF 1.7 only (PDF/UA-2, WTPDF and PDF/A-4 deferred indefinitely, while the European
   Accessibility Act raises demand for them); PDF 2.0 and PDF/UA-2 first (Factur-X would still need a 1.7
   path, so both would be built at once).

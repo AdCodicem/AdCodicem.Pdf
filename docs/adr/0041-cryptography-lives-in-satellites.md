@@ -8,6 +8,10 @@ Accepted on 2026-09-26, by the maintainer. It applies [9](0009-a-dependency-free
 to signatures and certificate encryption, and details [18](0018-signing-space-reserved.md). M16, M26 and
 M27 implement it.
 
+Amended on 2026-09-27, by the maintainer, while M16 was specified: the core carries managed MD5, RC4 and AES
+for the platforms that lack them, browser WebAssembly first (*The core carries managed MD5, RC4 and AES*,
+below).
+
 ## Context
 
 Three features need the Cryptographic Message Syntax:
@@ -49,6 +53,12 @@ We will keep CMS out of the core, and give the core everything the shared framew
 - No security-sensitive ASN.1 parsing of hostile input is written here: the parsing is the framework's.
 - `docs/architecture.md`'s package table says that the signing satellite depends on
   `System.Security.Cryptography.Pkcs`.
+- **The core carries managed MD5, RC4 and AES** in CBC and ECB modes — RC4 because the base class library has
+  none, MD5 and AES because browser WebAssembly lacks them —, so that every revision of the standard security
+  handler but R7 opens in the browser; R7's AES-GCM comes from the platform only, and is refused, typed, where
+  the platform has none. They are tested against the vectors of RFC 1321, RFC 6229 and NIST SP 800-38A and
+  fuzzed, and they are not constant-time, which the user documentation says. The base class library remains
+  the source wherever it has the primitive.
 - **Rejected** — a hand-written minimal CMS on `System.Formats.Asn1` in the core (security-sensitive parsing
   of hostile input to maintain ourselves); relaxing invariant 1 for Microsoft's out-of-band packages (breaks
   a non-negotiable invariant and invites more exceptions).

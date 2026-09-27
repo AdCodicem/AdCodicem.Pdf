@@ -29,8 +29,9 @@ pinned by the caller.
 
 We will split the codecs by size and risk, and make every lossy step the caller's explicit choice.
 
-- **CCITT G3 and G4 decoding in the core** — small, needed by M7's image pages and by fax-era scans, and
-  bounded like every filter.
+- **CCITT G3 and G4 decoding in the core** (M22) — small, needed wherever a fax-era scan's pixels matter: image
+  export (M15), blank pages (M22), pixel redaction (M19), rasterisation (M25); and bounded like every filter.
+  M7's image pages need none: they pass CCITT strips through undecoded.
 - **The `AdCodicem.Pdf.Imaging` satellite** — managed, dependency-free, AOT-compatible — holds the JBIG2 (with
   global segments), JPEG 2000 and JPEG (CMYK and YCCK included) decoders, and the lossless CCITT G4 and JBIG2
   generic encoders. Every decoder is bounded under ADR 34 and fuzzed from the day it is written.

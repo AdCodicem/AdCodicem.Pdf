@@ -16,6 +16,9 @@ Implemented by `PdfReaderLimits`, `PdfReaderOptions.Limits` and `PdfReaderOption
 `PdfLimitExceededException`, the five `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
 `tests/corpus/manifest.json`, and `ReaderLimitsTests`.
 
+Amended on 2026-09-27, by the maintainer, while M8 was specified: one record bounds every hostile read, the
+font programs a caller registers included (*One record for every hostile read*, below); M8 implements it.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -77,6 +80,12 @@ guard: active by default, reported when it is reached, and lifted by an option.
 - **A stream decodes under its document's settings.** A stream read from a document decodes under that
   document's limits and `ThrowOnLimit`, however long after opening; a stream built in memory decodes under
   the defaults.
+- **One record for every hostile read.** A bound on bytes the core parses on a caller's behalf joins
+  `PdfReaderLimits` under the same rules, whatever the bytes arrive in: M8 adds `MaxFontLength` (64 MB,
+  `limit.font-length`) and `MaxCharstringOperations` (65,536, `limit.charstring-operations`), which govern a
+  font program read from a PDF under its document's limits and one a caller registers under the limits the
+  registry is given. A record of its own (`PdfFontLimits`) is rejected: a font inside a PDF would answer to
+  two, and a caller would raise two records to read one file.
 - **Bounds only an invalid or hostile file reaches stay internal constants**, each with the reason it cannot
   refuse a valid document. A new bound is classified when it is added: if a valid file can reach it, it
   becomes an option, a code and a test.

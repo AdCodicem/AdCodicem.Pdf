@@ -98,7 +98,7 @@ guarantee at all**: its API may change or disappear in the next preview.
 | PDF/A-3 and Factur-X / ZUGFeRD: profile-aware embedding, EN 16931 and French rules, a typed invoice model | 📅 Planned — M14 |
 | PDF/A-2 generation; PDF/A-1 to 4 and PDF/UA-1 validation profiles | 📅 Planned — M20 |
 | Conversion of received documents to PDF/A, with a report of what could not be converted | 📅 Planned — M21 |
-| PDF/UA-2, Well-Tagged PDF and PDF/A-4 | 📅 Planned — M28 |
+| PDF/UA-2, Well-Tagged PDF and PDF/A-4: generation and validation profiles | 📅 Planned — M28 |
 
 ### Extraction and analysis
 
