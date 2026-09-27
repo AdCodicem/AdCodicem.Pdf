@@ -48,6 +48,11 @@ jobs:
       - name: Test the remote corpus fetcher
         run: python3 -m unittest discover -s tests/corpus/build -p "test_*.py"
 
+      # sync_tracking.py mirrors the roadmap onto GitHub only from main; what it reads and plans is checked
+      # here, so that a change to the roadmap's format fails the pull request rather than mirroring nothing.
+      - name: Test the roadmap's mirror
+        run: python3 -m unittest discover -s .github/scripts -p "test_*.py"
+
       # A public repository uploads without a token — run 84 reported `Token length: 0` and the report
       # still arrived. The secret is read if it exists, which is what a private repository, or Codecov
       # refusing tokenless uploads, would need.

@@ -1,0 +1,66 @@
+name: Tracking
+
+# docs/roadmap.md is the reference for the milestones and their state; GitHub mirrors it, so that issues can
+# be filed under a milestone and its progress read there. Every change to the roadmap, a specification or
+# the label list on main brings the milestones and labels back in line (sync_tracking.py says how). The
+# discussions for the roadmap's open questions are opened only on request, from the manual dispatch.
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/roadmap.md
+      - docs/milestones/**
+      - .github/labels.json
+      - .github/scripts/sync_tracking.py
+      - .github/workflows/tracking.yml
+  workflow_dispatch:
+    inputs:
+      discussions:
+        description: Also open a discussion in Ideas for each open question of the roadmap that has none
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tracking
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Milestones and labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Mirror the roadmap's milestones and the labels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/sync_tracking.py labels milestones
+
+  discussions:
+    name: Discussions for the open questions
+    if: github.event_name == 'workflow_dispatch' && inputs.discussions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      discussions: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Open a discussion for each open question that has none
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/sync_tracking.py discussions
