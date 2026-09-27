@@ -21,7 +21,7 @@ var report = validator.Validate(document);
 
 if (report.HasErrors)
 {
-    // Readers will disagree about this document: refuse it, or send it to repair.
+    // The reader cannot vouch that it reads this document as written: refuse it, or send it to repair.
 }
 
 foreach (var finding in report.Findings)
@@ -34,8 +34,10 @@ foreach (var finding in report.Findings)
 :::info Being built
 
 Validation arrives rule by rule, in the order the [M02 milestone](/project/milestones/M02) gives. The
-structural profile holds **one rule** so far; the [rules table](/project/validation-rules) lists every rule
-that exists. Like everything in a preview, the API may still change.
+structural profile checks the file's **structure and cross-references** so far — its header, `startxref`,
+its trailer, each cross-reference section and each entry of its index —; the object graph, the page tree,
+streams, fonts and the rest follow. The [rules table](/project/validation-rules) lists every rule that
+exists. Like everything in a preview, the API may still change.
 
 :::
 
@@ -51,8 +53,8 @@ A finding is what one rule found:
 | `Message` | What is wrong, for a person to read |
 | `Remedy` | What would put it right, as a hint, or null — so that a report reads as a plan |
 
-Rule identifiers are `family.name`, both in lowercase kebab case: `file.eof-missing`, and later
-`xref.broken-offset` or `page-tree.count-mismatch`. They are public API: renaming one is a breaking change,
+Rule identifiers are `family.name`, both in lowercase kebab case: `file.eof-missing`,
+`xref.entry-shifted`, and later `page-tree.count-mismatch`. They are public API: renaming one is a breaking change,
 so you can filter on them safely. The [rules table](/project/validation-rules) gives each one's severity and
 meaning.
 
@@ -60,12 +62,16 @@ meaning.
 
 | Severity | Means | What to do |
 |---|---|---|
-| `Error` | The document is broken: readers will disagree about what it contains | Refuse it, or repair it |
-| `Warning` | It works, but it is wrong: readers accept it, and a stricter one may not | Accept it, and keep the report |
-| `Information` | Worth knowing; nothing is wrong | Nothing |
+| `Error` | The document is broken: the reader cannot vouch that it reads what was written — it rebuilt the index by scanning the file, lost part of it, or chose what the file does not designate | Refuse it, or repair it |
+| `Warning` | It breaks the specification, and is read all the same as it was evidently meant: the reader reads it, and a stricter reader may not | Accept it, and keep the report |
+| `Information` | Worth knowing; nothing is wrong, or something could not be checked | Nothing |
 
-The validator errs toward `Warning`: a validator that calls sound files broken teaches its users to ignore
-it. Output from Chromium, LibreOffice, Word and the other producers in the test corpus earns no error.
+What separates a warning from an error is whether the file reads as it was written, which the validator
+checks against what the reader did rather than guesses about other readers. It errs toward `Warning`: a
+validator that calls sound files broken teaches its users to ignore it. Output from Chromium, LibreOffice,
+Word and the other producers in the test corpus earns no error; some of it earns a warning — Microsoft Print
+to PDF names the line feed before each object as its offset, and Word's hybrid files miscount a `/Size` —,
+which every reader reads past.
 
 ## Findings are not diagnostics
 
@@ -105,6 +111,11 @@ profiles will come with the `AdCodicem.Pdf.Conformance` package. You cannot yet 
 The validator reads through the document you give it, lazily, like any other caller: it reads only what
 its rules inspect, what it resolves joins the document's cache, and anything the reader notices on the way
 joins `document.Diagnostics`. The document stays open, and belongs to one thread at a time.
+
+The cross-reference rules read a few dozen bytes where each entry of the file's index places its object —
+its header, never its body — and each object stream once, without keeping it. They judge the index as the
+file wrote it, not as the reader corrected it: reading objects between two validations does not change the
+report.
 
 The document's [reader limits](reader-limits.md) apply to validation too. An object the reader cut at a
 limit is not a fault of the file, and a rule meeting one reports at most, as information, that it could not

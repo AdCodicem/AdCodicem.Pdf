@@ -63,8 +63,9 @@ Security/     RC4 and AES decryption and encryption, permissions; MD5, RC4 and A
 Diagnostics/  PdfDiagnostics: anomalies, repairs, guards reached, conformance losses; PdfException
               and its typed subclasses.
 Validation/   PdfValidator, the rule engine and the structural profile: findings with stable rule
-              identifiers, a severity, a location and a remedy hint (ADR 36). The PDF/A and PDF/UA
-              profiles are the Conformance satellite's.
+              identifiers, a severity, a location and a remedy hint (ADR 36, severities ADR 45). The
+              structural rules read the reader's internals: what it recorded of the file's structure,
+              and the file's own index. The PDF/A and PDF/UA profiles are the Conformance satellite's.
 ```
 
 Diagnostics and findings answer different questions. A diagnostic is the reader's account of what it did
@@ -75,10 +76,14 @@ separate types, separate severity scales, and vocabularies that never share a co
 
 1. **Indexing** — read the tail of the file (`startxref`), follow the `/Prev` chain, and build a map from
    object number to either a byte offset or a position inside an object stream. Only that map lives in
-   memory: a few dozen bytes per object, whatever the objects weigh.
+   memory: a few dozen bytes per object, whatever the objects weigh. Indexing also records what the file's
+   own structure looked like — its header, what `startxref` gave, each section and its trailer as written —,
+   a record per section and nothing per object, for the validation rules to judge the file as written.
 2. **Repair** — if `startxref` is wrong, the table missing, or an offset does not point at the object it
    claims, fall back to scanning the whole file for `N G obj` headers, keeping the last definition of each
-   number. Every repair is recorded in the diagnostics.
+   number. A trailer whose `/Root` leads to no catalog does not discard a sound index: the catalog is looked
+   for among the indexed objects first. Every repair is recorded in the diagnostics, and the index the chain
+   gave is copied before a relocation or a rebuild changes it, so that validation still sees the file's own.
 3. **Lazy resolution** — `PdfReference.Resolve()` reads and parses the object on demand. A bounded cache
    avoids reparsing hot objects (the page tree, shared resources) without ever retaining the whole document.
 4. **Streams** — stream data is neither read nor decoded until the caller asks, and then decodes under the
