@@ -368,6 +368,24 @@ public class FilterDamageTests
         input.CanWrite.Should().BeFalse();
     }
 
+    [Fact]
+    public void The_flate_input_only_reads_forward()
+    {
+        // The inflater reads its input once, from the start: the stream neither seeks, nor says its length or
+        // position, nor takes writes, and flushing it does nothing.
+        using var input = new FlateInput("abc"u8.ToArray());
+
+        input.CanRead.Should().BeTrue();
+        FluentActions.Invoking(() => input.Length).Should().Throw<NotSupportedException>();
+        FluentActions.Invoking(() => input.Position).Should().Throw<NotSupportedException>();
+        FluentActions.Invoking(() => input.Position = 1).Should().Throw<NotSupportedException>();
+        FluentActions.Invoking(() => input.Seek(0, SeekOrigin.Begin)).Should().Throw<NotSupportedException>();
+        FluentActions.Invoking(() => input.SetLength(1)).Should().Throw<NotSupportedException>();
+        FluentActions.Invoking(() => input.Write([1], 0, 1)).Should().Throw<NotSupportedException>();
+        input.Flush();
+        input.ReadByte().Should().Be('a');
+    }
+
     /// <summary>Codes after the table was cleared and 'A' and 'B' read: 258 is "AB", and 259 the next to define.</summary>
     [Theory]
     [InlineData(258, "ABABC", -1)]
