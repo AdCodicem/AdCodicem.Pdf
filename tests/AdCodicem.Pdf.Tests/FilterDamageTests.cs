@@ -565,6 +565,45 @@ public class FilterDamageTests
         whole.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.StreamLengthInvalid);
     }
 
+    [Theory]
+    [InlineData(-2)]
+    [InlineData(100)]
+    public void Says_nothing_of_a_guard_s_cut_that_falls_in_the_checksum_or_after_the_data(int bytesPastTheBody)
+    {
+        // The largest window MaxObjectLength allows ends 2 bytes into the checksum, or in the white space after
+        // the whole zlib stream: a checksum the reader cut is no repair of the file's, and data that ended
+        // before the cut is whole. Only the guard is reported.
+        var compressed = Compress(ContentStream(200), CompressionLevel.Optimal);
+        var hex = Convert.ToHexString(compressed);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, $"<< /Filter [/ASCIIHexDecode /FlateDecode] /Length 10 >>\nstream\n{hex}{new string(' ', 400)}>\nendstream")
+            .BuildClassic(rootNumber: 1);
+        var header = file.AsSpan().IndexOf("3 0 obj"u8);
+        var data = file.AsSpan().IndexOf(Encoding.ASCII.GetBytes(hex));
+        var bodyEnd = data + (2 * (compressed.Length - ChecksumLength));
+        var cut = bytesPastTheBody < 0 ? bodyEnd + (2 * -bytesPastTheBody) : data + hex.Length + bytesPastTheBody;
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = cut - header } };
+
+        using var document = PdfDocument.Open(file, options);
+        var decoded = document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        decoded.Length.Should().Be(ContentStream(200).Length);
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
+    [InlineData(typeof(InvalidDataException), true)]
+    [InlineData(typeof(EndOfStreamException), true)]
+    [InlineData(typeof(InvalidOperationException), false)]
+    public void Takes_only_the_inflater_s_complaints_about_its_data_as_faults(Type exception, bool fault)
+    {
+        // zlib raises an IOException for what it cannot go on with, such as a preset dictionary; anything else
+        // is not the data's doing, and is not caught.
+        FlateFilter.IsInflaterFault((Exception)Activator.CreateInstance(exception)!).Should().Be(fault);
+    }
+
     private static string LzwUndefined(int code) =>
         $"An LZW stream uses code {code}, which it has not defined; what decoded before it was kept.";
 
