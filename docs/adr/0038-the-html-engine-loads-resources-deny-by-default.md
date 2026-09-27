@@ -6,7 +6,10 @@ Date: 2026-09-26
 
 Accepted on 2026-09-26, by the maintainer, before any of the HTML engine is written. It generalises
 [11](0011-fonts-an-explicit-registry-an-embedded-ofl-set-optional-web.md), whose remote web fonts are off by
-default, to every resource an HTML document can name. Implemented by M12.5; M12.6 and M18 use it.
+default, to every resource an HTML document can name. Begun by M12.1 — the resolver seam and the policy for
+`data:`, declared directories, embedded resources and confined `file:` paths, which `@import` and
+`<link rel=stylesheet>` need before anything else — and completed by M12.5 with the network; M12.6 and M18 use
+it.
 
 ## Context
 

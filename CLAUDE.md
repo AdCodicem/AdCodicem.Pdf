@@ -71,7 +71,7 @@ third-party PDFs, table of contents, bookmarks, continuous pagination).
    can continue. Exceptions are for what makes the operation impossible, and for a guard reached when the
    caller asked for one (`PdfReaderOptions.ThrowOnLimit`).
 6. **Determinism**: same inputs, same bytes out. The only permitted sources of variation are supplied
-   explicitly by the caller (creation date, document identifier).
+   explicitly by the caller (creation date, document identifier, the entropy source of encryption).
 7. **Conformance**: PDF/A and the tagged structure are preserved, or their loss is reported explicitly.
    Never a silent break.
 8. **Public type safety**: the public API is immutable by default, with no mutable static state.
@@ -105,7 +105,9 @@ cd docs/website && npm ci && npm run build                          # the docume
 ```
 
 Corpus documents are produced by real generators available in the container — Chromium (Skia backend),
-LibreOffice, and Python producers from pypi — then committed, so tests never depend on the network.
+LibreOffice, Python producers from pypi, and the other tools `docs/corpus.md` lists (pdftk-java for form fills
+and exchange files, our own engine for its committed renderings) — then committed, so tests never depend on
+the network.
 The one exception is the remote corpus (ADR 32): documents we may use but not redistribute, or that weigh
 over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetched by
 `tests/corpus/build/fetch_remote.py`, never committed, and tested by a separate nightly job. See
@@ -147,7 +149,10 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
 
 - PDF is a format of **absolute offsets**: any write that shifts bytes invalidates the cross-reference
   table. Only `PdfWriter` knows positions; no layer above it computes an offset.
-- PDF real numbers **admit no exponent notation**: format with an invariant `"0.####"`.
+- PDF real numbers **admit no exponent notation**. A value the library computes is formatted with an invariant
+  `"0.####"`; a value read from a file is written back as the shortest decimal that reads back to the same
+  `double`, expanded and with a decimal point, so a rewrite never rounds a `/Matrix` nor turns `4.0` into an
+  integer.
 - A non-ASCII PDF text string must be written as **UTF-16BE with a byte order mark**, or accented text
   breaks in every reader.
 - A stream `/Length` may be an **indirect reference**; that is what makes streaming output possible.

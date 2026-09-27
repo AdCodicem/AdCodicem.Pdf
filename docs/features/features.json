@@ -58,7 +58,7 @@
         { "id": "facturx", "name": "PDF/A-3 and Factur-X / ZUGFeRD: profile-aware embedding, EN 16931 and French rules, a typed invoice model", "milestones": ["M14"], "status": "planned", "headline": true },
         { "id": "pdfa-profiles", "name": "PDF/A-2 generation; PDF/A-1 to 4 and PDF/UA-1 validation profiles", "milestones": ["M20"], "status": "planned" },
         { "id": "pdfa-conversion", "name": "Conversion of received documents to PDF/A, with a report of what could not be converted", "milestones": ["M21"], "status": "planned" },
-        { "id": "pdf2-conformance", "name": "PDF/UA-2, Well-Tagged PDF and PDF/A-4", "milestones": ["M28"], "status": "planned" }
+        { "id": "pdf2-conformance", "name": "PDF/UA-2, Well-Tagged PDF and PDF/A-4: generation and validation profiles", "milestones": ["M28"], "status": "planned" }
       ]
     },
     {

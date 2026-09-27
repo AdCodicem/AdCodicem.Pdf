@@ -66,6 +66,7 @@ satellite brings the PDF/A and PDF/UA profiles.
 |---|---|---|
 | `AdCodicem.Pdf` | Object model, lazy reader, validation, streaming writer, revisions, pages, fonts, logical structure, security, extraction, redaction | Published — the object model, the reader and the first validation rules so far |
 | `AdCodicem.Pdf.Tool` | The command-line tool | Planned, M6 |
+| `AdCodicem.Pdf.Fonts` | The OFL font set — Liberation Sans, Serif and Mono — as WOFF2 | Planned, M8 |
 | `AdCodicem.Pdf.Barcodes` | Vector barcodes and payment codes | Planned, M10 |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | Planned, M12 |
 | `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration | Planned, M12 |

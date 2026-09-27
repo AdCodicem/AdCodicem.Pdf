@@ -8,15 +8,15 @@ Accepted
 
 ## Context
 
-Positioned glyphs, grouping into lines and
-paragraphs, table detection, and, when the document is tagged, following its structure tree rather than
-heuristics.
+A caller who reads a document wants its text as a reader meets it — words, lines and paragraphs in reading
+order, tables as tables —, while a content stream holds glyphs painted in whatever order its producer chose.
+A tagged document records that order in its structure tree; an untagged one leaves it to be inferred from
+positions, which no heuristic gets right every time.
 
 ## Decision
 
-We will positioned glyphs, grouping into lines and
-paragraphs, table detection, and, when the document is tagged, following its structure tree rather than
-heuristics.
+We will extract text fully: positioned glyphs, grouped into lines and paragraphs, with table detection; and,
+when the document is tagged, we will follow its structure tree rather than heuristics.
 
 ## Consequences
 
