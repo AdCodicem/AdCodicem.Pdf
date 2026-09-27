@@ -50,7 +50,7 @@ internal sealed class TrailerMalformedRule : IValidationRule
 
             context.Report(
                 this,
-                PdfValidationLocation.AtPosition(section.TrailerPosition >= 0 ? section.TrailerPosition : section.Offset),
+                PdfValidationLocation.AtPosition(section.TrailerLocation),
                 message,
                 "Rewrite the trailer as a well-formed dictionary.");
         }
