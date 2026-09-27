@@ -1,0 +1,392 @@
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
+
+namespace AdCodicem.Pdf.Tests;
+
+/// <summary>
+/// The <c>xref</c> family of M02's second slice: the sections of the chain, and each entry of the file's own index
+/// — each rule on a file that breaks it, a sound file, and a file that is unusual and legal.
+/// </summary>
+public class CrossReferenceRuleTests
+{
+    /// <summary>The sound document, saved once more: an update adding object 4, its /Prev naming the first table.</summary>
+    private const string Updated = PdfTemplate.Sound + """
+        4 0 obj
+        (an update)
+        endobj
+        xref
+        4 1
+        {row:4}
+        trailer
+        << /Size 5 /Root 1 0 R /Prev {xref:1} >>
+        startxref
+        {xref:2}
+        %%EOF
+
+        """;
+
+    /// <summary>The sound document with a long string between its page tree and its page, so that objects lie far apart.</summary>
+    private static readonly string Spread = PdfTemplate.Sound
+        .Replace("3 0 obj\n", "4 0 obj\n(" + new string('x', 1200) + ")\nendobj\n3 0 obj\n", StringComparison.Ordinal)
+        .Replace("0 4\n", "0 5\n", StringComparison.Ordinal)
+        .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
+        .Replace("/Size 4", "/Size 5", StringComparison.Ordinal);
+
+    [Fact]
+    public void A_sound_update_and_a_sound_spread_file_have_no_finding()
+    {
+        Validate(PdfTemplate.Build(Updated)).Findings.Should().BeEmpty();
+        Validate(PdfTemplate.Build(Spread)).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_row_that_is_not_an_offset_a_generation_and_n_or_f_makes_the_table_malformed()
+    {
+        var file = PdfTemplate.SoundWith("{row:2}", "0000000abc 00000 n ");
+
+        var report = Validate(file);
+
+        var finding = Single(report, PdfValidationRuleIds.XRefSectionMalformed);
+        finding.Severity.Should().Be(PdfValidationSeverity.Error, "the reader rebuilds the index");
+        var table = PdfTemplate.OffsetOf(file, "xref\n");
+        finding.Location.Position.Should().Be(table);
+        finding.Message.Should().Be(
+            $"The cross-reference table at offset {table} cannot be read: the row for object 2, at offset {PdfTemplate.OffsetOf(file, "0000000abc")}, is not an offset, a generation and n or f.");
+        report.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeFalse("no entry of an index the chain never gave is probed");
+    }
+
+    [Fact]
+    public void A_subsection_header_without_its_count_makes_the_table_malformed()
+    {
+        var file = PdfTemplate.SoundWith("xref\n0 4\n", "xref\n0\n");
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message
+            .Should().Contain("does not give a first object number and a count of rows");
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_whose_widths_are_out_of_range_is_malformed()
+    {
+        var file = Replace(XRefStreamFile(), "/W [1 4 2]", "/W [1 9 2]");
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message
+            .Should().EndWith("cannot be read: its /W gives a field a width outside 0 to 8 bytes.");
+    }
+
+    [Fact]
+    public void A_table_a_limit_cut_is_not_malformed_and_is_said_to_be_checked_in_part()
+    {
+        // Three hundred rows, 6 KB of table, which a bound of 2 KB cuts before the trailer (ADR 34).
+        var builder = new TestPdfBuilder().WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>").WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        for (var number = 3; number < 300; number++)
+        {
+            builder.WithObject(number, "null");
+        }
+
+        var file = builder.BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 2048 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefCheckedInPart);
+        finding.Severity.Should().Be(PdfValidationSeverity.Information);
+        finding.Message.Should().Be(
+            $"One of the reader's limits stopped it reading the cross-reference section at offset {PdfTemplate.OffsetOf(file, "xref\n")} whole: what lies past the limit was not checked.");
+    }
+
+    [Fact]
+    public void A_chain_a_limit_cut_says_the_older_sections_were_not_checked()
+    {
+        var file = PdfTemplate.Build(Updated);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } });
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefCheckedInPart);
+
+        finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "xref\n"));
+        finding.Message.Should().Contain("past the sections PdfReaderLimits.MaxXRefSectionCount lets the reader read");
+    }
+
+    [Theory]
+    [InlineData("99999", "The cross-reference section /Prev names at offset 99999 is not there, nor within 512 bytes of it: the offset lies outside the file.")]
+    [InlineData("12 0 R", "The /Prev of the cross-reference section at offset {update} is the reference 12 0 R, not an offset.")]
+    [InlineData("-1", "The /Prev of the cross-reference section at offset {update} is the integer -1, not an offset.")]
+    public void A_section_prev_names_where_none_is_is_not_found(string prev, string message)
+    {
+        var file = PdfTemplate.Build(Updated.Replace("/Prev {xref:1}", "/Prev " + prev, StringComparison.Ordinal));
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefSectionNotFound);
+
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Message.Should().Be(message.Replace("{update}", (PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(3, "3 bytes before it")]
+    [InlineData(-7, "7 bytes after it")]
+    public void A_section_prev_names_a_few_bytes_off_is_shifted(int error, string distance)
+    {
+        var sound = PdfTemplate.Build(Updated);
+        var table = PdfTemplate.OffsetOf(sound, "xref\n");
+        var file = Replace(sound, $"/Prev {table}", $"/Prev {table + error}");
+
+        var report = Validate(file);
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefSectionShifted);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        finding.Location.Position.Should().Be(table);
+        finding.Message.Should().Be($"The cross-reference section /Prev names at offset {table + error} starts {distance}, at offset {table}.");
+    }
+
+    [Fact]
+    public void A_prev_naming_the_line_feed_before_its_section_is_imprecise_not_shifted()
+    {
+        var sound = PdfTemplate.Build(Updated);
+        var table = PdfTemplate.OffsetOf(sound, "xref\n");
+        var file = Replace(sound, $"/Prev {table}", $"/Prev {table - 1}");
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefOffsetImprecise);
+        finding.Message.Should().EndWith($"/Prev gives offset {table - 1}, 1 byte before the xref keyword.");
+    }
+
+    [Fact]
+    public void A_prev_that_names_a_section_already_read_is_a_loop_and_an_error()
+    {
+        var file = PdfTemplate.Build(Updated.Replace("/Prev {xref:1}", "/Prev {xref:2}", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        var finding = Single(report, PdfValidationRuleIds.XRefChainLoop);
+        finding.Severity.Should().Be(PdfValidationSeverity.Error, "the section the chain should have gone on to is lost");
+        var update = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+        finding.Message.Should().Be($"The /Prev of the cross-reference section at offset {update} names offset {update}, a section the chain has already read: the chain loops.");
+        document.Catalog.Should().NotBeNull("what only the lost section indexed is found by rebuilding the index, as for a missing section");
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse("the catalog /Root names is found, where the file put it");
+    }
+
+    [Fact]
+    public void An_entry_outside_the_file_is_broken()
+    {
+        var file = PdfTemplate.SoundWith("{row:3}", "9999999999 00000 n ");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryBroken);
+
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Location.Object.Should().Be(new PdfObjectId(3));
+        finding.Message.Should().Be("The entry of object 3 gives offset 9999999999, outside the file.");
+    }
+
+    [Fact]
+    public void An_entry_naming_another_object_far_from_its_own_is_broken()
+    {
+        var file = PdfTemplate.Build(Spread.Replace("{row:3}", "{row:1}", StringComparison.Ordinal));
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryBroken);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(3));
+        finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "1 0 obj"));
+        finding.Message.Should().Be(
+            $"The entry of object 3 gives offset {PdfTemplate.OffsetOf(file, "1 0 obj")}, where there is the header of object 1, and the object is not within 512 bytes of it.");
+    }
+
+    [Theory]
+    [InlineData(-5, "no object header", "5 bytes after it")]
+    [InlineData(2, "no object header", "2 bytes before it")]
+    public void An_entry_a_few_bytes_off_its_object_is_shifted(int error, string found, string distance)
+    {
+        var file = PdfTemplate.SoundWith("{row:3}", $"{{row:3:0:{error}}}");
+
+        var report = Validate(file);
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryShifted);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        var header = PdfTemplate.OffsetOf(file, "3 0 obj");
+        finding.Location.Position.Should().Be(header + error);
+        finding.Message.Should().Be($"The entry of object 3 gives offset {header + error}, where there is {found}; the object starts {distance}, at offset {header}.");
+    }
+
+    [Fact]
+    public void An_entry_whose_generation_its_object_is_not_written_with_is_a_warning()
+    {
+        var file = PdfTemplate.SoundWith("{row:3}", "{row:3:7}");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefGenerationMismatch);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning, "the reference and the header agree against the entry (ADR 45)");
+        finding.Location.Object.Should().Be(new PdfObjectId(3, 7));
+        finding.Message.Should().Be("The entry of object 3 gives generation 7, and the object is written as 3 0 obj.");
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull("the reader reads the object the references name");
+    }
+
+    [Fact]
+    public void Offsets_naming_the_line_feed_before_their_object_are_reported_once_for_the_file()
+    {
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("{row:1}", "{row:1:0:-1}", StringComparison.Ordinal)
+            .Replace("{row:2}", "{row:2:0:-1}", StringComparison.Ordinal)
+            .Replace("{row:3}", "{row:3:0:-1}", StringComparison.Ordinal));
+
+        var report = Validate(file);
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefOffsetImprecise);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        var first = PdfTemplate.OffsetOf(file, "1 0 obj") - 1;
+        finding.Location.Position.Should().Be(first);
+        finding.Message.Should().Be(
+            $"3 offsets name the white space before what they designate rather than its first byte; the first: the entry of object 1 gives offset {first}, 1 byte before its header.");
+    }
+
+    [Fact]
+    public void A_startxref_naming_the_line_feed_before_xref_is_imprecise_and_comes_first()
+    {
+        var sound = PdfTemplate.Build(PdfTemplate.Sound);
+        var table = PdfTemplate.OffsetOf(sound, "xref\n");
+        var file = Replace(sound, $"startxref\n{table}\n", $"startxref\n{table - 1}\n");
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefOffsetImprecise);
+        finding.Message.Should().Be(
+            $"An offset names the white space before what it designates rather than its first byte: startxref gives offset {table - 1}, 1 byte before the xref keyword.");
+    }
+
+    [Fact]
+    public void Objects_in_a_sound_object_stream_have_no_finding()
+    {
+        Validate(XRefStreamFile()).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void An_object_listed_at_another_index_of_its_stream_is_shifted()
+    {
+        var file = SwapObjectStreamNumbers(XRefStreamFile());
+
+        var report = Validate(file);
+
+        report.Findings.Select(finding => (finding.RuleId, finding.Location.Object)).Should().Equal(
+            (PdfValidationRuleIds.XRefEntryShifted, new PdfObjectId(2)),
+            (PdfValidationRuleIds.XRefEntryShifted, new PdfObjectId(3)));
+        report.Findings[0].Message.Should().Be("The entry of object 2 places it at index 0 of object stream 4, whose header lists it at index 1.");
+    }
+
+    [Fact]
+    public void An_object_its_stream_does_not_list_is_broken()
+    {
+        var file = Replace(XRefStreamFile(), "stream\n2 0 3 ", "stream\n2 0 7 ");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryBroken);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(3));
+        finding.Message.Should().Be("The entry of object 3 places it at index 1 of object stream 4, whose header does not list it.");
+    }
+
+    [Theory]
+    [InlineData("/Type /ObjStm", "/Type /XObject", "is a stream that is not of /Type /ObjStm")]
+    [InlineData("/N 2", "/N 9", "its /N declares 9 objects, more than its /First of")]
+    public void An_object_stream_that_cannot_serve_its_objects_is_reported_once(string text, string replacement, string fault)
+    {
+        var file = Replace(XRefStreamFile(), text, replacement);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Message.Should().StartWith($"Object 4, where the index places 2 objects, {fault}");
+    }
+
+    [Fact]
+    public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked()
+    {
+        var file = Replace(XRefStreamFile(), "/Type /XRef", "/Type /XRef /Encrypt 99 0 R");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { ThrowOnEncrypted = false });
+
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefCheckedInPart);
+        finding.Location.IsDocument.Should().BeTrue();
+        finding.Message.Should().Be(
+            "The document is encrypted: the 2 objects its index places in object streams were not checked, those streams being readable only once decrypted.");
+    }
+
+    [Fact]
+    public void What_was_read_before_validating_changes_nothing()
+    {
+        // Resolving the misplaced object makes the reader correct its own index; the rules judge the file's.
+        var file = PdfTemplate.SoundWith("{row:3}", "{row:3:0:-5}");
+        using var document = PdfDocument.Open(file);
+        var validator = new PdfValidator();
+
+        var before = validator.Validate(document);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+        document.GetObject(new PdfObjectId(9)).Should().Be(PdfNull.Instance);
+        var after = validator.Validate(document);
+
+        after.Findings.Should().Equal(before.Findings);
+        after.Findings.Should().ContainSingle().Which.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryShifted);
+    }
+
+    [Fact]
+    public void A_rebuild_that_happens_after_opening_leaves_the_file_s_index_to_judge()
+    {
+        // Object 3 is nowhere near its offset: reading it rebuilds the index, and the report stays the same.
+        var file = PdfTemplate.Build(Spread.Replace("{row:3}", "{row:1}", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+        var validator = new PdfValidator();
+
+        var before = validator.Validate(document);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+        document.WasRepaired.Should().BeTrue();
+        var after = validator.Validate(document);
+
+        after.Findings.Should().Equal(before.Findings);
+        after.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeTrue();
+    }
+
+    /// <summary>A document whose index is a cross-reference stream, objects 2 and 3 packed in object stream 4.</summary>
+    private static byte[] XRefStreamFile() =>
+        new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+
+    /// <summary>Lists object 3 first and object 2 second in the object stream's header, their offsets unchanged.</summary>
+    private static byte[] SwapObjectStreamNumbers(byte[] file)
+    {
+        var text = Encoding.Latin1.GetString(file);
+        var start = text.IndexOf("stream\n2 0 3 ", StringComparison.Ordinal) + "stream\n".Length;
+        var swapped = "3" + text[(start + 1)..(start + 4)] + "2" + text[(start + 5)..];
+        return Encoding.Latin1.GetBytes(text[..start] + swapped);
+    }
+
+    private static PdfValidationFinding Single(PdfValidationReport report, string ruleId)
+    {
+        report.Findings.Where(finding => finding.RuleId == ruleId).Should().ContainSingle(
+            $"one finding of {ruleId}, among: {string.Join("; ", report.Findings)}");
+        return report.Findings.First(finding => finding.RuleId == ruleId);
+    }
+
+    private static PdfValidationReport Validate(byte[] file)
+    {
+        using var document = PdfDocument.Open(file);
+        return new PdfValidator().Validate(document);
+    }
+
+    private static byte[] Replace(byte[] file, string text, string replacement)
+    {
+        var content = Encoding.Latin1.GetString(file);
+        content.Should().Contain(text);
+        return Encoding.Latin1.GetBytes(content.Replace(text, replacement, StringComparison.Ordinal));
+    }
+}

@@ -46,7 +46,7 @@ internal sealed class OffsetImpreciseRule : IValidationRule
                     PdfValidationLocation.AtPosition(section.Offset),
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"{section.NamedBy} gives offset {section.Offset}, {section.Padding} bytes before {target}"));
+                        $"{section.NamedBy} gives offset {section.Offset}, {RuleText.Bytes(section.Padding)} before {target}"));
             }
         }
 
