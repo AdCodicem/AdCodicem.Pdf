@@ -48,6 +48,13 @@ internal static partial class PdfTemplate
 
         """;
 
+    /// <summary>The sound document with a long string between its page tree and its page, so that objects lie far apart.</summary>
+    public static readonly string Spread = Sound
+        .Replace("3 0 obj\n", "4 0 obj\n(" + new string('x', 1200) + ")\nendobj\n3 0 obj\n", StringComparison.Ordinal)
+        .Replace("0 4\n", "0 5\n", StringComparison.Ordinal)
+        .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
+        .Replace("/Size 4", "/Size 5", StringComparison.Ordinal);
+
     /// <summary>Writes the template, its placeholders replaced.</summary>
     public static byte[] Build(string template)
     {

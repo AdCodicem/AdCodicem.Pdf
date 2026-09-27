@@ -15,6 +15,6 @@ internal enum ObjectStreamHeaderResult : byte
     /// <summary>It is an object stream, and its header cannot be read from what it decodes to.</summary>
     Unreadable,
 
-    /// <summary>One of the reader's limits stopped it decoding the stream before its header ended.</summary>
+    /// <summary>One of the reader's limits stopped it reading the stream, its dictionary or its data, before its header ended.</summary>
     CutByLimit,
 }
