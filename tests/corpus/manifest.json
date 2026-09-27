@@ -91,7 +91,6 @@
         "xref-stream",
         "object-streams",
         "internal-links",
-        "repeated-table-headers",
         "two-column-text"
       ],
       "expect": {
@@ -116,7 +115,9 @@
       "origin": "generated",
       "licence": "MIT (our own source)",
       "features": [
-        "xref-table"
+        "xref-table",
+        "repeated-table-headers",
+        "two-column-text"
       ],
       "expect": {
         "pages": 3,
@@ -236,7 +237,9 @@
         "pdf-a-2b",
         "xmp-metadata",
         "output-intent",
-        "embedded-fonts"
+        "embedded-fonts",
+        "repeated-table-headers",
+        "two-column-text"
       ],
       "expect": {
         "pages": 3,
@@ -1747,7 +1750,7 @@
     },
     {
       "file": "vendor/pyhanko/acrobat-reader-signed-twice.pdf",
-      "title": "Two Acrobat Reader signatures, each in its own incremental update, with RFC 3161 timestamps and fictitious test certificates",
+      "title": "Two Acrobat Reader signatures with RFC 3161 timestamps and fictitious test certificates: the first applied by a full save that linearised the file (its byte range ends at /L 83059), the second in an incremental update",
       "useCase": "contract",
       "producer": "Adobe Acrobat Reader 2020.013 (signatures); base file from pyHanko's test suite",
       "origin": "contributed",
@@ -1764,6 +1767,10 @@
         "multiple-signatures",
         "signature-timestamp",
         "incremental-update",
+        "linearized",
+        "linearized-then-updated",
+        "two-revisions",
+        "signature-in-linearized-file",
         "xref-stream",
         "object-streams",
         "specimen"
