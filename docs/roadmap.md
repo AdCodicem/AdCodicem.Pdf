@@ -618,7 +618,9 @@ colour-management engine in a satellite; CMYK and spot colours from CSS; overpri
 compression stays an open question.
 
 **Acceptance**
-- The reference documents pass veraPDF's PDF/X profile and an independent PDF/VT check with no error.
+- The reference documents pass an independent PDF/X-4 and PDF/VT check with no error. veraPDF validates
+  PDF/A, PDF/UA and WTPDF only, and no open-source PDF/X validator is known: choosing the referee is the
+  milestone's first slice.
 
 ## M30 — Advanced typesetting
 
