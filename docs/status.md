@@ -19,7 +19,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   to 6 are issues [#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59) to
   [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 1,636 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
+- **Tests**: 1,639 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher + 26 for the roadmap's mirror on GitHub, on slice 2's branch. With the remote corpus:
   `Remote corpus` run 9, on slice 2's branch before its last two commits, with all 242 documents, passed 3,136
   unit (65 skipped by design, on documents recorded as unsupported until M02 or #47) and 1,875 integration tests.
@@ -144,7 +144,7 @@ not a fault of the file: the rules on it report at most, as information, that it
   corpus's reading test counts a finding as damage made known, for what the reader reads without a word. Nine
   remote documents could not be fetched here; their findings were predicted, and `Remote corpus` run 9, on the
   branch with all 242 documents, confirmed them.
-- **Tests.** `FileRuleTests` and `CrossReferenceRuleTests`, 92 cases on files written from a template whose offsets
+- **Tests.** `FileRuleTests` and `CrossReferenceRuleTests`, 95 cases on files written from a template whose offsets
   are placeholders: each rule on a file that breaks it, a sound one and an unusual legal one, and the report
   unchanged by reads and rebuilds between validations. `ValidationRefereeTests` (integration): every document qpdf
   rebuilds the index of earns a `file.*` or `xref.*` finding, and every such error is a document qpdf finds fault

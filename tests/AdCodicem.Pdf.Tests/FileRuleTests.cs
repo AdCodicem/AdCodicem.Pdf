@@ -246,13 +246,16 @@ public class FileRuleTests
             .Should().Be("The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. No object of the file is a catalog.");
     }
 
-    [Fact]
-    public void A_root_that_names_a_number_says_so()
+    [Theory]
+    [InlineData("42", "is a number, not a document catalog")]
+    [InlineData("<< /Kind /Catalog >>", "is a dictionary that is not a document catalog")]
+    [InlineData("<< /Length 0 >>\nstream\n\nendstream", "is a stream, not a document catalog")]
+    public void A_root_that_names_something_other_than_a_catalog_says_what(string body, string described)
     {
-        var file = PdfTemplate.SoundWith("<< /Type /Catalog /Pages 2 0 R >>", "42");
+        var file = PdfTemplate.SoundWith("<< /Type /Catalog /Pages 2 0 R >>", body);
 
         Single(Validate(file), PdfValidationRuleIds.FileRootInvalid).Message
-            .Should().Be("The trailer's /Root names object 1 0, which is a number, not a document catalog. No object of the file is a catalog.");
+            .Should().Be($"The trailer's /Root names object 1 0, which {described}. No object of the file is a catalog.");
     }
 
     [Fact]
