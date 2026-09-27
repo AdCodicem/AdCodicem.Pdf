@@ -32,9 +32,10 @@ namespace AdCodicem.Pdf.IntegrationTests;
 public partial class FlateRefereeTests(RefereeContainer referee)
 {
     /// <summary>
-    /// Streams the reader alone finds cut short, for a reason of its own: T39 takes the <c>/Length</c> of a stream
-    /// longer than the parser's window as it is, and SAMHSA's object 27 declares 26 bytes too few. qpdf recovers
-    /// the length and decodes the stream whole. The test fails when T39 is fixed, so that the entry goes with it.
+    /// Streams the reader alone finds cut short, for a reason of its own: it takes the <c>/Length</c> of a stream
+    /// longer than the parser's window as it is (issue #55), and SAMHSA's object 27 declares 26 bytes too few. qpdf
+    /// recovers the length and decodes the stream whole. The test fails when issue #55 is fixed, so that the entry
+    /// goes with it.
     /// </summary>
     private static readonly Dictionary<string, long[]> KnownReaderOnly = new(StringComparer.Ordinal)
     {

@@ -23,7 +23,7 @@ internal enum FlateEnding
 
     /// <summary>
     /// The data turned corrupt. Decoding stopped at the fault, and what decoded before it was kept, less what the
-    /// read that met the fault had decoded — at most one read's worth (T40).
+    /// read that met the fault had decoded — at most one read's worth (issue #56).
     /// </summary>
     Corrupt,
 }

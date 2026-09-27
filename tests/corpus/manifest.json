@@ -4741,7 +4741,7 @@
           "Java Application Platform SDK Update 5 Released"
         ],
         "refereeCheckSucceeds": true,
-        "unsupported": "T24: the reader reads each cross-reference section through a window of up to 64 KB whatever the section's size, so opening this 218 KB file with three sections reads 117 KB, more than the quarter the laziness test allows; bounded, but proportional to the number of sections. Recorded in docs/status.md, for M23"
+        "unsupported": "#47: the reader reads each cross-reference section through a window of up to 64 KB whatever the section's size, so opening this 218 KB file with three sections reads 117 KB, more than the quarter the laziness test allows; bounded, but proportional to the number of sections. For M23"
       }
     },
     {
@@ -12895,7 +12895,7 @@
           "may differ from official coding guidelines based",
           "outcomes and statistical analysis"
         ],
-        "unsupported": "T24: the main cross-reference table (13,666 entries, 273 KB) is larger than the first window, and each time the window grows the section is read again from its start, so opening reads 683 KB of this 2.2 MB file, more than the quarter the laziness test allows; recorded in docs/status.md, for M23",
+        "unsupported": "#47: the main cross-reference table (13,666 entries, 273 KB) is larger than the first window, and each time the window grows the section is read again from its start, so opening reads 683 KB of this 2.2 MB file, more than the quarter the laziness test allows; for M23",
         "refereeCheckSucceeds": false
       }
     },

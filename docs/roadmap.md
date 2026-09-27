@@ -140,7 +140,7 @@ conformance profiles extend them (M20), and callers filter on them.
 ## M03 — Writing and round-trip fidelity
 
 **Goal**: rewrite what was read, byte for byte in semantic terms.
-**Deliverables**: the public API baseline (T05), in place before the writer adds any public API; a
+**Deliverables**: the public API baseline ([#35]), in place before the writer adds any public API; a
 forward-only `PdfWriter` (object numbers reserved ahead, indirect `/Length`, compression on the fly), classic
 tables and cross-reference streams, object streams on write, full rewrite and incremental update, a
 deterministic `/ID`, and preservation of an existing signature. An **output version policy** (ADR 40): the
@@ -273,7 +273,7 @@ remote fetcher, for all.
 subsetting; Type0/CIDFontType2 embedding with `ToUnicode`; a font registry with family resolution and
 **per-character fallback** by script coverage, down to a visible `.notdef` and a diagnostic naming the code
 points no font covers; WOFF and WOFF2 decoding, bounded (ADR 34); the metrics of the standard 14 fonts;
-content stream operators; the OFL font set (T04) — Liberation Sans, Serif and Mono as WOFF2 in the data-only
+content stream operators; the OFL font set ([#34]) — Liberation Sans, Serif and Mono as WOFF2 in the data-only
 `AdCodicem.Pdf.Fonts` satellite, and Liberation Sans regular in the core, so that the core alone can stamp a
 PDF/A document — confirmed by an ADR with the measured sizes and the license checks.
 
@@ -586,11 +586,11 @@ budgets enforced in CI; Native AOT, trimming and browser WebAssembly validation 
 container profile (no fontconfig, read-only file system, a 512 MB cap) measured against a Chromium
 baseline; fuzzing of the lexer and parser. A decode that yields a stream a piece at a time, so that a stream
 past `Array.MaxLength` can be read and the memory held follows a window, while `MaxDecodedStreamLength`, made
-a `long`, still bounds what a stream may decode to — a streamed bomb still costs its time (T28; an amendment
+a `long`, still bounds what a stream may decode to — a streamed bomb still costs its time ([#48]; an amendment
 of ADR 34 written with it; in native memory if a measurement asks for it, ADR 35); a 64-bit length on stream
-data (T37); an object cache weighted by bytes, and names interned per document beyond a frozen table (T07); a
-budget on the cache of decoded object streams (T33); cross-reference sections and the rebuild's trailer scan
-read through windows grown on demand (T24, T30). The command-line tool gains `optimize`.
+data ([#53]); an object cache weighted by bytes, and names interned per document beyond a frozen table ([#37]); a
+budget on the cache of decoded object streams ([#50]); cross-reference sections and the rebuild's trailer scan
+read through windows grown on demand ([#47], [#49]). The command-line tool gains `optimize`.
 
 **Acceptance**
 - Published budgets for throughput and allocation hold on the `stress` documents, and CI fails when a
@@ -715,7 +715,9 @@ fidelity that is documented rather than hidden, and a diagnostic for what it cou
 
 ## Open questions
 
-Neither planned nor excluded; each would enter a milestone when what triggers it happens.
+Neither planned nor excluded; each would enter a milestone when what triggers it happens. Each has a
+discussion under [Ideas](https://github.com/AdCodicem/AdCodicem.Pdf/discussions/categories/ideas), where a
+need for it can be said — real use is what triggers most of them.
 
 | Subject | What would trigger it |
 |---|---|
@@ -764,10 +766,31 @@ inserted.
 
 ## Working a milestone
 
-1. Read `CLAUDE.md`, `docs/status.md`, then `docs/milestones/<milestone>.md`.
-2. Work in vertical, testable slices, never a whole horizontal layer.
+1. Read `CLAUDE.md`, `docs/status.md`, then `docs/milestones/<milestone>.md`, and the milestone's open issues.
+2. Work in vertical, testable slices, never a whole horizontal layer. When a milestone starts, each slice its
+   specification lists becomes an issue labeled `slice`, filed under the milestone; the pull request that
+   completes a slice closes its issue.
 3. A delivered feature is code plus tests plus an entry in the `status.md` journal.
-4. What is discovered on the way and falls outside the milestone goes into the debt table, not into the code.
+4. What is discovered on the way and falls outside the milestone becomes an issue labeled `debt`, filed under
+   the milestone that will pay it — not a change to the code.
+
+## Tracking on GitHub
+
+This file is the reference for what the milestones are and where each stands; GitHub mirrors it. The
+`Tracking` workflow (`.github/scripts/sync_tracking.py`) keeps one
+[GitHub milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestones) per row of the table above,
+described by the goal its specification states, closed when the row says *done*, and never given a due
+date: this roadmap is an intention, not a promise. It runs on every change to this file, a specification or
+`.github/labels.json` on `main`, and never deletes a milestone the table stops naming.
+
+A GitHub milestone's progress counts its issues: the slices of its specification, opened when it starts,
+and the debt filed under it. Its exit criteria stay checkboxes in its specification, reviewed with the code
+that ticks them. The debt table `docs/status.md` held until 2026-09-27 is now its issues labeled `debt`, and
+its former identifiers, T01 to T40, are mapped there. A commit names the issue it advances in its footer
+(`Refs #58`), never in its subject; the pull request closes what it completes (`Closes #58`), and an issue
+closes only that way. The documents the corpus still wants are issues labeled `help wanted`, one per row of
+`docs/corpus-contributions.md`, which stays their reference; the open questions below are discussions under
+[Ideas](https://github.com/AdCodicem/AdCodicem.Pdf/discussions/categories/ideas).
 
 ## Definition of done
 
@@ -788,6 +811,17 @@ anyone outside this repository.
 
 ## Adding a milestone
 
-Create `docs/milestones/<number>.md` from `docs/milestones/_template.md`, add its row above, and specify
-only what is decided — a distant milestone stays deliberately coarse. Its acceptance conditions, however,
-are written when the milestone is written: they are what the work is for.
+Create `docs/milestones/<number>.md` from `docs/milestones/_template.md`, add its row above — the `Tracking`
+workflow opens its GitHub milestone once that reaches `main` —, and specify only what is decided — a distant
+milestone stays deliberately coarse. Its acceptance conditions, however, are written when the milestone is
+written: they are what the work is for.
+
+
+[#34]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/34
+[#35]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/35
+[#37]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/37
+[#47]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/47
+[#48]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/48
+[#49]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/49
+[#50]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/50
+[#53]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/53

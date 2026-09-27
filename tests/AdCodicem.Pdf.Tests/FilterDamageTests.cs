@@ -245,7 +245,7 @@ public class FilterDamageTests
     {
         // A whole checksum that disagrees with the data is checked, as it was before: the data is corrupt
         // somewhere, which is not the same report as data that stops short. The framework throws from the
-        // read that meets the checksum, so what that read decoded is lost with it (T40); what came before
+        // read that meets the checksum, so what that read decoded is lost with it (issue #56); what came before
         // is kept.
         var plain = ContentStream(3000);
         var compressed = Compress(plain, CompressionLevel.Optimal);

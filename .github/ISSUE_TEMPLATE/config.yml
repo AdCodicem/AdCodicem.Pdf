@@ -5,4 +5,7 @@ contact_links:
     about: A malformed document that crashes, hangs or exhausts memory is a security issue. Report it privately.
   - name: Contributing a document to the test corpus
     url: https://github.com/AdCodicem/AdCodicem.Pdf/blob/main/docs/corpus-contributions.md
-    about: Real files from real producers are the most valuable contribution to this project.
+    about: What to hand over and how. Real files from real producers are the most valuable contribution to this project; the Document contribution form offers one.
+  - name: An idea, or an open question of the roadmap
+    url: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/categories/ideas
+    about: Each open question of the roadmap has a discussion there. Say that you need it, with the document or the task that asks for it.

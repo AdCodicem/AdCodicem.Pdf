@@ -1,0 +1,49 @@
+name: Document contribution
+description: Offer a document the test corpus lacks — never a confidential one
+title: "Corpus: "
+labels: ["area: corpus"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This repository and its issues are public.** A file attached here is published at once, indexed, and cannot be
+        fully withdrawn. Go through [Before you hand anything over](https://github.com/AdCodicem/AdCodicem.Pdf/blob/main/docs/corpus-contributions.md#before-you-hand-anything-over)
+        first: visible content, metadata, hidden material, license. A document that fails any of those checks is still
+        useful — describe it below and do not attach it.
+
+        What the corpus still wants is listed in [What is wanted](https://github.com/AdCodicem/AdCodicem.Pdf/blob/main/docs/corpus-contributions.md#what-is-wanted),
+        each row with an issue labeled `help wanted`.
+  - type: input
+    id: wanted
+    attributes:
+      label: Which wanted document does it answer?
+      description: The row of What is wanted, or its issue — or nothing, if it is something else worth having.
+      placeholder: "W04, #64"
+  - type: textarea
+    id: what
+    attributes:
+      label: What it is, and what produced it
+      description: Two lines are enough — they become the manifest entry. For a file that broke a tool, say what went wrong and in which tool.
+    validations:
+      required: true
+  - type: dropdown
+    id: destination
+    attributes:
+      label: Where it can go
+      options:
+        - "Public: it may be published, and I attach it or open a pull request"
+        - "Public but not redistributable: anyone can download it, and I give its URL"
+        - "Confidential: it cannot be published, and I do not attach it"
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Its URL, if it is online
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I attach nothing that fails a check of Before you hand anything over — no personal contact details, account or identity numbers, health data, revealing metadata or hidden revisions, and nothing I am not entitled to publish.
+          required: true

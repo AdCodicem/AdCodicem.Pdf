@@ -24,7 +24,20 @@ This library reads files produced by software we cannot run: Word's print driver
 firmware, a supplier's ERP. A single real document that breaks something is worth more than a patch.
 [`docs/corpus-contributions.md`](docs/corpus-contributions.md) says what is wanted, what to check before
 handing anything over, and where it goes — including a private corpus for documents that cannot be
-published.
+published. Each document still wanted has an issue labeled
+[`help wanted`](https://github.com/AdCodicem/AdCodicem.Pdf/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22),
+and the *Document contribution* issue form offers one. An issue is as public as the repository: never attach
+a confidential file to one.
+
+## What is planned, and what is known to be missing
+
+The [roadmap](docs/roadmap.md) is the reference for the milestones and their state, and each is mirrored as a
+[GitHub milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestones): the milestone in progress has an
+issue per slice of its specification, and known debt is issues labeled
+[`debt`](https://github.com/AdCodicem/AdCodicem.Pdf/issues?q=is%3Aissue%20state%3Aopen%20label%3Adebt),
+each under the milestone that will pay it. The roadmap's open questions — neither planned nor excluded — are
+discussions under [Ideas](https://github.com/AdCodicem/AdCodicem.Pdf/discussions/categories/ideas): saying
+there that you need one is what moves it into a milestone.
 
 ## Commit messages — Conventional Commits
 
@@ -51,6 +64,9 @@ feat!: drop the synchronous Open overloads
 
 A CI check validates this on every pull request — a malformed message blocks the merge, and worse,
 would silently produce no release.
+
+An issue a commit advances is named in its footer, `Refs #58`, not in its subject; the pull request says
+`Closes #58` for each issue it completes, so that the merge closes it.
 
 Merging does not release. A merge into `main` publishes a **preview** package, so a change is installable
 as soon as it lands; a stable release is a deliberate, manual run of the `Release` workflow, and that is

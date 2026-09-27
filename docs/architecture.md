@@ -22,7 +22,7 @@ ordinary composition of the two paths.
 |---|---|---|---|
 | `AdCodicem.Pdf` | Object model, reader, writer, revisions, pages, fonts, logical structure, security (password handler, AES-GCM), CCITT decoding, OCR text layer, redaction, diagnostics, validation and its structural profile | **none** | M01 onwards |
 | `AdCodicem.Pdf.Tool` | The command-line tool: a `dotnet tool` and a Native AOT binary | `AdCodicem.Pdf` and the satellites it drives | from M06 |
-| `AdCodicem.Pdf.Fonts` | Data only: the OFL set — Liberation Sans, Serif and Mono, four styles each — as WOFF2, referenced by `AdCodicem.Pdf.Html`; the core carries Liberation Sans regular itself, so that it can stamp a PDF/A document alone (T04; sizes and the OFL checks confirmed by M08's ADR) | `AdCodicem.Pdf` | M08 |
+| `AdCodicem.Pdf.Fonts` | Data only: the OFL set — Liberation Sans, Serif and Mono, four styles each — as WOFF2, referenced by `AdCodicem.Pdf.Html`; the core carries Liberation Sans regular itself, so that it can stamp a PDF/A document alone ([#34]; sizes and the OFL checks confirmed by M08's ADR) | `AdCodicem.Pdf` | M08 |
 | `AdCodicem.Pdf.Barcodes` | QR, Data Matrix, Code 128, GS1-128, PDF417, EAN and UPC as vectors; EPC and Swiss QR-bill payloads | `AdCodicem.Pdf` | M10 |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | AngleSharp, HarfBuzzSharp, SkiaSharp | M12 |
 | `AdCodicem.Pdf.AspNetCore` | DI registration, `IResult`, MVC integration | `AdCodicem.Pdf.Html` | M12 |
@@ -138,7 +138,7 @@ goes wrong. No intermediate layer may drop it.
 - **Memory budget**: consumption follows the complexity of the **page** being processed, never the size of
   the document. A ten-thousand-page report must generate in the footprint of a ten-page one. One decoded
   stream is still held whole, up to `PdfReaderLimits.MaxDecodedStreamLength` and at most `Array.MaxLength`,
-  until M23 decodes a piece at a time (T28), in native memory if a measurement asks for it (ADR 35).
+  until M23 decodes a piece at a time ([#48]), in native memory if a measurement asks for it (ADR 35).
 - **Pooling**: write buffers, glyph arrays and layout boxes come from `ArrayPool<T>` or dedicated pools.
   What is rented is returned, exceptions included.
 - **Structs and spans**: computed CSS values, metrics, rectangles and positions are structs. Parsing works
@@ -201,3 +201,6 @@ on in tests.
 Strict SemVer. While the major version is 0 the API may move, but every break is recorded. A public API
 test — a checked-in baseline of exported signatures — makes any break visible in review rather than after
 publication.
+
+[#34]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/34
+[#48]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/48
