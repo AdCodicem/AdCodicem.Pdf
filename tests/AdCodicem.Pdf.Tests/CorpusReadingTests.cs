@@ -4,6 +4,7 @@ using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -266,7 +267,11 @@ public class CorpusReadingTests
 
         ExpectCatalog(document, entry, $"{entry.Name}: qpdf recovers a catalog here, so must we");
         ReadEverything(document);
-        document.Diagnostics.Count.Should().BeGreaterThan(0, $"{entry.Name}: damage must never be silent");
+
+        // Damage is never silent: the reader says what it worked around, and what it reads without a word — a
+        // generation its entry gets wrong, a trailer without /Size — the validator reports (M02).
+        var findings = new PdfValidator().Validate(document).Findings.Count;
+        (document.Diagnostics.Count + findings).Should().BeGreaterThan(0, $"{entry.Name}: damage must never be silent");
 
         if (entry.Expect.Pages is { } expectedPages && entry.Expect.CatalogRecoverable)
         {

@@ -32,7 +32,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </summary>
     private const int MaxSubsectionEntries = 50_000_000;
     private const int HeaderSearchLength = 4096;
-    private const int TailSearchLength = 4096;
+    internal const int TailSearchLength = 4096;
     internal const int NearbySearchRadius = 512;
 
     /// <summary>
@@ -621,7 +621,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         using (var probe = _source.GetWindow(absolute, XRefProbeLength))
         {
             var lexer = new PdfLexer(probe.Memory.Span);
-            if (lexer.Read().IsKeyword("xref"u8))
+            var first = lexer.Read();
+            section.Padding = first.Kind == PdfTokenKind.EndOfInput ? probe.Length : first.Start;
+
+            if (first.IsKeyword("xref"u8))
             {
                 section.Kind = XRefSectionKind.Table;
                 section.State = TryReadClassicTable(absolute, section, out previous, out hybrid)
@@ -889,6 +892,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return true;
             }
 
+            section.HighestNumber = Math.Max(section.HighestNumber, number);
+
             if (kindToken.IsKeyword("n"u8))
             {
                 _xref.TryAdd(number, XRefEntry.Regular(offsetToken.Integer, (int)generationToken.Integer));
@@ -1001,7 +1006,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         if (ranges is null)
         {
             declared = size;
-            ReadXRefStreamRows(data, ref position, fieldWidths, rowLength, 0, size);
+            ReadXRefStreamRows(data, ref position, fieldWidths, rowLength, 0, size, section);
         }
         else
         {
@@ -1018,7 +1023,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 }
 
                 declared += count;
-                ReadXRefStreamRows(data, ref position, fieldWidths, rowLength, start, count);
+                ReadXRefStreamRows(data, ref position, fieldWidths, rowLength, start, count, section);
             }
         }
 
@@ -1090,7 +1095,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         ReadOnlySpan<int> widths,
         int rowLength,
         int first,
-        int count)
+        int count,
+        XRefSectionRecord section)
     {
         if ((long)count * rowLength > data.Length - position)
         {
@@ -1108,6 +1114,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var second = ReadField(row, ref cursor, widths[1]);
             var third = ReadField(row, ref cursor, widths[2]);
             var number = first + i;
+            section.HighestNumber = Math.Max(section.HighestNumber, number);
 
             switch (type)
             {

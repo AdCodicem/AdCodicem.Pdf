@@ -39,7 +39,32 @@ public sealed class ValidationProfile
     /// <summary>
     /// Gets the structural profile: the rules that hold for any PDF, whatever it claims to conform to.
     /// </summary>
-    public static ValidationProfile Structural { get; } = new("structural", 1, [new EndOfFileMarkerRule()]);
+    public static ValidationProfile Structural { get; } = new(
+        "structural",
+        1,
+        [
+            new FileHeaderMissingRule(),
+            new FileHeaderOffsetRule(),
+            new FileHeaderVersionRule(),
+            new EndOfFileMarkerRule(),
+            new StartXRefMissingRule(),
+            new StartXRefWrongRule(),
+            new TrailerMissingRule(),
+            new TrailerMalformedRule(),
+            new RootInvalidRule(),
+            new SizeWrongRule(),
+            new SectionMalformedRule(),
+            new SectionNotFoundRule(),
+            new SectionShiftedRule(),
+            new ChainLoopRule(),
+            new EntryBrokenRule(),
+            new EntryShiftedRule(),
+            new GenerationMismatchRule(),
+            new ObjectStreamBrokenRule(),
+            new OffsetImpreciseRule(),
+            new ObjectPastSizeRule(),
+            new CheckedInPartRule(),
+        ]);
 
     /// <summary>Gets the profile's name, as reports carry it.</summary>
     public string Name { get; }

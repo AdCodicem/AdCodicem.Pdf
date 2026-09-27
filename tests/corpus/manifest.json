@@ -349,6 +349,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-missing"
+        ],
         "refereeCheckSucceeds": false
       }
     },
@@ -369,6 +372,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "refereeCheckSucceeds": false
       }
@@ -394,7 +400,8 @@
           "filter.failed"
         ],
         "findings": [
-          "file.eof-missing"
+          "file.eof-missing",
+          "file.startxref-missing"
         ],
         "refereeCheckSucceeds": false
       }
@@ -416,6 +423,9 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [
           "xref.offset-adjusted"
+        ],
+        "findings": [
+          "file.header-offset"
         ],
         "refereeCheckSucceeds": true
       }
@@ -965,6 +975,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "hasExtractableText": true,
@@ -1004,6 +1017,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Respect for Marriage Act",
@@ -1042,6 +1058,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "stream.length-invalid"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -1108,6 +1127,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Call-Off Schedule 12 (Clustering)",
@@ -1261,6 +1283,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Paris Call Community Consultation",
@@ -1298,6 +1323,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": true
       }
@@ -1326,6 +1354,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.offset-imprecise"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Vidéoprojecteur",
@@ -1595,6 +1626,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "refereeCheckSucceeds": false
@@ -1656,6 +1690,9 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": false,
         "unsupported": "M02: the reader accepts a trailer without /Size and a page without MediaBox or Resources in silence, while qpdf reports all three; validation must report them",
         "refereeCheckSucceeds": false
@@ -2813,6 +2850,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "hasExtractableText": true,
@@ -2856,6 +2896,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.offset-imprecise"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "FOREIGN CURRENCY FLUCTUATIONS",
@@ -3266,6 +3309,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.offset-imprecise"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "329th MEETING",
@@ -3783,6 +3829,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.offset-imprecise"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "All PRs are welcome in the develop branch",
@@ -4039,6 +4088,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "textContains": [
           "Facture",
           "Total TTC",
@@ -4066,6 +4118,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.offset-imprecise"
+        ],
         "textContains": [
           "Facture",
           "Total TTC",
@@ -4435,6 +4490,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "THE PUBLIC HEALTH AND WELFARE"
@@ -4529,6 +4587,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Test"
@@ -4577,6 +4638,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Test"
@@ -4630,6 +4694,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Test"
@@ -4894,6 +4961,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Politique de signature"
@@ -5036,6 +5106,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.offset-imprecise"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Test.txt"
@@ -5084,6 +5157,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Devilsaur",
@@ -5131,6 +5207,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -5340,6 +5419,10 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong",
+          "xref.offset-imprecise"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Dummy PDF file"
@@ -6427,6 +6510,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.offset-imprecise"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": true
       }
@@ -6468,6 +6554,12 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.root-invalid",
+          "file.size-wrong",
+          "xref.entry-broken",
+          "xref.entry-shifted"
+        ],
         "hasExtractableText": true,
         "refereeCheckSucceeds": false
       }
@@ -6506,6 +6598,9 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.entry-shifted"
+        ],
         "hasExtractableText": true,
         "refereeCheckSucceeds": true
       }
@@ -6546,7 +6641,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.eof-missing"
+          "file.eof-missing",
+          "file.startxref-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -6827,6 +6923,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "hasExtractableText": true,
@@ -6877,6 +6976,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "hasExtractableText": true,
@@ -7013,7 +7115,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.eof-missing"
+          "file.eof-missing",
+          "file.startxref-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -7062,7 +7165,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.eof-missing"
+          "file.eof-missing",
+          "file.startxref-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -7112,6 +7216,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -7164,6 +7271,10 @@
           "xref.rebuilt",
           "stream.length-invalid"
         ],
+        "findings": [
+          "xref.entry-broken",
+          "xref.object-stream-broken"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Open-File Report 2004-1366",
@@ -7214,7 +7325,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.eof-missing"
+          "file.eof-missing",
+          "file.startxref-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -7261,7 +7373,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.eof-missing"
+          "file.eof-missing",
+          "file.startxref-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -8305,6 +8418,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "improve the capacity of the",
@@ -8343,6 +8459,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -8531,6 +8650,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "refereeCheckSucceeds": false
       }
@@ -8610,6 +8732,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -9448,6 +9573,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.header-version-invalid"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "only contains some text"
@@ -9493,6 +9621,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "research project focusing on cancer",
@@ -9622,6 +9753,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -9817,6 +9951,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "hasExtractableText": true,
@@ -9862,6 +9999,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "hasExtractableText": true,
@@ -9907,6 +10047,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "hasExtractableText": true,
@@ -9944,6 +10087,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "refereeCheckSucceeds": false
       }
@@ -10197,6 +10343,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "only contains some text"
@@ -10318,6 +10467,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -10456,6 +10608,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "refereeCheckSucceeds": false
       }
@@ -10494,6 +10649,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "refereeCheckSucceeds": false
@@ -10680,6 +10838,10 @@
         "requiredDiagnostics": [
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "xref.section-shifted",
+          "xref.entry-shifted"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "using this information and the product",
@@ -10769,6 +10931,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "hasExtractableText": true,
@@ -10966,6 +11131,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.checked-in-part"
+        ],
         "encrypted": true,
         "password": "",
         "hasExtractableText": true,
@@ -11124,6 +11292,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "the requirements for the degree",
@@ -11210,6 +11381,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -11243,6 +11417,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -11500,6 +11677,9 @@
         "requiredDiagnostics": [
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "technology is nearly available to offer remarkably",
@@ -11557,7 +11737,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.eof-missing"
+          "file.eof-missing",
+          "file.startxref-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -11607,7 +11788,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.eof-missing"
+          "file.eof-missing",
+          "file.startxref-missing"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -11827,6 +12009,10 @@
           "xref.section-missing",
           "xref.rebuilt"
         ],
+        "findings": [
+          "xref.section-not-found",
+          "xref.entry-broken"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -11864,6 +12050,10 @@
         "requiredDiagnostics": [
           "xref.section-missing",
           "xref.rebuilt"
+        ],
+        "findings": [
+          "xref.section-not-found",
+          "xref.entry-broken"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -11977,6 +12167,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -12025,6 +12218,9 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "role of the chemokine receptor",
@@ -12222,6 +12418,9 @@
         "requiredDiagnostics": [
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "the following once per kit",
@@ -12281,6 +12480,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "xref.entry-broken"
+        ],
         "hasExtractableText": true,
         "claimsConformance": "PDF/A-1b",
         "unsupported": "M02: One of the page tree's kids point at objects the file does not contain; qpdf, poppler and PDFium count each as a blank letter-size page (13 in all), pikepdf and the reader skip them (12); whether such a kid is a page is validation's call, and M06's page API must settle it",
@@ -12327,6 +12529,9 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "xref.entry-broken"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -12568,6 +12773,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "thesis submitted in partial fulfillment of the",
@@ -12653,6 +12861,9 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.entry-broken"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "used to diagnose eye",
@@ -12692,6 +12903,9 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.entry-broken"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "are four fundamental interactions that govern the",
@@ -12738,6 +12952,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -13087,6 +13304,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "average beam power loss",
@@ -13125,6 +13345,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -13171,6 +13394,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "nuclear power plants in this country can",
@@ -13215,6 +13441,9 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.entry-broken"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "assimilation techniques for space weather are finding",
@@ -13268,6 +13497,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "refereeCheckSucceeds": false
@@ -13346,6 +13578,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.header-version-invalid"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -13389,6 +13624,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.header-version-invalid"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -13433,6 +13671,10 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.header-version-invalid",
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -13479,6 +13721,10 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.header-missing",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -13522,6 +13768,9 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "file.header-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -13566,6 +13815,10 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.header-missing",
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -13612,6 +13865,10 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.header-missing",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -13657,6 +13914,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "catalogRecoverable": false,
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -13700,6 +13960,10 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.root-invalid",
+          "xref.entry-broken"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -13741,6 +14005,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -13824,6 +14091,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -13868,6 +14138,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -13914,6 +14187,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -13958,6 +14234,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -14041,6 +14320,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14129,6 +14411,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false,
         "unsupported": "M02: qpdf --show-npages counts one page and the reader none, on a page tree whose root has no /Kids; the referees disagree on damaged trees (docs/corpus-sources.md), and M02's page-tree rules name the fault the count depends on"
@@ -14171,6 +14456,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14258,6 +14546,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false,
         "unsupported": "M02: qpdf --show-npages counts none and the reader the one page there is, on a page tree whose root has no /Count; the referees disagree on damaged trees (docs/corpus-sources.md), and M02's page-tree rules name the fault the count depends on"
@@ -14344,6 +14635,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14434,6 +14728,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -14522,6 +14819,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -14566,6 +14866,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false,
@@ -14650,6 +14953,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -14695,6 +15001,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -14739,6 +15048,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -14822,6 +15134,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -14863,6 +15178,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14909,6 +15227,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -14953,6 +15274,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15040,6 +15364,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15130,6 +15457,10 @@
           "xref.rebuilt",
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -15176,6 +15507,10 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "xref.offset-adjusted"
+        ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15224,6 +15559,10 @@
           "xref.rebuilt",
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -15271,6 +15610,10 @@
           "xref.rebuilt",
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -15313,6 +15656,9 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [
           "xref.offset-adjusted"
+        ],
+        "findings": [
+          "file.header-offset"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": true
@@ -15358,6 +15704,10 @@
           "xref.rebuilt",
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "refereeCheckSucceeds": false
       }
@@ -15401,6 +15751,10 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "xref.offset-adjusted"
+        ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "refereeCheckSucceeds": false
@@ -15446,6 +15800,10 @@
           "xref.rebuilt",
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -15489,6 +15847,10 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "xref.offset-adjusted"
+        ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -15534,6 +15896,10 @@
           "xref.rebuilt",
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -15576,6 +15942,9 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [
           "xref.offset-adjusted"
+        ],
+        "findings": [
+          "file.header-offset"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": true
@@ -15621,6 +15990,10 @@
           "xref.rebuilt",
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -15665,6 +16038,10 @@
           "xref.rebuilt",
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -15708,6 +16085,10 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "xref.offset-adjusted"
+        ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15754,6 +16135,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -15798,6 +16182,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15846,6 +16233,10 @@
           "xref.rebuilt",
           "xref.offset-adjusted"
         ],
+        "findings": [
+          "file.header-offset",
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -15891,6 +16282,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -15934,6 +16328,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15980,6 +16377,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -16024,6 +16424,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "xref.section-malformed"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -16070,6 +16473,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "xref.section-malformed"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -16114,6 +16520,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "xref.section-malformed"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -16160,6 +16569,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "xref.section-malformed"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -16201,16 +16613,18 @@
       "expect": {
         "pages": 1,
         "clean": false,
-        "indexRebuilt": true,
+        "indexRebuilt": false,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.offset-adjusted"
+        ],
+        "findings": [
+          "xref.entry-shifted"
         ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
         ],
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: an entry 60 bytes early; qpdf rebuilds the table, the reader finds the object near the stated offset (xref.offset-adjusted) and keeps it; both recover the page, and M02's cross-reference rules settle which to expect"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -16294,6 +16708,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "xref.section-malformed"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -16335,16 +16752,16 @@
       "expect": {
         "pages": 1,
         "clean": false,
-        "indexRebuilt": true,
-        "requiredDiagnostics": [
-          "xref.rebuilt"
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "findings": [
+          "xref.generation-mismatch"
         ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
         ],
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: a cross-reference entry with generation 10000 for an object written as generation 0; qpdf rebuilds the table, the reader resolves the object without a word"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -16609,6 +17026,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -16653,6 +17073,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -16699,6 +17122,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.trailer-missing"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -16741,6 +17167,9 @@
         "requiredDiagnostics": [
           "trailer.root-recovered"
         ],
+        "findings": [
+          "file.trailer-malformed"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -16779,16 +17208,18 @@
       "expect": {
         "pages": null,
         "clean": false,
-        "indexRebuilt": true,
+        "indexRebuilt": false,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "syntax.unexpected-token"
+        ],
+        "findings": [
+          "file.trailer-malformed"
         ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
         ],
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: a trailer dictionary without >>; qpdf finds no trailer, rebuilds and gives up, the reader reads the trailer anyway (syntax.unexpected-token) and recovers the page without rebuilding"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -16826,10 +17257,14 @@
         "pages": null,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "trailer.root-recovered"
+        ],
+        "findings": [
+          "file.root-invalid"
+        ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: a trailer without /Root; qpdf keeps its sound index and finds no catalog, the reader rebuilds the index to look for one and finds object 5, where it could have looked among the indexed objects first"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -16867,10 +17302,16 @@
         "pages": null,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "syntax.unexpected-token",
+          "trailer.root-recovered"
+        ],
+        "findings": [
+          "file.trailer-malformed",
+          "file.root-invalid"
+        ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: a trailer /Root without its R; qpdf keeps its sound index and finds no catalog, the reader rebuilds the index to look for one and finds object 5, where it could have looked among the indexed objects first"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -16908,10 +17349,16 @@
         "pages": null,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "syntax.unexpected-token",
+          "trailer.root-recovered"
+        ],
+        "findings": [
+          "file.trailer-malformed",
+          "file.root-invalid"
+        ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: a trailer /Root without its generation number; qpdf keeps its sound index and finds no catalog, the reader rebuilds the index to look for one and finds object 5, where it could have looked among the indexed objects first"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -16949,10 +17396,14 @@
         "pages": null,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "trailer.root-recovered"
+        ],
+        "findings": [
+          "file.root-invalid"
+        ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: a trailer /Root pointing at the content stream; qpdf keeps its sound index and finds no catalog, the reader rebuilds the index to look for one and finds object 5, where it could have looked among the indexed objects first"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -16989,16 +17440,16 @@
       "expect": {
         "pages": 1,
         "clean": false,
-        "indexRebuilt": true,
-        "requiredDiagnostics": [
-          "xref.rebuilt"
+        "indexRebuilt": false,
+        "requiredDiagnostics": [],
+        "findings": [
+          "file.size-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
         ],
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: a trailer without /Size, which qpdf reports and the reader reads without a word (as in handwritten-cyclic-toc)"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -17037,6 +17488,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "xref.object-past-size"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -17081,6 +17535,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -17127,6 +17584,9 @@
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
+        "findings": [
+          "file.startxref-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -17171,6 +17631,9 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
+        ],
+        "findings": [
+          "file.startxref-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [

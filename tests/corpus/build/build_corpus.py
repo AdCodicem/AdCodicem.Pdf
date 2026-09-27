@@ -350,16 +350,20 @@ def damage_lying_length(data: bytes) -> bytes:
 
 # Each damage: how it is done, the diagnostic codes the reader must report, whether the index is rebuilt, and
 # the validation findings the default profile must report (M02) — established from the damage itself, never by
-# the validator: cutting the tail takes the %%EOF marker with it.
+# the validator: cutting the tail takes the %%EOF marker and startxref with it.
 DAMAGES = {
-    "no-xref": (damage_remove_xref, ["xref.rebuilt"], True, []),
+    # Cutting from the table onwards takes startxref with it; the %%EOF appended after the cut stays.
+    "no-xref": (damage_remove_xref, ["xref.rebuilt"], True, ["file.startxref-missing"]),
     # Shifting every offset also moves the cross-reference section startxref points at, so the whole
-    # index has to be rebuilt rather than each object relocated.
-    "shifted-offsets": (damage_shift_offsets, ["xref.rebuilt"], True, []),
+    # index has to be rebuilt rather than each object relocated: startxref names what is no longer a section.
+    "shifted-offsets": (damage_shift_offsets, ["xref.rebuilt"], True, ["file.startxref-wrong"]),
     # The cut falls inside the data of the invoice's last Flate stream: the stream runs past the end of the
     # file, and its data ends before its last block does (T32) — qpdf keeps nothing of it, the reader the prefix.
-    "truncated-tail": (damage_truncate, ["xref.rebuilt", "stream.truncated", "filter.failed"], True, ["file.eof-missing"]),
-    "junk-prefix": (damage_junk_prefix, ["xref.offset-adjusted"], False, []),
+    "truncated-tail": (
+        damage_truncate, ["xref.rebuilt", "stream.truncated", "filter.failed"], True,
+        ["file.eof-missing", "file.startxref-missing"]),
+    # The junk shifts the header, and every offset counted from it, by the same amount.
+    "junk-prefix": (damage_junk_prefix, ["xref.offset-adjusted"], False, ["file.header-offset"]),
     # A wrong /Length is only noticed when the stream is actually read: that is the lazy reader working
     # as designed, so the acceptance test reads every object before checking the diagnostics.
     "lying-length": (damage_lying_length, ["stream.length-invalid"], False, []),

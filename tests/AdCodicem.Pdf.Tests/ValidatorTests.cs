@@ -44,7 +44,28 @@ public class ValidatorTests
     [Fact]
     public void The_structural_profile_names_the_rules_it_runs_in_order()
     {
-        ValidationProfile.Structural.RuleIds.Should().Equal(PdfValidationRuleIds.FileEofMissing);
+        ValidationProfile.Structural.RuleIds.Should().Equal(
+            PdfValidationRuleIds.FileHeaderMissing,
+            PdfValidationRuleIds.FileHeaderOffset,
+            PdfValidationRuleIds.FileHeaderVersionInvalid,
+            PdfValidationRuleIds.FileEofMissing,
+            PdfValidationRuleIds.FileStartXRefMissing,
+            PdfValidationRuleIds.FileStartXRefWrong,
+            PdfValidationRuleIds.FileTrailerMissing,
+            PdfValidationRuleIds.FileTrailerMalformed,
+            PdfValidationRuleIds.FileRootInvalid,
+            PdfValidationRuleIds.FileSizeWrong,
+            PdfValidationRuleIds.XRefSectionMalformed,
+            PdfValidationRuleIds.XRefSectionNotFound,
+            PdfValidationRuleIds.XRefSectionShifted,
+            PdfValidationRuleIds.XRefChainLoop,
+            PdfValidationRuleIds.XRefEntryBroken,
+            PdfValidationRuleIds.XRefEntryShifted,
+            PdfValidationRuleIds.XRefGenerationMismatch,
+            PdfValidationRuleIds.XRefObjectStreamBroken,
+            PdfValidationRuleIds.XRefOffsetImprecise,
+            PdfValidationRuleIds.XRefObjectPastSize,
+            PdfValidationRuleIds.XRefCheckedInPart);
         ValidationProfile.Structural.ToString().Should().Be("structural 1");
     }
 

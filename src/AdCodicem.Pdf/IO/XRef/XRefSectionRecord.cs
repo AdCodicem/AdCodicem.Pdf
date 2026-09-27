@@ -65,6 +65,15 @@ internal sealed class XRefSectionRecord
     /// <summary>Gets the object number of a cross-reference stream, or 0 for a classic table.</summary>
     public int StreamObjectNumber { get; set; }
 
+    /// <summary>Gets the highest object number the section's rows give an entry, free or not; -1 when it gave none.</summary>
+    public int HighestNumber { get; set; } = -1;
+
+    /// <summary>
+    /// Gets how many bytes of white space or comments lie between where the section was read and its first token —
+    /// the <c>xref</c> keyword, or the stream's object header —, where the offset should have named that token.
+    /// </summary>
+    public int Padding { get; set; }
+
     /// <summary>Takes what a successful attempt at another offset read, the section having been relocated there.</summary>
     public void RelocateTo(XRefSectionRecord attempt)
     {
@@ -78,5 +87,7 @@ internal sealed class XRefSectionRecord
         TrailerFault = attempt.TrailerFault;
         TrailerPosition = attempt.TrailerPosition;
         StreamObjectNumber = attempt.StreamObjectNumber;
+        HighestNumber = attempt.HighestNumber;
+        Padding = attempt.Padding;
     }
 }
