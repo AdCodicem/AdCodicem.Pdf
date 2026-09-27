@@ -27,18 +27,11 @@ public class CrossReferenceRuleTests
 
         """;
 
-    /// <summary>The sound document with a long string between its page tree and its page, so that objects lie far apart.</summary>
-    private static readonly string Spread = PdfTemplate.Sound
-        .Replace("3 0 obj\n", "4 0 obj\n(" + new string('x', 1200) + ")\nendobj\n3 0 obj\n", StringComparison.Ordinal)
-        .Replace("0 4\n", "0 5\n", StringComparison.Ordinal)
-        .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
-        .Replace("/Size 4", "/Size 5", StringComparison.Ordinal);
-
     [Fact]
     public void A_sound_update_and_a_sound_spread_file_have_no_finding()
     {
         Validate(PdfTemplate.Build(Updated)).Findings.Should().BeEmpty();
-        Validate(PdfTemplate.Build(Spread)).Findings.Should().BeEmpty();
+        Validate(PdfTemplate.Build(PdfTemplate.Spread)).Findings.Should().BeEmpty();
     }
 
     [Fact]
@@ -145,6 +138,33 @@ public class CrossReferenceRuleTests
         finding.Message.Should().Be(message.Replace("{update}", (PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void A_section_prev_names_inside_the_file_where_none_is_near_is_not_found()
+    {
+        // /Prev names the catalog's header, more than half a kilobyte from the first table.
+        var file = PdfTemplate.Build(PdfTemplate.Spread + """
+            5 0 obj
+            (an update)
+            endobj
+            xref
+            5 1
+            {row:5}
+            trailer
+            << /Size 6 /Root 1 0 R /Prev {off:1} >>
+            startxref
+            {xref:2}
+            %%EOF
+
+            """);
+        var catalog = PdfTemplate.OffsetOf(file, "1 0 obj");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefSectionNotFound);
+
+        finding.Location.Position.Should().Be(catalog);
+        finding.Message.Should().Be(
+            $"The cross-reference section /Prev names at offset {catalog} is not there, nor within 512 bytes of it: the offset holds object 1, which is not a cross-reference stream.");
+    }
+
     [Theory]
     [InlineData(3, "3 bytes before it")]
     [InlineData(-7, "7 bytes after it")]
@@ -207,7 +227,7 @@ public class CrossReferenceRuleTests
     [Fact]
     public void An_entry_naming_another_object_far_from_its_own_is_broken()
     {
-        var file = PdfTemplate.Build(Spread.Replace("{row:3}", "{row:1}", StringComparison.Ordinal));
+        var file = PdfTemplate.Build(PdfTemplate.Spread.Replace("{row:3}", "{row:1}", StringComparison.Ordinal));
 
         var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryBroken);
 
@@ -318,7 +338,6 @@ public class CrossReferenceRuleTests
     [InlineData("/N 2", "/N 9", "Object stream 4, where the index places 2 objects, cannot be read: its /N declares 9 objects, more than its /First of")]
     [InlineData("/N 2", "/X 2", "Object stream 4, where the index places 2 objects, cannot be read: its /N or its /First is missing or negative.")]
     [InlineData("/Type /ObjStm /N 2 /First ", "/Type/ObjStm/N 2/First 999", "Object stream 4, where the index places 2 objects, cannot be read: it decodes to")]
-    [InlineData("stream\n2 0 3 ", "stream\nx 0 3 ", "Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, then something else.")]
     public void An_object_stream_that_cannot_serve_its_objects_is_reported_once(string text, string replacement, string message)
     {
         replacement.Length.Should().Be(text.Length, "every offset after the object stream stays right");
@@ -329,6 +348,145 @@ public class CrossReferenceRuleTests
         finding.Severity.Should().Be(PdfValidationSeverity.Error);
         finding.Location.Object.Should().Be(new PdfObjectId(4));
         finding.Message.Should().StartWith(message);
+    }
+
+    [Theory]
+    [InlineData("x 0 ")]
+    [InlineData("2 x ")]
+    [InlineData("0 0 ")]
+    [InlineData("2147483648 0 ")]
+    public void An_object_stream_whose_header_lists_something_other_than_objects_cannot_be_read(string start)
+    {
+        // The header starts "2 0 ", object 2 at offset 0; the objects keep their offsets from /First.
+        var file = XRefStreamBuilder().BuildWithXRefStream(
+            rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: header => start + header[4..]);
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().Be(
+            "Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, then something else.");
+    }
+
+    [Fact]
+    public void An_object_stream_the_index_names_as_an_object_that_is_no_stream_is_reported()
+    {
+        // The rows of objects 2 and 3 name object 1, the catalog, as their stream.
+        var file = Replace(XRefStreamFile(), "\u0002\0\0\0\u0004", "\u0002\0\0\0\u0001");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(1));
+        finding.Message.Should().Be("Object 1, where the index places 2 objects, is not a stream.");
+    }
+
+    [Fact]
+    public void An_object_stream_whose_entry_is_broken_is_that_entry_s_finding_alone()
+    {
+        // A long string, object 4, keeps object stream 5 far from the catalog, whose offset its entry now gives.
+        var file = XRefStreamBuilder()
+            .WithObject(4, "(" + new string('x', 1200) + ")")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+        var catalog = PdfTemplate.OffsetOf(file, "\n1 0 obj") + 1;
+        var stream = PdfTemplate.OffsetOf(file, "\n5 0 obj") + 1;
+        file = Replace(file, Row(stream), Row(catalog));
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
+        finding.Location.Object.Should().Be(new PdfObjectId(5));
+    }
+
+    [Fact]
+    public void An_object_stream_a_few_bytes_from_its_entry_serves_its_objects()
+    {
+        var file = XRefStreamFile();
+        var stream = PdfTemplate.OffsetOf(file, "\n4 0 obj") + 1;
+        file = Replace(file, Row(stream), Row(stream - 3));
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryShifted);
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+    }
+
+    [Fact]
+    public void An_object_stream_whose_data_is_corrupt_is_broken_rather_than_unchecked()
+    {
+        // Past the zlib header, bytes no deflate block starts with: the file's fault, not one of the reader's limits.
+        var file = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], compressObjectStream: true);
+        var text = Encoding.Latin1.GetString(file);
+        var data = text.IndexOf("\nstream\n", text.IndexOf("/ObjStm", StringComparison.Ordinal), StringComparison.Ordinal) + "\nstream\n".Length;
+        file.AsSpan(data + 2, 8).Fill(0xFF);
+
+        var findings = Validate(file).Findings;
+
+        findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefObjectStreamBroken);
+        findings[0].Message.Should().StartWith("Object stream 4, where the index places 2 objects, cannot be read: ");
+    }
+
+    [Fact]
+    public void An_object_stream_a_limit_cut_before_its_header_ended_is_said_to_be_unchecked()
+    {
+        // Its data decodes to 107 bytes, the header 9 of them; the reader stops at 4.
+        var file = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], compressObjectStream: true);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 4 } });
+
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefCheckedInPart);
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Message.Should().Be(
+            "One of the reader's limits stopped it reading object stream 4 before its header ended: the 2 objects the index places in it were not checked. Raising the limit the reader reported lets them be.");
+    }
+
+    [Fact]
+    public void An_object_stream_whose_dictionary_a_limit_cut_is_said_to_be_unchecked()
+    {
+        // "4 0 obj << /Type /ObjStm /N 2 /First 9 /Length 107 >>" runs past 32 bytes: the reader's limit, not the file's fault.
+        var file = XRefStreamFile();
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 32 } });
+
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.XRefCheckedInPart);
+        findings[0].Location.Object.Should().Be(new PdfObjectId(4));
+        findings[0].Message.Should().StartWith("One of the reader's limits stopped it reading object stream 4 before its header ended");
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_a_limit_cut_is_said_to_be_checked_in_part()
+    {
+        // Six rows of seven bytes, of which the reader decodes twenty.
+        var file = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressXRefStream: true);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 20 } });
+
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefCheckedInPart);
+        finding.Message.Should().Be(
+            $"One of the reader's limits stopped it reading the cross-reference section at offset {PdfTemplate.OffsetOf(file, "\n5 0 obj") + 1} whole: what lies past the limit was not checked.");
+    }
+
+    [Fact]
+    public void A_startxref_naming_the_line_feed_before_a_cross_reference_stream_is_imprecise()
+    {
+        var file = XRefStreamFile();
+        var stream = PdfTemplate.OffsetOf(file, "\n5 0 obj") + 1;
+        file = Replace(file, $"startxref\n{stream}\n", $"startxref\n{stream - 1}\n");
+
+        Single(Validate(file), PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().Be(
+            $"An offset names the white space before what it designates rather than its first byte: startxref gives offset {stream - 1}, 1 byte before the header of the cross-reference stream.");
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_whose_dictionary_is_not_well_formed_is_reported_at_the_stream()
+    {
+        var file = Replace(XRefStreamFile(), "/W [1 4 2]", "/W [1 4 2] 7");
+        var stream = PdfTemplate.OffsetOf(file, "\n5 0 obj") + 1;
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.FileTrailerMalformed);
+
+        finding.Location.Position.Should().Be(stream);
+        finding.Message.Should().Be(
+            $"The dictionary of the cross-reference stream at offset {stream} is not well formed: the reader read it despite syntax errors.");
     }
 
     [Fact]
@@ -393,7 +551,7 @@ public class CrossReferenceRuleTests
     public void A_rebuild_that_happens_after_opening_leaves_the_file_s_index_to_judge()
     {
         // Object 3 is nowhere near its offset: reading it rebuilds the index, and the report stays the same.
-        var file = PdfTemplate.Build(Spread.Replace("{row:3}", "{row:1}", StringComparison.Ordinal));
+        var file = PdfTemplate.Build(PdfTemplate.Spread.Replace("{row:3}", "{row:1}", StringComparison.Ordinal));
         using var document = PdfDocument.Open(file);
         var validator = new PdfValidator();
 
@@ -407,12 +565,18 @@ public class CrossReferenceRuleTests
     }
 
     /// <summary>A document whose index is a cross-reference stream, objects 2 and 3 packed in object stream 4.</summary>
-    private static byte[] XRefStreamFile() =>
+    private static byte[] XRefStreamFile() => XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+
+    /// <summary>The catalog, the page tree and the page, objects 1 to 3.</summary>
+    private static TestPdfBuilder XRefStreamBuilder() =>
         new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
-            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>")
-            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>");
+
+    /// <summary>A cross-reference stream's row, as <see cref="TestPdfBuilder"/> writes it: an object at <paramref name="offset"/>.</summary>
+    private static string Row(long offset) =>
+        Encoding.Latin1.GetString([1, (byte)(offset >> 24), (byte)(offset >> 16), (byte)(offset >> 8), (byte)offset, 0, 0]);
 
     /// <summary>Lists object 3 first and object 2 second in the object stream's header, their offsets unchanged.</summary>
     private static byte[] SwapObjectStreamNumbers(byte[] file)

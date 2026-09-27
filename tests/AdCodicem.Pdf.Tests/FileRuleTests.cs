@@ -167,6 +167,40 @@ public class FileRuleTests
     }
 
     [Fact]
+    public void A_table_the_file_ends_in_misses_its_trailer()
+    {
+        // startxref names a table written after it, which the file ends in before any trailer.
+        var file = PdfTemplate.Build("""
+            %PDF-1.7
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+            endobj
+            startxref
+            {xref:1}
+            %%EOF
+            xref
+            0 4
+            {free}
+            {row:1}
+            {row:2}
+            {row:3}
+
+            """);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.FileTrailerMissing);
+
+        finding.Location.Position.Should().Be(file.Length);
+        finding.Message.Should().Be(
+            $"The cross-reference table at offset {PdfTemplate.OffsetOf(file, "\nxref\n") + 1} is not followed by a trailer: the file ends first.");
+    }
+
+    [Fact]
     public void A_trailer_keyword_followed_by_no_dictionary_is_malformed_and_the_catalog_found_without_a_rebuild()
     {
         var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "/Size 4 /Root 1 0 R >>");
@@ -192,6 +226,17 @@ public class FileRuleTests
         var finding = Single(Validate(file), PdfValidationRuleIds.FileTrailerMalformed);
 
         finding.Message.Should().Be(
+            $"The trailer at offset {PdfTemplate.OffsetOf(file, "trailer")} is not a well-formed dictionary: the reader read it despite syntax errors.");
+    }
+
+    [Fact]
+    public void A_trailer_whose_syntax_errors_overflow_the_diagnostics_is_still_malformed()
+    {
+        // Two stray values, and room for one diagnostic: the second error is dropped, and still counts.
+        var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "<< /Size 4 7 /Root 1 0 R 8 >>");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { DiagnosticCapacity = 1 });
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileTrailerMalformed).Message.Should().Be(
             $"The trailer at offset {PdfTemplate.OffsetOf(file, "trailer")} is not a well-formed dictionary: the reader read it despite syntax errors.");
     }
 
@@ -246,6 +291,44 @@ public class FileRuleTests
             .Should().Be("The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. No object of the file is a catalog.");
     }
 
+    [Fact]
+    public void A_rebuild_the_catalog_search_sets_off_leaves_the_search_to_it()
+    {
+        // /Root names nothing. Looking among the indexed objects, the reader meets object 1 far from where its entry
+        // says, and rebuilds the index, which finds no catalog either: the search ends there.
+        var file = PdfTemplate.Build(PdfTemplate.Spread
+            .Replace("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Outlines >>", StringComparison.Ordinal)
+            .Replace("{row:1}", "{row:3}", StringComparison.Ordinal)
+            .Replace("/Root 1 0 R", "/Root 9 0 R", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered).Should().BeFalse();
+        Single(report, PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root names object 9 0, which the file does not hold. No object of the file is a catalog.");
+        Single(report, PdfValidationRuleIds.XRefEntryBroken).Location.Object.Should().Be(new PdfObjectId(1));
+    }
+
+    [Fact]
+    public void A_root_invalid_in_a_cross_reference_stream_is_reported_at_the_stream()
+    {
+        var file = Replace(
+            new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .BuildWithXRefStream(rootNumber: 1),
+            "/Root 1 0 R",
+            "/Root (cat)");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.FileRootInvalid);
+
+        finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "\n4 0 obj") + 1);
+        finding.Message.Should().Be(
+            "The trailer's /Root is a string, not a reference to the document catalog. The reader took object 1, which is one, for the catalog.");
+    }
+
     [Theory]
     [InlineData("42", "is a number, not a document catalog")]
     [InlineData("<< /Kind /Catalog >>", "is a dictionary that is not a document catalog")]
@@ -279,6 +362,31 @@ public class FileRuleTests
         finding.Severity.Should().Be(PdfValidationSeverity.Warning);
         finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "trailer"));
         finding.Message.Should().Be($"The trailer of the cross-reference table at offset {PdfTemplate.OffsetOf(file, "xref\n")} {message}");
+    }
+
+    [Theory]
+    [InlineData("/Size 7", "/Size 6", null)]
+    [InlineData("/Size 7", "/Size 7", null)]
+    [InlineData("/Size 7", "/Size 9", "gives /Size 9, where the highest object number it and the sections it updates use, 5, makes it 6.")]
+    [InlineData("/Size /Seven", "/Size 7", "gives /Size 7, where the highest object number it and the sections it updates use, 5, makes it 6.")]
+    public void A_hybrid_file_s_stream_may_give_its_own_count_or_its_table_s(string tableSize, string streamSize, string? message)
+    {
+        // The table indexes objects 4 and 6, the stream; the stream indexes object 5. Table 17 asks the stream for
+        // one more than its highest number, 6, and for its table's /Size, 7 — which a table that gives none cannot.
+        var (file, stream) = Hybrid(tableSize, streamSize);
+
+        var atStream = Validate(file).Findings
+            .Where(finding => finding.RuleId == PdfValidationRuleIds.FileSizeWrong && finding.Location.Position == stream)
+            .Select(finding => finding.Message);
+
+        if (message is null)
+        {
+            atStream.Should().BeEmpty();
+        }
+        else
+        {
+            atStream.Should().ContainSingle().Which.Should().Be($"The cross-reference stream at offset {stream} {message}");
+        }
     }
 
     [Fact]
@@ -339,6 +447,33 @@ public class FileRuleTests
 
         report.Contains(PdfValidationRuleIds.XRefObjectPastSize).Should().BeFalse();
         report.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The sound document updated as Word saves a file: a classic table indexing object 4 and object 6, the
+    /// cross-reference stream its <c>/XRefStm</c> names, which indexes object 5 alone.
+    /// </summary>
+    private static (byte[] File, long Stream) Hybrid(string tableSize, string streamSize)
+    {
+        var original = PdfTemplate.Build(PdfTemplate.Sound);
+        var file = new List<byte>(original);
+
+        void Append(string text) => file.AddRange(Encoding.Latin1.GetBytes(text));
+
+        var fourth = file.Count;
+        Append("4 0 obj\n(in the table)\nendobj\n");
+        var fifth = file.Count;
+        Append("5 0 obj\n(only in the stream)\nendobj\n");
+        var stream = file.Count;
+        Append($"6 0 obj\n<< /Type /XRef /W [1 4 2] {streamSize} /Index [5 1] /Length 7 >>\nstream\n");
+        file.AddRange([1, (byte)(fifth >> 24), (byte)(fifth >> 16), (byte)(fifth >> 8), (byte)fifth, 0, 0]);
+        Append("\nendstream\nendobj\n");
+        var table = file.Count;
+        Append(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n4 1\n{fourth:D10} 00000 n \n6 1\n{stream:D10} 00000 n \ntrailer\n<< {tableSize} /Root 1 0 R /Prev {PdfTemplate.OffsetOf(original, "xref\n")} /XRefStm {stream} >>\nstartxref\n{table}\n%%EOF\n"));
+
+        return ([.. file], stream);
     }
 
     private static PdfValidationFinding Single(PdfValidationReport report, string ruleId)

@@ -1440,8 +1440,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         numbers = [];
         fault = null;
 
-        if (!TryParseObjectAt(number, offset, out var value) &&
-            !(TryFindObjectHeader(number, offset, out var nearby) && TryParseObjectAt(number, nearby, out value)))
+        var guards = _guardsReached;
+        var found = TryParseObjectAt(number, offset, out var value) ||
+            (TryFindObjectHeader(number, offset, out var nearby) && TryParseObjectAt(number, nearby, out value));
+
+        // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown.
+        if (_guardsReached != guards)
+        {
+            return ObjectStreamHeaderResult.CutByLimit;
+        }
+
+        if (!found)
         {
             return ObjectStreamHeaderResult.NotFound;
         }

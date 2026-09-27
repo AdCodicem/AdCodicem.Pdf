@@ -249,7 +249,7 @@ internal sealed class CrossReferenceProbe
             case ObjectStreamHeaderResult.CutByLimit:
                 NotChecked.Add(new ProbeFinding(
                     PdfValidationLocation.OfObject(id, offset),
-                    Invariant($"One of the reader's limits stopped it decoding object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it were not checked. Raising the limit the reader reported lets them be.")));
+                    Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it were not checked. Raising the limit the reader reported lets them be.")));
                 return;
 
             case ObjectStreamHeaderResult.NotAnObjectStream:

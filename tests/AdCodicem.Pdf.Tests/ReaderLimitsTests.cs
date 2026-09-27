@@ -275,6 +275,28 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_guard_reached_looking_for_the_catalog_among_the_indexed_objects_throws_once_it_is_found()
+    {
+        // /Root names no object, so the catalog is looked for among those the index holds, without a rebuild.
+        // Object 1 reaches the object bound on the way to object 3, the catalog, which is found before the guard
+        // throws.
+        var file = new TestPdfBuilder()
+            .WithObject(1, LongArray)
+            .WithObject(2, Pages)
+            .WithObject(3, Catalog)
+            .BuildClassic(rootNumber: 9);
+        var limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 };
+        var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnLimit = true });
+
+        opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be("MaxObjectLength");
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.TrailerRootRecovered);
+    }
+
+    [Fact]
     public void An_object_cut_by_its_bound_is_not_reported_as_damage()
     {
         // The bound falls just after a key, where the parser, finding no value, reports an object the file
