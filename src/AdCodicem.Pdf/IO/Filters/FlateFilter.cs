@@ -105,6 +105,8 @@ internal static class FlateFilter
 
         try
         {
+            var faulted = false;
+
             while (true)
             {
                 int read;
@@ -113,20 +115,10 @@ internal static class FlateFilter
                 {
                     read = decompressor.Read(buffer, 0, buffer.Length);
                 }
-                catch (Exception exception) when (IsInflaterFault(exception) && input.ReadPastEnd)
-                {
-                    // A host that sets System.IO.Compression.UseStrictValidation has the framework throw where
-                    // the data stops short. That is the lost tail the input noticed, handled as it is below.
-                    break;
-                }
                 catch (Exception exception) when (IsInflaterFault(exception))
                 {
-                    // Corrupt from here on. Anything already decoded is still usable, and losing the
-                    // tail of a content stream beats losing the whole document. What the read that met the
-                    // fault had decoded is lost with it (T40).
-                    ending = FlateEnding.Corrupt;
-                    result = output.ToArray();
-                    return output.Count > 0;
+                    faulted = true;
+                    break;
                 }
 
                 if (read == 0)
@@ -142,17 +134,30 @@ internal static class FlateFilter
                 }
             }
 
+            result = output.ToArray();
+
             // The inflater returns the end of its input as the end of the data. Having asked for more, it had
-            // not reached the end of its last block — or, for zlib, of the checksum after it.
+            // not reached the end of its last block — or, for zlib, of the checksum after it. A host that sets
+            // System.IO.Compression.UseStrictValidation has the framework throw there instead: the same lost
+            // tail, which is why the request is looked at before the fault.
             if (input.ReadPastEnd)
             {
                 ending = zlibHeader && data.Length > ZlibHeaderLength &&
                     IsWholeDeflate(data[ZlibHeaderLength..], output.Count, buffer)
                     ? FlateEnding.ChecksumMissing
                     : FlateEnding.TailLost;
+                return true;
             }
 
-            result = output.ToArray();
+            if (faulted)
+            {
+                // Corrupt from here on. Anything already decoded is still usable, and losing the tail of a
+                // content stream beats losing the whole document. What the read that met the fault had decoded
+                // is lost with it (T40).
+                ending = FlateEnding.Corrupt;
+                return output.Count > 0;
+            }
+
             return true;
         }
         finally
@@ -209,5 +214,5 @@ internal static class FlateFilter
     /// raises for what it cannot go on with, such as a header that asks for a preset dictionary. The input is
     /// memory, and never throws either.
     /// </summary>
-    private static bool IsInflaterFault(Exception exception) => exception is InvalidDataException or IOException;
+    internal static bool IsInflaterFault(Exception exception) => exception is InvalidDataException or IOException;
 }

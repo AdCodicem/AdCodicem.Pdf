@@ -12,11 +12,11 @@ here.
   2026-09-26. The three reader debts it waited on — T32, T25 and T27 — are fixed on
   [#31](https://github.com/AdCodicem/AdCodicem.Pdf/pull/31), rebased on the roadmap revision.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 1,497 unit (8 skipped by design) + 452 integration (skipped without Docker) + 23 for the remote
+- **Tests**: 1,502 unit (8 skipped by design) + 452 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher. With the remote corpus: `Remote corpus` run 7, on #29's branch at `4aa6816` with all 242
   documents, passed 2,844 unit (97 skipped by design, on documents recorded as unsupported until M02, T24, T25
   or T27) and 668 integration tests. Here, on #31's branch with 233 of the 242 — seven hosts reset this
-  session's connections and the two GitHub attachments answer 403 —, 2,973 unit (89 skipped by design, on
+  session's connections and the two GitHub attachments answer 403 —, 2,978 unit (89 skipped by design, on
   documents recorded as unsupported until M02 or T24) and 1,034 integration, in a local referee container.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
@@ -124,6 +124,14 @@ not a fault of the file: the rules on it report at most, as information, that it
   spelling and its two-digit milestone numbers: the memory budgets of the old M13 are M23's. One remote
   document renamed there, `jhove-hul-79-quartz-word-program-evaluation-report.pdf`, is fetched under its new
   name. A last test covers what `FlateInput` refuses, seven lines Codecov found uncovered.
+- **Every line of #31's change is covered.** Codecov then found four lines and branches of the patch no test
+  reached (97.96 %), and the unit suite measured as CI measures it gave the same four. Two were the branch for
+  a host that sets `UseStrictValidation`, which the framework reads once per process: the loop now leaves on a
+  fault and looks at a request past the end first, so that the host's exception and the framework's silent end
+  take one path — checked in a separate process, the switch on and off: the same bytes and the same reports.
+  The others were behaviour without a test, and have one: a guard's cut that falls in the checksum, or after
+  whole data, reports only the guard; and only the inflater's complaints about its data count as faults. All
+  197 lines the change adds are covered, branches included.
 
 ### 2026-09-26 and 27 — The roadmap revised from a feature survey
 - **The question.** Asked which PDF features the milestones did not plan, and for a feature table and a
