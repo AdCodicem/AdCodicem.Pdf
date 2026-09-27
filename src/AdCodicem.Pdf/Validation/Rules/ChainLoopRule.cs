@@ -8,7 +8,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// </summary>
 /// <remarks>
 /// A <c>/Prev</c> that names a section the chain has already read makes a loop a careless reader never leaves. The
-/// reader stops there, having read every section once, so nothing is lost: a warning.
+/// reader stops there, but the section the chain should have gone on to is unknown: what only it indexed is found,
+/// if at all, by rebuilding the index, after which the reader cannot vouch that it reads what was written — an
+/// error (ADR 45), as a section that cannot be found is.
 /// </remarks>
 internal sealed class ChainLoopRule : IValidationRule
 {
@@ -16,7 +18,7 @@ internal sealed class ChainLoopRule : IValidationRule
     public string Id => PdfValidationRuleIds.XRefChainLoop;
 
     /// <inheritdoc/>
-    public PdfValidationSeverity Severity => PdfValidationSeverity.Warning;
+    public PdfValidationSeverity Severity => PdfValidationSeverity.Error;
 
     /// <inheritdoc/>
     public void Check(ValidationContext context)

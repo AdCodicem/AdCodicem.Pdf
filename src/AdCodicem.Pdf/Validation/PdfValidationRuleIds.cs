@@ -88,7 +88,8 @@ public static class PdfValidationRuleIds
     public const string XRefSectionShifted = "xref.section-shifted";
 
     /// <summary>
-    /// The chain of cross-reference sections names a section it has already read. <see cref="PdfValidationSeverity.Warning"/>.
+    /// The chain of cross-reference sections names a section it has already read, and the sections before the loop
+    /// are out of reach. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefChainLoop = "xref.chain-loop";
 

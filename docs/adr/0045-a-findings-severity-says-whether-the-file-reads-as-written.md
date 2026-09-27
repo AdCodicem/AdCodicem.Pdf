@@ -65,7 +65,9 @@ There is no `Critical` level; whether one is needed is M05's question, when repa
 - Three rules of the second slice move from `Error` to `Warning`: `file.header-missing` (Acrobat refuses such a
   file, the reader reads it), `xref.generation-mismatch` (qpdf reads the object as missing, the reader reads it as
   the references name it), `xref.object-past-size` (a reader applying Table 15 loses the object, the reader reads
-  it). M02's statement about the iPRES files qpdf only warns about holds without exception.
+  it). M02's statement about the iPRES files qpdf only warns about holds without exception. One moves the other
+  way: `xref.chain-loop`, proposed as a warning because the reader reads every section once, is an error — the
+  section the chain should have gone on to is unknown, as a section that cannot be found is.
 - A severity is checked against the reader and the corpus, not argued about other readers: an `Error` rule is one
   whose finding goes with a rebuild, a loss or a choice the reader made, and the corpus tests hold each document to
   its findings.

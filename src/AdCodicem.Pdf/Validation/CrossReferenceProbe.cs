@@ -141,7 +141,7 @@ internal sealed class CrossReferenceProbe
             {
                 FirstImprecise = new ProbeFinding(
                     PdfValidationLocation.OfObject(id, offset),
-                    Invariant($"the entry of object {number} gives offset {offset}, {header.Start} bytes before its header"));
+                    Invariant($"the entry of object {number} gives offset {offset}, {RuleText.Bytes(header.Start)} before its header"));
             }
 
             CheckGeneration(number, entry, offset + header.Start, header.Generation);
@@ -154,7 +154,7 @@ internal sealed class CrossReferenceProbe
         {
             Shifted.Add(new ProbeFinding(
                 PdfValidationLocation.OfObject(id, offset),
-                Invariant($"The entry of object {number} gives offset {offset}, where there is {found}; the object starts {actual - offset} bytes from there, at offset {actual}.")));
+                Invariant($"The entry of object {number} gives offset {offset}, where there is {found}; the object starts {RuleText.Distance(actual - offset)}, at offset {actual}.")));
 
             var relocated = ReadHeader(source, actual, buffer);
             CheckGeneration(number, entry, actual, relocated.Generation);
@@ -208,7 +208,7 @@ internal sealed class CrossReferenceProbe
 
             NotChecked.Add(new ProbeFinding(
                 default,
-                Invariant($"The document is encrypted: the {objects} objects its index places in {packed.Count} object streams were not checked, those streams being readable only once decrypted.")));
+                Invariant($"The document is encrypted: the {RuleText.Objects(objects)} its index places in object streams were not checked, those streams being readable only once decrypted.")));
             return;
         }
 
@@ -226,7 +226,7 @@ internal sealed class CrossReferenceProbe
         {
             BrokenObjectStreams.Add(new ProbeFinding(
                 PdfValidationLocation.OfObject(id),
-                Invariant($"The index places {Objects(objects.Count)} in object stream {stream}, which it does not hold as an object.")));
+                Invariant($"The index places {RuleText.Objects(objects.Count)} in object stream {stream}, which it does not hold as an object.")));
             return;
         }
 
@@ -234,7 +234,7 @@ internal sealed class CrossReferenceProbe
         {
             BrokenObjectStreams.Add(new ProbeFinding(
                 PdfValidationLocation.OfObject(id),
-                Invariant($"The index places {Objects(objects.Count)} in object stream {stream}, which it places in object stream {entry.ObjectStreamNumber} in turn: an object stream cannot be stored in another.")));
+                Invariant($"The index places {RuleText.Objects(objects.Count)} in object stream {stream}, which it places in object stream {entry.ObjectStreamNumber} in turn: an object stream cannot be stored in another.")));
             return;
         }
 
@@ -249,14 +249,14 @@ internal sealed class CrossReferenceProbe
             case ObjectStreamHeaderResult.CutByLimit:
                 NotChecked.Add(new ProbeFinding(
                     PdfValidationLocation.OfObject(id, offset),
-                    Invariant($"One of the reader's limits stopped it decoding object stream {stream} before its header ended: the {Objects(objects.Count)} the index places in it were not checked. Raising the limit the reader reported lets them be.")));
+                    Invariant($"One of the reader's limits stopped it decoding object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it were not checked. Raising the limit the reader reported lets them be.")));
                 return;
 
             case ObjectStreamHeaderResult.NotAnObjectStream:
             case ObjectStreamHeaderResult.Unreadable:
                 BrokenObjectStreams.Add(new ProbeFinding(
                     PdfValidationLocation.OfObject(id, offset),
-                    Invariant($"Object {stream}, where the index places {Objects(objects.Count)}, {fault}.")));
+                    Invariant($"Object {stream}, where the index places {RuleText.Objects(objects.Count)}, {fault}.")));
                 return;
         }
 
@@ -283,8 +283,6 @@ internal sealed class CrossReferenceProbe
             }
         }
     }
-
-    private static string Objects(int count) => count == 1 ? "1 object" : Invariant($"{count} objects");
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 }

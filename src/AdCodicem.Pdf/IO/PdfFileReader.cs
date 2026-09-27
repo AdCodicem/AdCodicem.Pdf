@@ -406,6 +406,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         {
             if (!visited.Add(offset))
             {
+                // The section the chain should have gone on to is unknown: what only it indexed is the index's to
+                // find, as a missing section's is.
+                _indexIncomplete = true;
                 _structure.LoopOffset = offset + _headerOffset;
                 _structure.LoopNamedBy = naming;
                 _structure.LoopNamedFrom = namedFrom;
