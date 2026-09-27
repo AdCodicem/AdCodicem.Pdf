@@ -715,26 +715,27 @@ fidelity that is documented rather than hidden, and a diagnostic for what it cou
 
 ## Open questions
 
-Neither planned nor excluded; each would enter a milestone when what triggers it happens. Each has a
+Neither planned nor excluded; each would enter a milestone when what triggers it happens. Each has its
 discussion under [Ideas](https://github.com/AdCodicem/AdCodicem.Pdf/discussions/categories/ideas), where a
-need for it can be said — real use is what triggers most of them.
+need for it can be said — real use is what triggers most of them. A row added here gets its discussion from
+the `Tracking` workflow's manual dispatch, matched by the subject, which is therefore not renamed lightly.
 
-| Subject | What would trigger it |
-|---|---|
-| Variable fonts, instanced before subsetting | A brand font delivered only as a variable font |
-| Color fonts and emoji | Chat or e-mail transcripts as case-file pieces |
-| Mixed raster content compression | Color scans too large for a portal cap after M23's recompression |
-| Pixel deskew and despeckle of scans | Copier output that M22's orientation cannot correct |
-| XLSX, PPTX and ODT to PDF | M31 proving the DOCX route worth extending |
-| A code-first layout API beside HTML (ADR 8) | Callers asking for one over templates |
-| A first-party OCR engine satellite | Callers asking for one over `IOcrEngine` |
-| Signed French 2D-Doc codes | An issuer approved by ANTS asking for them |
-| Heuristic tagging of untagged received documents | Accessibility obligations on documents a caller only receives |
-| A lossless JSON dump and update of the object graph, as qpdf's | Support cases, or corpus fixtures that need to be readable |
-| Barcode and patch-code recognition on scanned pages | Scan batches split on separator sheets that carry a barcode or a patch code (M07's separator predicate) |
-| EMF, WMF and EMF+ pictures converted to SVG | The share of DOCX pieces that carry them, which M31's report counts |
-| Office charts drawn from their XML rather than their fallback picture | Case-file pieces whose charts have no usable fallback |
-| Word's legacy form fields and content controls as AcroForm fields (M17) | Callers converting Word forms that must stay fillable |
+| Subject | What would trigger it | Discussion |
+|---|---|---|
+| Variable fonts, instanced before subsetting | A brand font delivered only as a variable font | [#91] |
+| Color fonts and emoji | Chat or e-mail transcripts as case-file pieces | [#92] |
+| Mixed raster content compression | Color scans too large for a portal cap after M23's recompression | [#93] |
+| Pixel deskew and despeckle of scans | Copier output that M22's orientation cannot correct | [#94] |
+| XLSX, PPTX and ODT to PDF | M31 proving the DOCX route worth extending | [#95] |
+| A code-first layout API beside HTML (ADR 8) | Callers asking for one over templates | [#96] |
+| A first-party OCR engine satellite | Callers asking for one over `IOcrEngine` | [#97] |
+| Signed French 2D-Doc codes | An issuer approved by ANTS asking for them | [#98] |
+| Heuristic tagging of untagged received documents | Accessibility obligations on documents a caller only receives | [#99] |
+| A lossless JSON dump and update of the object graph, as qpdf's | Support cases, or corpus fixtures that need to be readable | [#100] |
+| Barcode and patch-code recognition on scanned pages | Scan batches split on separator sheets that carry a barcode or a patch code (M07's separator predicate) | [#101] |
+| EMF, WMF and EMF+ pictures converted to SVG | The share of DOCX pieces that carry them, which M31's report counts | [#102] |
+| Office charts drawn from their XML rather than their fallback picture | Case-file pieces whose charts have no usable fallback | [#103] |
+| Word's legacy form fields and content controls as AcroForm fields (M17) | Callers converting Word forms that must stay fillable | [#104] |
 
 ## Renumbering of 2026-09-26
 
@@ -825,3 +826,17 @@ written: they are what the work is for.
 [#49]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/49
 [#50]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/50
 [#53]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/53
+[#91]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/91
+[#92]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/92
+[#93]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/93
+[#94]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/94
+[#95]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/95
+[#96]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/96
+[#97]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/97
+[#98]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/98
+[#99]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/99
+[#100]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/100
+[#101]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/101
+[#102]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/102
+[#103]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/103
+[#104]: https://github.com/AdCodicem/AdCodicem.Pdf/discussions/104

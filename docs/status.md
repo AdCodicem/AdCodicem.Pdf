@@ -17,7 +17,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
 - **Tests**: 1,504 unit (8 skipped by design) + 452 integration (skipped without Docker) + 23 for the remote
-  corpus's fetcher + 25 for the roadmap's mirror on GitHub. With the remote corpus: `Remote corpus` run 7, on
+  corpus's fetcher + 26 for the roadmap's mirror on GitHub. With the remote corpus: `Remote corpus` run 7, on
   #29's branch at `4aa6816` with all 242 documents, passed 2,844 unit (97 skipped by design, on documents
   recorded as unsupported until M02, T24, T25 or T27) and 668 integration tests. Here, on #31's branch with 233
   of the 242 — seven hosts reset this session's connections and the two GitHub attachments answer 403 —, 2,978
@@ -84,7 +84,7 @@ and M23's business.
 
 M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29); T32, T25 and T27, the reader debts
 before its cross-reference and object-graph rules, merged with #31. Its progress is the
-[M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestones) on GitHub. In the order its debts impose:
+[M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestone/3) on GitHub. In the order its debts impose:
 
 1. Slice 2, file and cross-reference rules ([#58]), which also answers for iPRES `t04-007` (a premature
    `%%EOF` before the trailer) and reports what T25 now tells the reader: a section found near where it was
@@ -107,8 +107,10 @@ not a fault of the file: the rules on it report at most, as information, that it
 - **Milestones.** The `Tracking` workflow runs `.github/scripts/sync_tracking.py` on every change to the
   roadmap, a specification or `.github/labels.json` on `main`: one GitHub milestone per row of the roadmap's
   index, described by its goal, closed when the row says done, never given a due date — the roadmap is an
-  intention —, and the labels the issues use. What it reads and plans is held by 25 tests in CI; the
-  milestones themselves come from its first run after the merge.
+  intention —, and the labels the issues use. What it reads and plans is held by 26 tests in CI. Its first
+  run, on the merge of #90, created the 32 milestones, numbered 1 (M00) to 32 (M31), and #34 to #62 were
+  filed under theirs — the debt under the milestone its row named, the five settings and accounts under
+  none.
 - **Slices.** A milestone's slices become issues labeled `slice` when it starts; the exit criteria stay
   checkboxes in its file. M02's six are #57 to #62, the first closed as done with #29.
 - **Debt.** The 24 open rows but T10 are 23 issues, #34 to #56, labeled `debt` and an area, typed Bug or Task, and
@@ -122,13 +124,12 @@ not a fault of the file: the rules on it report at most, as information, that it
   W12 to W30 — has a `help wanted` issue, #63 to #89, whose first lines say an issue is public and a
   confidential file never goes in one. The file stays the reference and links each row to its issue; a
   *Document contribution* issue form asks for the same checks.
-- **Open questions.** Each row of the roadmap's *Open questions* gets a discussion under Ideas, opened by the
-  workflow's manual dispatch after the merge; the roadmap's table links them once they exist.
+- **Open questions.** Each row of the roadmap's *Open questions* has a discussion under Ideas, #91 to #104,
+  opened by the workflow's manual dispatch and linked from the table's third column, which the script does
+  not read: it matches a question to its discussion by the subject.
 - **Conventions.** A commit names the issue it advances in its footer (`Refs #58`), and the pull request
   closes what it completes (`Closes #58`); sessions open, label and comment on issues freely, and close one
   only through a merge. `stale.yml` exempts `debt`, `slice`, `help wanted` and every issue under a milestone.
-- **Still open.** The workflow's first run, which creates the 32 milestones; filing #34 to #62 under theirs;
-  the discussions, and their links in the roadmap.
 
 ### 2026-09-27 — A disclaimer, and the roadmap called an intention
 - **At the maintainer's request.** The README (and so the package on nuget.org) gains a `Disclaimer` section:
