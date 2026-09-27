@@ -93,6 +93,15 @@ not a fault of the file: the rules on it report at most, as information, that it
 
 ## Journal
 
+### 2026-09-27 — A disclaimer, and the roadmap called an intention
+- **At the maintainer's request.** The README (and so the package on nuget.org) gains a `Disclaimer` section:
+  provided as is, no liability to the extent the law permits, the MIT license governing; and what stays the
+  user's to check — every document produced, conformance claims, redaction, the legal validity of signatures —
+  with no legal, tax or compliance advice. The site's introduction carries a shorter version, and its footer
+  says "provided as is, without warranty" on every page. `LICENSE` is untouched.
+- **The roadmap is an intention, not a promise**: said at the top of `docs/roadmap.md`, and on the features
+  page, whose template called a planned feature "a commitment of the roadmap" and no longer does.
+
 ### 2026-09-27 — T27: a reference to an object the file lacks is null; #31 rebased on the roadmap revision
 - **The defect.** A reference to an object the index did not hold made the reader rebuild its whole index,
   scanning the file for the object — the lazy rebuild meant for an index that lost entries — and report a

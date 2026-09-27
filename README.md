@@ -105,6 +105,29 @@ everything else.
 A malformed document that crashes, hangs or exhausts memory is a security issue, not an ordinary bug —
 report it privately, as [SECURITY.md](SECURITY.md) explains.
 
+## Disclaimer
+
+AdCodicem.Pdf is provided **"as is"**, without warranty of any kind, express or implied — including, without
+limitation, the warranties of merchantability, fitness for a particular purpose and non-infringement. To the
+maximum extent permitted by applicable law, the authors, contributors and copyright holders are not liable for
+any claim, damage or loss, direct or indirect, arising from the use of the library, of its documentation or of
+the documents it reads, produces or modifies. The [MIT license](LICENSE) is the governing text; this section
+restates it in plain words and does not replace it.
+
+The library is meant for documents that matter — contracts, invoices, case files — so what stays yours to
+check is worth saying plainly:
+
+- **Every document it produces or modifies** is yours to verify before you rely on it, file it, sign it or
+  send it.
+- **Conformance** — PDF/A, PDF/UA, Factur-X, EN 16931 — is an aim, and the validator reports what it finds;
+  neither is a certification. A conformance claim is confirmed by the tools and the authorities your use
+  requires.
+- **Redaction and sanitization**: check that the content you removed is actually gone before a document leaves
+  your hands.
+- **Signatures**: whether a signature is legally valid depends on your jurisdiction, your certificates and your
+  trust services, not on this library.
+- **Nothing in this project** — code, documentation or roadmap — is legal, tax or compliance advice.
+
 ## License
 
 MIT. Everything in this repository is written in English.

@@ -13,8 +13,10 @@ documentation, as found on 2026-09-26, and cites it.
 :::warning A young library
 
 Reading and the first validation rules exist today; everything else is planned, milestone by milestone. A
-planned feature is a commitment of the roadmap, not something you can use yet. **A preview carries no
-guarantee at all**: its API may change or disappear in the next preview.
+planned feature is an intention of the roadmap, not a promise that it will ever ship: its milestone may be
+delayed, reshaped or dropped, and until a release has shipped it, it is not something you can use. Choose the
+library for what it does today. **A preview carries no guarantee at all**: its API may change or disappear in
+the next preview.
 
 :::
 

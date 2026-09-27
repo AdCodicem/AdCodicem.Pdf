@@ -4,6 +4,12 @@ An index of milestones. It places a piece of work in the whole — it is **not**
 the detailed specification of each milestone lives in `docs/milestones/`, and the real state in
 `docs/status.md`.
 
+> **An intention, not a promise.** This roadmap says what the project means to build and in what order. It
+> is not a commitment: a milestone may be delayed, reshaped, split, reordered or dropped, and a planned
+> feature may never ship. Nothing here is a contract, a delivery date or a warranty; the only features that
+> exist are those a release has shipped and documented. Do not base a decision you cannot easily reverse on
+> a feature that is not available yet.
+
 A milestone is not a session: the large ones span several, and a milestone closes only when its exit
 criteria and its **acceptance conditions on the corpus** are verified by tests — not when the code exists.
 The acceptance rules are in `docs/corpus.md`.
