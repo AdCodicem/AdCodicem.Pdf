@@ -45,7 +45,8 @@ IDEAS = "Ideas"
 ROADMAP_ROW = re.compile(
     r"^\| (?P<id>M\d+) \| (?P<name>.+?) \| (?P<size>S|M|L|XL) \| (?P<depends>.*?) \| "
     r"(?P<state>done|in progress|to do) \|$")
-OPEN_QUESTION_ROW = re.compile(r"^\| (?P<subject>[^|]+?) \| (?P<trigger>[^|]+?) \|$")
+# Subject and trigger; a third column, the discussion's link, is the roadmap's own and is not read.
+OPEN_QUESTION_ROW = re.compile(r"^\| (?P<subject>[^|]+?) \| (?P<trigger>[^|]+?) \|(?: [^|]*? \|)?$")
 NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
 
 
