@@ -106,10 +106,11 @@ fonts when their `fsType` allows embedding.
   of the 124 kept, it fell short on ten, recorded as unsupported — seven since T21 and T23 were fixed: T21 (one file), T23 (two), T24 (one: a 273 KB table read again each time its
   window grows), a new T25 (a `/Prev` 12 bytes off, dropped without a word), and five where the page tree
   or the catalog is wrong and the reader is silent or counts differently from qpdf, until M02. Over the 88
-  iPRES files it falls short on 19, all until M02: seven page trees it counts differently from qpdf, four
-  faults it reads without a word, six recoveries that differ from qpdf's — in four, the reader rebuilds a
-  sound index to find a catalog the trailer no longer leads to —, and two references to an object the
-  file lacks, after which it rebuilds its whole index where qpdf takes null (T27).
+  iPRES files it falls short on 17, all until M02: seven page trees it counts differently from qpdf, four
+  faults it reads without a word, and six recoveries that differ from qpdf's — in four, the reader rebuilds
+  a sound index to find a catalog the trailer no longer leads to. Two references to an object the file
+  lacks, after which it rebuilt its whole index where qpdf takes null, read as null since T27 was fixed on
+  2026-09-27.
 
 ## What entered the corpus
 
@@ -517,7 +518,7 @@ were established the same way, pages by `qpdf --show-npages`.
 | GovDocs1 error files | 21 | Six are federal work over 2 MB — the VHA coding handbook, the VA Kernel guide (464 pages, a PDF/A-1b claim veraPDF rejects on seven rules), a USGS earthquake map, a USFWS recovery plan, the 1994 Transportation Statistics report whose `/Producer` names Distiller 1.0.2 for Macintosh, a Reclamation EA —; one is a Census Bureau section whose tables are partly copyrighted by the firms that supplied them; thirteen are not shown to be federal staff's work: contractors (ORNL, JPL), PIARC, WARDA, the EU's delegation, IBM, Scholastic, an unnamed consultant; one, the SAMHSA fact sheet, is screened in part | IBM ID Workbench and XPP, Xyvision's Parlance Publisher, WordPerfect through PDFWriter 4, PageMaker 6.5, a `/Prev` 12 bytes off (T25), a whole file broken by a text-mode transfer |
 | JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalog without `/Type`; a reference to object 0; a file whose tail was lost |
 
-Twenty-eight remote entries are recorded as unsupported. From the first three passes: the signed web capture
+Twenty-six remote entries are recorded as unsupported. From the first three passes: the signed web capture
 (T24), the Axapta credit note and the `#00` form (M02); the topographic map was too, for T28, until ADR 34
 made its decoding bound an option. From the fourth: the
 VHA handbook (T24), two catalogs without `/Type`, the wPDF chapter's null kid, and two
@@ -525,7 +526,7 @@ page trees whose missing kids qpdf counts as pages (M02); IBM's manual was too, 
 2026-09-26 — its section is found 12 bytes from where `/Prev` names it. Five more were, until T21 and T23 were
 fixed on 2026-09-26: the hospital-bed guidance (T21), the 25-signature sheet, the 2015 BOE law, the VA Kernel guide
 and a poster (T23). From the iPRES 2017 set, the
-19 described below (M02). The laziness test honors that mark, like the other acceptance tests; it skips encrypted documents visibly
+17 described below (M02); two more were, until T27 was fixed on 2026-09-27. The laziness test honors that mark, like the other acceptance tests; it skips encrypted documents visibly
 until M16 brings decryption, and it no longer applies to a document whose index must be rebuilt, since a
 rebuild scans the file by definition.
 
@@ -562,9 +563,10 @@ it and hand back none.
   qpdf keeps its sound index and gives up, the reader rebuilds the index to find the catalog, where it
   could look among the indexed objects first.
 - **Two references to an object the file lacks** (T27): a catalog's `/Pages` and a page's `/Contents`.
-  qpdf takes each as null, as the specification says; the reader rebuilds its whole index looking for the
-  object and reports a repair on a file qpdf calls clean. The acceptance test found them only once it
-  walked each page's contents and resources before judging a clean file's diagnostics, which it now does.
+  qpdf takes each as null, as the specification says; the reader rebuilt its whole index looking for the
+  object and reported a repair on a file qpdf calls clean, until T27 was fixed on 2026-09-27. The
+  acceptance test found them only once it walked each page's contents and resources before judging a clean
+  file's diagnostics, which it now does. Both are supported; their finding is M02's third slice.
 
 ## Traps met along the way
 

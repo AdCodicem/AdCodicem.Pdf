@@ -9,13 +9,15 @@ here.
 - **Current milestone**: M02 — Document validation (`docs/milestones/M02.md`), in progress. Where it lives and
   what its public API is was settled by ADR 36 before the first type was written; slice 1 — the engine, the
   report and `file.eof-missing` — is done, merged with [#29](https://github.com/AdCodicem/AdCodicem.Pdf/pull/29) on
-  2026-09-26.
+  2026-09-26. The three reader debts it waited on — T32, T25 and T27 — are fixed on
+  [#31](https://github.com/AdCodicem/AdCodicem.Pdf/pull/31), rebased on the roadmap revision.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 1,430 unit (8 skipped by design) + 302 integration (skipped without Docker) + 23 for the remote
+- **Tests**: 1,497 unit (8 skipped by design) + 452 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher. With the remote corpus: `Remote corpus` run 7, on #29's branch at `4aa6816` with all 242
   documents, passed 2,844 unit (97 skipped by design, on documents recorded as unsupported until M02, T24, T25
-  or T27) and 668 integration tests; the review's four tests came after it. Here, with 233 of the 242 —
-  seven hosts reset this session's connections and the two GitHub attachments answer 403 —, 2,802 unit.
+  or T27) and 668 integration tests. Here, on #31's branch with 233 of the 242 — seven hosts reset this
+  session's connections and the two GitHub attachments answer 403 —, 2,973 unit (89 skipped by design, on
+  documents recorded as unsupported until M02 or T24) and 1,034 integration, in a local referee container.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -75,22 +77,53 @@ and M23's business.
 
 ## Next concrete step
 
-First, the roadmap revision of 2026-09-26 and 27 (journal below) merged. Then:
+M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29); T32, T25 and T27, the reader debts
+before its cross-reference and object-graph rules, done on #31. In the order its debts impose:
 
-M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29). In the order its debts impose:
-
-1. **T27**, before slice 2 (file and cross-reference rules) is baselined: a validator cannot report what the
-   reader hides, and T27's fix takes T25's report of a missing section as its reason to doubt the index. T32
-   and T25 are done, on the same branch (#31).
-2. Slice 2, which also answers for iPRES `t04-007` (a premature `%%EOF` before the trailer); slice 3 with
-   **T34** in the object-graph rules; **T39** and **T40** before slice 4, whose stream rules check declared
-   lengths and whether filters decode; slices 4 to 6. Each slice adds to the manifest's `findings` what its
-   rules report, and every document is held to exactly its list.
+1. Merge #31, then slice 2 (file and cross-reference rules), which also answers for iPRES `t04-007` (a
+   premature `%%EOF` before the trailer) and reports what T25 now tells the reader: a section found near
+   where it was named, one found nowhere.
+2. Slice 3 with **T34** in the object-graph rules, and the finding for a reference to an object the file
+   lacks, which T27 left to it; **T39** and **T40** before slice 4, whose stream rules check declared lengths
+   and whether filters decode; slices 4 to 6. Each slice adds to the manifest's `findings` what its rules
+   report, and every document is held to exactly its list.
 
 A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 34) is the reader's limit,
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-27 — T27: a reference to an object the file lacks is null; #31 rebased on the roadmap revision
+- **The defect.** A reference to an object the index did not hold made the reader rebuild its whole index,
+  scanning the file for the object — the lazy rebuild meant for an index that lost entries — and report a
+  repair on files qpdf calls clean.
+- **Measured before designing.** Every one of the 401 documents readable here, each object resolved and each
+  reference inside it followed: eight such rebuilds on an intact chain, and none found anything — every
+  object sought lay at or past `/Size`, and none is in its file.
+- **The fix.** The specification makes such a reference null, and so does the reader, silently: the finding is
+  M02's third slice. The index is rebuilt for a missing object only when it may have lost entries — a section
+  the chain names could not be found (T25), `MaxXRefSectionCount` or `MaxXRefSectionLength` stopped the chain
+  or a table, a cross-reference stream holds fewer rows than it declares —, and then as it was, once, when
+  such an object is asked for.
+- **What it exposed.** `/Prev` and `/XRefStm` are read as direct integers only, as the specification makes
+  them. The two JHOVE tiff2pdf scans write `/Prev 576066 0 R`: resolving that reference had rebuilt their
+  index by chance, and T27 would have dropped their main table in silence. It is now `xref.section-missing`,
+  and they read their 6 and 4 pages, as qpdf counts them, on demand; their manifest entries expect the
+  report and no rebuild at opening. Two limit tests that reached a rebuild through a missing object now give
+  the index a `/Prev` that names no section.
+- **The corpus.** The two iPRES files T27 was recorded against — a catalog's `/Pages` and a page's
+  `/Contents` naming object 9 — are supported: no rebuild, nothing reported. Twenty-six remote entries stay
+  unsupported, 17 of them from the iPRES set.
+- **Tests.** In `CrossReferenceChainTests`: a reference past `/Size` and one to a free entry, each object
+  written after the file's end where only a rebuild would find it, read as null with nothing reported; a chain
+  and a table a guard stopped, and a stream short of its rows, each rebuilt when the object is asked for; a `/Prev`
+  written as a reference, reported and read on demand. Each fails when its rule is mutated, but resolving
+  the reference, which reads as null and is reported all the same.
+- **Rebased on the roadmap revision.** The revision merged first opened its own T37 and T38; the two debts
+  T32 found became **T39** and **T40**, in the commits as in the documents, which follow its American
+  spelling and its two-digit milestone numbers: the memory budgets of the old M13 are M23's. One remote
+  document renamed there, `jhove-hul-79-quartz-word-program-evaluation-report.pdf`, is fetched under its new
+  name. A last test covers what `FlateInput` refuses, seven lines Codecov found uncovered.
 
 ### 2026-09-26 and 27 — The roadmap revised from a feature survey
 - **The question.** Asked which PDF features the milestones did not plan, and for a feature table and a
@@ -589,7 +622,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 | T24 | **Opening reads each cross-reference section through a window of up to 64 KB, whatever the section's size.** Bounded, but proportional to the number of sections rather than to their size: opening the 218 KB signed Web Capture file from pdfcpu's test data, which has three sections, reads 117 KB — more than the quarter of the file the laziness test allows. The entry is recorded as unsupported with this reason | M23, with the other budgets: start a section's window small and grow it, as object windows already do — and keep what was read when it grows: the VHA coding handbook from GovDocs1 (2026-09-25) has one 273 KB table, read at 64 KB, then 256 KB, then to its end, 683 KB in all for a 2.2 MB file; also recorded as unsupported |
 | ~~T25~~ | ~~**A `/Prev` that misses its section drops it in silence.** `PdfFileReader.TryReadXRefChain` returns success as soon as one section was read, so when a later `/Prev` does not land on `xref` or on a cross-reference stream the older section is simply left out, with no rebuild — and with no diagnostic either when the offset falls inside the file; one past its end earns `xref.entry-out-of-range`. Found on IBM's QMF manual from GovDocs1 (remote): `/Prev 1569328` falls 12 bytes past the keyword, and the 4,106 entries of the main table are lost; qpdf reports `xref not found` and rebuilds. Recorded as unsupported with this reason~~ | Done on 2026-09-26: a section named a few bytes off is looked for within 512 bytes and read, as `xref.offset-adjusted`; one that is nowhere is `xref.section-missing`, and what it indexed is found by the lazy rebuild when asked for. The QMF manual reads whole without a rebuild |
 | ~~T26~~ | ~~The remote corpus cannot take a file out of an archive, so the one external test suite for M02's structural profile stays out of reach~~ | Done on 2026-09-25: [ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md) accepted and implemented; the 88 files are in the remote corpus, 19 of them recorded as unsupported until M02 and named in its acceptance conditions |
-| T27 | **A reference to an object the file lacks makes the reader rebuild its whole index.** The specification says such a reference is null, and qpdf takes it so; the reader instead scans the file for the missing object — the lazy rebuild meant for an index that lost entries — and reports a repair on a file qpdf calls clean. Found on two iPRES 2017 files (remote): a catalog whose `/Pages` and a page whose `/Contents` point at object 9, which does not exist. Both are recorded as unsupported with this reason. The acceptance test saw it only once it walked each page's contents and resources before judging a clean file's diagnostics; across the whole corpus, no other document was affected | Before M02 closes, since its acceptance conditions name both files: a synthetic regression test (a sound file with a reference past /Size, and one to a free entry), then rebuild only when the index gives reason to doubt it, and otherwise take the reference as null — a finding for M02, not a repair |
+| ~~T27~~ | ~~**A reference to an object the file lacks makes the reader rebuild its whole index.** The specification says such a reference is null, and qpdf takes it so; the reader instead scans the file for the missing object — the lazy rebuild meant for an index that lost entries — and reports a repair on a file qpdf calls clean. Found on two iPRES 2017 files (remote): a catalog whose `/Pages` and a page whose `/Contents` point at object 9, which does not exist. Both are recorded as unsupported with this reason. The acceptance test saw it only once it walked each page's contents and resources before judging a clean file's diagnostics; across the whole corpus, no other document was affected~~ | Done on 2026-09-27: a reference to an object the index lacks is null, silently, unless the index may have lost entries — a section the chain names missing (T25), a guard that stopped the chain or a table, a cross-reference stream short of its rows —; then the index is rebuilt when such an object is asked for. `/Prev` and `/XRefStm` are read as direct integers. Both iPRES files are supported |
 | T28 | **A stream that decodes past about 2 GB cannot be read whole, whatever the options.** A decoded stream is returned as `ReadOnlyMemory<byte>`, which holds at most `Array.MaxLength` bytes. Below that the bound is an option since ADR 34, `PdfReaderLimits.MaxDecodedStreamLength`, 256 MB by default: the USGS topographic map (remote), whose 9,600 × 11,410 RGB image decodes to 328,608,000 bytes, reads whole with `readerLimits` at 512 MB, and the defaults keep its first 256 MB and report `limit.decoded-stream`. Past the ceiling, even `PdfReaderLimits.Unbounded` keeps the first 2 GB and reports the same code. No corpus document reaches it | M23, with the memory budgets: decode such a stream a piece at a time rather than into one array, in native memory if a measurement asks for it (ADR 35) |
 | ~~T29~~ | ~~**A chain of `/Length` references nests object loads as deep as the chain.** Resolving an indirect `/Length` loads that object while the first is being parsed, and a stream whose `/Length` points at a stream whose `/Length` points at another goes one level deeper each time. The cycle guard stops a loop, not a chain: 20,000 such objects overflow the stack and kill the process, which invariant 4 forbids. Older than T23's fix, reproduced on it~~ | Done on 2026-09-26: object loads nest at most 64 deep; the next one reads as null, is not cached, and is reported once as `syntax.depth-exceeded` with its offset. `HostileInputTests` reads a 50,000-level chain |
 | T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls It also parses each through that fixed window straight into the document's diagnostics, so a sound trailer longer than 64 KB earns a syntax error the file does not have when a rebuild scans for it. The scan keeps its fixed window whatever `PdfReaderLimits.MaxTrailerLength` says, so raising the option adds no amplification; on opening, a trailer past 64 KB is now reported as `limit.trailer` and read whole under a raised `MaxTrailerLength` (ADR 34) | M23, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |

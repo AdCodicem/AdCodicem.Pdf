@@ -18,6 +18,13 @@ Opening a document builds an index and stops there.
 That map is the only thing kept. It costs roughly 200 bytes per object, whatever the objects weigh — a
 scanned page holding a 3 MB image costs the same to index as an empty one.
 
+An object the map does not hold is one the file does not define, and a reference to it reads as null, as the
+specification says. The map is rebuilt by scanning the file only when it may have lost entries — a
+cross-reference section the chain names cannot be found (`xref.section-missing`), a limit stopped the chain
+or a table before its end, or a cross-reference stream holds fewer rows than it declares — and then only when
+such an object is asked for. A section named a few bytes from where it lies is found nearby
+(`xref.offset-adjusted`).
+
 ## What it deliberately does not do
 
 Nothing is parsed until something asks for it, and stream data is not even read from disk. A
