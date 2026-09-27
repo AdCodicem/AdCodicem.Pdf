@@ -13,7 +13,8 @@ memory, and an existing signature not to be invalidated.
 
 ## Decision
 
-
+We will read lazily, objects parsed when they are asked for, and write the output either as a full rewrite or
+as an incremental update appended to the original bytes.
 
 ## Consequences
 

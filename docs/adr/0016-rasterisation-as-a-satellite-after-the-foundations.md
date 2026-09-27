@@ -8,13 +8,13 @@ Accepted
 
 ## Context
 
-It will reuse the content stream interpreter
-written for extraction (M15). Until then, visual tests rely on an external tool in CI.
+Rendering pages to images — thumbnails, previews, visual tests — needs a content stream interpreter and a
+graphics backend, which the foundations do not provide and most callers never need.
 
 ## Decision
 
-We will it will reuse the content stream interpreter
-written for extraction (M15). Until then, visual tests rely on an external tool in CI.
+We will ship rasterisation as a satellite package, after the foundations. It will reuse the content stream
+interpreter written for extraction (M15). Until then, visual tests rely on an external tool in CI.
 
 ## Consequences
 

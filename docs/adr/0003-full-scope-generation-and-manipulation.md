@@ -8,11 +8,14 @@ Accepted
 
 ## Context
 
-Decided after an initial framing of "generation only".
+The project was first framed as generation only: HTML in, PDF out. The documents it targets rarely stop
+there — an invoice is archived, a report is merged with its appendices, a contract is signed, a case file
+assembles third-party PDFs — and each of those steps reads and changes a PDF the library did not write.
 
 ## Decision
 
-We will decided after an initial framing of "generation only".
+We will cover generation and manipulation alike — assembly, content, extraction, forms, security and
+optimisation —, a scope decided after an initial framing of "generation only".
 
 ## Consequences
 

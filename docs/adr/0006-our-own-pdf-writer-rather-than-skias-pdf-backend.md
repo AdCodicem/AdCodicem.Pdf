@@ -13,7 +13,7 @@ streaming output. Conformance and streaming are the heart of the promise.
 
 ## Decision
 
-
+We will write the PDF writer ourselves, for full control over compression, conformance and streaming.
 
 ## Consequences
 
