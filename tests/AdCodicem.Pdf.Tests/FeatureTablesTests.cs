@@ -102,7 +102,7 @@ public class FeatureTablesTests
             .SelectMany(feature => feature.Milestones)
             .ToHashSet(StringComparer.Ordinal);
 
-        FeatureTables.RoadmapStates().Keys.Where(milestone => milestone != "M0")
+        FeatureTables.RoadmapStates().Keys.Where(milestone => milestone != "M00")
             .Should().OnlyContain(milestone => listed.Contains(milestone),
                 "a milestone added to the roadmap adds what it delivers to docs/features/features.json");
     }

@@ -4,7 +4,7 @@ using AdCodicem.Pdf.Validation;
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// The acceptance conditions of M2, run against real documents: what the validator says about each corpus
+/// The acceptance conditions of M02, run against real documents: what the validator says about each corpus
 /// document, against what its manifest entry declares.
 /// </summary>
 /// <remarks>

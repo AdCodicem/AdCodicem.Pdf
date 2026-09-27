@@ -4,13 +4,13 @@ Date: 2026-09-26
 
 ## Status
 
-Accepted on 2026-09-26, by the maintainer, for M2's third slice. It adds a source of rules to the structural
+Accepted on 2026-09-26, by the maintainer, for M02's third slice. It adds a source of rules to the structural
 profile of [36](0036-validation-lives-in-the-core-conformance-in-a-satellite.md) without changing its engine,
 its identifiers' grammar or its severities.
 
 ## Context
 
-M2's object-graph family must check that each dictionary carries the entries its `/Type` requires, with the
+M02's object-graph family must check that each dictionary carries the entries its `/Type` requires, with the
 types the specification gives them, and that a version does not use keys it deprecates. ISO 32000-2 defines
 several hundred dictionary types; writing those checks by hand would take many sessions, drift from the
 specification, and leave most types unchecked.
@@ -20,7 +20,7 @@ in ISO 32000-2 — each key, its types, whether it is required, the versions tha
 and the conditions between keys — as TSV files under the Apache License 2.0. veraPDF, PDFix and BFO already
 derive checks from it.
 
-M2's first rule of judgment also applies: a validator that calls a widely read file broken is wrong, not
+M02's first rule of judgment also applies: a validator that calls a widely read file broken is wrong, not
 strict. A large share of real files carry keys the model says a type must not have, or lack keys it says a
 type requires, and every reader opens them.
 

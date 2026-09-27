@@ -4,11 +4,11 @@ Date: 2026-09-26
 
 ## Status
 
-Accepted on 2026-09-26, by the maintainer, before the writer (M3) exists. It sets the version policy M3
+Accepted on 2026-09-26, by the maintainer, before the writer (M03) exists. It sets the version policy M03
 implements, and the PDF/UA part M13 targets.
 
-Amended on 2026-09-27, by the maintainer, while M3 was specified: with no version chosen, a document read from a
-file keeps its declared version and a new document is written as 1.7 (the Decision's second bullet), where M3
+Amended on 2026-09-27, by the maintainer, while M03 was specified: with no version chosen, a document read from a
+file keeps its declared version and a new document is written as 1.7 (the Decision's second bullet), where M03
 had planned 1.7 for every full rewrite.
 
 ## Context
@@ -23,7 +23,7 @@ Two families of standards now pull the writer apart:
 The structure tree M13 emits differs between PDF/UA-1 and PDF/UA-2 (namespaces, new structure types,
 structure destinations), and the writer's handling of metadata differs between 1.7 and 2.0 (the document
 information dictionary is deprecated in 2.0 in favor of XMP). Choosing one family now would either keep
-Factur-X from being accessible or defer PDF/UA-2 indefinitely; deciding nothing would leave M3 to guess,
+Factur-X from being accessible or defer PDF/UA-2 indefinitely; deciding nothing would leave M03 to guess,
 and M13 to be rewritten.
 
 ## Decision
@@ -43,7 +43,7 @@ We will let the caller choose the output version, and target PDF/UA-1 first.
 
 ## Consequences
 
-- M3 carries a small cost now — a version option, the minimum-version computation, `/Extensions` — that
+- M03 carries a small cost now — a version option, the minimum-version computation, `/Extensions` — that
   spares a retrofit of the writer later.
 - An accessible Factur-X invoice (PDF/A-3a and PDF/UA-1) is possible from M14.
 - Every milestone that adds a feature states the minimum version it needs, so the computation stays whole.

@@ -5,34 +5,34 @@
     {
       "title": "Reading and validation",
       "features": [
-        { "id": "lazy-reading", "name": "Opens any PDF without loading it: memory follows what is read, not the size of the file", "milestones": ["M1"], "status": "available", "headline": true },
-        { "id": "tolerant-reading", "name": "Opens damaged files — rebuilds a broken index, relocates misplaced objects — and reports every repair as a structured diagnostic", "milestones": ["M1"], "status": "available", "headline": true },
-        { "id": "hostile-input", "name": "Guards against hostile files, on by default, each lifted by an option so that every valid PDF stays readable", "milestones": ["M1"], "status": "available" },
-        { "id": "filters", "name": "Every standard filter and index form: Flate with predictors, LZW, ASCII85, ASCIIHex, RunLength, cross-reference and object streams, hybrid files", "milestones": ["M1"], "status": "available" },
-        { "id": "structural-validation", "name": "Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding", "milestones": ["M2"], "status": "in-progress", "headline": true },
-        { "id": "arlington-rules", "name": "Object-shape rules generated from the PDF Association's Arlington model, version-aware", "milestones": ["M2"], "status": "planned" },
-        { "id": "revisions", "name": "Revision history, what each signature covers, and changes made after signing, without cryptography", "milestones": ["M4"], "status": "planned" },
-        { "id": "repair", "name": "Repair, conservative (incremental) or full rebuild, with a report of what was changed and what was lost", "milestones": ["M5"], "status": "planned" }
+        { "id": "lazy-reading", "name": "Opens any PDF without loading it: memory follows what is read, not the size of the file", "milestones": ["M01"], "status": "available", "headline": true },
+        { "id": "tolerant-reading", "name": "Opens damaged files — rebuilds a broken index, relocates misplaced objects — and reports every repair as a structured diagnostic", "milestones": ["M01"], "status": "available", "headline": true },
+        { "id": "hostile-input", "name": "Guards against hostile files, on by default, each lifted by an option so that every valid PDF stays readable", "milestones": ["M01"], "status": "available" },
+        { "id": "filters", "name": "Every standard filter and index form: Flate with predictors, LZW, ASCII85, ASCIIHex, RunLength, cross-reference and object streams, hybrid files", "milestones": ["M01"], "status": "available" },
+        { "id": "structural-validation", "name": "Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding", "milestones": ["M02"], "status": "in-progress", "headline": true },
+        { "id": "arlington-rules", "name": "Object-shape rules generated from the PDF Association's Arlington model, version-aware", "milestones": ["M02"], "status": "planned" },
+        { "id": "revisions", "name": "Revision history, what each signature covers, and changes made after signing, without cryptography", "milestones": ["M04"], "status": "planned" },
+        { "id": "repair", "name": "Repair, conservative (incremental) or full rebuild, with a report of what was changed and what was lost", "milestones": ["M05"], "status": "planned" }
       ]
     },
     {
       "title": "Writing",
       "features": [
-        { "id": "streaming-writer", "name": "Forward-only streaming writer: full rewrite or incremental update, object and cross-reference streams", "milestones": ["M3"], "status": "planned" },
-        { "id": "output-version", "name": "PDF 1.7 or PDF 2.0 output, the caller's choice, the version raised and reported when a merge needs it", "milestones": ["M3"], "status": "planned" },
-        { "id": "determinism", "name": "Deterministic output: the same inputs give the same bytes", "milestones": ["M3"], "status": "planned" },
-        { "id": "cancellation", "name": "Cancellation and progress for every long operation", "milestones": ["M3"], "status": "planned" }
+        { "id": "streaming-writer", "name": "Forward-only streaming writer: full rewrite or incremental update, object and cross-reference streams", "milestones": ["M03"], "status": "planned" },
+        { "id": "output-version", "name": "PDF 1.7 or PDF 2.0 output, the caller's choice, the version raised and reported when a merge needs it", "milestones": ["M03"], "status": "planned" },
+        { "id": "determinism", "name": "Deterministic output: the same inputs give the same bytes", "milestones": ["M03"], "status": "planned" },
+        { "id": "cancellation", "name": "Cancellation and progress for every long operation", "milestones": ["M03"], "status": "planned" }
       ]
     },
     {
       "title": "Assembly and case files",
       "features": [
-        { "id": "pages", "name": "Insert, remove, reorder, rotate and extract pages, inherited attributes kept", "milestones": ["M6"], "status": "planned" },
-        { "id": "merge-fidelity", "name": "Merge that keeps bookmarks, links, forms, layers, named destinations, attachments and page labels", "milestones": ["M6"], "status": "planned", "headline": true },
-        { "id": "attachments", "name": "Attachments and associated files, at document, page and annotation level", "milestones": ["M6"], "status": "planned" },
-        { "id": "split", "name": "Split by bookmark, size, page count or separator page; images to pages without re-encoding", "milestones": ["M7"], "status": "planned" },
-        { "id": "stamps", "name": "Watermarks, stamps, headers, footers, overlay, N-up and imposition on existing documents", "milestones": ["M9"], "status": "planned" },
-        { "id": "exhibits", "name": "Exhibit stamps (\"Pièce n° 12\") and Bates numbering, tagged as artifacts so accessible files stay so", "milestones": ["M9"], "status": "planned", "headline": true },
+        { "id": "pages", "name": "Insert, remove, reorder, rotate and extract pages, inherited attributes kept", "milestones": ["M06"], "status": "planned" },
+        { "id": "merge-fidelity", "name": "Merge that keeps bookmarks, links, forms, layers, named destinations, attachments and page labels", "milestones": ["M06"], "status": "planned", "headline": true },
+        { "id": "attachments", "name": "Attachments and associated files, at document, page and annotation level", "milestones": ["M06"], "status": "planned" },
+        { "id": "split", "name": "Split by bookmark, size, page count or separator page; images to pages without re-encoding", "milestones": ["M07"], "status": "planned" },
+        { "id": "stamps", "name": "Watermarks, stamps, headers, footers, overlay, N-up and imposition on existing documents", "milestones": ["M09"], "status": "planned" },
+        { "id": "exhibits", "name": "Exhibit stamps (\"Pièce n° 12\") and Bates numbering, tagged as artifacts so accessible files stay so", "milestones": ["M09"], "status": "planned", "headline": true },
         { "id": "annotations", "name": "Annotations with generated appearances, selective flattening, and optional content (layers)", "milestones": ["M11"], "status": "planned" },
         { "id": "case-files", "name": "Legal case files: a piece model, the inventory of exhibits, court-portal presets, e-mail to PDF", "milestones": ["M18"], "status": "planned" }
       ]
@@ -42,10 +42,10 @@
       "features": [
         { "id": "html-engine", "name": "HTML and CSS to PDF with a fully managed engine: no browser, no native PDF engine, no external process", "milestones": ["M12"], "status": "planned", "headline": true },
         { "id": "paged-media", "name": "Paged media: margin boxes, running headers, page groups, cross-references, tables of contents, footnotes, columns", "milestones": ["M12"], "status": "planned" },
-        { "id": "typography", "name": "Contract-grade typography: Unicode line breaking, bidirectional text, hyphenation, OpenType features, per-character font fallback", "milestones": ["M8", "M12"], "status": "planned" },
+        { "id": "typography", "name": "Contract-grade typography: Unicode line breaking, bidirectional text, hyphenation, OpenType features, per-character font fallback", "milestones": ["M08", "M12"], "status": "planned" },
         { "id": "batch", "name": "Batch generation of thousands of documents with compiled templates and shared caches", "milestones": ["M12"], "status": "planned" },
         { "id": "safe-resources", "name": "Resources loaded deny-by-default: no request a template did not earn, no file outside its root", "milestones": ["M12"], "status": "planned" },
-        { "id": "fonts", "name": "Font subsetting and embedding, WOFF2, an embedded OFL font set", "milestones": ["M8"], "status": "planned" },
+        { "id": "fonts", "name": "Font subsetting and embedding, WOFF2, an embedded OFL font set", "milestones": ["M08"], "status": "planned" },
         { "id": "barcodes", "name": "Vector barcodes and payment codes: QR, Data Matrix, GS1-128, PDF417, EAN, SEPA QR, Swiss QR-bill", "milestones": ["M10"], "status": "planned" },
         { "id": "html-forms", "name": "Fillable forms generated from HTML inputs", "milestones": ["M17"], "status": "planned" },
         { "id": "docx", "name": "Word documents (DOCX) to PDF through the HTML engine", "milestones": ["M31"], "status": "planned" }
@@ -92,10 +92,10 @@
     {
       "title": "Platform",
       "features": [
-        { "id": "no-dependency", "name": "A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one", "milestones": ["M1"], "status": "available", "headline": true },
+        { "id": "no-dependency", "name": "A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one", "milestones": ["M01"], "status": "available", "headline": true },
         { "id": "aot", "name": "Native AOT, trimming and browser WebAssembly, verified on every corpus document", "milestones": ["M23"], "status": "planned" },
-        { "id": "cli", "name": "A command-line tool, as a dotnet tool and a Native AOT binary", "milestones": ["M6"], "status": "planned" },
-        { "id": "mit", "name": "MIT license, no revenue threshold, no per-developer fee", "milestones": ["M0"], "status": "available", "headline": true }
+        { "id": "cli", "name": "A command-line tool, as a dotnet tool and a Native AOT binary", "milestones": ["M06"], "status": "planned" },
+        { "id": "mit", "name": "MIT license, no revenue threshold, no per-developer fee", "milestones": ["M00"], "status": "available", "headline": true }
       ]
     }
   ]

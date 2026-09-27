@@ -10,9 +10,9 @@ prefix; the font set's package followed on 2026-09-27, unclaimed that day too.
 
 | Package | Contents | Ships from |
 |---|---|---|
-| `AdCodicem.Pdf` | Object model, reader, validation and its structural profile; then writer, revisions, pages, fonts, logical structure | M1 |
-| `AdCodicem.Pdf.Tool` | The command-line tool | M6 |
-| `AdCodicem.Pdf.Fonts` | The OFL font set — Liberation Sans, Serif and Mono — as WOFF2 | M8 |
+| `AdCodicem.Pdf` | Object model, reader, validation and its structural profile; then writer, revisions, pages, fonts, logical structure | M01 |
+| `AdCodicem.Pdf.Tool` | The command-line tool | M06 |
+| `AdCodicem.Pdf.Fonts` | The OFL font set — Liberation Sans, Serif and Mono — as WOFF2 | M08 |
 | `AdCodicem.Pdf.Barcodes` | Vector barcodes and payment codes | M10 |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting | M12 |
 | `AdCodicem.Pdf.AspNetCore` | Dependency injection and `IResult` integration | M12.6 |

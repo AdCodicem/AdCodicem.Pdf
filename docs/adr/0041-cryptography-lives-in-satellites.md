@@ -36,7 +36,7 @@ We will keep CMS out of the core, and give the core everything the shared framew
 
 - **The core** implements the standard (password) security handler — RC4 and AES-128 and 256 —, reads
   AES-GCM encryption and the integrity MAC of ISO/TS 32003 and 32004 with the framework's `AesGcm` and HMAC,
-  and computes everything about signatures that needs no cryptography (M4: revisions, byte-range coverage,
+  and computes everything about signatures that needs no cryptography (M04: revisions, byte-range coverage,
   change classification).
 - **The core detects the public-key security handler** and reports it under a stable diagnostic code, so a
   caller knows why the document's content is not readable without the satellite.

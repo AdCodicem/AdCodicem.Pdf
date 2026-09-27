@@ -28,7 +28,7 @@ public sealed record CorpusExpectation
     public string[] RequiredDiagnostics { get; init; } = [];
 
     /// <summary>
-    /// The validation rules that report on this document, by identifier, under the default profile (M2) —
+    /// The validation rules that report on this document, by identifier, under the default profile (M02) —
     /// exactly these, no more and no fewer. Left out, none: a sound document earns no finding.
     /// </summary>
     /// <remarks>

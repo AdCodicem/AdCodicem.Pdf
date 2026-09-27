@@ -82,7 +82,7 @@ When the HTML engine exists, the same benchmarks will measure it against headles
 - **You prefer to lay out documents in C# rather than in HTML.** QuestPDF and MigraDoc are built for that; a
   code-first API is only an open question on the roadmap.
 - **You need a command-line tool now.** qpdf, pdfcpu and MuPDF are mature; this library's own starts with
-  milestone M6.
+  milestone M06.
 
 ## How this page is kept honest
 

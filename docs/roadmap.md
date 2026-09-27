@@ -18,35 +18,35 @@ pull requests use is at the end of this file. What the library deliberately does
 
 | # | Milestone | Size | Depends on | State |
 |---|-----------|------|------------|-------|
-| M0 | Repository foundations | S | — | done |
-| M1 | Object model and tolerant reading | L | M0 | done |
-| M2 | Document validation | M | M1 | in progress |
-| M3 | Writing and round-trip fidelity | M | M1 | to do |
-| M4 | Revisions and signature coverage | M | M3 | to do |
-| M5 | Repair | M | M2, M3, M4 | to do |
-| M6 | Pages and case-file assembly | L | M3, M4 | to do |
-| M7 | Case-file completion | M | M6 | to do |
-| M8 | Fonts, text and content streams | L | M3 | to do |
-| M9 | Content on existing documents | L | M6, M7, M8 | to do |
-| M10 | Barcodes | M | M8, M9 | to do |
-| M11 | Annotations and optional content | M | M9 | to do |
-| M12 | HTML → PDF engine | XL | M6, M7, M8, M9, M10, M11 | to do |
+| M00 | Repository foundations | S | — | done |
+| M01 | Object model and tolerant reading | L | M00 | done |
+| M02 | Document validation | M | M01 | in progress |
+| M03 | Writing and round-trip fidelity | M | M01 | to do |
+| M04 | Revisions and signature coverage | M | M03 | to do |
+| M05 | Repair | M | M02, M03, M04 | to do |
+| M06 | Pages and case-file assembly | L | M03, M04 | to do |
+| M07 | Case-file completion | M | M06 | to do |
+| M08 | Fonts, text and content streams | L | M03 | to do |
+| M09 | Content on existing documents | L | M06, M07, M08 | to do |
+| M10 | Barcodes | M | M08, M09 | to do |
+| M11 | Annotations and optional content | M | M09 | to do |
+| M12 | HTML → PDF engine | XL | M06, M07, M08, M09, M10, M11 | to do |
 | M13 | Tagged structure and accessibility | M | M12 | to do |
 | M14 | PDF/A-3 and Factur-X | L | M12, M13 | to do |
-| M15 | Extraction and analysis | L | M6, M8, M11, M14 | to do |
-| M16 | Security and forms | L | M3, M11, M15 | to do |
+| M15 | Extraction and analysis | L | M06, M08, M11, M14 | to do |
+| M16 | Security and forms | L | M03, M11, M15 | to do |
 | M17 | HTML forms | S | M12, M13, M14, M16 | to do |
-| M18 | Legal case files | L | M7, M9, M12, M14, M15, M16 | to do |
+| M18 | Legal case files | L | M07, M09, M12, M14, M15, M16 | to do |
 | M19 | Redaction and sanitization | L | M14, M15, M16 | to do |
-| M20 | PDF/A levels and conformance profiles | L | M2, M13, M14, M15 | to do |
-| M21 | Converting received documents to PDF/A | L | M5, M11, M19, M20 | to do |
-| M22 | Imaging and OCR | XL | M8, M15 | to do |
+| M20 | PDF/A levels and conformance profiles | L | M02, M13, M14, M15 | to do |
+| M21 | Converting received documents to PDF/A | L | M05, M11, M19, M20 | to do |
+| M22 | Imaging and OCR | XL | M08, M15 | to do |
 | M23 | Optimization, performance, hardening | L | M12, M15, M22 | to do |
 | M24 | Comparison and templates | M | M14, M15, M16, M19, M22 | to do |
 | M25 | Rasterization | L | M15, M22 | to do |
-| M26 | Signing | L | M4, M16 | to do |
+| M26 | Signing | L | M04, M16 | to do |
 | M27 | Long-term signatures and signature validation | XL | M26 | to do |
-| M28 | PDF 2.0 conformance: PDF/UA-2, WTPDF, PDF/A-4 | L | M3, M13, M17, M20 | to do |
+| M28 | PDF 2.0 conformance: PDF/UA-2, WTPDF, PDF/A-4 | L | M03, M13, M17, M20 | to do |
 | M29 | Print production | XL | M19, M20, M22, M23, M25 | to do |
 | M30 | Advanced typesetting | L | M12, M28 | to do |
 | M31 | DOCX to HTML | L | M12, M30 | to do |
@@ -61,7 +61,7 @@ revision history, since repairing a signed file must say which revision it touch
 
 **The case file comes before the HTML engine.** Assembling case files is the first business priority, and
 everything it needs but a rendered index — pages, merge fidelity, page labels, split, image pages, exhibit
-stamps and Bates numbers — rests on the object model and the fonts, not on layout. So M6, M7, M9, M10 and
+stamps and Bates numbers — rests on the object model and the fonts, not on layout. So M06, M07, M09, M10 and
 M11 come before M12, and the case-file satellite (M18) follows the HTML engine that renders its index.
 
 **Factur-X comes right after tagging.** Receiving electronic invoices is mandatory in France since
@@ -72,13 +72,13 @@ Every acceptance condition below is an executable test over `tests/corpus`. "Ext
 independent tool run in CI — qpdf, pikepdf, pypdf, veraPDF, a Factur-X validator, EU DSS — used to check
 our claims against something that was not written by us.
 
-A **command-line tool**, `AdCodicem.Pdf.Tool` (a `dotnet tool` and a Native AOT binary), is seeded by M6 and
+A **command-line tool**, `AdCodicem.Pdf.Tool` (a `dotnet tool` and a Native AOT binary), is seeded by M06 and
 grows with every milestone after it: a milestone that adds an operation adds its verb once the tool exists.
 It is a track, not a milestone of its own.
 
 ---
 
-## M0 — Repository foundations
+## M00 — Repository foundations
 
 **Goal**: any session can build, test and publish without discovering anything.
 **Deliverables**: solution and project layout, central package management, GitHub Actions CI (build, test,
@@ -86,7 +86,7 @@ benchmarks on demand, publish on tag), a `SessionStart` hook that installs the S
 frame (`CLAUDE.md`, `architecture.md`, `decisions.md`, `roadmap.md`, `corpus.md`, `status.md`).
 **Acceptance**: CI is green on a clean clone; a NuGet package builds.
 
-## M1 — Object model and tolerant reading
+## M01 — Object model and tolerant reading
 
 **Goal**: open any PDF, imperfect ones included, without loading it into memory.
 **Deliverables**: the COS object model; a lexer and parser over spans; Flate (with PNG and TIFF
@@ -103,7 +103,7 @@ scanning when the index is wrong or absent; `PdfDiagnostics`; the corpus harness
   are a small fraction of file size, verified by counting reads.
 - Indexing the `stress` document holds within a stated memory budget recorded in `status.md`.
 
-## M2 — Document validation
+## M02 — Document validation
 
 **Goal**: given any document the reader can open, produce a structured, machine-readable verdict on what
 is wrong with it — separately from whether it could be read at all.
@@ -116,7 +116,7 @@ resolution, metadata coherence, annotation and destination targets. The object-s
 dictionary type requires, their types, the keys a version deprecates — are generated at build time from the
 PDF Association's Arlington PDF Model, at warning severity (ADR 44).
 
-Rule identifiers are part of the public contract from the day they ship: repair consumes them (M5),
+Rule identifiers are part of the public contract from the day they ship: repair consumes them (M05),
 conformance profiles extend them (M20), and callers filter on them.
 
 **Acceptance**
@@ -131,7 +131,7 @@ conformance profiles extend them (M20), and callers filter on them.
 - Validating the 1000-page document holds within a stated memory budget, and does not read content it does
   not need to inspect.
 
-## M3 — Writing and round-trip fidelity
+## M03 — Writing and round-trip fidelity
 
 **Goal**: rewrite what was read, byte for byte in semantic terms.
 **Deliverables**: the public API baseline (T05), in place before the writer adds any public API; a
@@ -156,10 +156,10 @@ never do synchronous I/O.
 - Saving the same document twice produces identical bytes.
 - An incremental update on each signed corpus document leaves the original bytes untouched, and every
   existing signature still covers its byte range. The corpus's own contract is unsigned; its signed twin joins
-  when M4 adds it.
+  when M04 adds it.
 - Rewriting the `stress` document holds memory flat and stays within the stated throughput budget.
 
-## M4 — Revisions and signature coverage
+## M04 — Revisions and signature coverage
 
 **Goal**: say what a document looked like at each of its revisions, and what every signature in it covers —
 without any cryptography.
@@ -168,8 +168,8 @@ opened read-only as a lazy index cut at its own `startxref`, objects compared be
 signature's `/ByteRange` checked against the revision it closes; every change made after a signature
 classified (form fill, annotation, new signature, DSS, content replacement) and checked against its
 `DocMDP` and `FieldMDP` permissions, so that shadow attacks are reported; a `signature.*` rule family in the
-structural profile. Debt T25 — a `/Prev` that misses its section — is fixed by M2, before its cross-reference
-rules, as `docs/status.md` plans; should it still be open, it is M4's first slice.
+structural profile. Debt T25 — a `/Prev` that misses its section — is fixed by M02, before its cross-reference
+rules, as `docs/status.md` plans; should it still be open, it is M04's first slice.
 
 **Acceptance**
 - Every signed corpus document has the revisions pyHanko counts — qpdf and pikepdf merge the chain and list
@@ -179,11 +179,11 @@ rules, as `docs/status.md` plans; should it still be open, it is M4's first slic
   certification forbids as a finding, on crafted shadow-attack fixtures and on the signed corpus documents.
 - Opening a revision reads no more than that revision's index.
 
-## M5 — Repair
+## M05 — Repair
 
 **Goal**: turn a damaged document into a sound one, and state precisely what was changed and what was lost.
 
-**Deliverables**: `PdfRepair` in the core, driven by the reader's diagnostics and the M2 findings, with
+**Deliverables**: `PdfRepair` in the core, driven by the reader's diagnostics and the M02 findings, with
 each remedy attached to the finding that justified it: rebuild the index, recompute stream lengths, drop
 or reconstruct unparseable objects, re-derive an inconsistent page tree, re-link orphaned pages, remove
 references that point nowhere, normalize the trailer. Two modes: **conservative**, which changes only what
@@ -203,7 +203,7 @@ Conformance remediation — embedding missing fonts, adding metadata — is **no
   conservative mode.
 - Repairing the 1000-page document holds memory bounded.
 
-## M6 — Pages and case-file assembly
+## M06 — Pages and case-file assembly
 
 **Goal**: the first business priority — compose a case file from generated pages and third-party PDFs,
 losing nothing on the way.
@@ -216,8 +216,8 @@ names, `/OCProperties`, `/Extensions`, output intents, viewer preferences, the o
 structure tree, recombined as ADR 17 decided; an attachments and associated-files API (document, page and
 annotation level, `AFRelationship`, streamed); typed viewer preferences (page mode, `DisplayDocTitle`, print
 scaling); a high-level assembly API; a merge or edit that would void a certification signature refused, or
-reported when the caller insists (M4). The command-line tool starts here: `info`, `validate` (M2), `repair`
-(M5, which the execution order places first; the verb lands with M5 should it close later), `merge`, `pages`.
+reported when the caller insists (M04). The command-line tool starts here: `info`, `validate` (M02), `repair`
+(M05, which the execution order places first; the verb lands with M05 should it close later), `merge`, `pages`.
 
 **Acceptance**
 - Merging the `contract` document with third-party appendices and generated pages yields a document an
@@ -233,7 +233,7 @@ reported when the caller insists (M4). The command-line tool starts here: `info`
   pdf.js and qpdf agree on.
 - Assembling one hundred corpus documents holds memory proportional to the largest single page.
 
-## M7 — Case-file completion
+## M07 — Case-file completion
 
 **Goal**: everything else a case file is made of, before a line of layout exists.
 **Deliverables**: split strategies — by top-level bookmark (one file per exhibit, each keeping its outline
@@ -260,7 +260,7 @@ remote fetcher, for all.
   states.
 - The portfolio in the corpus unpacks into one volume with one bookmark per member.
 
-## M8 — Fonts, text and content streams
+## M08 — Fonts, text and content streams
 
 **Goal**: write text that is correct, embedded, extractable and accessible.
 **Deliverables**: a TrueType and OpenType parser (metrics, `cmap`, `hmtx`, `glyf`/`loca`, `CFF`);
@@ -278,7 +278,7 @@ PDF/A document — confirmed by an ADR with the measured sizes and the license c
   subset contains only the glyphs used.
 - Advance widths match a reference renderer within a stated tolerance across the corpus fonts.
 
-## M9 — Content on existing documents
+## M09 — Content on existing documents
 
 **Goal**: act on a received PDF without regenerating it — the stamps a case file carries included.
 **Deliverables**: watermarks and stamps, numbering, overlay and underlay, headers and footers added after the
@@ -308,7 +308,7 @@ command-line tool gains `stamp`, `bates`, `normalize`.
 **Goal**: the codes invoices, labels and cover sheets carry, as vectors, with no dependency.
 **Deliverables**: the `AdCodicem.Pdf.Barcodes` satellite — managed, AOT-compatible, deterministic encoders
 for QR, Data Matrix, Code 128 and GS1-128, PDF417, EAN and UPC, painted as form XObjects; payload builders for
-the EPC SEPA credit-transfer QR and the Swiss QR-bill payment part and receipt; a hook for M9's stamps, and
+the EPC SEPA credit-transfer QR and the Swiss QR-bill payment part and receipt; a hook for M09's stamps, and
 one for the HTML engine (M12.5); alternative text carrying the payload once tagging exists (M13).
 
 **Acceptance**
@@ -326,7 +326,7 @@ one for the HTML engine (M12.5); alternative text carrying the payload once tagg
 **Deliverables**: markup annotation authoring — highlight, underline, strike-out and squiggly from quads,
 notes with replies, free text, shapes, ink, stamps ("RECEIVED", "PAID"), caret — and removal by subtype or
 author; appearance streams generated for every subtype; selective flattening that honors `/F` flags and
-`/OC`; link annotations on existing pages; optional content read, created, merged (M6), flattened and
+`/OC`; link annotations on existing pages; optional content read, created, merged (M06), flattened and
 removed, and print-only stamps ("COPY").
 
 **Acceptance**
@@ -361,7 +361,7 @@ removed, and print-only stamps ("COPY").
 - **M12.6** — Links, bookmarks (`bookmark-level`, `-label`, `-state`), named destinations from ids, a table
   of contents with real page numbers and leaders, `target-counter()`, `@font-face` (WOFF2, `unicode-range`),
   metadata from `<title>`, `<meta>` and `lang`, attachments declared in HTML, PDF pages as images and
-  letterheads, stamps rendered from an HTML fragment (M9), the public API and DI integration, batch
+  letterheads, stamps rendered from an HTML fragment (M09), the public API and DI integration, batch
   generation with compiled templates and shared caches, and the options of Puppeteer's `page.pdf()` mapped
   for those who migrate. The command-line tool gains `html2pdf`.
 - **M12.7** — Footnotes and multi-column layout.
@@ -483,7 +483,7 @@ placed from the layout.
 
 **Goal**: the case file as a product — numbered pieces, their inventory, and what French courts ask for.
 **Deliverables**: the `AdCodicem.Pdf.CaseFile` satellite, driven by data: a case-file model (piece number,
-title, date, source hash) from which stamps (M9), bookmarks, page labels and a hyperlinked inventory
+title, date, source hash) from which stamps (M09), bookmarks, page labels and a hyperlinked inventory
 (*bordereau de communication de pièces*, rendered by M12) all follow, so they cannot disagree, and a JSON
 export of it; court-portal presets (Télérecours, e-Barreau and RPVA, PLEX) — signet naming, one file per
 piece, size caps — kept as data and verified against the current official guides before each is encoded;
@@ -526,7 +526,7 @@ stamps, and earlier revisions — with the loss of PDF/A, PDF/UA or signatures r
 
 **Goal**: regulatory conformance, guaranteed and checkable.
 **Deliverables**: PDF/A-2b, 2u and 2a generation beside M14's part 3; conformance actively preserved when
-merging, and when writing to a PDF/A-1 file; PDF/A and PDF/UA profiles for the M2 rule engine, delivered in
+merging, and when writing to a PDF/A-1 file; PDF/A and PDF/UA profiles for the M02 rule engine, delivered in
 stages in the `AdCodicem.Pdf.Conformance` satellite (ADR 36) — PDF/A-1, 2, 3 and 4 at every level, PDF/UA-1
 mapped to its clauses and to the Matterhorn Protocol, with an outcome for the conditions only a person can
 judge; the public rule API ADR 36 deferred, and caller-defined policies in a namespace of their own.
@@ -541,7 +541,7 @@ judge; the public rule API ADR 36 deferred, and caller-defined policies in a nam
 ## M21 — Converting received documents to PDF/A
 
 **Goal**: a case file of third-party exhibits archived as PDF/A, with an honest account of each.
-**Deliverables**: a `PdfAConverter` driven by M20's findings, as repair is by M2's (ADR 22): fonts embedded
+**Deliverables**: a `PdfAConverter` driven by M20's findings, as repair is by M02's (ADR 22): fonts embedded
 or substituted from the registry (reported), an output intent added, XMP rebuilt, JavaScript, encryption and
 forbidden actions removed, missing appearances generated (M11), attachments fixed (MIME type, `AF`), and a
 report of whatever could not be converted.
@@ -636,7 +636,7 @@ off by default, the signing time supplied by the caller. The command-line tool g
 - A signature we produce validates in an external validator (EU DSS, in a container) at the level claimed,
   and the document still opens in every earlier acceptance test.
 - Signing does not invalidate an existing signature on the signed corpus documents, the contract's signed
-  twin (M4) among them.
+  twin (M04) among them.
 - Documents encrypted for a certificate in the corpus decrypt with it, and match their twins.
 
 ## M27 — Long-term signatures and signature validation
@@ -723,7 +723,7 @@ Neither planned nor excluded; each would enter a milestone when what triggers it
 | Signed French 2D-Doc codes | An issuer approved by ANTS asking for them |
 | Heuristic tagging of untagged received documents | Accessibility obligations on documents a caller only receives |
 | A lossless JSON dump and update of the object graph, as qpdf's | Support cases, or corpus fixtures that need to be readable |
-| Barcode and patch-code recognition on scanned pages | Scan batches split on separator sheets that carry a barcode or a patch code (M7's separator predicate) |
+| Barcode and patch-code recognition on scanned pages | Scan batches split on separator sheets that carry a barcode or a patch code (M07's separator predicate) |
 | EMF, WMF and EMF+ pictures converted to SVG | The share of DOCX pieces that carry them, which M31's report counts |
 | Office charts drawn from their XML rather than their fallback picture | Case-file pieces whose charts have no usable fallback |
 | Word's legacy form fields and content controls as AcroForm fields (M17) | Callers converting Word forms that must stay fillable |
@@ -735,18 +735,21 @@ milestones that kept their content map as follows; everything else is new.
 
 | Before | After |
 |---|---|
-| M0 to M3 | unchanged |
-| M4 — Repair | M5 |
-| M5 — Pages and case-file assembly | M6 |
-| M6 — Fonts, text and content streams | M8 |
+| M0 to M3 | M00 to M03 |
+| M4 — Repair | M05 |
+| M5 — Pages and case-file assembly | M06 |
+| M6 — Fonts, text and content streams | M08 |
 | M7 — HTML → PDF engine, M7.1 to M7.6 | M12, M12.1 to M12.6 |
 | M8 — Tagged structure and accessibility | M13 |
-| M9 — Content on existing documents | M9 |
+| M9 — Content on existing documents | M09 |
 | M10 — Extraction and analysis | M15 |
 | M11 — Security and forms | M16 |
 | M12 — PDF/A-3, Factur-X and conformance profiles | M14 (PDF/A-3 and Factur-X) and M20 (profiles and the other levels) |
 | M13 — Optimization, performance, hardening | M23 |
 | M14 — Satellites: rasterization and signing | M25 (rasterization) and M26 (signing) |
+
+Since 2026-09-27 the numbers below ten carry a leading zero (M01 rather than M1), so that milestones
+sort in order as text; older commits write them without it.
 
 Commits older than 2026-09-13 follow an order older still, from before validation and repair were
 inserted.

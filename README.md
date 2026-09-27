@@ -40,9 +40,9 @@ need: a fully managed engine whose memory use follows the complexity of a page, 
 |---|---|
 | Opens any PDF without loading it: memory follows what is read, not the size of the file | ✅ Available |
 | Opens damaged files — rebuilds a broken index, relocates misplaced objects — and reports every repair as a structured diagnostic | ✅ Available |
-| Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding | 🚧 In progress — M2 |
-| Merge that keeps bookmarks, links, forms, layers, named destinations, attachments and page labels | 📅 Planned — M6 |
-| Exhibit stamps ("Pièce n° 12") and Bates numbering, tagged as artifacts so accessible files stay so | 📅 Planned — M9 |
+| Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding | 🚧 In progress — M02 |
+| Merge that keeps bookmarks, links, forms, layers, named destinations, attachments and page labels | 📅 Planned — M06 |
+| Exhibit stamps ("Pièce n° 12") and Bates numbering, tagged as artifacts so accessible files stay so | 📅 Planned — M09 |
 | HTML and CSS to PDF with a fully managed engine: no browser, no native PDF engine, no external process | 📅 Planned — M12 |
 | Tagged, accessible PDF: PDF/UA-1 | 📅 Planned — M13 |
 | PDF/A-3 and Factur-X / ZUGFeRD: profile-aware embedding, EN 16931 and French rules, a typed invoice model | 📅 Planned — M14 |
@@ -61,8 +61,8 @@ validator. Everything else is planned, in the order `docs/roadmap.md` gives.
 | Package | Contents | State |
 |---|---|---|
 | `AdCodicem.Pdf` | Object model, lazy reader, validation, streaming writer, revisions, pages, fonts, logical structure, security, extraction, redaction | Published as previews |
-| `AdCodicem.Pdf.Tool` | The command-line tool | Planned, M6 |
-| `AdCodicem.Pdf.Fonts` | The OFL font set — Liberation Sans, Serif and Mono — as WOFF2 | Planned, M8 |
+| `AdCodicem.Pdf.Tool` | The command-line tool | Planned, M06 |
+| `AdCodicem.Pdf.Fonts` | The OFL font set — Liberation Sans, Serif and Mono — as WOFF2 | Planned, M08 |
 | `AdCodicem.Pdf.Barcodes` | Vector barcodes and payment codes | Planned, M10 |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | Planned, M12 |
 | `AdCodicem.Pdf.AspNetCore` | Dependency-injection and `IResult` integration | Planned, M12 |

@@ -35,9 +35,9 @@ We will allow Skia where it is needed, and own the text analysis HarfBuzz does n
 - **UAX #9 bidirectional analysis and UAX #14 line breaking are ours**, in `AdCodicem.Pdf.Html`, from
   property tables generated as static span data, run before HarfBuzz shapes each run (M12.2).
 - **The Unicode property tables** — `Script`, `Bidi_Class`, the bracket and mirroring pairs, `Line_Break`,
-  `Grapheme_Cluster_Break`, case folding and decompositions — are produced by one build-time generator, M8's,
+  `Grapheme_Cluster_Break`, case folding and decompositions — are produced by one build-time generator, M08's,
   from the Unicode Character Database of the version `CharUnicodeInfo` implements, and each is compiled into
-  the assembly whose code reads it: the core holds `Script` (M8) and what extraction and search need (M15),
+  the assembly whose code reads it: the core holds `Script` (M08) and what extraction and search need (M15),
   `Bidi_Class` among them, since reordering extracted right-to-left text by position is not UAX #9; `.Html`
   holds what UAX #9 and UAX #14 need. A table both need is compiled into both from the same generated source,
   never made public API of the core.

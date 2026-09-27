@@ -349,7 +349,7 @@ def damage_lying_length(data: bytes) -> bytes:
 
 
 # Each damage: how it is done, the diagnostic codes the reader must report, whether the index is rebuilt, and
-# the validation findings the default profile must report (M2) — established from the damage itself, never by
+# the validation findings the default profile must report (M02) — established from the damage itself, never by
 # the validator: cutting the tail takes the %%EOF marker with it.
 DAMAGES = {
     "no-xref": (damage_remove_xref, ["xref.rebuilt"], True, []),

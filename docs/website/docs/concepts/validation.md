@@ -33,7 +33,7 @@ foreach (var finding in report.Findings)
 
 :::info Being built
 
-Validation arrives rule by rule, in the order the [M2 milestone](/project/milestones/M2) gives. The
+Validation arrives rule by rule, in the order the [M02 milestone](/project/milestones/M02) gives. The
 structural profile holds **one rule** so far; the [rules table](/project/validation-rules) lists every rule
 that exists. Like everything in a preview, the API may still change.
 

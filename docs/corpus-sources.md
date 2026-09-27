@@ -105,8 +105,8 @@ fonts when their `fsType` allows embedding.
   where qpdf reports damage. In the fourth pass none of the 131 first admitted crashed or hung it either;
   of the 124 kept, it fell short on ten, recorded as unsupported — seven since T21 and T23 were fixed: T21 (one file), T23 (two), T24 (one: a 273 KB table read again each time its
   window grows), a new T25 (a `/Prev` 12 bytes off, dropped without a word), and five where the page tree
-  or the catalog is wrong and the reader is silent or counts differently from qpdf, until M2. Over the 88
-  iPRES files it falls short on 19, all until M2: seven page trees it counts differently from qpdf, four
+  or the catalog is wrong and the reader is silent or counts differently from qpdf, until M02. Over the 88
+  iPRES files it falls short on 19, all until M02: seven page trees it counts differently from qpdf, four
   faults it reads without a word, six recoveries that differ from qpdf's — in four, the reader rebuilds a
   sound index to find a catalog the trailer no longer leads to —, and two references to an object the
   file lacks, after which it rebuilds its whole index where qpdf takes null (T27).
@@ -145,9 +145,9 @@ fonts when their `fsType` allows embedding.
 | `lu-legilux/antenna-house-legilux-memorial-pades-lta.pdf` | W05 | A qualified electronic seal: PAdES B-LTA, DSS, a document timestamp, three incremental updates |
 | `jp-nta/indesign-distiller18-nta-gift-tax-vertical.pdf` | W06, W09 | Vertical Japanese without ToUnicode, AES-128; it broke pdf.js (issue 11526) |
 | `pikepdf/scanner-ccitt-endofline.pdf` | W06, W03 | A scanner's CCITT G3 image with `/EndOfLine true`; it broke pikepdf (issue 601) |
-| `pikepdf/handwritten-cyclic-toc.pdf` | W06 | Cyclic destinations, no trailer `/Size`; it crashed pikepdf (issue 677). Unsupported until M2 |
+| `pikepdf/handwritten-cyclic-toc.pdf` | W06 | Cyclic destinations, no trailer `/Size`; it crashed pikepdf (issue 677). Unsupported until M02 |
 | `pdf-association/handwritten-type3-recursion.pdf` | W06 | A Type 3 recursion cycle: a denial-of-service probe for invariant 4 |
-| `pdf-association/handwritten-dict-is-stream.pdf` | W06 | A page object given a stream body; qpdf finds no page. Unsupported until M2 |
+| `pdf-association/handwritten-dict-is-stream.pdf` | W06 | A page object given a stream body; qpdf finds no page. Unsupported until M02 |
 | `pdf-association/handwritten-indexed-color-out-of-range.pdf` | W06 | Indexed color addressed out of range |
 | `pyhanko/acrobat-reader-signed-twice.pdf` | W05 | Two Acrobat Reader signatures with timestamps, test certificates |
 | `zugferd/mustang-zugferd2-en16931-invoice.pdf` | W07, W12 | ZUGFeRD 2.0 EN 16931, PDF/A-3u, an `/AF` attachment |
@@ -479,7 +479,7 @@ purposes" only was left out.
 | W06, W11 | The Massachusetts COVID-19 dashboard of 25 October 2020, linked by pdf.js | Mass.gov forbids any copying beyond fair use | A Power BI export through PDFium, linearized and then saved nine more times by Acrobat, which kept PDFium as Producer: 24 pages at the end of a long `/Prev` chain |
 | W06 | A wine merchant's product sheet, from pdf-differences' UnknownFilter set | A third party's document under the PDF Association's CC BY | A PNG stored under `/DCTDecode`; Identity-H subsets without ToUnicode; no `/Info` |
 | W06 | Four files from PDFBox's JIRA downloads, damaged at their end: Amyuni PDF Converter output cut 1,950 bytes short, a Distiller 8 file with 7.6 KB of UTF-16LE text after `%%EOF`, a FrameMaker 10 budget book and a Word 2010 FEMA form each cut at 1 MB | Web-crawled bug attachments; the FEMA form is public domain, but a crawl cut short is not the publisher's bytes | A lost main cross-reference section and a `/Prev` past the end; `startxref` hidden from a 1 KB tail search; and no page count asserted for the two cut at 1 MB, since qpdf 11.9.1 finds no `/Root` in one, and qpdf 11.9.1, PDFium and qpdf 12 count 11, 8 and 4 pages in the other |
-| W06, W10 | Three more from PDFBox's JIRA: a 1998 PDFWriter 3.02 file whose CR LF line ends were stripped, a Distiller 6 report with a 32 KiB block zeroed, an Acrobat form with `#00` in names | Bug attachments; the report is a public-domain USGS work, but exists damaged only there, and weighs 2.1 MB | Offsets 3 to 175 bytes off and `startxref` 184 off; one object stream destroyed, which the reader detects only when it reaches it, so the entry expects no rebuild at opening and the rebuild diagnostic after a full read; a NUL in names used as values and keys, which the reader accepts silently (unsupported until M2) |
+| W06, W10 | Three more from PDFBox's JIRA: a 1998 PDFWriter 3.02 file whose CR LF line ends were stripped, a Distiller 6 report with a 32 KiB block zeroed, an Acrobat form with `#00` in names | Bug attachments; the report is a public-domain USGS work, but exists damaged only there, and weighs 2.1 MB | Offsets 3 to 175 bytes off and `startxref` 184 off; one object stream destroyed, which the reader detects only when it reaches it, so the entry expects no rebuild at opening and the rebuild diagnostic after a full read; a NUL in names used as values and keys, which the reader accepts silently (unsupported until M02) |
 | W06, W09 | PDFium's `bug_182.pdf`, and two pdfplumber reporters' files | Bug-report files, licensed by nobody | UTF-16BE `/Info` strings opening with a language escape; an inverted MediaBox over a Flate-over-DCT scan; Chinese font names written as GBK bytes in `#xx` escapes |
 | W06 | A PDFpen page of text imprints, from OCRmyPDF | Its contributor agreed to CC BY-SA 4.0; OCRmyPDF's `REUSE.toml` now says MIT, with no MIT grant on record | Seven content streams whose `q` and `Q` fall in different streams; PDFpen's private keys and plist streams |
 | W07 | The FNFE-MPE's official Factur-X example, BASIC WL, in French | All rights reserved | `factur-x.xml` under /AF, a valid PDF/A-3b, written by the factur-x Python library through PyPDF2 |
@@ -518,13 +518,13 @@ were established the same way, pages by `qpdf --show-npages`.
 | JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalog without `/Type`; a reference to object 0; a file whose tail was lost |
 
 Twenty-nine remote entries are recorded as unsupported. From the first three passes: the signed web capture
-(T24), the Axapta credit note and the `#00` form (M2); the topographic map was too, for T28, until ADR 34
+(T24), the Axapta credit note and the `#00` form (M02); the topographic map was too, for T28, until ADR 34
 made its decoding bound an option. From the fourth: the
 VHA handbook (T24), IBM's manual (T25), two catalogs without `/Type`, the wPDF chapter's null kid, and two
-page trees whose missing kids qpdf counts as pages (M2). Five more were, until T21 and T23 were fixed on
+page trees whose missing kids qpdf counts as pages (M02). Five more were, until T21 and T23 were fixed on
 2026-09-26: the hospital-bed guidance (T21), the 25-signature sheet, the 2015 BOE law, the VA Kernel guide
 and a poster (T23). From the iPRES 2017 set, the
-19 described below (M2). The laziness test honors that mark, like the other acceptance tests; it skips encrypted documents visibly
+19 described below (M02). The laziness test honors that mark, like the other acceptance tests; it skips encrypted documents visibly
 until M16 brings decryption, and it no longer applies to a document whose index must be rebuilt, since a
 rebuild scans the file by definition.
 
@@ -548,7 +548,7 @@ content-stream cases came with broken lengths or offsets the reader does meet. O
 file holds no catalog at all, and its entry says so (`catalogRecoverable: false`): the reader must open
 it and hand back none.
 
-19 are recorded as unsupported, all until M2, which names them in its acceptance conditions:
+19 are recorded as unsupported, all until M02, which names them in its acceptance conditions:
 
 - **Seven page trees counted differently**: a root listing itself, a root listing three kids of which one
   page, a kid the file lacks, a root without `/Kids`, a root claiming `/Count 9` for one page (qpdf trusts
@@ -640,17 +640,17 @@ it and hand back none.
 
 ## What the milestones can take from it
 
-- **M1**: none of the 239 real PDFs downloaded in the first pass crashed or hung the reader, nor any of
+- **M01**: none of the 239 real PDFs downloaded in the first pass crashed or hung the reader, nor any of
   the 82 the third pass or the 131 the fourth pass first admitted, and every vendored file opens as its
   entry says. Two hand-written
-  files show it silent where qpdf reports damage; they are recorded as unsupported until M2. On the empty
+  files show it silent where qpdf reports damage; they are recorded as unsupported until M02. On the empty
   object of the compacted-syntax file, the reader and qpdf agree.
-- **M2**: the vendored files carry anomalies every reader tolerates and a validator should name without
+- **M02**: the vendored files carry anomalies every reader tolerates and a validator should name without
   calling them errors — stale linearization hint tables (some twenty files), a `/Size` one too large, an
   xref stream without its own entry, references to objects the xref lacks, font-level XMP that is not
   well-formed XML, an empty `/Lang`, a `/Lang` that contradicts the text, UTF-16LE text strings, two
   `startxref` lines, a `/MarkInfo` pointing at the page tree, `/Info` and XMP that disagree.
-  `docs/milestones/M2.md` lists them among its acceptance conditions. The third pass adds T23, an indirect
+  `docs/milestones/M02.md` lists them among its acceptance conditions. The third pass adds T23, an indirect
   object longer than the parser's 8 KB window cut at its edge (fixed on 2026-09-26); two more
   files where the reader is silent while qpdf reports damage — an `/Info` object without `endobj`, names
   containing `#00`; an object stream destroyed by a zeroed block, which the reader finds only when it
@@ -659,16 +659,16 @@ it and hand back none.
   single-byte text, UTF-16BE strings opening with a language escape, a catalog `/Lang` of `(English)`,
   `/DecodeParms [null]`, a `/ToUnicode` that is a name, an inverted MediaBox, an indirect `/Rotate`, an
   outline whose `/Last` is itself. The fourth pass adds T25, a `/Prev` 12 bytes off that drops a whole
-  section in silence, to be fixed before M2 closes; five files the reader must stop being silent or
+  section in silence, to be fixed before M02 closes; five files the reader must stop being silent or
   divided about — two catalogs without `/Type`, a null kid in a page tree, two trees whose kids point at
   missing objects —; bytes before `%PDF` (MacBinary, a `data:` URI), a header naming PDF 1.8, a reference
   to object 0, a trailer `/Size` equal to the highest object number, a byte missing after the header, an
   image whose `/Height` contradicts its data, a resource pointing at an object that does not exist; and
   JHOVE's own verdict on 45 files, a second independent opinion to compare the validator with. And,
   through ADR 33, the iPRES 2017 hand-built set: 88 files each derived from one page with one deviation its
-  authors describe, 19 of them recorded as unsupported until M2 — the one external test suite the
+  authors describe, 19 of them recorded as unsupported until M02 — the one external test suite the
   structural profile can be measured against.
-- **M3, M5**: signatures to keep intact through an incremental update — a GPO certification, DILA's
+- **M03, M05**: signatures to keep intact through an incremental update — a GPO certification, DILA's
   Dictao signature, a qualified seal renewed by timestamps over two years, PAdES B-LTA, Acrobat signatures.
   The third pass adds each PAdES baseline level on one page (B-B, B-LT, B-LTA); DocMDP P=1 and P=2 with
   FieldMDP and legacy MD5 object digests; the legacy `adbe.x509.rsa_sha1` and `adbe.pkcs7.sha1`
@@ -678,7 +678,7 @@ it and hand back none.
   by a full rewrite. And files a signer must neither mistake nor break: an unsigned placeholder whose
   `/ByteRange` holds name tokens, a `/Reason` containing the word `trailer`, damage inside a signed byte
   range, a signed update that `startxref` cannot reach.
-- **M6**: Acrobat 9's signed portfolio — a `/Collection` with a schema and folders, a Flash navigator,
+- **M06**: Acrobat 9's signed portfolio — a `/Collection` with a schema and folders, a Flash navigator,
   five embedded PDFs among them a certified XFA form and 3D models — is the first portfolio a case-file
   assembly will meet; beside it, the Massachusetts dashboard's chain of ten revisions.
 - **M15**: extraction will meet text drawn as images, OCR layers — Acrobat's and two copiers' own, with

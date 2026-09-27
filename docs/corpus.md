@@ -23,7 +23,7 @@ handing anything over, and where it goes.
 | Generated on Windows from our own content — Word's Save as PDF, the Microsoft Print to PDF driver, the PDF24 printer (`build/build_word.ps1`) | The office desktop's writers, which no container runs | Our own fictitious content — the generated invoice today, M31's contract, letter, report, review and equations fixtures after it; nothing the script cannot account for, including what a driver stamps on its own; a DOCX kept beside its PDFs is checked for personal data in every part (`cp:lastModifiedBy`, `docProps/app.xml`, `w:docVars`) |
 | Third-party documents found in public sources (`vendor/`) | Producers we will never run — Acrobat, InDesign, LiveCycle, copier firmware, a qualified-seal service — and damage from the wild | Attribution-only license (ADR 23), no real person's contact or identity data anywhere, byte-identical to the publisher's copy, at most 2 MB; source URL and SHA-256 recorded; see `docs/corpus-sources.md` |
 | Contributed real documents | Everything the generators never do: legacy tooling, scanners, foreign-language typography, damaged files from the wild | No confidential content; origin and license recorded; anonymized before committing |
-| Derived variants | Encryption, linearization, object-stream rewrites, and deliberate damage | Derived by a recorded, repeatable transformation from a document already in the corpus, named in the entry's `derivedFrom` from M4 on |
+| Derived variants | Encryption, linearization, object-stream rewrites, and deliberate damage | Derived by a recorded, repeatable transformation from a document already in the corpus, named in the entry's `derivedFrom` from M04 on |
 | Remote documents we may use but not redistribute (origin `remote`, ADR 32) | What only a bug report, a vendor's sample, a ShareAlike set or a file over 2 MB can give | Never committed, nor anything derived from them; fetched at a pinned SHA-256 and size from an immutable URL, or copied out of a pinned archive (ADR 33); tested by a separate job |
 
 Documents are **committed**, not generated at test time: producer output changes with producer version, and
@@ -125,9 +125,9 @@ file listed twice, an archive pinned two ways — stays with `fetch_remote.py` a
 ```
 
 `expect` grows as milestones land, each adding its fields and their schema in the slice that first needs them: page
-count and repair status from M1, validation findings from M2, round-trip fidelity from M3, revisions and signatures
-— pyHanko's coverage and modification levels — and `derivedFrom` from M4, repaired-equals-original from M5,
-attachments, form fields, page labels and merge invariants from M6, the formats beyond PDF from M7 (below),
+count and repair status from M01, validation findings from M02, round-trip fidelity from M03, revisions and signatures
+— pyHanko's coverage and modification levels — and `derivedFrom` from M04, repaired-equals-original from M05,
+attachments, form fields, page labels and merge invariants from M06, the formats beyond PDF from M07 (below),
 annotations and layers from M11, the PDF/UA claim beside the PDF/A one from M13, Factur-X facts from M14, extracted
 text — reading order, tables, images, hidden text, textless pages — from M15, encryption from M16, detections and
 disclosure findings from M19, conformance verdicts from M20 — one list of every claim a document makes, PDF/A and
@@ -138,8 +138,8 @@ referee — qpdf, pikepdf, poppler, MuPDF, veraPDF, pyHanko, EU DSS, KoSIT's val
 — or from the file itself, never from the library. An expectation is never weakened to make a test pass — either the
 library is fixed, or the expectation is corrected with the reason recorded in the commit message.
 
-**Formats other than PDF.** Image files (M7), XML invoices (M14), FDF and XFDF (M16), messages (M18) and DOCX (M31)
-are corpus inputs too, and one manifest describes them all (the maintainer's decision of 2026-09-27): M7 adds a
+**Formats other than PDF.** Image files (M07), XML invoices (M14), FDF and XFDF (M16), messages (M18) and DOCX (M31)
+are corpus inputs too, and one manifest describes them all (the maintainer's decision of 2026-09-27): M07 adds a
 `format` field — `pdf` when absent —, file patterns keyed on it and one expectation block per format, and every PDF
 acceptance test filters on it. A non-PDF file follows the provenance, license, personal-data and size rules a PDF
 does, lives where a PDF of its origin would, and when remote is fetched and verified by the same `fetch_remote.py`.
@@ -160,7 +160,7 @@ Five fields serve that rule:
 - `conformanceValid` — veraPDF's verdict on the PDF/A level the document claims (`claimsConformance`),
   for M20 to agree with. M13 adds the same pair for a PDF/UA claim (`claimsUa`, `uaConformanceValid`) — a dual
   claim is two claims, not one —, and M20 replaces both pairs with one list of claims.
-- `findings` — the validation rules that report on the document under the default profile (M2), by
+- `findings` — the validation rules that report on the document under the default profile (M02), by
   identifier: exactly these, no more and no fewer, and none when the field is left out. A sound document
   that earns a warning nobody declared fails as surely as a damaged one that earns nothing. Like every
   expectation it comes from the file, not from the validator: for `file.eof-missing`, a search of the
@@ -201,12 +201,12 @@ Some inputs are not corpus documents — nobody receives them, and no manifest e
 held to the same discipline: our own or under a license as free as ADR 23 asks, nothing personal, at most 2 MB a
 file, their license texts beside them and their origin in a `NOTICE` of their own directory:
 
-- `tests/fonts/` — test faces (M8, M30);
+- `tests/fonts/` — test faces (M08, M30);
 - `tests/pki/` — the fictitious test PKI, as a Certomancer configuration (M26);
 - `tests/trusted-lists/` — the pinned trusted-list snapshot, if its reuse terms and size allow (M27);
 - `tests/visual/` — approved reference images, M12's and, under `rendering/`, M25's.
 
-**Test fonts.** M8's test fonts live in `tests/fonts/`, each under the SIL Open Font License or a license as free,
+**Test fonts.** M08's test fonts live in `tests/fonts/`, each under the SIL Open Font License or a license as free,
 with its license text beside it. A CJK face is subsetted by fontTools to the ideographs the tests use and a margin,
 the command recorded; a subset of a face whose license reserves a name is renamed as the license asks. Their WOFF
 and WOFF2 forms are made by fontTools and Google's `woff2_compress`, and hostile fonts by recorded mutations. A face

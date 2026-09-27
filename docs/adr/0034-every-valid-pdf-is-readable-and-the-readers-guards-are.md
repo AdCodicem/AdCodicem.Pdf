@@ -16,8 +16,8 @@ Implemented by `PdfReaderLimits`, `PdfReaderOptions.Limits` and `PdfReaderOption
 `PdfLimitExceededException`, the five `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
 `tests/corpus/manifest.json`, and `ReaderLimitsTests`.
 
-Amended on 2026-09-27, by the maintainer, while M8 was specified: one record bounds every hostile read, the
-font programs a caller registers included (*One record for every hostile read*, below); M8 implements it.
+Amended on 2026-09-27, by the maintainer, while M08 was specified: one record bounds every hostile read, the
+font programs a caller registers included (*One record for every hostile read*, below); M08 implements it.
 
 ## Context
 
@@ -81,7 +81,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
   document's limits and `ThrowOnLimit`, however long after opening; a stream built in memory decodes under
   the defaults.
 - **One record for every hostile read.** A bound on bytes the core parses on a caller's behalf joins
-  `PdfReaderLimits` under the same rules, whatever the bytes arrive in: M8 adds `MaxFontLength` (64 MB,
+  `PdfReaderLimits` under the same rules, whatever the bytes arrive in: M08 adds `MaxFontLength` (64 MB,
   `limit.font-length`) and `MaxCharstringOperations` (65,536, `limit.charstring-operations`), which govern a
   font program read from a PDF under its document's limits and one a caller registers under the limits the
   registry is given. A record of its own (`PdfFontLimits`) is rejected: a font inside a PDF would answer to
@@ -123,7 +123,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
 - **Amended on acceptance**: invariants 4 and 5 of `CLAUDE.md`, and invariant 12 added; `ARCHITECTURE.md`,
   `docs/architecture.md` and `SECURITY.md` on bounds; `docs/corpus.md`, `docs/corpus-contributions.md` and
   `tests/corpus/README.md` for `readerLimits`; the site's *Diagnostics* and *Lazy reading* pages, and a new
-  page, *Reader limits*; the M2 stream rule and M23's deliverables.
+  page, *Reader limits*; the M02 stream rule and M23's deliverables.
 - **What would reopen it**: a streaming decode (M23), after which `MaxDecodedStreamLength` would bound memory
   held at once rather than the length of a stream; or evidence that most callers read trusted input, which
   would argue for `Unbounded` as the default.

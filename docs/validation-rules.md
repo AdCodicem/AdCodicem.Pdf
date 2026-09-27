@@ -28,6 +28,6 @@ claims to conform to. It is the default profile of `PdfValidator`.
 
 ## Families
 
-The structural profile's rules take one of these families, as M2 adds them slice by slice: `file`, `xref`,
+The structural profile's rules take one of these families, as M02 adds them slice by slice: `file`, `xref`,
 `object`, `page-tree`, `stream`, `font`, `resource`, `annotation`, `metadata`, `security`. The PDF/A and
 PDF/UA profiles of the `AdCodicem.Pdf.Conformance` package (M20) take families of their own.

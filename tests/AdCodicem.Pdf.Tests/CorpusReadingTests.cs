@@ -8,7 +8,7 @@ using AdCodicem.Pdf.Objects;
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// The acceptance conditions of M1, run against real documents from real producers.
+/// The acceptance conditions of M01, run against real documents from real producers.
 /// </summary>
 /// <remarks>
 /// Hand-built files prove the reader handles what we imagined; these prove it handles what Chromium,
@@ -441,7 +441,7 @@ public class CorpusReadingTests
     }
 
     /// <summary>
-    /// Walks the page tree, resolving each page's contents and resources. M1 has no page API — that is M6 —
+    /// Walks the page tree, resolving each page's contents and resources. M01 has no page API — that is M06 —
     /// so the traversal lives here, which also exercises reference resolution and inherited structure across
     /// every producer in the corpus.
     /// </summary>

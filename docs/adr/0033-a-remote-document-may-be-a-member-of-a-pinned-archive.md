@@ -29,7 +29,7 @@ CC BY-SA 4.0, so remote at best (ADR 23):
   content stream 18, cross-reference table 10, trailer 19. A spreadsheet gives each file's category, a
   one-line description of the deviation, JHOVE 1.16.5's verdict and message, and whether Acrobat XI Pro
   opens it. It cites no ISO clause: mapping a deviation to a requirement is ours to do. It is the only test
-  suite written by others for M2's structural profile.
+  suite written by others for M02's structural profile.
 - **The files hold more than their authors' deviation.** In 45 of the 59 header and body files the edit left
   a table that no longer leads to its objects: qpdf rebuilds it in 43, and adjusts to a leading space in the
   other two; 15 of the 18 content-stream files start with
@@ -95,13 +95,13 @@ the member by its own.
   personal-data screen — the files hold no metadata, and their only text is "Hello PDF-world!" —, each
   member checked once against the bag's `manifest-md5.txt`. Expectations come from the independent tools,
   as for any document: pages from `qpdf --show-npages`, the verdict from `build_corpus.py --remote`, `clean`
-  from qpdf — even where qpdf passes a file built broken, since M2 then asks no error-severity finding of
+  from qpdf — even where qpdf passes a file built broken, since M02 then asks no error-severity finding of
   it, which is its rule: an error means readers disagree. The 15 files with a space before `%PDF` expect the
   offset adjustment qpdf makes without a word, as the corpus's other prefixed files do. The test-case
   number, the category and JHOVE's 2017 verdict are features, as for the JHOVE issue files: a second
   opinion, not a referee.
 - **Each gap names the milestone that will close it.** On implementation the reader met 69 entries as
-  written and 19 were marked unsupported, all until M2: seven page trees that qpdf and the reader count
+  written and 19 were marked unsupported, all until M02: seven page trees that qpdf and the reader count
   differently, four faults the reader reads without a word (a root typed `/Pagez`, a page typed `/Font`,
   generation 10000 in the table, a trailer without `/Size`), six recoveries that differ from qpdf's —
   among them four where the trailer's `/Root` is missing or broken and the reader rebuilds a sound index to
@@ -116,7 +116,7 @@ the member by its own.
 - **One file has no catalog to recover**: the manifest's new `catalogRecoverable: false` says so, and the
   acceptance tests then require the reader to open it, report the rebuild, and hand back no catalog
   rather than invent one.
-- **M2 then owes them**: its row for documents the manifest calls not clean covers 72 of them, its row for
+- **M02 then owes them**: its row for documents the manifest calls not clean covers 72 of them, its row for
   well-formed documents the 16 that qpdf passes or only warns about — so those may earn warnings, never
   errors —, the 19 are named in its acceptance conditions, and the slice that names a rule adds the
   expected finding to each entry, or the reason the profile stays silent.
