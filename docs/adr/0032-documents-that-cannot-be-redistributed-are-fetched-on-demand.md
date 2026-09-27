@@ -43,7 +43,7 @@ files it cannot redistribute:
   "All Rights Reserved" or behind a registration form.
 - **ShareAlike sets** — `py-pdf/sample-files`, much of OCRmyPDF's and pikepdf's test data, the PDF
   Association's PDF 2.0 examples. They could be committed, but ShareAlike then reaches every derivative
-  we commit — a damaged copy made by `build_corpus.py`, a repaired or merged golden file from M3 to M6, an
+  we commit — a damaged copy made by `build_corpus.py`, a repaired or merged golden file from M03 to M06, an
   image on the site — and nothing in the corpus pipeline keeps a derivative apart from its source.
 - **Documents too large to commit** — the W11 references for M23 (T22), 37 to 147 MB each.
 

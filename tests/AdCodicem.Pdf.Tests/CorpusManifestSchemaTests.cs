@@ -187,7 +187,7 @@ public class CorpusManifestSchemaTests
             entry["expect"]!["requiredDiagnostics"] = new JsonArray("xref.rebuilt");
             entry["expect"]!["findings"] = new JsonArray("file.eof-missing");
         }),
-        ["a document the library cannot meet yet"] = () => Committed().With(entry => entry["expect"]!["unsupported"] = "M2: why, and what will."),
+        ["a document the library cannot meet yet"] = () => Committed().With(entry => entry["expect"]!["unsupported"] = "M02: why, and what will."),
         ["a document with no page count to expect"] = () => Committed().With(entry => entry["expect"]!["pages"] = null),
         ["a document without a catalog"] = () => Committed().With(entry =>
         {

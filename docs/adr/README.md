@@ -61,7 +61,7 @@ A settled decision is not reopened without new evidence — that is what writing
 - The PDF coordinate system starts bottom-left and layout works top-left: the conversion lives in exactly
   one place, in painting.
 - PDF names are interned; common integers are cached.
-- The command-line tool, `AdCodicem.Pdf.Tool` (M6), installs the command **`adpdf`** (since 2026-09-27).
+- The command-line tool, `AdCodicem.Pdf.Tool` (M06), installs the command **`adpdf`** (since 2026-09-27).
 - A stream copied between documents travels **encoded**, with no decompress/recompress cycle.
 - A dictionary entry whose value is null is dropped on parse: the specification says it is equivalent to an
   absent entry, and every later stage is spared a null it would have to ignore.

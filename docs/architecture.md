@@ -20,9 +20,9 @@ ordinary composition of the two paths.
 
 | Package | Role | Dependencies | Milestone |
 |---|---|---|---|
-| `AdCodicem.Pdf` | Object model, reader, writer, revisions, pages, fonts, logical structure, security (password handler, AES-GCM), CCITT decoding, OCR text layer, redaction, diagnostics, validation and its structural profile | **none** | M1 onwards |
-| `AdCodicem.Pdf.Tool` | The command-line tool: a `dotnet tool` and a Native AOT binary | `AdCodicem.Pdf` and the satellites it drives | from M6 |
-| `AdCodicem.Pdf.Fonts` | Data only: the OFL set — Liberation Sans, Serif and Mono, four styles each — as WOFF2, referenced by `AdCodicem.Pdf.Html`; the core carries Liberation Sans regular itself, so that it can stamp a PDF/A document alone (T04; sizes and the OFL checks confirmed by M8's ADR) | `AdCodicem.Pdf` | M8 |
+| `AdCodicem.Pdf` | Object model, reader, writer, revisions, pages, fonts, logical structure, security (password handler, AES-GCM), CCITT decoding, OCR text layer, redaction, diagnostics, validation and its structural profile | **none** | M01 onwards |
+| `AdCodicem.Pdf.Tool` | The command-line tool: a `dotnet tool` and a Native AOT binary | `AdCodicem.Pdf` and the satellites it drives | from M06 |
+| `AdCodicem.Pdf.Fonts` | Data only: the OFL set — Liberation Sans, Serif and Mono, four styles each — as WOFF2, referenced by `AdCodicem.Pdf.Html`; the core carries Liberation Sans regular itself, so that it can stamp a PDF/A document alone (T04; sizes and the OFL checks confirmed by M08's ADR) | `AdCodicem.Pdf` | M08 |
 | `AdCodicem.Pdf.Barcodes` | QR, Data Matrix, Code 128, GS1-128, PDF417, EAN and UPC as vectors; EPC and Swiss QR-bill payloads | `AdCodicem.Pdf` | M10 |
 | `AdCodicem.Pdf.Html` | HTML parsing, CSS engine, layout, painting to PDF | AngleSharp, HarfBuzzSharp, SkiaSharp | M12 |
 | `AdCodicem.Pdf.AspNetCore` | DI registration, `IResult`, MVC integration | `AdCodicem.Pdf.Html` | M12 |

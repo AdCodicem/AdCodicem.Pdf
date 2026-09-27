@@ -16,7 +16,7 @@ with two vocabularies would mean two answers to "is this document sound?".
 ## Decision
 
 Validation lands immediately
-after reading (M2), as the structural profile of a rule engine whose findings carry stable identifiers.
+after reading (M02), as the structural profile of a rule engine whose findings carry stable identifiers.
 PDF/A and PDF/UA arrive later (M20) as further profiles, not as a separate validator.
 
 ## Consequences

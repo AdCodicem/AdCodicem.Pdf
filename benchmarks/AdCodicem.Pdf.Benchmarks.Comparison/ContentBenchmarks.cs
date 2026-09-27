@@ -85,7 +85,7 @@ public class ContentBenchmarks
     }
 
     /// <summary>
-    /// Walks the page tree and decodes each page's contents. There is no page API before M6, so the walk is
+    /// Walks the page tree and decodes each page's contents. There is no page API before M06, so the walk is
     /// written here, bounded in depth and guarded against cycles as the reader's own tests are.
     /// </summary>
     private static long DecodePages(PdfDictionary node, HashSet<PdfDictionary> visited, int depth)

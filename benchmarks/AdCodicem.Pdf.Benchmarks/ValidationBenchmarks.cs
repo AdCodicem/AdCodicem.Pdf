@@ -8,7 +8,7 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// Measures what validating a document costs on top of opening it, under the structural profile.
 /// </summary>
 /// <remarks>
-/// The baseline M2's exit criterion asks for: as the profile gains rules slice by slice, this says what each
+/// The baseline M02's exit criterion asks for: as the profile gains rules slice by slice, this says what each
 /// one costs. The document is opened outside the measurement, so the numbers are validation's alone.
 /// </remarks>
 [MemoryDiagnoser]

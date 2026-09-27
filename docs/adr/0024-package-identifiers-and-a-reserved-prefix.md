@@ -24,7 +24,7 @@ We will publish `AdCodicem.Pdf` for the core, then `.Validation`, `.Html`, `.Asp
 
 - **Consequence** — the `AdCodicem.` prefix is to be reserved on nuget.org with the first publish, so nobody
 else can publish under the name and consumers see a verified owner.
-- **Consequence** — the satellites named after 2026-09-13 — `.Tool` (M6), `.Fonts` (M8), `.Barcodes` (M10),
+- **Consequence** — the satellites named after 2026-09-13 — `.Tool` (M06), `.Fonts` (M08), `.Barcodes` (M10),
 `.CaseFile` (M18), `.Imaging` (M22), `.Compare` (M24), `.Docx` (M31) — take identifiers of the same form under
 the reserved prefix; `docs/architecture.md` §2 is their register, and this record is not amended for each.
 

@@ -49,30 +49,30 @@ guarantee at all**: its API may change or disappear in the next preview.
 | Opens damaged files — rebuilds a broken index, relocates misplaced objects — and reports every repair as a structured diagnostic | ✅ Available |
 | Guards against hostile files, on by default, each lifted by an option so that every valid PDF stays readable | ✅ Available |
 | Every standard filter and index form: Flate with predictors, LZW, ASCII85, ASCIIHex, RunLength, cross-reference and object streams, hybrid files | ✅ Available |
-| Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding | 🚧 In progress — M2 |
-| Object-shape rules generated from the PDF Association's Arlington model, version-aware | 📅 Planned — M2 |
-| Revision history, what each signature covers, and changes made after signing, without cryptography | 📅 Planned — M4 |
-| Repair, conservative (incremental) or full rebuild, with a report of what was changed and what was lost | 📅 Planned — M5 |
+| Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding | 🚧 In progress — M02 |
+| Object-shape rules generated from the PDF Association's Arlington model, version-aware | 📅 Planned — M02 |
+| Revision history, what each signature covers, and changes made after signing, without cryptography | 📅 Planned — M04 |
+| Repair, conservative (incremental) or full rebuild, with a report of what was changed and what was lost | 📅 Planned — M05 |
 
 ### Writing
 
 | Feature | State |
 |---|---|
-| Forward-only streaming writer: full rewrite or incremental update, object and cross-reference streams | 📅 Planned — M3 |
-| PDF 1.7 or PDF 2.0 output, the caller's choice, the version raised and reported when a merge needs it | 📅 Planned — M3 |
-| Deterministic output: the same inputs give the same bytes | 📅 Planned — M3 |
-| Cancellation and progress for every long operation | 📅 Planned — M3 |
+| Forward-only streaming writer: full rewrite or incremental update, object and cross-reference streams | 📅 Planned — M03 |
+| PDF 1.7 or PDF 2.0 output, the caller's choice, the version raised and reported when a merge needs it | 📅 Planned — M03 |
+| Deterministic output: the same inputs give the same bytes | 📅 Planned — M03 |
+| Cancellation and progress for every long operation | 📅 Planned — M03 |
 
 ### Assembly and case files
 
 | Feature | State |
 |---|---|
-| Insert, remove, reorder, rotate and extract pages, inherited attributes kept | 📅 Planned — M6 |
-| Merge that keeps bookmarks, links, forms, layers, named destinations, attachments and page labels | 📅 Planned — M6 |
-| Attachments and associated files, at document, page and annotation level | 📅 Planned — M6 |
-| Split by bookmark, size, page count or separator page; images to pages without re-encoding | 📅 Planned — M7 |
-| Watermarks, stamps, headers, footers, overlay, N-up and imposition on existing documents | 📅 Planned — M9 |
-| Exhibit stamps ("Pièce n° 12") and Bates numbering, tagged as artifacts so accessible files stay so | 📅 Planned — M9 |
+| Insert, remove, reorder, rotate and extract pages, inherited attributes kept | 📅 Planned — M06 |
+| Merge that keeps bookmarks, links, forms, layers, named destinations, attachments and page labels | 📅 Planned — M06 |
+| Attachments and associated files, at document, page and annotation level | 📅 Planned — M06 |
+| Split by bookmark, size, page count or separator page; images to pages without re-encoding | 📅 Planned — M07 |
+| Watermarks, stamps, headers, footers, overlay, N-up and imposition on existing documents | 📅 Planned — M09 |
+| Exhibit stamps ("Pièce n° 12") and Bates numbering, tagged as artifacts so accessible files stay so | 📅 Planned — M09 |
 | Annotations with generated appearances, selective flattening, and optional content (layers) | 📅 Planned — M11 |
 | Legal case files: a piece model, the inventory of exhibits, court-portal presets, e-mail to PDF | 📅 Planned — M18 |
 
@@ -82,10 +82,10 @@ guarantee at all**: its API may change or disappear in the next preview.
 |---|---|
 | HTML and CSS to PDF with a fully managed engine: no browser, no native PDF engine, no external process | 📅 Planned — M12 |
 | Paged media: margin boxes, running headers, page groups, cross-references, tables of contents, footnotes, columns | 📅 Planned — M12 |
-| Contract-grade typography: Unicode line breaking, bidirectional text, hyphenation, OpenType features, per-character font fallback | 📅 Planned — M8, M12 |
+| Contract-grade typography: Unicode line breaking, bidirectional text, hyphenation, OpenType features, per-character font fallback | 📅 Planned — M08, M12 |
 | Batch generation of thousands of documents with compiled templates and shared caches | 📅 Planned — M12 |
 | Resources loaded deny-by-default: no request a template did not earn, no file outside its root | 📅 Planned — M12 |
-| Font subsetting and embedding, WOFF2, an embedded OFL font set | 📅 Planned — M8 |
+| Font subsetting and embedding, WOFF2, an embedded OFL font set | 📅 Planned — M08 |
 | Vector barcodes and payment codes: QR, Data Matrix, GS1-128, PDF417, EAN, SEPA QR, Swiss QR-bill | 📅 Planned — M10 |
 | Fillable forms generated from HTML inputs | 📅 Planned — M17 |
 | Word documents (DOCX) to PDF through the HTML engine | 📅 Planned — M31 |
@@ -134,7 +134,7 @@ guarantee at all**: its API may change or disappear in the next preview.
 |---|---|
 | A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one | ✅ Available |
 | Native AOT, trimming and browser WebAssembly, verified on every corpus document | 📅 Planned — M23 |
-| A command-line tool, as a dotnet tool and a Native AOT binary | 📅 Planned — M6 |
+| A command-line tool, as a dotnet tool and a Native AOT binary | 📅 Planned — M06 |
 | MIT license, no revenue threshold, no per-developer fee | ✅ Available |
 
 ## The market at a glance
@@ -179,8 +179,8 @@ the end of the page.
 | Opens damaged files by rebuilding the index | ✅ | ✅ | ✅ | ◐ | — | ◐ | ✅ | — | — |
 | HTML and CSS to PDF | 📅 M12 | ➕ | ✅ | ✅ | — | — | — | ✅ | ✅ |
 | CSS paged media beyond page size and margins | 📅 M12 | ➕ | ? | ? | — | n/a | — | ◐ | ◐ |
-| Merge, split and reorder pages | 📅 M6 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
-| Stamps and watermarks on existing pages | 📅 M9 | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ✅ | — |
+| Merge, split and reorder pages | 📅 M06 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| Stamps and watermarks on existing pages | 📅 M09 | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ✅ | — |
 | Text extraction | 📅 M15 | ✅ | ✅ | ✅ | ➕ | — | ✅ | ✅ | — |
 | Fill and flatten AcroForms | 📅 M16 | ✅ | ✅ | ✅ | ➕ | — | — | ✅ | — |
 | Password encryption, AES-256 | 📅 M16 | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ | — |
@@ -200,7 +200,7 @@ On AdCodicem.Pdf's column:
 - Managed core: no native binary, browser or external process: The core has no dependency at all. The HTML engine (M12) will use SkiaSharp and HarfBuzzSharp, native libraries, for images and text shaping, and the rasterizer (M25) Skia (ADR 43).
 - Native AOT, documented: The core is written for Native AOT and trimming (invariant 1); verifying it on every corpus document is M23's.
 - Opens damaged files by rebuilding the index: Every repair is reported as a structured diagnostic.
-- Validation of received signatures: M4, earlier and without cryptography, will report what each signature covers and what changed after it.
+- Validation of received signatures: M04, earlier and without cryptography, will report what each signature covers and what changed after it.
 - OCR of scanned pages: M22 writes the text layer from any engine's output; the engine itself is the caller's (ADR 42).
 
 ## Performance
@@ -227,7 +227,7 @@ When the HTML engine exists, the same benchmarks will measure it against headles
 - **You prefer to lay out documents in C# rather than in HTML.** QuestPDF and MigraDoc are built for that; a
   code-first API is only an open question on the roadmap.
 - **You need a command-line tool now.** qpdf, pdfcpu and MuPDF are mature; this library's own starts with
-  milestone M6.
+  milestone M06.
 
 ## How this page is kept honest
 

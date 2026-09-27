@@ -32,21 +32,21 @@ recorded below.
 
 | Theme | Where it went |
 |---|---|
-| Case-file assembly completeness | M6 (merge fidelity, page labels, attachments, viewer preferences) and M7 (split, image pages, pruning, outlines, links between pieces, portfolios). |
-| Legal exhibit workflow | M9 (exhibit stamps, Bates numbering) and M18, the `AdCodicem.Pdf.CaseFile` satellite (piece model, inventory, portal presets, integrity manifest, e-mail to PDF). |
+| Case-file assembly completeness | M06 (merge fidelity, page labels, attachments, viewer preferences) and M07 (split, image pages, pruning, outlines, links between pieces, portfolios). |
+| Legal exhibit workflow | M09 (exhibit stamps, Bates numbering) and M18, the `AdCodicem.Pdf.CaseFile` satellite (piece model, inventory, portal presets, integrity manifest, e-mail to PDF). |
 | Redaction and sanitization | M19, in the core; the feature inventory in M15; pixel redaction once M22's decoders exist. |
-| Signatures: validation, revisions, PAdES levels | M4 (revisions, byte-range coverage, change classification, in the core, no cryptography), M26 (PAdES B-B and B-T), M27 (B-LT, B-LTA, validation); ADR 41. |
+| Signatures: validation, revisions, PAdES levels | M04 (revisions, byte-range coverage, change classification, in the core, no cryptography), M26 (PAdES B-B and B-T), M27 (B-LT, B-LTA, validation); ADR 41. |
 | Security handlers and forms | M16 (diagnostics, field creation, FDF/XFDF/JSON, AES-GCM and MAC read, public-key handler detected), M17 (HTML forms), M26 (public-key handler decryption); ADR 41. |
-| Content on existing documents: annotations, layers, page geometry | M9 (normalization, artifact stamps) and M11 (annotations, appearances, flattening, optional content). |
-| Conformance targets and PDF 2.0 | M3 (output version, ADR 40), M2 (Arlington rules, ADR 44), M13 (PDF/UA-1), M14 (PDF/A-3, XMP), M20 (profiles A-1 to A-4, UA-1), M21 (conversion), M28 (PDF/UA-2, WTPDF, PDF/A-4); auto-tagging stays open. |
-| Scans and images | M7 (image pages without re-encoding), M22 (`AdCodicem.Pdf.Imaging`, OCR text layer), M23 (recompression); ADR 42. |
+| Content on existing documents: annotations, layers, page geometry | M09 (normalization, artifact stamps) and M11 (annotations, appearances, flattening, optional content). |
+| Conformance targets and PDF 2.0 | M03 (output version, ADR 40), M02 (Arlington rules, ADR 44), M13 (PDF/UA-1), M14 (PDF/A-3, XMP), M20 (profiles A-1 to A-4, UA-1), M21 (conversion), M28 (PDF/UA-2, WTPDF, PDF/A-4); auto-tagging stays open. |
+| Scans and images | M07 (image pages without re-encoding), M22 (`AdCodicem.Pdf.Imaging`, OCR text layer), M23 (recompression); ADR 42. |
 | CSS paged media and layout | M12.1 to M12.7; ADR 39 for forward references. |
-| Typography, text and fonts | M8 (fallback, WOFF2, standard-14 metrics), M12.2 (UAX #14, UAX #9, OpenType features, hyphenation), M15 (reading Type 1, CFF, Type 3); ADR 43. Variable fonts and color emoji are open questions. |
+| Typography, text and fonts | M08 (fallback, WOFF2, standard-14 metrics), M12.2 (UAX #14, UAX #9, OpenType features, hyphenation), M15 (reading Type 1, CFF, Type 3); ADR 43. Variable fonts and color emoji are open questions. |
 | Visual CSS and graphics | M12.5. |
 | HTML engine production and integration | M12.5 and M12.6; ADR 38 for resource loading. A code-first layout API is an open question. |
 | E-invoicing, payment codes and barcodes | M10 (`AdCodicem.Pdf.Barcodes`) and M14 (`AdCodicem.Pdf.FacturX`, pulled ahead of extraction). 2D-Doc is an open question. |
 | Extraction outputs | M15 (search, exports) and M24 (comparison and templates). |
-| Tooling and deployment | The `AdCodicem.Pdf.Tool` track from M6; cancellation and progress designed in M3; WebAssembly and the container profile in M23; a JSON dump of the object graph stays open. |
+| Tooling and deployment | The `AdCodicem.Pdf.Tool` track from M06; cancellation and progress designed in M03; WebAssembly and the container profile in M23; a JSON dump of the object graph stays open. |
 | Weighed for exclusion | ADR 37 excludes active content and PDF to Office; print production went to M29, advanced typesetting to M30, DOCX to HTML to M31; mixed raster content compression is an open question. |
 
 The milestones were renumbered in the order they are worked; `docs/roadmap.md` keeps the mapping from the

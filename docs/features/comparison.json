@@ -986,7 +986,7 @@
             "source": "https://www.puppeteersharp.com/api/PuppeteerSharp.IPage.html"
           }
         },
-        "oursNote": "M4, earlier and without cryptography, will report what each signature covers and what changed after it."
+        "oursNote": "M04, earlier and without cryptography, will report what each signature covers and what changed after it."
       },
       {
         "id": "pdfaCreate",

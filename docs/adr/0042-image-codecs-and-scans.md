@@ -5,12 +5,12 @@ Date: 2026-09-26
 ## Status
 
 Accepted on 2026-09-26, by the maintainer. It places the image codecs no milestone owned, and sets the
-policy for anything that alters an image in a document that may be evidence. M22 implements it; M7, M19,
+policy for anything that alters an image in a document that may be evidence. M22 implements it; M07, M19,
 M23 and M25 depend on it.
 
 ## Context
 
-Case-file exhibits are mostly scans, and the corpus holds them in CCITT, JBIG2, JPEG and JPEG 2000. M1 passes
+Case-file exhibits are mostly scans, and the corpus holds them in CCITT, JBIG2, JPEG and JPEG 2000. M01 passes
 those filters through undecoded. Every later feature that touches a scan's pixels needs a decoder:
 rasterization (M25), pixel redaction (M19), blank-page detection, downsampling and recompression (M23), and
 exporting images in a usable form (M15). Skia decodes JPEG but neither JBIG2 nor CCITT, and SkiaSharp does not
@@ -31,7 +31,7 @@ We will split the codecs by size and risk, and make every lossy step the caller'
 
 - **CCITT G3 and G4 decoding in the core** (M22) — small, needed wherever a fax-era scan's pixels matter: image
   export (M15), blank pages (M22), pixel redaction (M19), rasterization (M25); and bounded like every filter.
-  M7's image pages need none: they pass CCITT strips through undecoded.
+  M07's image pages need none: they pass CCITT strips through undecoded.
 - **The `AdCodicem.Pdf.Imaging` satellite** — managed, dependency-free, AOT-compatible — holds the JBIG2 (with
   global segments), JPEG 2000 and JPEG (CMYK and YCCK included) decoders, and the lossless CCITT G4 and JBIG2
   generic encoders. Every decoder is bounded under ADR 34 and fuzzed from the day it is written.
