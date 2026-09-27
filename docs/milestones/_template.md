@@ -17,7 +17,8 @@ loose enough not to freeze what will be discovered while writing.
 
 ## Slices
 
-Each slice is vertical, testable, and ends on a green commit.
+Each slice is vertical, testable, and ends on a green commit. When the milestone starts, each becomes an issue
+labeled `slice`, filed under its GitHub milestone (`docs/roadmap.md`, *Tracking on GitHub*).
 
 ## Tests required
 

@@ -85,7 +85,7 @@ public class ReaderLimitsTests
     [Fact]
     public void A_guard_already_at_the_most_the_reader_can_hold_does_not_ask_to_be_raised()
     {
-        // Past about 2 GB a stream cannot be held in one piece, whatever the options (T28): the report says so
+        // Past about 2 GB a stream cannot be held in one piece, whatever the options (issue #48): the report says so
         // rather than send the caller after a property that can go no higher. A section count one below its
         // ceiling still asks to be raised.
         var diagnostics = new PdfDiagnostics();

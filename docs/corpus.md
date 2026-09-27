@@ -148,8 +148,8 @@ What is written from a standard rather than received — M10's barcode payload s
 
 Five fields serve that rule:
 
-- `unsupported` — the reason the library cannot yet meet the entry's expectations, and the milestone that
-  will. The acceptance tests skip the document with that reason in their output; the expectations stay as
+- `unsupported` — the reason the library cannot yet meet the entry's expectations, and the milestone or the
+  issue that will. The acceptance tests skip the document with that reason in their output; the expectations stay as
   the independent tool established them.
 - `readerLimits` — beside `expect`, not in it, since it is a setting chosen rather than an observation:
   the reader limits the document is opened with, when it is valid but exceeds a default one (ADR 34), such

@@ -188,6 +188,7 @@ public class CorpusManifestSchemaTests
             entry["expect"]!["findings"] = new JsonArray("file.eof-missing");
         }),
         ["a document the library cannot meet yet"] = () => Committed().With(entry => entry["expect"]!["unsupported"] = "M02: why, and what will."),
+        ["a document an issue will answer"] = () => Committed().With(entry => entry["expect"]!["unsupported"] = "#47: why, and what will."),
         ["a document with no page count to expect"] = () => Committed().With(entry => entry["expect"]!["pages"] = null),
         ["a document without a catalog"] = () => Committed().With(entry =>
         {
@@ -242,6 +243,8 @@ public class CorpusManifestSchemaTests
         ["a password without encryption"] = (() => Committed().With(entry => entry["expect"]!["password"] = "secret"), "dependentRequired"),
         ["an unsupported reason naming no milestone"] = (() => Committed().With(entry =>
             entry["expect"]!["unsupported"] = "the reader does not do this yet"), "pattern"),
+        ["an unsupported reason naming a former debt row"] = (() => Committed().With(entry =>
+            entry["expect"]!["unsupported"] = "T24: the debt table is now issues"), "pattern"),
 
         // Reader limits.
         ["a reader limit that does not raise its default"] = (() => Committed().With(entry =>

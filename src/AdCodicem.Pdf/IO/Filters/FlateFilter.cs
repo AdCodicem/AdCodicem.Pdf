@@ -153,7 +153,7 @@ internal static class FlateFilter
             {
                 // Corrupt from here on. Anything already decoded is still usable, and losing the tail of a
                 // content stream beats losing the whole document. What the read that met the fault had decoded
-                // is lost with it (T40).
+                // is lost with it (issue #56).
                 ending = FlateEnding.Corrupt;
                 return output.Count > 0;
             }

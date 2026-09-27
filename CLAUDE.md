@@ -8,8 +8,10 @@ PDF documents**, under a standing requirement of frugal CPU and memory use.
 Read these, in this order, and nothing else:
 
 1. **this file** — the invariant frame;
-2. **`docs/status.md`** — where the project stands, what is in flight, known debt;
-3. **the current milestone file** in `docs/milestones/` — the detailed specification of the work.
+2. **`docs/status.md`** — where the project stands and what is in flight;
+3. **the current milestone file** in `docs/milestones/` — the detailed specification of the work;
+4. **the current milestone's open issues** on GitHub, through the GitHub tools — its slices, and the debt
+   filed under it. The rest of the known debt is the open issues labeled `debt`.
 
 Load `docs/architecture.md` only when touching a boundary between layers, and `docs/adr/` only
 when considering reversing a settled choice. `docs/roadmap.md` places a milestone in the whole; it is not
@@ -18,7 +20,8 @@ what documents are still wanted and how they arrive; `docs/corpus-sources.md` sa
 why most other libraries' corpora could not be used; `docs/releasing.md` covers packaging and publishing.
 
 At the end of every session: update `docs/status.md` (actual state, not intentions), tick the milestone
-checklist, commit, push.
+checklist, open an issue labeled `debt` for anything found and left, commit, push, and name in the pull
+request the issues it closes (`Closes #58`).
 
 ## What the library is — and is not
 
@@ -143,6 +146,12 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   decide the version**: semantic-release reads them on every merge to `main`, so a malformed message
   produces no release rather than an untidy log. CI rejects one on a pull request.
 - Branches: one per session, merged into `main` through a pull request; `main` is protected by a ruleset.
+- **Tracking lives on GitHub; the roadmap stays the reference.** `docs/roadmap.md` says what the milestones
+  are and where each stands, and the `Tracking` workflow mirrors it as GitHub milestones. A milestone's
+  slices are issues labeled `slice`, opened when it starts; debt is issues labeled `debt`, filed under the
+  milestone that will pay it. A session opens, labels and comments on issues freely; an issue closes only
+  through a merged pull request that says `Closes #n`. A commit names the issue it advances in its footer
+  (`Refs #58`), never in its subject. Older commits cite debt as T01 to T40, mapped in `docs/status.md`.
 - **A preview carries no guarantee** (ADR 30): an API no stable release has shipped may be reshaped or
   withdrawn by the next merge. Compatibility is owed between stable releases only.
 

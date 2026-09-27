@@ -2,7 +2,8 @@
 
 ## Why
 
-<!-- If it fixes an issue: "Fixes #123". If it implements part of a milestone, name it. -->
+<!-- "Closes #123" for each issue this completes — a milestone's slice, a debt, a bug — so that it closes on merge;
+     "Refs #123" for one it only advances. The commits carry the same "Refs #123" in their footer. -->
 
 ## Definition of done
 

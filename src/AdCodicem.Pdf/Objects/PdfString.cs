@@ -63,7 +63,7 @@ public sealed class PdfString : PdfObject
     /// </summary>
     /// <remarks>
     /// A UTF-16 byte order mark selects UTF-16; otherwise the bytes are read as Latin-1, which matches
-    /// PDFDocEncoding over the printable range. Full PDFDocEncoding is tracked as debt T06.
+    /// PDFDocEncoding over the printable range. Full PDFDocEncoding is tracked as issue #36.
     /// </remarks>
     public string ToText()
     {

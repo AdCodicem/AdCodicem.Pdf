@@ -12,8 +12,9 @@ judge from the problem.
 
 ## Where it fits
 
-The [roadmap](../../docs/roadmap.md) may already cover it, possibly several milestones out. If so, saying
-that you need it is useful in itself: priorities move with real use.
+The [roadmap](../../docs/roadmap.md) may already cover it, possibly several milestones out — each milestone
+is also a GitHub milestone, with its issues — or list it among its open questions, each of which has a
+discussion under Ideas. If so, saying that you need it is useful in itself: priorities move with real use.
 
 ## How you work around it today
 
