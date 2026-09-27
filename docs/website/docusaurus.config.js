@@ -172,7 +172,10 @@ const config = {
           ],
         },
       ],
-      copyright: `MIT licensed. Documentation built ${new Date().getFullYear()}.`,
+      // HTML, which Docusaurus renders as is: the full disclaimer is on the introduction and in the README.
+      copyright:
+        `<a href="https://github.com/${organization}/${repository}/blob/main/LICENSE">MIT licensed</a>, ` +
+        `provided as is, without warranty of any kind. Documentation built ${new Date().getFullYear()}.`,
     },
     prism: {
       additionalLanguages: ['csharp', 'bash', 'json'],

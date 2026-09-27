@@ -29,6 +29,21 @@ between stable releases only. If you depend on a preview, pin its exact version.
 
 :::
 
+:::info Disclaimer
+
+AdCodicem.Pdf is provided **"as is"**, without warranty of any kind, express or implied. To the maximum extent
+permitted by applicable law, the authors, contributors and copyright holders are not liable for any claim,
+damage or loss arising from the use of the library, of this documentation or of the documents it reads,
+produces or modifies. The [MIT license](https://github.com/AdCodicem/AdCodicem.Pdf/blob/main/LICENSE) is the
+governing text.
+
+Every document the library produces or modifies is yours to verify before you rely on it, file it, sign it or
+send it. Conformance to PDF/A, PDF/UA or Factur-X is an aim, and the validator's report is not a
+certification; check that redacted content is actually gone; the legal validity of a signature depends on
+your jurisdiction and your trust services. Nothing in this project is legal, tax or compliance advice.
+
+:::
+
 ## Why another PDF library
 
 Most .NET options force a trade-off. Browser-based converters give perfect fidelity but cost hundreds of
