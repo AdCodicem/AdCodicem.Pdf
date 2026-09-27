@@ -70,7 +70,7 @@ budget in CI (`CorpusReadingTests`), so an allocation regression fails the build
 
 ## Next concrete step
 
-First, the roadmap revision of 2026-09-26 and 27 (journal below) merged, and its open points reviewed. Then:
+First, the roadmap revision of 2026-09-26 and 27 (journal below) merged. Then:
 
 M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29). In the order its debts impose:
 
@@ -108,14 +108,23 @@ not a fault of the file: the rules on it report at most, as information, that it
   inherited attributes.
 - **Every milestone specified.** Each file in `docs/milestones/` has its slices, its acceptance against named
   corpus documents, and a "Corpus" section saying what the corpus lacks — identified, none added
-  (`docs/corpus-contributions.md` gathers 183 of them). The writers raised 148 open points, kept unreviewed in
-  `docs/research/2026-09-milestone-open-points.md`; several want a decision: ADR 40 and inputs below PDF 1.7,
-  M03's three design proposals, how non-PDF inputs (images for M07, DOCX for M31) enter the corpus. The
-  session's usage limit stopped the run before its last writers and its review: M23 and M29 to M31 were
-  written without agents and are shorter, and the review was a scripted check — dependencies against the
-  roadmap, links, sections, test names, old numbering — which found nothing but M05's missing section, added.
-  M29's acceptance no longer names veraPDF for PDF/X: it validates PDF/A, PDF/UA and WTPDF only, and choosing
-  a PDF/X referee is M29's first slice.
+  (`docs/corpus-contributions.md` gathers them for M01 to M31). The session's usage limit first stopped the run
+  before its last writers; M23 and M29 to M31 were written without agents, then deepened, and every file was
+  reviewed against the roadmap, the corpus and the other files.
+- **Open points settled.** The writers raised 173 open points (`docs/research/2026-09-milestone-open-points.md`),
+  each now followed by its outcome: 93 already resolved or fixed in the milestone files, the rest applied to the
+  roadmap (dependency columns completed, 37 corrections), the ADRs (15 and 17 repaired, eight amended), the debt
+  table (T05 to the start of M03, T13 merged, T37 and T38 new), CLAUDE.md and the corpus manifest. Thirteen
+  maintainer decisions settled the rest — among them: an input keeps its PDF version (ADR 40); M03's read-only
+  objects, signed-rewrite refusal and cancellation convention; one manifest for non-PDF corpus inputs; an
+  `AdCodicem.Pdf.Fonts` satellite with one face in the core; managed MD5, RC4 and AES in the core (ADR 41);
+  the `adpdf` command; the PDF/X referee left to M29's first slice. Ten early ADRs whose Context or Decision
+  was lost in their conversion are restored.
+- **American English.** The maintainer chose American spelling for everything (ADR 20, amended): identifiers,
+  verbs, codes, the corpus manifest's `license` key, six file names — ADR 16 and five corpus documents — and
+  the prose. Proper names and quoted text keep theirs (the Open Government Licence, Licence Ouverte).
+- **Milestone numbers padded.** Numbers below ten take a leading zero (M00 to M09), in references and in file
+  names, so that they sort; `docs/roadmap.md`'s renumbering table keeps the numbers as they were before.
 - **Feature tables and comparison.** `docs/features/features.json` ties each feature to its milestones and a
   state; the README's table and a new site page, "Features and comparison", are generated from it, and
   `FeatureTablesTests` holds them to it and to the roadmap. `comparison.json` describes twenty products —
@@ -125,8 +134,9 @@ not a fault of the file: the rules on it report at most, as information, that it
   this library, PdfPig, PDFsharp and iText; the on-demand `Comparison benchmarks` workflow produces the figures
   the site will publish, none yet. A dry run here showed the allocation gap the design promises — about 0.5 MB
   to open the thousand-page journal against 6 to 9 MB for the others — and is not a published figure.
-- **Still open.** The review of the 148 open points; the first run of the comparison workflow, and its figures on
-  the site; the corpus gaps, milestone by milestone as each begins.
+- **Still open.** The first run of the comparison workflow, and its figures on the site; the corpus gaps,
+  milestone by milestone as each begins; the PDF/X referee and whether PDF/X-4 is capped at PDF 1.6, both left
+  to M29's first slice.
 
 
 ### 2026-09-26 — The corpus manifest has a JSON schema
@@ -472,7 +482,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 | ~~T01~~ | ~~`TreatWarningsAsErrors` is off while the foundations settle~~ | Done: on across the solution, analysis at `latest-recommended` |
 | ~~T02~~ | ~~XML documentation (`CS1591`) is not enforced on the public API~~ | Done: required, and the public API already satisfied it |
 | ~~T03~~ | ~~The real-document corpus is not built yet~~ | Done: `tests/corpus`, 27 documents, four producers plus vendored fixtures; 68 since 2026-09-24 |
-| T10 | **Narrowed on 2026-09-24**: Word, PDFMaker, Acrobat, InDesign, LiveCycle, PDFWriter, copier scans with their own OCR, Java writers, ERP Factur-X samples, PDF 1.2 archives, signatures — DocuSign's among them since the third pass — and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing from what may be committed is what only an inbox holds: a real invoice or statement from a supplier or bank (real ones are in the remote corpus only), a Yousign, Universign or Adobe Sign signature, a copier file untouched since the copier wrote it, Hebrew | Contributions, per the "still wanted" column of `docs/corpus-contributions.md`; the remote corpus (ADR 32) for files that can be used but not redistributed |
+| T10 | **Narrowed on 2026-09-24**: Word, PDFMaker, Acrobat, InDesign, LiveCycle, PDFWriter, copier scans with their own OCR, Java writers, ERP Factur-X samples, PDF 1.2 archives, signatures — DocuSign's among them since the third pass — and other producers' PDF/A are now in the corpus, found in public sources (`docs/corpus-sources.md`). Still missing from what may be committed is what only an inbox holds: a real invoice or statement from a supplier or bank (real ones are in the remote corpus only), a Yousign, Universign or Adobe Sign signature, a copier file untouched since the copier wrote it, Hebrew. Since 2026-09-27, rows W13 to W30 of `docs/corpus-contributions.md` add what the milestone specifications found missing, each milestone's own gaps listed below them | Contributions, per the "still wanted" column of `docs/corpus-contributions.md`; the remote corpus (ADR 32) for files that can be used but not redistributed |
 | ~~T21~~ | ~~**The reader reports a truncated stream that is not.** When a stream's data ends inside the parser's 8 KB window but its `endstream` falls past the window's end, `PdfObjectParser.ReadStream` finds no `endstream` in the window and reports `stream.truncated`, cutting the stream at the window. Found on object 49 of the USGS Washington West topographic map (W11 reference, `docs/corpus-sources.md`): data from 68 to 8,185 in a 8,192-byte window; qpdf reads it cleanly. The same file also earns a `filter.failed` on its 14.9 MB Flate image, not yet explained. The map is now in the remote corpus, recorded as unsupported with this reason, so the fix is checked against it every night. Since 2026-09-25 also the FDA hospital-bed guidance from GovDocs1 (remote): objects 604 and 2053, streams of about 8.1 KB whose `/Length` is right~~ | Done on 2026-09-26: the attempt through a window too small for its stream is dropped with what it reported, and a stream whose `endstream` may lie past the window is confirmed by 13 bytes read from the file. The hospital-bed guidance is supported; the map is unsupported for T28 instead |
 | T22 | W11 has no committed document, by decision. All three of its references — 9,302 pages, one 63 MB page, and since the third pass of 2026-09-24 the heavy scan (USGS Professional Paper 1, 147 MB of JPEG 2000) — are in the remote corpus (ADR 32) and tested every night, but not in the main CI job | M23: state its memory budgets against the remote documents, and close only on a green `Remote corpus` run |
 | ~~T23~~ | ~~**The reader cuts an indirect object longer than its 8 KB window at the window's edge.** Found on two remote documents: object 458 of the EU DSS file with 24 signatures and a document timestamp, a DSS `/VRI` dictionary of 10,112 bytes, reported as a truncated object exactly 8 KB in; and object 14 of the BOE's 2015 law, a structure array of 8,694 bytes, reported as unexpected tokens at the same point, with 35 arrays like it. qpdf reads all of them whole. `PdfFileReader.TryParseObjectAt` does grow its window when the parser says an object ran out, but the parser has warned into the document's diagnostics by then. The same window as T21, met by an object rather than a stream. Both entries are recorded as unsupported with this reason, so the fix is checked against them every night. Since 2026-09-25 also the VA Kernel guide (object 10913, 14,188 bytes) and a JHOVE poster (object 2307, 8,248 bytes), both remote~~ | Done on 2026-09-26: only the attempt that is kept reports, a cut at the buffer's end is noticed wherever it falls, a classic table's window grows for a cut keyword and a cut trailer is parsed again in a window of its own, up to 64 KB. The four documents are supported. The rebuild's trailer scan keeps its fixed window (T30) |
