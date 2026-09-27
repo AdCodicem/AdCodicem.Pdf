@@ -318,6 +318,7 @@ public class CrossReferenceRuleTests
     [InlineData("/N 2", "/N 9", "Object stream 4, where the index places 2 objects, cannot be read: its /N declares 9 objects, more than its /First of")]
     [InlineData("/N 2", "/X 2", "Object stream 4, where the index places 2 objects, cannot be read: its /N or its /First is missing or negative.")]
     [InlineData("/Type /ObjStm /N 2 /First ", "/Type/ObjStm/N 2/First 999", "Object stream 4, where the index places 2 objects, cannot be read: it decodes to")]
+    [InlineData("stream\n2 0 3 ", "stream\nx 0 3 ", "Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, then something else.")]
     public void An_object_stream_that_cannot_serve_its_objects_is_reported_once(string text, string replacement, string message)
     {
         replacement.Length.Should().Be(text.Length, "every offset after the object stream stays right");
