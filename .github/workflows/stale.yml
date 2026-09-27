@@ -27,7 +27,10 @@ jobs:
           stale-pr-message: >
             This pull request has had no activity for 60 days and will close in 14 days. Say so if it is
             still alive.
-          exempt-issue-labels: "pinned,security"
+          # Debt, a milestone's slices and the corpus's wanted documents wait for their milestone, not for
+          # a comment: they are exempt, and so is any issue filed under a milestone.
+          exempt-issue-labels: "pinned,security,debt,slice,help wanted"
+          exempt-all-issue-milestones: true
           exempt-pr-labels: "pinned"
           stale-issue-label: stale
           stale-pr-label: stale

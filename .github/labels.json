@@ -1,0 +1,16 @@
+[
+  { "name": "debt", "color": "d93f0b", "description": "Known debt: a defect or a missing piece recorded rather than fixed on the way" },
+  { "name": "slice", "color": "1d76db", "description": "A slice of the milestone it is filed under, as its specification lists them" },
+  { "name": "maintainer", "color": "5319e7", "description": "Needs the maintainer: a repository setting or an account, not a change a pull request can make" },
+  { "name": "help wanted", "color": "008672", "description": "Wanted from outside: a document or a pointer the corpus lacks (docs/corpus-contributions.md)" },
+  { "name": "area: api", "color": "c5def5", "description": "The public API and its compatibility" },
+  { "name": "area: ci", "color": "c5def5", "description": "Continuous integration and its services" },
+  { "name": "area: corpus", "color": "c5def5", "description": "The test corpus: its documents, manifest and gaps" },
+  { "name": "area: fonts", "color": "c5def5", "description": "Fonts: parsing, subsetting, embedding, the embedded set" },
+  { "name": "area: reader", "color": "c5def5", "description": "Reading: lexer, parser, filters, cross-reference and object resolution" },
+  { "name": "area: release", "color": "c5def5", "description": "Packaging and publishing" },
+  { "name": "area: supply chain", "color": "c5def5", "description": "Pinned dependencies, provenance, OpenSSF Scorecard" },
+  { "name": "area: tests", "color": "c5def5", "description": "The test suites, their referees and their budgets" },
+  { "name": "area: validation", "color": "c5def5", "description": "The validator: its rules, profiles and report" },
+  { "name": "area: writer", "color": "c5def5", "description": "Writing: the PDF writer and what it marks in documents" }
+]
