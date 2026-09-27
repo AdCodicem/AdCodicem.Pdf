@@ -19,10 +19,13 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   to 6 are issues [#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59) to
   [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 1,639 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
+- **Tests**: 1,661 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher + 26 for the roadmap's mirror on GitHub, on slice 2's branch. With the remote corpus:
-  `Remote corpus` run 9, on slice 2's branch before its last two commits, with all 242 documents, passed 3,136
-  unit (65 skipped by design, on documents recorded as unsupported until M02 or #47) and 1,875 integration tests.
+  `Remote corpus` run 10, on slice 2's branch with the object stream fix and all 242 documents, passed 3,183 unit
+  (65 skipped by design, on documents recorded as unsupported until M02 or #47) and 1,875 integration tests.
+- **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial), 99.0 % of
+  slice 2's patch — what is left is defensive: fallbacks for values the reader never records — and 93.5 % of the
+  project.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -89,7 +92,11 @@ before its cross-reference and object-graph rules, merged with #31. Its progress
 
 1. Slice 2's pull request ([#110](https://github.com/AdCodicem/AdCodicem.Pdf/pull/110), closing [#58]): review
    and merge; `Remote corpus` run 9 confirmed the nine remote documents this session could not fetch.
-2. Slice 3 ([#59]) with [#51] in the object-graph rules, and the finding for a reference to an object the
+2. The project's coverage and Codecov's rules ([#115]), in a pull request of their own once #110 is merged:
+   `codecov.yml` as the maintainer decided it — project coverage lowered by at most half a point, 95 % of each
+   patch, `tests/` not measured —, the rule for what coverage work may remove written into `CLAUDE.md`, and the
+   files with the largest gaps covered where what they do can be tested.
+3. Slice 3 ([#59]) with [#51] in the object-graph rules, and the finding for a reference to an object the
    file lacks, which T27 left to it; [#55] and [#56] before slice 4 ([#60]), whose stream rules check
    declared lengths and whether filters decode; slices 5 and 6 ([#61], [#62]). Each slice adds to the
    manifest's `findings` what its rules report, and every document is held to exactly its list.
@@ -144,13 +151,23 @@ not a fault of the file: the rules on it report at most, as information, that it
   corpus's reading test counts a finding as damage made known, for what the reader reads without a word. Nine
   remote documents could not be fetched here; their findings were predicted, and `Remote corpus` run 9, on the
   branch with all 242 documents, confirmed them.
-- **Tests.** `FileRuleTests` and `CrossReferenceRuleTests`, 95 cases on files written from a template whose offsets
+- **Tests.** `FileRuleTests` and `CrossReferenceRuleTests`, 116 cases on files written from a template whose offsets
   are placeholders: each rule on a file that breaks it, a sound one and an unusual legal one, and the report
   unchanged by reads and rebuilds between validations. `ValidationRefereeTests` (integration): every document qpdf
   rebuilds the index of earns a `file.*` or `xref.*` finding, and every such error is a document qpdf finds fault
   with — on all 401 documents here, without an exception to name.
 - **Measured.** `ValidationBenchmarks`, ShortRun, 1,000 synthetic pages: 214 µs and 8.9 KB, against 86 ns and
   232 B for slice 1's one rule.
+- **Coverage, with the maintainer.** Codecov's patch check failed at 89.2 %. The maintainer asked for the patch
+  first and the rest of the project in a pull request of its own, and set the rule: code is removed only when no
+  input can reach it — conditions that contradict each other, a dead branch —, not because no file of the corpus
+  does; a defensive branch stays, covered or not, and 100 % is not the goal. The patch is at 99.0 %: tests for each
+  reachable case — a hybrid file's stream, a cross-reference or object stream compressed and cut by a limit or
+  corrupt, a table the file ends in, a rebuild or a guard met during the catalog search —, the fallbacks for values
+  the reader never records left as they were. Covering it found three faults: a `/Root null` reported as "not an
+  object", an unreadable object stream reported in no sentence, and an object stream whose dictionary
+  `MaxObjectLength` cut reported broken — an error — where the reader's limit, not the file, kept it from being
+  checked. The maintainer also settled `codecov.yml`, left to the project's coverage work ([#115]).
 
 ### 2026-09-27 — Milestones, slices and debt tracked on GitHub
 - **The question.** Whether GitHub's issues and milestones suit the milestones and the debt. Settled with the
@@ -725,3 +742,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#108]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/108
 [#109]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/109
 [#111]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/111
+[#115]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/115
