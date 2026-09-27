@@ -33,7 +33,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private const int MaxSubsectionEntries = 50_000_000;
     private const int HeaderSearchLength = 4096;
     private const int TailSearchLength = 4096;
-    private const int NearbySearchRadius = 512;
+    internal const int NearbySearchRadius = 512;
 
     /// <summary>
     /// The most places near missing cross-reference sections that are tried as one, over a whole document. Real
@@ -77,6 +77,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private readonly PdfDiagnostics _pending;
 
     private readonly PdfXRefTable _xref = new();
+
+    /// <summary>What the file's own structure looked like as the document opened, for the validation rules.</summary>
+    private readonly FileStructure _structure = new();
+
+    /// <summary>
+    /// The index as the chain gave it, copied before anything changed it — an object found near its offset, or a
+    /// rebuild —; null while <see cref="_xref"/> is still that index.
+    /// </summary>
+    private PdfXRefTable? _chainIndex;
+
+    /// <summary>How many times a guard was reached, reported or not: a read that reached one was cut by it.</summary>
+    private int _guardsReached;
+
     private readonly Dictionary<PdfObjectId, PdfObject> _cache = [];
     private readonly Queue<PdfObjectId> _cacheOrder = new();
     private readonly Dictionary<int, ObjectStreamContents?> _objectStreams = [];
@@ -129,6 +142,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>Gets the bytes the file is read from.</summary>
     public PdfFileSource Source => _source;
+
+    /// <summary>Gets what the file's own structure looked like as the document opened.</summary>
+    public FileStructure Structure => _structure;
+
+    /// <summary>Gets how far into the file its header starts: every offset the file gives is counted from there.</summary>
+    public long HeaderOffset => _headerOffset;
+
+    /// <summary>
+    /// Gets the index as the file's chain of cross-reference sections gave it — before anything the reader found
+    /// changed it —, or null when the chain gave none and the index was rebuilt as the document opened.
+    /// </summary>
+    /// <remarks>
+    /// Read it again for each lookup rather than keeping it: an object read in between may make the reader copy
+    /// it before changing its own.
+    /// </remarks>
+    public PdfXRefTable? ChainIndex => _structure.ChainRead ? _chainIndex ?? _xref : null;
 
     /// <inheritdoc/>
     public PdfObject GetObject(PdfObjectId id)
@@ -234,12 +263,51 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         DetectHeader();
 
         var startXref = FindStartXRef();
-        var indexed = startXref >= 0 && TryReadXRefChain(startXref);
 
-        if (!indexed || !HasUsableRoot())
+        if (startXref < 0 || !TryReadXRefChain(startXref))
+        {
+            Repair();
+            return;
+        }
+
+        _structure.ChainRead = true;
+        _structure.TrailerRead = Trailer.Count > 0;
+        _structure.SizeAsWritten = Trailer.GetRaw(PdfName.Size);
+        _structure.RootAsWritten = Trailer.GetRaw(PdfName.Root);
+
+        if (!HasUsableRoot())
+        {
+            _structure.RootUsable = false;
+            _structure.RootResolved = _structure.RootAsWritten is PdfReference root ? root.Resolve() : null;
+
+            // Resolving /Root may itself have rebuilt the index — its object was neither where its entry said nor
+            // near it —, and the rebuild looked for the catalog in the rebuilt index.
+            if (!_repaired)
+            {
+                RecoverCatalog();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Looks for the catalog among the objects the chain indexed, the trailer's <c>/Root</c> leading to none, and
+    /// rebuilds the index only when none of them is one.
+    /// </summary>
+    /// <remarks>
+    /// A broken <c>/Root</c> says nothing against the index: the objects are where the chain says. Keeping the index
+    /// keeps what an incremental update superseded superseded, which a rebuild — the last definition in the file
+    /// winning — does not always manage.
+    /// </remarks>
+    private void RecoverCatalog()
+    {
+        var reached = FindCatalog();
+
+        if (!HasUsableRoot() && !_repaired)
         {
             Repair();
         }
+
+        reached?.Throw();
     }
 
     private void DetectHeader()
@@ -253,6 +321,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             _diagnostics.Warn(PdfDiagnosticCodes.XRefRebuilt, "The file does not start with a PDF header.");
             return;
         }
+
+        _structure.HeaderPosition = index;
 
         if (index > 0)
         {
@@ -272,9 +342,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             versionEnd++;
         }
 
+        _structure.HeaderVersion = System.Text.Encoding.ASCII.GetString(span[versionStart..versionEnd]);
+
         if (versionEnd > versionStart)
         {
-            Version = System.Text.Encoding.ASCII.GetString(span[versionStart..versionEnd]);
+            Version = _structure.HeaderVersion;
         }
     }
 
@@ -295,10 +367,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return -1;
         }
 
+        _structure.StartXRefPosition = window.Offset + index;
+
         var lexer = new PdfLexer(span, index + StartXRefKeyword.Length);
         var token = lexer.Read();
 
-        return token.Kind == PdfTokenKind.Integer && token.Integer >= 0 ? token.Integer : -1;
+        if (token.Kind == PdfTokenKind.Integer && token.Integer >= 0)
+        {
+            _structure.StartXRef = token.Integer;
+            return token.Integer;
+        }
+
+        return -1;
     }
 
     /// <summary>
@@ -310,7 +390,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// it is named is looked for nearby, as an object is. One that cannot be found is reported and leaves the
     /// index incomplete: the chain stops at a missing <c>/Prev</c> and goes on past a missing <c>/XRefStm</c>,
     /// and an object the index then lacks is looked for by rebuilding it, when it is asked for. Nothing is
-    /// rebuilt at opening that nobody asks for.
+    /// rebuilt at opening that nobody asks for. What became of each section is recorded in
+    /// <see cref="Structure"/>, for the validation rules.
     /// </remarks>
     /// <param name="startOffset">The offset <c>startxref</c> gives.</param>
     private bool TryReadXRefChain(long startOffset)
@@ -319,11 +400,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         var offset = startOffset;
         var sections = 0;
         var naming = "startxref";
+        var namedFrom = _structure.StartXRefPosition;
 
         while (offset >= 0)
         {
             if (!visited.Add(offset))
             {
+                _structure.LoopOffset = offset + _headerOffset;
+                _structure.LoopNamedBy = naming;
+                _structure.LoopNamedFrom = namedFrom;
                 _diagnostics.Warn(PdfDiagnosticCodes.XRefChainCycle, "The cross-reference chain loops back on itself.", offset);
                 break;
             }
@@ -334,6 +419,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 // sections, read first, are the ones that win, and what only the older ones index is found by
                 // rebuilding the index when it is asked for.
                 _indexIncomplete = true;
+                _structure.ChainCutAt = offset + _headerOffset;
                 ReachLimit(
                     PdfLimit.XRefSectionCount,
                     string.Create(
@@ -343,7 +429,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 break;
             }
 
-            if (!TryReadXRefSection(offset, out var previous, out var hybrid))
+            var section = new XRefSectionRecord(naming, offset + _headerOffset, namedFrom);
+            _structure.Add(section);
+
+            if (TryReadXRefSection(offset, section, out var previous, out var hybrid) != XRefSectionState.Read)
             {
                 // The first section is where startxref says, and one that is not there leaves no index to
                 // complete: the file is scanned whole, which is reported. A later one is named by the section
@@ -353,24 +442,30 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     return false;
                 }
 
-                if (!TryRelocateXRefSection(offset, naming, out previous, out hybrid))
+                if (!TryRelocateXRefSection(offset, section, out previous, out hybrid))
                 {
                     ReportMissingSection(naming, offset);
                     break;
                 }
             }
 
-            if (hybrid >= 0 && visited.Add(hybrid) &&
-                !TryReadXRefSection(hybrid, out _, out _) &&
-                !TryRelocateXRefSection(hybrid, "/XRefStm", out _, out _))
+            if (hybrid >= 0 && visited.Add(hybrid))
             {
                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
                 // the stream, the objects it indexes are missing, and the chain goes on through /Prev.
-                ReportMissingSection("/XRefStm", hybrid);
+                var stream = new XRefSectionRecord("/XRefStm", hybrid + _headerOffset, section.Offset);
+                _structure.Add(stream);
+
+                if (TryReadXRefSection(hybrid, stream, out _, out _) != XRefSectionState.Read &&
+                    !TryRelocateXRefSection(hybrid, stream, out _, out _))
+                {
+                    ReportMissingSection("/XRefStm", hybrid);
+                }
             }
 
             offset = previous;
             naming = "/Prev";
+            namedFrom = section.Offset;
         }
 
         return _xref.Count > 0;
@@ -397,9 +492,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// The search spans <see cref="NearbySearchRadius"/> bytes either side, as an object's does, and tries at most
     /// <see cref="MaxRelocationCandidates"/> places in all, over the whole document: each is read through a window
     /// of up to 64 KB, the file chooses how many headers lie near a section, and a chain can name a section for
-    /// each of its <see cref="PdfReaderLimits.MaxXRefSectionCount"/> links.
+    /// each of its <see cref="PdfReaderLimits.MaxXRefSectionCount"/> links. Found, the section's record takes what
+    /// was read there; not found, it keeps what the named offset held.
     /// </remarks>
-    private bool TryRelocateXRefSection(long offset, string naming, out long previous, out long hybrid)
+    private bool TryRelocateXRefSection(long offset, XRefSectionRecord section, out long previous, out long hybrid)
     {
         previous = -1;
         hybrid = -1;
@@ -434,13 +530,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 break;
             }
 
-            if (TryReadXRefSection(candidate - _headerOffset, out previous, out hybrid))
+            var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
+
+            if (TryReadXRefSection(candidate - _headerOffset, attempt, out previous, out hybrid) == XRefSectionState.Read)
             {
+                section.RelocateTo(attempt);
                 _diagnostics.Repair(
                     PdfDiagnosticCodes.XRefOffsetAdjusted,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The cross-reference section {naming} names at offset {absolute} was found {candidate - absolute} bytes from there."),
+                        $"The cross-reference section {section.NamedBy} names at offset {absolute} was found {candidate - absolute} bytes from there."),
                     candidate);
                 return true;
             }
@@ -500,7 +599,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
     }
 
-    private bool TryReadXRefSection(long offset, out long previous, out long hybrid)
+    /// <summary>
+    /// Reads the section at <paramref name="offset"/> into the index, and what became of it into
+    /// <paramref name="section"/>: <see cref="XRefSectionState.Read"/>, <see cref="XRefSectionState.NotFound"/> when
+    /// nothing there is a section, or <see cref="XRefSectionState.Malformed"/> when one is and cannot be read.
+    /// </summary>
+    private XRefSectionState TryReadXRefSection(long offset, XRefSectionRecord section, out long previous, out long hybrid)
     {
         previous = -1;
         hybrid = -1;
@@ -509,7 +613,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         if (absolute < 0 || absolute >= _source.Length)
         {
             _diagnostics.Warn(PdfDiagnosticCodes.XRefEntryOutOfRange, "A cross-reference section points outside the file.", absolute);
-            return false;
+            section.Fault = "lies outside the file";
+            section.State = XRefSectionState.NotFound;
+            return section.State;
         }
 
         using (var probe = _source.GetWindow(absolute, XRefProbeLength))
@@ -517,14 +623,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var lexer = new PdfLexer(probe.Memory.Span);
             if (lexer.Read().IsKeyword("xref"u8))
             {
-                return TryReadClassicTable(absolute, out previous, out hybrid);
+                section.Kind = XRefSectionKind.Table;
+                section.State = TryReadClassicTable(absolute, section, out previous, out hybrid)
+                    ? XRefSectionState.Read
+                    : XRefSectionState.Malformed;
+                return section.State;
             }
         }
 
-        return TryReadXRefStream(absolute, out previous);
+        section.State = TryReadXRefStream(absolute, section, out previous);
+        return section.State;
     }
 
-    private bool TryReadClassicTable(long absolute, out long previous, out long hybrid)
+    private bool TryReadClassicTable(long absolute, XRefSectionRecord section, out long previous, out long hybrid)
     {
         previous = -1;
         hybrid = -1;
@@ -546,6 +657,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             if (!truncated && !keyword.IsKeyword("xref"u8))
             {
+                section.Fault = "does not start with the xref keyword";
                 return false;
             }
 
@@ -562,7 +674,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (token.IsKeyword(TrailerKeyword))
                 {
-                    if (ReadTrailer(window.Memory, absolute, lexer.Position, windowFull) is { } trailer)
+                    section.TrailerPosition = absolute + token.Start;
+
+                    if (ReadTrailer(window.Memory, absolute, lexer.Position, windowFull, section) is { } trailer)
                     {
                         _xref.MergeTrailer(trailer);
                         previous = SectionOffset(trailer, PdfName.Prev, absolute);
@@ -574,6 +688,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (token.Kind != PdfTokenKind.Integer)
                 {
+                    if (token.Kind == PdfTokenKind.DictionaryStart)
+                    {
+                        // The rows run into a dictionary no trailer keyword introduces: the trailer is missing,
+                        // whatever that dictionary holds.
+                        section.TrailerFault = XRefTrailerFault.Missing;
+                        section.TrailerPosition = absolute + token.Start;
+                    }
+                    else
+                    {
+                        section.Fault ??= string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"it holds {DescribeToken(token)} at offset {absolute + token.Start}, where a subsection or the trailer should start");
+                    }
+
                     return false;
                 }
 
@@ -589,10 +717,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     countToken.Integer is < 0 or > MaxSubsectionEntries ||
                     first is < 0 or > int.MaxValue)
                 {
+                    section.Fault ??= string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"the subsection header at offset {absolute + token.Start} does not give a first object number and a count of rows");
                     return false;
                 }
 
-                truncated = !ReadSubsection(ref lexer, (int)first, (int)countToken.Integer);
+                truncated = !ReadSubsection(ref lexer, (int)first, (int)countToken.Integer, section, absolute);
             }
 
             if (!canGrow)
@@ -600,10 +731,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 if (windowFull)
                 {
                     _indexIncomplete = true;
+                    section.CutByLimit = true;
                     ReachLimit(
                         PdfLimit.XRefSectionLength,
                         $"The cross-reference table runs past {PdfLimitGuard.FormatLength(maxWindow)}; only the entries within it were read.",
                         absolute);
+                }
+                else
+                {
+                    // The file ends before the table's trailer.
+                    section.TrailerFault = XRefTrailerFault.Missing;
+                    section.TrailerPosition = _source.Length;
                 }
 
                 // Keep whatever was indexed.
@@ -615,15 +753,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     }
 
     /// <summary>
-    /// Parses the trailer dictionary that starts at <paramref name="position"/> in a classic table's window.
+    /// Parses the trailer dictionary that starts at <paramref name="position"/> in a classic table's window, and
+    /// records in <paramref name="section"/> what was wrong with it.
     /// </summary>
     /// <remarks>
     /// A trailer cut by the window's edge would lose its /Root or its /Prev. It is parsed again where it
     /// starts, through a window of its own that stops at <see cref="PdfReaderLimits.MaxTrailerLength"/> — not
     /// by growing the table's, which a dictionary that never closes would grow to the size of the file, for
-    /// every section of a chain.
+    /// every section of a chain. Only a dictionary written as one is a trailer: a reference is not resolved, which
+    /// would load an object while the index is still being read.
     /// </remarks>
-    private PdfDictionary? ReadTrailer(ReadOnlyMemory<byte> window, long absolute, int position, bool windowFull)
+    private PdfDictionary? ReadTrailer(
+        ReadOnlyMemory<byte> window, long absolute, int position, bool windowFull, XRefSectionRecord section)
     {
         var mark = _pending.GetMark();
 
@@ -635,8 +776,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             if (!parser.IsTruncated || !windowFull)
             {
+                // Cut short where the window holds the end of the file, the dictionary runs to it unclosed.
+                var malformed = parser.IsTruncated || SyntaxFaultSince(_pending, mark);
                 _pending.MoveTo(_diagnostics, mark);
-                return parsed.AsDictionary();
+                return JudgeTrailer(parsed, malformed, section);
             }
         }
         finally
@@ -646,11 +789,78 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         // The trailer starts inside the window, so inside the file as long as the source's length holds;
         // where nothing can be parsed the value is null, and anything that is not a dictionary is no trailer.
+        var before = _diagnostics.GetMark();
+        var guards = _guardsReached;
         _ = TryParseAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value);
-        return value.AsDictionary();
+        section.CutByLimit |= _guardsReached != guards;
+        return JudgeTrailer(value, SyntaxFaultSince(_diagnostics, before), section);
     }
 
-    private bool ReadSubsection(ref PdfLexer lexer, int first, int count)
+    /// <summary>Records a section's trailer, or what is wrong with it, and returns it when it is a dictionary.</summary>
+    private static PdfDictionary? JudgeTrailer(PdfObject parsed, bool malformed, XRefSectionRecord section)
+    {
+        if (parsed is not PdfDictionary dictionary)
+        {
+            section.TrailerFault = XRefTrailerFault.NotADictionary;
+            return null;
+        }
+
+        section.Trailer = dictionary;
+
+        if (malformed)
+        {
+            section.TrailerFault = XRefTrailerFault.Malformed;
+        }
+
+        return dictionary;
+    }
+
+    /// <summary>Determines whether a syntax error was recorded since <paramref name="mark"/>, or may have been, the capacity reached.</summary>
+    private static bool SyntaxFaultSince(PdfDiagnostics diagnostics, PdfDiagnosticsMark mark)
+    {
+        if (diagnostics.SuppressedCount > mark.Suppressed)
+        {
+            return true;
+        }
+
+        for (var i = mark.Count; i < diagnostics.Count; i++)
+        {
+            if (diagnostics[i].Code.StartsWith("syntax.", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Determines whether a guard was reported since <paramref name="mark"/>.</summary>
+    private static bool LimitSince(PdfDiagnostics diagnostics, PdfDiagnosticsMark mark)
+    {
+        for (var i = mark.Count; i < diagnostics.Count; i++)
+        {
+            if (diagnostics[i].Code.StartsWith("limit.", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Says what a token is, for a message about what stood where something else should have.</summary>
+    private static string DescribeToken(PdfToken token) => token.Kind switch
+    {
+        PdfTokenKind.Keyword => $"the keyword {System.Text.Encoding.Latin1.GetString(token.Text)}",
+        PdfTokenKind.Name => "a name",
+        PdfTokenKind.Real => "a real number",
+        PdfTokenKind.LiteralString or PdfTokenKind.HexString => "a string",
+        PdfTokenKind.ArrayStart or PdfTokenKind.ArrayEnd => "an array delimiter",
+        PdfTokenKind.DictionaryEnd => "the end of a dictionary",
+        _ => "a byte that starts no token",
+    };
+
+    private bool ReadSubsection(ref PdfLexer lexer, int first, int count, XRefSectionRecord section, long absolute)
     {
         for (var i = 0; i < count; i++)
         {
@@ -665,49 +875,95 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return false;
             }
 
-            if (offsetToken.Kind != PdfTokenKind.Integer || generationToken.Kind != PdfTokenKind.Integer)
+            var number = first + i;
+
+            if (offsetToken.Kind != PdfTokenKind.Integer || generationToken.Kind != PdfTokenKind.Integer ||
+                !(kindToken.IsKeyword("n"u8) || kindToken.IsKeyword("f"u8)))
             {
-                // A malformed row: stop this subsection rather than misread every row after it.
+                // A malformed row: stop this subsection rather than misread every row after it. The rows it
+                // leaves unread index nothing, and the objects they stood for are the index's to find.
+                _indexIncomplete = true;
+                section.Fault ??= string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"the row for object {number}, at offset {absolute + offsetToken.Start}, is not an offset, a generation and n or f");
                 return true;
             }
-
-            var number = first + i;
 
             if (kindToken.IsKeyword("n"u8))
             {
                 _xref.TryAdd(number, XRefEntry.Regular(offsetToken.Integer, (int)generationToken.Integer));
             }
-            else if (kindToken.IsKeyword("f"u8))
-            {
-                _xref.TryAdd(number, XRefEntry.Free);
-            }
             else
             {
-                return true;
+                _xref.TryAdd(number, XRefEntry.Free);
             }
         }
 
         return true;
     }
 
-    private bool TryReadXRefStream(long absolute, out long previous)
+    /// <summary>
+    /// Reads the cross-reference stream at <paramref name="absolute"/>, if one is there, and records what became of
+    /// it in <paramref name="section"/>.
+    /// </summary>
+    /// <remarks>
+    /// An object that declares itself a cross-reference stream — <c>/Type /XRef</c>, or a <c>/W</c> — and cannot be
+    /// read is a malformed section; any other object there, or none, is no section at all.
+    /// </remarks>
+    private XRefSectionState TryReadXRefStream(long absolute, XRefSectionRecord section, out long previous)
     {
         previous = -1;
 
         // The first window, of 64 KB, holds the data of all but the largest cross-reference streams, so the
         // parser checks their /Length against the data rather than only at the end the /Length gives. The
         // dictionary is the trailer, and grows its window no further than a trailer may.
-        if (!TryParseAt(absolute, AnyObject, PdfLimit.Trailer, out var value, XRefWindow) || value is not PdfStream stream)
+        var before = _diagnostics.GetMark();
+        var guards = _guardsReached;
+
+        if (!TryParseNumberedAt(absolute, AnyObject, PdfLimit.Trailer, out var value, out var number, XRefWindow))
         {
-            return false;
+            section.Fault = "holds neither the xref keyword nor an object";
+            return XRefSectionState.NotFound;
         }
 
-        var dictionary = stream.Dictionary;
+        var dictionary = value switch
+        {
+            PdfStream stream => stream.Dictionary,
+            PdfDictionary direct => direct,
+            _ => null,
+        };
+
+        if (dictionary is null || !(dictionary.IsOfType(PdfName.XRef) || dictionary.ContainsKey(PdfName.W)))
+        {
+            section.Fault = string.Create(
+                CultureInfo.InvariantCulture, $"holds object {number}, which is not a cross-reference stream");
+            return XRefSectionState.NotFound;
+        }
+
+        section.Kind = XRefSectionKind.Stream;
+        section.StreamObjectNumber = number;
+        section.TrailerPosition = absolute;
+        section.CutByLimit |= _guardsReached != guards;
+
+        if (value is not PdfStream xrefStream)
+        {
+            section.Fault = "its dictionary is not followed by stream data";
+            return XRefSectionState.Malformed;
+        }
+
+        section.Trailer = dictionary;
+
+        if (SyntaxFaultSince(_diagnostics, before))
+        {
+            section.TrailerFault = XRefTrailerFault.Malformed;
+        }
+
         var widths = dictionary.GetArray(PdfName.W);
 
         if (widths is null || widths.Count < 3)
         {
-            return false;
+            section.Fault = "its /W does not give the widths of three fields";
+            return XRefSectionState.Malformed;
         }
 
         Span<int> fieldWidths = stackalloc int[3];
@@ -718,7 +974,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var width = (int)(widths.Resolved(i).AsInteger() ?? 0);
             if (width is < 0 or > 8)
             {
-                return false;
+                section.Fault = "its /W gives a field a width outside 0 to 8 bytes";
+                return XRefSectionState.Malformed;
             }
 
             fieldWidths[i] = width;
@@ -727,16 +984,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         if (rowLength == 0)
         {
-            return false;
+            section.Fault = "its /W gives rows of no bytes";
+            return XRefSectionState.Malformed;
         }
 
-        var data = stream.Decode(_diagnostics).Span;
+        var decoding = _diagnostics.GetMark();
+        var data = xrefStream.Decode(_diagnostics).Span;
+        var decodedWhole = !LimitSince(_diagnostics, decoding) && !xrefStream.Data.CutByGuard;
+        section.CutByLimit |= !decodedWhole;
+
         var size = (int)dictionary.GetInteger(PdfName.Size, 0);
         var ranges = dictionary.GetArray(PdfName.Index);
         var position = 0;
+        long declared = 0;
 
         if (ranges is null)
         {
+            declared = size;
             ReadXRefStreamRows(data, ref position, fieldWidths, rowLength, 0, size);
         }
         else
@@ -748,16 +1012,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (count is < 0 or > MaxSubsectionEntries)
                 {
+                    section.Fault = "its /Index gives a subsection a count of rows out of range";
+                    _indexIncomplete = true;
                     break;
                 }
 
+                declared += count;
                 ReadXRefStreamRows(data, ref position, fieldWidths, rowLength, start, count);
             }
         }
 
+        if (declared * rowLength > data.Length && decodedWhole)
+        {
+            // Rows the data does not hold, when the reader decoded all of it, are the file's to answer for.
+            section.Incomplete = true;
+            section.Fault ??= string.Create(
+                CultureInfo.InvariantCulture,
+                $"it holds {data.Length / rowLength:N0} rows where its /Index and /Size declare {declared:N0}");
+        }
+
         _xref.MergeTrailer(dictionary);
         previous = SectionOffset(dictionary, PdfName.Prev, absolute);
-        return true;
+        return XRefSectionState.Read;
     }
 
     /// <summary>
@@ -766,18 +1042,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <remarks>
     /// The specification makes it a direct integer. Anything else — tiff2pdf writes <c>/Prev 576066 0 R</c> —
     /// names no section: it is not resolved, which would load an object while the index is still being read,
-    /// and the sections it should have named are reported missing, to be looked for by rebuilding the index.
+    /// and the sections it should have named are reported missing, to be looked for by rebuilding the index. A
+    /// negative integer is no offset either.
     /// </remarks>
     private long SectionOffset(PdfDictionary trailer, PdfName key, long section)
     {
         var value = trailer.GetRaw(key);
 
-        if (value is null or PdfInteger)
+        if (value is null)
         {
-            return value is PdfInteger offset ? offset.Value : -1;
+            return -1;
+        }
+
+        if (value is PdfInteger { Value: >= 0 } offset)
+        {
+            return offset.Value;
         }
 
         _indexIncomplete = true;
+        _structure.Add(new XRefSectionRecord("/" + key.Value, -1, section)
+        {
+            State = XRefSectionState.NotFound,
+            Fault = $"is {DescribeValue(value)}, not an offset",
+        });
         _diagnostics.Warn(
             PdfDiagnosticCodes.XRefSectionMissing,
             string.Create(
@@ -786,6 +1073,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             section);
         return -1;
     }
+
+    /// <summary>Says what a value written where an offset belongs is, as the file wrote it.</summary>
+    private static string DescribeValue(PdfObject value) => value switch
+    {
+        PdfReference reference => string.Create(
+            CultureInfo.InvariantCulture, $"the reference {reference.Id.Number} {reference.Id.Generation} R"),
+        PdfInteger integer => string.Create(CultureInfo.InvariantCulture, $"the integer {integer.Value}"),
+        PdfName name => $"the name /{name.Value}",
+        _ => $"a value of type {value.GetType().Name.Replace("Pdf", string.Empty, StringComparison.Ordinal).ToLowerInvariant()}",
+    };
 
     private void ReadXRefStreamRows(
         ReadOnlySpan<byte> data,
@@ -908,6 +1205,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 $"Object {id.Number} was found {nearby - offset} bytes from where the index said.",
                 nearby);
 
+            PreserveChainIndex();
             _xref.Set(id.Number, XRefEntry.Regular(nearby - _headerOffset, id.Generation));
             return relocated;
         }
@@ -948,9 +1246,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// that still runs past the window once the guard allows no larger one is kept as far as it was read, and
     /// the guard is reported in place of what the cut made the parser notice.
     /// </remarks>
-    private bool TryParseAt(long offset, int number, PdfLimit limit, out PdfObject value, int initialWindow = InitialObjectWindow)
+    private bool TryParseAt(long offset, int number, PdfLimit limit, out PdfObject value, int initialWindow = InitialObjectWindow) =>
+        TryParseNumberedAt(offset, number, limit, out value, out _, initialWindow);
+
+    /// <summary>
+    /// Parses what starts at an exact offset, as <see cref="TryParseAt"/> does, and gives the number of the object
+    /// found there — 0 for a direct object.
+    /// </summary>
+    private bool TryParseNumberedAt(
+        long offset, int number, PdfLimit limit, out PdfObject value, out int foundNumber, int initialWindow = InitialObjectWindow)
     {
         value = PdfNull.Instance;
+        foundNumber = 0;
 
         if (offset < 0 || offset >= _source.Length)
         {
@@ -997,6 +1304,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 else if (number != AnyObject && found.Number != number)
                 {
                     return false;
+                }
+                else
+                {
+                    foundNumber = found.Number;
                 }
 
                 if (parser.IsTruncated && cut)
@@ -1050,6 +1361,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </summary>
     private void ReachLimit(PdfLimit limit, string what, long position)
     {
+        _guardsReached++;
+
         if (!_limitsReached.Contains((limit, position)))
         {
             _guard.Reach(limit, _diagnostics, what, position);
@@ -1057,19 +1370,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
     }
 
-    private bool TryFindObjectHeader(int number, long approximateOffset, out long actualOffset)
+    private bool TryFindObjectHeader(int number, long approximateOffset, out long actualOffset) =>
+        TryFindObjectHeader(_source, number, approximateOffset, out actualOffset);
+
+    /// <summary>
+    /// Looks for the header of object <paramref name="number"/> within <see cref="NearbySearchRadius"/> bytes either
+    /// side of <paramref name="approximateOffset"/>, where careless writers leave an object their index misplaced,
+    /// and gives the first found.
+    /// </summary>
+    internal static bool TryFindObjectHeader(PdfFileSource source, int number, long approximateOffset, out long actualOffset)
     {
         actualOffset = -1;
 
         var start = Math.Max(0, approximateOffset - NearbySearchRadius);
-        var length = (int)Math.Min(NearbySearchRadius * 2, _source.Length - start);
+        var length = (int)Math.Min(NearbySearchRadius * 2, source.Length - start);
 
         if (length <= 0)
         {
             return false;
         }
 
-        using var window = _source.GetWindow(start, length);
+        using var window = source.GetWindow(start, length);
         var span = window.Memory.Span;
         var searchFrom = 0;
 
@@ -1093,6 +1414,84 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Reads which objects the object stream <paramref name="number"/> holds, in order, from the header its data
+    /// starts with — without keeping the stream, nor what it decodes to: the validation rules read each once, and
+    /// memory follows the largest of them rather than their sum.
+    /// </summary>
+    /// <param name="number">The object stream's number.</param>
+    /// <param name="offset">Where the chain's index places it, in the file.</param>
+    /// <param name="numbers">The object numbers its header lists, in order; empty unless it was read.</param>
+    /// <param name="fault">What is wrong with it, in words, when it could not be read and is there.</param>
+    internal ObjectStreamHeaderResult ReadObjectStreamHeader(int number, long offset, out int[] numbers, out string? fault)
+    {
+        numbers = [];
+        fault = null;
+
+        if (!TryParseObjectAt(number, offset, out var value) &&
+            !(TryFindObjectHeader(number, offset, out var nearby) && TryParseObjectAt(number, nearby, out value)))
+        {
+            return ObjectStreamHeaderResult.NotFound;
+        }
+
+        if (value is not PdfStream stream || !stream.Dictionary.IsOfType(PdfName.ObjStm))
+        {
+            fault = value is PdfStream ? "is a stream that is not of /Type /ObjStm" : "is not a stream";
+            return ObjectStreamHeaderResult.NotAnObjectStream;
+        }
+
+        var count = stream.Dictionary.GetInteger(PdfName.N, -1);
+        var first = stream.Dictionary.GetInteger(PdfName.First, -1);
+
+        if (count < 0 || first < 0)
+        {
+            fault = "its /N or its /First is missing or negative";
+            return ObjectStreamHeaderResult.Unreadable;
+        }
+
+        // Each entry of the header costs at least "0 0 ", so a count far beyond what the header could hold is a
+        // lie, and believing it would mean allocating an array the file asked for.
+        if (count > (first / 2) + 1)
+        {
+            fault = string.Create(
+                CultureInfo.InvariantCulture, $"its /N declares {count} objects, more than its /First of {first} leaves room for");
+            return ObjectStreamHeaderResult.Unreadable;
+        }
+
+        var mark = _diagnostics.GetMark();
+        var data = stream.Decode(_diagnostics);
+        var cut = LimitSince(_diagnostics, mark) || stream.Data.CutByGuard;
+
+        if (first > data.Length)
+        {
+            fault = string.Create(
+                CultureInfo.InvariantCulture, $"it decodes to {data.Length} bytes, fewer than its /First of {first}");
+            return cut ? ObjectStreamHeaderResult.CutByLimit : ObjectStreamHeaderResult.Unreadable;
+        }
+
+        var lexer = new PdfLexer(data.Span[..(int)first]);
+        var header = new int[count];
+
+        for (var i = 0; i < header.Length; i++)
+        {
+            var numberToken = lexer.Read();
+            var offsetToken = lexer.Read();
+
+            if (numberToken.Kind != PdfTokenKind.Integer || offsetToken.Kind != PdfTokenKind.Integer ||
+                numberToken.Integer is <= 0 or > int.MaxValue)
+            {
+                fault = string.Create(
+                    CultureInfo.InvariantCulture, $"its header lists {i} of the {count} objects its /N declares, then something else");
+                return ObjectStreamHeaderResult.Unreadable;
+            }
+
+            header[i] = (int)numberToken.Integer;
+        }
+
+        numbers = header;
+        return ObjectStreamHeaderResult.Read;
     }
 
     /// <summary>
@@ -1218,6 +1617,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         _repaired = true;
         _diagnostics.Repair(PdfDiagnosticCodes.XRefRebuilt, "The cross-reference index was rebuilt by scanning the file.");
 
+        PreserveChainIndex();
         _xref.Clear();
         _cache.Clear();
         _cacheOrder.Clear();
@@ -1374,11 +1774,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         return reached;
     }
 
+    /// <summary>
+    /// Looks for an object of <c>/Type /Catalog</c> among the indexed ones, and makes the first it finds the
+    /// trailer's <c>/Root</c>.
+    /// </summary>
+    /// <remarks>
+    /// It runs on the index the chain gave, and on a rebuilt one. Loading a candidate from the chain's index can
+    /// rebuild it — the candidate's entry being broken —, and the rebuild runs a search of its own: the search it
+    /// interrupted stops there, over the numbers it copied before it began.
+    /// </remarks>
     private ExceptionDispatchInfo? FindCatalog()
     {
         ExceptionDispatchInfo? reached = null;
+        var rebuilt = _repaired;
+        var numbers = new List<int>(_xref.Entries.Keys);
 
-        foreach (var number in _xref.Entries.Keys)
+        foreach (var number in numbers)
         {
             PdfObject candidate;
 
@@ -1392,15 +1803,37 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 continue;
             }
 
+            if (_repaired != rebuilt)
+            {
+                break;
+            }
+
             if (candidate.AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog))
             {
                 Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number), this));
-                _diagnostics.Repair(PdfDiagnosticCodes.XRefRebuilt, $"The document catalog was found as object {number}.");
+                _structure.CatalogFoundAs = number;
+                _diagnostics.Repair(
+                    PdfDiagnosticCodes.TrailerRootRecovered,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The trailer's /Root does not lead to a document catalog; the catalog was found as object {number}."));
                 break;
             }
         }
 
         return reached;
+    }
+
+    /// <summary>
+    /// Copies the index the chain gave before the reader changes it, so that the validation rules still judge the
+    /// file's own. Once is enough: the copy is taken before the first change.
+    /// </summary>
+    private void PreserveChainIndex()
+    {
+        if (_structure.ChainRead && _chainIndex is null)
+        {
+            _chainIndex = _xref.CopyEntries();
+        }
     }
 
     private sealed class FileStreamData(PdfFileSource source, long offset, int length, PdfLimitGuard guard) : PdfStreamData

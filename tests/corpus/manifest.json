@@ -16737,9 +16737,9 @@
       "expect": {
         "pages": null,
         "clean": false,
-        "indexRebuilt": true,
+        "indexRebuilt": false,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "trailer.root-recovered"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
