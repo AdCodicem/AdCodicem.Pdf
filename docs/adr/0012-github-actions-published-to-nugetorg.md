@@ -8,15 +8,14 @@ Accepted
 
 ## Context
 
-The repository is on GitHub, and its CI can be inspected
-from a development session, which is not true of Azure Pipelines. Publication uses trusted publishing, not
-an API key — see D24.
+The project needs continuous integration and a public package feed. Azure Pipelines was the alternative, but
+the repository is on GitHub, and its CI can be inspected from a development session, which is not true of
+Azure Pipelines.
 
 ## Decision
 
-We will the repository is on GitHub, and its CI can be inspected
-from a development session, which is not true of Azure Pipelines. Publication uses trusted publishing, not
-an API key — see D24.
+We will run CI on GitHub Actions and publish to nuget.org. Publication uses trusted publishing, not an API
+key — see D24.
 
 ## Consequences
 

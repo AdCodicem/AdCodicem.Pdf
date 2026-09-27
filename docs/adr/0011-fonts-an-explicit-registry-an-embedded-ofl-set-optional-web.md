@@ -14,7 +14,9 @@ possible but **off by default**: a network call during rendering is neither dete
 
 ## Decision
 
-
+We will resolve fonts through an explicit registry, ship an embedded set of OFL fonts, and fetch CSS web
+fonts on demand only when the caller turns it on. The set ships as the `AdCodicem.Pdf.Fonts` satellite, with
+one face in the core (M8).
 
 ## Consequences
 

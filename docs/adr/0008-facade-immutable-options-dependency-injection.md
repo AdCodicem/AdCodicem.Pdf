@@ -8,13 +8,13 @@ Accepted
 
 ## Context
 
-A thread-safe `IPdfRenderer` singleton, options
-as records, `AddAdCodicemPdf()`.
+The library is called from applications, most of them ASP.NET Core services, that render documents
+concurrently and configure the library once, at start-up.
 
 ## Decision
 
-We will a thread-safe `IPdfRenderer` singleton, options
-as records, `AddAdCodicemPdf()`.
+We will expose a facade: a thread-safe `IPdfRenderer` singleton, options as immutable records, and an
+`AddAdCodicemPdf()` extension that registers it for dependency injection.
 
 ## Consequences
 
