@@ -8,7 +8,7 @@
       "shortName": "AdCodicem.Pdf",
       "url": "https://github.com/AdCodicem/AdCodicem.Pdf",
       "stack": ".NET 10",
-      "licence": "MIT",
+      "license": "MIT",
       "pricingModel": "Free",
       "runtime": "Fully managed; no native binary, browser or external process",
       "htmlToPdf": "Own managed engine (planned, M12)",
@@ -22,8 +22,8 @@
       "shortName": "PDFsharp",
       "url": "https://www.pdfsharp.com/",
       "stack": ".NET",
-      "licence": "MIT, or paid attribution-free licence",
-      "pricingModel": "Free (MIT); paid support plans, attribution-free licence and PsX add-ons on request",
+      "license": "MIT, or paid attribution-free license",
+      "pricingModel": "Free (MIT); paid support plans, attribution-free license and PsX add-ons on request",
       "runtime": "Fully managed (Core build); GDI+/WPF builds Windows-only",
       "htmlToPdf": "none",
       "maintenance": "Active (6.2.4 Jan 2026; 7.0 preview Mar 2026)",
@@ -41,8 +41,8 @@
       "shortName": "QuestPDF",
       "url": "https://www.questpdf.com/",
       "stack": ".NET",
-      "licence": "Source-available Community or commercial",
-      "pricingModel": "Free under revenue threshold; else perpetual per-entity licence with annual update renewal",
+      "license": "Source-available Community or commercial",
+      "pricingModel": "Free under revenue threshold; else perpetual per-entity license with annual update renewal",
       "runtime": "Native Skia and qpdf binaries per platform, via P/Invoke",
       "htmlToPdf": "none",
       "maintenance": "Active (2026.9.1, Sep 2026)",
@@ -60,7 +60,7 @@
       "shortName": "PdfPig",
       "url": "https://github.com/UglyToad/PdfPig",
       "stack": ".NET",
-      "licence": "Apache-2.0",
+      "license": "Apache-2.0",
       "pricingModel": "Free, open source",
       "runtime": "Fully managed; Skia rendering is a separate native add-on",
       "htmlToPdf": "none",
@@ -79,7 +79,7 @@
       "shortName": "iText",
       "url": "https://itextpdf.com/",
       "stack": ".NET, Java",
-      "licence": "AGPL-3.0 or commercial",
+      "license": "AGPL-3.0 or commercial",
       "pricingModel": "Free under AGPL; otherwise an annual subscription by volume, or OEM; some add-ons commercial only",
       "runtime": "Managed; the OCR add-on is native, rendering an external CLI",
       "htmlToPdf": "Own managed engine (add-on pdfHTML)",
@@ -98,7 +98,7 @@
       "shortName": "Aspose",
       "url": "https://products.aspose.com/pdf/net/",
       "stack": ".NET",
-      "licence": "Proprietary (Aspose EULA)",
+      "license": "Proprietary (Aspose EULA)",
       "pricingModel": "Perpetual per developer or site with a year of updates; or metered pay-per-use",
       "runtime": "Managed; System.Drawing.Common, or the .Drawing variant",
       "htmlToPdf": "Own engine (no browser)",
@@ -117,8 +117,8 @@
       "shortName": "Syncfusion",
       "url": "https://www.syncfusion.com/document-sdk/net-pdf-library",
       "stack": ".NET",
-      "licence": "Proprietary EULA; free Community Licence",
-      "pricingModel": "Per developer per year + annual document-volume tier; free Community Licence",
+      "license": "Proprietary EULA; free Community License",
+      "pricingModel": "Per developer per year + annual document-volume tier; free Community License",
       "runtime": "Managed core; bundled Chromium for HTML; native add-ons",
       "htmlToPdf": "Bundled Blink (Chromium 147), separate packages",
       "maintenance": "Active (34.2.9, Sep 2026)",
@@ -136,7 +136,7 @@
       "shortName": "IronPDF",
       "url": "https://ironpdf.com/",
       "stack": ".NET",
-      "licence": "Proprietary commercial (Iron EULA)",
+      "license": "Proprietary commercial (Iron EULA)",
       "pricingModel": "Perpetual tiers by devs/locations/projects, 1 yr updates; monthly and enterprise options",
       "runtime": "Native CEF + PDFium/qpdf binaries, or IronPdfEngine Docker",
       "htmlToPdf": "Chromium (bundled CEF 109; CEF 131 option)",
@@ -155,7 +155,7 @@
       "shortName": "Apryse",
       "url": "https://apryse.com/",
       "stack": ".NET over a native core",
-      "licence": "Proprietary (commercial licence key)",
+      "license": "Proprietary (commercial license key)",
       "pricingModel": "Custom quote; modular base package plus add-ons, by volume and deployment; free trial",
       "runtime": "Native PDFNetC core per platform behind a .NET wrapper",
       "htmlToPdf": "Chromium (separate HTML2PDF module)",
@@ -173,7 +173,7 @@
       "shortName": "Nutrient",
       "url": "https://www.nutrient.io/sdk/dotnet/",
       "stack": ".NET",
-      "licence": "Proprietary (GdPicture.NET 14 EULA)",
+      "license": "Proprietary (GdPicture.NET 14 EULA)",
       "pricingModel": "Annual or multiyear subscription, quoted by component and use case; 30-day trial",
       "runtime": "Managed .NET plus native runtimes; Chrome for HTML",
       "htmlToPdf": "Chromium (external headless Chrome)",
@@ -191,7 +191,7 @@
       "shortName": "Docotic",
       "url": "https://bitmiracle.com/pdf-library/",
       "stack": ".NET",
-      "licence": "Proprietary (commercial)",
+      "license": "Proprietary (commercial)",
       "pricingModel": "Perpetual per app, per server or unbound; unlimited developers; 1 year of updates",
       "runtime": "Managed .NET; HTML add-on drives headless Chrome",
       "htmlToPdf": "Chromium (free HtmlToPdf add-on)",
@@ -209,7 +209,7 @@
       "shortName": "GemBox",
       "url": "https://www.gemboxsoftware.com/pdf",
       "stack": ".NET",
-      "licence": "Proprietary (GemBox EULA)",
+      "license": "Proprietary (GemBox EULA)",
       "pricingModel": "Perpetual per-developer tiers, royalty-free; 1 year of updates; free mode (2 pages)",
       "runtime": ".NET plus SkiaSharp/HarfBuzz native; Chromium for HTML",
       "htmlToPdf": "Chromium (bundled GemBox.Pdf.Html packages)",
@@ -227,7 +227,7 @@
       "shortName": "Chromium",
       "url": "https://www.puppeteersharp.com/",
       "stack": ".NET client, Chromium",
-      "licence": "MIT clients; BSD-3-Clause Chromium",
+      "license": "MIT clients; BSD-3-Clause Chromium",
       "pricingModel": "Free, open source",
       "runtime": "External Chromium process; Playwright adds a Node.js driver",
       "htmlToPdf": "Chromium (headless Page.printToPDF)",
@@ -246,7 +246,7 @@
       "shortName": "wkhtmltopdf",
       "url": "https://wkhtmltopdf.org/",
       "stack": "C++ with .NET wrappers",
-      "licence": "LGPL-3.0 (.NET wrappers MIT)",
+      "license": "LGPL-3.0 (.NET wrappers MIT)",
       "pricingModel": "Free (open source)",
       "runtime": "Native wkhtmltopdf binary or libwkhtmltox per platform",
       "htmlToPdf": "QtWebKit (WebKit of about 2012)",
@@ -264,7 +264,7 @@
       "shortName": "Gotenberg",
       "url": "https://gotenberg.dev/",
       "stack": "Go service in Docker",
-      "licence": "MIT",
+      "license": "MIT",
       "pricingModel": "Free (open source), sponsor-funded; no paid tier",
       "runtime": "Docker container (Chromium, LibreOffice) over HTTP",
       "htmlToPdf": "Chromium (bundled headless)",
@@ -282,7 +282,7 @@
       "shortName": "PDFBox",
       "url": "https://pdfbox.apache.org/",
       "stack": "Java",
-      "licence": "Apache-2.0",
+      "license": "Apache-2.0",
       "pricingModel": "Free (open source)",
       "runtime": "JVM (Java 8+), pure Java",
       "htmlToPdf": "none",
@@ -299,12 +299,12 @@
       "shortName": "qpdf",
       "url": "https://qpdf.readthedocs.io/",
       "stack": "C++",
-      "licence": "Apache-2.0",
+      "license": "Apache-2.0",
       "pricingModel": "Free (open source)",
       "runtime": "Native C++ library and CLI (zlib, libjpeg)",
       "htmlToPdf": "none",
       "maintenance": "Active (12.4.1, Aug 2026)",
-      "bestAt": "Structural PDF transformation: linearisation, encryption, merge and split, repair, and JSON inspection of PDF internals.",
+      "bestAt": "Structural PDF transformation: linearization, encryption, merge and split, repair, and JSON inspection of PDF internals.",
       "sources": [
         "https://qpdf.readthedocs.io/en/stable/release-notes.html",
         "https://qpdf.readthedocs.io/en/stable/license.html",
@@ -317,8 +317,8 @@
       "shortName": "MuPDF",
       "url": "https://mupdf.com/",
       "stack": "C, with Python and .NET bindings",
-      "licence": "AGPL-3.0 or commercial (.NET: NC/comm.)",
-      "pricingModel": "Free under AGPL; commercial licence quoted (OEM per copy, subscription or custom)",
+      "license": "AGPL-3.0 or commercial (.NET: NC/comm.)",
+      "pricingModel": "Free under AGPL; commercial license quoted (OEM per copy, subscription or custom)",
       "runtime": "Native C library per platform (Python, .NET bindings)",
       "htmlToPdf": "Own engine (CSS2 subset, Story API)",
       "maintenance": "Active (MuPDF 1.28.5, Sep 2026)",
@@ -335,12 +335,12 @@
       "shortName": "pdfcpu",
       "url": "https://pdfcpu.io/",
       "stack": "Go",
-      "licence": "Apache-2.0",
+      "license": "Apache-2.0",
       "pricingModel": "Free (open source)",
       "runtime": "Pure Go (no cgo); Go library or static CLI binary",
       "htmlToPdf": "none",
       "maintenance": "Active (v0.15.0, Aug 2026)",
-      "bestAt": "Pure-Go PDF processing: validate, merge, split, encrypt, stamp and optimise, as a library or a static CLI.",
+      "bestAt": "Pure-Go PDF processing: validate, merge, split, encrypt, stamp and optimize, as a library or a static CLI.",
       "sources": [
         "https://github.com/pdfcpu/pdfcpu",
         "https://pkg.go.dev/github.com/pdfcpu/pdfcpu"
@@ -352,7 +352,7 @@
       "shortName": "WeasyPrint",
       "url": "https://weasyprint.org/",
       "stack": "Python",
-      "licence": "BSD-3-Clause",
+      "license": "BSD-3-Clause",
       "pricingModel": "Free (open source); optional paid professional support",
       "runtime": "CPython 3.10+ with native Pango, HarfBuzz, Fontconfig",
       "htmlToPdf": "Own engine (Python, no JavaScript)",
@@ -370,8 +370,8 @@
       "shortName": "Prince",
       "url": "https://www.princexml.com/",
       "stack": "Native binary",
-      "licence": "Proprietary (YesLogic EULA)",
-      "pricingModel": "Annual site licence by document type/volume; one-time server/desktop; OEM; free non-comm.",
+      "license": "Proprietary (YesLogic EULA)",
+      "pricingModel": "Annual site license by document type/volume; one-time server/desktop; OEM; free non-comm.",
       "runtime": "Native binary per platform, run as an external process",
       "htmlToPdf": "Own native engine (optional JavaScript)",
       "maintenance": "Active (Prince 17, Sep 2026)",
@@ -443,7 +443,7 @@
             "source": "https://playwright.dev/dotnet/docs/browsers"
           }
         },
-        "oursNote": "The core has no dependency at all. The HTML engine (M12) will use SkiaSharp and HarfBuzzSharp, native libraries, for images and text shaping, and the rasteriser (M25) Skia (ADR 43)."
+        "oursNote": "The core has no dependency at all. The HTML engine (M12) will use SkiaSharp and HarfBuzzSharp, native libraries, for images and text shaping, and the rasterizer (M25) Skia (ADR 43)."
       },
       {
         "id": "aot",
@@ -633,7 +633,7 @@
           },
           "ironpdf": {
             "value": "partial",
-            "note": "@page size/margins honoured; running headers and page numbers via HtmlHeaderFooter API; margin boxes undocumented",
+            "note": "@page size/margins honored; running headers and page numbers via HtmlHeaderFooter API; margin boxes undocumented",
             "source": "https://ironpdf.com/troubleshooting/override-css-page-rules-renderingoptions/"
           },
           "chromium": {
@@ -761,12 +761,12 @@
           },
           "syncfusion": {
             "value": "yes",
-            "note": "Plain and layout-preserving extraction; lines, words and glyphs with bounds, font and colour",
+            "note": "Plain and layout-preserving extraction; lines, words and glyphs with bounds, font and color",
             "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-text-extraction"
           },
           "pdfsharp": {
             "value": "add-on",
-            "note": "Core gives only raw content-stream characters via CLexer; PsX Text Extractor (separate licence) does extraction",
+            "note": "Core gives only raw content-stream characters via CLexer; PsX Text Extractor (separate license) does extraction",
             "source": "https://www.pdfsharp.com/Offers"
           },
           "questpdf": {
@@ -815,7 +815,7 @@
           },
           "pdfsharp": {
             "value": "add-on",
-            "note": "Core AcroForm support is limited, with no flatten API; PsX Forms (separate licence) creates and manages forms",
+            "note": "Core AcroForm support is limited, with no flatten API; PsX Forms (separate license) creates and manages forms",
             "source": "https://www.pdfsharp.com/Offers"
           },
           "questpdf": {
@@ -1096,7 +1096,7 @@
         "values": {
           "itext": {
             "value": "yes",
-            "note": "PDF/UA-1 and PDF/UA-2, with automated conformance checks at creation (UA-1 since 8.0.4, UA-2 since 9.2). WellTaggedPdfDocument (WTPDF) and colour-contrast checks were added in 9.6",
+            "note": "PDF/UA-1 and PDF/UA-2, with automated conformance checks at creation (UA-1 since 8.0.4, UA-2 since 9.2). WellTaggedPdfDocument (WTPDF) and color-contrast checks were added in 9.6",
             "source": "https://kb.itextpdf.com/itext/release-itext-core-9-2-0"
           },
           "aspose": {
@@ -1160,7 +1160,7 @@
           },
           "pdfsharp": {
             "value": "add-on",
-            "note": "PsX Factur-X (separate licence, delivered as source): Factur-X/ZUGFeRD e-invoices",
+            "note": "PsX Factur-X (separate license, delivered as source): Factur-X/ZUGFeRD e-invoices",
             "source": "https://www.pdfsharp.com/Offers"
           },
           "questpdf": {
@@ -1204,7 +1204,7 @@
           },
           "syncfusion": {
             "value": "add-on",
-            "note": "True removal of text and graphics; existing PDFs on .NET Core need Syncfusion.Pdf.Imaging.Net.Core (same licence)",
+            "note": "True removal of text and graphics; existing PDFs on .NET Core need Syncfusion.Pdf.Imaging.Net.Core (same license)",
             "source": "https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-redaction"
           },
           "pdfsharp": {
@@ -1248,12 +1248,12 @@
           },
           "aspose": {
             "value": "add-on",
-            "note": "OcrTextAbsorber (Aspose.Pdf.Ocr, since 26.6) returns recognised plain text. Since 26.7 it needs the separately installed Aspose.OCR NuGet package, which is based on ONNX Runtime. Alternatively, Document.Convert(CallBackGetHocr) adds hOCR text from an OCR engine you supply",
+            "note": "OcrTextAbsorber (Aspose.Pdf.Ocr, since 26.6) returns recognized plain text. Since 26.7 it needs the separately installed Aspose.OCR NuGet package, which is based on ONNX Runtime. Alternatively, Document.Convert(CallBackGetHocr) adds hOCR text from an OCR engine you supply",
             "source": "https://releases.aspose.com/pdf/net/release-notes/2026/aspose-pdf-for-net-26-7-release-notes/"
           },
           "syncfusion": {
             "value": "add-on",
-            "note": "Syncfusion.PDF.OCR.Net.Core: Tesseract and Leptonica native binaries, same Document SDK licence",
+            "note": "Syncfusion.PDF.OCR.Net.Core: Tesseract and Leptonica native binaries, same Document SDK license",
             "source": "https://www.nuget.org/packages/Syncfusion.PDF.OCR.Net.Core"
           },
           "pdfsharp": {
@@ -1288,7 +1288,7 @@
         "id": "raster",
         "name": "Pages rendered to images",
         "ours": [
-          "rasterisation"
+          "rasterization"
         ],
         "values": {
           "itext": {
@@ -1303,7 +1303,7 @@
           },
           "syncfusion": {
             "value": "add-on",
-            "note": "Syncfusion.PdfToImageConverter.Net.Core: native PDFium plus SkiaSharp, same licence",
+            "note": "Syncfusion.PdfToImageConverter.Net.Core: native PDFium plus SkiaSharp, same license",
             "source": "https://www.nuget.org/packages/Syncfusion.PdfToImageConverter.Net.Core"
           },
           "pdfsharp": {

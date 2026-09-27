@@ -8,7 +8,7 @@ public class LexerTests
     [Fact]
     public void Reads_the_structural_delimiters()
     {
-        var kinds = Tokenise("[ ] << >> { }");
+        var kinds = Tokenize("[ ] << >> { }");
 
         kinds.Should().Equal(
         [
@@ -24,7 +24,7 @@ public class LexerTests
     [Fact]
     public void Treats_a_comment_as_whitespace()
     {
-        var kinds = Tokenise("% a comment\n42");
+        var kinds = Tokenize("% a comment\n42");
 
         kinds.Should().Equal(PdfTokenKind.Integer);
     }
@@ -151,12 +151,12 @@ end)"u8.ToArray());
     [Fact]
     public void Never_loops_on_a_stray_delimiter()
     {
-        var kinds = Tokenise(")))");
+        var kinds = Tokenize(")))");
 
         kinds.Should().Equal(PdfTokenKind.Unknown, PdfTokenKind.Unknown, PdfTokenKind.Unknown);
     }
 
-    private static List<PdfTokenKind> Tokenise(string text)
+    private static List<PdfTokenKind> Tokenize(string text)
     {
         var lexer = new PdfLexer(Encoding.ASCII.GetBytes(text));
         var kinds = new List<PdfTokenKind>();

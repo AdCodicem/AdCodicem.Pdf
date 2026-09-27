@@ -177,7 +177,7 @@ public class CorpusReadingTests
 
         stopwatch.Elapsed.Should().BeLessThan(OpenBudget, $"opening {entry.Name} must not take unbounded time");
 
-        ExpectCatalog(document, entry, $"{entry.Name} has no document catalogue");
+        ExpectCatalog(document, entry, $"{entry.Name} has no document catalog");
         document.WasRepaired.Should().Be(entry.Expect.IndexRebuilt, $"{entry.Name}: unexpected rebuild state");
 
         // Judge the diagnostics on a full read, not on opening: a lying /Length is only discovered when
@@ -264,7 +264,7 @@ public class CorpusReadingTests
 
         using var document = PdfDocument.Open(Corpus.Read(file), OptionsFor(entry));
 
-        ExpectCatalog(document, entry, $"{entry.Name}: qpdf recovers a catalogue here, so must we");
+        ExpectCatalog(document, entry, $"{entry.Name}: qpdf recovers a catalog here, so must we");
         ReadEverything(document);
         document.Diagnostics.Count.Should().BeGreaterThan(0, $"{entry.Name}: damage must never be silent");
 
@@ -381,7 +381,7 @@ public class CorpusReadingTests
     }
 
     /// <summary>
-    /// A catalogue where one can be recovered, and none where the file holds none: the reader recovers what
+    /// A catalog where one can be recovered, and none where the file holds none: the reader recovers what
     /// is there and never invents what is not.
     /// </summary>
     private static void ExpectCatalog(PdfDocument document, CorpusDocument entry, string because)
@@ -392,8 +392,8 @@ public class CorpusReadingTests
         }
         else
         {
-            document.Catalog.Should().BeNull($"{entry.Name}: no object in the file is a catalogue");
-            entry.Expect.Pages.Should().BeNull($"{entry.Name}: a file without a catalogue has no page count to expect");
+            document.Catalog.Should().BeNull($"{entry.Name}: no object in the file is a catalog");
+            entry.Expect.Pages.Should().BeNull($"{entry.Name}: a file without a catalog has no page count to expect");
         }
     }
 

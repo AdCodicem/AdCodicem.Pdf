@@ -25,7 +25,7 @@ The one that matters is the **iPRES 2017 hand-built set** — Michelle Lindlar, 
 CC BY-SA 4.0, so remote at best (ADR 23):
 
 - **88 test files**, each derived from the same one-page document with one deviation from ISO 32000-1's
-  structure, in eight categories: header 7, catalogue 7, page tree 9, page object 12, page resources 6,
+  structure, in eight categories: header 7, catalog 7, page tree 9, page object 12, page resources 6,
   content stream 18, cross-reference table 10, trailer 19. A spreadsheet gives each file's category, a
   one-line description of the deviation, JHOVE 1.16.5's verdict and message, and whether Acrobat XI Pro
   opens it. It cites no ISO clause: mapping a deviation to a requirement is ours to do. It is the only test
@@ -35,9 +35,9 @@ CC BY-SA 4.0, so remote at best (ADR 23):
   other two; 15 of the 18 content-stream files start with
   a space before `%PDF`. `qpdf --check` passes 14 of the 88. `qpdf --show-npages` finds one page in 73, none
   in four, three and nine in two page-tree files, and fails on nine. In one file (`T02-01_001`) no object is
-  a catalogue at all; in five more the catalogue is there but the trailer does not lead to it, and qpdf gives
+  a catalog at all; in five more the catalog is there but the trailer does not lead to it, and qpdf gives
   up (`unable to find /Root dictionary`), and in three qpdf finds no trailer at all. The reader recovers the
-  catalogue in all eight.
+  catalog in all eight.
 - **The OPF's copies are unusable** (`docs/corpus-sources.md`): git removed the five carriage returns of every
   test file and of the base document, `hello_world.pdf`, and the copy predates one test file, `T04_019`. The
   authors' own `Test_Corpus.md5`, inside the archive, lists exactly the OPF's 89 files and not `T04_019`.
@@ -49,7 +49,7 @@ CC BY-SA 4.0, so remote at best (ADR 23):
   downloads on 2026-09-25 were identical. The URL is RADAR's backend, not one of ADR 32's three kinds; the
   persistent identifier is the DOI.
 - **RADAR's terms for data users** (July 2019), which its web interface shows before a download, charge
-  nothing, ask that the dataset's licence be honoured, and reserve RADAR's right to restrict or end the
+  nothing, ask that the dataset's license be honored, and reserve RADAR's right to restrict or end the
   service. They say nothing of automated download, and the backend URL serves the tar with no login and no
   prompt, so ADR 32's condition — nothing behind a login, nothing whose terms forbid automated download —
   holds.
@@ -105,7 +105,7 @@ the member by its own.
   differently, four faults the reader reads without a word (a root typed `/Pagez`, a page typed `/Font`,
   generation 10000 in the table, a trailer without `/Size`), six recoveries that differ from qpdf's —
   among them four where the trailer's `/Root` is missing or broken and the reader rebuilds a sound index to
-  find the catalogue, rather than looking among the indexed objects first —, and two references to an
+  find the catalog, rather than looking among the indexed objects first —, and two references to an
   object the file lacks, which qpdf takes as null, as the specification says, and after which the reader
   rebuilds its whole index and reports a repair (T27). Those two came to light in review: the acceptance
   test judged a clean file's diagnostics before walking its page tree, and now walks it — each page's
@@ -113,8 +113,8 @@ the member by its own.
   the edits to the 13 content-operator cases also broke their lengths or offsets, which the reader meets;
   the operator faults themselves (`BT`, `ET`, `Tf`, `Tj`, `cm`, their operands and parentheses) become
   findings when M15's interpreter exists.
-- **One file has no catalogue to recover**: the manifest's new `catalogRecoverable: false` says so, and the
-  acceptance tests then require the reader to open it, report the rebuild, and hand back no catalogue
+- **One file has no catalog to recover**: the manifest's new `catalogRecoverable: false` says so, and the
+  acceptance tests then require the reader to open it, report the rebuild, and hand back no catalog
   rather than invent one.
 - **M2 then owes them**: its row for documents the manifest calls not clean covers 72 of them, its row for
   well-formed documents the 16 that qpdf passes or only warns about — so those may earn warnings, never

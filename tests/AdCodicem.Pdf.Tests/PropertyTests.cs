@@ -16,7 +16,7 @@ namespace AdCodicem.Pdf.Tests;
 /// </summary>
 /// <remarks>
 /// A different instrument from <see cref="FuzzingTests"/>, not a duplicate of it. Mutation fuzzing starts
-/// from real documents and damages them, so it explores the neighbourhood of files that exist. A
+/// from real documents and damages them, so it explores the neighborhood of files that exist. A
 /// generator starts from nothing and reaches shapes no producer writes: an empty buffer, a file of
 /// nothing but delimiters, a number carrying forty signs. The two find different defects.
 ///
@@ -195,7 +195,7 @@ public class PropertyTests
     public void A_reader_limit_is_refused_at_zero_or_less_and_otherwise_held_within_what_the_reader_can_hold()
     {
         // ADR 34: a guard below one lets nothing be read, and one past Array.MaxLength asks for an array no
-        // runtime allocates. The count has no such ceiling. Every int, the edges FsCheck favours included.
+        // runtime allocates. The count has no such ceiling. Every int, the edges FsCheck favors included.
         Check.One(Settings, Prop.ForAll(ArbMap.Default.ArbFor<int>(), value =>
         {
             if (value <= 0)

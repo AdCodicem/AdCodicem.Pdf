@@ -29,7 +29,7 @@ public sealed class PdfDocument : IDisposable
     /// <summary>Gets the document trailer.</summary>
     public PdfDictionary Trailer => _reader.Trailer;
 
-    /// <summary>Gets the document catalogue, the root of the object graph.</summary>
+    /// <summary>Gets the document catalog, the root of the object graph.</summary>
     public PdfDictionary? Catalog => Trailer.GetDictionary(PdfName.Root);
 
     /// <summary>Gets the version declared by the file header.</summary>

@@ -21,7 +21,7 @@ Each slice is vertical, testable, and ends on a green commit.
 
 ## Tests required
 
-**Unit** — the behaviours to cover, degenerate and hostile cases included.
+**Unit** — the behaviors to cover, degenerate and hostile cases included.
 
 **Integration** — what an independent tool must confirm about the documents this milestone produces or
 reads, and which tool confirms it.
@@ -29,7 +29,7 @@ reads, and which tool confirms it.
 ## Acceptance conditions
 
 The real documents this milestone must handle, what handling them means, and the test that proves it.
-Written in the form *"these corpus documents, this behaviour, verified by this test"*. See
+Written in the form *"these corpus documents, this behavior, verified by this test"*. See
 `docs/corpus.md`. A milestone with no acceptance conditions is not specified.
 
 ## Traps

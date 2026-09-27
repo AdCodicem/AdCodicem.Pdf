@@ -5,7 +5,7 @@
 // release commit then carries the copy, and every later build of the site serves it unchanged.
 //
 // A release on a line that is already documented — a patch below 1.0, a minor or a patch from 1.0 on —
-// replaces that line's copy rather than adding an entry: the selector lists lines, labelled with their
+// replaces that line's copy rather than adding an entry: the selector lists lines, labeled with their
 // latest release.
 
 import { execFileSync } from "node:child_process";

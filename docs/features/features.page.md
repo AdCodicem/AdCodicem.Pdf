@@ -37,7 +37,7 @@ guarantee at all**: its API may change or disappear in the next preview.
   silence.
 - **Made for business documents** — invoices, reports, contracts — and for the case files European
   lawyers assemble: exhibit stamps, Bates numbers, inventories of exhibits, court-portal presets.
-- **MIT.** No copyleft to comply with, no revenue threshold, no per-developer or per-server licence.
+- **MIT.** No copyleft to comply with, no revenue threshold, no per-developer or per-server license.
 
 ## Features
 
@@ -74,7 +74,7 @@ When the HTML engine exists, the same benchmarks will measure it against headles
   targets business documents, and never runs JavaScript
   ([ADR 37](/project/adr/out-of-scope-active-content-and-pdf-to-office)).
 - **You need the features today.** iText, Aspose.PDF, Syncfusion and the others ship now what is planned
-  here; PDFsharp and PdfPig do so under permissive licences.
+  here; PDFsharp and PdfPig do so under permissive licenses.
 - **You need a vendor's support contract.** The commercial libraries sell one; an open-source project does
   not.
 - **You need to run form scripts, render dynamic XFA, or convert PDF to Word.** None of it is planned here

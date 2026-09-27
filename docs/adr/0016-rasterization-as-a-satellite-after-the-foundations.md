@@ -1,4 +1,4 @@
-# 16. Rasterisation as a satellite, after the foundations
+# 16. Rasterization as a satellite, after the foundations
 
 Date: 2026-09-12
 
@@ -13,7 +13,7 @@ graphics backend, which the foundations do not provide and most callers never ne
 
 ## Decision
 
-We will ship rasterisation as a satellite package, after the foundations. It will reuse the content stream
+We will ship rasterization as a satellite package, after the foundations. It will reuse the content stream
 interpreter written for extraction (M15). Until then, visual tests rely on an external tool in CI.
 
 ## Consequences

@@ -7,13 +7,13 @@ namespace AdCodicem.Pdf.Diagnostics;
 /// </remarks>
 public class PdfException : Exception
 {
-    /// <summary>Initialises a new instance.</summary>
+    /// <summary>Initializes a new instance.</summary>
     public PdfException(string message)
         : base(message)
     {
     }
 
-    /// <summary>Initialises a new instance.</summary>
+    /// <summary>Initializes a new instance.</summary>
     public PdfException(string message, Exception innerException)
         : base(message, innerException)
     {
@@ -23,13 +23,13 @@ public class PdfException : Exception
 /// <summary>Thrown when the input is not a PDF file, or is damaged beyond repair.</summary>
 public sealed class PdfFormatException : PdfException
 {
-    /// <summary>Initialises a new instance.</summary>
+    /// <summary>Initializes a new instance.</summary>
     public PdfFormatException(string message)
         : base(message)
     {
     }
 
-    /// <summary>Initialises a new instance.</summary>
+    /// <summary>Initializes a new instance.</summary>
     public PdfFormatException(string message, Exception innerException)
         : base(message, innerException)
     {
@@ -39,7 +39,7 @@ public sealed class PdfFormatException : PdfException
 /// <summary>Thrown when a document is encrypted and cannot be opened with the credentials supplied.</summary>
 public sealed class PdfEncryptedException : PdfException
 {
-    /// <summary>Initialises a new instance.</summary>
+    /// <summary>Initializes a new instance.</summary>
     public PdfEncryptedException(string message)
         : base(message)
     {

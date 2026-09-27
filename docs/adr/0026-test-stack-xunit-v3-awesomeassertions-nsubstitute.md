@@ -10,7 +10,7 @@ Accepted
 
 The seams that exist are real —
 `IPdfObjectSource`, and later the font resolver, the signer and the web-font fetcher — and some
-behaviour is only observable as an interaction. "The parser resolves an indirect length exactly once" is
+behavior is only observable as an interaction. "The parser resolves an indirect length exactly once" is
 a statement about a call, not about a value.
 
 ## Decision

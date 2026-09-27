@@ -108,7 +108,7 @@ We will build validation into the core, and keep a satellite for the conformance
   namespace name, and a reader of `using AdCodicem.Pdf.Validation;` could not tell which package it meant.
 - **Rejected** — a profile prefix (`structure.file.eof-missing`): a structural rule run within PDF/A would
   carry the wrong profile's name.
-- **Rejected** — opaque codes in the style of .NET analysers (`PDFS0001`): stable, but unreadable in a
+- **Rejected** — opaque codes in the style of .NET analyzers (`PDFS0001`): stable, but unreadable in a
   filter or a report, and the family is what callers filter on.
 - **Rejected** — catching `PdfLimitExceededException` and reporting it: it would override what the caller
   explicitly asked for, which invariant 5 does not allow.

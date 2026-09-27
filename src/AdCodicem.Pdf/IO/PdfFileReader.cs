@@ -669,7 +669,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>
     /// Loads an object the index places at <paramref name="offset"/>, in at most three attempts: where the
-    /// index says, in the neighbourhood, and wherever a rebuilt index says.
+    /// index says, in the neighborhood, and wherever a rebuilt index says.
     /// </summary>
     /// <remarks>
     /// The attempts are counted rather than chained. An earlier version let relocation call back into
@@ -688,7 +688,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return atRecordedOffset;
         }
 
-        // Offsets are commonly off by a few bytes in files from careless tools, so the neighbourhood is
+        // Offsets are commonly off by a few bytes in files from careless tools, so the neighborhood is
         // searched before the index is given up on entirely.
         if (TryFindObjectHeader(id.Number, offset, out var nearby) &&
             TryParseObjectAt(id.Number, nearby, out var relocated))
@@ -731,7 +731,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </summary>
     /// <remarks>
     /// What the parser notices is held back until an attempt is kept. An attempt that ran out of window
-    /// sees a cut token, a missing <c>endstream</c> or an object that stops mid-way: artefacts of the window,
+    /// sees a cut token, a missing <c>endstream</c> or an object that stops mid-way: artifacts of the window,
     /// not of the file, and reporting them would put a syntax error the file does not have in the document's
     /// diagnostics — with the real ones reported once per attempt. What nested loads report, such as a
     /// relocated <c>/Length</c> object, goes straight to the document's diagnostics and stays there. An object
@@ -1172,7 +1172,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             if (candidate.AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog))
             {
                 Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number), this));
-                _diagnostics.Repair(PdfDiagnosticCodes.XRefRebuilt, $"The document catalogue was found as object {number}.");
+                _diagnostics.Repair(PdfDiagnosticCodes.XRefRebuilt, $"The document catalog was found as object {number}.");
                 break;
             }
         }

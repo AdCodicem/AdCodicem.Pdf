@@ -122,7 +122,7 @@ vendor/pdf-association/
       License 2.0 (LICENSES/Apache-2.0.txt), whose NOTICE reads: "Copyright 2021 PDF Association,
       Inc. https://www.pdfa.org. This material is based upon work supported by the Defense
       Advanced Research Projects Agency (DARPA) under Contract No. HR001119C0079."
-    - handwritten-indexed-colour-out-of-range.pdf and handwritten-inline-image-abbreviations.pdf
+    - handwritten-indexed-color-out-of-range.pdf and handwritten-inline-image-abbreviations.pdf
       come from https://github.com/pdf-association/pdf-differences (commit 907fe96); copyright by
       the PDF Association, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
     - pdflib-pps-kraxi-pdfa2a-pdfua1-invoice.pdf, indesign13-pdfua1-german-book-chapter.pdf and
@@ -143,7 +143,7 @@ vendor/zugferd/
     - mustang-zugferd1-basic-invoice.pdf and itext-pdfbox-weclapp-facturx-en16931-invoice.pdf:
       https://github.com/ZUGFeRD/mustangproject (commits fed2d08 and 9af931d), whose NOTICE reads:
       "Mustangproject Copyright 2014 Jochen Staerk".
-    - fop26-xrechnung-visualisation.pdf: https://github.com/ZUGFeRD/quba-viewer (commit 73a4af1),
+    - fop26-xrechnung-visualization.pdf: https://github.com/ZUGFeRD/quba-viewer (commit 73a4af1),
       whose NOTICE reads: "Quba-Viewer Copyright 2021 Jochen Staerk".
 
 vendor/docentric/

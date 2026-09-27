@@ -1,4 +1,4 @@
-# 23. Third-party corpus documents are vendored only under attribution-only licences
+# 23. Third-party corpus documents are vendored only under attribution-only licenses
 
 Date: 2026-09-13
 
@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-Test data ships inside an MIT repository, so its licence must not reach back into the software.
+Test data ships inside an MIT repository, so its license must not reach back into the software.
 
 ## Decision
 

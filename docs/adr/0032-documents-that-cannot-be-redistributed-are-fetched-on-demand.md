@@ -5,7 +5,7 @@ Date: 2026-09-24
 ## Status
 
 Accepted on 2026-09-24. Complements [23](0023-third-party-corpus-documents-are-vendored-only-under-attribu.md),
-which it leaves unchanged: what is committed still needs an attribution-only licence.
+which it leaves unchanged: what is committed still needs an attribution-only license.
 
 Implemented by the entries of origin `remote` in `tests/corpus/manifest.json`,
 `tests/corpus/build/fetch_remote.py`, `build_corpus.py --remote`, the filter in
@@ -18,7 +18,7 @@ folded into it too. The decision below is unchanged; only the file that holds th
 says `remote.json`, read the manifest's remote entries.
 
 Amended again the same day: "too large to commit" means **over 2 MB**. Below that size, keeping a document
-small is a recommendation; above it, a document is fetched on demand whatever its licence, and is never
+small is a recommendation; above it, a document is fetched on demand whatever its license, and is never
 turned down for its size alone. `CorpusReadingTests` fails on a committed document over 2 MB.
 
 Amended on 2026-09-25 by [ADR 33](0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md): a remote
@@ -30,7 +30,7 @@ size (`source.bytes`) as well as its SHA-256.
 
 ## Context
 
-ADR 23 commits third-party documents only under attribution-only licences, and says in one sentence that
+ADR 23 commits third-party documents only under attribution-only licenses, and says in one sentence that
 large corpora are "fetched on demand for local investigation rather than committed". Nothing implements
 that sentence.
 
@@ -61,8 +61,8 @@ We will describe documents we may use but not redistribute in a second manifest,
 and test them in a separate job — and we will commit none of them, nor anything derived from them.
 
 - **`tests/corpus/remote.json`** has the corpus manifest's entry format, with `source.url` and
-  `source.sha256` mandatory and `licence` saying why the file is remote rather than vendored (ShareAlike,
-  no licence, all rights reserved, size). URLs point at immutable locations — a repository commit, an
+  `source.sha256` mandatory and `license` saying why the file is remote rather than vendored (ShareAlike,
+  no license, all rights reserved, size). URLs point at immutable locations — a repository commit, an
   Internet Archive `id_` copy, a permanent publisher URI.
 - **`build/fetch_remote.py`** downloads the files into `tests/corpus/remote/`, ignored by git, and refuses
   any file whose SHA-256 differs from the manifest's. A changed file is never accepted by updating the
@@ -84,7 +84,7 @@ and test them in a separate job — and we will commit none of them, nor anythin
 
 - **The gaps a contribution was the only way to fill become testable**: the SAP output, the Ricoh scan,
   vendors' Factur-X files, ShareAlike sets, and W11's heavy documents for M23.
-- **No licence reaches the repository.** Using a file for tests means copying it onto a test machine,
+- **No license reaches the repository.** Using a file for tests means copying it onto a test machine,
   which is lower-risk than redistributing it but not nothing; publicly posted files used for testing, with
   their source cited, are the scope.
 - **One job depends on the network**, and third-party URLs rot. Immutable URLs and the Internet Archive

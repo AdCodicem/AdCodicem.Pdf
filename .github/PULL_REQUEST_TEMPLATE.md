@@ -8,7 +8,7 @@
 
 The project's [definition of done](../docs/roadmap.md) applies to every change:
 
-- [ ] Unit tests cover the behaviour, including its degenerate and hostile cases
+- [ ] Unit tests cover the behavior, including its degenerate and hostile cases
 - [ ] Anything an independent tool should confirm is covered by the integration suite
 - [ ] The build has no new warnings, and any suppression is local and justified
 - [ ] Public API carries XML documentation, and the site under `docs/website` matches what now exists

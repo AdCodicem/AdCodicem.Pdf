@@ -27,9 +27,9 @@ status="$(curl --silent --show-error --location --max-time 30 \
 
 case "$status" in
   200)
-    # The flat container lists versions lower-cased and normalised, one quoted string each.
-    normalised="$(printf '%s' "$candidate" | tr '[:upper:]' '[:lower:]')"
-    if grep -q "\"$normalised\"" "$index"; then
+    # The flat container lists versions lower-cased and normalized, one quoted string each.
+    normalized="$(printf '%s' "$candidate" | tr '[:upper:]' '[:lower:]')"
+    if grep -q "\"$normalized\"" "$index"; then
       printf '%s' "$candidate"
     else
       echo "No published package for $candidate; the API is not compared with it." >&2

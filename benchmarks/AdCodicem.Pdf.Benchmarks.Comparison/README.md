@@ -14,7 +14,7 @@ Each runs on five corpus documents, from a one-page Chromium invoice to ReportLa
 through an Acrobat form and a tagged InDesign chapter with three incremental updates (`ComparisonDocuments`).
 Every library reads the same bytes from memory, so none pays for the disk.
 
-| Library | Package | Licence |
+| Library | Package | License |
 |---|---|---|
 | AdCodicem.Pdf | this repository | MIT |
 | PdfPig | `PdfPig` | Apache-2.0 |
@@ -25,7 +25,7 @@ Every library reads the same bytes from memory, so none pays for the disk.
 
 - **Like for like, and where not.** AdCodicem.Pdf, PDFsharp and iText return each page's decoded content and
   nothing more. PdfPig has no call that stops there: its pages come parsed into operations and letters, so
-  its `ContentBenchmarks` row measures more work, and is labelled so.
+  its `ContentBenchmarks` row measures more work, and is labeled so.
 - **Opening is where the designs differ.** AdCodicem.Pdf reads the cross-reference index and nothing else
   until asked. The `Allocated` column shows what each of the others holds by the time the page count is
   known, and is the point of the comparison as much as the time.

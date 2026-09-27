@@ -20,7 +20,7 @@ namespace AdCodicem.Pdf.Validation;
 /// </remarks>
 public sealed class PdfValidator
 {
-    /// <summary>Initialises a validator.</summary>
+    /// <summary>Initializes a validator.</summary>
     /// <param name="options">How to validate; <see cref="PdfValidatorOptions.Default"/> when null.</param>
     public PdfValidator(PdfValidatorOptions? options = null) => Options = options ?? PdfValidatorOptions.Default;
 

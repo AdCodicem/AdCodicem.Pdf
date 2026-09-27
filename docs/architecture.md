@@ -31,12 +31,12 @@ ordinary composition of the two paths.
 | `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the core's validation engine | `AdCodicem.Pdf` | M20 |
 | `AdCodicem.Pdf.Imaging` | JBIG2, JPEG 2000 and JPEG decoders; lossless CCITT G4 and JBIG2 encoders (ADR 42) | `AdCodicem.Pdf` | M22 |
 | `AdCodicem.Pdf.Compare` | Text and visual comparison, zone templates | `AdCodicem.Pdf` | M24 |
-| `AdCodicem.Pdf.Rendering` | PDF → image rasterisation | SkiaSharp, `AdCodicem.Pdf.Imaging` | M25 |
+| `AdCodicem.Pdf.Rendering` | PDF → image rasterization | SkiaSharp, `AdCodicem.Pdf.Imaging` | M25 |
 | `AdCodicem.Pdf.Signing` | PAdES signing, long-term validation and signature validation, the public-key security handler (ADR 41) | `AdCodicem.Pdf`, `System.Security.Cryptography.Pkcs` | M26, M27 |
 | `AdCodicem.Pdf.Docx` | DOCX to HTML for the HTML engine | `AdCodicem.Pdf.Html`, `DocumentFormat.OpenXml` | M31 |
 
 Two more are named by their milestones without a package identifier yet: the optional hyphenation patterns
-(M12.2), whose licences are reviewed language by language, and the colour-management engine of print
+(M12.2), whose licenses are reviewed language by language, and the color-management engine of print
 production (M29).
 
 The rule: **the core depends on nothing**. That is what guarantees its Native AOT compatibility, its
@@ -112,7 +112,7 @@ copyable nor accessible.
 
 ```
 Parsing/   AngleSharp: an HTML5-conforming DOM. Nothing else of AngleSharp is used.
-Css/       A level 3 CSS tokeniser, a selector parser, the default stylesheet, the cascade,
+Css/       A level 3 CSS tokenizer, a selector parser, the default stylesheet, the cascade,
            inheritance, and **typed** computed values (structs, not strings).
 Layout/    Box tree, block layout, inline layout (line breaking, alignment), tables, flex, grid,
            pagination (@page, breaks, headers and footers, counters).
@@ -127,7 +127,7 @@ permanent prerelease. HTML5 parsing, on the other hand, is thankless, normative 
 AngleSharp: reuse it without hesitation.
 
 **Layout and painting are separate**: layout knows nothing about PDF, and painting recomputes nothing.
-That boundary is what will later make a rasterisation backend, or an SVG export, possible at all.
+That boundary is what will later make a rasterization backend, or an SVG export, possible at all.
 
 **DOM to PDF traceability**: every box keeps a reference to its source element. That is the precondition
 for emitting the logical structure (PDF/UA) and for pointing at the offending line of HTML when something
@@ -142,10 +142,10 @@ goes wrong. No intermediate layer may drop it.
 - **Pooling**: write buffers, glyph arrays and layout boxes come from `ArrayPool<T>` or dedicated pools.
   What is rented is returned, exceptions included.
 - **Structs and spans**: computed CSS values, metrics, rectangles and positions are structs. Parsing works
-  on `ReadOnlySpan<byte>` without materialising strings.
+  on `ReadOnlySpan<byte>` without materializing strings.
 - **Strings**: PDF names are interned once; the rest of parsing avoids `string` wherever it can.
 - **Asynchrony**: the public API is asynchronous at its I/O edges; computation (layout, writing) stays
-  synchronous, because parallelising across documents buys more than making one document await.
+  synchronous, because parallelizing across documents buys more than making one document await.
 - **Parallelism**: never implicit. One document is generated on one thread; the caller runs several
   documents in parallel, and the API must make that safe and obvious.
 
@@ -174,7 +174,7 @@ layout:
 | A CSS feature is unsupported | An entry in the diagnostics, degraded rendering, never a failure |
 | An operation breaks a conformance guarantee | An entry in the diagnostics, with the precise cause |
 
-The diagnostic report is a returned value, not a side effect: it can be inspected, serialised and asserted
+The diagnostic report is a returned value, not a side effect: it can be inspected, serialized and asserted
 on in tests.
 
 ## 8. Testing

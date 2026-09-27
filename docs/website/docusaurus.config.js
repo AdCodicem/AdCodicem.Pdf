@@ -6,9 +6,9 @@
 
 import { previewIsCurrent, readReleases } from './scripts/versions.mjs';
 
-const organisation = 'AdCodicem';
+const organization = 'AdCodicem';
 const repository = 'AdCodicem.Pdf';
-const source = `https://github.com/${organisation}/${repository}/tree/main`;
+const source = `https://github.com/${organization}/${repository}/tree/main`;
 
 // The user documentation is versioned; the project documents are not — they describe the project, not a
 // release, and always come from main. Each stable line is frozen by the release that opens it (see
@@ -77,9 +77,9 @@ const config = {
   tagline: 'Managed PDF generation and manipulation for .NET',
   favicon: 'img/favicon.svg',
 
-  url: `https://${organisation.toLowerCase()}.github.io`,
+  url: `https://${organization.toLowerCase()}.github.io`,
   baseUrl: `/${repository}/`,
-  organizationName: organisation,
+  organizationName: organization,
   projectName: repository,
   trailingSlash: false,
 
@@ -150,7 +150,7 @@ const config = {
           ? [{ type: 'docsVersionDropdown', position: 'right', versions: releases.map(({ line }) => line) }]
           : []),
         { type: 'custom-previewToggle', position: 'right' },
-        { href: `https://github.com/${organisation}/${repository}`, label: 'GitHub', position: 'right' },
+        { href: `https://github.com/${organization}/${repository}`, label: 'GitHub', position: 'right' },
       ],
     },
     footer: {
@@ -167,7 +167,7 @@ const config = {
         {
           title: 'Project',
           items: [
-            { label: 'GitHub', href: `https://github.com/${organisation}/${repository}` },
+            { label: 'GitHub', href: `https://github.com/${organization}/${repository}` },
             { label: 'Contributing documents', to: '/project/corpus-contributions' },
           ],
         },

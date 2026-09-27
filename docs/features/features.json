@@ -74,7 +74,7 @@
       "features": [
         { "id": "encryption", "name": "Password encryption and decryption, RC4 to AES-256, permissions; AES-GCM read", "milestones": ["M16"], "status": "planned" },
         { "id": "forms", "name": "AcroForms: fill, flatten, create fields; FDF, XFDF and JSON exchange; batch filling", "milestones": ["M16"], "status": "planned" },
-        { "id": "redaction", "name": "True redaction, search-and-redact for personal data, and sanitisation of hidden content", "milestones": ["M19"], "status": "planned", "headline": true },
+        { "id": "redaction", "name": "True redaction, search-and-redact for personal data, and sanitization of hidden content", "milestones": ["M19"], "status": "planned", "headline": true },
         { "id": "signing", "name": "PAdES signing (B-B, B-T), time stamps, certification, remote signing through the CSC API", "milestones": ["M26"], "status": "planned" },
         { "id": "ltv-validation", "name": "Long-term signatures (B-LT, B-LTA) and validation of received signatures against the EU trusted lists", "milestones": ["M27"], "status": "planned" }
       ]
@@ -83,9 +83,9 @@
       "title": "Scans, images and output",
       "features": [
         { "id": "imaging", "name": "Managed JBIG2, JPEG 2000 and CCITT decoding; an OCR text layer from any engine", "milestones": ["M22"], "status": "planned" },
-        { "id": "optimisation", "name": "Deduplication, recompression, downsampling to a target size, linearisation", "milestones": ["M23"], "status": "planned" },
-        { "id": "rasterisation", "name": "Pages rendered to images", "milestones": ["M25"], "status": "planned" },
-        { "id": "print", "name": "Print production: PDF/X-4, PDF/VT, CMYK and spot colours", "milestones": ["M29"], "status": "planned" },
+        { "id": "optimization", "name": "Deduplication, recompression, downsampling to a target size, linearization", "milestones": ["M23"], "status": "planned" },
+        { "id": "rasterization", "name": "Pages rendered to images", "milestones": ["M25"], "status": "planned" },
+        { "id": "print", "name": "Print production: PDF/X-4, PDF/VT, CMYK and spot colors", "milestones": ["M29"], "status": "planned" },
         { "id": "typesetting", "name": "Vertical writing, ruby and MathML", "milestones": ["M30"], "status": "planned" }
       ]
     },
@@ -95,7 +95,7 @@
         { "id": "no-dependency", "name": "A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one", "milestones": ["M1"], "status": "available", "headline": true },
         { "id": "aot", "name": "Native AOT, trimming and browser WebAssembly, verified on every corpus document", "milestones": ["M23"], "status": "planned" },
         { "id": "cli", "name": "A command-line tool, as a dotnet tool and a Native AOT binary", "milestones": ["M6"], "status": "planned" },
-        { "id": "mit", "name": "MIT licence, no revenue threshold, no per-developer fee", "milestones": ["M0"], "status": "available", "headline": true }
+        { "id": "mit", "name": "MIT license, no revenue threshold, no per-developer fee", "milestones": ["M0"], "status": "available", "headline": true }
       ]
     }
   ]

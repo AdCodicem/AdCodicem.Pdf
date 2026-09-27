@@ -89,7 +89,7 @@ public class CorpusValidationTests
     [Fact]
     public void Every_declared_finding_names_a_rule_that_exists()
     {
-        // Over every entry, fetched or not: a finding the manifest expects under a misspelt identifier would
+        // Over every entry, fetched or not: a finding the manifest expects under a misspelled identifier would
         // otherwise pass wherever the document is absent, and fail only on the nightly runner.
         var known = typeof(PdfValidationRuleIds).GetFields()
             .Where(field => field.IsLiteral)
@@ -106,7 +106,7 @@ public class CorpusValidationTests
     [Theory]
     [InlineData("""{"file":"x.pdf","title":"t","expect":{"finding":["file.eof-missing"]}}""")]
     [InlineData("""{"file":"x.pdf","title":"t","readerLimits":{"maxObjectLenght":1}}""")]
-    public void A_misspelt_expectation_or_reader_limit_fails_loading(string entry)
+    public void A_misspelled_expectation_or_reader_limit_fails_loading(string entry)
     {
         // Ignored, "finding" would leave the entry declaring no finding, and a sound-looking document would pass
         // for the wrong reason: the model refuses what it does not know, under the options the corpus loads with.

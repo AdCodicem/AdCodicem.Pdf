@@ -38,7 +38,7 @@ Beyond that bound, an object read again is read from the file again. That is the
 stays predictable, and the pathological case is slower rather than fatal.
 
 ```csharp
-using var document = PdfDocument.Open("catalogue.pdf", new PdfReaderOptions
+using var document = PdfDocument.Open("catalog.pdf", new PdfReaderOptions
 {
     ObjectCacheCapacity = 32_768,   // more memory, fewer re-reads
     DiagnosticCapacity = 5_000,

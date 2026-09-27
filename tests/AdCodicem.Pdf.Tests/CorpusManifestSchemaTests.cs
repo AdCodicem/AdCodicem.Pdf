@@ -88,7 +88,7 @@ public class CorpusManifestSchemaTests
     [InlineData("useCase")]
     [InlineData("producer")]
     [InlineData("origin")]
-    [InlineData("licence")]
+    [InlineData("license")]
     [InlineData("features")]
     [InlineData("expect")]
     public void An_entry_cannot_leave_out(string key)
@@ -189,7 +189,7 @@ public class CorpusManifestSchemaTests
         }),
         ["a document the library cannot meet yet"] = () => Committed().With(entry => entry["expect"]!["unsupported"] = "M2: why, and what will."),
         ["a document with no page count to expect"] = () => Committed().With(entry => entry["expect"]!["pages"] = null),
-        ["a document without a catalogue"] = () => Committed().With(entry =>
+        ["a document without a catalog"] = () => Committed().With(entry =>
         {
             entry["expect"]!["catalogRecoverable"] = false;
             entry["expect"]!["pages"] = null;
@@ -235,7 +235,7 @@ public class CorpusManifestSchemaTests
         ["an empty title"] = (() => Committed().With(entry => entry["title"] = ""), "minLength"),
         ["a negative page count"] = (() => Committed().With(entry => entry["expect"]!["pages"] = -1), "minimum"),
         ["catalogRecoverable set to true"] = (() => Committed().With(entry => entry["expect"]!["catalogRecoverable"] = true), "const"),
-        ["a page count for a file without a catalogue"] = (() => Committed().With(entry =>
+        ["a page count for a file without a catalog"] = (() => Committed().With(entry =>
             entry["expect"]!["catalogRecoverable"] = false), "type"),
         ["a conformance verdict without the claim it judges"] = (() => Committed().With(entry =>
             entry["expect"]!["conformanceValid"] = true), "dependentRequired"),
@@ -323,7 +323,7 @@ public class CorpusManifestSchemaTests
         ["useCase"] = "invoice",
         ["producer"] = "A producer 1.0",
         ["origin"] = "generated",
-        ["licence"] = "MIT (our own source)",
+        ["license"] = "MIT (our own source)",
         ["features"] = new JsonArray("xref-table"),
         ["expect"] = new JsonObject
         {
@@ -339,7 +339,7 @@ public class CorpusManifestSchemaTests
     {
         entry["file"] = "remote/somewhere/a-document.pdf";
         entry["origin"] = "remote";
-        entry["licence"] = "Usable, not redistributable";
+        entry["license"] = "Usable, not redistributable";
         entry["source"] = Source("https://example.org/a-document.pdf", bytes: 1024);
     });
 

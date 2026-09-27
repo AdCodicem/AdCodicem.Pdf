@@ -7,13 +7,13 @@ public sealed class PdfArray : PdfObject, IReadOnlyList<PdfObject>
 {
     private readonly List<PdfObject> _items;
 
-    /// <summary>Initialises an empty array.</summary>
+    /// <summary>Initializes an empty array.</summary>
     public PdfArray() => _items = [];
 
-    /// <summary>Initialises an empty array with room for <paramref name="capacity"/> entries.</summary>
+    /// <summary>Initializes an empty array with room for <paramref name="capacity"/> entries.</summary>
     public PdfArray(int capacity) => _items = new List<PdfObject>(capacity);
 
-    /// <summary>Initialises an array containing <paramref name="items"/>.</summary>
+    /// <summary>Initializes an array containing <paramref name="items"/>.</summary>
     public PdfArray(IEnumerable<PdfObject> items)
     {
         ArgumentNullException.ThrowIfNull(items);

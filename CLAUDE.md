@@ -35,7 +35,7 @@ alternatives and what would reopen it. The identifiers below are the ones commit
 | # | Decision |
 |---|----------|
 | D01 | Fully managed rendering: AngleSharp (HTML5 parsing) → our own CSS engine and layout → our own PDF writer |
-| D02 | Full scope: generation **and** manipulation (assembly, content, extraction, forms, security, optimisation) |
+| D02 | Full scope: generation **and** manipulation (assembly, content, extraction, forms, security, optimization) |
 | D03 | Target content: business documents plus a chosen subset of modern CSS (flex, simple grid, SVG, paged media) |
 | D04 | SkiaSharp and HarfBuzzSharp allowed — in `AdCodicem.Pdf.Html` (and Skia in `.Rendering`, ADR 43), never in the core |
 | D05 | We write the PDF writer ourselves: full control over compression, conformance and streaming |
@@ -48,7 +48,7 @@ alternatives and what would reopen it. The identifiers below are the ones commit
 | D12 | Lazy reading; output either as a full rewrite or as an incremental update |
 | D13 | A **tolerant** reader for non-conforming files, with a structured diagnostic report |
 | D14 | Full text extraction: positioned glyphs → lines and paragraphs → tables, preferring the tagged structure where it exists |
-| D15 | PDF → image rasterisation: a satellite package, after the foundations |
+| D15 | PDF → image rasterization: a satellite package, after the foundations |
 | D16 | Conformance actively preserved through manipulation, plus a built-in PDF/A and PDF/UA validator |
 | D17 | Signing: space reserved in the writer (incremental update, existing signatures preserved); PAdES in M26 and M27 |
 
@@ -76,11 +76,11 @@ third-party PDFs, table of contents, bookmarks, continuous pagination).
    Never a silent break.
 8. **Public type safety**: the public API is immutable by default, with no mutable static state.
    A `PdfDocument` is not thread-safe; a rendering engine is.
-9. Every feature ships **with its tests**. Every optimisation ships **with its benchmark**.
+9. Every feature ships **with its tests**. Every optimization ships **with its benchmark**.
 10. **No milestone closes on synthetic files alone.** Each one is accepted against real documents from
     `tests/corpus`, under the rules in `docs/corpus.md`.
 11. **No milestone closes without both test levels and updated documentation.** Unit tests for the
-    behaviour, integration tests for anything an independent tool must confirm, and the documentation
+    behavior, integration tests for anything an independent tool must confirm, and the documentation
     site brought in line with what now exists. Code without either is unfinished, not ahead of schedule.
 12. **Every PDF valid under ISO 32000 is readable.** A bound a valid file can exceed is a guard: on by
     default, reported under its own `limit.*` code when reached, with a message that names the
@@ -115,8 +115,9 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
 
 ## Conventions
 
-- **Everything is written in English**: code, public API, XML documentation, project documentation,
-  commit messages, diagnostics and exception messages.
+- **Everything is written in English**, and in **American spelling** (color, catalog, license, optimize):
+  code, public API, XML documentation, project documentation, commit messages, diagnostics and exception
+  messages. Proper names and quoted text keep their own spelling (ADR 20).
 - **The build has no warnings, and keeps none.** `TreatWarningsAsErrors` is on, analysis runs at
   `latest-recommended`, code style is enforced in the build, and XML documentation is required on the
   public API. A rule that is genuinely wrong for this codebase is suppressed **where it fires**, with a
@@ -128,8 +129,8 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
 - PDF object model types carry the `Pdf` prefix; types internal to the HTML engine do not.
 - Tests: **xUnit v3**, **AwesomeAssertions** (`value.Should().Be(…)`), **NSubstitute** for the few real
   seams, **FsCheck** for what must hold over every input rather than over a table of examples,
-  **Testcontainers** for integration. A test name states a behaviour, not a method.
-- Two suites, and the difference is not speed: `tests/AdCodicem.Pdf.Tests` asserts our own behaviour;
+  **Testcontainers** for integration. A test name states a behavior, not a method.
+- Two suites, and the difference is not speed: `tests/AdCodicem.Pdf.Tests` asserts our own behavior;
   `tests/AdCodicem.Pdf.IntegrationTests` asserts what an independent tool says about it, running that
   tool in a container. Shared fixtures live in `tests/AdCodicem.Pdf.TestSupport`.
 - Integration tests **skip** when Docker is absent rather than failing, so a sandbox without a daemon

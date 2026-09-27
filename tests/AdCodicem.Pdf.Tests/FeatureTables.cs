@@ -31,7 +31,7 @@ internal static partial class FeatureTables
 
     private static string DataDirectory => Path.Combine(RepositoryRoot, "docs", "features");
 
-    public static FeatureCatalogue LoadFeatures() => Load<FeatureCatalogue>("features.json");
+    public static FeatureCatalog LoadFeatures() => Load<FeatureCatalog>("features.json");
 
     public static Comparison LoadComparison() => Load<Comparison>("comparison.json");
 
@@ -53,35 +53,35 @@ internal static partial class FeatureTables
     }
 
     /// <summary>The headline features, as the README shows them between its two markers.</summary>
-    public static string RenderReadmeSection(FeatureCatalogue catalogue)
+    public static string RenderReadmeSection(FeatureCatalog catalog)
     {
         var text = new StringBuilder();
         text.Append(ReadmeStart).Append('\n');
         text.Append("| What it does | State |\n|---|---|\n");
 
-        foreach (var feature in catalogue.Groups.SelectMany(group => group.Features).Where(feature => feature.Headline))
+        foreach (var feature in catalog.Groups.SelectMany(group => group.Features).Where(feature => feature.Headline))
         {
             text.Append("| ").Append(feature.Name).Append(" | ").Append(State(feature)).Append(" |\n");
         }
 
         text.Append('\n')
             .Append("Every feature, planned ones included, and how the library compares with other PDF libraries: [Features and comparison](")
-            .Append(SiteUrl).Append("), as of ").Append(catalogue.AsOf).Append(".\n");
+            .Append(SiteUrl).Append("), as of ").Append(catalog.AsOf).Append(".\n");
         text.Append(ReadmeEnd);
         return text.ToString();
     }
 
     /// <summary>The whole site page: its template, with each placeholder replaced by the table it names.</summary>
-    public static string RenderSitePage(FeatureCatalogue catalogue, Comparison comparison)
+    public static string RenderSitePage(FeatureCatalog catalog, Comparison comparison)
     {
         var template = File.ReadAllText(Path.Combine(DataDirectory, "features.page.md"));
-        var features = catalogue.Groups
+        var features = catalog.Groups
             .SelectMany(group => group.Features)
             .ToDictionary(feature => feature.Id, StringComparer.Ordinal);
 
         return template
             .Replace("{{asOf}}", comparison.AsOf, StringComparison.Ordinal)
-            .Replace("{{features}}", RenderFeatureGroups(catalogue), StringComparison.Ordinal)
+            .Replace("{{features}}", RenderFeatureGroups(catalog), StringComparison.Ordinal)
             .Replace("{{glance}}", RenderGlance(comparison), StringComparison.Ordinal)
             .Replace("{{matrix}}", RenderMatrix(comparison, features), StringComparison.Ordinal)
             .Replace("{{sources}}", RenderSources(comparison), StringComparison.Ordinal);
@@ -108,11 +108,11 @@ internal static partial class FeatureTables
         _ => $"📅 Planned — {string.Join(", ", feature.Milestones)}",
     };
 
-    private static string RenderFeatureGroups(FeatureCatalogue catalogue)
+    private static string RenderFeatureGroups(FeatureCatalog catalog)
     {
         var text = new StringBuilder();
 
-        foreach (var group in catalogue.Groups)
+        foreach (var group in catalog.Groups)
         {
             text.Append("### ").Append(group.Title).Append("\n\n");
             text.Append("| Feature | State |\n|---|---|\n");
@@ -131,14 +131,14 @@ internal static partial class FeatureTables
     private static string RenderGlance(Comparison comparison)
     {
         var text = new StringBuilder();
-        text.Append("| Product | Stack | Licence | Pricing model | Runs on | HTML to PDF | Status |\n");
+        text.Append("| Product | Stack | License | Pricing model | Runs on | HTML to PDF | Status |\n");
         text.Append("|---|---|---|---|---|---|---|\n");
 
         foreach (var product in comparison.Products)
         {
             text.Append("| [").Append(product.Name).Append("](").Append(product.Url).Append(") | ")
                 .Append(product.Stack).Append(" | ")
-                .Append(product.Licence).Append(" | ")
+                .Append(product.License).Append(" | ")
                 .Append(product.PricingModel).Append(" | ")
                 .Append(product.Runtime).Append(" | ")
                 .Append(product.HtmlToPdf).Append(" | ")
@@ -270,7 +270,7 @@ internal static partial class FeatureTables
     [GeneratedRegex(@"^\| (?<id>M\d+) \| .+ \| (?:S|M|L|XL) \| .* \| (?<state>done|in progress|to do) \|$")]
     private static partial Regex RoadmapRow();
 
-    internal sealed record FeatureCatalogue(
+    internal sealed record FeatureCatalog(
         [property: JsonPropertyName("$comment")] string? Comment,
         string AsOf,
         IReadOnlyList<FeatureGroup> Groups);
@@ -291,7 +291,7 @@ internal static partial class FeatureTables
         string? ShortName,
         string Url,
         string Stack,
-        string Licence,
+        string License,
         string PricingModel,
         string Runtime,
         string HtmlToPdf,
