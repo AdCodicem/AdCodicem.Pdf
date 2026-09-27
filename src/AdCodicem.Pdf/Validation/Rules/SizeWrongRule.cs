@@ -80,7 +80,7 @@ internal sealed class SizeWrongRule : IValidationRule
                     message = $"{subject} has no /Size.";
                     break;
 
-                case PdfInteger { Value: >= 0 } size when size.Value == expected || size.Value == NamingTableSize(sections, index):
+                case PdfInteger { Value: >= 0 } size when size.Value == expected || size.Value == NamingTableSize(section):
                     continue;
 
                 case PdfInteger { Value: >= 0 } size:
@@ -102,7 +102,7 @@ internal sealed class SizeWrongRule : IValidationRule
 
             context.Report(
                 this,
-                PdfValidationLocation.AtPosition(section.TrailerPosition >= 0 ? section.TrailerPosition : section.Offset),
+                PdfValidationLocation.AtPosition(section.TrailerLocation),
                 message,
                 "Set /Size to one more than the highest object number the section and those it updates use.");
         }
@@ -110,7 +110,7 @@ internal sealed class SizeWrongRule : IValidationRule
 
     /// <summary>
     /// Gets the <c>/Size</c> of the table whose <c>/XRefStm</c> names the section, or -1 when the section is not a
-    /// hybrid file's stream.
+    /// hybrid file's stream, or its table gives no count.
     /// </summary>
     /// <remarks>
     /// Table 17 asks two things of a cross-reference stream's <c>/Size</c>: one more than the highest number it and
@@ -118,25 +118,8 @@ internal sealed class SizeWrongRule : IValidationRule
     /// stream cannot always meet both — its own object is indexed by the newer table that names it —, and writers
     /// meet one or the other: either is accepted.
     /// </remarks>
-    private static long NamingTableSize(IReadOnlyList<XRefSectionRecord> sections, int index)
-    {
-        var stream = sections[index];
-
-        if (stream.NamedBy != "/XRefStm")
-        {
-            return -1;
-        }
-
-        for (var candidate = index - 1; candidate >= 0; candidate--)
-        {
-            if (sections[candidate].Offset == stream.NamedFrom)
-            {
-                return sections[candidate].Trailer.GetRaw(PdfName.Size) is PdfInteger { Value: >= 0 } size ? size.Value : -1;
-            }
-        }
-
-        return -1;
-    }
+    private static long NamingTableSize(XRefSectionRecord section) =>
+        section.NamingTrailer?.GetRaw(PdfName.Size) is PdfInteger { Value: >= 0 } size ? size.Value : -1;
 
     private static bool IsWhole(IReadOnlyList<XRefSectionRecord> sections)
     {

@@ -62,6 +62,15 @@ internal sealed class XRefSectionRecord
     /// <summary>Gets where the trailer's dictionary starts, or where the trailer was expected; -1 when unknown.</summary>
     public long TrailerPosition { get; set; } = -1;
 
+    /// <summary>Gets where a finding about the section's trailer points: the trailer, or the section itself while no trailer was found.</summary>
+    public long TrailerLocation => TrailerPosition >= 0 ? TrailerPosition : Offset;
+
+    /// <summary>
+    /// Gets the trailer of the classic table whose <c>/XRefStm</c> named the section, a hybrid file's stream; null
+    /// for every other section.
+    /// </summary>
+    public PdfDictionary? NamingTrailer { get; init; }
+
     /// <summary>Gets the object number of a cross-reference stream, or 0 for a classic table.</summary>
     public int StreamObjectNumber { get; set; }
 

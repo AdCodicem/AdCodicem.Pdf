@@ -41,8 +41,8 @@ internal sealed class RootInvalidRule : IValidationRule
         var found = structure.CatalogFoundAs > 0
             ? string.Create(CultureInfo.InvariantCulture, $" The reader took object {structure.CatalogFoundAs}, which is one, for the catalog.")
             : " No object of the file is a catalog.";
-        var trailer = structure.Sections.Count > 0 && structure.Sections[0].TrailerPosition >= 0
-            ? PdfValidationLocation.AtPosition(structure.Sections[0].TrailerPosition)
+        var trailer = structure.Sections.Count > 0
+            ? PdfValidationLocation.AtPosition(structure.Sections[0].TrailerLocation)
             : default;
 
         // An entry whose value is null is one the dictionary does not have (ISO 32000-1, 7.3.7).

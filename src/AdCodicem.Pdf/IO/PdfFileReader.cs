@@ -456,7 +456,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             {
                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
                 // the stream, the objects it indexes are missing, and the chain goes on through /Prev.
-                var stream = new XRefSectionRecord("/XRefStm", hybrid + _headerOffset, section.Offset);
+                var stream = new XRefSectionRecord("/XRefStm", hybrid + _headerOffset, section.Offset) { NamingTrailer = section.Trailer };
                 _structure.Add(stream);
 
                 if (TryReadXRefSection(hybrid, stream, out _, out _) != XRefSectionState.Read &&
