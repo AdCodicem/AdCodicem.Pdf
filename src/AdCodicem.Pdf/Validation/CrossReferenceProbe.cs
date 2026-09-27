@@ -253,10 +253,15 @@ internal sealed class CrossReferenceProbe
                 return;
 
             case ObjectStreamHeaderResult.NotAnObjectStream:
-            case ObjectStreamHeaderResult.Unreadable:
                 BrokenObjectStreams.Add(new ProbeFinding(
                     PdfValidationLocation.OfObject(id, offset),
                     Invariant($"Object {stream}, where the index places {RuleText.Objects(objects.Count)}, {fault}.")));
+                return;
+
+            case ObjectStreamHeaderResult.Unreadable:
+                BrokenObjectStreams.Add(new ProbeFinding(
+                    PdfValidationLocation.OfObject(id, offset),
+                    Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, cannot be read: {fault}.")));
                 return;
         }
 

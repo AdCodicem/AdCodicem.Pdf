@@ -45,9 +45,10 @@ internal sealed class RootInvalidRule : IValidationRule
             ? PdfValidationLocation.AtPosition(structure.Sections[0].TrailerPosition)
             : default;
 
+        // An entry whose value is null is one the dictionary does not have (ISO 32000-1, 7.3.7).
         switch (structure.RootAsWritten)
         {
-            case null:
+            case null or PdfNull:
                 Report(context, trailer, "The trailer has no /Root." + found);
                 break;
 

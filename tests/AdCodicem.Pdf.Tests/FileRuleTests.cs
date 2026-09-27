@@ -223,6 +223,11 @@ public class FileRuleTests
     [InlineData("/Root /Catalog", "The trailer's /Root is a name, not a reference to the document catalog.")]
     [InlineData("/Root 3 0 R", "The trailer's /Root names object 3 0, which is a dictionary of /Type /Page, not a document catalog.")]
     [InlineData("/Root 9 0 R", "The trailer's /Root names object 9 0, which the file does not hold.")]
+    [InlineData("/Root null", "The trailer has no /Root.")]
+    [InlineData("/Root (the catalog)", "The trailer's /Root is a string, not a reference to the document catalog.")]
+    [InlineData("/Root [1 0 R]", "The trailer's /Root is an array, not a reference to the document catalog.")]
+    [InlineData("/Root << /Type /Outlines >>", "The trailer's /Root is a dictionary written in the trailer, not a reference to the document catalog.")]
+    [InlineData("/Root true", "The trailer's /Root is a boolean, not a reference to the document catalog.")]
     public void A_root_that_leads_to_no_catalog_says_what_it_leads_to(string root, string message)
     {
         var file = PdfTemplate.SoundWith("/Root 1 0 R", root);
@@ -239,6 +244,15 @@ public class FileRuleTests
 
         Single(Validate(file), PdfValidationRuleIds.FileRootInvalid).Message
             .Should().Be("The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. No object of the file is a catalog.");
+    }
+
+    [Fact]
+    public void A_root_that_names_a_number_says_so()
+    {
+        var file = PdfTemplate.SoundWith("<< /Type /Catalog /Pages 2 0 R >>", "42");
+
+        Single(Validate(file), PdfValidationRuleIds.FileRootInvalid).Message
+            .Should().Be("The trailer's /Root names object 1 0, which is a number, not a document catalog. No object of the file is a catalog.");
     }
 
     [Fact]
