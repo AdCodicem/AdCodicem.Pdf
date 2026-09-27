@@ -19,12 +19,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   to 6 are issues [#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59) to
   [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 1,614 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
+- **Tests**: 1,636 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher + 26 for the roadmap's mirror on GitHub, on slice 2's branch. With the remote corpus:
-  `Remote corpus` run 7, on #29's branch at `4aa6816` with all 242 documents, passed 2,844 unit (97 skipped by
-  design) and 668 integration tests. Here, on slice 2's branch with 233 of the 242 — web.archive.org resets this
-  session's connections and the two GitHub attachments answer 403 —, 3,090 unit (65 skipped by design, on
-  documents recorded as unsupported until M02 or #47) and 1,836 integration, in a local referee container.
+  `Remote corpus` run 9, on slice 2's branch before its last two commits, with all 242 documents, passed 3,136
+  unit (65 skipped by design, on documents recorded as unsupported until M02 or #47) and 1,875 integration tests.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -89,8 +87,8 @@ M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29); T32,
 before its cross-reference and object-graph rules, merged with #31. Its progress is the
 [M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestone/3) on GitHub. In the order its debts impose:
 
-1. Slice 2's pull request ([#58]): the `Remote corpus` run on its branch confirms the nine remote documents this
-   session could not fetch — two of them predicted to earn `xref.checked-in-part`, seven nothing —, then review.
+1. Slice 2's pull request ([#110](https://github.com/AdCodicem/AdCodicem.Pdf/pull/110), closing [#58]): review
+   and merge; `Remote corpus` run 9 confirmed the nine remote documents this session could not fetch.
 2. Slice 3 ([#59]) with [#51] in the object-graph rules, and the finding for a reference to an object the
    file lacks, which T27 left to it; [#55] and [#56] before slice 4 ([#60]), whose stream rules check
    declared lengths and whether filters decode; slices 5 and 6 ([#61], [#62]). Each slice adds to the
@@ -136,15 +134,17 @@ not a fault of the file: the rules on it report at most, as information, that it
   `xref.section-not-found`, `xref.section-shifted`, `xref.chain-loop`, `xref.entry-broken`, `xref.entry-shifted`,
   `xref.generation-mismatch`, `xref.object-stream-broken`, `xref.offset-imprecise`, `xref.object-past-size`,
   `xref.checked-in-part`. `docs/validation-rules.md` gives each its severity, meaning and reference, and what the
-  profile leaves silent on purpose — a row not twenty bytes long ([#107]), linearization ([#108]).
+  profile leaves silent on purpose — a row not twenty bytes long ([#107]), linearization ([#108]), a catalog
+  written in the trailer rather than referred to ([#111]).
 - **The corpus.** Every entry declares its findings: 65 documents earn `file.startxref-wrong`, 11
   `file.startxref-missing`, 18 `file.header-offset`, 18 clean ones a `file.size-wrong` (Word's and Excel's hybrid
   streams one short, `/Size` off by one), 8 clean ones `xref.offset-imprecise` (Microsoft Print to PDF), 9 encrypted
   ones `xref.checked-in-part`; no clean document earns an error. Eight iPRES files are supported (t03-007, t03-010,
   t04-010 to t04-015), their expectations saying what the reader does where they had copied qpdf's rebuild; the
   corpus's reading test counts a finding as damage made known, for what the reader reads without a word. Nine
-  remote documents could not be fetched here; their findings are predicted, for the `Remote corpus` run to confirm.
-- **Tests.** `FileRuleTests` and `CrossReferenceRuleTests`, 70 cases on files written from a template whose offsets
+  remote documents could not be fetched here; their findings were predicted, and `Remote corpus` run 9, on the
+  branch with all 242 documents, confirmed them.
+- **Tests.** `FileRuleTests` and `CrossReferenceRuleTests`, 92 cases on files written from a template whose offsets
   are placeholders: each rule on a file that breaks it, a sound one and an unusual legal one, and the report
   unchanged by reads and rebuilds between validations. `ValidationRefereeTests` (integration): every document qpdf
   rebuilds the index of earns a `file.*` or `xref.*` finding, and every such error is a document qpdf finds fault
@@ -724,3 +724,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#107]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/107
 [#108]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/108
 [#109]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/109
+[#111]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/111

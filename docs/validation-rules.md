@@ -38,7 +38,7 @@ References are to ISO 32000-1:2008.
 | `file.startxref-wrong` | Error | The offset `startxref` gives holds no cross-reference section: the index is out of reach, and is rebuilt by scanning. White space before the section is `xref.offset-imprecise`'s; a section that is there and cannot be read is `xref.section-malformed`'s. | The first section of the chain |
 | `file.trailer-missing` | Error | A cross-reference table's rows are not followed by the `trailer` keyword: they run into a dictionary, or the file ends. qpdf, as the reader, then rebuilds the index. | Each classic table of the chain |
 | `file.trailer-malformed` | Error | A trailer is not a well-formed dictionary: the `trailer` keyword is not followed by one, or the reader read it despite syntax errors — a key that is not a name, a dictionary left unclosed —, so an entry may have been lost with the syntax. A cross-reference stream's dictionary is held to the same. | Each trailer of the chain, as the reader parsed it |
-| `file.root-invalid` | Error | The trailer's `/Root` is missing, is not a reference, or does not lead to a document catalog (Table 15). The reader then looks for an object of `/Type /Catalog` among those the index holds — and rebuilds the index only when none is one —: the catalog it finds is its choice, not the file's. Not judged when the trailer could not be read at all, nor when the index was rebuilt as the document opened. | The trailer the chain gave, merged as readers merge it, and `/Root` before the reader looked for a catalog |
+| `file.root-invalid` | Error | The trailer's `/Root` is missing or does not lead to a document catalog (Table 15), a value that is not a reference included — unless it is a catalog written in the trailer itself, which the reader takes as it is ([#111]). The reader then looks for an object of `/Type /Catalog` among those the index holds — and rebuilds the index only when none is one —: the catalog it finds is its choice, not the file's. Not judged when the trailer could not be read at all, nor when the index was rebuilt as the document opened. | The trailer the chain gave, merged as readers merge it, and `/Root` before the reader looked for a catalog |
 | `file.size-wrong` | Warning | A section's `/Size` is missing, or is not one more than the highest object number it and the sections it updates use (Tables 15 and 17, 7.5.6, 7.5.8.4). A hybrid file's cross-reference stream meets one of Table 17's two readings or the other — one more than the highest number it and the sections it updates use, or the `/Size` of the table that names it —, and either is accepted. A `/Size` that leaves in-use objects numbered above it is `xref.object-past-size`'s. Not judged when the chain lost a section, or one of the reader's limits cut it. | Each section's trailer, and the highest number each section indexes |
 
 ### Cross-references
@@ -74,6 +74,9 @@ Some faults the structural profile does not report, each for a reason:
   which F.3.11 forbids, is the business of a linearization family, not of this profile ([#108]).
 - **The linearization dictionary and hint tables** — stale hint tables after an incremental update are common and
   harmless: a linearization family, later ([#108]).
+- **A catalog written in the trailer** — `/Root` a direct dictionary that is a catalog, where Table 15 asks for an
+  indirect reference. The reader takes it as it is, so `file.root-invalid`, whose error is the reader choosing a
+  catalog the file does not name, does not apply; a warning of its own is left for later ([#111]).
 - **A gap in the numbering** — an object number below `/Size` with no entry — matters only when something refers
   to it, which the object-graph rules report.
 
@@ -85,3 +88,4 @@ PDF/UA profiles of the `AdCodicem.Pdf.Conformance` package (M20) take families o
 
 [#107]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/107
 [#108]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/108
+[#111]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/111
