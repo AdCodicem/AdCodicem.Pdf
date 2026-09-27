@@ -45,8 +45,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   Code-Review 0 (nothing has ever been approved by a second person), Branch-Protection 5 (T15), Maintained 0
   (the repository is younger than 90 days), Contributors 3, CII-Best-Practices 0 (T18), Signed-Releases
   unscored until a release exists (T19).
-- **Coverage**: 89.13 % on Codecov for `74ce382`, uploaded without a token; the Codecov app is not installed
-  (T14).
+- **Coverage**: 89.13 % on Codecov for `74ce382`, uploaded without a token. The Codecov GitHub App is installed
+  since 2026-09-27, and reports on each pull request as `codecov[bot]` (#40, formerly T14).
 - **Repository settings**: the "Default" ruleset on `main` asks for a pull request with one code-owner
   approval and every review thread resolved, linear history, CodeQL and coverage of at least 61 %; it
   requires no status check by name, and only administrators bypass it. CodeQL runs as GitHub's default setup
@@ -130,6 +130,8 @@ not a fault of the file: the rules on it report at most, as information, that it
 - **Conventions.** A commit names the issue it advances in its footer (`Refs #58`), and the pull request
   closes what it completes (`Closes #58`); sessions open, label and comment on issues freely, and close one
   only through a merge. `stale.yml` exempts `debt`, `slice`, `help wanted` and every issue under a milestone.
+- **Afterwards.** Codecov's comments on #90 came from `codecov[bot]`, and the maintainer confirmed its GitHub
+  App installed: #40 is the first debt closed as an issue, by the pull request that records it.
 
 ### 2026-09-27 — A disclaimer, and the roadmap called an intention
 - **At the maintainer's request.** The README (and so the package on nuget.org) gains a `Disclaimer` section:
@@ -611,7 +613,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 | T11 | Done on 2026-09-19 (`d3a748d`): publishing observed, previews on nuget.org through trusted publishing |
 | T12 | Done on 2026-09-19 (`a20570a`): the site published, and rendering since 2026-09-22 |
 | T13 | [#39] |
-| T14 | [#40] |
+| T14 | Done on 2026-09-27 ([#40]): the Codecov GitHub App is installed |
 | T15 | [#41] |
 | T16 | [#42] |
 | T17 | [#43] |
