@@ -11,7 +11,7 @@ here.
   report and `file.eof-missing` — is done, merged with [#29](https://github.com/AdCodicem/AdCodicem.Pdf/pull/29) on
   2026-09-26.
 - **Last milestone closed**: **M1 — Object model and tolerant reading**
-- **Tests**: 1,327 unit (7 skipped by design) + 302 integration (skipped without Docker) + 23 for the remote
+- **Tests**: 1,430 unit (8 skipped by design) + 302 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher. With the remote corpus: `Remote corpus` run 7, on #29's branch at `4aa6816` with all 242
   documents, passed 2,844 unit (97 skipped by design, on documents recorded as unsupported until M2, T24, T25
   or T27) and 668 integration tests; the review's four tests came after it. Here, with 233 of the 242 —
@@ -70,6 +70,8 @@ budget in CI (`CorpusReadingTests`), so an allocation regression fails the build
 
 ## Next concrete step
 
+First, the roadmap revision of 2026-09-26 and 27 (journal below) merged, and its open points reviewed. Then:
+
 M2 — document validation (`docs/milestones/M2.md`), slice 1 done (#29). In the order its debts impose:
 
 1. **T32** as its own change: a Flate stream that lost its tail, or an LZW stream that stops at a code it
@@ -85,6 +87,47 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-26 and 27 — The roadmap revised from a feature survey
+- **The question.** Asked which PDF features the milestones did not plan, and for a feature table and a
+  comparison that show what the library is for, the answer was a survey: six areas — .NET libraries, other
+  ecosystems, ISO 32000-2, the standards around it, HTML to PDF engines, business and legal workflows — each
+  read and then challenged by a second pass that dropped what the roadmap already planned or what was not
+  true. 307 features survived, in sixteen themes (`docs/research/2026-09-feature-survey.md`). The maintainer
+  answered one question per decision.
+- **What was decided.** The roadmap now has 32 milestones, numbered in the order they are worked, every
+  reference in the repository renumbered and the old numbers mapped at the end of `docs/roadmap.md`. The case
+  file comes before the HTML engine (M6 to M11), Factur-X right after tagging (M14); new milestones for
+  revisions and signature coverage (M4), barcodes (M10), annotations and layers (M11), HTML forms (M17),
+  legal case files (M18), redaction and sanitisation (M19), PDF/A conversion (M21), imaging and OCR (M22),
+  comparison (M24), signing and long-term validation (M26, M27), PDF 2.0 conformance (M28), print production
+  (M29), advanced typesetting (M30) and DOCX to HTML (M31). ADRs 37 to 44 record what is out of scope,
+  resource loading deny-by-default, forward references, the output version, cryptography in satellites,
+  image codecs and scans, Skia in rendering with text analysis ours (amending ADR 5), and structural rules
+  generated from the Arlington model. T06 now covers PDF 2.0 UTF-8 strings; CLAUDE.md adds `CropBox` to the
+  inherited attributes.
+- **Every milestone specified.** Each file in `docs/milestones/` has its slices, its acceptance against named
+  corpus documents, and a "Corpus" section saying what the corpus lacks — identified, none added
+  (`docs/corpus-contributions.md` gathers 183 of them). The writers raised 148 open points, kept unreviewed in
+  `docs/research/2026-09-milestone-open-points.md`; several want a decision: ADR 40 and inputs below PDF 1.7,
+  M3's three design proposals, how non-PDF inputs (images for M7, DOCX for M31) enter the corpus. The
+  session's usage limit stopped the run before its last writers and its review: M23 and M29 to M31 were
+  written without agents and are shorter, and the review was a scripted check — dependencies against the
+  roadmap, links, sections, test names, old numbering — which found nothing but M5's missing section, added.
+  M29's acceptance no longer names veraPDF for PDF/X: it validates PDF/A, PDF/UA and WTPDF only, and choosing
+  a PDF/X referee is M29's first slice.
+- **Feature tables and comparison.** `docs/features/features.json` ties each feature to its milestones and a
+  state; the README's table and a new site page, "Features and comparison", are generated from it, and
+  `FeatureTablesTests` holds them to it and to the roadmap. `comparison.json` describes twenty products —
+  licence, pricing model, runtime, HTML engine, maintenance — and answers twenty capabilities for the eight
+  .NET products most often compared, each cell with its source, each product checked by a second pass.
+- **Comparison benchmarks.** `benchmarks/AdCodicem.Pdf.Benchmarks.Comparison` opens five corpus documents with
+  this library, PdfPig, PDFsharp and iText; the on-demand `Comparison benchmarks` workflow produces the figures
+  the site will publish, none yet. A dry run here showed the allocation gap the design promises — about 0.5 MB
+  to open the thousand-page journal against 6 to 9 MB for the others — and is not a published figure.
+- **Still open.** The review of the 148 open points; the first run of the comparison workflow, and its figures on
+  the site; the corpus gaps, milestone by milestone as each begins.
+
 
 ### 2026-09-26 — The corpus manifest has a JSON schema
 - **Why.** Asked whether a schema was worth having, the answer was yes, in a pull request of its own: the
