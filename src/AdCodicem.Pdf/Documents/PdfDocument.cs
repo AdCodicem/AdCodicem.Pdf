@@ -145,6 +145,19 @@ public sealed class PdfDocument : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets the reader behind the document, for the validation rules that judge the file's own structure — its
+    /// sections, its index as the file wrote it — rather than its objects.
+    /// </summary>
+    internal PdfFileReader Reader
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _reader;
+        }
+    }
+
     /// <summary>Throws if the document was disposed, for an operation that would otherwise fail later.</summary>
     internal void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 

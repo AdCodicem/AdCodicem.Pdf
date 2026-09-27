@@ -12,7 +12,11 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// </remarks>
 internal sealed class PdfXRefTable
 {
-    private readonly Dictionary<int, XRefEntry> _entries = [];
+    private readonly Dictionary<int, XRefEntry> _entries;
+
+    public PdfXRefTable() => _entries = [];
+
+    private PdfXRefTable(Dictionary<int, XRefEntry> entries) => _entries = entries;
 
     /// <summary>Gets the trailer, merged across every section of the chain.</summary>
     public PdfDictionary Trailer { get; } = new();
@@ -40,6 +44,9 @@ internal sealed class PdfXRefTable
 
     /// <summary>Removes every entry.</summary>
     public void Clear() => _entries.Clear();
+
+    /// <summary>Copies the entries, and not the trailer, into a table of their own.</summary>
+    public PdfXRefTable CopyEntries() => new(new Dictionary<int, XRefEntry>(_entries));
 
     /// <summary>Copies trailer keys that are not already known.</summary>
     public void MergeTrailer(PdfDictionary trailer)

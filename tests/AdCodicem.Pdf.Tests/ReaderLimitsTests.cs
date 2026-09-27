@@ -399,7 +399,14 @@ public class ReaderLimitsTests
 
     private static string Hex(string text) => Convert.ToHexString(Encoding.ASCII.GetBytes(text)) + ">";
 
-    private static string IndexState(PdfDocument document) => document.WasRepaired ? "rebuilt" : "as written";
+    /// <summary>
+    /// How the reader came by its index and its catalog: as the file wrote them, the catalog looked for among the
+    /// indexed objects when <c>/Root</c> was out of reach, or the whole index rebuilt by scanning.
+    /// </summary>
+    private static string IndexState(PdfDocument document) =>
+        document.WasRepaired ? "rebuilt"
+        : document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered) ? "catalog recovered"
+        : "as written";
 
     private static int OffsetOf(byte[] file, string text) =>
         Encoding.Latin1.GetString(file).IndexOf(text, StringComparison.Ordinal);
@@ -483,8 +490,8 @@ public class ReaderLimitsTests
 
         private static Case LongSection()
         {
-            // Three hundred entries, 6 KB of table, which a bound of 2 KB cuts before its trailer: the index is
-            // then rebuilt by scanning, the /Root the trailer held being out of reach.
+            // Three hundred entries, 6 KB of table, which a bound of 2 KB cuts before its trailer: the catalog is
+            // then looked for among the entries read, the /Root the trailer held being out of reach.
             var builder = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages);
             for (var number = 3; number < 300; number++)
             {
@@ -538,7 +545,7 @@ public class ReaderLimitsTests
         private static Case LongTrailer()
         {
             // A trailer of 100 KB, whose /Root comes after a long string: past the 64 KB a trailer is read to by
-            // default, the /Root is out of reach and the index is rebuilt to find the catalog.
+            // default, the /Root is out of reach and the catalog is looked for among the indexed objects.
             var written = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).BuildClassic(rootNumber: 1);
             var file = Replace(written, "<< /Size 3 /Root 1 0 R >>", $"<< /Size 3 /Pad ({new string('x', 100_000)}) /Root 1 0 R >>");
 

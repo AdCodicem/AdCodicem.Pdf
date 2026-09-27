@@ -258,6 +258,7 @@
               "syntax.truncated-object",
               "syntax.depth-exceeded",
               "object.redefined",
+              "trailer.root-recovered",
               "filter.failed",
               "filter.unsupported",
               "limit.decoded-stream",
