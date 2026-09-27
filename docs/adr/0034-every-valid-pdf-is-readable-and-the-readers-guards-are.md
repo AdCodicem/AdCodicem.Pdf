@@ -68,7 +68,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
 - **Reaching a guard** keeps what fits within it, as the reader does today, and reports it as a warning
   under a code of its own — `limit.decoded-stream`, `limit.object`, `limit.xref-section-length`,
   `limit.xref-section-count`, `limit.trailer` — whose message names the property that lifts it. What the
-  parser met at the cut is the reader's, not the file's, and is dropped in favour of the guard. An object,
+  parser met at the cut is the reader's, not the file's, and is dropped in favor of the guard. An object,
   a section or a trailer is reported once, however often it is read again; a stream, each time it is decoded
   past the bound, and in its document's diagnostics when the caller supplied none. The code
   `filter.limit-exceeded`, added by T31 and never released, becomes `limit.decoded-stream`.
@@ -102,7 +102,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
   raise; a caller holding untrusted input keeps every protection without knowing it has one.
 - Every bound now needs a decision, recorded where it is declared: an option with its code and its test, or
   an internal constant with the reason no valid file reaches it. The option surface grows with the reader.
-- The defaults are judgements about what is exceptional, and one is already known to be crossed by a real
+- The defaults are judgments about what is exceptional, and one is already known to be crossed by a real
   document: a large-format scan decodes past 256 MB. They can be revised without breaking a caller, who may
   always set them.
 - With `ThrowOnLimit`, any lazy operation — resolving an object, decoding a stream — may throw after `Open`

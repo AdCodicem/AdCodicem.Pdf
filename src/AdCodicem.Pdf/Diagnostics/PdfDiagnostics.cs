@@ -7,7 +7,7 @@ namespace AdCodicem.Pdf.Diagnostics;
 /// </summary>
 /// <remarks>
 /// Diagnostics are returned, not logged: they are part of the result, so they can be inspected,
-/// serialised and asserted on in tests. A malformed file that the reader repaired is a normal outcome,
+/// serialized and asserted on in tests. A malformed file that the reader repaired is a normal outcome,
 /// not an exception — but it is never a silent one.
 /// </remarks>
 public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>

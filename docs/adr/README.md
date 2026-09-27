@@ -22,14 +22,14 @@ A settled decision is not reopened without new evidence — that is what writing
 | [13](0013-lazy-reading-output-as-a-full-rewrite-or-an-incremental-upda.md) | Lazy reading; output as a full rewrite or an incremental update | `D12` |
 | [14](0014-a-tolerant-reader-with-a-diagnostic-report.md) | A tolerant reader with a diagnostic report | `D13` |
 | [15](0015-full-text-extraction-tagged-structure-preferred.md) | Full text extraction, tagged structure preferred | `D14` |
-| [16](0016-rasterisation-as-a-satellite-after-the-foundations.md) | Rasterisation as a satellite, after the foundations | `D15` |
+| [16](0016-rasterization-as-a-satellite-after-the-foundations.md) | Rasterization as a satellite, after the foundations | `D15` |
 | [17](0017-conformance-actively-preserved-plus-a-built-in-validator.md) | Conformance actively preserved, plus a built-in validator | `D16` |
 | [18](0018-signing-space-reserved.md) | Signing: space reserved | `D17` |
 | [19](0019-milestones-are-accepted-on-real-documents.md) | Milestones are accepted on real documents | `D18` |
 | [20](0020-everything-is-written-in-english.md) | Everything is written in English | `D19` |
 | [21](0021-validation-is-a-rule-engine-and-conformance-is-a-profile-of.md) | Validation is a rule engine, and conformance is a profile of it | `D20` |
 | [22](0022-repair-is-driven-by-findings-and-conservative-by-default.md) | Repair is driven by findings, and conservative by default | `D21` |
-| [23](0023-third-party-corpus-documents-are-vendored-only-under-attribu.md) | Third-party corpus documents are vendored only under attribution-only licences | `D22` |
+| [23](0023-third-party-corpus-documents-are-vendored-only-under-attribu.md) | Third-party corpus documents are vendored only under attribution-only licenses | `D22` |
 | [24](0024-package-identifiers-and-a-reserved-prefix.md) | Package identifiers, and a reserved prefix | `D23` |
 | [25](0025-trusted-publishing-rather-than-an-api-key.md) | Trusted publishing rather than an API key | `D24` |
 | [26](0026-test-stack-xunit-v3-awesomeassertions-nsubstitute.md) | Test stack: xUnit v3, AwesomeAssertions, NSubstitute | `D25` |

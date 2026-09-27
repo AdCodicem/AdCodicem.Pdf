@@ -10,7 +10,7 @@ namespace AdCodicem.Pdf.Diagnostics;
 /// </remarks>
 public sealed class PdfLimitExceededException : PdfException
 {
-    /// <summary>Initialises a new instance.</summary>
+    /// <summary>Initializes a new instance.</summary>
     /// <param name="code">The <c>limit.*</c> code of <see cref="PdfDiagnosticCodes"/> the guard reports under.</param>
     /// <param name="limitName">The <see cref="Documents.PdfReaderLimits"/> property that sets the guard.</param>
     /// <param name="limit">The value of that property when the guard was reached.</param>

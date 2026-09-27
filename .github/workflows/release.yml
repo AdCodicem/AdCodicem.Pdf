@@ -35,7 +35,7 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
-  # The nuget.org account that owns the trusted publishing policy. OIDC proves the run is authorised;
+  # The nuget.org account that owns the trusted publishing policy. OIDC proves the run is authorized;
   # this says which account the short-lived key is issued for, which is why NuGet/login requires it even
   # though no credential is involved. It is not one: it is the public owner name already on every page
   # of this repository and on every package it publishes, so it is stated here rather than kept as a

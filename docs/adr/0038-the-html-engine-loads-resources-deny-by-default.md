@@ -4,7 +4,7 @@ Date: 2026-09-26
 
 ## Status
 
-Accepted on 2026-09-26, by the maintainer, before any of the HTML engine is written. It generalises
+Accepted on 2026-09-26, by the maintainer, before any of the HTML engine is written. It generalizes
 [11](0011-fonts-an-explicit-registry-an-embedded-ofl-set-optional-web.md), whose remote web fonts are off by
 default, to every resource an HTML document can name. Begun by M12.1 — the resolver seam and the policy for
 `data:`, declared directories, embedded resources and confined `file:` paths, which `@import` and

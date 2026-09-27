@@ -12,11 +12,11 @@ published bytes, and every expectation.
 
 A file entered the corpus only if it met all four. A file that failed one was rejected, not repaired.
 
-1. **An attribution-only licence that covers this file** (ADR 23): public domain — including United
+1. **An attribution-only license that covers this file** (ADR 23): public domain — including United
    States federal works under 17 U.S.C. 105 —, CC0, CC BY, the Licence Ouverte, the UK Open Government
-   Licence, the EU's reuse decision 2011/833/EU, Japan's Public Data License, MIT, BSD or Apache-2.0.
-   ShareAlike, copyleft, non-commercial, no-derivatives and "no licence stated" were all refused. A code
-   licence on a repository does not cover the bug-report attachments committed into it. A file that fails
+   License, the EU's reuse decision 2011/833/EU, Japan's Public Data License, MIT, BSD or Apache-2.0.
+   ShareAlike, copyleft, non-commercial, no-derivatives and "no license stated" were all refused. A code
+   license on a repository does not cover the bug-report attachments committed into it. A file that fails
    this rule may still be used without being redistributed, in the remote corpus
    ([ADR 32](adr/0032-documents-that-cannot-be-redistributed-are-fetched-on-demand.md)); *In the remote
    corpus* below says which terms that admits.
@@ -25,7 +25,7 @@ A file entered the corpus only if it met all four. A file that failed one was re
    XMP, annotations, form values, XFA packets, signing certificates, embedded files, and the objects of
    superseded revisions that incremental updates keep in the file. A person's name alone is acceptable,
    and so are a Windows user ID in a path and a photograph. Fabricated, fake and specimen data of any kind
-   is fine — John Doe, Contoso, *Entenhausen*, a 555 number. Organisations' addresses and switchboards are
+   is fine — John Doe, Contoso, *Entenhausen*, a 555 number. Organizations' addresses and switchboards are
    fine.
 
    The rule was decided with the maintainer, and relaxed during the search: it began as "no real person's
@@ -63,11 +63,11 @@ fonts when their `fsType` allows embedding.
 ## How the search ran
 
 - **Survey**: some ninety PDF libraries and public corpora, in every language, were examined for test
-  PDFs, the licence that actually covers them, and how provenance is tracked. The findings are below.
+  PDFs, the license that actually covers them, and how provenance is tracked. The findings are below.
 - **Hunt**: 69 candidates were downloaded and inspected — producer chain, cross-reference shape,
   signatures and certificate subjects, form fields, fonts, image filters, extracted text, `qpdf --check`.
 - **Adversarial verification**: 47 shortlisted files went to independent verifiers told to reject on
-  doubt. They re-read the full text of every page and every revision, re-fetched each licence statement,
+  doubt. They re-read the full text of every page and every revision, re-fetched each license statement,
   and re-downloaded each file. 12 were rejected; 4 of those were readmitted after the maintainer's rulings
   on font credits, complete fonts and historical figures; one more was dropped by a final scan of every
   revision's metadata. **38 entered the corpus**, 6.6 MB in all.
@@ -75,8 +75,8 @@ fonts when their `fsType` allows embedding.
   again, and a critic went through the 117 earlier rejections for the ones missed. Two rounds re-downloaded,
   re-screened and re-licensed 70 candidates against the revised rule. **38 more entered**, 6.1 MB, filling
   most of what the first pass had left open.
-- **Third pass, the leads held back by their licence**: that evening, eleven research groups took up
-  the leads this page listed as held back by their licence, and looked for more of their kind. They
+- **Third pass, the leads held back by their license**: that evening, eleven research groups took up
+  the leads this page listed as held back by their license, and looked for more of their kind. They
   examined 113 candidates and recorded 158 further leads they left, each with its reason. Verifiers, again
   told to reject on doubt, upheld 79 of the 80 files proposed, and the integration set aside two more, one
   of which the maintainer then admitted. With the files once refused for size and a PDF/UA brochure
@@ -105,10 +105,10 @@ fonts when their `fsType` allows embedding.
   where qpdf reports damage. In the fourth pass none of the 131 first admitted crashed or hung it either;
   of the 124 kept, it fell short on ten, recorded as unsupported — seven since T21 and T23 were fixed: T21 (one file), T23 (two), T24 (one: a 273 KB table read again each time its
   window grows), a new T25 (a `/Prev` 12 bytes off, dropped without a word), and five where the page tree
-  or the catalogue is wrong and the reader is silent or counts differently from qpdf, until M2. Over the 88
+  or the catalog is wrong and the reader is silent or counts differently from qpdf, until M2. Over the 88
   iPRES files it falls short on 19, all until M2: seven page trees it counts differently from qpdf, four
   faults it reads without a word, six recoveries that differ from qpdf's — in four, the reader rebuilds a
-  sound index to find a catalogue the trailer no longer leads to —, and two references to an object the
+  sound index to find a catalog the trailer no longer leads to —, and two references to an object the
   file lacks, after which it rebuilds its whole index where qpdf takes null (T27).
 
 ## What entered the corpus
@@ -148,12 +148,12 @@ fonts when their `fsType` allows embedding.
 | `pikepdf/handwritten-cyclic-toc.pdf` | W06 | Cyclic destinations, no trailer `/Size`; it crashed pikepdf (issue 677). Unsupported until M2 |
 | `pdf-association/handwritten-type3-recursion.pdf` | W06 | A Type 3 recursion cycle: a denial-of-service probe for invariant 4 |
 | `pdf-association/handwritten-dict-is-stream.pdf` | W06 | A page object given a stream body; qpdf finds no page. Unsupported until M2 |
-| `pdf-association/handwritten-indexed-colour-out-of-range.pdf` | W06 | Indexed colour addressed out of range |
+| `pdf-association/handwritten-indexed-color-out-of-range.pdf` | W06 | Indexed color addressed out of range |
 | `pyhanko/acrobat-reader-signed-twice.pdf` | W05 | Two Acrobat Reader signatures with timestamps, test certificates |
 | `zugferd/mustang-zugferd2-en16931-invoice.pdf` | W07, W12 | ZUGFeRD 2.0 EN 16931, PDF/A-3u, an `/AF` attachment |
 | `zugferd/mustang-zugferd1-basic-invoice.pdf` | W07, W12 | The legacy ZUGFeRD 1.0 namespace and attachment name |
-| `zugferd/fop26-xrechnung-visualisation.pdf` | W04 | Apache FOP 2.6 with base-14 fonts |
-| `docentric/fop-factur-x-visualisation.pdf` | W04, W12 | Apache FOP, a PDF/A-3b claim without the XML attached |
+| `zugferd/fop26-xrechnung-visualization.pdf` | W04 | Apache FOP 2.6 with base-14 fonts |
+| `docentric/fop-factur-x-visualization.pdf` | W04, W12 | Apache FOP, a PDF/A-3b claim without the XML attached |
 | `bfo/bfo-pdfa2b-embedded-pdf.pdf` | W12 | PDF/A-2b carrying another PDF, whose `%%EOF` sits inside a stream |
 
 ### Second pass, under the revised rule
@@ -166,7 +166,7 @@ fonts when their `fsType` allows embedding.
 | `pdf-association/pdflib-pps-kraxi-pdfa2a-pdfua1-invoice.pdf` | W04, W12 | PDFlib's Java invoice, PDF/A-2a and PDF/UA-1, both upheld by veraPDF |
 | `jasper-modular/openpdf-jasperreports-financial-statement.pdf` | W04 | JasperReports 7.0.6 on OpenPDF, fabricated data |
 | `swissqrbill/pdfbox-swiss-qr-bill-a4.pdf` | W04 | A Swiss QR-bill from the SwissQRBill library through PDFBox 3, with SIX's specimen data |
-| `fr-licence-ouverte/fop-dictao-dila-signed-joafe-notice.pdf` | W05 | A Journal officiel notice signed by DILA's Dictao service: SHA-1/RSA, an organisation certificate |
+| `fr-licence-ouverte/fop-dictao-dila-signed-joafe-notice.pdf` | W05 | A Journal officiel notice signed by DILA's Dictao service: SHA-1/RSA, an organization certificate |
 | `lu-legilux/fop22-legilux-memorial-seal-renewed-timestamps.pdf` | W05 | A 2018 qualified seal kept alive by document timestamps added in 2018 and 2020 |
 | `us-federal/xerox-workcentre-5335-ocr-hud-fonsi-linearized.pdf` | W03 | A Xerox copier's own OCR (render mode 3, horizontal scaling up to 2000 %) over a JBIG2 page |
 | `us-federal/xerox-workcentre-5755-ocr-hud-fonsi-mrc.pdf` | W03 | Mixed raster content with the copier's own OCR: a JPEG background, JBIG2 masks, a MediaBox with a negative origin |
@@ -199,18 +199,18 @@ fonts when their `fsType` allows embedding.
 | `pdf-association/handwritten-content-stream-indirect-refs.pdf` | W06 | Indirect references inside a content stream |
 | `pdf-association/handwritten-inline-image-abbreviations.pdf` | W06 | Inline images whose abbreviated and full keys disagree |
 
-### Third pass: the leads held back by their licence
+### Third pass: the leads held back by their license
 
-The third pass went through the leads the first two had held back for their licence, in eleven groups:
+The third pass went through the leads the first two had held back for their license, in eleven groups:
 signatures (pdfcpu's test data, EU DSS's test resources, Foxit's files in pdfium_tests, node-signpdf, the
 BOE's sealed gazette, and a hunt for commercial e-signatures), real invoices and statements, vendors'
 Factur-X and ZUGFeRD samples, the government leads, files that broke pdf.js, PDFBox, PDFium and
 pdfplumber, and the ShareAlike sets. Most of what it found may be used but not redistributed, and joined
 the remote corpus (below). Six files could be committed after all: two that node-signpdf made itself,
-which its MIT licence does cover; the ZUGFeRD corpus maintainer's own factur-x output; two government
-leads whose licence was verified at the source; and, from the hunt, a GSA contract modification completed
+which its MIT license does cover; the ZUGFeRD corpus maintainer's own factur-x output; two government
+leads whose license was verified at the source; and, from the hunt, a GSA contract modification completed
 in DocuSign — the first commercial e-signature the committed corpus holds. All six passed a last,
-independent review of their bytes, licence and personal data. Three files proposed for committing went
+independent review of their bytes, license and personal data. Three files proposed for committing went
 remote instead: the USDA's Hebrew fact sheet, whose banner carries a symbol the USDA reserves; the PDFpen
 file from OCRmyPDF, whose `REUSE.toml` entry the issue record contradicts; and a truncated FEMA form,
 public domain but not the publisher's bytes.
@@ -308,7 +308,7 @@ budgets against every one of them.
 ## What other PDF libraries ship
 
 Almost every PDF library keeps a corpus. Very few could be reused here, and the reason is nearly always
-the same: the files are attachments to bug reports, committed under the repository's code licence by
+the same: the files are attachments to bug reports, committed under the repository's code license by
 someone who did not own them.
 
 | Library or corpus | Test PDFs | What covers the PDFs | Usable here |
@@ -316,7 +316,7 @@ someone who did not own them.
 | veraPDF corpus | ~2,900 | CC BY 4.0; the Isartor folder forbids redistribution | Yes, already vendored; Isartor excluded |
 | BFO PDF/A suite | 34 | CC BY 3.0 | Yes |
 | PDF/UA Reference Suite (PDF Association) | 19 | CC BY 4.0 | Three members committed (2-02, 2-05, 2-10); three remote — 2-06, whose cover photograph is a third party's, and 2-08 and 2-09, publishers' textbook chapters, both over 2 MB as well; 2-01 refused for named people's health data, the papers and presentation for their authors' e-mail addresses |
-| PDF Association SafeDocs artefacts, pdf-differences | ~60 | Apache-2.0, CC BY 4.0 | Yes, the hand-written files; several others name their author |
+| PDF Association SafeDocs artifacts, pdf-differences | ~60 | Apache-2.0, CC BY 4.0 | Yes, the hand-written files; several others name their author |
 | OPF format-corpus | 293 | CC0 for what OPF's contributors made — the Cabinet of Horrors by its own statement, the Save As corpus, the ebooks and the Lorem Ipsum variations by the repository's default; GovDocs1 crawls and JHOVE bug attachments carry only their publishers' terms; the hand-built set is CC BY-SA 4.0 on RADAR | OPF's own files, and the GovDocs1 files that are federal staff's work: 64 committed since the fourth pass, 69 remote. The hand-built set's copies lost bytes to git; its originals are fetched from RADAR instead (ADR 33) |
 | pikepdf | 36 | Per file, in `REUSE.toml` | The CC0 and public-domain files; not the CC BY-SA ones |
 | qpdf | ~720 | Apache-2.0 for the maintainer's own files; nothing for issue attachments | The maintainer's own files |
@@ -326,12 +326,12 @@ someone who did not own them.
 | pdf.js | ~980 committed, 459 linked | Nothing stated; mostly bug attachments | Only the government files its links point to |
 | PDFium, Chromium | ~1,100 | BSD for hand-written `.in` files; nothing for bug files and the Foxit QA suite | Hand-written files only; Foxit files name employees |
 | Apache PDFBox, Apache Tika | ~250 | Nothing for JIRA attachments and GovDocs1 extracts | No |
-| PdfPig, pypdf, pdfminer.six, pdfplumber, camelot, tabula, hayro, pdf-rs, lopdf, pdfcpu, Docnet, endesive, pdfrw | a few to ~250 each | Nothing stated, or "can be distributed freely" without a licence | No |
+| PdfPig, pypdf, pdfminer.six, pdfplumber, camelot, tabula, hayro, pdf-rs, lopdf, pdfcpu, Docnet, endesive, pdfrw | a few to ~250 each | Nothing stated, or "can be distributed freely" without a license | No |
 | Poppler, MuPDF and PyMuPDF, Ghostscript, iText, OpenPDF, EU DSS, HexaPDF, Origami, borb, img2pdf | up to ~7,000 | GPL, AGPL, LGPL or MPL | No |
 | py-pdf/sample-files, PDF Association pdf20examples | ~40 | CC BY-SA 4.0 | No: ShareAlike |
 | Syncfusion samples, UniPDF | — | Commercial terms, or private | No |
 | QuestPDF, ReportLab, WeasyPrint, Xpdf | none | — | — |
-| GovDocs1, SafeDocs CC-MAIN-2021-31, SafeDocs issue-tracker corpus, Common Crawl | millions | None: each file is its publisher's | Only files whose publisher's licence qualifies, found one by one |
+| GovDocs1, SafeDocs CC-MAIN-2021-31, SafeDocs issue-tracker corpus, Common Crawl | millions | None: each file is its publisher's | Only files whose publisher's license qualifies, found one by one |
 | Internet Archive, Wikimedia Commons | millions | Declared per item by uploaders, unverified | With the publisher's original bytes only |
 
 "Usable here" means committable. Since ADR 32, the remote corpus also uses files from pdfcpu, EU DSS,
@@ -341,7 +341,7 @@ OPF format-corpus: see *In the remote corpus*.
 
 ### Practices worth borrowing
 
-- **pikepdf's `REUSE.toml`** gives every test file its own SPDX licence and copyright line, often with a
+- **pikepdf's `REUSE.toml`** gives every test file its own SPDX license and copyright line, often with a
   link to the issue where the owner granted it. It is the only corpus examined whose provenance is
   complete, file by file.
 - **pdf.js** commits a `.link` file holding a URL — often an Internet Archive copy — for files it may not
@@ -365,7 +365,7 @@ corpus the provenance pikepdf has.
 | HUD charge of discrimination (Xerox, the copier's own OCR) | Health data tied to an identifiable complainant |
 | Hetzner invoice (Apache FOP), in the ZUGFeRD corpus | A private customer's home address |
 | GnuAccounting invoice of May 2014 | A sole proprietor's tax number in the attached XML |
-| JasperReports invoice sample (iText 2.1.7) | Third-party template images the author's licence does not cover |
+| JasperReports invoice sample (iText 2.1.7) | Third-party template images the author's license does not cover |
 | National Park Service lesson plan (Canon iR-ADV scan) | The NPS arrowhead is excluded from the Service's public-domain statement |
 | European e-Justice page (iText 5) | The EU reuse decision excludes logos, and the page embeds the portal's |
 | IRS Form 1040 for 1994 (Net Distiller 1.02) | Complete Type 1 fonts whose embedding permission cannot be checked |
@@ -392,7 +392,7 @@ notices whose EUAlbertina fonts are embedded in full under an editable-embedding
 consolidated regulation whose only name is a typeface designer's credit inside a font, and the 1786
 engraving under ImageMagick's false PDF/A claim, whose only names are historical figures.
 
-## Leads for what is still missing, held back by their licence
+## Leads for what is still missing, held back by their license
 
 These files would fill a gap the corpus still has, and are in it neither committed nor remote. They are
 listed so that a later session, or a rights holder asked directly, can reopen them. The third pass worked
@@ -409,9 +409,9 @@ person, and files no one has yet screened or checked — most of them in the bug
 | W06 | The rest of the bug-report files in pdf.js (~980), PDFium, pdfplumber, PDFBox's JIRA downloads, and the SafeDocs issue-tracker corpus (>32,000); nineteen went remote in the third pass | see the survey table above | Attachments, licensed by nobody: the remote corpus can take them, but each needs its own personal-data screen — of the 31 the third pass examined closely, it turned down 10 for personal data and 2 whose damage was made by hand | A later pass. The third pass named reserves: PDFBOX-4490 and PDFBOX-3977, screened and clean; pdf.js `issue5549` and `issue5567` for JPEG 2000, `issue8702` and `issue14814` |
 | W06, W08 | The rest of the files pdf.js links to: US state documents, Canadian forms, forms attached to Bugzilla | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | Terms that are not attribution-only, so remote at best; the third pass took three, and the attached forms are often filled in by real people | A personal-data screen each |
 | W08, W05 | A filled form with Reader usage rights and a signature, in EU DSS's resources (`pades-signed-filled-form.pdf`) | [EU DSS `dss-pades` resources](https://github.com/esig/dss/tree/master/dss-pades/src/test/resources) | LGPL-2.1, so remote at best; its field values were not screened in full | A full screen |
-| W06 | The PDF Association's Brotli prototype, a `/BrotliDecode` filter qpdf does not know, among pdf.js's test files | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | Not a bug-report file, but its licence was not checked | A look at the PDF Association's own repository |
+| W06 | The PDF Association's Brotli prototype, a `/BrotliDecode` filter qpdf does not know, among pdf.js's test files | [pdf.js `test/pdfs`](https://github.com/mozilla/pdf.js/tree/b9d5e4f96c255a35ff3b142b26f6657e17258476/test/pdfs) | Not a bug-report file, but its license was not checked | A look at the PDF Association's own repository |
 
-Two good files first held back for a name rather than a licence — the PDF Association's
+Two good files first held back for a name rather than a license — the PDF Association's
 `CompactedPDFSyntaxTest.pdf` and Docentric's Factur-X EXTENDED sample from Dynamics 365 — entered in the
 second pass, once a name alone no longer disqualified a file.
 
@@ -439,7 +439,7 @@ content streams stop decoding after 18 to 96 bytes. Undoing the damage is a sear
 back 0x1A bytes and single line ends, and the opening of each page and the third page's references read
 with certainty, but no attempt reached a stream's own checksum, and past those openings the
 reconstructions drift into text that cannot be trusted. What reads is clean — screening guidance and
-questions, citations of published authors, the metadata, the annotations, a link to a SAMHSA centre —; the
+questions, citations of published authors, the metadata, the annotations, a link to a SAMHSA center —; the
 rest could not be recovered with certainty and was not screened. The entry publishes nothing from the
 document beyond its publication name. What it adds is a whole file broken by a text-mode transfer, which
 nothing else in the corpus is.
@@ -458,21 +458,21 @@ purposes" only was left out.
 | W03 | A Kodak Capture Desktop scan and an Epson device scan, from OCRmyPDF's test resources | CC BY-SA 4.0 and CC BY-SA 3.0 | One CCITT G4 page each, and structural slips: an outline whose `/First` names a missing object and whose `/Last` points at itself; a Pages node nested in another, `/Rotate` as an indirect object, no `/Info` |
 | W03 | PDF/UA Reference Suite 2-09, a scanned textbook chapter remediated by AbleDocs (10.6 MB) | Over 2 MB, and the pages are a publisher's that the suite's CC BY cannot be shown to cover | A tagged scan under a PDF/UA-1 claim veraPDF upholds: 82 pages whose OCR text is drawn first and the page image painted over it as a pagination artifact, 480 formulas with spoken alt text, JBIG2 without globals, a catalog `/Lang` of `(English)` |
 | W04 | SAP NetWeaver 7.40 form output (pdf.js `bug1727053.pdf`) | A Bugzilla attachment, licensed by nobody | A real statement from an ERP, the one kind of W04 file the committed corpus still lacks |
-| W04 | An SAP NetWeaver 7.40 invoice and an AFP Batch Processor bank statement excerpt, from pdfminer.six | A supplier's and a bank's documents, kept under a code licence that does not cover them | SAP: indirect `/Filter` arrays, ArchiveLink comments inside `/Info`, one logo embedded twice. AFP: bitmap Type 3 fonts with a named encoding and no ToUnicode, later re-saved by an Adobe application |
-| W04, W06 | An Axapta credit note and a Scoro invoice, from PdfPig | Suppliers' documents attached to bug reports; PdfPig's Apache-2.0 covers its code, not them | Axapta's own writer: an `/Info` object without `endobj`, non-embedded Identity-H fonts, a ToUnicode that turns the minus into a soft hyphen. Scoro: a Chromium page re-serialised by qpdf, then an ExifTool update that adds `/Info` and XMP |
+| W04 | An SAP NetWeaver 7.40 invoice and an AFP Batch Processor bank statement excerpt, from pdfminer.six | A supplier's and a bank's documents, kept under a code license that does not cover them | SAP: indirect `/Filter` arrays, ArchiveLink comments inside `/Info`, one logo embedded twice. AFP: bitmap Type 3 fonts with a named encoding and no ToUnicode, later re-saved by an Adobe application |
+| W04, W06 | An Axapta credit note and a Scoro invoice, from PdfPig | Suppliers' documents attached to bug reports; PdfPig's Apache-2.0 covers its code, not them | Axapta's own writer: an `/Info` object without `endobj`, non-embedded Identity-H fonts, a ToUnicode that turns the minus into a soft hyphen. Scoro: a Chromium page re-serialized by qpdf, then an ExifTool update that adds `/Info` and XMP |
 | W04, W06 | A card statement page from PDFlib+PDI on IBM z/OS (pdf.js `issue6605.pdf`) | A bug-report attachment, licensed by nobody | EBCDIC character codes in bitmap Type 3 fonts; a Nitro Pro update leaving 115 orphaned objects |
 | W04 | A central bank's rates bulletin from JasperReports on iText 2.1.0 | The bank's output in an MIT repository whose grant does not reach it; the bank's terms forbid modification and commercial use | A real seven-column table in non-embedded Helvetica |
-| W05 | Three PAdES levels on one Word 2019 page — B-B, B-LT, B-LTA — signed with the Ukrainian DIIA test CA, from pdfcpu's test data | pdfcpu states no licence for its test data | The baseline levels one at a time: CAdES detached, a signature timestamp, a DSS of certificates and OCSP responses without VRI, a document timestamp lacking `/Filter`; every update glued to the `%%EOF` marker |
-| W05 | Avow Systems' certified sample and Tecxoft's signed web capture, from pdfcpu's test data | Vendors' samples, no licence | DocMDP P=1 with FieldMDP and legacy MD5 object digests, embedded CRL and OCSP. The legacy `adbe.x509.rsa_sha1` subfilter: a raw PKCS#1 value, the certificate in `/Cert`, over a three-page Acrobat Web Capture 8.0 capture; unsupported for T24 (see *Traps*) |
-| W05, W02, W12 | The Slovak National Security Authority's supervision scheme under its qualified seal, from EU DSS | LGPL-2.1, and no reuse licence from the authority | A certification signature (DocMDP P=2 with FieldMDP, MD5 references) saved by Acrobat 11 into a linearized file; a PDF/A-1a claim veraPDF rejects |
+| W05 | Three PAdES levels on one Word 2019 page — B-B, B-LT, B-LTA — signed with the Ukrainian DIIA test CA, from pdfcpu's test data | pdfcpu states no license for its test data | The baseline levels one at a time: CAdES detached, a signature timestamp, a DSS of certificates and OCSP responses without VRI, a document timestamp lacking `/Filter`; every update glued to the `%%EOF` marker |
+| W05 | Avow Systems' certified sample and Tecxoft's signed web capture, from pdfcpu's test data | Vendors' samples, no license | DocMDP P=1 with FieldMDP and legacy MD5 object digests, embedded CRL and OCSP. The legacy `adbe.x509.rsa_sha1` subfilter: a raw PKCS#1 value, the certificate in `/Cert`, over a three-page Acrobat Web Capture 8.0 capture; unsupported for T24 (see *Traps*) |
+| W05, W02, W12 | The Slovak National Security Authority's supervision scheme under its qualified seal, from EU DSS | LGPL-2.1, and no reuse license from the authority | A certification signature (DocMDP P=2 with FieldMDP, MD5 references) saved by Acrobat 11 into a linearized file; a PDF/A-1a claim veraPDF rejects |
 | W05 | Two ETSI plugtest files, from Hungary and France, in EU DSS | LGPL-2.1 | Two qualified seals, RSA then ECDSA, each followed by a document timestamp, and a Producer written as a byte-order mark before single-byte text; a PAdES-EPES signature with claimed roles under SHA-512, then two document timestamps |
 | W05 | A Notepad printout re-signed over seven years, from EU DSS | LGPL-2.1 | A 2013 signature, document timestamps in 2013 and 2019, a 2020 signature in RSASSA-PSS: five incremental updates, two `startxref` one byte early |
 | W05, W11 | An Excel sheet with 24 signatures and a document timestamp, from EU DSS | LGPL-2.1 | 48 incremental updates; a DSS of 31 certificates, 29 OCSP responses and 24 VRI entries. Its 10,112-byte `/VRI` dictionary crosses the reader's 8 KB window, which made it unsupported for T23 until that was fixed on 2026-09-26 |
 | W05, W06 | EU DSS's infinite-loop regression file (DSS-1872) | LGPL-2.1, over a chart under CC BY-SA | A signed update nobody can reach: `startxref` past the end of the file, wrong offsets, a signature widget that is its own `/Parent`; it hung xpdf 4.00 |
 | W05, W02 | The Spanish Official State Gazette: a 2015 law, a 2026 royal decree, and a decree re-signed among EU DSS's resources | The BOE's reuse terms add conditions beyond attribution; the third is LGPL-2.1 as well | The gazette's seal — `adbe.pkcs7.sha1`, no signed attributes, an RFC 3161 timestamp as an unsigned attribute — over PDF/A-1a claims veraPDF upholds; the law's 36 structure arrays of about 8.7 KB each cross the reader's 8 KB window, which made it unsupported for T23 until that was fixed on 2026-09-26; the re-signed decree adds a test signature, and veraPDF rejects its claim |
 | W05, W03 | Commercial e-signatures: a DocuSign envelope export (EU DSS), a Maine contract amendment completed in DocuSign, an Adobe Sign test agreement (pdfcpu issue 389), a Yousign-sealed test page (qpdf issue 1469) | LGPL-2.1 over DocuSign's own form; a state work with no reuse statement; two issue attachments | Beside the committed GSA file: DocuSign's seal extended by a DSS and a Czech demo TSA's document timestamp; a Ricoh copier scan on rotated pages sealed through iTextSharp; an ETSI.CAdES.detached certification under AES-128 with an empty user password; a qualified e-seal written by a full rewrite, over read-only fields |
-| W05 | Three Foxit PhantomPDF signatures, from pdfium_tests | Foxit's QA files; the repository's BSD licence covers the PDFium authors' own work | Certification and approval signatures written in a single full save, the byte range covering the whole file, CMS without signed attributes; in one, a BBox of garbage reals inside the signed bytes leaves a string open to the end of the file |
-| W05 | An OpenOffice.org page signed twice by node-signpdf | The base document is W3C's test file, whose licence is not node-signpdf's | Two signatures in two updates, CMS signed attributes not in DER order, `startxref` on the line end before each `xref` |
+| W05 | Three Foxit PhantomPDF signatures, from pdfium_tests | Foxit's QA files; the repository's BSD license covers the PDFium authors' own work | Certification and approval signatures written in a single full save, the byte range covering the whole file, CMS without signed attributes; in one, a BBox of garbage reals inside the signed bytes leaves a string open to the end of the file |
+| W05 | An OpenOffice.org page signed twice by node-signpdf | The base document is W3C's test file, whose license is not node-signpdf's | Two signatures in two updates, CMS signed attributes not in DER order, `startxref` on the line end before each `xref` |
 | W05, W02, W08 | Acrobat 9's signed 3D portfolio, from the Open Preservation Foundation (4.7 MB) | CC0, but over 2 MB | The first PDF portfolio: a collection schema, folders, a Flash navigator and five embedded PDFs, among them an XFA form filled with fictitious values under a certification signature, and U3D and PRC 3D models |
 | W06 | Four files from pdf.js's tests that break structure: an Aspose.CAD drawing written over an older, longer file; a Firefox print through cairo; a Canon scanner page; Aspose.Pdf for Java output | Bug-report files, licensed by nobody | A stale tail whose trailer names `/Info` as `/Root`, so qpdf and poppler find no page; 65,542 objects in one object stream, their indexes wrapped at 16 bits, so poppler loses the catalog; junk after `%%EOF` and a corrupt JPEG under Flate; `/DecodeParms [null]` on every stream and a `/ToUnicode` that is a name |
 | W06 | Five more from pdf.js's tests, on fonts and images: typeset.sh, Oracle Outside In, Esri ArcMap, Acrobat 8 image conversion, iText 5 | Bug-report attachments, licensed by nobody | A FontFile2 whose deflate data is corrupt, and text before any `Tf`; a PDF/A-1a veraPDF passes over a Calibri subset with a broken `loca`; a CFF FDSelect starting at glyph 1; JPEG 2000 with several precincts per level; a CCITT G4 stencil as an explicit `/Mask` |
@@ -483,12 +483,12 @@ purposes" only was left out.
 | W06, W09 | PDFium's `bug_182.pdf`, and two pdfplumber reporters' files | Bug-report files, licensed by nobody | UTF-16BE `/Info` strings opening with a language escape; an inverted MediaBox over a Flate-over-DCT scan; Chinese font names written as GBK bytes in `#xx` escapes |
 | W06 | A PDFpen page of text imprints, from OCRmyPDF | Its contributor agreed to CC BY-SA 4.0; OCRmyPDF's `REUSE.toml` now says MIT, with no MIT grant on record | Seven content streams whose `q` and `Q` fall in different streams; PDFpen's private keys and plist streams |
 | W07 | The FNFE-MPE's official Factur-X example, BASIC WL, in French | All rights reserved | `factur-x.xml` under /AF, a valid PDF/A-3b, written by the factur-x Python library through PyPDF2 |
-| W07 | intarsys's ZUGFeRD 2.0 EN 16931 sample | A vendor's sample, no redistribution licence | A second vendor's toolkit, `zugferd-invoice.xml`, a valid PDF/A-3b |
-| W07, W12 | Two DWC FX Generator invoices through WeasyPrint, among Mustang's tests | "© DWC 2025" on the page, and no redistribution licence | Factur-X EXTENDED in PDF 2.0 under a valid PDF/A-4f claim, two RDF blocks in one XMP packet, `factur-x.xml` listed twice in `/AF`; a sibling whose XMP has no Factur-X schema, under a valid PDF/A-3u claim |
-| W07 | The official Order-X example, COMFORT profile, among Mustang's tests | FNFE-MPE's and FeRD's example, no redistribution licence | A purchase order rather than an invoice: `order-x.xml`, from the factur-x Python library through PyPDF4 |
-| W07, W12 | Four vendors' samples from the ZUGFeRD corpus: intarsys (ZUGFeRD 2.2, XRECHNUNG profile), Symtrax Compleo through iTextSharp 4.1.0 (MINIMUM), 4s4u's additional-data library (ZUGFeRD 1.0 EXTENDED), Konik (ZUGFeRD 1.0 BASIC) | Copies of vendors' packages with no redistribution licence; Konik's is AGPL-3.0 | `xrechnung.xml` attached by an incremental update; a valid PDF/A-3a with a whole Times New Roman embedded; a second XML attached as `/Supplement`, CR-only line ends; one subset tag shared by four font programs |
+| W07 | intarsys's ZUGFeRD 2.0 EN 16931 sample | A vendor's sample, no redistribution license | A second vendor's toolkit, `zugferd-invoice.xml`, a valid PDF/A-3b |
+| W07, W12 | Two DWC FX Generator invoices through WeasyPrint, among Mustang's tests | "© DWC 2025" on the page, and no redistribution license | Factur-X EXTENDED in PDF 2.0 under a valid PDF/A-4f claim, two RDF blocks in one XMP packet, `factur-x.xml` listed twice in `/AF`; a sibling whose XMP has no Factur-X schema, under a valid PDF/A-3u claim |
+| W07 | The official Order-X example, COMFORT profile, among Mustang's tests | FNFE-MPE's and FeRD's example, no redistribution license | A purchase order rather than an invoice: `order-x.xml`, from the factur-x Python library through PyPDF4 |
+| W07, W12 | Four vendors' samples from the ZUGFeRD corpus: intarsys (ZUGFeRD 2.2, XRECHNUNG profile), Symtrax Compleo through iTextSharp 4.1.0 (MINIMUM), 4s4u's additional-data library (ZUGFeRD 1.0 EXTENDED), Konik (ZUGFeRD 1.0 BASIC) | Copies of vendors' packages with no redistribution license; Konik's is AGPL-3.0 | `xrechnung.xml` attached by an incremental update; a valid PDF/A-3a with a whole Times New Roman embedded; a second XML attached as `/Supplement`, CR-only line ends; one subset tag shared by four font programs |
 | W07, W04 | An ERP's test invoice made hybrid by iText Core 9 (quba-viewer issue 143) | An issue attachment, licensed by nobody | A `factur-x.xml` that holds a UBL invoice rather than CII |
-| W08, W05 | Two Canadian dynamic XFA forms, linked by pdf.js: an immigration form (IMM 1344) and a fish export licence application | Government of Canada terms: non-commercial reproduction only | The first dynamic XFA, whose only PDF page is a "please wait" placeholder; AES-128 with an empty user password; a certification with a timestamp, then UR3 usage rights in an update; legacy `/UR` beside `/UR3` |
+| W08, W05 | Two Canadian dynamic XFA forms, linked by pdf.js: an immigration form (IMM 1344) and a fish export license application | Government of Canada terms: non-commercial reproduction only | The first dynamic XFA, whose only PDF page is a "please wait" placeholder; AES-128 with an empty user password; a certification with a timestamp, then UR3 usage rights in an update; legacy `/UR` beside `/UR3` |
 | W09 | WeasyPrint 54.1 Arabic (`py-pdf/sample-files`) | CC BY-SA 4.0 | Arabic shaped into CID subsets by an HTML-to-PDF engine — this project's own kind of producer |
 | W09 | US Census Bureau 2020 language guide in Hebrew | No reuse statement found; possibly a contractor's translation | Hebrew right to left in Adobe Hebrew Type 1 subsets, tagged with `/Lang he` |
 | W09 | USDA Title VI fact sheet in Hebrew, from an Internet Archive capture | The USDA reserves the symbol on its banner; the translation's provenance is unknown | Hebrew from Word through PDFMaker 23, in TrueType and CID subsets beside the Census guide's Type 1; Hebrew outline titles |
@@ -515,16 +515,16 @@ were established the same way, pages by `qpdf --show-npages`.
 |---|---|---|---|
 | The Cabinet of Horrors | 2 | The AVI file is 2,053,552 bytes, just over the threshold; the Web Capture file quotes pages of the OPF website whose posts the folder's CC0 cannot be shown to cover | An uncompressed AVI behind a Screen annotation; Acrobat Web Capture pages appended to a Word document |
 | GovDocs1 error files | 21 | Six are federal work over 2 MB — the VHA coding handbook, the VA Kernel guide (464 pages, a PDF/A-1b claim veraPDF rejects on seven rules), a USGS earthquake map, a USFWS recovery plan, the 1994 Transportation Statistics report whose `/Producer` names Distiller 1.0.2 for Macintosh, a Reclamation EA —; one is a Census Bureau section whose tables are partly copyrighted by the firms that supplied them; thirteen are not shown to be federal staff's work: contractors (ORNL, JPL), PIARC, WARDA, the EU's delegation, IBM, Scholastic, an unnamed consultant; one, the SAMHSA fact sheet, is screened in part | IBM ID Workbench and XPP, Xyvision's Parlance Publisher, WordPerfect through PDFWriter 4, PageMaker 6.5, a `/Prev` 12 bytes off (T25), a whole file broken by a text-mode transfer |
-| JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalogue without `/Type`; a reference to object 0; a file whose tail was lost |
+| JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalog without `/Type`; a reference to object 0; a file whose tail was lost |
 
 Twenty-nine remote entries are recorded as unsupported. From the first three passes: the signed web capture
 (T24), the Axapta credit note and the `#00` form (M2); the topographic map was too, for T28, until ADR 34
 made its decoding bound an option. From the fourth: the
-VHA handbook (T24), IBM's manual (T25), two catalogues without `/Type`, the wPDF chapter's null kid, and two
+VHA handbook (T24), IBM's manual (T25), two catalogs without `/Type`, the wPDF chapter's null kid, and two
 page trees whose missing kids qpdf counts as pages (M2). Five more were, until T21 and T23 were fixed on
 2026-09-26: the hospital-bed guidance (T21), the 25-signature sheet, the 2015 BOE law, the VA Kernel guide
 and a poster (T23). From the iPRES 2017 set, the
-19 described below (M2). The laziness test honours that mark, like the other acceptance tests; it skips encrypted documents visibly
+19 described below (M2). The laziness test honors that mark, like the other acceptance tests; it skips encrypted documents visibly
 until M16 brings decryption, and it no longer applies to a document whose index must be rebuilt, since a
 rebuild scans the file by definition.
 
@@ -533,7 +533,7 @@ rebuild scans the file by definition.
 88 files, fetched out of one BagIt tar — the deposit Michelle Lindlar, Yvonne Tunnat and Carl Wilson made
 on RADAR in 2017 ([doi:10.22000/53](https://doi.org/10.22000/53), CC BY-SA 4.0), whose archive checksum
 RADAR publishes — under ADR 33. Each derives from one page, "Hello PDF-world!" in Times-Italic, with one
-deviation from ISO 32000-1's structure: header 7, catalogue 7, page tree 9, page object 12, page resources
+deviation from ISO 32000-1's structure: header 7, catalog 7, page tree 9, page object 12, page resources
 6, content stream 18, cross-reference table 10, trailer 19. They hold no metadata and no other text, so the
 screen was short. Titles are our own words, from each file's difference with the base page; the entries
 take from the authors' spreadsheet only each case's number, category and JHOVE 1.16.5's 2017 verdict, kept
@@ -545,7 +545,7 @@ before `%PDF` expect the offset adjustment qpdf makes without a word. The edits 
 authors meant: in 45 of the 59 header and body files the table no longer leads to its objects — qpdf
 rebuilds it in 43 and adjusts to a leading space in the other two —, and the operator faults of the
 content-stream cases came with broken lengths or offsets the reader does meet. One
-file holds no catalogue at all, and its entry says so (`catalogRecoverable: false`): the reader must open
+file holds no catalog at all, and its entry says so (`catalogRecoverable: false`): the reader must open
 it and hand back none.
 
 19 are recorded as unsupported, all until M2, which names them in its acceptance conditions:
@@ -558,9 +558,9 @@ it and hand back none.
 - **Six recoveries that differ from qpdf's**: an entry 60 bytes early, which the reader finds nearby where
   qpdf rebuilds; a trailer without `>>`, which the reader reads anyway where qpdf finds no trailer; and four
   trailers whose `/Root` is missing, lacks its `R` or its generation, or points at the content stream —
-  qpdf keeps its sound index and gives up, the reader rebuilds the index to find the catalogue, where it
+  qpdf keeps its sound index and gives up, the reader rebuilds the index to find the catalog, where it
   could look among the indexed objects first.
-- **Two references to an object the file lacks** (T27): a catalogue's `/Pages` and a page's `/Contents`.
+- **Two references to an object the file lacks** (T27): a catalog's `/Pages` and a page's `/Contents`.
   qpdf takes each as null, as the specification says; the reader rebuilds its whole index looking for the
   object and reports a repair on a file qpdf calls clean. The acceptance test found them only once it
   walked each page's contents and resources before judging a clean file's diagnostics, which it now does.
@@ -585,7 +585,7 @@ it and hand back none.
   association's seat is often its founder's house — one gave it as "chez M. et Mme …". An association's
   stated purpose can even describe a named child's illness. Each notice had to be read, not sampled.
 - **A copier's name survives a later save.** Two Xerox scans still carry the copier as Producer after an
-  unidentified tool re-serialised them; the OCR layer is the copier's (its own font names, no Acrobat
+  unidentified tool re-serialized them; the OCR layer is the copier's (its own font names, no Acrobat
   trace), but the bytes are not the copier's alone. The Canon scan NIST published had been re-saved by
   Acrobat too.
 - **Some suites exist only as a zip.** The PDF/UA Reference Suite is published as one 26.8 MB zip, served
@@ -602,7 +602,7 @@ it and hand back none.
   the page tree, holding employees' names and e-mail addresses in hex glyph codes: invisible to pdftotext
   and to a pattern scan, found only by grafting the pages back into the tree and extracting them. In two
   hybrid invoices, the personal data was in the attached XML.
-- **A licence file can be contradicted by the record.** OCRmyPDF's `REUSE.toml` says MIT for its PDFpen
+- **A license file can be contradicted by the record.** OCRmyPDF's `REUSE.toml` says MIT for its PDFpen
   file; the issue thread in which the contributor granted it says CC BY-SA 4.0. The primary record wins.
 - **Truncated files make referees disagree.** On a Word file cut at 1 MiB, qpdf 11.9.1 counts 11 pages,
   PDFium 8, qpdf 12 and PDFBox 4; on a budget book cut at 1 MB, qpdf 11.9.1 finds no `/Root` at all.
@@ -619,7 +619,7 @@ it and hand back none.
   its first window is read again from its start each time the window grows, so a 273 KB table costs
   683 KB of reads at opening.
 - **Git can change a PDF's bytes.** A PDF made only of ASCII, with no NUL in its first 8,000 bytes, looks
-  like text to git, and a repository that normalises line endings strips its carriage returns: the
+  like text to git, and a repository that normalizes line endings strips its carriage returns: the
   `/Length` of each stream and every offset after it go wrong. The OPF's copies of the iPRES 2017 hand-built
   set lost five bytes each that way — all but `minimal_test.pdf`, which had none to lose — which the authors' own archive on RADAR shows; the repository has since
   added `* text=binary` to its `.gitattributes`. Every other OPF file admitted has a NUL early on or still
@@ -660,7 +660,7 @@ it and hand back none.
   `/DecodeParms [null]`, a `/ToUnicode` that is a name, an inverted MediaBox, an indirect `/Rotate`, an
   outline whose `/Last` is itself. The fourth pass adds T25, a `/Prev` 12 bytes off that drops a whole
   section in silence, to be fixed before M2 closes; five files the reader must stop being silent or
-  divided about — two catalogues without `/Type`, a null kid in a page tree, two trees whose kids point at
+  divided about — two catalogs without `/Type`, a null kid in a page tree, two trees whose kids point at
   missing objects —; bytes before `%PDF` (MacBinary, a `data:` URI), a header naming PDF 1.8, a reference
   to object 0, a trailer `/Size` equal to the highest object number, a byte missing after the header, an
   image whose `/Height` contradicts its data, a resource pointing at an object that does not exist; and

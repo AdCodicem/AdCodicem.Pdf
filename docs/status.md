@@ -1,7 +1,7 @@
 # Project status
 
 A living file, updated **at the end of every session**. It describes the real state, not intentions.
-Keep it short: summarise the journal once it passes a dozen entries — the detailed history is in git, not
+Keep it short: summarize the journal once it passes a dozen entries — the detailed history is in git, not
 here.
 
 ## At a glance
@@ -19,7 +19,7 @@ here.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
-  third-party files under attribution-only licences (`docs/corpus-sources.md`). Beside them, a **remote
+  third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), and tested every night by `Remote corpus`: run 5, on
   `main` on 2026-09-26, and run 6, on the ADR 34 branch, both green. All 410 are described in
@@ -99,7 +99,7 @@ not a fault of the file: the rules on it report at most, as information, that it
   reference in the repository renumbered and the old numbers mapped at the end of `docs/roadmap.md`. The case
   file comes before the HTML engine (M6 to M11), Factur-X right after tagging (M14); new milestones for
   revisions and signature coverage (M4), barcodes (M10), annotations and layers (M11), HTML forms (M17),
-  legal case files (M18), redaction and sanitisation (M19), PDF/A conversion (M21), imaging and OCR (M22),
+  legal case files (M18), redaction and sanitization (M19), PDF/A conversion (M21), imaging and OCR (M22),
   comparison (M24), signing and long-term validation (M26, M27), PDF 2.0 conformance (M28), print production
   (M29), advanced typesetting (M30) and DOCX to HTML (M31). ADRs 37 to 44 record what is out of scope,
   resource loading deny-by-default, forward references, the output version, cryptography in satellites,
@@ -119,7 +119,7 @@ not a fault of the file: the rules on it report at most, as information, that it
 - **Feature tables and comparison.** `docs/features/features.json` ties each feature to its milestones and a
   state; the README's table and a new site page, "Features and comparison", are generated from it, and
   `FeatureTablesTests` holds them to it and to the roadmap. `comparison.json` describes twenty products —
-  licence, pricing model, runtime, HTML engine, maintenance — and answers twenty capabilities for the eight
+  license, pricing model, runtime, HTML engine, maintenance — and answers twenty capabilities for the eight
   .NET products most often compared, each cell with its source, each product checked by a second pass.
 - **Comparison benchmarks.** `benchmarks/AdCodicem.Pdf.Benchmarks.Comparison` opens five corpus documents with
   this library, PdfPig, PDFsharp and iText; the on-demand `Comparison benchmarks` workflow produces the figures
@@ -133,7 +133,7 @@ not a fault of the file: the rules on it report at most, as information, that it
 - **Why.** Asked whether a schema was worth having, the answer was yes, in a pull request of its own: the
   manifest is written by hand for every contributed or remote document, and M2's slices now edit its
   `findings` across dozens of entries; the model refused unknown keys inside `expect` and `readerLimits` only,
-  so a misspelt `feature` on an entry dropped the document out of every selection by feature in silence.
+  so a misspelled `feature` on an entry dropped the document out of every selection by feature in silence.
 - **What.** `tests/corpus/manifest.schema.json`, draft 2020-12, named by the manifest's `"$schema"` so that an
   editor applies it as it is typed: no unknown key at any level; the eight use-case categories and four
   origins; the reader's seventeen diagnostic codes and the validation rules as enumerations; a remote
@@ -156,7 +156,7 @@ not a fault of the file: the rules on it report at most, as information, that it
   is no longer required of one; a remote path follows `fetch_remote.py`'s `remote/<source>/<name>.pdf`, and no
   path may pass through `..`; the patterns end with `$(?!\n)` and use explicit ASCII classes, since .NET and
   Python let `$` match before a final line feed and the three engines disagree on `\S`; a raised limit may not
-  sit beside a skip, nor a page count beside an unrecoverable catalogue; `docs/corpus.md`'s example gained
+  sit beside a skip, nor a page count beside an unrecoverable catalog; `docs/corpus.md`'s example gained
   the verdict the schema asks for; and a refused case that failed for a reason other than its own —
   renaming `features` also made a required key go missing — now adds its unknown key beside it. Validation is `JsonSchema.Net` 9.4.0, MIT,
   a dependency of the unit tests only; the framework exports schemas but does not validate against one.
@@ -203,13 +203,13 @@ not a fault of the file: the rules on it report at most, as information, that it
   unsupported ones included, exactly the declared findings, no error on a well-formed file nor on a PDF/A
   failure, the same report twice.
 - **On review.** Four reviewers — correctness, the repository's rules, the tests by mutation, the
-  documentation — and two skeptics on each of their 22 findings. Upheld and fixed: ten behaviours no test
+  documentation — and two skeptics on each of their 22 findings. Upheld and fixed: ten behaviors no test
   held (six mutations checked killed afterwards), M2's account of three iPRES end-of-file cases and of the
   acceptance row the strict one replaced, a stale comment, and this file. Refuted: a roadmap state, two
   tests said to be vacuous, the skipping of unsupported entries. One was real and older than the change:
   a `PdfFileSource` whose `Read` returns short counts misleads the whole reader, and now the rule — **T36**.
 - **Housekeeping.** This file's "At a glance", a week stale, re-checked against GitHub, nuget.org, Scorecard
-  and Codecov, and the journal summarised; T20 closed, T35 opened; the package's description, which promised
+  and Codecov, and the journal summarized; T20 closed, T35 opened; the package's description, which promised
   a writer, now says what it holds.
 - **Measured.** `ValidationBenchmarks`, ShortRun: 94 ns and 232 B for 10 pages, 86 ns and 232 B for 1,000.
   The reader's benchmarks are unchanged: 231 µs and 392.92 KB to index 1,000 pages.
@@ -220,7 +220,7 @@ not a fault of the file: the rules on it report at most, as information, that it
   corpus, intersected with the lines the change adds — it gave the same ten.
 - **One was unreachable, and went**: a cut trailer's re-read tested an offset that is inside the file by
   construction, for any source whose length holds.
-- **The rest were behaviour without a test**, and have one: an LZW stream stopping at a code it has not
+- **The rest were behavior without a test**, and have one: an LZW stream stopping at a code it has not
   defined; an empty stream with a predictor, which must not be taken for rows too long for their data; the
   predictor transform left alone without a predictor; a stream cut with nowhere to report; a guard at the
   most the reader can hold; a chain of lengths running too deep — into an object with no offset (free,
@@ -254,7 +254,7 @@ not a fault of the file: the rules on it report at most, as information, that it
   makes it a `PdfLimitExceededException` instead, carrying the code, the property, its value and the
   offset. A stream read from a document carries that document's guard, so it decodes under its limits
   however long after opening, and reports to the document's diagnostics when its caller passed none.
-- **Details that decide behaviour.** What the parser met where a guard cut an object is the reader's, not
+- **Details that decide behavior.** What the parser met where a guard cut an object is the reader's, not
   the file's, and is dropped for the guard's own report. An object, a section or a trailer is reported once,
   however often it is read again; with `ThrowOnLimit` it throws each time. A rebuild that reaches a guard
   finishes its index before throwing, since a rebuild is never run twice. `PdfDocument.Open` releases a
@@ -266,7 +266,7 @@ not a fault of the file: the rules on it report at most, as information, that it
   all, and one whose `trailer` keyword the maximum cut was taken for a malformed table. A trailer cut by a
   table at its maximum was kept cut, where a smaller window would have re-read it through its own.
 - **The corpus.** A manifest entry may give the limits it is opened with, in `readerLimits`, beside
-  `expect` — a setting, not an observation —, modelled with unknown keys refused. The USGS topographic map
+  `expect` — a setting, not an observation —, modeled with unknown keys refused. The USGS topographic map
   is opened with `maxDecodedStreamLength` at 512 MB and reads whole and clean: object 155 decodes to
   328,608,000 bytes. It loses its unsupported mark, and meets the laziness test for the first time: opening
   reads 83 KB of its 63.1 MB. A negative control on the remote corpus opens every such entry
@@ -277,12 +277,12 @@ not a fault of the file: the rules on it report at most, as information, that it
   message, the offset, and nothing else reported where the parser would have), raised (read whole, nothing
   reported) and thrown (from `Open` or from the later operation, with the exception's four properties);
   a stream decoded without diagnostics; an object read again after the cache let it go; a rebuild that
-  reaches a guard while expanding object streams, and while looking for the catalogue; an object read no
+  reaches a guard while expanding object streams, and while looking for the catalog; an object read no
   further than its bound; the table's keywords and its trailer at the bound; the presets, the refusals and
   the clamp, and an FsCheck property over every `int`. Thirty-five mutations — each report, bound, preset,
   refusal, deferral and fallback — each fail a test; two needed a test of their own (a bound that falls
   where the parser would report a cut, a length stated in kilobytes), and five were rewritten to compile.
-  The catalogue search caught a defect
+  The catalog search caught a defect
   of its own before any commit: `reached ??= FindCatalog()` skipped the search whenever the expansion had
   already reached a guard.
 - **The remote corpus.** Run 6 of `Remote corpus`, dispatched on the branch on 2026-09-26, fetched all 242
@@ -457,7 +457,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
   Pages deployed for the first time; the coverage upload was pointed at the file it was meant to read.
 - **2026-09-22 — the site.** It had never rendered a user page: two MDX loaders compiled each one twice.
   Repaired, with a check of every built page. Versioned documentation (ADR 31). `main` got its ruleset.
-- **2026-09-24 — the corpus from public sources.** Documents screened for licence and personal data, the
+- **2026-09-24 — the corpus from public sources.** Documents screened for license and personal data, the
   rules on names relaxed with the maintainer; a remote corpus for what may be used but not redistributed
   (ADR 32), one manifest for every document, and over 2 MB a document goes remote. T21, T23 and T24 found.
 - **2026-09-25 — more corpus, and fuzzing.** The OPF format-corpus screened file by file: 56 committed, 67
@@ -479,7 +479,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 | T24 | **Opening reads each cross-reference section through a window of up to 64 KB, whatever the section's size.** Bounded, but proportional to the number of sections rather than to their size: opening the 218 KB signed Web Capture file from pdfcpu's test data, which has three sections, reads 117 KB — more than the quarter of the file the laziness test allows. The entry is recorded as unsupported with this reason | M23, with the other budgets: start a section's window small and grow it, as object windows already do — and keep what was read when it grows: the VHA coding handbook from GovDocs1 (2026-09-25) has one 273 KB table, read at 64 KB, then 256 KB, then to its end, 683 KB in all for a 2.2 MB file; also recorded as unsupported |
 | T25 | **A `/Prev` that misses its section drops it in silence.** `PdfFileReader.TryReadXRefChain` returns success as soon as one section was read, so when a later `/Prev` does not land on `xref` or on a cross-reference stream the older section is simply left out, with no rebuild — and with no diagnostic either when the offset falls inside the file; one past its end earns `xref.entry-out-of-range`. Found on IBM's QMF manual from GovDocs1 (remote): `/Prev 1569328` falls 12 bytes past the keyword, and the 4,106 entries of the main table are lost; qpdf reports `xref not found` and rebuilds. Recorded as unsupported with this reason | **Before M2 closes** — a validator cannot report what the reader hides: a synthetic regression test (a `/Prev` a few bytes off, and one pointing nowhere), then report the failed section and search near it or rebuild, as the reader already does for an object a few bytes off |
 | ~~T26~~ | ~~The remote corpus cannot take a file out of an archive, so the one external test suite for M2's structural profile stays out of reach~~ | Done on 2026-09-25: [ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md) accepted and implemented; the 88 files are in the remote corpus, 19 of them recorded as unsupported until M2 and named in its acceptance conditions |
-| T27 | **A reference to an object the file lacks makes the reader rebuild its whole index.** The specification says such a reference is null, and qpdf takes it so; the reader instead scans the file for the missing object — the lazy rebuild meant for an index that lost entries — and reports a repair on a file qpdf calls clean. Found on two iPRES 2017 files (remote): a catalogue whose `/Pages` and a page whose `/Contents` point at object 9, which does not exist. Both are recorded as unsupported with this reason. The acceptance test saw it only once it walked each page's contents and resources before judging a clean file's diagnostics; across the whole corpus, no other document was affected | Before M2 closes, since its acceptance conditions name both files: a synthetic regression test (a sound file with a reference past /Size, and one to a free entry), then rebuild only when the index gives reason to doubt it, and otherwise take the reference as null — a finding for M2, not a repair |
+| T27 | **A reference to an object the file lacks makes the reader rebuild its whole index.** The specification says such a reference is null, and qpdf takes it so; the reader instead scans the file for the missing object — the lazy rebuild meant for an index that lost entries — and reports a repair on a file qpdf calls clean. Found on two iPRES 2017 files (remote): a catalog whose `/Pages` and a page whose `/Contents` point at object 9, which does not exist. Both are recorded as unsupported with this reason. The acceptance test saw it only once it walked each page's contents and resources before judging a clean file's diagnostics; across the whole corpus, no other document was affected | Before M2 closes, since its acceptance conditions name both files: a synthetic regression test (a sound file with a reference past /Size, and one to a free entry), then rebuild only when the index gives reason to doubt it, and otherwise take the reference as null — a finding for M2, not a repair |
 | T28 | **A stream that decodes past about 2 GB cannot be read whole, whatever the options.** A decoded stream is returned as `ReadOnlyMemory<byte>`, which holds at most `Array.MaxLength` bytes. Below that the bound is an option since ADR 34, `PdfReaderLimits.MaxDecodedStreamLength`, 256 MB by default: the USGS topographic map (remote), whose 9,600 × 11,410 RGB image decodes to 328,608,000 bytes, reads whole with `readerLimits` at 512 MB, and the defaults keep its first 256 MB and report `limit.decoded-stream`. Past the ceiling, even `PdfReaderLimits.Unbounded` keeps the first 2 GB and reports the same code. No corpus document reaches it | M23, with the memory budgets: decode such a stream a piece at a time rather than into one array, in native memory if a measurement asks for it (ADR 35) |
 | ~~T29~~ | ~~**A chain of `/Length` references nests object loads as deep as the chain.** Resolving an indirect `/Length` loads that object while the first is being parsed, and a stream whose `/Length` points at a stream whose `/Length` points at another goes one level deeper each time. The cycle guard stops a loop, not a chain: 20,000 such objects overflow the stack and kill the process, which invariant 4 forbids. Older than T23's fix, reproduced on it~~ | Done on 2026-09-26: object loads nest at most 64 deep; the next one reads as null, is not cached, and is reported once as `syntax.depth-exceeded` with its offset. `HostileInputTests` reads a 50,000-level chain |
 | T30 | **A rebuild reads a 64 KB window at every `trailer` keyword.** `ScanForTrailers` parses each occurrence through its own fixed window, so a damaged file made of the keyword costs about 8,000 bytes read per byte of file: 80,000 occurrences (625 KB) open in 0.3 s from a file — linear, but an amplification the file controls It also parses each through that fixed window straight into the document's diagnostics, so a sound trailer longer than 64 KB earns a syntax error the file does not have when a rebuild scans for it. The scan keeps its fixed window whatever `PdfReaderLimits.MaxTrailerLength` says, so raising the option adds no amplification; on opening, a trailer past 64 KB is now reported as `limit.trailer` and read whole under a raised `MaxTrailerLength` (ADR 34) | M23, with the budgets: a small window grown on demand, as objects have, and occurrences inside a stream's data skipped |
@@ -489,7 +489,7 @@ The detail is in git and in the pull requests; what still matters is in the reco
 | T34 | **An object stream whose `/DecodeParms` names an object stored in that same stream reads that object as null, in silence, for good.** Decoding the stream resolves the parameter while the stream is being loaded; `GetObjectStream` marks it as unavailable meanwhile, so the object reads as null, and `GetObject` caches the null with no diagnostic. Any parameter the pipeline reads can do it: `/Predictor`, and `/EarlyChange` for LZW, always; `/Colors`, `/BitsPerComponent` and `/Columns` once there is a predictor above 1. Found by the review of #28's coverage; older than it | M2's object-graph rules: report the self-reference, and do not cache a null the reader produced while an object stream was still being loaded |
 | ~~T11~~ | ~~Publishing is configured but untested~~ | Done, and **observed**: four previews are on nuget.org, pushed through the OIDC exchange. No secret is involved — the account is `NUGET_ACCOUNT` in `release.yml` |
 | ~~T12~~ | ~~GitHub Pages is not enabled, so the site builds but does not publish~~ | Done, and the diagnosis was wrong: Pages was enabled; no deployment had ever been *run*. Dispatched `Documentation` on 2026-09-19, it went green first time, and the site served 44 pages plus the API reference — **served, not rendered**: every user-facing page was broken, which only a look at one would have shown (2026-09-22). The three Pages action bumps of 2026-09-16 are now observed rather than reasoned |
-| T13 | The integration suite has one referee (qpdf). The milestone specifications of 2026-09-26 call on many more, each in a container of its own (ADR 27): poppler (`pdfinfo`, `pdftotext`, `pdfsig`, `pdffonts`, `pdfdetach`, `pdfimages`, `pdftoppm`, `pdftocairo`), pikepdf, pyHanko and veraPDF from M3; pdf.js (pinned `pdfjs-dist` under Node) from M6; Pillow from M7; FreeType, fontTools, the OpenType Sanitizer, Google's `woff2` tools, uharfbuzz and PyMuPDF from M8; MuPDF from M9; zxing-cpp, zbar, libdmtx, GS1's Barcode Syntax Engine, segno and SwissQRBill from M10 | Each milestone brings, pinned, the containers its acceptance names before the first slice that needs them — M3 the first four, since invariant 7 needs veraPDF as soon as anything is written. Closes with M7, whose use of poppler's `pdftoppm` is the first rasterising check, once veraPDF, pdftotext and a rasteriser — what this row first asked for — are in the suite; later milestones add theirs without reopening it. ADR 27 needs no amendment: its list of later referees is an example |
+| T13 | The integration suite has one referee (qpdf). The milestone specifications of 2026-09-26 call on many more, each in a container of its own (ADR 27): poppler (`pdfinfo`, `pdftotext`, `pdfsig`, `pdffonts`, `pdfdetach`, `pdfimages`, `pdftoppm`, `pdftocairo`), pikepdf, pyHanko and veraPDF from M3; pdf.js (pinned `pdfjs-dist` under Node) from M6; Pillow from M7; FreeType, fontTools, the OpenType Sanitizer, Google's `woff2` tools, uharfbuzz and PyMuPDF from M8; MuPDF from M9; zxing-cpp, zbar, libdmtx, GS1's Barcode Syntax Engine, segno and SwissQRBill from M10 | Each milestone brings, pinned, the containers its acceptance names before the first slice that needs them — M3 the first four, since invariant 7 needs veraPDF as soon as anything is written. Closes with M7, whose use of poppler's `pdftoppm` is the first rasterizing check, once veraPDF, pdftotext and a rasterizer — what this row first asked for — are in the suite; later milestones add theirs without reopening it. ADR 27 needs no amendment: its list of later referees is an example |
 | T14 | Codecov is linked and reads 89.13 % on `74ce382`, uploaded tokenless. The Codecov **GitHub App** is not installed, so it comments as `codecov-commenter` rather than `codecov[bot]` and warns on every pull request that uploads and comments are not reliably processed | Install the Codecov GitHub App on the repository |
 | T15 | **The ruleset exists; its missing bypass blocks the stable release.** The "Default" ruleset on `main` (since 2026-09-22) asks for a pull request with one code-owner approval and resolved threads, linear history, CodeQL and 61 % coverage, and is bypassed by administrators only. GitHub Actions is not a bypass actor, so the stable release's push of its `chore(release)` commit will be refused. It names no required status check, so a pull request can merge with CI red if a reviewer approves. Scorecard's Branch-Protection reads 5/10 and Code-Review 0/10, at weight 7.5 each | Before the first stable release: add GitHub Actions as a bypass actor (or have the release open a pull request), and require the CI checks by name |
 | T16 | The API baseline is one version for the whole solution, and `published-baseline.sh` asks nuget.org about `AdCodicem.Pdf` only. A satellite first shipped after a stable release has no package at that version, and its pack — so the whole solution's, previews included — fails with `NU1101` on every run until the logic changes. Harmless while no stable release exists (the baseline is empty). ADR 36 took it out of M2, which ships no package | Before the first satellite ships after a stable release (`.Barcodes` in M10 at the latest): a baseline per package, one pack script shared by both release paths, and CI running it so the failure shows on the pull request |

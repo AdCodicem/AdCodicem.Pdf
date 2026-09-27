@@ -26,7 +26,7 @@ sit outside the business-document target and that no milestone could deliver wit
   loses structure even in the products that sell it, and it is neither generating nor manipulating a PDF.
   Machine uses of a PDF's content are served by M15's Markdown and JSON exports.
 
-The survey also weighed, and the maintainer kept in scope, print production and colour management (M29),
+The survey also weighed, and the maintainer kept in scope, print production and color management (M29),
 vertical CJK, ruby and MathML (M30), and Office to PDF by way of DOCX to HTML (M31).
 
 ## Decision
@@ -34,12 +34,12 @@ vertical CJK, ruby and MathML (M30), and Office to PDF by way of DOCX to HTML (M
 We will not execute or produce active content, and we will not convert PDF to Office formats.
 
 - **Executing JavaScript** — never. Scripts are read, preserved on merge, reported by validation and removed
-  by sanitisation (M19). Form calculations and formats are served without a script engine: the standard
-  Acrobat formats are recognised by pattern (M16), and any other script is reported, never run.
+  by sanitization (M19). Form calculations and formats are served without a script engine: the standard
+  Acrobat formats are recognized by pattern (M16), and any other script is reported, never run.
 - **Dynamic XFA** — detected, reported, and removable (M16); its datasets can be read. It is never rendered
   or flattened.
 - **3D, multimedia and rich media** — read, preserved on merge, kept coherent when pages are removed, and
-  removed by sanitisation. Never authored.
+  removed by sanitization. Never authored.
 - **PDF to DOCX, XLSX, PPTX or HTML reconstruction** — not provided. M15's exports are the machine route.
 
 "Out of scope" never means unreadable: a file carrying any of these is opened, validated and manipulated
@@ -49,7 +49,7 @@ like any other (invariant 12), and whatever the library cannot keep is reported 
 
 - Users who need a script executed or a dynamic XFA form rendered keep Acrobat or a browser engine upstream;
   the documentation says so in its comparison page, under "when to choose something else".
-- The sanitisation categories of M19 and the validation families `action.*` and `hidden.*` become the one
+- The sanitization categories of M19 and the validation families `action.*` and `hidden.*` become the one
   place where active content is dealt with.
 - **Rejected** — embedding a JavaScript engine for form calculations (a sandbox to maintain, and
   non-deterministic output); an XFA layout engine (a second engine for a deprecated format); PDF to Office as

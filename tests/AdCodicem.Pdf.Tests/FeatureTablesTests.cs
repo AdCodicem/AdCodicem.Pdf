@@ -132,11 +132,11 @@ public class FeatureTablesTests
     }
 
     [Fact]
-    public void Every_described_product_has_its_licence_pricing_model_and_sources()
+    public void Every_described_product_has_its_license_pricing_model_and_sources()
     {
         foreach (var product in FeatureTables.LoadComparison().Products.Where(product => product.Id != "adcodicem"))
         {
-            product.Licence.Should().NotBeNullOrWhiteSpace($"'{product.Id}' states its licence");
+            product.License.Should().NotBeNullOrWhiteSpace($"'{product.Id}' states its license");
             product.PricingModel.Should().NotBeNullOrWhiteSpace($"'{product.Id}' states its pricing model");
             product.Sources.Should().NotBeEmpty($"'{product.Id}' cites where its description comes from");
             product.Sources.Should().OnlyContain(url => url.StartsWith("https://", StringComparison.Ordinal), $"'{product.Id}' cites web sources");

@@ -12,7 +12,7 @@ namespace AdCodicem.Pdf.Objects;
 /// </remarks>
 public sealed class PdfString : PdfObject
 {
-    /// <summary>Initialises a string from its raw bytes.</summary>
+    /// <summary>Initializes a string from its raw bytes.</summary>
     /// <param name="bytes">The bytes, already unescaped.</param>
     /// <param name="hexadecimal">Whether the string was written in hexadecimal notation.</param>
     public PdfString(ReadOnlyMemory<byte> bytes, bool hexadecimal = false)

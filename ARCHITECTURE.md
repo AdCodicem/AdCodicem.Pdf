@@ -10,7 +10,7 @@ read first is [`CLAUDE.md`](CLAUDE.md).
 src/
   AdCodicem.Pdf/            the core: object model, reader, writer, pages, fonts. No dependencies at all.
 tests/
-  AdCodicem.Pdf.Tests/              unit tests — our own behaviour
+  AdCodicem.Pdf.Tests/              unit tests — our own behavior
   AdCodicem.Pdf.IntegrationTests/   integration tests — what independent tools say about it, in containers
   AdCodicem.Pdf.TestSupport/        shared fixtures, the corpus manifest reader
   corpus/                           27 real documents from four producers, plus copies damaged on purpose

@@ -46,9 +46,9 @@ need: a fully managed engine whose memory use follows the complexity of a page, 
 | HTML and CSS to PDF with a fully managed engine: no browser, no native PDF engine, no external process | 📅 Planned — M12 |
 | Tagged, accessible PDF: PDF/UA-1 | 📅 Planned — M13 |
 | PDF/A-3 and Factur-X / ZUGFeRD: profile-aware embedding, EN 16931 and French rules, a typed invoice model | 📅 Planned — M14 |
-| True redaction, search-and-redact for personal data, and sanitisation of hidden content | 📅 Planned — M19 |
+| True redaction, search-and-redact for personal data, and sanitization of hidden content | 📅 Planned — M19 |
 | A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one | ✅ Available |
-| MIT licence, no revenue threshold, no per-developer fee | ✅ Available |
+| MIT license, no revenue threshold, no per-developer fee | ✅ Available |
 
 Every feature, planned ones included, and how the library compares with other PDF libraries: [Features and comparison](https://adcodicem.github.io/AdCodicem.Pdf/features), as of 2026-09-26.
 <!-- features:end -->
@@ -71,7 +71,7 @@ validator. Everything else is planned, in the order `docs/roadmap.md` gives.
 | `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the validation engine | Planned, M20 |
 | `AdCodicem.Pdf.Imaging` | Image decoders and lossless encoders for scans | Planned, M22 |
 | `AdCodicem.Pdf.Compare` | Comparison and templates | Planned, M24 |
-| `AdCodicem.Pdf.Rendering` | Rasterisation | Planned, M25 |
+| `AdCodicem.Pdf.Rendering` | Rasterization | Planned, M25 |
 | `AdCodicem.Pdf.Signing` | PAdES signing, long-term signatures, signature validation | Planned, M26 |
 | `AdCodicem.Pdf.Docx` | DOCX to HTML | Planned, M31 |
 
@@ -82,7 +82,7 @@ installable:
 dotnet add package AdCodicem.Pdf --prerelease
 ```
 
-**A preview carries no guarantee.** Its API, its behaviour and any of its features may change or disappear
+**A preview carries no guarantee.** Its API, its behavior and any of its features may change or disappear
 in the next preview, without notice. Compatibility promises hold between stable releases only; if you
 depend on a preview, pin its exact version.
 
@@ -105,6 +105,6 @@ everything else.
 A malformed document that crashes, hangs or exhausts memory is a security issue, not an ordinary bug —
 report it privately, as [SECURITY.md](SECURITY.md) explains.
 
-## Licence
+## License
 
 MIT. Everything in this repository is written in English.

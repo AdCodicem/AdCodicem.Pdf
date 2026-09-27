@@ -64,7 +64,7 @@ meaning.
 | `Warning` | It works, but it is wrong: readers accept it, and a stricter one may not | Accept it, and keep the report |
 | `Information` | Worth knowing; nothing is wrong | Nothing |
 
-The validator errs towards `Warning`: a validator that calls sound files broken teaches its users to ignore
+The validator errs toward `Warning`: a validator that calls sound files broken teaches its users to ignore
 it. Output from Chromium, LibreOffice, Word and the other producers in the test corpus earns no error.
 
 ## Findings are not diagnostics

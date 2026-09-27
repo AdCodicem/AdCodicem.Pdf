@@ -6,7 +6,7 @@ namespace AdCodicem.Pdf.Objects;
 /// <remarks>
 /// Values are deliberately close to the file format: resolving indirect references, decoding streams and
 /// interpreting semantics are the caller's business, so that a document can be manipulated without ever
-/// materialising more of it than the operation needs.
+/// materializing more of it than the operation needs.
 /// </remarks>
 public abstract class PdfObject
 {

@@ -37,7 +37,7 @@ guarantee at all**: its API may change or disappear in the next preview.
   silence.
 - **Made for business documents** — invoices, reports, contracts — and for the case files European
   lawyers assemble: exhibit stamps, Bates numbers, inventories of exhibits, court-portal presets.
-- **MIT.** No copyleft to comply with, no revenue threshold, no per-developer or per-server licence.
+- **MIT.** No copyleft to comply with, no revenue threshold, no per-developer or per-server license.
 
 ## Features
 
@@ -114,7 +114,7 @@ guarantee at all**: its API may change or disappear in the next preview.
 |---|---|
 | Password encryption and decryption, RC4 to AES-256, permissions; AES-GCM read | 📅 Planned — M16 |
 | AcroForms: fill, flatten, create fields; FDF, XFDF and JSON exchange; batch filling | 📅 Planned — M16 |
-| True redaction, search-and-redact for personal data, and sanitisation of hidden content | 📅 Planned — M19 |
+| True redaction, search-and-redact for personal data, and sanitization of hidden content | 📅 Planned — M19 |
 | PAdES signing (B-B, B-T), time stamps, certification, remote signing through the CSC API | 📅 Planned — M26 |
 | Long-term signatures (B-LT, B-LTA) and validation of received signatures against the EU trusted lists | 📅 Planned — M27 |
 
@@ -123,9 +123,9 @@ guarantee at all**: its API may change or disappear in the next preview.
 | Feature | State |
 |---|---|
 | Managed JBIG2, JPEG 2000 and CCITT decoding; an OCR text layer from any engine | 📅 Planned — M22 |
-| Deduplication, recompression, downsampling to a target size, linearisation | 📅 Planned — M23 |
+| Deduplication, recompression, downsampling to a target size, linearization | 📅 Planned — M23 |
 | Pages rendered to images | 📅 Planned — M25 |
-| Print production: PDF/X-4, PDF/VT, CMYK and spot colours | 📅 Planned — M29 |
+| Print production: PDF/X-4, PDF/VT, CMYK and spot colors | 📅 Planned — M29 |
 | Vertical writing, ruby and MathML | 📅 Planned — M30 |
 
 ### Platform
@@ -135,24 +135,24 @@ guarantee at all**: its API may change or disappear in the next preview.
 | A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one | ✅ Available |
 | Native AOT, trimming and browser WebAssembly, verified on every corpus document | 📅 Planned — M23 |
 | A command-line tool, as a dotnet tool and a Native AOT binary | 📅 Planned — M6 |
-| MIT licence, no revenue threshold, no per-developer fee | ✅ Available |
+| MIT license, no revenue threshold, no per-developer fee | ✅ Available |
 
 ## The market at a glance
 
 The products a .NET team usually compares, and a few references from other ecosystems. Pricing models only:
 prices change too often to be worth copying here.
 
-| Product | Stack | Licence | Pricing model | Runs on | HTML to PDF | Status |
+| Product | Stack | License | Pricing model | Runs on | HTML to PDF | Status |
 |---|---|---|---|---|---|---|
 | [AdCodicem.Pdf](https://github.com/AdCodicem/AdCodicem.Pdf) | .NET 10 | MIT | Free | Fully managed; no native binary, browser or external process | Own managed engine (planned, M12) | Active; previews only, before 1.0 |
-| [PDFsharp and MigraDoc](https://www.pdfsharp.com/) | .NET | MIT, or paid attribution-free licence | Free (MIT); paid support plans, attribution-free licence and PsX add-ons on request | Fully managed (Core build); GDI+/WPF builds Windows-only | none | Active (6.2.4 Jan 2026; 7.0 preview Mar 2026) |
-| [QuestPDF](https://www.questpdf.com/) | .NET | Source-available Community or commercial | Free under revenue threshold; else perpetual per-entity licence with annual update renewal | Native Skia and qpdf binaries per platform, via P/Invoke | none | Active (2026.9.1, Sep 2026) |
+| [PDFsharp and MigraDoc](https://www.pdfsharp.com/) | .NET | MIT, or paid attribution-free license | Free (MIT); paid support plans, attribution-free license and PsX add-ons on request | Fully managed (Core build); GDI+/WPF builds Windows-only | none | Active (6.2.4 Jan 2026; 7.0 preview Mar 2026) |
+| [QuestPDF](https://www.questpdf.com/) | .NET | Source-available Community or commercial | Free under revenue threshold; else perpetual per-entity license with annual update renewal | Native Skia and qpdf binaries per platform, via P/Invoke | none | Active (2026.9.1, Sep 2026) |
 | [PdfPig](https://github.com/UglyToad/PdfPig) | .NET | Apache-2.0 | Free, open source | Fully managed; Skia rendering is a separate native add-on | none | Active (0.1.16, Aug 2026; pre-1.0) |
 | [iText 9](https://itextpdf.com/) | .NET, Java | AGPL-3.0 or commercial | Free under AGPL; otherwise an annual subscription by volume, or OEM; some add-ons commercial only | Managed; the OCR add-on is native, rendering an external CLI | Own managed engine (add-on pdfHTML) | Active (9.7.0, Jul 2026) |
 | [Aspose.PDF for .NET](https://products.aspose.com/pdf/net/) | .NET | Proprietary (Aspose EULA) | Perpetual per developer or site with a year of updates; or metered pay-per-use | Managed; System.Drawing.Common, or the .Drawing variant | Own engine (no browser) | Active (26.9.0, Sep 2026) |
-| [Syncfusion PDF Library](https://www.syncfusion.com/document-sdk/net-pdf-library) | .NET | Proprietary EULA; free Community Licence | Per developer per year + annual document-volume tier; free Community Licence | Managed core; bundled Chromium for HTML; native add-ons | Bundled Blink (Chromium 147), separate packages | Active (34.2.9, Sep 2026) |
+| [Syncfusion PDF Library](https://www.syncfusion.com/document-sdk/net-pdf-library) | .NET | Proprietary EULA; free Community License | Per developer per year + annual document-volume tier; free Community License | Managed core; bundled Chromium for HTML; native add-ons | Bundled Blink (Chromium 147), separate packages | Active (34.2.9, Sep 2026) |
 | [IronPDF](https://ironpdf.com/) | .NET | Proprietary commercial (Iron EULA) | Perpetual tiers by devs/locations/projects, 1 yr updates; monthly and enterprise options | Native CEF + PDFium/qpdf binaries, or IronPdfEngine Docker | Chromium (bundled CEF 109; CEF 131 option) | Active (2026.9.2, Sep 2026) |
-| [Apryse SDK](https://apryse.com/) | .NET over a native core | Proprietary (commercial licence key) | Custom quote; modular base package plus add-ons, by volume and deployment; free trial | Native PDFNetC core per platform behind a .NET wrapper | Chromium (separate HTML2PDF module) | Active (12.1.0, Aug 2026) |
+| [Apryse SDK](https://apryse.com/) | .NET over a native core | Proprietary (commercial license key) | Custom quote; modular base package plus add-ons, by volume and deployment; free trial | Native PDFNetC core per platform behind a .NET wrapper | Chromium (separate HTML2PDF module) | Active (12.1.0, Aug 2026) |
 | [Nutrient .NET SDK (GdPicture.NET)](https://www.nutrient.io/sdk/dotnet/) | .NET | Proprietary (GdPicture.NET 14 EULA) | Annual or multiyear subscription, quoted by component and use case; 30-day trial | Managed .NET plus native runtimes; Chrome for HTML | Chromium (external headless Chrome) | Active (14.4.9, Sep 2026) |
 | [Docotic.Pdf](https://bitmiracle.com/pdf-library/) | .NET | Proprietary (commercial) | Perpetual per app, per server or unbound; unlimited developers; 1 year of updates | Managed .NET; HTML add-on drives headless Chrome | Chromium (free HtmlToPdf add-on) | Active (9.9 May 2026; dev builds Sep 2026) |
 | [GemBox.Pdf](https://www.gemboxsoftware.com/pdf) | .NET | Proprietary (GemBox EULA) | Perpetual per-developer tiers, royalty-free; 1 year of updates; free mode (2 pages) | .NET plus SkiaSharp/HarfBuzz native; Chromium for HTML | Chromium (bundled GemBox.Pdf.Html packages) | Active (2026.9.116, Sep 2026) |
@@ -161,10 +161,10 @@ prices change too often to be worth copying here.
 | [Gotenberg](https://gotenberg.dev/) | Go service in Docker | MIT | Free (open source), sponsor-funded; no paid tier | Docker container (Chromium, LibreOffice) over HTTP | Chromium (bundled headless) | Active (8.37.0, Sep 2026) |
 | [Apache PDFBox](https://pdfbox.apache.org/) | Java | Apache-2.0 | Free (open source) | JVM (Java 8+), pure Java | none | Active (3.0.8, Jul 2026) |
 | [qpdf](https://qpdf.readthedocs.io/) | C++ | Apache-2.0 | Free (open source) | Native C++ library and CLI (zlib, libjpeg) | none | Active (12.4.1, Aug 2026) |
-| [MuPDF and PyMuPDF](https://mupdf.com/) | C, with Python and .NET bindings | AGPL-3.0 or commercial (.NET: NC/comm.) | Free under AGPL; commercial licence quoted (OEM per copy, subscription or custom) | Native C library per platform (Python, .NET bindings) | Own engine (CSS2 subset, Story API) | Active (MuPDF 1.28.5, Sep 2026) |
+| [MuPDF and PyMuPDF](https://mupdf.com/) | C, with Python and .NET bindings | AGPL-3.0 or commercial (.NET: NC/comm.) | Free under AGPL; commercial license quoted (OEM per copy, subscription or custom) | Native C library per platform (Python, .NET bindings) | Own engine (CSS2 subset, Story API) | Active (MuPDF 1.28.5, Sep 2026) |
 | [pdfcpu](https://pdfcpu.io/) | Go | Apache-2.0 | Free (open source) | Pure Go (no cgo); Go library or static CLI binary | none | Active (v0.15.0, Aug 2026) |
 | [WeasyPrint](https://weasyprint.org/) | Python | BSD-3-Clause | Free (open source); optional paid professional support | CPython 3.10+ with native Pango, HarfBuzz, Fontconfig | Own engine (Python, no JavaScript) | Active (70.0, Sep 2026) |
-| [Prince](https://www.princexml.com/) | Native binary | Proprietary (YesLogic EULA) | Annual site licence by document type/volume; one-time server/desktop; OEM; free non-comm. | Native binary per platform, run as an external process | Own native engine (optional JavaScript) | Active (Prince 17, Sep 2026) |
+| [Prince](https://www.princexml.com/) | Native binary | Proprietary (YesLogic EULA) | Annual site license by document type/volume; one-time server/desktop; OEM; free non-comm. | Native binary per platform, run as an external process | Own native engine (optional JavaScript) | Active (Prince 17, Sep 2026) |
 
 ## Capabilities of .NET libraries
 
@@ -197,7 +197,7 @@ the end of the page.
 
 On AdCodicem.Pdf's column:
 
-- Managed core: no native binary, browser or external process: The core has no dependency at all. The HTML engine (M12) will use SkiaSharp and HarfBuzzSharp, native libraries, for images and text shaping, and the rasteriser (M25) Skia (ADR 43).
+- Managed core: no native binary, browser or external process: The core has no dependency at all. The HTML engine (M12) will use SkiaSharp and HarfBuzzSharp, native libraries, for images and text shaping, and the rasterizer (M25) Skia (ADR 43).
 - Native AOT, documented: The core is written for Native AOT and trimming (invariant 1); verifying it on every corpus document is M23's.
 - Opens damaged files by rebuilding the index: Every repair is reported as a structured diagnostic.
 - Validation of received signatures: M4, earlier and without cryptography, will report what each signature covers and what changed after it.
@@ -219,7 +219,7 @@ When the HTML engine exists, the same benchmarks will measure it against headles
   targets business documents, and never runs JavaScript
   ([ADR 37](/project/adr/out-of-scope-active-content-and-pdf-to-office)).
 - **You need the features today.** iText, Aspose.PDF, Syncfusion and the others ship now what is planned
-  here; PDFsharp and PdfPig do so under permissive licences.
+  here; PDFsharp and PdfPig do so under permissive licenses.
 - **You need a vendor's support contract.** The commercial libraries sell one; an open-source project does
   not.
 - **You need to run form scripts, render dynamic XFA, or convert PDF to Word.** None of it is planned here
@@ -248,15 +248,15 @@ source that shows it.
 - CSS paged media beyond page size and margins: — No HTML/CSS engine; MigraDoc does headers, footers, page fields and TOC through its own object model ([source](https://docs.pdfsharp.net/PDFsharp/Overview/FAQ.html))
 - Merge, split and reorder pages: ✅ Modify, merge and split existing PDF files: import, insert, move and remove pages ([source](https://docs.pdfsharp.net/PDFsharp/Overview/Features.html))
 - Stamps and watermarks on existing pages: ✅ XGraphics.FromPdfPage with Append/Prepend draws text or images on existing pages; vendor Watermark sample ([source](https://github.com/empira/PDFsharp-samples-1.5/blob/master/samples/core/Watermark/Program.cs))
-- Text extraction: ➕ Core gives only raw content-stream characters via CLexer; PsX Text Extractor (separate licence) does extraction ([source](https://www.pdfsharp.com/Offers))
-- Fill and flatten AcroForms: ➕ Core AcroForm support is limited, with no flatten API; PsX Forms (separate licence) creates and manages forms ([source](https://www.pdfsharp.com/Offers))
+- Text extraction: ➕ Core gives only raw content-stream characters via CLexer; PsX Text Extractor (separate license) does extraction ([source](https://www.pdfsharp.com/Offers))
+- Fill and flatten AcroForms: ➕ Core AcroForm support is limited, with no flatten API; PsX Forms (separate license) creates and manages forms ([source](https://www.pdfsharp.com/Offers))
 - Password encryption, AES-256: ✅ RC4 40/128, AES-128 (default) and AES-256 (PDF 2.0); passwords and permissions ([source](https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Encryption.html))
 - Digital signatures: ◐ Since 6.2.0: adbe.pkcs7.detached CMS signatures with optional RFC 3161 timestamp; no PAdES, no DSS/LTV ([source](https://github.com/empira/PDFsharp/blob/master/src/foundation/src/PDFsharp/src/PdfSharp/Pdf.Signatures/DigitalSignatureHandler.cs))
 - Validation of received signatures: — Signature API only signs (IDigitalSigner, DigitalSignatureHandler); no integrity, chain or revocation checks ([source](https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Signatures.html))
 - PDF/A generation: ◐ 'Very early state': 6.2.4 SetPdfA writes PDF/A-1a for new tagged documents only; 7.0 preview adds PdfAManager ([source](https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Archiving.html))
 - PDF/A validation of any document: — Docs: 'PDFsharp cannot check whether an existing file is PDF/A-conforming'; vendor uses veraPDF ([source](https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Archiving.html))
 - Tagged, accessible PDF (PDF/UA): ✅ PDF/UA-1 via UAManager and StructureBuilder, tagging by hand around XGraphics drawing ([source](https://docs.pdfsharp.net/PDFsharp/Topics/PDF-Features/Accessibility.html))
-- Factur-X and ZUGFeRD: ➕ PsX Factur-X (separate licence, delivered as source): Factur-X/ZUGFeRD e-invoices ([source](https://www.pdfsharp.com/Offers))
+- Factur-X and ZUGFeRD: ➕ PsX Factur-X (separate license, delivered as source): Factur-X/ZUGFeRD e-invoices ([source](https://www.pdfsharp.com/Offers))
 - True redaction: — FAQ: no content-manipulation API beyond low-level CLexer; 7.0 preview only adds a Redact annotation type ([source](https://docs.pdfsharp.net/PDFsharp/Overview/FAQ.html))
 - OCR of scanned pages: — Not in the feature list or the PsX add-ons; the library cannot render pages ([source](https://docs.pdfsharp.net/PDFsharp/Overview/Features.html))
 - Pages rendered to images: — FAQ: 'cannot render PDF files'; the vendor points to GhostScript for page images ([source](https://docs.pdfsharp.net/PDFsharp/Overview/FAQ.html))
@@ -324,7 +324,7 @@ source that shows it.
 - Validation of received signatures: ✅ SignatureValidator arrived in 8.0.5 as experimental and was finalized in 9.0. It checks integrity, the certificate chain up to trust anchors, OCSP/CRL revocation, timestamps and document revisions (MDP). EU trusted lists (LOTL) arrived in 9.3 and non-EU lists in 9.6 ([source](https://api.itextpdf.com/iText/dotnet/9.3.0/namespacei_text_1_1_signatures_1_1_validation.html))
 - PDF/A generation: ✅ PDF/A-1a/1b, 2a/2b/2u, 3a/3b/3u, 4, 4e and 4f, through PdfADocument ([source](https://api.itextpdf.com/iText/dotnet/9.3.0/classi_text_1_1_kernel_1_1_pdf_1_1_pdf_a_conformance.html))
 - PDF/A validation of any document: ◐ Conformance is enforced only on documents written through PdfADocument (created or stamped), which throws PdfAConformanceException on a violation. The vendor says client code is still responsible for full compliance. The docs describe no standalone validator that reports on arbitrary files, including the 9.6 conformance-checking rework ([source](https://api.itextpdf.com/iText/dotnet/9.3.0/classi_text_1_1_pdfa_1_1_pdf_a_document.html))
-- Tagged, accessible PDF (PDF/UA): ✅ PDF/UA-1 and PDF/UA-2, with automated conformance checks at creation (UA-1 since 8.0.4, UA-2 since 9.2). WellTaggedPdfDocument (WTPDF) and colour-contrast checks were added in 9.6 ([source](https://kb.itextpdf.com/itext/release-itext-core-9-2-0))
+- Tagged, accessible PDF (PDF/UA): ✅ PDF/UA-1 and PDF/UA-2, with automated conformance checks at creation (UA-1 since 8.0.4, UA-2 since 9.2). WellTaggedPdfDocument (WTPDF) and color-contrast checks were added in 9.6 ([source](https://kb.itextpdf.com/itext/release-itext-core-9-2-0))
 - Factur-X and ZUGFeRD: ◐ Core gives PDF/A-3 with associated files, but the developer must embed factur-x.xml and add the ZUGFeRD XMP schema by hand, as the vendor article shows. There is no current dedicated add-on: the old pdfInvoice add-on covered ZUGFeRD 1.0 and was last released in 2018, for iText 7.1 ([source](https://itextpdf.com/blog/technical-notes/creating-zugferd-itext))
 - True redaction: ➕ The pdfSweep add-on (AGPL or commercial) removes the underlying text, image and vector content in a region. Regex-based cleanup is also available (RegexBasedCleanupStrategy) ([source](https://itextpdf.com/products/pdf-redaction-pdfsweep))
 - OCR of scanned pages: ➕ The pdfOCR add-on (AGPL or commercial) runs Tesseract 4 (itext.pdfocr.tesseract4: a library that targets net461 only, or an external executable) or ONNX models (PaddleOCR, EasyOCR, docTR) on ONNX Runtime. Output is PDF or PDF/A-3u ([source](https://kb.itextpdf.com/itext/installing-itext-pdfocr-for-net-developers))
@@ -350,7 +350,7 @@ source that shows it.
 - Tagged, accessible PDF (PDF/UA): ✅ PDF/UA-1 only: tagged-PDF API, auto-tagging, and validation with PdfFormat.PDF_UA_1. PdfFormat has no PDF/UA-2 member ([source](https://docs.aspose.com/pdf/net/create-tagged-pdf/))
 - Factur-X and ZUGFeRD: ✅ Built in: attach factur-x.xml via FileSpecification with AFRelationship.Alternative, then convert with PdfFormat.ZUGFeRD to PDF/A-3B. You supply the invoice XML yourself ([source](https://docs.aspose.com/pdf/net/attach-zugferd/))
 - True redaction: ✅ RedactionAnnotation.Redact() flattens the annotation and removes the text and images under it; HiddenDataSanitizer (25.11) removes hidden data ([source](https://reference.aspose.com/pdf/net/aspose.pdf.annotations/redactionannotation/methods/redact))
-- OCR of scanned pages: ➕ OcrTextAbsorber (Aspose.Pdf.Ocr, since 26.6) returns recognised plain text. Since 26.7 it needs the separately installed Aspose.OCR NuGet package, which is based on ONNX Runtime. Alternatively, Document.Convert(CallBackGetHocr) adds hOCR text from an OCR engine you supply ([source](https://releases.aspose.com/pdf/net/release-notes/2026/aspose-pdf-for-net-26-7-release-notes/))
+- OCR of scanned pages: ➕ OcrTextAbsorber (Aspose.Pdf.Ocr, since 26.6) returns recognized plain text. Since 26.7 it needs the separately installed Aspose.OCR NuGet package, which is based on ONNX Runtime. Alternatively, Document.Convert(CallBackGetHocr) adds hOCR text from an OCR engine you supply ([source](https://releases.aspose.com/pdf/net/release-notes/2026/aspose-pdf-for-net-26-7-release-notes/))
 - Pages rendered to images: ✅ PngDevice, JpegDevice, TiffDevice, BmpDevice, GifDevice and EmfDevice; SVG via SvgSaveOptions ([source](https://docs.aspose.com/pdf/net/convert-pdf-to-images-format/))
 - Barcodes and QR codes: ◐ Built in only as BarcodeField.AddBarcode, which draws a Code 128 barcode into a barcode form field and makes it read-only. For other symbologies (QR and the like), the vendor uses the separately licensed Aspose.BarCode to generate an image and insert it ([source](https://reference.aspose.com/pdf/net/aspose.pdf.forms/barcodefield/))
 
@@ -363,7 +363,7 @@ source that shows it.
 - CSS paged media beyond page size and margins: ? Docs cover page size, margins, print media type and API headers/footers; no @page or margin-box support documented ([source](https://help.syncfusion.com/document-processing/pdf/conversions/html-to-pdf/net/features))
 - Merge, split and reorder pages: ✅ Merge, split, import, reorder, remove and rotate pages ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-pages))
 - Stamps and watermarks on existing pages: ✅ Text and image watermarks drawn on existing pages, plus watermark annotations ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-watermarks))
-- Text extraction: ✅ Plain and layout-preserving extraction; lines, words and glyphs with bounds, font and colour ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-text-extraction))
+- Text extraction: ✅ Plain and layout-preserving extraction; lines, words and glyphs with bounds, font and color ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-text-extraction))
 - Fill and flatten AcroForms: ✅ Create, fill and flatten AcroForm fields; fills XFA through the AcroForm API (EnableXfaFormFill) ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-forms))
 - Password encryption, AES-256: ✅ RC4 40/128, AES 128/256, and AES-GCM 256 (PDF 2.0 only); passwords and permissions ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-security))
 - Digital signatures: ✅ CAdES/PAdES signatures, timestamps, LTV (DSS) and PAdES B-LTA archive timestamps; external/HSM signing ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-digitalsignature))
@@ -372,9 +372,9 @@ source that shows it.
 - PDF/A validation of any document: — Only reads the declared Conformance level; 2021 validation feature request still undelivered ([source](https://www.syncfusion.com/feedback/22470/support-for-validate-the-pdf-standard-conformance-documents))
 - Tagged, accessible PDF (PDF/UA): ✅ Tagged PDF stated PDF/UA-1 compliant, plus PDF/UA-2 and WTPDF; auto-tagging (alt text still manual) ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-tagged-pdf))
 - Factur-X and ZUGFeRD: ✅ ZUGFeRD 1.0, 2.0 and Factur-X profiles (to EN16931, XRechnung) on PDF/A-3b; caller supplies the XML ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-zugferd-invoice))
-- True redaction: ➕ True removal of text and graphics; existing PDFs on .NET Core need Syncfusion.Pdf.Imaging.Net.Core (same licence) ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-redaction))
-- OCR of scanned pages: ➕ Syncfusion.PDF.OCR.Net.Core: Tesseract and Leptonica native binaries, same Document SDK licence ([source](https://www.nuget.org/packages/Syncfusion.PDF.OCR.Net.Core))
-- Pages rendered to images: ➕ Syncfusion.PdfToImageConverter.Net.Core: native PDFium plus SkiaSharp, same licence ([source](https://www.nuget.org/packages/Syncfusion.PdfToImageConverter.Net.Core))
+- True redaction: ➕ True removal of text and graphics; existing PDFs on .NET Core need Syncfusion.Pdf.Imaging.Net.Core (same license) ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-redaction))
+- OCR of scanned pages: ➕ Syncfusion.PDF.OCR.Net.Core: Tesseract and Leptonica native binaries, same Document SDK license ([source](https://www.nuget.org/packages/Syncfusion.PDF.OCR.Net.Core))
+- Pages rendered to images: ➕ Syncfusion.PdfToImageConverter.Net.Core: native PDFium plus SkiaSharp, same license ([source](https://www.nuget.org/packages/Syncfusion.PdfToImageConverter.Net.Core))
 - Barcodes and QR codes: ✅ Built in: Code 11/32/39/93/128, Codabar, EAN-8/13, UPC, QR, Data Matrix, PDF417 ([source](https://help.syncfusion.com/document-processing/pdf/pdf-library/net/working-with-barcode))
 
 **IronPDF** — Pixel-faithful Chromium HTML/Razor to PDF from .NET, with a broad commercial API for editing, signing, PDF/A and PDF/UA. Sources: [1](https://www.nuget.org/packages/IronPdf), [2](https://ironpdf.com/licensing/), [3](https://ironpdf.com/features/), [4](https://ironpdf.com/product-updates/changelog/).
@@ -383,7 +383,7 @@ source that shows it.
 - Native AOT, documented: — Vendor's .NET 8 article lists IronPDF as not Native AOT compatible because it embeds the Chromium runtime ([source](https://ironsoftware.com/suite/blog/comparison/dotnet-8-pdf-generation-library/))
 - Opens damaged files by rebuilding the index: — No repair API; vendor troubleshooting says IronPDF cannot parse a corrupted PDF ([source](https://ironpdf.com/troubleshooting/ironpdf-can-not-open-parse-a-specific-pdf-file/))
 - HTML and CSS to PDF: ✅ Bundled Chromium (CEF 109; CEF 131 in IronPdf.UpdatedChrome): HTML, files, URLs, Razor/CSHTML, JavaScript ([source](https://ironpdf.com/troubleshooting/updated-chrome-rendering/))
-- CSS paged media beyond page size and margins: ◐ @page size/margins honoured; running headers and page numbers via HtmlHeaderFooter API; margin boxes undocumented ([source](https://ironpdf.com/troubleshooting/override-css-page-rules-renderingoptions/))
+- CSS paged media beyond page size and margins: ◐ @page size/margins honored; running headers and page numbers via HtmlHeaderFooter API; margin boxes undocumented ([source](https://ironpdf.com/troubleshooting/override-css-page-rules-renderingoptions/))
 - Merge, split and reorder pages: ✅ Merge, AppendPdf/PrependPdf/InsertPdf, CopyPages, RemovePages and split ([source](https://ironpdf.com/how-to/merge-or-split-pdfs/))
 - Stamps and watermarks on existing pages: ✅ TextStamper, ImageStamper, HtmlStamper, BarcodeStamper and ApplyWatermark on existing pages ([source](https://ironpdf.com/how-to/stamp-text-image/))
 - Text extraction: ✅ ExtractAllText and ExtractTextFromPage(s); images too; JSON export since 2025.12.2 ([source](https://ironpdf.com/how-to/extract-text-and-images/))
@@ -437,11 +437,11 @@ source that shows it.
 
 **Apache PDFBox** — Mature open-source Java library to read, edit, sign and render PDFs, with Preflight for PDF/A-1b validation. Sources: [1](https://pdfbox.apache.org/), [2](https://repo1.maven.org/maven2/org/apache/pdfbox/pdfbox/maven-metadata.xml).
 
-**qpdf** — Structural PDF transformation: linearisation, encryption, merge and split, repair, and JSON inspection of PDF internals. Sources: [1](https://qpdf.readthedocs.io/en/stable/release-notes.html), [2](https://qpdf.readthedocs.io/en/stable/license.html), [3](https://qpdf.readthedocs.io/en/stable/installation.html).
+**qpdf** — Structural PDF transformation: linearization, encryption, merge and split, repair, and JSON inspection of PDF internals. Sources: [1](https://qpdf.readthedocs.io/en/stable/release-notes.html), [2](https://qpdf.readthedocs.io/en/stable/license.html), [3](https://qpdf.readthedocs.io/en/stable/installation.html).
 
 **MuPDF and PyMuPDF** — Fast rendering and text extraction, with a light HTML/CSS layout engine and bindings for Python and .NET. Sources: [1](https://artifex.com/licensing), [2](https://mupdf.com/releases/history), [3](https://www.nuget.org/packages/MuPDF.NET).
 
-**pdfcpu** — Pure-Go PDF processing: validate, merge, split, encrypt, stamp and optimise, as a library or a static CLI. Sources: [1](https://github.com/pdfcpu/pdfcpu), [2](https://pkg.go.dev/github.com/pdfcpu/pdfcpu).
+**pdfcpu** — Pure-Go PDF processing: validate, merge, split, encrypt, stamp and optimize, as a library or a static CLI. Sources: [1](https://github.com/pdfcpu/pdfcpu), [2](https://pkg.go.dev/github.com/pdfcpu/pdfcpu).
 
 **WeasyPrint** — Browser-free HTML/CSS paged-media to PDF engine in Python, with PDF/A and PDF/UA output variants. Sources: [1](https://pypi.org/project/weasyprint/), [2](https://doc.courtbouillon.org/weasyprint/stable/changelog.html), [3](https://github.com/Kozea/WeasyPrint/blob/main/LICENSE).
 

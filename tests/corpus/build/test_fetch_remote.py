@@ -113,7 +113,7 @@ class FetchRemoteTests(unittest.TestCase):
         source = {"url": url, "sha256": sha(data), "bytes": len(data)}
         if archive is not None:
             source["archive"] = archive
-        return {"file": f"remote/test/{name}.pdf", "origin": "remote", "licence": "test", "source": source,
+        return {"file": f"remote/test/{name}.pdf", "origin": "remote", "license": "test", "source": source,
                 "expect": {}}
 
     def archived(self, names: list[str], tar: bytes, path: str = "/bag.tar") -> list[dict]:

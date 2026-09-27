@@ -39,7 +39,7 @@
         "useCase",
         "producer",
         "origin",
-        "licence",
+        "license",
         "features",
         "expect"
       ],
@@ -101,7 +101,7 @@
             "remote"
           ]
         },
-        "licence": {
+        "license": {
           "type": "string",
           "minLength": 1,
           "description": "Under what terms the document is used; for a remote one, why it is remote rather than vendored."
@@ -240,7 +240,7 @@
         },
         "catalogRecoverable": {
           "const": false,
-          "description": "Only for a file with no catalogue at all, which the reader must open and hand back none; such a file has no page count to expect. Every other entry leaves the field out."
+          "description": "Only for a file with no catalog at all, which the reader must open and hand back none; such a file has no page count to expect. Every other entry leaves the field out."
         },
         "requiredDiagnostics": {
           "type": "array",

@@ -47,7 +47,7 @@ public sealed class PdfReal : PdfObject
     /// <summary>The real zero.</summary>
     public static readonly PdfReal Zero = new(0d);
 
-    /// <summary>Initialises a new real with the given value.</summary>
+    /// <summary>Initializes a new real with the given value.</summary>
     public PdfReal(double value) => Value = value;
 
     /// <summary>Gets the value.</summary>

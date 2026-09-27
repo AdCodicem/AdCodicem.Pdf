@@ -8,7 +8,7 @@ A milestone is not a session: the large ones span several, and a milestone close
 criteria and its **acceptance conditions on the corpus** are verified by tests — not when the code exists.
 The acceptance rules are in `docs/corpus.md`.
 
-Indicative size: **S** ≈ one session, **M** ≈ two or three, **L** ≈ a handful, **XL** ≈ a programme of work
+Indicative size: **S** ≈ one session, **M** ≈ two or three, **L** ≈ a handful, **XL** ≈ a program of work
 to be split into sub-milestones.
 
 Milestones are **numbered in the order they are worked**, since the revision of 2026-09-26 that followed the
@@ -37,13 +37,13 @@ pull requests use is at the end of this file. What the library deliberately does
 | M16 | Security and forms | L | M3, M11, M15 | to do |
 | M17 | HTML forms | S | M12, M13, M14, M16 | to do |
 | M18 | Legal case files | L | M7, M9, M12, M14, M15, M16 | to do |
-| M19 | Redaction and sanitisation | L | M14, M15, M16 | to do |
+| M19 | Redaction and sanitization | L | M14, M15, M16 | to do |
 | M20 | PDF/A levels and conformance profiles | L | M2, M13, M14, M15 | to do |
 | M21 | Converting received documents to PDF/A | L | M5, M11, M19, M20 | to do |
 | M22 | Imaging and OCR | XL | M8, M15 | to do |
-| M23 | Optimisation, performance, hardening | L | M12, M15, M22 | to do |
+| M23 | Optimization, performance, hardening | L | M12, M15, M22 | to do |
 | M24 | Comparison and templates | M | M14, M15, M16, M19, M22 | to do |
-| M25 | Rasterisation | L | M15, M22 | to do |
+| M25 | Rasterization | L | M15, M22 | to do |
 | M26 | Signing | L | M4, M16 | to do |
 | M27 | Long-term signatures and signature validation | XL | M26 | to do |
 | M28 | PDF 2.0 conformance: PDF/UA-2, WTPDF, PDF/A-4 | L | M3, M13, M17, M20 | to do |
@@ -95,7 +95,7 @@ streams, the `/Prev` chain and hybrid-reference files; lazy resolution with a bo
 scanning when the index is wrong or absent; `PdfDiagnostics`; the corpus harness itself.
 
 **Acceptance**
-- Every document in the corpus opens, and its page count and catalogue match the manifest.
+- Every document in the corpus opens, and its page count and catalog match the manifest.
 - Each `damaged` document opens with exactly the diagnostics its manifest declares — no more, no fewer.
 - No document, hostile ones included, produces an untyped exception, unbounded recursion, or an allocation
   the file chose; each stays inside a per-document time budget.
@@ -110,7 +110,7 @@ is wrong with it — separately from whether it could be read at all.
 
 **Deliverables**: in the core, under `AdCodicem.Pdf.Validation` (ADR 36), a rule engine (`IValidationRule`,
 `ValidationProfile`, `PdfValidator`) whose findings carry a stable rule identifier, a severity, the object
-they concern and a remedy hint; a `PdfValidationReport` that serialises; and the **structural profile** —
+they concern and a remedy hint; a `PdfValidationReport` that serializes; and the **structural profile** —
 file structure, object graph integrity, page tree consistency, stream integrity, font embedding, resource
 resolution, metadata coherence, annotation and destination targets. The object-shape rules — the keys each
 dictionary type requires, their types, the keys a version deprecates — are generated at build time from the
@@ -186,8 +186,8 @@ rules, as `docs/status.md` plans; should it still be open, it is M4's first slic
 **Deliverables**: `PdfRepair` in the core, driven by the reader's diagnostics and the M2 findings, with
 each remedy attached to the finding that justified it: rebuild the index, recompute stream lengths, drop
 or reconstruct unparseable objects, re-derive an inconsistent page tree, re-link orphaned pages, remove
-references that point nowhere, normalise the trailer. Two modes: **conservative**, which changes only what
-is broken and writes an incremental update, and **rebuild**, which normalises the whole file. A
+references that point nowhere, normalize the trailer. Two modes: **conservative**, which changes only what
+is broken and writes an incremental update, and **rebuild**, which normalizes the whole file. A
 `PdfRepairReport` says what was found, what was done, and what could not be saved.
 
 Conformance remediation — embedding missing fonts, adding metadata — is **not** repair; it belongs to M21.
@@ -210,7 +210,7 @@ losing nothing on the way.
 **Deliverables**: the page tree with inherited attributes (`Resources`, `MediaBox`, `CropBox`, `Rotate`);
 `PdfPageCollection` (insert, remove, reorder, rotate, extract); cross-document deep copy with resource
 deduplication; a merge that preserves bookmarks, links, annotations and attachments **and** every
-catalogue structure a merge can lose: page labels (read, written, remapped when pages move), the name
+catalog structure a merge can lose: page labels (read, written, remapped when pages move), the name
 trees and `/Dests` with key renaming, `/AcroForm` fields with collision-safe renaming of fully qualified
 names, `/OCProperties`, `/Extensions`, output intents, viewer preferences, the open action, and the logical
 structure tree, recombined as ADR 17 decided; an attachments and associated-files API (document, page and
@@ -248,7 +248,7 @@ received portfolio unpacked into one paginated, bookmarked volume, a certified m
 its original attached (`AFRelationship` `/Source`) and reported. The corpus manifest admits inputs other than
 PDF, once, for every milestone that needs them — the images here, the CII, UBL and XRechnung XML of M14, the
 FDF and XFDF of M16, the EML and MSG of M18, the DOCX of M31: a `format` field, `pdf` by default, on which the
-PDF acceptance tests filter, and an expectation block per format; one provenance and licence rule, and one
+PDF acceptance tests filter, and an expectation block per format; one provenance and license rule, and one
 remote fetcher, for all.
 
 **Acceptance**
@@ -269,7 +269,7 @@ subsetting; Type0/CIDFontType2 embedding with `ToUnicode`; a font registry with 
 points no font covers; WOFF and WOFF2 decoding, bounded (ADR 34); the metrics of the standard 14 fonts;
 content stream operators; the OFL font set (T04) — Liberation Sans, Serif and Mono as WOFF2 in the data-only
 `AdCodicem.Pdf.Fonts` satellite, and Liberation Sans regular in the core, so that the core alone can stamp a
-PDF/A document — confirmed by an ADR with the measured sizes and the licence checks.
+PDF/A document — confirmed by an ADR with the measured sizes and the license checks.
 
 **Acceptance**
 - A generated document containing accented French text, typographic ligatures, a CJK sample and a Cyrillic
@@ -286,9 +286,9 @@ fact, N-up and imposition, resource dictionary merging without name collisions; 
 "Pièce n° 2.1", date; hierarchical numbering, per-piece page numbering, separator pages); **Bates
 numbering** across a set, with a document-to-range map and idempotent update or removal of our own stamps;
 every stamp written as an `/Artifact` of type `/Pagination` — subtype `Header`, `Footer` or `Watermark` in 1.7
-output, `PageNum` and `Bates` added in 2.0 — so that a tagged or PDF/UA input stays so; page normalisation —
+output, `PageNum` and `Bates` added in 2.0 — so that a tagged or PDF/UA input stays so; page normalization —
 fit to A4, set the page boxes, crop, flatten `/Rotate` with annotations and links transformed alike. The
-command-line tool gains `stamp`, `bates`, `normalise`.
+command-line tool gains `stamp`, `bates`, `normalize`.
 
 **Acceptance**
 - Stamping every corpus document changes only the stamped pages: in an incremental update the original bytes
@@ -313,7 +313,7 @@ one for the HTML engine (M12.5); alternative text carrying the payload once tagg
 
 **Acceptance**
 - Every code generated from a reference set of payloads is read back to the same payload by an independent
-  decoder (ZXing, in a container) from the rasterised page.
+  decoder (ZXing, in a container) from the rasterized page.
 - A Swiss QR-bill passes SwissQRBill's validator in CI, and the variant set passes SIX's validation portal,
   submitted by hand once per guideline version and recorded in `status.md`; an EPC QR is read with the exact
   payload by two independent decoders (zxing-cpp and zbar) at 150 and 300 dpi, equal byte for byte to the
@@ -325,14 +325,14 @@ one for the HTML engine (M12.5); alternative text carrying the payload once tagg
 **Goal**: review, freeze and layer a received document.
 **Deliverables**: markup annotation authoring — highlight, underline, strike-out and squiggly from quads,
 notes with replies, free text, shapes, ink, stamps ("RECEIVED", "PAID"), caret — and removal by subtype or
-author; appearance streams generated for every subtype; selective flattening that honours `/F` flags and
+author; appearance streams generated for every subtype; selective flattening that honors `/F` flags and
 `/OC`; link annotations on existing pages; optional content read, created, merged (M6), flattened and
 removed, and print-only stamps ("COPY").
 
 **Acceptance**
-- Every annotation we create displays identically in pdf.js and in the rasteriser referee, and survives a
+- Every annotation we create displays identically in pdf.js and in the rasterizer referee, and survives a
   round trip through qpdf.
-- Flattening the annotated corpus documents keeps their appearance, verified by rasterised comparison, and
+- Flattening the annotated corpus documents keeps their appearance, verified by rasterized comparison, and
   removes the annotations.
 - A print-only layer is visible when printing and hidden on screen in an external renderer.
 
@@ -340,7 +340,7 @@ removed, and print-only stamps ("COPY").
 
 **Goal**: the original promise. **XL — split into sub-milestones:**
 
-- **M12.1** — CSS engine: tokeniser, selectors, cascade, inheritance, typed computed values, default
+- **M12.1** — CSS engine: tokenizer, selectors, cascade, inheritance, typed computed values, default
   stylesheet, and a **declared CSS level** — custom properties, `calc()` and its relatives, cascade layers,
   nesting, `:is()`, `:where()`, `:has()`, `@media print`, `@supports`, modern units — with a diagnostic for
   anything outside it.
@@ -382,7 +382,7 @@ removed, and print-only stamps ("COPY").
 
 ## M13 — Tagged structure and accessibility
 
-**Goal**: produce PDFs that are genuinely accessible, not merely labelled as such.
+**Goal**: produce PDFs that are genuinely accessible, not merely labeled as such.
 **Deliverables**: the full logical structure tree, marked content and the parent tree, alternative text,
 language, reading order, artifacts for decorative elements, tagged tables, notes and generated content;
 PDF/UA-1 as the target (ADR 40 keeps PDF/UA-2 for M28); author overrides from CSS — tag type, role map,
@@ -419,10 +419,10 @@ XRechnung invoice.
 **Deliverables**: a content stream interpreter (graphics state, text, positions); positioned glyphs with
 font and size, read from TrueType, OpenType, Type 1, bare CFF and Type 3 fonts; grouping into words, lines,
 blocks and columns; table detection with a confidence score; the tagged structure preferred where present;
-hidden layers honoured; extraction of images, metadata, bookmarks and attachments; **text search** with
+hidden layers honored; extraction of images, metadata, bookmarks and attachments; **text search** with
 positions (literal, regular expression under a timeout, folding case, diacritics and ligatures, across
 hyphenated line breaks); **exports** to Markdown, JSON, ALTO and hOCR, chunked with page, page-label and
-Bates anchors; a feature inventory of a document (fonts, images and their resolution, colour spaces,
+Bates anchors; a feature inventory of a document (fonts, images and their resolution, color spaces,
 annotations, forms, signatures, attachments, layers, conformance claims, active content, space by
 category); in `AdCodicem.Pdf.FacturX`, the check that a received Factur-X or ZUGFeRD hybrid's visible invoice
 number, dates and totals match its embedded XML, M14's visible-consistency matcher run over this milestone's
@@ -446,10 +446,10 @@ search. The command-line tool gains `text`, `markdown`, `search`, `inventory`.
 AES wherever the platform lacks them (ADR 41); AES-GCM and the integrity MAC read (ISO/TS 32003 and 32004);
 crypt-filter options on write (attachments only, clear metadata); the public-key security handler detected
 and reported under a stable code, its decryption in the signing satellite (ADR 41); unencrypted wrapper
-documents recognised; AcroForms — reading, filling, flattening, field appearances, a **field creation API**
+documents recognized; AcroForms — reading, filling, flattening, field appearances, a **field creation API**
 and signature field placeholders; XFA detected (static, hybrid, dynamic), its datasets read, removed or kept
 in step on fill; usage rights (`UR3`) detected and removed, with a diagnostic, when a save would break them;
-standard Acrobat formats (`AFNumber`, `AFDate`, `AFPercent`, simple sums) recognised without executing any
+standard Acrobat formats (`AFNumber`, `AFDate`, `AFPercent`, simple sums) recognized without executing any
 script, and any other script reported; **FDF, XFDF and JSON** import and export of field values, and of
 annotations through M11's model, and batch filling.
 
@@ -487,7 +487,7 @@ title, date, source hash) from which stamps (M9), bookmarks, page labels and a h
 (*bordereau de communication de pièces*, rendered by M12) all follow, so they cannot disagree, and a JSON
 export of it; court-portal presets (Télérecours, e-Barreau and RPVA, PLEX) — signet naming, one file per
 piece, size caps — kept as data and verified against the current official guides before each is encoded;
-an integrity manifest — the SHA-256 of each piece and of each file produced, as an associated file summarised
+an integrity manifest — the SHA-256 of each piece and of each file produced, as an associated file summarized
 in XMP, and the volume's own SHA-256 in the XMP of an update appended to it and in a sidecar, since a file
 cannot hold its own digest —; e-mail (EML, MSG optionally) to a PDF piece, its attachments as associated
 files or sub-pieces; references such as "pièce n° 12" linked to the piece's first page. The command-line tool
@@ -500,25 +500,25 @@ gains `casefile`.
 - A case file shaped by a portal preset satisfies every rule the preset encodes, checked by a test per rule.
 - The corpus e-mails convert to pieces whose text, headers and attachments extraction finds intact.
 
-## M19 — Redaction and sanitisation
+## M19 — Redaction and sanitization
 
-**Goal**: anonymise a piece, and strip what should not leave the office, verifiably.
+**Goal**: anonymize a piece, and strip what should not leave the office, verifiably.
 **Deliverables**: a content-stream editing pipeline (read, filter, rewrite), grown from M11's marked-content
 filter and shared by every later content change; true redaction — regions marked with `/Redact`, reviewed,
 then applied by removing glyphs, paths and (once M22 exists) image pixels, the same text scrubbed from
 annotations, form values, bookmarks, metadata, alternative and actual text, an overlay drawn, and the result
 verified by extracting again — always as a full rewrite, since an incremental update keeps the removed bytes;
 search-and-redact with detectors for IBAN, French NIR, SIREN and SIRET, e-mail, telephone and dates of birth,
-producing annotations to review before they apply; inspect-then-sanitise — report, then remove by category,
+producing annotations to review before they apply; inspect-then-sanitize — report, then remove by category,
 JavaScript and additional actions, launch and submit actions, embedded files, XFA, rich media, hidden layers,
 invisible text, metadata, piece information, thumbnails, comments, form data, other tools' watermarks and
 stamps, and earlier revisions — with the loss of PDF/A, PDF/UA or signatures reported; the `action.*` and
-`hidden.*` rule families. The command-line tool gains `redact` and `sanitise`.
+`hidden.*` rule families. The command-line tool gains `redact` and `sanitize`.
 
 **Acceptance**
 - Redacted text is absent from every extraction an external tool performs (pdftotext, PyMuPDF), from the
   file's bytes, and from every earlier revision, on the corpus documents it applies to.
-- Sanitising the corpus's documents with active content leaves none that veraPDF's feature report or an
+- Sanitizing the corpus's documents with active content leaves none that veraPDF's feature report or an
   external inspector finds, and the report lists everything removed.
 - A redacted PDF/UA document stays valid for an external PDF/UA validator.
 
@@ -557,24 +557,24 @@ report of whatever could not be converted.
 managed, dependency-free, bounded and fuzzed from the start — JBIG2 (with global segments), JPEG 2000 and
 JPEG (CMYK and YCCK included) decoders, and lossless CCITT G4 and JBIG2 generic encoders; the pixels of every
 codec edited under M19's redaction marks — CCITT and JBIG2 re-encoded losslessly, JPEG by a wipe of the marked
-blocks' coefficients, JPEG 2000 re-encoded as Flate; colour spaces and functions evaluated for image export;
+blocks' coefficients, JPEG 2000 re-encoded as Flate; color spaces and functions evaluated for image export;
 an invisible, positioned text layer written from hOCR, ALTO or TSV, optionally tagged, so that a scan becomes
 PDF/A-2u; an `IOcrEngine` interface for the engines callers bring; blank-page detection on pixels; page
 orientation from the text layer, applied as `/Rotate`.
 
 **Acceptance**
 - Every image in the corpus decodes to the pixels an external decoder (MuPDF, in a container) produces.
-- A corpus scan given its hOCR becomes searchable: an external extractor finds the recognised words at
+- A corpus scan given its hOCR becomes searchable: an external extractor finds the recognized words at
   their positions.
 - A redaction mark over a scan in each codec leaves every sample under it uniform and every other as it was,
   verified by an external decoder.
 - A fuzzing campaign over the decoders finds no untyped exception, hang or unbounded allocation.
 
-## M23 — Optimisation, performance, hardening
+## M23 — Optimization, performance, hardening
 
 **Goal**: deliver the frugality the library promises, with numbers.
 **Deliverables**: global resource deduplication, consolidation of duplicate font subsets, recompression,
-subsetting of inherited fonts, linearisation; image downsampling and recompression with a target-size mode,
+subsetting of inherited fonts, linearization; image downsampling and recompression with a target-size mode,
 every lossy step opt-in and reported, JBIG2 lossless only (ADR 42); a benchmark campaign with performance
 budgets enforced in CI; Native AOT, trimming and browser WebAssembly validation of the core; a tested
 container profile (no fontconfig, read-only file system, a 512 MB cap) measured against a Chromium
@@ -584,12 +584,12 @@ a `long`, still bounds what a stream may decode to — a streamed bomb still cos
 of ADR 34 written with it; in native memory if a measurement asks for it, ADR 35); a 64-bit length on stream
 data (T37); an object cache weighted by bytes, and names interned per document beyond a frozen table (T07); a
 budget on the cache of decoded object streams (T33); cross-reference sections and the rebuild's trailer scan
-read through windows grown on demand (T24, T30). The command-line tool gains `optimise`.
+read through windows grown on demand (T24, T30). The command-line tool gains `optimize`.
 
 **Acceptance**
 - Published budgets for throughput and allocation hold on the `stress` documents, and CI fails when a
   budget is exceeded — an allocation regression is a regression.
-- Optimising a corpus document reduces its size without changing what an external referee extracts from it.
+- Optimizing a corpus document reduces its size without changing what an external referee extracts from it.
 - A Native AOT executable opens, transforms and writes every corpus document; the core runs the same
   operations in browser WebAssembly, encrypted documents included but those of revision 7 (AES-GCM), which
   the browser has no primitive for and which are refused, typed (ADR 41).
@@ -611,16 +611,16 @@ with a given layout, each value with its confidence (ADR 15).
 - A template defined on one supplier's invoice extracts the same fields from that supplier's other
   invoices in the corpus, with the confidence it states.
 
-## M25 — Rasterisation
+## M25 — Rasterization
 
 **Goal**: pages as images, for previews, thumbnails and visual tests.
-**Deliverables**: `AdCodicem.Pdf.Rendering`, Skia rasterisation reusing the M15 interpreter and the M22
-decoders, honouring hidden layers and annotation appearances; the core's page-raster seam implemented, so that
+**Deliverables**: `AdCodicem.Pdf.Rendering`, Skia rasterization reusing the M15 interpreter and the M22
+decoders, honoring hidden layers and annotation appearances; the core's page-raster seam implemented, so that
 M24's visual diff runs in-process.
 
 **Acceptance**
-- Rasterised pages of the reference documents match approved reference images within the agreed threshold.
-- Rasterised scans in JBIG2, CCITT and JPEG 2000 match an external renderer within the same threshold.
+- Rasterized pages of the reference documents match approved reference images within the agreed threshold.
+- Rasterized scans in JBIG2, CCITT and JPEG 2000 match an external renderer within the same threshold.
 
 ## M26 — Signing
 
@@ -672,9 +672,9 @@ review items for what only a person can judge.
 **Goal**: invoices and statements printed at scale by an outsourced print shop.
 **Deliverables**: PDF/X-4 and PDF/X-4p output (bleed, marks, trim boxes, output intents); PDF/VT-1, and
 PDF/VT-2 over PDF/X-4p, for variable-data runs, built on M12's batch generation (document parts, reused
-XObjects); colour conversion through a managed colour-management engine in a satellite, behind the core's
-transform seam and M25's converter seam; CMYK and spot colours from CSS; overprint; soft proofs, separation
-previews and overprint simulation through M25's rasteriser; PDF/X and PDF/VT validation profiles. PDF/X-5,
+XObjects); color conversion through a managed color-management engine in a satellite, behind the core's
+transform seam and M25's converter seam; CMYK and spot colors from CSS; overprint; soft proofs, separation
+previews and overprint simulation through M25's rasterizer; PDF/X and PDF/VT validation profiles. PDF/X-5,
 PDF/VT-2 over PDF/X-5 and PDF/VT-2s wait for a print provider who asks; mixed raster content compression stays
 an open question.
 
@@ -714,8 +714,8 @@ Neither planned nor excluded; each would enter a milestone when what triggers it
 | Subject | What would trigger it |
 |---|---|
 | Variable fonts, instanced before subsetting | A brand font delivered only as a variable font |
-| Colour fonts and emoji | Chat or e-mail transcripts as case-file pieces |
-| Mixed raster content compression | Colour scans too large for a portal cap after M23's recompression |
+| Color fonts and emoji | Chat or e-mail transcripts as case-file pieces |
+| Mixed raster content compression | Color scans too large for a portal cap after M23's recompression |
 | Pixel deskew and despeckle of scans | Copier output that M22's orientation cannot correct |
 | XLSX, PPTX and ODT to PDF | M31 proving the DOCX route worth extending |
 | A code-first layout API beside HTML (ADR 8) | Callers asking for one over templates |
@@ -745,8 +745,8 @@ milestones that kept their content map as follows; everything else is new.
 | M10 — Extraction and analysis | M15 |
 | M11 — Security and forms | M16 |
 | M12 — PDF/A-3, Factur-X and conformance profiles | M14 (PDF/A-3 and Factur-X) and M20 (profiles and the other levels) |
-| M13 — Optimisation, performance, hardening | M23 |
-| M14 — Satellites: rasterisation and signing | M25 (rasterisation) and M26 (signing) |
+| M13 — Optimization, performance, hardening | M23 |
+| M14 — Satellites: rasterization and signing | M25 (rasterization) and M26 (signing) |
 
 Commits older than 2026-09-13 follow an order older still, from before validation and repair were
 inserted.
@@ -768,12 +768,12 @@ Every milestone, without exception, closes only when all six hold:
 |---|---|
 | 1 | Its **exit criteria** are met |
 | 2 | Its **acceptance conditions on the corpus** are green in CI, with no document skipped |
-| 3 | **Unit tests** cover the behaviour, its degenerate cases and its hostile ones — xUnit v3, AwesomeAssertions, NSubstitute where an interaction is the thing being asserted |
+| 3 | **Unit tests** cover the behavior, its degenerate cases and its hostile ones — xUnit v3, AwesomeAssertions, NSubstitute where an interaction is the thing being asserted |
 | 4 | **Integration tests** confirm, through an independent tool running in a container, anything the milestone claims about a document: that it is valid, that it round-trips, that its text is what we say it is |
 | 5 | The **documentation site** matches what now exists: the user-facing pages under `docs/website/docs` for anything a consumer can call, the project documents for anything a contributor needs, and the state of the milestone's features in `docs/features/features.json`, from which the README's and the site's feature tables are generated |
 | 6 | **`docs/status.md`** records the measurements rather than promising them |
 
-Points 3 to 5 are not paperwork after the fact. An untested behaviour is a guess; a claim no independent
+Points 3 to 5 are not paperwork after the fact. An untested behavior is a guess; a claim no independent
 tool has checked is an opinion; and a feature nobody can find in the documentation does not exist for
 anyone outside this repository.
 

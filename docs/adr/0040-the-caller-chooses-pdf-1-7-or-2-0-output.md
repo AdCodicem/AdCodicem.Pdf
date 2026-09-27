@@ -22,7 +22,7 @@ Two families of standards now pull the writer apart:
 
 The structure tree M13 emits differs between PDF/UA-1 and PDF/UA-2 (namespaces, new structure types,
 structure destinations), and the writer's handling of metadata differs between 1.7 and 2.0 (the document
-information dictionary is deprecated in 2.0 in favour of XMP). Choosing one family now would either keep
+information dictionary is deprecated in 2.0 in favor of XMP). Choosing one family now would either keep
 Factur-X from being accessible or defer PDF/UA-2 indefinitely; deciding nothing would leave M3 to guess,
 and M13 to be rewritten.
 
@@ -34,7 +34,7 @@ We will let the caller choose the output version, and target PDF/UA-1 first.
   document's features need, raises the output to it when a merge or a feature requires it, and reports the
   raise as a diagnostic — never silently. `/Extensions` entries of every input are unioned and written.
 - **With no version chosen**, a document read from a file keeps its declared version — the later of its header
-  and its catalogue's `/Version` —, raised only to the minimum its features need; a new document is written as
+  and its catalog's `/Version` —, raised only to the minimum its features need; a new document is written as
   1.7. A document is never written below the version it declared.
 - **In 2.0 output**, XMP is the authoritative metadata, the deprecated information-dictionary entries are not
   written, and text strings may be UTF-8. In 1.7 output both metadata forms are written and kept in step.

@@ -63,7 +63,7 @@ the next merge, and a preview already on nuget.org is not a reason to keep it.
 
 The project's [definition of done](docs/roadmap.md) applies to contributions too:
 
-1. **Tests.** Unit tests for the behaviour, and its degenerate and hostile cases. Anything an independent
+1. **Tests.** Unit tests for the behavior, and its degenerate and hostile cases. Anything an independent
    tool should confirm belongs in the integration suite.
 2. **No new warnings.** The build treats them as errors. A rule that is genuinely wrong here is suppressed
    where it fires, with a written justification — never by a global `NoWarn`.

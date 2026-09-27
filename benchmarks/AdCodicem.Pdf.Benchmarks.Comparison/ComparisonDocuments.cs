@@ -11,7 +11,7 @@ internal static class ComparisonDocuments
     {
         ["invoice-1p"] = "documents/invoice/chromium-invoice-fr.pdf",                       // Chromium, object streams
         ["report-3p"] = "documents/report/libreoffice-report-fr.pdf",                       // LibreOffice, classic table
-        ["form-10p"] = "vendor/fr-licence-ouverte/pdfmaker-acrobat-cerfa-12156-form.pdf",   // Acrobat, form, linearised
+        ["form-10p"] = "vendor/fr-licence-ouverte/pdfmaker-acrobat-cerfa-12156-form.pdf",   // Acrobat, form, linearized
         ["tagged-21p"] = "vendor/pdf-association/indesign13-pdfua1-german-book-chapter.pdf", // InDesign, PDF/UA, 3 updates
         ["journal-1000p"] = "documents/stress/reportlab-journal-1000-pages.pdf",            // ReportLab, 1000 pages
     };

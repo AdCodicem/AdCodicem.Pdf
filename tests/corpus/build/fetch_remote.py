@@ -104,8 +104,8 @@ def load_entries() -> list[dict]:
             raise InvalidManifest(f"'{name}': source.sha256 is required, as 64 lower-case hex digits")
         if not positive(source.get("bytes")):
             raise InvalidManifest(f"'{name}': source.bytes is required, the document's exact size")
-        if not entry.get("licence"):
-            raise InvalidManifest(f"'{name}': the licence must say why the document is remote rather than vendored")
+        if not entry.get("license"):
+            raise InvalidManifest(f"'{name}': the license must say why the document is remote rather than vendored")
         if "expect" not in entry:
             raise InvalidManifest(f"'{name}': a document nobody asserts anything about is not part of the corpus")
 

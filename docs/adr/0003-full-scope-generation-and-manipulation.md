@@ -15,7 +15,7 @@ assembles third-party PDFs — and each of those steps reads and changes a PDF t
 ## Decision
 
 We will cover generation and manipulation alike — assembly, content, extraction, forms, security and
-optimisation —, a scope decided after an initial framing of "generation only".
+optimization —, a scope decided after an initial framing of "generation only".
 
 ## Consequences
 

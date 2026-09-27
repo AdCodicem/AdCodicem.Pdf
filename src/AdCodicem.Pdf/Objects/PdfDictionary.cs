@@ -11,10 +11,10 @@ public sealed class PdfDictionary : PdfObject, IEnumerable<KeyValuePair<PdfName,
 {
     private readonly Dictionary<PdfName, PdfObject> _entries;
 
-    /// <summary>Initialises an empty dictionary.</summary>
+    /// <summary>Initializes an empty dictionary.</summary>
     public PdfDictionary() => _entries = [];
 
-    /// <summary>Initialises an empty dictionary with room for <paramref name="capacity"/> entries.</summary>
+    /// <summary>Initializes an empty dictionary with room for <paramref name="capacity"/> entries.</summary>
     public PdfDictionary(int capacity) => _entries = new Dictionary<PdfName, PdfObject>(capacity);
 
     /// <summary>Gets the number of entries.</summary>

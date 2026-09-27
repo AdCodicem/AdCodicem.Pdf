@@ -16,7 +16,7 @@ every merge a public event. Two consequences follow, and both are unwanted for a
 
 A release becomes something to be careful about rather than something to decide. The pressure lands on the
 merge — a `fix:` merged on a Friday evening is a version on nuget.org, and nuget.org forgets nothing: a
-published version can be unlisted, never withdrawn. The natural defence is to batch work into long-lived
+published version can be unlisted, never withdrawn. The natural defense is to batch work into long-lived
 branches, which is precisely what trunk-based development exists to avoid.
 
 At the same time, work that is finished and merged should be usable. Asking people to build from source
@@ -49,7 +49,7 @@ that has to be deliberate, so it is the one you have to select.
 Both live in `release.yml` so that one trusted-publishing policy covers them.
 
 *Added 2026-09-26, at the maintainer's request, without reopening the above:* **a preview carries no
-guarantee.** It is a build of `main` offered for trying out. Its API, its behaviour and any of its features
+guarantee.** It is a build of `main` offered for trying out. Its API, its behavior and any of its features
 may change or disappear in the next preview, without notice and without a deprecation period. Compatibility
 promises — semantic versioning, and the public API checked against the last release by package validation —
 hold between stable releases only. Work on `main` is therefore free to reshape or withdraw an API no stable

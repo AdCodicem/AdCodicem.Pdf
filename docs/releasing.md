@@ -21,7 +21,7 @@ prefix; the font set's package followed on 2026-09-27, unclaimed that day too.
 | `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the validation engine | M20 |
 | `AdCodicem.Pdf.Imaging` | Image decoders and lossless encoders | M22 |
 | `AdCodicem.Pdf.Compare` | Comparison and templates | M24 |
-| `AdCodicem.Pdf.Rendering` | Rasterisation | M25 |
+| `AdCodicem.Pdf.Rendering` | Rasterization | M25 |
 | `AdCodicem.Pdf.Signing` | PAdES, long-term signatures, signature validation | M26 |
 | `AdCodicem.Pdf.Docx` | DOCX to HTML | M31 |
 
@@ -33,7 +33,7 @@ verified. Nobody else can publish under the name, and every package under it sho
 nuget.org and in Visual Studio. For the record, the
 [procedure](https://learn.microsoft.com/nuget/nuget-org/id-prefix-reservation) is an email to
 **account@nuget.org** giving the owner's display name and the prefix; nuget.org weighs that the prefix
-identifies its owner and that packages under it carry consistent metadata and a licence declared with the
+identifies its owner and that packages under it carry consistent metadata and a license declared with the
 `license` element, which `Directory.Build.props` gives every package (`Authors`, `PackageLicenseExpression`,
 an embedded `PackageIcon`).
 
@@ -101,7 +101,7 @@ Two things worth knowing:
   after the first successful publish, which gives nuget.org the repository and owner identifiers it needs
   to pin the policy against a repository being deleted and recreated under the same name. If no publish
   happens in those seven days the policy goes inactive; the window can be restarted.
-- The policy is tied to its owner. If it belongs to an organisation and the person who created it leaves,
+- The policy is tied to its owner. If it belongs to an organization and the person who created it leaves,
   it goes inactive until they are added back.
 
 ### One-time setup on GitHub
@@ -109,7 +109,7 @@ Two things worth knowing:
 Create the `nuget` environment (Settings → Environments). The workflow declares `environment: nuget`, and
 the policy above names the same environment, so the two must agree — that is all the environment is for.
 
-**No secret is involved.** `NuGet/login` requires a `user`, because OIDC proves the run is authorised
+**No secret is involved.** `NuGet/login` requires a `user`, because OIDC proves the run is authorized
 without saying which account the short-lived key belongs to, and that account name is `AdCodicem` — the
 owner of this repository, the prefix of every package, and public on every page nuget.org serves for them.
 It is therefore written in `release.yml` as `NUGET_ACCOUNT`, once, at the top. A secret would have hidden
@@ -151,7 +151,7 @@ which is just as well, because nothing can be.
 
 ### What a preview promises: nothing
 
-A preview is a build of `main` offered for trying out, and **carries no guarantee**. Its API, its behaviour
+A preview is a build of `main` offered for trying out, and **carries no guarantee**. Its API, its behavior
 and any of its features may change or disappear in the next preview, without notice and without a
 deprecation period. Compatibility promises — semantic versioning, and the public API checked against the
 last stable release by package validation — hold **between stable releases only**. An application that
@@ -179,7 +179,7 @@ tagged, or deployed, and no publishing key is even requested. It applies to the 
 preview has no version to work out and nothing to undo but the publish itself.
 
 If the run reports no release, read the commits: `docs:`, `chore:`, `test:`, `refactor:` and `build:`
-deliberately release nothing. If the push fails with an authorisation error, the mismatch is almost always
+deliberately release nothing. If the push fails with an authorization error, the mismatch is almost always
 between the policy and the workflow: the file name, the environment, or the account name in `NUGET_ACCOUNT`.
 
 Two things the stable run needs on `main`: permission to push the changelog commit and the tag. If branch

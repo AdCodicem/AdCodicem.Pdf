@@ -9,7 +9,7 @@ namespace AdCodicem.Pdf.Objects;
     Justification = "The PDF specification calls this object a stream; renaming it would make every reader of the specification translate.")]
 public sealed class PdfStream : PdfObject
 {
-    /// <summary>Initialises a stream from its dictionary and its encoded data.</summary>
+    /// <summary>Initializes a stream from its dictionary and its encoded data.</summary>
     public PdfStream(PdfDictionary dictionary, PdfStreamData data)
     {
         ArgumentNullException.ThrowIfNull(dictionary);

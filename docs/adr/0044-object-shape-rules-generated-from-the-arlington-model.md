@@ -20,7 +20,7 @@ in ISO 32000-2 — each key, its types, whether it is required, the versions tha
 and the conditions between keys — as TSV files under the Apache License 2.0. veraPDF, PDFix and BFO already
 derive checks from it.
 
-M2's first rule of judgement also applies: a validator that calls a widely read file broken is wrong, not
+M2's first rule of judgment also applies: a validator that calls a widely read file broken is wrong, not
 strict. A large share of real files carry keys the model says a type must not have, or lack keys it says a
 type requires, and every reader opens them.
 
@@ -34,7 +34,7 @@ We will generate the object-shape rules from the Arlington model at build time.
 - The rules are **version-aware**: a key is checked against the version the file declares.
 - Every generated finding is a **warning** at most, under the object family's identifiers; a condition an
   error would need is written by hand, with its own justification.
-- The model's licence is Apache-2.0: its notice travels with the generated data, and `NOTICE` names it.
+- The model's license is Apache-2.0: its notice travels with the generated data, and `NOTICE` names it.
 - A model rule that disagrees with qpdf and with the corpus's well-formed documents is overridden by name,
   with the reason, rather than dropped in silence.
 
@@ -47,5 +47,5 @@ We will generate the object-shape rules from the Arlington model at build time.
 - **Rejected** — hand-written rules for every type (slow, and never complete); reading the TSV files at run
   time (a file dependency and reflection in the core); leaving shape rules to M20's conformance profiles
   (they are structural, and ADR 36 puts structural rules in the core).
-- **What would reopen it** — the model's licence changing, or its maintenance stopping, after which the
+- **What would reopen it** — the model's license changing, or its maintenance stopping, after which the
   generated tables would be frozen and maintained by hand.

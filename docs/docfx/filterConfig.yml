@@ -1,6 +1,6 @@
 # What DocFX leaves out of the generated API reference.
 #
-# An analyser suppression is a note from the code to its reviewers, not part of the contract a caller
+# An analyzer suppression is a note from the code to its reviewers, not part of the contract a caller
 # depends on; printed in a declaration it reads as though it were.
 attributeRules:
   - exclude:

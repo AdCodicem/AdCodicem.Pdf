@@ -10,7 +10,7 @@ public static class AssertionHelpers
     /// </summary>
     /// <remarks>
     /// Navigating a PDF object graph in a test means a run of nullable lookups. Asserting and returning in
-    /// one step keeps the test about the behaviour rather than about null handling.
+    /// one step keeps the test about the behavior rather than about null handling.
     /// </remarks>
     public static T Required<T>(
         this T? value,

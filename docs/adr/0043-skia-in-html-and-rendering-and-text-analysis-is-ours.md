@@ -15,7 +15,7 @@ property table, and each is compiled into the assembly that reads it (the Decisi
 ADR 5 allows SkiaSharp and HarfBuzzSharp "in `.Html` only", and credits HarfBuzz with "bidirectional text".
 Two things contradict it:
 
-- **Rasterisation.** ADR 16 and the roadmap (M25) plan Skia rasterisation in `AdCodicem.Pdf.Rendering`, and
+- **Rasterization.** ADR 16 and the roadmap (M25) plan Skia rasterization in `AdCodicem.Pdf.Rendering`, and
   `docs/architecture.md`'s package table already gives that satellite a SkiaSharp dependency. ADR 5's
   wording forbids it.
 - **Bidirectional text.** HarfBuzz shapes a run of text in one direction and one script; it does not resolve
@@ -50,4 +50,4 @@ We will allow Skia where it is needed, and own the text analysis HarfBuzz does n
 - **Rejected** — Skia everywhere (it would reach the core, which ADR 5 rightly forbids); a third-party bidi
   or line-break package (small algorithms, whose tables we can generate and whose allocation profile we must
   control in the layout loop, invariant 3).
-- **What would reopen it** — a managed rasteriser good enough to replace Skia in `.Rendering`.
+- **What would reopen it** — a managed rasterizer good enough to replace Skia in `.Rendering`.

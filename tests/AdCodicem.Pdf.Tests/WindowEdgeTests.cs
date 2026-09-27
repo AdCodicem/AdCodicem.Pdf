@@ -256,7 +256,7 @@ public class WindowEdgeTests
         // 2,000 rows of 7 bytes: data past the 8 KB object window, inside the 64 KB a cross-reference stream
         // is read through, so its /Length is checked against the data — a first version of this change,
         // parsing it from 8 KB, took the length on trust and dropped the rows it did not cover. The
-        // catalogue is in the last row.
+        // catalog is in the last row.
         const int Size = 2000;
         var text = new StringBuilder("%PDF-1.7\n");
         var pages = text.Length;

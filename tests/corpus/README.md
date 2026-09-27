@@ -20,7 +20,7 @@ entry is written by hand — third-party files, documents from `build/build_word
 remote documents — and the script adds nothing to it but the referee's verdict.
 
 Write entries with an editor that reads JSON Schema — Visual Studio Code does, from the manifest's own
-`"$schema"` key: it completes the field names, explains each, and flags a misspelt key, a use case that is
+`"$schema"` key: it completes the field names, explains each, and flags a misspelled key, a use case that is
 not a category or a diagnostic code the reader does not have before any test runs. `CorpusManifestSchemaTests`
 checks the same rules in CI.
 
@@ -76,7 +76,7 @@ handing it over, and which of the public and private corpora it belongs in.
 
 
 1. Add a generator to `build_corpus.py` if it can be produced. Otherwise, drop it under
-   `documents/<use-case>/` — or, for a third party's file, under `vendor/<source>/`, with its licence added
+   `documents/<use-case>/` — or, for a third party's file, under `vendor/<source>/`, with its license added
    to `NOTICE` — and describe it in `manifest.json`, by hand, after the entries marked `builtBy`. Keep it
    small if you can; over 2 MB it is not committed at all, but described as a remote document (below).
 2. Write its entry, including what tests must observe: page count, whether it is well formed,
@@ -85,7 +85,7 @@ handing it over, and which of the public and private corpora it belongs in.
    `readerLimits`, the limits it is opened with (`docs/corpus.md`).
 3. Establish the page count with an **independent tool**, never with our own reader — an expectation
    derived from the code under test proves nothing.
-4. Record the origin and the licence. Contributed documents must carry no confidential content.
+4. Record the origin and the license. Contributed documents must carry no confidential content.
 5. Record the referee's verdict with `build_corpus.py --committed-only`, as above.
 
 `CorpusReadingTests.The_corpus_manifest_describes_every_document_present` fails if a file is added without
@@ -100,15 +100,15 @@ Both are ignored by git; the test suite merges them when they are there and runs
 they are not, so a private corpus never breaks anyone else's build.
 
 That is the place for documents from the field — files from Word, Acrobat, a scanner, a supplier's ERP, or
-anything that broke somebody's tooling. If a document can be anonymised enough to publish, it is worth far
+anything that broke somebody's tooling. If a document can be anonymized enough to publish, it is worth far
 more in the public corpus: strip it, check what its metadata still says about its origin, and add it under
 `documents/` with its provenance.
 
 ## Remote documents
 
 Some public files are worth testing against but cannot be committed: attachments to other projects' bug
-reports, vendors' samples under "all rights reserved", ShareAlike sets whose licence would reach every
-derivative we make, and any document over 2 MB, whatever its licence. ADR 32 keeps them out of git and in the
+reports, vendors' samples under "all rights reserved", ShareAlike sets whose license would reach every
+derivative we make, and any document over 2 MB, whatever its license. ADR 32 keeps them out of git and in the
 tests: the manifest describes them with origin `remote` and a mandatory `source.url`, `source.sha256` and
 `source.bytes`, and the test suite leaves out those whose file has not been fetched. The main job still reads
 their entries: `CorpusReadingTests.Remote_documents_are_pinned_and_kept_where_git_ignores_them` fails on a
@@ -154,7 +154,7 @@ failing test.
 
 To add one, choose an immutable URL — a repository commit, an Internet Archive `id_` copy, a permanent
 publisher URI, or an archive deposit whose checksum its repository publishes — and write the entry as for any other document, with its file under `remote/<source>/`,
-origin `remote`, expectations established with independent tools, and `licence` saying why the file is
+origin `remote`, expectations established with independent tools, and `license` saying why the file is
 remote rather than vendored. Titles and `textContains` strings are
 published with the manifest, so they carry no personal data. Then fetch it and record the referee's
 verdict, in the container the integration tests use:

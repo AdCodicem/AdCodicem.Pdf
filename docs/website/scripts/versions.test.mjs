@@ -43,7 +43,7 @@ test("previews order by run number numerically", () => {
   assert.ok(compareVersions("0.3.1-preview.10", "0.3.1-preview.9") > 0);
 });
 
-test("a preview is recognised by its prerelease suffix", () => {
+test("a preview is recognized by its prerelease suffix", () => {
   assert.equal(isPrerelease("0.3.1-preview.42"), true);
   assert.equal(isPrerelease("0.3.1"), false);
 });

@@ -21,16 +21,16 @@ handing anything over, and where it goes.
 |---|---|---|
 | Generated in-container by real producers — Chromium (Skia backend), LibreOffice, Python producers from pypi | Genuine producer quirks, reproducible, no licensing question | The build script and the producer version are recorded in the manifest |
 | Generated on Windows from our own content — Word's Save as PDF, the Microsoft Print to PDF driver, the PDF24 printer (`build/build_word.ps1`) | The office desktop's writers, which no container runs | Our own fictitious content — the generated invoice today, M31's contract, letter, report, review and equations fixtures after it; nothing the script cannot account for, including what a driver stamps on its own; a DOCX kept beside its PDFs is checked for personal data in every part (`cp:lastModifiedBy`, `docProps/app.xml`, `w:docVars`) |
-| Third-party documents found in public sources (`vendor/`) | Producers we will never run — Acrobat, InDesign, LiveCycle, copier firmware, a qualified-seal service — and damage from the wild | Attribution-only licence (ADR 23), no real person's contact or identity data anywhere, byte-identical to the publisher's copy, at most 2 MB; source URL and SHA-256 recorded; see `docs/corpus-sources.md` |
-| Contributed real documents | Everything the generators never do: legacy tooling, scanners, foreign-language typography, damaged files from the wild | No confidential content; origin and licence recorded; anonymised before committing |
-| Derived variants | Encryption, linearisation, object-stream rewrites, and deliberate damage | Derived by a recorded, repeatable transformation from a document already in the corpus, named in the entry's `derivedFrom` from M4 on |
+| Third-party documents found in public sources (`vendor/`) | Producers we will never run — Acrobat, InDesign, LiveCycle, copier firmware, a qualified-seal service — and damage from the wild | Attribution-only license (ADR 23), no real person's contact or identity data anywhere, byte-identical to the publisher's copy, at most 2 MB; source URL and SHA-256 recorded; see `docs/corpus-sources.md` |
+| Contributed real documents | Everything the generators never do: legacy tooling, scanners, foreign-language typography, damaged files from the wild | No confidential content; origin and license recorded; anonymized before committing |
+| Derived variants | Encryption, linearization, object-stream rewrites, and deliberate damage | Derived by a recorded, repeatable transformation from a document already in the corpus, named in the entry's `derivedFrom` from M4 on |
 | Remote documents we may use but not redistribute (origin `remote`, ADR 32) | What only a bug report, a vendor's sample, a ShareAlike set or a file over 2 MB can give | Never committed, nor anything derived from them; fetched at a pinned SHA-256 and size from an immutable URL, or copied out of a pinned archive (ADR 33); tested by a separate job |
 
 Documents are **committed**, not generated at test time: producer output changes with producer version, and
 a test suite that shifts under you is worse than no test suite. Regeneration is an explicit act, reviewed
 like any other change. It also keeps CI free of any network dependency.
 
-The first exception is the **remote corpus** (ADR 32): documents whose licence forbids redistribution, or that
+The first exception is the **remote corpus** (ADR 32): documents whose license forbids redistribution, or that
 weigh more than 2 MB. The manifest describes them like any other document, with origin `remote`
 and a mandatory `source.url`, `source.sha256` and `source.bytes`; `build/fetch_remote.py` downloads them into
 `remote/`, which git ignores, and refuses any file whose hash or size differs — a changed file is a new
@@ -40,13 +40,13 @@ finds nothing, and tests exactly what is committed. The `Remote corpus` workflow
 them; a download failure is reported as such, never as a test failure. The manifest itself is public, so its
 titles and `textContains` strings carry no personal data, and it lists only files anyone can download.
 
-The second exception is an input the test support **synthesises** at test time because committing it would be
+The second exception is an input the test support **synthesizes** at test time because committing it would be
 pointless: M23's stream that decodes past 2 GB, about 2 MB of nested Flate over zeros, made the same way on every
 run. It is not a corpus document and has no manifest entry.
 
 Keep committed documents small — a few hundred kilobytes is the aim, since everyone who clones the repository
 downloads them. That is a recommendation, never a reason to turn a document down: a document over 2 MB is
-not committed, whatever its licence, and joins the remote corpus instead, fetched from its public URL. The
+not committed, whatever its license, and joins the remote corpus instead, fetched from its public URL. The
 private corpus is for confidential documents, never for heavy ones. `CorpusReadingTests` fails on a
 committed document over 2 MB.
 
@@ -58,7 +58,7 @@ tests/corpus/
   manifest.schema.json   the JSON schema the manifest is held to
   sources/               the inputs documents are generated from (HTML, ODT, scripts)
     third-party/         inputs written by others — stylesheets, HTML templates, test suites, ICC profiles —
-                         one folder each, with its licence and SOURCE
+                         one folder each, with its license and SOURCE
     ocr/                 OCR sidecars (hOCR, ALTO, TSV) of committed scans, with the engine's version (M22)
   build/                 the generation scripts and their recorded producer versions
   documents/             the committed PDF files, by category
@@ -70,9 +70,9 @@ tests/corpus/
 **Inputs written by others.** A stylesheet, an HTML template, a conformance suite or an ICC profile that someone
 else wrote — Bootstrap, normalize.css, web-platform-tests, css-parsing-tests, the ICC's sRGB and CMYK profiles (M21,
 M29) — is an input, not a corpus document: it lives in `sources/third-party/<name>/`, pinned to a release or a
-commit, beside its licence file and a `SOURCE` file giving the URL, the version and the SHA-256 of what was
+commit, beside its license file and a `SOURCE` file giving the URL, the version and the SHA-256 of what was
 retrieved, and is credited in `tests/corpus/NOTICE`. It follows the rule of vendored documents — an attribution-only
-licence or a public-domain dedication (ADR 23), and nothing personal —; one too large to commit, or not ours to
+license or a public-domain dedication (ADR 23), and nothing personal —; one too large to commit, or not ours to
 redistribute, is fetched at its pinned commit by the job that runs it, as the remote corpus is (ADR 32). Its
 expectations come from the suite itself or from an independent tool, never from the library. A file of a format the
 manifest describes — an XML invoice of KoSIT's suite, an image of PngSuite — is a corpus document instead, under
@@ -111,7 +111,7 @@ file listed twice, an archive pinned two ways — stays with `fetch_remote.py` a
   "useCase": "invoice",                  // invoice | report | contract | form | scan | archival | damaged | stress
   "producer": "Chromium 147 (Skia PDF backend)",
   "origin": "generated",                 // generated | contributed | derived | remote
-  "licence": "MIT (generated from our own source)",
+  "license": "MIT (generated from our own source)",
   "features": ["xref-stream", "object-streams", "type0-subset", "utf16-metadata"],
   "expect": {
     "pages": 2,
@@ -132,7 +132,7 @@ annotations and layers from M11, the PDF/UA claim beside the PDF/A one from M13,
 text — reading order, tables, images, hidden text, textless pages — from M15, encryption from M16, detections and
 disclosure findings from M19, conformance verdicts from M20 — one list of every claim a document makes, PDF/A and
 PDF/UA, then PDF/X, PDF/VT and Well-Tagged PDF, each with its referee's verdict and failed clauses —, the expected
-conversion outcome from M21, decoded-sample hashes, blank pages, orientation and OCR sidecars from M22, optimisation
+conversion outcome from M21, decoded-sample hashes, blank pages, orientation and OCR sidecars from M22, optimization
 counts from M23, EU DSS's verdicts from M27, and the print referee's from M29. Each comes from an independent
 referee — qpdf, pikepdf, poppler, MuPDF, veraPDF, pyHanko, EU DSS, KoSIT's validator, the PDF/X referee M29 chooses
 — or from the file itself, never from the library. An expectation is never weakened to make a test pass — either the
@@ -141,7 +141,7 @@ library is fixed, or the expectation is corrected with the reason recorded in th
 **Formats other than PDF.** Image files (M7), XML invoices (M14), FDF and XFDF (M16), messages (M18) and DOCX (M31)
 are corpus inputs too, and one manifest describes them all (the maintainer's decision of 2026-09-27): M7 adds a
 `format` field — `pdf` when absent —, file patterns keyed on it and one expectation block per format, and every PDF
-acceptance test filters on it. A non-PDF file follows the provenance, licence, personal-data and size rules a PDF
+acceptance test filters on it. A non-PDF file follows the provenance, license, personal-data and size rules a PDF
 does, lives where a PDF of its origin would, and when remote is fetched and verified by the same `fetch_remote.py`.
 What is written from a standard rather than received — M10's barcode payload set — is test data in
 `tests/AdCodicem.Pdf.TestSupport`, not a corpus document.
@@ -154,7 +154,7 @@ Five fields serve that rule:
 - `readerLimits` — beside `expect`, not in it, since it is a setting chosen rather than an observation:
   the reader limits the document is opened with, when it is valid but exceeds a default one (ADR 34), such
   as `"readerLimits": { "maxDecodedStreamLength": 536870912 }`. Its keys are the properties of
-  `PdfReaderLimits` in camel case, in bytes or sections, and each must raise its default; a misspelt one
+  `PdfReaderLimits` in camel case, in bytes or sections, and each must raise its default; a misspelled one
   fails loading. The document is then read, not skipped, and a test run on the remote corpus checks that the
   defaults still cut it, so that a raise outlives no reason. Every other document is opened with the defaults.
 - `conformanceValid` — veraPDF's verdict on the PDF/A level the document claims (`claimsConformance`),
@@ -177,7 +177,7 @@ Five fields serve that rule:
 
 ## Use-case categories
 
-The corpus is organised by what the document *is*, not by which feature it exercises, so that coverage
+The corpus is organized by what the document *is*, not by which feature it exercises, so that coverage
 gaps are visible in business terms.
 
 | Category | Represents | Must eventually include |
@@ -193,29 +193,29 @@ gaps are visible in business terms.
 
 Two categories join with their first documents, each added to the schema's enum by the milestone that brings
 them: `message` (M18) — e-mails as clients export them, EML and MSG, and a message printed to PDF — and `print`
-(M29) — PDF/X-4 and PDF/X-4p, PDF/VT, spot colours and overprint, a statement as a print provider receives it.
+(M29) — PDF/X-4 and PDF/X-4p, PDF/VT, spot colors and overprint, a statement as a print provider receives it.
 
 ## Test data beside the corpus
 
 Some inputs are not corpus documents — nobody receives them, and no manifest entry describes them — but they are
-held to the same discipline: our own or under a licence as free as ADR 23 asks, nothing personal, at most 2 MB a
-file, their licence texts beside them and their origin in a `NOTICE` of their own directory:
+held to the same discipline: our own or under a license as free as ADR 23 asks, nothing personal, at most 2 MB a
+file, their license texts beside them and their origin in a `NOTICE` of their own directory:
 
 - `tests/fonts/` — test faces (M8, M30);
 - `tests/pki/` — the fictitious test PKI, as a Certomancer configuration (M26);
 - `tests/trusted-lists/` — the pinned trusted-list snapshot, if its reuse terms and size allow (M27);
 - `tests/visual/` — approved reference images, M12's and, under `rendering/`, M25's.
 
-**Test fonts.** M8's test fonts live in `tests/fonts/`, each under the SIL Open Font License or a licence as free,
-with its licence text beside it. A CJK face is subsetted by fontTools to the ideographs the tests use and a margin,
-the command recorded; a subset of a face whose licence reserves a name is renamed as the licence asks. Their WOFF
+**Test fonts.** M8's test fonts live in `tests/fonts/`, each under the SIL Open Font License or a license as free,
+with its license text beside it. A CJK face is subsetted by fontTools to the ideographs the tests use and a margin,
+the command recorded; a subset of a face whose license reserves a name is renamed as the license asks. Their WOFF
 and WOFF2 forms are made by fontTools and Google's `woff2_compress`, and hostile fonts by recorded mutations. A face
-that cannot be committed — a licence that forbids redistribution, a size past 2 MB — is fetched on demand at a
+that cannot be committed — a license that forbids redistribution, a size past 2 MB — is fetched on demand at a
 pinned SHA-256, as ADR 32 fetches documents.
 
 ## How a milestone is accepted
 
-Each milestone file lists its acceptance conditions in the form *"these documents, this behaviour,
+Each milestone file lists its acceptance conditions in the form *"these documents, this behavior,
 verified by this test"*. A milestone is closed when, and only when:
 
 1. its functional tests pass;

@@ -9,7 +9,7 @@ Producers used:
   * Chromium (Skia PDF backend)  - cross-reference streams, object streams, Type0 subsets
   * LibreOffice                  - classic cross-reference tables, a different font pipeline, PDF/A export
   * ReportLab                    - a third writer, plus AcroForms and image-only pages
-  * qpdf via pikepdf             - encryption, linearisation, object-stream rewrites, attachments
+  * qpdf via pikepdf             - encryption, linearization, object-stream rewrites, attachments
 
 Damaged variants are derived by byte-level surgery on a valid document, so each one isolates exactly one
 defect.
@@ -512,7 +512,7 @@ def main() -> int:
     invoice = DOCUMENTS / "invoice" / "chromium-invoice-fr.pdf"
     build_with_chromium(SOURCES / "invoice-fr.html", invoice)
     record(invoice, title="French invoice, VAT breakdown, accented text", useCase="invoice",
-           producer=versions.get("chromium", "chromium"), origin="generated", licence="MIT (our own source)",
+           producer=versions.get("chromium", "chromium"), origin="generated", license="MIT (our own source)",
            features=["xref-stream", "object-streams", "type0-subset"],
            expect={"pages": page_count(invoice), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "textContains": ["Facture", "Total TTC", "TVA"]})
@@ -521,14 +521,14 @@ def main() -> int:
     build_with_libreoffice(SOURCES / "invoice-fr.html", lo_invoice)
     record(lo_invoice, title="Same invoice through a different producer", useCase="invoice",
            producer=versions.get("libreoffice", "libreoffice"), origin="generated",
-           licence="MIT (our own source)", features=["xref-table", "type1-and-truetype"],
+           license="MIT (our own source)", features=["xref-table", "type1-and-truetype"],
            expect={"pages": page_count(lo_invoice), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "textContains": ["Facture"]})
 
     rl_invoice = DOCUMENTS / "invoice" / "reportlab-invoice.pdf"
     build_reportlab_invoice(rl_invoice)
     record(rl_invoice, title="Invoice from a third writer", useCase="invoice",
-           producer=versions["reportlab"], origin="generated", licence="MIT (our own source)",
+           producer=versions["reportlab"], origin="generated", license="MIT (our own source)",
            features=["xref-table", "standard-14-fonts"],
            expect={"pages": page_count(rl_invoice), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "textContains": ["AD CODICEM"]})
@@ -536,7 +536,7 @@ def main() -> int:
     report = DOCUMENTS / "report" / "chromium-report-fr.pdf"
     build_with_chromium(SOURCES / "report-fr.html", report)
     record(report, title="Multi-page audit report: contents, tables, two-column annex", useCase="report",
-           producer=versions.get("chromium", "chromium"), origin="generated", licence="MIT (our own source)",
+           producer=versions.get("chromium", "chromium"), origin="generated", license="MIT (our own source)",
            features=["xref-stream", "object-streams", "internal-links", "two-column-text"],
            expect={"pages": page_count(report), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "textContains": ["Sommaire", "Tableau des mesures", "Annexe"]})
@@ -545,14 +545,14 @@ def main() -> int:
     build_with_libreoffice(SOURCES / "report-fr.html", lo_report)
     record(lo_report, title="Same report through a different producer", useCase="report",
            producer=versions.get("libreoffice", "libreoffice"), origin="generated",
-           licence="MIT (our own source)", features=["xref-table", "repeated-table-headers", "two-column-text"],
+           license="MIT (our own source)", features=["xref-table", "repeated-table-headers", "two-column-text"],
            expect={"pages": page_count(lo_report), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "textContains": ["Sommaire"]})
 
     contract = DOCUMENTS / "contract" / "chromium-contract-fr.pdf"
     build_with_chromium(SOURCES / "contract-fr.html", contract)
     record(contract, title="Service contract, justified body text", useCase="contract",
-           producer=versions.get("chromium", "chromium"), origin="generated", licence="MIT (our own source)",
+           producer=versions.get("chromium", "chromium"), origin="generated", license="MIT (our own source)",
            features=["xref-stream", "object-streams"],
            expect={"pages": page_count(contract), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "textContains": ["Article 1", "Droit applicable"]})
@@ -564,7 +564,7 @@ def main() -> int:
 </rsm:CrossIndustryInvoice>
 """)
     record(attached, title="Invoice carrying an embedded Factur-X XML attachment", useCase="invoice",
-           producer=versions["qpdf"], origin="derived", licence="MIT (derived from our own document)",
+           producer=versions["qpdf"], origin="derived", license="MIT (derived from our own document)",
            features=["embedded-file", "xref-stream"],
            expect={"pages": page_count(attached), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "attachments": ["factur-x.xml"]})
@@ -572,7 +572,7 @@ def main() -> int:
     form = DOCUMENTS / "form" / "reportlab-subscription-form.pdf"
     build_reportlab_form(form)
     record(form, title="Interactive subscription form with text fields and a checkbox", useCase="form",
-           producer=versions["reportlab"], origin="generated", licence="MIT (our own source)",
+           producer=versions["reportlab"], origin="generated", license="MIT (our own source)",
            features=["acroform", "widget-annotations"],
            expect={"pages": page_count(form), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "formFields": ["nom", "prenom", "societe", "courriel", "newsletter"]})
@@ -580,7 +580,7 @@ def main() -> int:
     scan = DOCUMENTS / "scan" / "reportlab-scanned-receipt.pdf"
     build_reportlab_scan(scan)
     record(scan, title="Image-only page, as a scanner produces", useCase="scan",
-           producer=versions["reportlab"], origin="generated", licence="MIT (our own source)",
+           producer=versions["reportlab"], origin="generated", license="MIT (our own source)",
            features=["dct-image", "no-text"],
            expect={"pages": page_count(scan), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "hasExtractableText": False})
@@ -589,29 +589,29 @@ def main() -> int:
     build_with_libreoffice(SOURCES / "report-fr.html", archival, pdf_a=True)
     record(archival, title="Archival export of the report, claiming PDF/A-2b", useCase="archival",
            producer=versions.get("libreoffice", "libreoffice"), origin="generated",
-           licence="MIT (our own source)", features=["pdf-a-2b", "xmp-metadata", "output-intent",
+           license="MIT (our own source)", features=["pdf-a-2b", "xmp-metadata", "output-intent",
                                                      "embedded-fonts", "repeated-table-headers", "two-column-text"],
            expect={"pages": page_count(archival), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "claimsConformance": "PDF/A-2b"})
 
     linearized = DOCUMENTS / "archival" / "qpdf-linearized-report.pdf"
     derive_linearized(report, linearized)
-    record(linearized, title="Linearised report, laid out for fast web viewing", useCase="report",
-           producer=versions["qpdf"], origin="derived", licence="MIT (derived from our own document)",
+    record(linearized, title="Linearized report, laid out for fast web viewing", useCase="report",
+           producer=versions["qpdf"], origin="derived", license="MIT (derived from our own document)",
            features=["linearized", "hint-stream"],
            expect={"pages": page_count(linearized), "clean": True, "indexRebuilt": False, "requiredDiagnostics": []})
 
     objstm = DOCUMENTS / "report" / "qpdf-objstm-report.pdf"
     derive_object_streams(report, objstm)
     record(objstm, title="Report rewritten with every object packed into object streams", useCase="report",
-           producer=versions["qpdf"], origin="derived", licence="MIT (derived from our own document)",
+           producer=versions["qpdf"], origin="derived", license="MIT (derived from our own document)",
            features=["object-streams", "xref-stream"],
            expect={"pages": page_count(objstm), "clean": True, "indexRebuilt": False, "requiredDiagnostics": []})
 
     encrypted = DOCUMENTS / "secured" / "qpdf-invoice-aes256.pdf"
     derive_encrypted(invoice, encrypted, "corpus")
     record(encrypted, title="Invoice encrypted with AES-256", useCase="invoice",
-           producer=versions["qpdf"], origin="derived", licence="MIT (derived from our own document)",
+           producer=versions["qpdf"], origin="derived", license="MIT (derived from our own document)",
            features=["encryption-aes256"],
            expect={"pages": page_count(encrypted, "corpus"), "encrypted": True, "password": "corpus",
                    "clean": True, "indexRebuilt": False, "requiredDiagnostics": []})
@@ -620,7 +620,7 @@ def main() -> int:
     stress = DOCUMENTS / "stress" / f"reportlab-journal-{stress_pages}-pages.pdf"
     build_reportlab_stress(stress, stress_pages)
     record(stress, title=f"Operations journal of {stress_pages} pages", useCase="report",
-           producer=versions["reportlab"], origin="generated", licence="MIT (our own source)",
+           producer=versions["reportlab"], origin="generated", license="MIT (our own source)",
            features=["many-pages", "shared-resources"],
            expect={"pages": stress_pages, "clean": True, "indexRebuilt": False, "requiredDiagnostics": []})
 
@@ -642,7 +642,7 @@ def main() -> int:
 
         record(damaged, title=f"Invoice damaged on purpose: {name.replace('-', ' ')}", useCase="invoice",
                producer=f"derived from {invoice.name}", origin="derived",
-               licence="MIT (derived from our own document)", features=[f"damage-{name}"], expect=expect)
+               license="MIT (derived from our own document)", features=[f"damage-{name}"], expect=expect)
 
     # Every other document comes last, untouched but for the referee's verdict: it cannot be regenerated,
     # only attributed.

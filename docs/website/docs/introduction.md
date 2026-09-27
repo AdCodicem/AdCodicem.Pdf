@@ -23,7 +23,7 @@ The reader is built and tested, and validation is being built; writing, assembly
 ahead, and any minor version may still change the API. The [roadmap](/project/roadmap) says what exists and
 what does not, and [status](/project/status) says where the work actually stands today.
 
-**A preview carries no guarantee at all.** Its API, its behaviour and any of its features may change or
+**A preview carries no guarantee at all.** Its API, its behavior and any of its features may change or
 disappear in the next preview, without notice and without a deprecation period; compatibility promises hold
 between stable releases only. If you depend on a preview, pin its exact version.
 
@@ -75,7 +75,7 @@ satellite brings the PDF/A and PDF/UA profiles.
 | `AdCodicem.Pdf.Conformance` | PDF/A and PDF/UA profiles for the validation engine | Planned, M20 |
 | `AdCodicem.Pdf.Imaging` | Image decoders and lossless encoders for scans | Planned, M22 |
 | `AdCodicem.Pdf.Compare` | Comparison and templates | Planned, M24 |
-| `AdCodicem.Pdf.Rendering` | Rasterisation | Planned, M25 |
+| `AdCodicem.Pdf.Rendering` | Rasterization | Planned, M25 |
 | `AdCodicem.Pdf.Signing` | PAdES signing, long-term signatures, signature validation | Planned, M26 |
 | `AdCodicem.Pdf.Docx` | DOCX to HTML | Planned, M31 |
 

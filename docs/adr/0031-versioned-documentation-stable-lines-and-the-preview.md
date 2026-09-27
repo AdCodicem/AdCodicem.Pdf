@@ -32,7 +32,7 @@ release.
   documentation and the generated API reference into `versioned_docs/version-<line>`, in the release
   commit. A later release on the same line — a patch below 1.0, a minor or a patch from 1.0 on — replaces
   that copy rather than adding one.
-- **The selector lists the stable lines**, each labelled with its latest release, the newest served at the
+- **The selector lists the stable lines**, each labeled with its latest release, the newest served at the
   root of the site. All of them are kept.
 - **The preview is the working tree**, served under `/preview` and reached by its own navbar button, never
   from the selector. Its banner names the preview package it documents. It is published only while a

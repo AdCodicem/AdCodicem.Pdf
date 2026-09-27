@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace AdCodicem.Pdf.TestSupport;
 
 /// <summary>What the manifest says about one corpus document.</summary>
-/// <remarks>A misspelt expectation fails loading rather than being ignored, and so never passes by default.</remarks>
+/// <remarks>A misspelled expectation fails loading rather than being ignored, and so never passes by default.</remarks>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record CorpusExpectation
 {
@@ -18,8 +18,8 @@ public sealed record CorpusExpectation
     public bool IndexRebuilt { get; init; }
 
     /// <summary>
-    /// Whether a document catalogue can be recovered at all. False only when no object in the file is one and
-    /// the independent tool finds none either: the reader must then open the file and hand back no catalogue
+    /// Whether a document catalog can be recovered at all. False only when no object in the file is one and
+    /// the independent tool finds none either: the reader must then open the file and hand back no catalog
     /// rather than invent one.
     /// </summary>
     public bool CatalogRecoverable { get; init; } = true;
@@ -89,7 +89,7 @@ public sealed record CorpusExpectation
 /// </summary>
 /// <remarks>
 /// Not an expectation: <see cref="CorpusDocument.Expect"/> holds what an independent tool established, and a
-/// raised limit is a setting chosen for the document. A misspelt limit fails loading rather than being ignored.
+/// raised limit is a setting chosen for the document. A misspelled limit fails loading rather than being ignored.
 /// </remarks>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record CorpusReaderLimits
@@ -123,7 +123,7 @@ public sealed record CorpusDocument
 
     public string Origin { get; init; } = "generated";
 
-    public string Licence { get; init; } = "unknown";
+    public string License { get; init; } = "unknown";
 
     public string[] Features { get; init; } = [];
 

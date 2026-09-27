@@ -44,5 +44,5 @@ prefer otherwise. Published advisories are listed on the
 Its supply-chain posture is measured rather than asserted, and the report is public:
 [the OpenSSF Scorecard report](https://scorecard.dev/viewer/?uri=github.com/AdCodicem/AdCodicem.Pdf).
 Every GitHub Action used by a
-workflow here is pinned to a commit hash, dependency versions are locked, and every merge is analysed by
+workflow here is pinned to a commit hash, dependency versions are locked, and every merge is analyzed by
 CodeQL.

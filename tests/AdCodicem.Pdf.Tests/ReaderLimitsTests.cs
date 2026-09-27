@@ -247,10 +247,10 @@ public class ReaderLimitsTests
     }
 
     [Fact]
-    public void A_rebuild_that_reaches_a_guard_looking_for_the_catalogue_still_finds_it()
+    public void A_rebuild_that_reaches_a_guard_looking_for_the_catalog_still_finds_it()
     {
-        // Object 1, the catalogue the index names, is redefined as null after the file's end, where only a
-        // rebuild sees it. Rebuilding then looks for another catalogue among every object, and object 3 on
+        // Object 1, the catalog the index names, is redefined as null after the file's end, where only a
+        // rebuild sees it. Rebuilding then looks for another catalog among every object, and object 3 on
         // the way reaches the object bound; the search goes on to object 4 before the guard throws.
         var written = new TestPdfBuilder()
             .WithObject(1, Catalog)
@@ -508,7 +508,7 @@ public class ReaderLimitsTests
         private static Case ManySections()
         {
             // A document saved three times after it was written: four sections, of which a bound of two reads
-            // the newest. The catalogue is only in the oldest, so reaching it rebuilds the index.
+            // the newest. The catalog is only in the oldest, so reaching it rebuilds the index.
             var file = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).BuildClassic(rootNumber: 1);
             var sections = new List<int> { OffsetOf(file, "xref\n") };
 
@@ -536,7 +536,7 @@ public class ReaderLimitsTests
         private static Case LongTrailer()
         {
             // A trailer of 100 KB, whose /Root comes after a long string: past the 64 KB a trailer is read to by
-            // default, the /Root is out of reach and the index is rebuilt to find the catalogue.
+            // default, the /Root is out of reach and the index is rebuilt to find the catalog.
             var written = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).BuildClassic(rootNumber: 1);
             var file = Replace(written, "<< /Size 3 /Root 1 0 R >>", $"<< /Size 3 /Pad ({new string('x', 100_000)}) /Root 1 0 R >>");
 

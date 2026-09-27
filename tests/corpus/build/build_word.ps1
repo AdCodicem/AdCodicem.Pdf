@@ -28,8 +28,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$Blue = 0x64381F        # #1f3864 as a Word BGR colour
-$Grey = 0x666666
+$Blue = 0x64381F        # #1f3864 as a Word BGR color
+$Gray = 0x666666
 $PrintDriver = 'Microsoft Print to PDF'
 $Pdf24Printer = 'PDF24'
 $Pdf24Profile = 'default/best'      # the profile PDF24's printer applies unless told otherwise
@@ -43,7 +43,7 @@ function Set-Paragraphs {
     $first = $Range.Paragraphs.Item(1).Range
     if ($CaptionFirst) {
         $first.Font.Size = 8
-        $first.Font.Color = $Grey
+        $first.Font.Color = $Gray
         $first.Font.AllCaps = $true
         $first.Font.Spacing = 1
     }
@@ -185,7 +185,7 @@ try {
     $brand.Font.Color = $Blue
     $tagline = $letterhead.Cell(1, 1).Range.Paragraphs.Item(2).Range
     $tagline.Font.Size = 8.5
-    $tagline.Font.Color = $Grey
+    $tagline.Font.Color = $Gray
     Set-Paragraphs $letterhead.Cell(1, 2).Range -BoldFirst @(
         'Facture n° F-2026-0481', 'Émise le 12 février 2026', 'Échéance le 14 mars 2026',
         'TVA intracommunautaire FR40123456824')
@@ -276,7 +276,7 @@ try {
     $footer = $doc.Sections.Item(1).Footers.Item(1).Range            # wdHeaderFooterPrimary
     $footer.Text = 'AdCodicem SAS au capital de 50 000 € · RCS Paris 123 456 824 · IBAN FR76 3000 4008 2800 0123 4567 890'
     $footer.Font.Size = 7.5
-    $footer.Font.Color = $Grey
+    $footer.Font.Color = $Gray
     $footer.ParagraphFormat.Borders.Item(-1).LineStyle = 1
     $footer.ParagraphFormat.Borders.Item(-1).Color = 0xD0D0D0
     $footer.InsertParagraphAfter()

@@ -9,7 +9,7 @@ public sealed class PdfReference : PdfObject
     /// </summary>
     private const int MaxChainLength = 32;
 
-    /// <summary>Initialises a reference to <paramref name="id"/> resolved through <paramref name="source"/>.</summary>
+    /// <summary>Initializes a reference to <paramref name="id"/> resolved through <paramref name="source"/>.</summary>
     public PdfReference(PdfObjectId id, IPdfObjectSource? source = null)
     {
         Id = id;
