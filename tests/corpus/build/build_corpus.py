@@ -537,8 +537,7 @@ def main() -> int:
     build_with_chromium(SOURCES / "report-fr.html", report)
     record(report, title="Multi-page audit report: contents, tables, two-column annex", useCase="report",
            producer=versions.get("chromium", "chromium"), origin="generated", licence="MIT (our own source)",
-           features=["xref-stream", "object-streams", "internal-links", "repeated-table-headers",
-                     "two-column-text"],
+           features=["xref-stream", "object-streams", "internal-links", "two-column-text"],
            expect={"pages": page_count(report), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "textContains": ["Sommaire", "Tableau des mesures", "Annexe"]})
 
@@ -546,7 +545,7 @@ def main() -> int:
     build_with_libreoffice(SOURCES / "report-fr.html", lo_report)
     record(lo_report, title="Same report through a different producer", useCase="report",
            producer=versions.get("libreoffice", "libreoffice"), origin="generated",
-           licence="MIT (our own source)", features=["xref-table"],
+           licence="MIT (our own source)", features=["xref-table", "repeated-table-headers", "two-column-text"],
            expect={"pages": page_count(lo_report), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "textContains": ["Sommaire"]})
 
@@ -591,7 +590,7 @@ def main() -> int:
     record(archival, title="Archival export of the report, claiming PDF/A-2b", useCase="archival",
            producer=versions.get("libreoffice", "libreoffice"), origin="generated",
            licence="MIT (our own source)", features=["pdf-a-2b", "xmp-metadata", "output-intent",
-                                                     "embedded-fonts"],
+                                                     "embedded-fonts", "repeated-table-headers", "two-column-text"],
            expect={"pages": page_count(archival), "clean": True, "indexRebuilt": False, "requiredDiagnostics": [],
                    "claimsConformance": "PDF/A-2b"})
 

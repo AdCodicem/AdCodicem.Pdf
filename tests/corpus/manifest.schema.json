@@ -301,7 +301,7 @@
         },
         "attachments": {
           "type": "array",
-          "description": "Embedded files the document carries (M15).",
+          "description": "Embedded files the document carries, at every level (asserted from M6; extracted by M15).",
           "items": {
             "type": "string",
             "minLength": 1
@@ -310,7 +310,7 @@
         },
         "formFields": {
           "type": "array",
-          "description": "Interactive form fields the document declares (M16).",
+          "description": "Interactive form fields the document declares, by fully qualified name (asserted from M6; filled by M16).",
           "items": {
             "type": "string",
             "minLength": 1
