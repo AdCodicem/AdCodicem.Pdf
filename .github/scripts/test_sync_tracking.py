@@ -76,6 +76,13 @@ class ReadingTheRoadmap(unittest.TestCase):
             OpenQuestion("A code-first layout API beside HTML (ADR 8)", "Callers asking for one over templates"),
         ])
 
+    def test_reads_an_open_question_whatever_links_its_discussion(self):
+        text = ("## Open questions\n\n| Subject | What would trigger it | Discussion |\n|---|---|---|\n"
+                "| Color fonts and emoji | Chat transcripts as case-file pieces | [#92] |\n")
+
+        self.assertEqual(sync_tracking.read_open_questions(text),
+                         [OpenQuestion("Color fonts and emoji", "Chat transcripts as case-file pieces")])
+
     def test_takes_a_goal_from_the_roadmap_section_joined_and_capitalized(self):
         goal = sync_tracking.read_roadmap_goal(ROADMAP, milestone("M00", "Repository foundations", "done"))
 
