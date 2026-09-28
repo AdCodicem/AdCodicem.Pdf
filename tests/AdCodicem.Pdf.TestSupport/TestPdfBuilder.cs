@@ -48,7 +48,17 @@ public sealed class TestPdfBuilder
     }
 
     /// <summary>Writes a file whose index is a cross-reference stream, optionally with an object stream.</summary>
-    public byte[] BuildWithXRefStream(int rootNumber, int[]? compressedObjects = null)
+    /// <param name="rootNumber">The catalog's object number.</param>
+    /// <param name="compressedObjects">The objects packed in the object stream, in order.</param>
+    /// <param name="objectStreamHeader">Rewrites the object stream's header — <c>2 0 3 57 </c> — before its /First is worked out.</param>
+    /// <param name="compressObjectStream">Writes the object stream's data Flate-compressed.</param>
+    /// <param name="compressXRefStream">Writes the cross-reference stream's rows Flate-compressed.</param>
+    public byte[] BuildWithXRefStream(
+        int rootNumber,
+        int[]? compressedObjects = null,
+        Func<string, string>? objectStreamHeader = null,
+        bool compressObjectStream = false,
+        bool compressXRefStream = false)
     {
         using var writer = new Writer();
         writer.WriteHeader("1.5");
@@ -80,13 +90,12 @@ public sealed class TestPdfBuilder
                 contents.Append(Encoding.ASCII.GetString(packed[i].Body)).Append('\n');
             }
 
-            var first = header.Length;
-            var data = header.ToString() + contents;
+            var headerText = objectStreamHeader?.Invoke(header.ToString()) ?? header.ToString();
+            var data = Encoding.ASCII.GetBytes(headerText + contents);
             offsets[objectStreamNumber] = writer.Position;
             writer.WriteObject(
                 objectStreamNumber,
-                Encoding.ASCII.GetBytes(
-                    $"<< /Type /ObjStm /N {packed.Count} /First {first} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+                StreamBody($"/Type /ObjStm /N {packed.Count} /First {headerText.Length}", data, compressObjectStream));
         }
 
         var size = xrefNumber + 1;
@@ -117,14 +126,29 @@ public sealed class TestPdfBuilder
             }
         }
 
-        var payload = Encoding.Latin1.GetString(rows.ToArray());
         writer.WriteObject(
             xrefNumber,
-            Encoding.Latin1.GetBytes(
-                $"<< /Type /XRef /Size {size} /W [1 4 2] /Root {rootNumber} 0 R /Length {rows.Count} >>\nstream\n{payload}\nendstream"));
+            StreamBody($"/Type /XRef /Size {size} /W [1 4 2] /Root {rootNumber} 0 R", [.. rows], compressXRefStream));
 
         writer.WriteStartXRef(xrefOffset);
         return writer.ToArray();
+
+        static byte[] StreamBody(string entries, byte[] data, bool compress)
+        {
+            if (compress)
+            {
+                using var compressed = new MemoryStream();
+                using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.Optimal))
+                {
+                    zlib.Write(data);
+                }
+
+                data = compressed.ToArray();
+                entries += " /Filter /FlateDecode";
+            }
+
+            return [.. Encoding.Latin1.GetBytes($"<< {entries} /Length {data.Length} >>\nstream\n"), .. data, .. "\nendstream"u8];
+        }
 
         static byte[] Row(byte type, uint field2, ushort field3) =>
         [
@@ -164,9 +188,20 @@ public sealed class TestPdfBuilder
 
         writer.WriteLine("trailer");
         var previous = pointPreviousAtSelf ? xrefOffset : previousStartXRef;
-        writer.WriteLine($"<< /Size 64 /Root {rootNumber} 0 R /Prev {previous} >>");
+        var size = Math.Max(FindSize(original), updates.Max(update => update.Number) + 1);
+        writer.WriteLine($"<< /Size {size} /Root {rootNumber} 0 R /Prev {previous} >>");
         writer.WriteStartXRef(xrefOffset);
         return writer.ToArray();
+    }
+
+    /// <summary>The <c>/Size</c> the newest trailer gives, which an update counts on from.</summary>
+    private static int FindSize(byte[] data)
+    {
+        var text = Encoding.Latin1.GetString(data);
+        var index = text.LastIndexOf("/Size ", StringComparison.Ordinal);
+        var rest = text[(index + "/Size ".Length)..];
+        var end = rest.IndexOfAny([' ', '/', '>', '\r', '\n']);
+        return int.Parse(end < 0 ? rest : rest[..end], CultureInfo.InvariantCulture);
     }
 
     private static long FindStartXRef(byte[] data)

@@ -258,6 +258,7 @@
               "syntax.truncated-object",
               "syntax.depth-exceeded",
               "object.redefined",
+              "trailer.root-recovered",
               "filter.failed",
               "filter.unsupported",
               "limit.decoded-stream",
@@ -274,7 +275,27 @@
           "description": "The validation rules that report on the document under the default profile (PdfValidationRuleIds) — exactly these; left out, none.",
           "items": {
             "enum": [
-              "file.eof-missing"
+              "file.header-missing",
+              "file.header-offset",
+              "file.header-version-invalid",
+              "file.eof-missing",
+              "file.startxref-missing",
+              "file.startxref-wrong",
+              "file.trailer-missing",
+              "file.trailer-malformed",
+              "file.root-invalid",
+              "file.size-wrong",
+              "xref.section-malformed",
+              "xref.section-not-found",
+              "xref.section-shifted",
+              "xref.chain-loop",
+              "xref.entry-broken",
+              "xref.entry-shifted",
+              "xref.generation-mismatch",
+              "xref.object-stream-broken",
+              "xref.offset-imprecise",
+              "xref.object-past-size",
+              "xref.checked-in-part"
             ]
           },
           "uniqueItems": true

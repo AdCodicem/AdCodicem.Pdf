@@ -11,6 +11,10 @@ whose rule identifiers it gives a grammar, and [24](0024-package-identifiers-and
 for the validator's shape and [34](0034-every-valid-pdf-is-readable-and-the-readers-guards-are.md) for what a
 guard reached means to it.
 
+Amended by [45](0045-a-findings-severity-says-whether-the-file-reads-as-written.md) on 2026-09-27: the bar for
+`Error` is no longer "readers will disagree about the document" but whether the reader can vouch that it reads
+the file as written.
+
 Implemented by the `AdCodicem.Pdf.Validation` namespace of the core — `PdfValidator`, `PdfValidatorOptions`,
 `ValidationProfile`, `PdfValidationReport`, `PdfValidationFinding`, `PdfValidationSeverity`,
 `PdfValidationLocation`, `PdfValidationRuleIds` —, `docs/validation-rules.md`, and `CorpusValidationTests`.

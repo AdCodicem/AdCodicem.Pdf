@@ -103,6 +103,14 @@ public class FilterTests
     }
 
     [Fact]
+    public void Skips_the_introducer_some_producers_keep_before_ascii85_data()
+    {
+        // Python's base64.a85encode(..., adobe=True) writes the "<~" PostScript uses and PDF does not.
+        Text(Decode("<~6\"FnCAKYc\"AT2]5FD,5.Bl8$5De+!#AT@~>"u8.ToArray(), PdfName.ASCII85Decode))
+            .Should().Be("Adobe keeps the introducer");
+    }
+
+    [Fact]
     public void Decodes_a_run_length_stream()
     {
         // Two literal bytes, then five copies of 0x41, then the end marker.
@@ -514,6 +522,56 @@ public class FilterTests
         bounded.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
     }
 
+    [Theory]
+    [InlineData(LibpngAdaptive, new byte[] { 1, 2, 3, 4 })]
+    [InlineData(LibpngUnfiltered, new byte[] { 0 })]
+    public void Undoes_every_png_predictor_as_libpng_writes_it(string idat, byte[] filters)
+    {
+        // Two PNG files of the same 8 by 6 RGB image, written by libpng through ImageMagick 6.9.12: one with its
+        // adaptive filtering, which chose Sub, Up, Average and Paeth row by row, one with none. A PNG's IDAT is
+        // what /FlateDecode with /Predictor 15 decodes.
+        var data = Convert.FromBase64String(idat);
+        RowFilters(data, stride: (8 * 3) + 1).Should().Equal(filters, "the vector must exercise these filters");
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(15));
+        parameters.Set(PdfName.Colors, PdfInteger.Create(3));
+        parameters.Set(PdfName.BitsPerComponent, PdfInteger.Create(8));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(8));
+
+        var decoded = Decode(data, PdfName.FlateDecode, parameters);
+
+        decoded.ToArray().Should().Equal(Convert.FromBase64String(LibpngPixels));
+    }
+
+    [Theory]
+    [InlineData(1, 32)]
+    [InlineData(2, 16)]
+    [InlineData(4, 8)]
+    [InlineData(16, 2)]
+    public void Leaves_a_tiff_predictor_over_components_other_than_a_byte_wide_alone(int bitsPerComponent, int columns)
+    {
+        byte[] predicted = [0x12, 0x34, 0x56, 0x78];
+
+        PredictorTransform.TryApply(predicted, predictor: 2, colors: 1, bitsPerComponent, columns, out var result)
+            .Should().BeTrue();
+
+        result.Should().Equal((byte)0x12, 0x34, 0x56, 0x78);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    [InlineData(32)]
+    public void Takes_a_bits_per_component_pdf_does_not_allow_for_eight(int bitsPerComponent)
+    {
+        byte[] predicted = [10, 5, 5, 5];
+
+        PredictorTransform.TryApply(predicted, predictor: 2, colors: 1, bitsPerComponent, columns: 4, out var result)
+            .Should().BeTrue();
+
+        result.Should().Equal((byte)10, 15, 20, 25);
+    }
+
     [Fact]
     public void Undoes_a_png_up_predictor()
     {
@@ -571,12 +629,54 @@ public class FilterTests
     }
 
     [Fact]
+    public void Leaves_the_data_as_it_is_under_a_filter_entry_that_is_neither_a_name_nor_an_array()
+    {
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfInteger.Create(5));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory("plain"u8.ToArray())).Decode(diagnostics);
+
+        Text(decoded).Should().Be("plain");
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterUnsupported);
+        report.Message.Should().Be("The /Filter entry is neither a name nor an array.");
+    }
+
+    [Fact]
+    public void Stops_a_chain_of_filters_at_an_image_filter()
+    {
+        // The JPEG is hex-encoded: decoding undoes the hex and leaves the JPEG to whoever renders it.
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0];
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.ASCIIHexDecode, PdfName.DCTDecode]));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(Encoding.ASCII.GetBytes(Convert.ToHexString(jpeg) + ">")));
+
+        stream.Decode().ToArray().Should().Equal(jpeg);
+    }
+
+    [Fact]
     public void Returns_raw_data_when_no_filter_is_declared()
     {
         var stream = new PdfStream(new PdfDictionary(), PdfStreamData.FromMemory("plain"u8.ToArray()));
 
         Text(stream.Decode()).Should().Be("plain");
     }
+
+    /// <summary>The IDAT of libpng's adaptive rendering of <see cref="LibpngPixels"/>.</summary>
+    private const string LibpngAdaptive =
+        "CNdtzCEOg1AMgGG2IRATvUzlu1Avg6wg2QFIqGyyZPKJCRwCUUeTmacqEDgECMR++yX/o0Jq+zzH8/WeflU3fJe17T9z3CMi58zMRJRSAgB3V9X6gG1jIkREADzgNjWp+VcdEaONdsnNzOxcibCIiEgpxd1VdAefBVSZ";
+
+    /// <summary>The IDAT of libpng's unfiltered rendering of <see cref="LibpngPixels"/>.</summary>
+    private const string LibpngUnfiltered =
+        "CNcBlgBp/wAANWqPxPkeU4it4hc8cabLADVaj8TpHlMA8SZbU4i9teofF0yBea7j2xBFPXKnn9QJAOIXTBdMgUyBtoG267brIOsgVSBVilWKvwDTCD3bEEXjGE3rIFXzKF37MGUDOG0LQHUAxPkun9QJeq/kVYq/MGWaC0B15htQwfYrALXqH2OYzRFGe7/0KW2i1xtQhcn+M3es4bM7RMU=";
+
+    /// <summary>
+    /// An 8 by 6 RGB image, sample (x, y, c) being ((x·97 + y·31)·7919 + c·53 + x·y·211) mod 256: values that
+    /// leave every PNG filter something to predict.
+    /// </summary>
+    private const string LibpngPixels =
+        "ADVqj8T5HlOIreIXPHGmywA1Wo/E6R5T8SZbU4i9teofF0yBea7j2xBFPXKnn9QJ4hdMF0yBTIG2gbbrtusg6yBVIFWKVYq/0wg92xBF4xhN6yBV8yhd+zBlAzhtC0B1xPkun9QJeq/kVYq/MGWaC0B15htQwfYrteofY5jNEUZ7v/QpbaLXG1CFyf4zd6zh";
 
     private static ReadOnlyMemory<byte> Decode(
         byte[] data,
@@ -664,6 +764,19 @@ public class FilterTests
         }
 
         return data;
+    }
+
+    /// <summary>Reads which filter bytes the PNG rows start with, in order, after inflating the data.</summary>
+    private static byte[] RowFilters(byte[] zlib, int stride)
+    {
+        using var inflated = new MemoryStream();
+        using (var inflater = new System.IO.Compression.ZLibStream(new MemoryStream(zlib), System.IO.Compression.CompressionMode.Decompress))
+        {
+            inflater.CopyTo(inflated);
+        }
+
+        var rows = inflated.ToArray();
+        return [.. Enumerable.Range(0, rows.Length / stride).Select(row => rows[row * stride]).Distinct().Order()];
     }
 
     private static string Text(ReadOnlyMemory<byte> data) => Encoding.ASCII.GetString(data.Span);

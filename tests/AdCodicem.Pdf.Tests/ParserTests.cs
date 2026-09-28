@@ -70,6 +70,19 @@ public class ParserTests
         value.Should().BeOfType<PdfDictionary>();
     }
 
+    [Theory]
+    [InlineData("0 0 obj\nnull\nendobj\n")]
+    [InlineData("3000000000 0 obj\nnull\nendobj\n")]
+    [InlineData("7 -1 obj\nnull\nendobj\n")]
+    [InlineData("7 65536 obj\nnull\nendobj\n")]
+    [InlineData("7 0.5 obj\nnull\nendobj\n")]
+    public void Refuses_an_object_header_whose_number_or_generation_is_out_of_range(string text)
+    {
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));
+
+        parser.TryReadIndirectObject(out _, out _).Should().BeFalse();
+    }
+
     [Fact]
     public void Reads_a_stream_whose_declared_length_is_correct()
     {

@@ -275,6 +275,28 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_guard_reached_looking_for_the_catalog_among_the_indexed_objects_throws_once_it_is_found()
+    {
+        // /Root names no object, so the catalog is looked for among those the index holds, without a rebuild.
+        // Object 1 reaches the object bound on the way to object 3, the catalog, which is found before the guard
+        // throws.
+        var file = new TestPdfBuilder()
+            .WithObject(1, LongArray)
+            .WithObject(2, Pages)
+            .WithObject(3, Catalog)
+            .BuildClassic(rootNumber: 9);
+        var limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 };
+        var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnLimit = true });
+
+        opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be("MaxObjectLength");
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.TrailerRootRecovered);
+    }
+
+    [Fact]
     public void An_object_cut_by_its_bound_is_not_reported_as_damage()
     {
         // The bound falls just after a key, where the parser, finding no value, reports an object the file
@@ -399,7 +421,14 @@ public class ReaderLimitsTests
 
     private static string Hex(string text) => Convert.ToHexString(Encoding.ASCII.GetBytes(text)) + ">";
 
-    private static string IndexState(PdfDocument document) => document.WasRepaired ? "rebuilt" : "as written";
+    /// <summary>
+    /// How the reader came by its index and its catalog: as the file wrote them, the catalog looked for among the
+    /// indexed objects when <c>/Root</c> was out of reach, or the whole index rebuilt by scanning.
+    /// </summary>
+    private static string IndexState(PdfDocument document) =>
+        document.WasRepaired ? "rebuilt"
+        : document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered) ? "catalog recovered"
+        : "as written";
 
     private static int OffsetOf(byte[] file, string text) =>
         Encoding.Latin1.GetString(file).IndexOf(text, StringComparison.Ordinal);
@@ -483,8 +512,8 @@ public class ReaderLimitsTests
 
         private static Case LongSection()
         {
-            // Three hundred entries, 6 KB of table, which a bound of 2 KB cuts before its trailer: the index is
-            // then rebuilt by scanning, the /Root the trailer held being out of reach.
+            // Three hundred entries, 6 KB of table, which a bound of 2 KB cuts before its trailer: the catalog is
+            // then looked for among the entries read, the /Root the trailer held being out of reach.
             var builder = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages);
             for (var number = 3; number < 300; number++)
             {
@@ -538,7 +567,7 @@ public class ReaderLimitsTests
         private static Case LongTrailer()
         {
             // A trailer of 100 KB, whose /Root comes after a long string: past the 64 KB a trailer is read to by
-            // default, the /Root is out of reach and the index is rebuilt to find the catalog.
+            // default, the /Root is out of reach and the catalog is looked for among the indexed objects.
             var written = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).BuildClassic(rootNumber: 1);
             var file = Replace(written, "<< /Size 3 /Root 1 0 R >>", $"<< /Size 3 /Pad ({new string('x', 100_000)}) /Root 1 0 R >>");
 
