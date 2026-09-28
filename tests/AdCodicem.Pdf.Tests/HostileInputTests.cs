@@ -293,6 +293,83 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void An_object_stream_that_needs_an_object_it_holds_reads_the_same_after_the_budget_lets_it_go()
+    {
+        // Object stream 7 names its own object 5 as its filter: decoded, it reads 5 as null, so its data is taken as
+        // written. Once 5 is read and kept, and a stream of 33 MB has pushed 7 out of the budget, decoding 7 again
+        // must read 5 as null again, or 7 would be taken as hexadecimal and object 6 lost.
+        var file = PackedFile(
+            [
+                new PackedStream(7, "/Filter 5 0 R", [(5, "/ASCIIHexDecode"), (6, "<< /Title (six) >>")], PackedData.Plain),
+                new PackedStream(8, string.Empty, [(9, "<< /K (large) >>")], PackedData.Flate, Padding: 33 * 1024 * 1024),
+            ]);
+
+        using var fresh = PdfDocument.Open(file);
+        var expected = fresh.GetObject(new PdfObjectId(6));
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(5)).Should().Be(PdfName.Get("ASCIIHexDecode"));
+        document.GetObject(new PdfObjectId(9)).Should().BeOfType<PdfDictionary>();
+        var six = document.GetObject(new PdfObjectId(6));
+
+        Title(six).Should().Be("six").And.Be(Title(expected));
+        document.Reader.ObjectStreamBytes.Should().BeLessThanOrEqualTo(34L * 1024 * 1024);
+    }
+
+    [Fact]
+    public void Two_object_streams_that_need_each_other_read_the_same_after_the_budget_lets_them_go()
+    {
+        // Stream 10 takes its filter from 21, held by stream 11, which takes its own from 23, held by stream 10:
+        // decoding 10 decodes 11, which reads 23 as null and is taken as written; 21 then says 10 is hexadecimal.
+        // Once 23 is read and kept and both streams are pushed out of the budget, decoding 11 again on its own must
+        // read 23 as null again, or it would be taken as hexadecimal and object 22 lost.
+        var file = PackedFile(
+            [
+                new PackedStream(10, "/Filter 21 0 R", [(20, "<< /Title (twenty) >>"), (23, "/ASCIIHexDecode")], PackedData.Hex),
+                new PackedStream(11, "/Filter 23 0 R", [(21, "/ASCIIHexDecode"), (22, "<< /Title (twenty-two) >>")], PackedData.Plain),
+                new PackedStream(12, string.Empty, [(9, "<< /K (large) >>")], PackedData.Flate, Padding: 33 * 1024 * 1024),
+            ]);
+
+        using var fresh = PdfDocument.Open(file);
+        fresh.GetObject(new PdfObjectId(20)).Should().BeOfType<PdfDictionary>();
+        var expected = fresh.GetObject(new PdfObjectId(22));
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(20)).Should().BeOfType<PdfDictionary>();
+        document.GetObject(new PdfObjectId(23)).Should().Be(PdfName.Get("ASCIIHexDecode"));
+        document.GetObject(new PdfObjectId(9)).Should().BeOfType<PdfDictionary>();
+        var twentyTwo = document.GetObject(new PdfObjectId(22));
+
+        Title(twentyTwo).Should().Be("twenty-two").And.Be(Title(expected));
+    }
+
+    [Fact]
+    public void An_object_stream_a_load_too_deep_could_not_reach_is_read_from_a_shallower_one()
+    {
+        // Sixty-three streams each take their /Length from the next; the last takes it from object 5, in object
+        // stream 7. Asked from the top of the chain, object 5 is the sixty-fourth load and stream 7 the sixty-fifth,
+        // one past the deepest the reader follows: stream 7 reads as null there. Asked afterwards on their own, the
+        // objects it holds read as they are.
+        var direct = new List<(int Number, string Body)>();
+        for (var number = 100; number < 163; number++)
+        {
+            var length = number < 162 ? $"{number + 1} 0 R" : "5 0 R";
+            direct.Add((number, $"<< /Length {length} >>\nstream\nx\nendstream"));
+        }
+
+        var file = PackedFile(
+            [new PackedStream(7, string.Empty, [(5, "1"), (6, "<< /Title (six) >>")], PackedData.Plain)],
+            direct);
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(100));
+
+        document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfDictionary>();
+        document.GetObject(new PdfObjectId(5)).Should().Be(PdfInteger.Create(1));
+    }
+
+    [Fact]
     public void An_object_stream_whose_every_index_is_wrong_is_read_in_linear_time()
     {
         // A million objects in one stream, every entry of the index naming the wrong place in it: each is found
@@ -549,6 +626,111 @@ public class HostileInputTests
         }
     }
 
+    /// <summary>The text of a dictionary's /Title, or null when the value is no dictionary with a string there.</summary>
+    private static string? Title(PdfObject value) =>
+        value is PdfDictionary dictionary && dictionary.GetRaw(PdfName.Get("Title")) is PdfString title ? title.ToText() : null;
+
+    /// <summary>
+    /// Writes a file whose index is a cross-reference stream, with the object streams <paramref name="streams"/>
+    /// describes and the objects <paramref name="direct"/> gives written directly; objects 1 and 2 are a catalog and
+    /// an empty page tree.
+    /// </summary>
+    private static byte[] PackedFile(IReadOnlyList<PackedStream> streams, IReadOnlyList<(int Number, string Body)>? direct = null)
+    {
+        using var output = new MemoryStream();
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        Write("%PDF-1.5\n");
+        var offsets = new Dictionary<int, long>();
+        var packed = new Dictionary<int, (int Stream, int Index)>();
+        var objects = new List<(int Number, string Body)> { (1, "<< /Type /Catalog /Pages 2 0 R >>"), (2, "<< /Type /Pages /Kids [] /Count 0 >>") };
+        objects.AddRange(direct ?? []);
+
+        foreach (var (number, body) in objects)
+        {
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+        }
+
+        foreach (var stream in streams)
+        {
+            var header = new StringBuilder();
+            var body = new StringBuilder();
+
+            for (var i = 0; i < stream.Members.Count; i++)
+            {
+                packed[stream.Members[i].Number] = (stream.Number, i);
+                header.Append(CultureInfo.InvariantCulture, $"{stream.Members[i].Number} {body.Length} ");
+                body.Append(stream.Members[i].Body).Append('\n');
+            }
+
+            var text = Encoding.ASCII.GetBytes(header.ToString() + body);
+            byte[] data;
+            var filter = string.Empty;
+
+            switch (stream.Data)
+            {
+                case PackedData.Hex:
+                    data = Encoding.ASCII.GetBytes(Convert.ToHexString(text) + ">");
+                    break;
+
+                case PackedData.Flate:
+                    using (var compressed = new MemoryStream())
+                    {
+                        using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+                        {
+                            zlib.Write(text);
+                            zlib.Write(new byte[stream.Padding].AsSpan());
+                        }
+
+                        data = compressed.ToArray();
+                    }
+
+                    filter = " /Filter /FlateDecode";
+                    break;
+
+                default:
+                    data = text;
+                    break;
+            }
+
+            offsets[stream.Number] = output.Position;
+            Write(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{stream.Number} 0 obj\n<< /Type /ObjStm /N {stream.Members.Count} /First {header.Length} {stream.Dictionary}{filter} /Length {data.Length} >>\nstream\n"));
+            output.Write(data);
+            Write("\nendstream\nendobj\n");
+        }
+
+        var xrefNumber = Math.Max(offsets.Keys.Max(), packed.Keys.Max()) + 1;
+        var xrefOffset = output.Position;
+        offsets[xrefNumber] = xrefOffset;
+        using var rows = new MemoryStream();
+
+        for (var number = 0; number <= xrefNumber; number++)
+        {
+            if (offsets.TryGetValue(number, out var offset))
+            {
+                rows.Write([1, (byte)(offset >> 24), (byte)(offset >> 16), (byte)(offset >> 8), (byte)offset, 0, 0]);
+            }
+            else if (packed.TryGetValue(number, out var entry))
+            {
+                rows.Write([2, (byte)(entry.Stream >> 24), (byte)(entry.Stream >> 16), (byte)(entry.Stream >> 8), (byte)entry.Stream, (byte)(entry.Index >> 8), (byte)entry.Index]);
+            }
+            else
+            {
+                rows.Write([0, 0, 0, 0, 0, 0, 0]);
+            }
+        }
+
+        Write(string.Create(
+            CultureInfo.InvariantCulture,
+            $"{xrefNumber} 0 obj\n<< /Type /XRef /Size {xrefNumber + 1} /W [1 4 2] /Root 1 0 R /Length {rows.Length} >>\nstream\n"));
+        output.Write(rows.ToArray());
+        Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
+        return output.ToArray();
+    }
+
     /// <summary>The number of object stream <paramref name="stream"/>.</summary>
     private static int StreamNumber(int stream) => 3 + stream;
 
@@ -647,4 +829,20 @@ public class HostileInputTests
         stopwatch.Elapsed.Should().BeLessThan(Budget, "A hostile input must not be allowed to take unbounded time.");
         return result;
     }
+
+    /// <summary>How an object stream's data is written.</summary>
+    private enum PackedData
+    {
+        /// <summary>As it is, with no filter.</summary>
+        Plain,
+
+        /// <summary>In hexadecimal, for a filter the stream's dictionary names.</summary>
+        Hex,
+
+        /// <summary>Flate-compressed, with /Filter /FlateDecode.</summary>
+        Flate,
+    }
+
+    /// <summary>An object stream to write: its number, what its dictionary adds, the objects it holds and its data.</summary>
+    private sealed record PackedStream(int Number, string Dictionary, IReadOnlyList<(int Number, string Body)> Members, PackedData Data, int Padding = 0);
 }

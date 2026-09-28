@@ -109,8 +109,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private readonly Dictionary<int, PdfObject> _cache = [];
     private readonly Queue<int> _cacheOrder = new();
     /// <summary>
-    /// The object streams decoded, by number, null for one that could not be read or is being read; with the order
-    /// they were decoded in and the bytes their data holds, which <see cref="ObjectStreamBudget"/> bounds.
+    /// The object streams decoded, by number, null for one that cannot be read; with the order they were decoded in
+    /// and the bytes their data holds, which <see cref="ObjectStreamBudget"/> bounds.
     /// </summary>
     private readonly Dictionary<int, ObjectStreamContents?> _objectStreams = [];
     private readonly Queue<int> _objectStreamOrder = new();
@@ -124,6 +124,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>The object streams already reported as needing an object they hold to be read.</summary>
     private readonly HashSet<int> _objectStreamsNeedingThemselves = [];
+
+    /// <summary>
+    /// The objects each object stream read as null while it was decoded because of how the file is made — an object
+    /// it holds, or one being loaded —, kept after the stream is let go: decoded again, it reads them as null again,
+    /// so that what it holds does not depend on what was read, and kept, in between, nor on
+    /// <see cref="ObjectStreamBudget"/>. A load too deep to follow depends on where it was asked from, not on the
+    /// file, and is not recorded.
+    /// </summary>
+    private readonly Dictionary<int, HashSet<int>> _nullWhileDecoding = [];
 
     /// <summary>
     /// The objects the index holds in use that the reader gave up on the last time they were asked for — nothing
@@ -228,27 +237,35 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return PdfNull.Instance;
         }
 
+        // Asked before the cache: an object stream decoded again, once the budget let it go, must read as null what
+        // it read as null the first time, whatever was read and kept since.
+        if (_objectStreamsLoading.Count > 0)
+        {
+            // An object stream whose decoding needs an object it holds — its /DecodeParms, its /N — cannot be read
+            // from while it is decoded: the object reads as null there, is reported, and is read again once the
+            // stream is decoded (#51).
+            if (IsHeldByObjectStreamBeingLoaded(id.Number, out var objectStream))
+            {
+                ReportObjectStreamNeedsItself(objectStream, id.Number);
+                return NullWhileDecoding(id.Number);
+            }
+
+            if (ReadAsNullBefore(id.Number))
+            {
+                return NullWhileDecoding(id.Number);
+            }
+        }
+
         if (_cache.TryGetValue(id.Number, out var cached))
         {
             return cached;
-        }
-
-        // An object stream whose decoding needs an object it holds — its /DecodeParms, its /N — cannot be read
-        // from while it is decoded: the object reads as null there, is reported, and is read again once the
-        // stream is decoded (#51).
-        if (IsHeldByObjectStreamBeingLoaded(id.Number, out var objectStream))
-        {
-            _reentries++;
-            ReportObjectStreamNeedsItself(objectStream, id.Number);
-            return PdfNull.Instance;
         }
 
         // A file can make an object's length depend on the object itself, under any generation. Refusing to
         // re-enter turns an infinite recursion into a null.
         if (!_loading.Add(id.Number))
         {
-            _reentries++;
-            return PdfNull.Instance;
+            return NullWhileDecoding(id.Number);
         }
 
         try
@@ -260,6 +277,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             // cached, so the same object loaded from a shallower place reads normally.
             if (_loading.Count > MaxNestedLoads || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
             {
+                // Counted as a re-entry, so that nothing that asked for the object keeps the null for good.
+                _reentries++;
                 ReportNestingTooDeep(id);
                 return PdfNull.Instance;
             }
@@ -309,6 +328,42 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// gives where it was read.
     /// </summary>
     internal bool IsEndObjMissing(int number, out long position) => _endObjMissing.TryGetValue(number, out position);
+
+    /// <summary>
+    /// Answers null for object <paramref name="number"/>, a null that says nothing of the object and is not cached,
+    /// and records it for each object stream being decoded, which reads it as null again whenever it is decoded again.
+    /// </summary>
+    private PdfNull NullWhileDecoding(int number)
+    {
+        _reentries++;
+
+        foreach (var objectStream in _objectStreamsLoading)
+        {
+            if (!_nullWhileDecoding.TryGetValue(objectStream, out var numbers))
+            {
+                numbers = [];
+                _nullWhileDecoding[objectStream] = numbers;
+            }
+
+            numbers.Add(number);
+        }
+
+        return PdfNull.Instance;
+    }
+
+    /// <summary>Determines whether an object stream being decoded read object <paramref name="number"/> as null before.</summary>
+    private bool ReadAsNullBefore(int number)
+    {
+        foreach (var objectStream in _objectStreamsLoading)
+        {
+            if (_nullWhileDecoding.TryGetValue(objectStream, out var numbers) && numbers.Contains(number))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>Determines whether the index places object <paramref name="number"/> in an object stream being decoded.</summary>
     private bool IsHeldByObjectStreamBeingLoaded(int number, out int objectStream)
@@ -1800,7 +1855,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         // stream cannot be read yet, and will be once its dictionary is (#51). Nothing is recorded.
         if (_loading.Contains(number))
         {
-            _reentries++;
+            NullWhileDecoding(wanted);
             notYet = true;
             ReportObjectStreamNeedsItself(number, wanted);
             return null;
@@ -1812,10 +1867,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         try
         {
-            // What decoding without an object the stream holds gives is all the stream can give, and is kept.
-            var contents = GetObject(new PdfObjectId(number)) is PdfStream stream
-                ? ObjectStreamContents.TryCreate(stream, _diagnostics)
-                : null;
+            var reentries = _reentries;
+            var loaded = GetObject(new PdfObjectId(number));
+
+            // The stream itself could not be loaded from here — too deep, or needed by what is being loaded —: that
+            // says nothing of it, and it is read again when one of its objects is asked for again.
+            if (loaded is PdfNull && reentries != _reentries)
+            {
+                notYet = true;
+                return null;
+            }
+
+            // What decoding without an object the stream holds gives is all the stream can give, and is kept; decoded
+            // again once the budget let it go, the stream reads the same objects as null, and gives the same.
+            var contents = loaded is PdfStream stream ? ObjectStreamContents.TryCreate(stream, _diagnostics) : null;
 
             KeepObjectStream(number, contents);
             return contents;
@@ -1891,6 +1956,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         _objectStreams.Clear();
         _objectStreamOrder.Clear();
         _objectStreamBytes = 0;
+        _nullWhileDecoding.Clear();
 
         ScanForObjects();
         ScanForTrailers();
