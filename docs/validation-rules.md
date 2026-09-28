@@ -52,6 +52,7 @@ References are to ISO 32000-1:2008.
 | `xref.entry-broken` | Error | An in-use entry places its object neither at its offset nor within 512 bytes of it, or in an object stream whose header does not list it. One finding per entry, located at the object and the offset the entry gives. | Each object's header, a few dozen bytes; each object stream's header |
 | `xref.entry-shifted` | Warning | An in-use entry places its object a few bytes from where it is — the object's own header confirming it —, or at another index of its object stream than the one its header gives. One finding per entry. | As `xref.entry-broken` |
 | `xref.generation-mismatch` | Warning | An in-use entry gives a generation other than the one its object is written with. The references and the object's header agree against the entry, and the reader reads the object; qpdf reads a reference to it as a reference to nothing. | Each object's header |
+| `xref.object-stream-circular` | Error | An object stream needs, to be read, an object only reading it can give: its `/Length`, `/Filter`, `/DecodeParms`, `/N` or `/First` names an object it holds — directly, through objects written in the file, or through another object stream whose own keys need it in turn (7.5.7). The reader decodes the stream without that value, as qpdf reports a loop, and cannot vouch for what it decoded ([#51]). One finding per stream; `xref.object-stream-broken` says nothing more of it. | Each object stream's dictionary and the objects its decoding keys name; nothing is decoded |
 | `xref.object-stream-broken` | Error | An object stream the index places objects in is not in the index, is not an object stream, or does not decode to the header its `/N` and `/First` describe: every object placed in it is lost. One finding per stream. An object stream whose own entry is broken is `xref.entry-broken`'s. | Each object stream once, without keeping it |
 | `xref.offset-imprecise` | Warning | Offsets name the white space before what they designate rather than its first byte (7.5.4, 7.5.5): Microsoft Print to PDF names the line feed before each object, and some tools the one before `xref`. Every reader skips the white space. One finding for the file, with how many offsets and the first of them. | The sections of the chain, and each object's header |
 | `xref.object-past-size` | Warning | In-use objects are numbered above the trailer's `/Size`, which Table 15 makes a conforming reader ignore ("shall be ignored and defined to be missing"). The entries, the objects' headers and the references agree against `/Size`, and the reader reads those objects, as qpdf does while warning. One finding for the file, with how many objects and the first of them; `file.size-wrong` then says nothing more of that `/Size`. | The index and the trailer's `/Size` |
@@ -61,6 +62,40 @@ The entries the `xref.entry-*`, `xref.generation-mismatch`, `xref.object-stream-
 and `xref.object-past-size` rules check are those of the index the file's chain gave, as the reader first read
 it — not one it has corrected or rebuilt since, so that what was read before validating changes nothing. When
 the chain gave no index, the file rules have said why, and no entry is checked.
+
+### Objects
+
+| Rule | Severity | Meaning | Reads |
+|---|---|---|---|
+| `object.reference-missing` | Warning | An object reachable from the trailer refers to an object the file does not define — none in its index, or a free entry —, which is null (7.3.10): the reader reads it so, rebuilding nothing, and what the reference was to give is lost. One finding per object that holds such references, naming the first. An object the index holds and the reader cannot produce is `xref.entry-broken`'s or `xref.object-stream-broken`'s, a kid of the page tree `page-tree.kid-invalid`'s, and the trailer's `/Root` `file.root-invalid`'s. | Every object reachable from the trailer, once each |
+| `object.endobj-missing` | Warning | An object reachable from the trailer does not end with `endobj` (7.3.10): another token, or the end of the file, follows its value. The reader reads the value as far as it goes, as qpdf does while reporting it. An empty object, `2 0 obj endobj`, has its `endobj`; what follows a stream whose data runs past the 8 KB window the reader first reads through is not seen until [#55]. | What follows each reachable object's value, as the reader read it |
+| `object.name-null-character` | Warning | An object reachable from the trailer holds a name with a null character, written `#00`, which a name cannot contain (7.3.5). The reader keeps the name; qpdf refuses it and reads dictionaries without the keys so named. One finding per object, naming the first. | Every name of every reachable object |
+
+The object rules walk what is reachable from the trailer — every dictionary, array and stream dictionary, not the
+trailer's `/Prev` or `/XRefStm` —, resolving each object once through the document and reading no stream's data. An
+object nothing reachable refers to is not judged by them.
+
+### Page tree
+
+| Rule | Severity | Meaning | Reads |
+|---|---|---|---|
+| `page-tree.cycle` | Error | A kid names the node listing it, or a node above it (7.7.3): the tree loops, the reader counts no page for the kid, qpdf reports the loop, and what the tree should have listed there is unknown — as with `xref.chain-loop`. | The page tree, walked once |
+| `page-tree.node-repeated` | Warning | A kid names a node or a page the tree lists elsewhere, away from its own path. It is counted each time it is listed, as qpdf does. | The page tree |
+| `page-tree.kids-missing` | Warning | A node, of `/Type /Pages`, has no `/Kids` array (Table 29): it lists no page. | The page tree |
+| `page-tree.kid-invalid` | Warning | A kid is null, names an object the file lacks, names a literal null, is neither a dictionary nor a stream — each takes the place of a page with nothing on it, as qpdf, poppler and PDFium count it —, is a stream, read through its dictionary, or is a dictionary written in the array rather than referred to (Table 29). A kid the index holds and the reader cannot produce is the index's fault, and counts as a page all the same. | The page tree |
+| `page-tree.count-mismatch` | Warning | A node has no `/Count`, or one that is not the number of pages below it (Table 29). The reader counts the pages the tree lists and does not trust `/Count`; readers that take the root's for the number of pages disagree. Not judged above a loop, a node without `/Kids` or a kid the reader cannot produce; a `/Count` that is not an integer is a type fault. | The page tree |
+| `page-tree.parent-wrong` | Warning | A node or a page has no `/Parent`, or one that is not the node listing it; or the root has one (Tables 29 and 30). The reader, as qpdf, walks the tree through `/Kids` and inherits along that path. | The page tree |
+| `page-tree.mediabox-invalid` | Warning | A page has no `/MediaBox`, its own or inherited, or one that is not four numbers enclosing an area (Table 30, 7.9.5): its size is unknown, and qpdf gives it a US Letter sheet's. Any two opposite corners make a rectangle, so a box written from its upper corner is sound. Missing, reported for each page; malformed, where it is written. | The page tree, and each media box |
+| `page-tree.resources-missing` | Warning | A page has no `/Resources`, its own or inherited (Table 30), where an empty dictionary says it uses none. | The page tree |
+| `page-tree.page-orphaned` | Information | An object of `/Type /Page`, with a `/Parent` or a `/Contents`, that the page tree does not list: no reader shows it. Nothing forbids one — an edit leaves them —; a marked-content property list typed `/Page`, as DocuSign writes, is not a page. Judged only where the file's own index is sound and whole and the tree was read whole, since elsewhere loading an object may bring back what an update deleted. | Every object the file's index holds in use, once each, without its content |
+
+The page tree is walked once from the catalog's `/Pages`, through `/Kids`, as qpdf walks it: a node is a dictionary
+with a `/Kids` array or of `/Type /Pages`, any other dictionary the tree lists is a page, and pages are counted as the
+tree lists them — a kid that is null, or names an object the file lacks, counts as a page with nothing on it, a node
+or page listed twice counts twice, a kid that loops back counts nothing. `/MediaBox` and `/Resources` are inherited
+along that path; one that names an object the file lacks counts as given, the reference being
+`object.reference-missing`'s. A finding about a page gives its index in that order, as `PdfValidationLocation.PageIndex`.
+A `/Pages` that names nothing is `object.reference-missing`'s, and leaves no tree to judge.
 
 ### Silent on purpose
 
@@ -78,7 +113,18 @@ Some faults the structural profile does not report, each for a reason:
   indirect reference. The reader takes it as it is, so `file.root-invalid`, whose error is the reader choosing a
   catalog the file does not name, does not apply; a warning of its own is left for later ([#111]).
 - **A gap in the numbering** — an object number below `/Size` with no entry — matters only when something refers
-  to it, which the object-graph rules report.
+  to it, which `object.reference-missing` reports.
+- **An object nothing reachable refers to** — an incremental update's leftovers, an old `/Info`, an unused font — is
+  common and legal; only a page left out of the tree is reported, as `page-tree.page-orphaned`.
+- **A page-like object reachable only through a destination or an annotation, with neither `/Parent` nor
+  `/Contents`** — pikepdf's `handwritten-cyclic-toc.pdf` holds one —: not a page of the tree, and too bare to be told
+  from a stray dictionary typed `/Page`.
+- **A reference written `0 0 R`** — to object 0, never in use — is read as two integers and a stray keyword, which
+  the reader reports as a syntax diagnostic; `object.reference-missing` will report it once the reader reads it as a
+  reference ([#117]).
+- **An array or dictionary still open at the end of the data** — the reader takes it as it stands, and only
+  `object.endobj-missing` reports an object that runs to the end of the file; a finding of its own waits on the
+  reader ([#119]).
 
 ## Families
 
@@ -86,6 +132,10 @@ The structural profile's rules take one of these families, as M02 adds them slic
 `object`, `page-tree`, `stream`, `font`, `resource`, `annotation`, `metadata`, `security`. The PDF/A and
 PDF/UA profiles of the `AdCodicem.Pdf.Conformance` package (M20) take families of their own.
 
+[#51]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/51
+[#55]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/55
 [#107]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/107
 [#108]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/108
 [#111]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/111
+[#117]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/117
+[#119]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/119
