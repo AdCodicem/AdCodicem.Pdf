@@ -47,6 +47,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private const int ScanOverlap = 64;
     private const int MaxRepairObjects = 2_000_000;
 
+    /// <summary>
+    /// The decoded data of object streams kept at once, in bytes. Past it the oldest is let go, and decoded again if
+    /// an object it holds is asked for, so no file is read differently for it: the bound is on memory, not on what
+    /// can be read. The object stream decoded last is kept whatever its size, so memory follows the heaviest object
+    /// stream rather than the number of them.
+    /// </summary>
+    private const long ObjectStreamBudget = 32L * 1024 * 1024;
+
     /// <summary>Asks <see cref="TryParseAt"/> for a direct object, with no object header: a trailer.</summary>
     private const int DirectObject = -1;
 
@@ -100,7 +108,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </summary>
     private readonly Dictionary<int, PdfObject> _cache = [];
     private readonly Queue<int> _cacheOrder = new();
+    /// <summary>
+    /// The object streams decoded, by number, null for one that could not be read or is being read; with the order
+    /// they were decoded in and the bytes their data holds, which <see cref="ObjectStreamBudget"/> bounds.
+    /// </summary>
     private readonly Dictionary<int, ObjectStreamContents?> _objectStreams = [];
+    private readonly Queue<int> _objectStreamOrder = new();
+    private long _objectStreamBytes;
 
     /// <summary>The numbers of the objects being loaded, by number for the reason <see cref="_cache"/> gives.</summary>
     private readonly HashSet<int> _loading = [];
@@ -168,6 +182,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// it before changing its own.
     /// </remarks>
     public PdfXRefTable? ChainIndex => _structure.ChainRead ? _chainIndex ?? _xref : null;
+
+    /// <summary>Gets the bytes of decoded object stream data the reader keeps, which it bounds.</summary>
+    internal long ObjectStreamBytes => _objectStreamBytes;
 
     /// <inheritdoc/>
     public PdfObject GetObject(PdfObjectId id)
@@ -1615,8 +1632,39 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             ? ObjectStreamContents.TryCreate(stream, _diagnostics)
             : null;
 
-        _objectStreams[number] = contents;
+        KeepObjectStream(number, contents);
         return contents;
+    }
+
+    /// <summary>
+    /// Keeps an object stream's contents, letting go of the oldest ones kept while their data and its own exceed
+    /// <see cref="ObjectStreamBudget"/>.
+    /// </summary>
+    private void KeepObjectStream(int number, ObjectStreamContents? contents)
+    {
+        if (_objectStreams.TryGetValue(number, out var previous) && previous is not null)
+        {
+            _objectStreamBytes -= previous.Length;
+        }
+
+        _objectStreams[number] = contents;
+
+        if (contents is null)
+        {
+            return;
+        }
+
+        while (_objectStreamBytes + contents.Length > ObjectStreamBudget && _objectStreamOrder.TryDequeue(out var oldest))
+        {
+            // The queue can name a number twice, once replaced; letting it go early costs a decoding, nothing else.
+            if (oldest != number && _objectStreams.Remove(oldest, out var released) && released is not null)
+            {
+                _objectStreamBytes -= released.Length;
+            }
+        }
+
+        _objectStreamOrder.Enqueue(number);
+        _objectStreamBytes += contents.Length;
     }
 
     private void Cache(int number, PdfObject value)
@@ -1651,6 +1699,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         _cache.Clear();
         _cacheOrder.Clear();
         _objectStreams.Clear();
+        _objectStreamOrder.Clear();
+        _objectStreamBytes = 0;
 
         ScanForObjects();
         ScanForTrailers();
@@ -1791,7 +1841,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 continue;
             }
 
-            _objectStreams[number] = contents;
+            KeepObjectStream(number, contents);
 
             for (var index = 0; index < contents.Count; index++)
             {
@@ -1911,6 +1961,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
 
         public int Count => _numbers.Length;
+
+        /// <summary>Gets the length of the decoded data, which is what keeping the contents costs.</summary>
+        public int Length => _data.Length;
 
         public int NumberAt(int index) => _numbers[index];
 

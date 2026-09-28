@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -268,6 +269,29 @@ public class HostileInputTests
         document.GetObject(new PdfObjectId(5, 7)).Should().BeSameAs(first);
     }
 
+    [Fact]
+    public void Object_streams_are_kept_decoded_within_a_budget_and_decoded_again_when_needed()
+    {
+        // Forty object streams that decode to 2 MB each would hold 80 MB kept together, from a file of a few hundred
+        // kilobytes. The reader lets the oldest go past its budget, and reads an object of one it let go all the same.
+        const int Streams = 40;
+        var file = ObjectStreams(Streams, decodedLength: 2 * 1024 * 1024, objectsPerStream: 1, everyIndexWrong: false);
+
+        using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+
+        for (var k = 0; k < Streams; k++)
+        {
+            document.GetObject(new PdfObjectId(PackedNumber(k, 0))).AsDictionary().Required().Count.Should().Be(1);
+        }
+
+        document.Reader.ObjectStreamBytes.Should().BeLessThanOrEqualTo(32L * 1024 * 1024);
+
+        // Eighty objects later, the first is out of the object cache as well: reading it decodes its stream again.
+        var first = document.GetObject(new PdfObjectId(PackedNumber(0, 0))).AsDictionary().Required();
+        first.GetRaw(PdfName.Get("K")).Should().BeOfType<PdfString>();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData("free")]
     [InlineData("unlisted")]
@@ -498,6 +522,95 @@ public class HostileInputTests
             var length = number + 1 < first + streams ? $"{number + 1} 0 R" : end;
             builder.WithObject(number, $"<< /Length {length} >>\nstream\nx\nendstream");
         }
+    }
+
+    /// <summary>The number of object stream <paramref name="stream"/>.</summary>
+    private static int StreamNumber(int stream) => 3 + stream;
+
+    /// <summary>The number of the object at <paramref name="index"/> of object stream <paramref name="stream"/>.</summary>
+    private static int PackedNumber(int stream, int index, int objectsPerStream = 1) => 1000 + (stream * objectsPerStream) + index;
+
+    /// <summary>
+    /// Writes a file whose index is a cross-reference stream, with <paramref name="streams"/> object streams holding
+    /// <paramref name="objectsPerStream"/> small dictionaries each, padded with white space to decode to at least
+    /// <paramref name="decodedLength"/> bytes; with <paramref name="everyIndexWrong"/>, every entry gives index 0.
+    /// </summary>
+    private static byte[] ObjectStreams(int streams, int decodedLength, int objectsPerStream, bool everyIndexWrong)
+    {
+        using var output = new MemoryStream();
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        Write("%PDF-1.5\n");
+        var offsets = new Dictionary<int, long>();
+        var packed = new Dictionary<int, (int Stream, int Index)>();
+        offsets[1] = output.Position;
+        Write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        offsets[2] = output.Position;
+        Write("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        for (var k = 0; k < streams; k++)
+        {
+            var header = new StringBuilder();
+            var body = new StringBuilder();
+
+            for (var i = 0; i < objectsPerStream; i++)
+            {
+                var number = PackedNumber(k, i, objectsPerStream);
+                packed[number] = (StreamNumber(k), everyIndexWrong ? 0 : i);
+                header.Append(CultureInfo.InvariantCulture, $"{number} {body.Length} ");
+                body.Append("<< /K (thing) >>\n");
+            }
+
+            using var compressed = new MemoryStream();
+            using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+            {
+                zlib.Write(Encoding.ASCII.GetBytes(header.ToString() + body));
+                zlib.Write(new byte[Math.Max(0, decodedLength - header.Length - body.Length)].AsSpan());
+            }
+
+            var data = compressed.ToArray();
+            offsets[StreamNumber(k)] = output.Position;
+            Write(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{StreamNumber(k)} 0 obj\n<< /Type /ObjStm /N {objectsPerStream} /First {header.Length} /Filter /FlateDecode /Length {data.Length} >>\nstream\n"));
+            output.Write(data);
+            Write("\nendstream\nendobj\n");
+        }
+
+        var xrefNumber = PackedNumber(streams, 0, objectsPerStream);
+        var xrefOffset = output.Position;
+        offsets[xrefNumber] = xrefOffset;
+        using var rows = new MemoryStream();
+
+        for (var number = 0; number <= xrefNumber; number++)
+        {
+            if (offsets.TryGetValue(number, out var offset))
+            {
+                rows.Write([1, (byte)(offset >> 24), (byte)(offset >> 16), (byte)(offset >> 8), (byte)offset, 0, 0]);
+            }
+            else if (packed.TryGetValue(number, out var entry))
+            {
+                rows.Write([2, (byte)(entry.Stream >> 24), (byte)(entry.Stream >> 16), (byte)(entry.Stream >> 8), (byte)entry.Stream, (byte)(entry.Index >> 8), (byte)entry.Index]);
+            }
+            else
+            {
+                rows.Write([0, 0, 0, 0, 0, 0, 0]);
+            }
+        }
+
+        using var compressedRows = new MemoryStream();
+        using (var zlib = new ZLibStream(compressedRows, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            rows.Position = 0;
+            rows.CopyTo(zlib);
+        }
+
+        Write(string.Create(
+            CultureInfo.InvariantCulture,
+            $"{xrefNumber} 0 obj\n<< /Type /XRef /Size {xrefNumber + 1} /W [1 4 2] /Root 1 0 R /Filter /FlateDecode /Length {compressedRows.Length} >>\nstream\n"));
+        output.Write(compressedRows.ToArray());
+        Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
+        return output.ToArray();
     }
 
     private static T Measure<T>(Func<T> action)
