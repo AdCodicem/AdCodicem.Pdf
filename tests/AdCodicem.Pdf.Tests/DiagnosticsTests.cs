@@ -99,6 +99,33 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void Says_which_severities_it_holds()
+    {
+        var diagnostics = new PdfDiagnostics();
+        diagnostics.HasWarnings.Should().BeFalse();
+        diagnostics.HasRepairs.Should().BeFalse();
+        diagnostics.HasConformanceLoss.Should().BeFalse();
+
+        diagnostics.Warn("a.warning", "Worrying.");
+        diagnostics.Add(PdfDiagnosticSeverity.ConformanceLoss, "a.loss", "Lost.");
+
+        diagnostics.HasWarnings.Should().BeTrue();
+        diagnostics.HasConformanceLoss.Should().BeTrue();
+        diagnostics.HasRepairs.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Enumerates_its_entries_through_every_interface_it_implements()
+    {
+        var diagnostics = new PdfDiagnostics();
+        diagnostics.Warn("first", "One.");
+        diagnostics.Repair("second", "Two.");
+
+        ((IEnumerable<PdfDiagnostic>)diagnostics).Select(d => d.Code).Should().Equal("first", "second");
+        ((System.Collections.IEnumerable)diagnostics).Cast<PdfDiagnostic>().Select(d => d.Code).Should().Equal("first", "second");
+    }
+
+    [Fact]
     public void Rolling_back_to_the_current_position_changes_nothing()
     {
         var diagnostics = new PdfDiagnostics();
