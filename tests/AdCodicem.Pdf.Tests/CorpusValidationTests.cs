@@ -174,8 +174,10 @@ public class CorpusValidationTests
 
         // Opening the thousand-page journal and validating it — every entry of its index probed, its page tree
         // walked, every object reachable from its trailer resolved once, every object of its index inspected for a
-        // page the tree leaves out — measured 3.9 MB, about 2 KB for each of its 2,006 objects: proportional to the objects,
-        // not to their content, since no stream's data is read. The budget leaves headroom and fails loudly on a regression.
+        // page the tree leaves out, the 6,008 objects and values the trailer reaches typed and checked against the
+        // Arlington model — measured 3.9 MB, about 2 KB for each of its 2,006 objects, of which the Arlington walk takes
+        // 0.5 MB: proportional to the objects, not to their content, since no stream's data is read. The budget leaves
+        // headroom and fails loudly on a regression.
         report.Findings.Should().BeEmpty();
         allocated.Should().BeLessThan(
             ValidationBudget,

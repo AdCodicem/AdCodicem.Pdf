@@ -526,7 +526,7 @@ public class CrossReferenceRuleTests
     public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked()
     {
         var file = Replace(
-            XRefStreamBuilder().WithObject(5, "<< /Filter /Standard /V 1 /R 2 >>").BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]),
+            XRefStreamBuilder().WithObject(5, "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>").BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]),
             "/Type /XRef",
             "/Type /XRef /Encrypt 5 0 R");
         using var document = PdfDocument.Open(file, new PdfReaderOptions { ThrowOnEncrypted = false });

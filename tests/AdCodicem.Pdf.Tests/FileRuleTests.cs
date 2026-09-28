@@ -350,7 +350,8 @@ public class FileRuleTests
     public void A_catalog_without_type_that_holds_the_page_tree_is_not_this_rule_s()
     {
         // Readers take a dictionary with /Pages for the catalog; a missing /Type is the object-shape rules' (slice 3).
-        Validate(PdfTemplate.SoundWith("<< /Type /Catalog /Pages 2 0 R >>", "<< /Pages 2 0 R >>")).Findings.Should().BeEmpty();
+        Validate(PdfTemplate.SoundWith("<< /Type /Catalog /Pages 2 0 R >>", "<< /Pages 2 0 R >>")).Findings
+            .Should().ContainSingle().Which.RuleId.Should().Be(PdfValidationRuleIds.ObjectKeyMissing);
     }
 
     [Theory]
