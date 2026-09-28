@@ -77,7 +77,11 @@ public class FileRuleTests
 
     [Theory]
     [InlineData("%PDF-1.0")]
+    [InlineData("%PDF-1.1")]
+    [InlineData("%PDF-1.2")]
     [InlineData("%PDF-1.3")]
+    [InlineData("%PDF-1.5")]
+    [InlineData("%PDF-1.6")]
     [InlineData("%PDF-1.7\r")]
     [InlineData("%PDF-2.0")]
     [InlineData("%PDF-1.4\n%âãÏÓ")]
@@ -269,6 +273,7 @@ public class FileRuleTests
     [InlineData("/Root 3 0 R", "The trailer's /Root names object 3 0, which is a dictionary of /Type /Page, not a document catalog.")]
     [InlineData("/Root 9 0 R", "The trailer's /Root names object 9 0, which the file does not hold.")]
     [InlineData("/Root null", "The trailer has no /Root.")]
+    [InlineData("/Root 1.5", "The trailer's /Root is a number, not a reference to the document catalog.")]
     [InlineData("/Root (the catalog)", "The trailer's /Root is a string, not a reference to the document catalog.")]
     [InlineData("/Root [1 0 R]", "The trailer's /Root is an array, not a reference to the document catalog.")]
     [InlineData("/Root << /Type /Outlines >>", "The trailer's /Root is a dictionary written in the trailer, not a reference to the document catalog.")]
@@ -352,6 +357,7 @@ public class FileRuleTests
     [InlineData("/Size 5", "gives /Size 5, where the highest object number it and the sections it updates use, 3, makes it 4.")]
     [InlineData("/Size 3", "gives /Size 3, where the highest object number it and the sections it updates use, 3, makes it 4.")]
     [InlineData("/Size /Four", "gives a /Size that is not a count of objects.")]
+    [InlineData("/Size -4", "gives a /Size that is not a count of objects.")]
     [InlineData("", "has no /Size.")]
     public void A_size_that_is_not_one_more_than_the_highest_number_is_a_warning(string size, string message)
     {

@@ -59,6 +59,24 @@ public class LexerTests
         token.Real.Should().BeApproximately(expected, 1e-9);
     }
 
+    [Theory]
+    [InlineData("123456789012345678901234", 1.23456789012345678901234e23)]
+    [InlineData("-99999999999999999999.5", -99999999999999999999.5)]
+    public void Reads_an_integer_too_large_for_a_long_as_a_real(string text, double expected)
+    {
+        var lexer = new PdfLexer(Encoding.ASCII.GetBytes(text));
+        var token = lexer.Read();
+
+        token.Kind.Should().Be(PdfTokenKind.Real);
+        token.Real.Should().BeApproximately(expected, Math.Abs(expected) * 1e-15);
+    }
+
+    [Fact]
+    public void Reads_no_number_in_nothing()
+    {
+        PdfNumberParser.TryParse([], out _, out _, out _).Should().BeFalse();
+    }
+
     [Fact]
     public void Reads_a_run_that_is_not_a_number_as_a_keyword()
     {
@@ -146,6 +164,22 @@ end)"u8.ToArray());
 
         Encoding.ASCII.GetString(PdfStringDecoder.DecodeLiteral(token.Text))
             .Should().Be("tab:\t octal:A continued:end");
+    }
+
+    [Fact]
+    public void Decodes_a_backspace_and_a_line_continuation_at_either_end_of_line()
+    {
+        var lexer = new PdfLexer("(back\\bspace cr:\\\rcrlf:\\\r\nend)"u8.ToArray());
+        var token = lexer.Read();
+
+        Encoding.ASCII.GetString(PdfStringDecoder.DecodeLiteral(token.Text)).Should().Be("back\bspace cr:crlf:end");
+    }
+
+    [Fact]
+    public void Drops_a_backslash_that_ends_a_literal_string()
+    {
+        // An unterminated string can end in the middle of an escape.
+        Encoding.ASCII.GetString(PdfStringDecoder.DecodeLiteral("cut\\"u8)).Should().Be("cut");
     }
 
     [Fact]

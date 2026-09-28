@@ -50,10 +50,14 @@ public class CrossReferenceRuleTests
         report.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeFalse("no entry of an index the chain never gave is probed");
     }
 
-    [Fact]
-    public void A_subsection_header_without_its_count_makes_the_table_malformed()
+    [Theory]
+    [InlineData("xref\n0\n")]
+    [InlineData("xref\n0 -4\n")]
+    [InlineData("xref\n0 50000001\n")]
+    [InlineData("xref\n3000000000 4\n")]
+    public void A_subsection_header_without_a_first_number_and_a_count_it_can_hold_makes_the_table_malformed(string header)
     {
-        var file = PdfTemplate.SoundWith("xref\n0 4\n", "xref\n0\n");
+        var file = PdfTemplate.SoundWith("xref\n0 4\n", header);
 
         Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message
             .Should().Contain("does not give a first object number and a count of rows");
