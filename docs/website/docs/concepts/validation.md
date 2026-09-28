@@ -36,8 +36,8 @@ foreach (var finding in report.Findings)
 Validation arrives rule by rule, in the order the [M02 milestone](/project/milestones/M02) gives. The
 structural profile checks the file's **structure and cross-references** — its header, `startxref`, its
 trailer, each cross-reference section and each entry of its index —, the **objects** its trailer reaches —
-references to objects the file lacks, `endobj`, names — and its **page tree**; the shape of each object, streams,
-fonts and the rest follow. The [rules table](/project/validation-rules) lists every rule that exists. Like
+references to objects the file lacks, `endobj`, names, and each object's **shape** against the Arlington PDF Model —
+and its **page tree**; streams, fonts and the rest follow. The [rules table](/project/validation-rules) lists every rule that exists. Like
 everything in a preview, the API may still change.
 
 :::
@@ -110,6 +110,42 @@ A profile is an ordered set of rules with a name and a version. `ValidationProfi
 rules that apply to any PDF, whatever it claims to conform to; `RuleIds` lists them. The PDF/A and PDF/UA
 profiles will come with the `AdCodicem.Pdf.Conformance` package. You cannot yet write rules of your own.
 
+## Object shapes: the Arlington PDF Model
+
+Four rules check every object the trailer reaches against the
+[Arlington PDF Model](https://github.com/pdf-association/arlington-pdf-model), the PDF Association's machine-readable
+description of every object ISO 32000 defines — each key, its types, whether it is required, the versions that bring
+it in and deprecate it:
+
+| Rule | Reports |
+|---|---|
+| `object.key-missing` | A key the object's type requires is absent: a catalog without `/Type`, a structure element without `/P` |
+| `object.value-type-wrong` | A value of a type its key does not allow: a real where an integer belongs, a stream where a dictionary does |
+| `object.type-value-wrong` | A `/Type` or `/Subtype` the model does not list for the object: a page tree root typed `/Pagez` |
+| `object.key-deprecated` | A key the version the file declares deprecates — as information, since a file may still hold one |
+
+```text
+Warning object.type-value-wrong at page 1, object 3 0: Object 3 0, a PageObject in the Arlington model, has /Type /Font, where the model wants /Page or /Template.
+```
+
+Each object is given its type in the model by how it is reached — the catalog's `/Pages` is the page tree's root, a
+page's `/Annots` holds annotations, whose `/Subtype` says which — and is checked once; one whose type the file leaves
+ambiguous is not checked, rather than judged against a guess. The rules are
+**version-aware**: a key is required, or deprecated, as of the version the file declares — its header's, or its
+catalog's `/Version` when that is later. A file whose header declares no version is not judged on what depends on
+one, whatever its catalog says.
+
+The model describes ISO 32000-2. Where it asks more than ISO 32000-1, the version nearly every file declares, the
+library follows ISO 32000-1: such rows are overridden by name, each with the words of the specification that justify
+it, and what a file breaks that ISO 32000-1 does require is reported. Where a page tree rule already reports a fault,
+these four say nothing more of it: one fault, one finding. Each fault is reported once per type and key, at
+the first object, with how many objects have it — a thousand structure elements without `/P` are one finding, not a
+thousand. The [rules table](/project/validation-rules#object-shapes-from-the-arlington-pdf-model) lists the overrides, and
+what these rules leave unchecked for now.
+
+The model is compiled into the library as static tables, at a pinned commit: nothing is read from disk, and the tables
+cost no allocation to look up. Its notice, under the Apache License 2.0, travels in the package's `NOTICE` file.
+
 ## Reading, limits and exceptions
 
 The validator reads through the document you give it, lazily, like any other caller: it reads only what
@@ -124,7 +160,7 @@ report.
 The object and page tree rules walk what the trailer reaches, once: the page tree through its `/Kids`, and every
 object a reference leads to, each resolved a single time and read through the document's cache — stream
 dictionaries, never stream data. They keep what they found wrong and a set of the object numbers they met; on a
-thousand-page document, opening it and validating it allocates about 2.4 MB. Pages are counted as the tree lists
+thousand-page document, opening it and validating it allocates about 2.6 MB. Pages are counted as the tree lists
 them, as qpdf counts them: a kid that is null, or that names an object the file lacks, takes the place of a page
 with nothing on it. Walking a damaged file can make the reader rebuild its index, as reading it would; the
 cross-reference rules still judge the index the file wrote. Where the index is sound and whole, one rule also looks

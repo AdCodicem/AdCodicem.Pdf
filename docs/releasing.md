@@ -37,6 +37,27 @@ identifies its owner and that packages under it carry consistent metadata and a 
 `license` element, which `Directory.Build.props` gives every package (`Authors`, `PackageLicenseExpression`,
 an embedded `PackageIcon`).
 
+## Licenses and notices
+
+Every package is MIT — `PackageLicenseExpression`, from `Directory.Build.props` — and carries `README.md` and the
+icon. The core package also carries data derived from someone else's work: the tables of
+`src/AdCodicem.Pdf/Validation/Arlington/ArlingtonModel.g.cs`, generated from the Arlington PDF Model, which the PDF
+Association publishes under the Apache License 2.0 (ADR 44). Section 4 of that license asks a redistribution to carry
+the license's text and the work's notice, and to say what was changed. So:
+
+- the root `NOTICE` names the model, the commit the tables come from and what was changed — reduced to lookup tables,
+  and overridden as `tools/AdCodicem.Pdf.Arlington/overrides.tsv` records —, and quotes word for word the attribution
+  notice that opens the model's `NOTICE.txt`, which is vendored whole beside its `LICENSE`;
+- `src/AdCodicem.Pdf/AdCodicem.Pdf.csproj` packs `NOTICE` at the package's root, and the model's `LICENSE` as
+  `licenses/arlington-pdf-model/LICENSE`: NuGet cannot rename a file as it packs it, so the text keeps its name in a
+  folder of its own;
+- the generated file's header says the same, for whoever reads the source.
+
+The license expression stays `MIT`, the maintainer's choice on 2026-09-28: the package's code is MIT, and `NOTICE`
+attributes the data. When the model is updated (`docs/validation-rules.md`), the commit `NOTICE` names changes with
+the lock. A satellite that one day carries third-party material packs its notice the same way, and `NOTICE` gains a
+paragraph for it.
+
 ## Versioning — computed from the commits
 
 Versions are not chosen; they are derived. The *moment* of a release is chosen — see **Releasing** below.

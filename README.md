@@ -51,7 +51,7 @@ need: a fully managed engine whose memory use follows the complexity of a page, 
 | A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one | ✅ Available |
 | MIT license, no revenue threshold, no per-developer fee | ✅ Available |
 
-Every feature, planned ones included, and how the library compares with other PDF libraries: [Features and comparison](https://adcodicem.github.io/AdCodicem.Pdf/features), as of 2026-09-26.
+Every feature, planned ones included, and how the library compares with other PDF libraries: [Features and comparison](https://adcodicem.github.io/AdCodicem.Pdf/features), as of 2026-09-28.
 <!-- features:end -->
 
 ## Packages
@@ -131,4 +131,7 @@ check is worth saying plainly:
 
 ## License
 
-MIT. Everything in this repository is written in English.
+MIT. The core package also carries tables derived from the PDF Association's
+[Arlington PDF Model](https://github.com/pdf-association/arlington-pdf-model), under the Apache License 2.0: its
+notice is in [NOTICE](NOTICE), which the package carries with the license's text. Everything in this repository is
+written in English.

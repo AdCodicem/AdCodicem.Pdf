@@ -67,8 +67,10 @@ Validation/   PdfValidator, the rule engine and the structural profile: findings
               structural rules read the reader's internals: what it recorded of the file's structure,
               the file's own index, and whether an object the index holds could be produced. The
               page tree and the objects the trailer reaches are walked once per validation, and the
-              walk of the page tree is the one M06's page API is to build on. The PDF/A and PDF/UA
-              profiles are the Conformance satellite's.
+              walk of the page tree is the one M06's page API is to build on. Arlington/ holds the
+              object-shape tables, generated from the Arlington PDF Model by tools/AdCodicem.Pdf.Arlington
+              and committed (ADR 44): static data, read by the walk that types each object reached. The
+              PDF/A and PDF/UA profiles are the Conformance satellite's.
 ```
 
 Diagnostics and findings answer different questions. A diagnostic is the reader's account of what it did

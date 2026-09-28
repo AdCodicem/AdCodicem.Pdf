@@ -1,6 +1,6 @@
 {
   "$comment": "What the library does and will do, each feature tied to the roadmap milestones that deliver it. The feature tables in README.md and docs/website/docs/features.md are generated from this file and docs/features/comparison.json; FeatureTablesTests holds them to it, and holds each status to its milestones' state in docs/roadmap.md. Regenerate with: ADCODICEM_UPDATE_FEATURE_TABLES=1 dotnet test --project tests/AdCodicem.Pdf.Tests -c Release --filter-class '*FeatureTablesTests'",
-  "asOf": "2026-09-26",
+  "asOf": "2026-09-28",
   "groups": [
     {
       "title": "Reading and validation",
@@ -10,7 +10,7 @@
         { "id": "hostile-input", "name": "Guards against hostile files, on by default, each lifted by an option so that every valid PDF stays readable", "milestones": ["M01"], "status": "available" },
         { "id": "filters", "name": "Every standard filter and index form: Flate with predictors, LZW, ASCII85, ASCIIHex, RunLength, cross-reference and object streams, hybrid files", "milestones": ["M01"], "status": "available" },
         { "id": "structural-validation", "name": "Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding", "milestones": ["M02"], "status": "in-progress", "headline": true },
-        { "id": "arlington-rules", "name": "Object-shape rules generated from the PDF Association's Arlington model, version-aware", "milestones": ["M02"], "status": "planned" },
+        { "id": "arlington-rules", "name": "Object-shape rules generated from the PDF Association's Arlington model, version-aware", "milestones": ["M02"], "status": "available" },
         { "id": "revisions", "name": "Revision history, what each signature covers, and changes made after signing, without cryptography", "milestones": ["M04"], "status": "planned" },
         { "id": "repair", "name": "Repair, conservative (incremental) or full rebuild, with a report of what was changed and what was lost", "milestones": ["M05"], "status": "planned" }
       ]
