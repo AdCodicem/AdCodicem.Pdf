@@ -359,9 +359,10 @@ DAMAGES = {
     "shifted-offsets": (damage_shift_offsets, ["xref.rebuilt"], True, ["file.startxref-wrong"]),
     # The cut falls inside the data of the invoice's last Flate stream: the stream runs past the end of the
     # file, and its data ends before its last block does (T32) — qpdf keeps nothing of it, the reader the prefix.
+    # The fonts written after the cut are gone, and the page's resources still name them.
     "truncated-tail": (
         damage_truncate, ["xref.rebuilt", "stream.truncated", "filter.failed"], True,
-        ["file.eof-missing", "file.startxref-missing"]),
+        ["file.eof-missing", "file.startxref-missing", "object.reference-missing"]),
     # The junk shifts the header, and every offset counted from it, by the same amount.
     "junk-prefix": (damage_junk_prefix, ["xref.offset-adjusted"], False, ["file.header-offset"]),
     # A wrong /Length is only noticed when the stream is actually read: that is the lazy reader working

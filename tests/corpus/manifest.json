@@ -401,7 +401,8 @@
         ],
         "findings": [
           "file.eof-missing",
-          "file.startxref-missing"
+          "file.startxref-missing",
+          "object.reference-missing"
         ],
         "refereeCheckSucceeds": false
       }
@@ -1691,10 +1692,13 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "findings": [
-          "file.size-wrong"
+          "file.size-wrong",
+          "page-tree.count-mismatch",
+          "page-tree.parent-wrong",
+          "page-tree.mediabox-invalid",
+          "page-tree.resources-missing"
         ],
         "hasExtractableText": false,
-        "unsupported": "M02: the reader accepts a trailer without /Size and a page without MediaBox or Resources in silence, while qpdf reports all three; validation must report them",
         "refereeCheckSucceeds": false
       }
     },
@@ -1749,12 +1753,15 @@
         "xref-table"
       ],
       "expect": {
-        "pages": 0,
+        "pages": 1,
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.reference-missing",
+          "page-tree.kid-invalid"
+        ],
         "hasExtractableText": false,
-        "unsupported": "M02: the reader counts the page given a stream body as a page and reports nothing, while qpdf ignores it and finds none; validation decides between recovering and refusing it, and must report it either way",
         "refereeCheckSucceeds": false
       }
     },
@@ -5319,6 +5326,10 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.reference-missing",
+          "object.endobj-missing"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -5688,12 +5699,14 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.endobj-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Kreeditarve LKR824191",
           "Tasumisele kuulub"
         ],
-        "unsupported": "M02: the reader accepts the /Info object that ends without endobj, which qpdf reports, and says nothing",
         "refereeCheckSucceeds": false
       }
     },
@@ -7116,7 +7129,8 @@
         ],
         "findings": [
           "file.eof-missing",
-          "file.startxref-missing"
+          "file.startxref-missing",
+          "object.reference-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -7374,7 +7388,11 @@
         ],
         "findings": [
           "file.eof-missing",
-          "file.startxref-missing"
+          "file.startxref-missing",
+          "object.reference-missing",
+          "object.endobj-missing",
+          "page-tree.kid-invalid",
+          "page-tree.count-mismatch"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -7416,12 +7434,14 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.name-null-character"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "männlich:",
           "weiblich:"
         ],
-        "unsupported": "M02: the reader accepts the names written with #00, a NUL the syntax forbids and qpdf reports, and says nothing",
         "refereeCheckSucceeds": false
       }
     },
@@ -7721,6 +7741,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.reference-missing"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": true
       }
@@ -8310,6 +8333,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.reference-missing"
+        ],
         "hasExtractableText": false,
         "claimsConformance": "PDF/A-1b",
         "conformanceValid": true,
@@ -11789,7 +11815,8 @@
         ],
         "findings": [
           "file.eof-missing",
-          "file.startxref-missing"
+          "file.startxref-missing",
+          "object.endobj-missing"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -12219,7 +12246,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "findings": [
-          "file.size-wrong"
+          "file.size-wrong",
+          "object.reference-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -12332,6 +12360,9 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.reference-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "report on the results of spectroscopic experiments",
@@ -12375,8 +12406,10 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "page-tree.kid-invalid"
+        ],
         "hasExtractableText": false,
-        "unsupported": "M02: one of the page tree's kids is null; qpdf, poppler and PDFium count it as a page (30 in all) and poppler renders none of them, while pikepdf and the reader count 29 and the reader reports nothing; validation must report it",
         "refereeCheckSucceeds": false
       }
     },
@@ -12485,7 +12518,6 @@
         ],
         "hasExtractableText": true,
         "claimsConformance": "PDF/A-1b",
-        "unsupported": "M02: One of the page tree's kids point at objects the file does not contain; qpdf, poppler and PDFium count each as a blank letter-size page (13 in all), pikepdf and the reader skip them (12); whether such a kid is a page is validation's call, and M06's page API must settle it",
         "refereeCheckSucceeds": false
       }
     },
@@ -12538,7 +12570,6 @@
           "shared history of depopulation and disinvestment",
           "implications for both mental and physical"
         ],
-        "unsupported": "M02: Twelve of the page tree's kids point at objects the file does not contain; qpdf, poppler and PDFium count each as a blank letter-size page (65 in all), pikepdf and the reader skip them (53); whether such a kid is a page is validation's call, and M06's page API must settle it",
         "refereeCheckSucceeds": false
       }
     },
@@ -12653,6 +12684,10 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.reference-missing",
+          "page-tree.page-orphaned"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "provide custom solutions for each customer",
@@ -14049,6 +14084,10 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.reference-missing",
+          "page-tree.page-orphaned"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -14236,7 +14275,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.reference-missing"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -14274,13 +14314,16 @@
         "jhove-1.16.5-not-well-formed"
       ],
       "expect": {
-        "pages": 1,
+        "pages": 0,
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "page-tree.cycle",
+          "page-tree.page-orphaned"
+        ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: qpdf --show-npages counts one page and the reader none, without a word, on a page tree whose root lists itself as its only kid; the referees disagree on damaged trees (docs/corpus-sources.md), and M02's page-tree rules name the fault the count depends on"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -14322,14 +14365,17 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "page-tree.kid-invalid",
+          "page-tree.parent-wrong",
+          "page-tree.mediabox-invalid",
+          "page-tree.resources-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
         ],
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: qpdf --show-npages counts three pages and the reader two, on a page tree whose root lists the resources dictionary and a missing object as pages; the referees disagree on damaged trees (docs/corpus-sources.md), and M02's page-tree rules name the fault the count depends on"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -14368,9 +14414,12 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "page-tree.kid-invalid",
+          "page-tree.page-orphaned"
+        ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: qpdf --show-npages counts one page and the reader none, after rebuilding its whole index to look for the missing kid, on a page tree whose only kid is an object the file lacks; the referees disagree on damaged trees (docs/corpus-sources.md), and M02's page-tree rules name the fault the count depends on"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -14405,18 +14454,18 @@
         "jhove-1.16.5-not-well-formed"
       ],
       "expect": {
-        "pages": 1,
+        "pages": 0,
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "page-tree.kids-missing"
         ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: qpdf --show-npages counts one page and the reader none, on a page tree whose root has no /Kids; the referees disagree on damaged trees (docs/corpus-sources.md), and M02's page-tree rules name the fault the count depends on"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -14499,13 +14548,15 @@
         "jhove-1.16.5-well-formed-and-valid"
       ],
       "expect": {
-        "pages": 9,
+        "pages": 1,
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "page-tree.count-mismatch"
+        ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": true,
-        "unsupported": "M02: qpdf --show-npages counts nine pages, trusting /Count and the reader the one page there is, on a page tree whose root claims /Count 9; the referees disagree on damaged trees (docs/corpus-sources.md), and M02's page-tree rules name the fault the count depends on"
+        "refereeCheckSucceeds": true
       }
     },
     {
@@ -14540,18 +14591,18 @@
         "jhove-1.16.5-not-well-formed"
       ],
       "expect": {
-        "pages": 0,
+        "pages": 1,
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "page-tree.count-mismatch"
         ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: qpdf --show-npages counts none and the reader the one page there is, on a page tree whose root has no /Count; the referees disagree on damaged trees (docs/corpus-sources.md), and M02's page-tree rules name the fault the count depends on"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -14729,7 +14780,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "page-tree.parent-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14774,6 +14826,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "page-tree.parent-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -14820,7 +14875,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "page-tree.parent-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14868,11 +14924,11 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "page-tree.kid-invalid"
         ],
         "hasExtractableText": false,
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: qpdf --show-npages counts one page and the reader none, after rebuilding its whole index to look for it, on a page tree whose only page object is gone; the referees disagree on damaged trees (docs/corpus-sources.md), and M02's page-tree rules name the fault the count depends on"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -14954,7 +15010,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "page-tree.mediabox-invalid"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15002,7 +15059,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "page-tree.mediabox-invalid"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15092,6 +15150,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.reference-missing"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
       }
@@ -15135,7 +15196,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "page-tree.resources-missing"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -16040,7 +16102,8 @@
         ],
         "findings": [
           "file.header-offset",
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.endobj-missing"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -16235,7 +16298,8 @@
         ],
         "findings": [
           "file.header-offset",
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.endobj-missing"
         ],
         "hasExtractableText": true,
         "textContains": [

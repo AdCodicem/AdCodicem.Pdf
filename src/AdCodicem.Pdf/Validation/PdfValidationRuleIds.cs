@@ -112,6 +112,13 @@ public static class PdfValidationRuleIds
     public const string XRefGenerationMismatch = "xref.generation-mismatch";
 
     /// <summary>
+    /// An object stream needs, to be read, an object that only reading it — or another stream that needs it in turn —
+    /// can give: its <c>/Length</c>, <c>/Filter</c>, <c>/DecodeParms</c>, <c>/N</c> or <c>/First</c> names an object
+    /// it holds. <see cref="PdfValidationSeverity.Error"/>.
+    /// </summary>
+    public const string XRefObjectStreamCircular = "xref.object-stream-circular";
+
+    /// <summary>
     /// An object stream entries place objects in is missing, is not an object stream, or cannot be read.
     /// <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
@@ -134,4 +141,73 @@ public static class PdfValidationRuleIds
     /// encrypted and its object streams are readable only once decrypted. <see cref="PdfValidationSeverity.Information"/>.
     /// </summary>
     public const string XRefCheckedInPart = "xref.checked-in-part";
+
+    /// <summary>
+    /// An object reachable from the trailer refers to an object the file lacks — none in its index, or a free
+    /// entry —, which reads as null. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string ObjectReferenceMissing = "object.reference-missing";
+
+    /// <summary>
+    /// An object reachable from the trailer does not end with <c>endobj</c>. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string ObjectEndObjMissing = "object.endobj-missing";
+
+    /// <summary>
+    /// An object reachable from the trailer holds a name with a null character, written <c>#00</c>, which a name
+    /// cannot contain. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string ObjectNameNullCharacter = "object.name-null-character";
+
+    /// <summary>
+    /// A kid of the page tree loops back to the node listing it or to a node above it: what the tree should have
+    /// listed there is unknown. <see cref="PdfValidationSeverity.Error"/>.
+    /// </summary>
+    public const string PageTreeCycle = "page-tree.cycle";
+
+    /// <summary>
+    /// A kid of the page tree names a node or a page the tree lists elsewhere, which counts each time it is listed.
+    /// <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string PageTreeNodeRepeated = "page-tree.node-repeated";
+
+    /// <summary>
+    /// A node of the page tree has no <c>/Kids</c> array, so lists no page. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string PageTreeKidsMissing = "page-tree.kids-missing";
+
+    /// <summary>
+    /// A kid of the page tree is null, names an object the file lacks, is a stream, is neither a page nor a node,
+    /// or is written in the array rather than referred to. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string PageTreeKidInvalid = "page-tree.kid-invalid";
+
+    /// <summary>
+    /// A node of the page tree has no <c>/Count</c>, or one that is not the number of pages below it.
+    /// <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string PageTreeCountMismatch = "page-tree.count-mismatch";
+
+    /// <summary>
+    /// A node or a page has no <c>/Parent</c>, or one that is not the node listing it; or the root has one.
+    /// <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string PageTreeParentWrong = "page-tree.parent-wrong";
+
+    /// <summary>
+    /// A page has no <c>/MediaBox</c>, its own or inherited, or one that is not a rectangle of four numbers
+    /// enclosing an area. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string PageTreeMediaBoxInvalid = "page-tree.mediabox-invalid";
+
+    /// <summary>
+    /// A page has no <c>/Resources</c>, its own or inherited. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string PageTreeResourcesMissing = "page-tree.resources-missing";
+
+    /// <summary>
+    /// An object of <c>/Type /Page</c>, with a <c>/Parent</c> or <c>/Contents</c>, that the page tree does not list:
+    /// no reader shows it. <see cref="PdfValidationSeverity.Information"/>.
+    /// </summary>
+    public const string PageTreePageOrphaned = "page-tree.page-orphaned";
 }

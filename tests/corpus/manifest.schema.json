@@ -228,7 +228,7 @@
             "null"
           ],
           "minimum": 0,
-          "description": "The page count an independent tool establishes (qpdf --show-npages), or null when it recovers nothing."
+          "description": "The page count an independent tool establishes by walking the page tree (qpdf --json=2 --json-key=pages), each null or missing kid a page, or null when it recovers nothing."
         },
         "clean": {
           "type": "boolean",
@@ -254,6 +254,7 @@
               "xref.entry-out-of-range",
               "stream.length-invalid",
               "stream.truncated",
+              "stream.self-reference",
               "syntax.unexpected-token",
               "syntax.truncated-object",
               "syntax.depth-exceeded",
@@ -292,10 +293,23 @@
               "xref.entry-broken",
               "xref.entry-shifted",
               "xref.generation-mismatch",
+              "xref.object-stream-circular",
               "xref.object-stream-broken",
               "xref.offset-imprecise",
               "xref.object-past-size",
-              "xref.checked-in-part"
+              "xref.checked-in-part",
+              "object.reference-missing",
+              "object.endobj-missing",
+              "object.name-null-character",
+              "page-tree.cycle",
+              "page-tree.node-repeated",
+              "page-tree.kids-missing",
+              "page-tree.kid-invalid",
+              "page-tree.count-mismatch",
+              "page-tree.parent-wrong",
+              "page-tree.mediabox-invalid",
+              "page-tree.resources-missing",
+              "page-tree.page-orphaned"
             ]
           },
           "uniqueItems": true
