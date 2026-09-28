@@ -223,6 +223,51 @@ public class HostileInputTests
         diagnostics.Required().Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
     }
 
+    [Fact]
+    public void An_object_referenced_under_many_generations_is_read_once()
+    {
+        // The index holds one entry per object number, so every generation of a number is the same object: it is
+        // parsed once and kept once, however many generations a file references it under.
+        const int Integers = 10_000;
+        const int Generations = 1_000;
+        var array = new StringBuilder("[");
+        for (var i = 0; i < Integers; i++)
+        {
+            array.Append(100_000 + i).Append(' ');
+        }
+
+        var references = new StringBuilder("[");
+        for (var generation = 0; generation < Generations; generation++)
+        {
+            references.Append("5 ").Append(generation).Append(" R ");
+        }
+
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, array.Append(']').ToString())
+            .WithObject(6, references.Append(']').ToString())
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        var first = document.GetObject(new PdfObjectId(5));
+        var all = document.GetObject(new PdfObjectId(6)).AsArray().Required();
+        var same = 0;
+        for (var index = 0; index < all.Count; index++)
+        {
+            same += ReferenceEquals(all.Resolved(index), first) ? 1 : 0;
+        }
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        same.Should().Be(Generations);
+        allocated.Should().BeLessThan(4L * 1024 * 1024, "the array is parsed once, not once per generation");
+        first.AsArray().Required().Count.Should().Be(Integers);
+        document.GetObject(new PdfObjectId(5, 7)).Should().BeSameAs(first);
+    }
+
     [Theory]
     [InlineData("free")]
     [InlineData("unlisted")]

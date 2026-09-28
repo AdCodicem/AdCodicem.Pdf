@@ -93,10 +93,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <summary>How many times a guard was reached, reported or not: a read that reached one was cut by it.</summary>
     private int _guardsReached;
 
-    private readonly Dictionary<PdfObjectId, PdfObject> _cache = [];
-    private readonly Queue<PdfObjectId> _cacheOrder = new();
+    /// <summary>
+    /// The objects read, by object number. The generation is left out of the key on purpose: the index holds one
+    /// entry per number, so every generation of a number loads the same object, and keying by both would parse and
+    /// keep it once per generation a file cares to reference.
+    /// </summary>
+    private readonly Dictionary<int, PdfObject> _cache = [];
+    private readonly Queue<int> _cacheOrder = new();
     private readonly Dictionary<int, ObjectStreamContents?> _objectStreams = [];
-    private readonly HashSet<PdfObjectId> _loading = [];
+
+    /// <summary>The numbers of the objects being loaded, by number for the reason <see cref="_cache"/> gives.</summary>
+    private readonly HashSet<int> _loading = [];
     private readonly int _cacheCapacity;
     private readonly bool _ownsSource;
 
@@ -170,14 +177,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return PdfNull.Instance;
         }
 
-        if (_cache.TryGetValue(id, out var cached))
+        if (_cache.TryGetValue(id.Number, out var cached))
         {
             return cached;
         }
 
-        // A file can make an object's length depend on the object itself. Refusing to re-enter turns an
-        // infinite recursion into a null.
-        if (!_loading.Add(id))
+        // A file can make an object's length depend on the object itself, under any generation. Refusing to
+        // re-enter turns an infinite recursion into a null.
+        if (!_loading.Add(id.Number))
         {
             return PdfNull.Instance;
         }
@@ -196,12 +203,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             }
 
             var value = LoadObject(id);
-            Cache(id, value);
+            Cache(id.Number, value);
             return value;
         }
         finally
         {
-            _loading.Remove(id);
+            _loading.Remove(id.Number);
         }
     }
 
@@ -1612,16 +1619,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         return contents;
     }
 
-    private void Cache(PdfObjectId id, PdfObject value)
+    private void Cache(int number, PdfObject value)
     {
         if (_cache.Count >= _cacheCapacity && _cacheOrder.TryDequeue(out var oldest))
         {
             _cache.Remove(oldest);
         }
 
-        if (_cache.TryAdd(id, value))
+        if (_cache.TryAdd(number, value))
         {
-            _cacheOrder.Enqueue(id);
+            _cacheOrder.Enqueue(number);
         }
     }
 
