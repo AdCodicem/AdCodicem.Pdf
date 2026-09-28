@@ -292,6 +292,31 @@ public class HostileInputTests
         document.Diagnostics.Should().BeEmpty();
     }
 
+    [Fact]
+    public void An_object_stream_whose_every_index_is_wrong_is_read_in_linear_time()
+    {
+        // A million objects in one stream, every entry of the index naming the wrong place in it: each is found
+        // by its number, through a lookup built once, not by a search of the stream's header for each.
+        const int Count = 1_000_000;
+        var file = ObjectStreams(streams: 1, decodedLength: 0, objectsPerStream: Count, everyIndexWrong: true);
+
+        using var document = PdfDocument.Open(file);
+
+        var read = Measure(() =>
+        {
+            var dictionaries = 0;
+            for (var i = 0; i < Count; i++)
+            {
+                dictionaries += document.GetObject(new PdfObjectId(PackedNumber(0, i, Count))) is PdfDictionary ? 1 : 0;
+            }
+
+            return dictionaries;
+        });
+
+        read.Should().Be(Count);
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData("free")]
     [InlineData("unlisted")]

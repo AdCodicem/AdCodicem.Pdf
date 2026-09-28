@@ -1952,6 +1952,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         private readonly int[] _offsets;
         private readonly int _first;
 
+        /// <summary>
+        /// Where each number lies in the header, the first place when it lies in several; built the first time an
+        /// entry's index is wrong, so that an index every entry of the file gets wrong costs a lookup, not a search.
+        /// </summary>
+        private Dictionary<int, int>? _indexes;
+
         private ObjectStreamContents(ReadOnlyMemory<byte> data, int[] numbers, int[] offsets, int first)
         {
             _data = data;
@@ -2014,7 +2020,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             if (index < 0 || index >= _numbers.Length)
             {
                 // The index in the entry is a hint; the object number is the truth.
-                index = Array.IndexOf(_numbers, expectedNumber);
+                index = IndexOf(expectedNumber);
                 if (index < 0)
                 {
                     return PdfNull.Instance;
@@ -2023,7 +2029,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             if (_numbers[index] != expectedNumber)
             {
-                var corrected = Array.IndexOf(_numbers, expectedNumber);
+                var corrected = IndexOf(expectedNumber);
                 if (corrected < 0)
                 {
                     return PdfNull.Instance;
@@ -2046,6 +2052,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var parser = new PdfObjectParser(_data, 0, source, diagnostics, streamData: null);
             parser.Position = start;
             return parser.ParseObject();
+        }
+
+        private int IndexOf(int number)
+        {
+            if (_indexes is null)
+            {
+                _indexes = new Dictionary<int, int>(_numbers.Length);
+
+                for (var i = 0; i < _numbers.Length; i++)
+                {
+                    _indexes.TryAdd(_numbers[i], i);
+                }
+            }
+
+            return _indexes.TryGetValue(number, out var index) ? index : -1;
         }
     }
 }
