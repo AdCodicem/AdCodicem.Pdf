@@ -60,10 +60,23 @@ public sealed class ValidationProfile
             new EntryBrokenRule(),
             new EntryShiftedRule(),
             new GenerationMismatchRule(),
+            new ObjectStreamCircularRule(),
             new ObjectStreamBrokenRule(),
             new OffsetImpreciseRule(),
             new ObjectPastSizeRule(),
             new CheckedInPartRule(),
+            new ReferenceMissingRule(),
+            new EndObjMissingRule(),
+            new NameNullCharacterRule(),
+            new PageTreeCycleRule(),
+            new PageTreeNodeRepeatedRule(),
+            new PageTreeKidsMissingRule(),
+            new PageTreeKidInvalidRule(),
+            new PageTreeCountMismatchRule(),
+            new PageTreeParentWrongRule(),
+            new PageTreeMediaBoxInvalidRule(),
+            new PageTreeResourcesMissingRule(),
+            new PageTreePageOrphanedRule(),
         ]);
 
     /// <summary>Gets the profile's name, as reports carry it.</summary>

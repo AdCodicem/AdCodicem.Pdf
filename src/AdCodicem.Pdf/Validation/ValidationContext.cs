@@ -9,14 +9,18 @@ namespace AdCodicem.Pdf.Validation;
 /// </summary>
 /// <remarks>
 /// It lives for one validation. What several rules need is worked out once and shared: the probe of every entry
-/// of the file's index, which four cross-reference rules read. The shared cache of resolved objects the
-/// object-graph rules will need — so that twenty rules that all walk the page tree resolve it once — arrives
-/// with the first of them.
+/// of the file's index, which four cross-reference rules read; the walk of the page tree, which the page tree rules
+/// and the object rules read; the walk of the objects reachable from the trailer; and which object streams need
+/// themselves to be read. None of them keeps the objects it resolved: those stay in the reader's cache, bounded by
+/// <see cref="PdfReaderOptions.ObjectCacheCapacity"/>, and each analysis keeps what it found wrong.
 /// </remarks>
 internal sealed class ValidationContext
 {
     private readonly int _capacity;
     private CrossReferenceProbe? _probe;
+    private PageTreeWalk? _pageTree;
+    private ObjectGraph? _graph;
+    private ObjectStreamDependencies? _objectStreams;
     private readonly List<PdfValidationFinding> _findings = [];
     private readonly HashSet<string> _ruleIds = new(StringComparer.Ordinal);
     private int _errors;
@@ -42,6 +46,15 @@ internal sealed class ValidationContext
     /// Gets what probing every entry of the file's own index found, worked out the first time a rule asks for it.
     /// </summary>
     public CrossReferenceProbe Probe => _probe ??= CrossReferenceProbe.Run(Document);
+
+    /// <summary>Gets the walk of the document's page tree, made the first time a rule asks for it.</summary>
+    public PageTreeWalk PageTree => _pageTree ??= PageTreeWalk.Run(Document);
+
+    /// <summary>Gets the walk of the objects reachable from the trailer, made the first time a rule asks for it.</summary>
+    public ObjectGraph Graph => _graph ??= ObjectGraph.Run(Document, PageTree);
+
+    /// <summary>Gets which object streams need themselves to be read, worked out the first time a rule asks for it.</summary>
+    public ObjectStreamDependencies ObjectStreams => _objectStreams ??= ObjectStreamDependencies.Run(Document);
 
     /// <summary>Records a finding of <paramref name="rule"/>, under its identifier and at its severity.</summary>
     public void Report(IValidationRule rule, PdfValidationLocation location, string message, string? remedy)
