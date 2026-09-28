@@ -80,7 +80,9 @@ the next merge, and a preview already on nuget.org is not a reason to keep it.
 The project's [definition of done](docs/roadmap.md) applies to contributions too:
 
 1. **Tests.** Unit tests for the behavior, and its degenerate and hostile cases. Anything an independent
-   tool should confirm belongs in the integration suite.
+   tool should confirm belongs in the integration suite. Codecov reports on each pull request: 95 % of the
+   lines it changes covered, the project's coverage down by half a point at most. That is a signal, not a
+   goal — a defensive branch no test reaches stays, and code goes only when no input can reach it.
 2. **No new warnings.** The build treats them as errors. A rule that is genuinely wrong here is suppressed
    where it fires, with a written justification — never by a global `NoWarn`.
 3. **Documentation.** Public API needs XML comments, and anything a consumer can call needs a page on the
