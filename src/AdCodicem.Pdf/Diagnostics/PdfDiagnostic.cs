@@ -66,6 +66,13 @@ public static class PdfDiagnosticCodes
     /// <summary>A stream ran past the end of the file.</summary>
     public const string StreamTruncated = "stream.truncated";
 
+    /// <summary>
+    /// An object stream's dictionary names an object the stream holds — as its <c>/Length</c>, <c>/N</c>,
+    /// <c>/First</c>, a filter or one of its parameters —, which cannot be read before the stream is: the stream was
+    /// decoded without it.
+    /// </summary>
+    public const string StreamSelfReference = "stream.self-reference";
+
     /// <summary>A token could not be understood and was skipped.</summary>
     public const string SyntaxUnexpectedToken = "syntax.unexpected-token";
 

@@ -40,6 +40,8 @@ internal ref struct PdfObjectParser
     private readonly long _baseOffset;
     private PdfLexer _lexer;
     private bool _truncated;
+    private bool _endStreamMissing;
+    private EndObjState _endObj;
 
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
@@ -62,6 +64,9 @@ internal ref struct PdfObjectParser
     /// whole input keeps what was read.
     /// </summary>
     public readonly bool IsTruncated => _truncated;
+
+    /// <summary>Gets what followed the value of the last indirect object <see cref="TryReadIndirectObject"/> read.</summary>
+    public readonly EndObjState EndObj => _endObj;
 
     /// <summary>Gets or sets the position in the buffer.</summary>
     public int Position
@@ -104,10 +109,27 @@ internal ref struct PdfObjectParser
         }
 
         id = new PdfObjectId((int)number.Integer, (int)generation.Integer);
+
+        // An empty object, "2 0 obj endobj", reads its endobj as its value, and says so; that endobj is its own.
+        var beforeValue = _lexer.Position;
+        var empty = _lexer.Read().IsKeyword("endobj"u8);
+        _lexer.Position = beforeValue;
+
         value = ParseObject();
+
+        if (empty)
+        {
+            _endObj = EndObjState.Present;
+            return true;
+        }
 
         var afterValue = _lexer.Position;
         var next = _lexer.Read();
+
+        _endObj = next.IsKeyword("endobj"u8)
+            ? EndObjState.Present
+            : _endStreamMissing ? EndObjState.Unknown
+            : next.Kind == PdfTokenKind.EndOfInput || next.End >= _memory.Length ? EndObjState.Unseen : EndObjState.Absent;
 
         if (!next.IsKeyword("endobj"u8))
         {
@@ -347,6 +369,10 @@ internal ref struct PdfObjectParser
             if (recovered < 0)
             {
                 _truncated = true;
+
+                // An endobj after the data says the object ends there, without its endstream, and where it ends is
+                // then the reader's guess; with none, the file ends inside the object, and so without its endobj.
+                _endStreamMissing = span[dataStart..].IndexOf("endobj"u8) >= 0;
                 Report(PdfDiagnosticCodes.StreamTruncated, "A stream ran past the end of the file.", dataStart);
                 return Finish(dictionary, dataStart, span.Length - dataStart, span.Length);
             }

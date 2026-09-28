@@ -50,6 +50,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `xref.entry-out-of-range` | An entry pointed outside the file |
 | `stream.length-invalid` | A stream's declared length did not match where its data ended |
 | `stream.truncated` | A stream ran past the end of the file |
+| `stream.self-reference` | An object stream's dictionary names an object the stream holds — as its `/Length`, `/N`, `/First`, a filter or a parameter —: that object reads as null while the stream is decoded, and the stream is decoded without it |
 | `syntax.unexpected-token` | A token was found where a value was expected |
 | `syntax.truncated-object` | The file ended in the middle of an object |
 | `syntax.depth-exceeded` | Nesting went deeper than the reader will follow |
