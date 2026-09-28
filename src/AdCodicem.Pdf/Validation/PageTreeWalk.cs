@@ -74,6 +74,21 @@ internal sealed class PageTreeWalk
     /// <summary>Gets the object numbers of the tree's nodes.</summary>
     public HashSet<int> Nodes { get; } = [];
 
+    /// <summary>Gets the object numbers of the arrays of kids the walk read that are objects of their own.</summary>
+    public HashSet<int> KidsArrays { get; } = [];
+
+    /// <summary>
+    /// Gets the object numbers of the nodes and pages whose <c>/Parent</c> the walk could not judge, for the node listing
+    /// them was written in its own parent's <c>/Kids</c> and has no number to be named by. The walk judges the
+    /// <c>/Parent</c> of every other node and page it entered, the root's included; the exceptions are kept rather than
+    /// the rule, so that memory does not grow with the pages.
+    /// </summary>
+    public HashSet<int> ParentsUnjudged { get; } = [];
+
+    /// <summary>Determines whether the walk judged the <c>/Parent</c> of object <paramref name="number"/>.</summary>
+    public bool JudgedParent(int number) =>
+        (Nodes.Contains(number) || PageIndexes.ContainsKey(number)) && !ParentsUnjudged.Contains(number);
+
     /// <summary>Gets the object number of each page of the tree, with the index it is first listed at.</summary>
     public Dictionary<int, int> PageIndexes { get; } = [];
 
@@ -126,7 +141,7 @@ internal sealed class PageTreeWalk
             _visited.Add(id.Number);
         }
 
-        if (node.GetRaw(PdfName.Parent) is not null)
+        if (Given(node, PdfName.Parent) is not null)
         {
             ParentFaults.Add(new ProbeFinding(
                 Location(id),
@@ -271,20 +286,20 @@ internal sealed class PageTreeWalk
             Nodes.Add(id.Number);
         }
 
-        var ownBox = node.GetRaw(PdfName.MediaBox);
+        var ownBox = Given(node, PdfName.MediaBox);
 
         if (ownBox is not null)
         {
             CheckMediaBox(ownBox, Location(id), id);
         }
 
-        var kidsValue = node.GetRaw(PdfName.Kids);
+        var kidsValue = Given(node, PdfName.Kids);
 
         if (kidsValue?.Resolve() is not PdfArray kids)
         {
-            // A /Kids that names an object the file lacks is object.reference-missing's; either way, nothing below this
-            // node can be counted, nor the nodes above it judged.
-            if (kidsValue is not PdfReference)
+            // A /Kids that names an object the file lacks is object.reference-missing's, and one the reader could not
+            // produce the index's; either way, nothing below this node can be counted, nor the nodes above it judged.
+            if (kidsValue is null || kidsValue.Resolve() is not PdfNull)
             {
                 NodesWithoutKids.Add(new ProbeFinding(
                     Location(id),
@@ -303,14 +318,25 @@ internal sealed class PageTreeWalk
                 parent.Uncountable = true;
             }
 
+            // It lists no page, and its /Count is still required (ISO 32000-1, 7.7.3.2).
+            if (Given(node, PdfName.Count) is null)
+            {
+                CountMissing(id, below: 0, countable: true);
+            }
+
             return;
+        }
+
+        if (kidsValue is PdfReference kidsReference)
+        {
+            KidsArrays.Add(kidsReference.Id.Number);
         }
 
         _stack.Add(new Frame(node, id, kids)
         {
             PagesBefore = _pages,
             MediaBox = ownBox ?? parent?.MediaBox,
-            HasResources = node.GetRaw(PdfName.Resources) is not null || parent?.HasResources == true,
+            HasResources = Given(node, PdfName.Resources) is not null || parent?.HasResources == true,
         });
 
         if (id.Number > 0)
@@ -331,31 +357,33 @@ internal sealed class PageTreeWalk
             _pagesBelow[frame.Id.Number] = below;
         }
 
-        if (frame.Uncountable)
+        if (frame.Uncountable && _stack.Count > 0)
         {
-            if (_stack.Count > 0)
-            {
-                _stack[^1].Uncountable = true;
-            }
-
-            return;
+            _stack[^1].Uncountable = true;
         }
 
-        switch (frame.Node.GetRaw(PdfName.Count))
+        switch (Given(frame.Node, PdfName.Count))
         {
             case null:
-                CountMismatches.Add(new ProbeFinding(
-                    Location(frame.Id),
-                    Invariant($"{Describe(frame.Id, "Page tree node")} has no /Count; {RuleText.Pages(below)} {Lie(below)} below it.")));
+                // Missing whether or not the pages below can be counted.
+                CountMissing(frame.Id, below, countable: !frame.Uncountable);
                 break;
 
-            case var count when count.Resolve() is PdfInteger { Value: var declared } && declared != below:
+            case var count when !frame.Uncountable && count.Resolve() is PdfInteger { Value: var declared } && declared != below:
                 CountMismatches.Add(new ProbeFinding(
                     Location(frame.Id),
                     Invariant($"{Describe(frame.Id, "Page tree node")} gives /Count {declared}, and {RuleText.Pages(below)} {Lie(below)} below it.")));
                 break;
         }
     }
+
+    /// <summary>Records a node without <c>/Count</c>, saying how many pages lie below it when they can be counted.</summary>
+    private void CountMissing(PdfObjectId id, long below, bool countable) =>
+        CountMismatches.Add(new ProbeFinding(
+            Location(id),
+            countable
+                ? Invariant($"{Describe(id, "Page tree node")} has no /Count; {RuleText.Pages(below)} {Lie(below)} below it.")
+                : $"{Describe(id, "Page tree node")} has no /Count, and how many pages lie below it is unknown."));
 
     private void EnterPage(PdfDictionary page, PdfObjectId id, Frame? parent)
     {
@@ -377,7 +405,7 @@ internal sealed class PageTreeWalk
             CheckParent(page, id, parent, "Page object");
         }
 
-        var ownBox = page.GetRaw(PdfName.MediaBox);
+        var ownBox = Given(page, PdfName.MediaBox);
 
         if (ownBox is not null)
         {
@@ -390,7 +418,7 @@ internal sealed class PageTreeWalk
                 $"{Describe(id, "Page object")} has no /MediaBox, and no page tree node above it gives one: the page's size is unknown."));
         }
 
-        if (page.GetRaw(PdfName.Resources) is null && parent?.HasResources != true)
+        if (Given(page, PdfName.Resources) is null && parent?.HasResources != true)
         {
             ResourcesMissing.Add(new ProbeFinding(
                 location,
@@ -403,6 +431,11 @@ internal sealed class PageTreeWalk
         // A kid written in the array, or a node written in its own parent's, has no number to be named by.
         if (id.Number <= 0 || parent.Id.Number <= 0)
         {
+            if (id.Number > 0)
+            {
+                ParentsUnjudged.Add(id.Number);
+            }
+
             return;
         }
 
@@ -421,6 +454,22 @@ internal sealed class PageTreeWalk
                 Invariant($"{Describe(id, what)} {fault}, and page tree node {parent.Id.Number} lists it.")));
         }
     }
+
+    /// <summary>
+    /// Gives the value of <paramref name="key"/>, or null when the dictionary lacks it or gives it <c>null</c> — written
+    /// so, or an object the file defines as <c>null</c> —, which in a dictionary is absence (ISO 32000-1, 7.3.7).
+    /// </summary>
+    /// <remarks>
+    /// A reference to an object the file lacks, or that the reader could not produce, counts as given: the reference
+    /// is <c>object.reference-missing</c>'s, the entry the cross-reference rules'.
+    /// </remarks>
+    private PdfObject? Given(PdfDictionary dictionary, PdfName key) =>
+        dictionary.GetRaw(key) switch
+        {
+            null or PdfNull => null,
+            PdfReference reference when reference.Resolve() is PdfNull && _reader.GetPresence(reference.Id.Number) == ObjectPresence.Defined => null,
+            var value => value,
+        };
 
     private void CheckMediaBox(PdfObject box, PdfValidationLocation location, PdfObjectId id)
     {

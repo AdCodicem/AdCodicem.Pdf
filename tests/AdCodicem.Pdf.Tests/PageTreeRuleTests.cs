@@ -168,6 +168,20 @@ public class PageTreeRuleTests
         PageTreeWalk.Run(document).PageCount.Should().Be(1);
     }
 
+    [Theory]
+    [InlineData("<< /Kids [5 0 R 6 0 R] >>", "Page tree node 4 has a dictionary for /Kids, not an array: it lists no page.")]
+    [InlineData("2", "Page tree node 4 has a number for /Kids, not an array: it lists no page.")]
+    [InlineData("null", "Page tree node 4 has no /Kids: it lists no page.")]
+    public void A_kids_entry_naming_an_object_that_is_no_array_lists_no_page(string seventh, string message)
+    {
+        var report = Validate(TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids 7 0 R /Count 2", seventh));
+
+        var finding = Single(report, PdfValidationRuleIds.PageTreeKidsMissing);
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Message.Should().Be(message);
+        report.Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse("object 7 is there");
+    }
+
     [Fact]
     public void A_kids_array_naming_nothing_is_the_missing_reference_alone()
     {
@@ -271,6 +285,37 @@ public class PageTreeRuleTests
         finding.Message.Should().Be(message);
     }
 
+    [Theory]
+    [InlineData("/Kids [5 0 R 6 0 R] /Count null")]
+    [InlineData("/Kids [5 0 R 6 0 R] /Count 7 0 R")]
+    public void A_count_given_as_null_is_missing(string replacement)
+    {
+        var report = Validate(TreeWith("/Kids [5 0 R 6 0 R] /Count 2", replacement, "null"));
+
+        var finding = report.Findings.Should().ContainSingle().Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.PageTreeCountMismatch);
+        finding.Message.Should().Be("Page tree node 4 has no /Count; 2 pages lie below it.", "null in a dictionary is absence (ISO 32000-1, 7.3.7)");
+    }
+
+    [Fact]
+    public void A_node_without_kids_lacks_its_count_as_well()
+    {
+        var report = Validate(TreeWith("/Type /Pages /Kids [3 0 R 4 0 R] /Count 3", "/Type /Pages"));
+
+        Single(report, PdfValidationRuleIds.PageTreeKidsMissing).Message.Should().Be("Page tree node 2 has no /Kids: it lists no page.");
+        Single(report, PdfValidationRuleIds.PageTreeCountMismatch).Message.Should().Be("Page tree node 2 has no /Count; 0 pages lie below it.");
+    }
+
+    [Fact]
+    public void A_node_whose_pages_cannot_be_counted_still_lacks_its_count()
+    {
+        var report = Validate(TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R 2 0 R 6 0 R]"));
+
+        report.Contains(PdfValidationRuleIds.PageTreeCycle).Should().BeTrue();
+        Single(report, PdfValidationRuleIds.PageTreeCountMismatch).Message.Should().Be(
+            "Page tree node 4 has no /Count, and how many pages lie below it is unknown.");
+    }
+
     [Fact]
     public void A_count_one_page_short_says_page_in_the_singular()
     {
@@ -324,6 +369,18 @@ public class PageTreeRuleTests
         findings[0].Location.ToString().Should().Be("page 1, object 3 0");
         findings[0].Message.Should().Be("Page object 3 has no /MediaBox, and no page tree node above it gives one: the page's size is unknown.");
         report.Findings.Should().HaveCount(2, "page 6 has a box of its own");
+    }
+
+    [Theory]
+    [InlineData(" /MediaBox null")]
+    [InlineData(" /MediaBox 7 0 R")]
+    public void A_media_box_given_as_null_is_missing(string replacement)
+    {
+        var report = Validate(TreeWith(" /MediaBox [0 0 595 842]", replacement, "null"));
+
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreeMediaBoxInvalid)
+            .Select(finding => finding.Location.PageIndex).Should().Equal(0, 1);
+        report.Findings.Should().HaveCount(2, "the null the root gives is absence, and page 6 has a box of its own");
     }
 
     [Theory]
@@ -382,6 +439,18 @@ public class PageTreeRuleTests
         findings.Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(3), new PdfObjectId(5), new PdfObjectId(6));
         findings[0].Severity.Should().Be(PdfValidationSeverity.Warning);
         findings[0].Message.Should().Be("Page object 3 has no /Resources, and no page tree node above it gives any.");
+        report.Findings.Should().HaveCount(3);
+    }
+
+    [Theory]
+    [InlineData(" /Resources null")]
+    [InlineData(" /Resources 7 0 R")]
+    public void Resources_given_as_null_are_missing(string replacement)
+    {
+        var report = Validate(TreeWith(" /Resources << >>", replacement, "null"));
+
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreeResourcesMissing)
+            .Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(3), new PdfObjectId(5), new PdfObjectId(6));
         report.Findings.Should().HaveCount(3);
     }
 
@@ -519,6 +588,17 @@ public class PageTreeRuleTests
     {
         Tree.Should().Contain(text);
         return PdfTemplate.Build(Tree.Replace(text, replacement, StringComparison.Ordinal));
+    }
+
+    /// <summary>The tree with <paramref name="text"/> replaced, and an object 7 whose body is <paramref name="seventh"/>.</summary>
+    private static byte[] TreeWith(string text, string replacement, string seventh)
+    {
+        Tree.Should().Contain(text);
+        return PdfTemplate.Build(Tree
+            .Replace(text, replacement, StringComparison.Ordinal)
+            .Replace("xref\n0 7\n", $"7 0 obj\n{seventh}\nendobj\nxref\n0 8\n", StringComparison.Ordinal)
+            .Replace("{row:6}\n", "{row:6}\n{row:7}\n", StringComparison.Ordinal)
+            .Replace("/Size 7", "/Size 8", StringComparison.Ordinal));
     }
 
     /// <summary>The tree with object <paramref name="number"/> added, which nothing refers to.</summary>
