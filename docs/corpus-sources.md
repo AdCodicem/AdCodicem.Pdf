@@ -518,7 +518,8 @@ were established the same way, pages by `qpdf --show-npages`.
 | GovDocs1 error files | 21 | Six are federal work over 2 MB — the VHA coding handbook, the VA Kernel guide (464 pages, a PDF/A-1b claim veraPDF rejects on seven rules), a USGS earthquake map, a USFWS recovery plan, the 1994 Transportation Statistics report whose `/Producer` names Distiller 1.0.2 for Macintosh, a Reclamation EA —; one is a Census Bureau section whose tables are partly copyrighted by the firms that supplied them; thirteen are not shown to be federal staff's work: contractors (ORNL, JPL), PIARC, WARDA, the EU's delegation, IBM, Scholastic, an unnamed consultant; one, the SAMHSA fact sheet, is screened in part | IBM ID Workbench and XPP, Xyvision's Parlance Publisher, WordPerfect through PDFWriter 4, PageMaker 6.5, a `/Prev` 12 bytes off (T25), a whole file broken by a text-mode transfer |
 | JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalog without `/Type`; a reference to object 0; a file whose tail was lost |
 
-Twenty-six remote entries are recorded as unsupported. From the first three passes: the signed web capture
+Eighteen remote entries are recorded as unsupported; there were twenty-six until M02's second slice made eight
+of the iPRES files supported on 2026-09-27. From the first three passes: the signed web capture
 (T24), the Axapta credit note and the `#00` form (M02); the topographic map was too, for T28, until ADR 34
 made its decoding bound an option. From the fourth: the
 VHA handbook (T24), two catalogs without `/Type`, the wPDF chapter's null kid, and two
@@ -567,6 +568,12 @@ it and hand back none.
   object and reported a repair on a file qpdf calls clean, until T27 was fixed on 2026-09-27. The
   acceptance test found them only once it walked each page's contents and resources before judging a clean
   file's diagnostics, which it now does. Both are supported; their finding is M02's third slice.
+
+M02's second slice made eight of the 17 supported on 2026-09-27: the table entry with generation 10000 and
+the trailer without `/Size` of the second item, and the six recoveries of the third. Each earns its finding,
+and the reader, where only `/Root` is broken, now finds the catalog among the indexed objects without
+rebuilding the index, as qpdf keeps its own; their expectations say what the reader does, where they had
+copied qpdf's rebuild. Nine remain, the page trees and the two misnamed types, for the third slice.
 
 ## Traps met along the way
 

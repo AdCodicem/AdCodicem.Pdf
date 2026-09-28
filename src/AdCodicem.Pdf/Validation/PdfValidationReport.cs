@@ -60,7 +60,10 @@ public sealed class PdfValidationReport
     /// <summary>Gets the number of findings not kept because <see cref="PdfValidatorOptions.FindingCapacity"/> was reached.</summary>
     public int SuppressedCount => ErrorCount + WarningCount + InformationCount - Findings.Count;
 
-    /// <summary>Gets a value indicating whether any finding is an error: readers will disagree about the document.</summary>
+    /// <summary>
+    /// Gets a value indicating whether any finding is an error: the reader cannot vouch that it reads the document
+    /// as it was written.
+    /// </summary>
     public bool HasErrors => ErrorCount > 0;
 
     /// <summary>Gets a value indicating whether any finding is a warning.</summary>

@@ -79,6 +79,12 @@ public static class PdfDiagnosticCodes
     public const string ObjectRedefined = "object.redefined";
 
     /// <summary>
+    /// The trailer's <c>/Root</c> did not lead to a document catalog, and the reader found the catalog among the
+    /// file's objects: among those the file indexes when its index is sound, in a rebuilt index otherwise.
+    /// </summary>
+    public const string TrailerRootRecovered = "trailer.root-recovered";
+
+    /// <summary>
     /// A filter's data is not what the filter says. Data that nothing could decode was left encoded; data that
     /// decoded in part — a Flate stream that lost its tail, an LZW stream that uses a code it has not defined —
     /// was kept as far as it went; data read despite a fault that lost nothing, such as a missing zlib header or

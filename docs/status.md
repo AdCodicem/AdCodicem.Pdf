@@ -13,16 +13,22 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   report and `file.eof-missing` — is done, merged with [#29](https://github.com/AdCodicem/AdCodicem.Pdf/pull/29) on
   2026-09-26 ([#57](https://github.com/AdCodicem/AdCodicem.Pdf/issues/57), closed). The three reader debts it
   waited on — T32, T25 and T27 — are fixed, merged with [#31](https://github.com/AdCodicem/AdCodicem.Pdf/pull/31).
-  Slices 2 to 6 are issues [#58](https://github.com/AdCodicem/AdCodicem.Pdf/issues/58) to
+  Slice 2 — the file and cross-reference rules, twenty of them — is done, merged with
+  [#110](https://github.com/AdCodicem/AdCodicem.Pdf/pull/110) on 2026-09-28
+  ([#58](https://github.com/AdCodicem/AdCodicem.Pdf/issues/58), closed); severities follow
+  [ADR 45](adr/0045-a-findings-severity-says-whether-the-file-reads-as-written.md), accepted with it. The
+  project's coverage and Codecov's rules ([#115]) are done on `claude/prochaine-tache-0f0cxl`. Slices 3
+  to 6 are issues [#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59) to
   [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 1,504 unit (8 skipped by design) + 452 integration (skipped without Docker) + 23 for the remote
-  corpus's fetcher + 26 for the roadmap's mirror on GitHub. With the remote corpus: `Remote corpus` run 7, on
-  #29's branch at `4aa6816` with all 242 documents, passed 2,844 unit (97 skipped by design, on documents
-  recorded as unsupported until M02, T24, T25 or T27) and 668 integration tests. Here, on #31's branch with 233
-  of the 242 — seven hosts reset this session's connections and the two GitHub attachments answer 403 —, 2,978
-  unit (89 skipped by design, on documents recorded as unsupported until M02 or T24) and 1,034 integration, in a
-  local referee container.
+- **Tests**: 1,728 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
+  corpus's fetcher + 26 for the roadmap's mirror on GitHub, on #115's branch. With the remote corpus:
+  `Remote corpus` run 10, on slice 2's branch with the object stream fix and all 242 documents, passed 3,183 unit
+  (65 skipped by design, on documents recorded as unsupported until M02 or #47) and 1,875 integration tests.
+- **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial), 99.0 % of
+  `src/`, up from 93.6 %. The 28 lines left are defensive, or branches the compiler and the coverage tool count
+  apart; the journal of 2026-09-28 lists them. `codecov.yml` asks 95 % of each patch, and lets the project drop by
+  half a point at most.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -67,13 +73,14 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Indexing | synthetic, 1000 pages, ~4 MB | 229 µs | 393 KB |
 | Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
 | Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 2.4 MB |
-| Validating under the structural profile, the document already open | synthetic, 1000 pages | 86 ns | 232 B |
+| Validating under the structural profile, the document already open | synthetic, 1000 pages | 214 µs | 8.9 KB |
 | Decoding a whole Flate content stream | 4 MB decoded, about 330 KB encoded | 8.3 ms | 13.1 MB |
 | Decoding the same stream without its checksum, or without its last five bytes | 4 MB decoded | 11.7 ms | 13.1 MB |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content.
-The validation row is one rule reading the file's last 1,024 bytes, whatever its size; it grows with each
-slice of M02.
+The validation row is slice 2's twenty-one rules: each entry of the index probed where it places its object, a
+few dozen bytes read each and nothing kept but what is wrong — the allocation is the sorted object numbers.
+Slice 1's one rule took 86 ns and 232 B; the row grows with each slice of M02.
 Indexing costs roughly 200 bytes per object, whatever the objects weigh. The third row is asserted as a
 budget in CI (`CorpusReadingTests`), so an allocation regression fails the build. A stream that ran out is
 read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams only; the
@@ -86,9 +93,7 @@ M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29); T32,
 before its cross-reference and object-graph rules, merged with #31. Its progress is the
 [M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestone/3) on GitHub. In the order its debts impose:
 
-1. Slice 2, file and cross-reference rules ([#58]), which also answers for iPRES `t04-007` (a premature
-   `%%EOF` before the trailer) and reports what T25 now tells the reader: a section found near where it was
-   named, one found nowhere.
+1. The project's coverage and Codecov's rules ([#115]): review and merge.
 2. Slice 3 ([#59]) with [#51] in the object-graph rules, and the finding for a reference to an object the
    file lacks, which T27 left to it; [#55] and [#56] before slice 4 ([#60]), whose stream rules check
    declared lengths and whether filters decode; slices 5 and 6 ([#61], [#62]). Each slice adds to the
@@ -98,6 +103,92 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-28 — The project's coverage, and Codecov's rules
+- **Settled with the maintainer.** `codecov.yml`: the project may lose half a point of coverage at most against
+  its base, each patch is 95 % covered, `tests/` is not measured. The rule for coverage work, now in `CLAUDE.md`
+  and `CONTRIBUTING.md`: code goes only when no input can reach it, never because no file of the corpus does; a
+  defensive branch stays, covered or not; 100 % is not the goal; a public member nothing calls is asked about.
+- **From 93.6 % to 99.0 % of `src/`**, as Codecov counts it on the committed corpus, with 67 new cases.
+  - The object model as a caller uses it: arrays and dictionaries edited in place, typed accessors, a loop of
+    references, UTF-16LE text, names, shared values, streams and exceptions (`ObjectModelTests`).
+  - The PNG predictors against libpng: an 8 by 6 RGB image written by ImageMagick 6.9.12 with libpng's adaptive
+    filtering — Sub, Up, Average and Paeth — and with none, decoded through `/FlateDecode` and `/Predictor 15`
+    to its exact pixels; the TIFF predictor at widths other than a byte.
+  - The reader on shapes no corpus file had: a stream of any kind, a cross-reference stream without a type
+    field, object stream headers wrong in four ways, a rebuild past the first megabyte, an entry past the end
+    of the file, object headers numbered 0 or beyond an `int`; the lexer, parser and filters at their edges.
+  - Dead code removed: `PdfLexer.Peek`, `PdfLexer.Length` and `PdfCharacters.IsDelimiter`, which nothing called.
+- **Left uncovered, on purpose.** The reader's fallbacks — an empty source (`Open` refuses it first), an offset
+  outside the file (its callers check), a rebuild asked for twice, a stream shorter on read than it said, a window
+  outside the source; the lexer's guard against a delimiter its switch does not claim, which keeps it from
+  looping should the switch change; the rules' fallbacks for values the reader never records; the parser's
+  end-of-stream check past its buffer; the `}` after `reached?.Throw()`, which the tool counts apart; and the
+  branches the compiler adds to a switch over strings or types. Every public member nothing called is kept and
+  now tested.
+
+### 2026-09-27 — M02 slice 2: the file and cross-reference rules, and ADR 45
+- **Settled with the maintainer, one question at a time, before the rules were written.** Severity (first "an
+  error is an index unusable as written", then ADR 45), how far entries are probed (each one, headers only, each
+  object stream once without keeping it), the reader's catalog recovery in the same pull request, the rule
+  catalogue submitted after measurement, the remote corpus confirmed by a `Remote corpus` run on the branch, a qpdf
+  integration test from this slice, linearization left out ([#108], M23).
+- **Measured before designing.** An analysis of the raw bytes of every document here, independent of the reader —
+  header, `startxref`, each section and trailer, each entry probed, each object stream decoded —, beside qpdf's
+  `--check` and the reader's diagnostics. It found what each candidate rule would say, and it later checked what the
+  rules do say: they agreed on all 401 documents, the three differences being the analysis's approximations.
+- **Corrections owed to the maintainer.** Three situations first called "legal but unusual" were not all legal: an
+  offset naming the white space before an object or before `xref` breaks ISO 32000-1 (7.5.4, 7.5.5), every reader
+  reading past it; the "decreasing /Size" was a hybrid file's stream against its table, not an update; a trailer
+  without `/Root` is the main table of a linearized file, which F.3.11 wants reduced to `/Size`. The first became
+  `xref.offset-imprecise`, once per file; the second `file.size-wrong`, extended to each section, Table 17's two
+  readings of a stream's `/Size` both accepted; the third stays silent. Two severities first argued from other
+  readers were contradicted by measurement — qpdf reads t03-010's object as null, Table 15 makes t04-016's catalog
+  missing —, which led the maintainer to ADR 45.
+- **ADR 45.** A finding's severity says whether the reader can vouch that it reads the file as written: an error
+  goes with a rebuild, a loss or a choice the file does not make; a warning is a file read as it was evidently
+  meant. `file.header-missing`, `xref.generation-mismatch` and `xref.object-past-size` became warnings;
+  `xref.chain-loop` an error, a loop losing the section the chain should have gone on to. No `Critical` level
+  before M05 ([#109]). The reader's diagnostics keep their own scale.
+- **The reader.** It records the file's own structure as it opens it (`FileStructure`: the header, `startxref`,
+  each section's state, fault and trailer as written, `/Root` and `/Size` before anything was done about them), and
+  copies the chain's index before a relocation or a rebuild changes it, so that reading objects between two
+  validations changes nothing. A `/Root` that leads to no catalog no longer discards a sound index: the catalog is
+  looked for among the indexed objects first (new diagnostic `trailer.root-recovered`). A negative `/Prev`, a
+  malformed row and a looping chain mark the index incomplete, as a missing section does.
+- **The rules.** Twenty join `file.eof-missing`: `file.header-missing`, `file.header-offset`,
+  `file.header-version-invalid`, `file.startxref-missing`, `file.startxref-wrong`, `file.trailer-missing`,
+  `file.trailer-malformed`, `file.root-invalid`, `file.size-wrong`, `xref.section-malformed`,
+  `xref.section-not-found`, `xref.section-shifted`, `xref.chain-loop`, `xref.entry-broken`, `xref.entry-shifted`,
+  `xref.generation-mismatch`, `xref.object-stream-broken`, `xref.offset-imprecise`, `xref.object-past-size`,
+  `xref.checked-in-part`. `docs/validation-rules.md` gives each its severity, meaning and reference, and what the
+  profile leaves silent on purpose — a row not twenty bytes long ([#107]), linearization ([#108]), a catalog
+  written in the trailer rather than referred to ([#111]).
+- **The corpus.** Every entry declares its findings: 65 documents earn `file.startxref-wrong`, 11
+  `file.startxref-missing`, 18 `file.header-offset`, 18 clean ones a `file.size-wrong` (Word's and Excel's hybrid
+  streams one short, `/Size` off by one), 8 clean ones `xref.offset-imprecise` (Microsoft Print to PDF), 9 encrypted
+  ones `xref.checked-in-part`; no clean document earns an error. Eight iPRES files are supported (t03-007, t03-010,
+  t04-010 to t04-015), their expectations saying what the reader does where they had copied qpdf's rebuild; the
+  corpus's reading test counts a finding as damage made known, for what the reader reads without a word. Nine
+  remote documents could not be fetched here; their findings were predicted, and `Remote corpus` run 9, on the
+  branch with all 242 documents, confirmed them.
+- **Tests.** `FileRuleTests` and `CrossReferenceRuleTests`, 116 cases on files written from a template whose offsets
+  are placeholders: each rule on a file that breaks it, a sound one and an unusual legal one, and the report
+  unchanged by reads and rebuilds between validations. `ValidationRefereeTests` (integration): every document qpdf
+  rebuilds the index of earns a `file.*` or `xref.*` finding, and every such error is a document qpdf finds fault
+  with — on all 401 documents here, without an exception to name.
+- **Measured.** `ValidationBenchmarks`, ShortRun, 1,000 synthetic pages: 214 µs and 8.9 KB, against 86 ns and
+  232 B for slice 1's one rule.
+- **Coverage, with the maintainer.** Codecov's patch check failed at 89.2 %. The maintainer asked for the patch
+  first and the rest of the project in a pull request of its own, and set the rule: code is removed only when no
+  input can reach it — conditions that contradict each other, a dead branch —, not because no file of the corpus
+  does; a defensive branch stays, covered or not, and 100 % is not the goal. The patch is at 99.0 %: tests for each
+  reachable case — a hybrid file's stream, a cross-reference or object stream compressed and cut by a limit or
+  corrupt, a table the file ends in, a rebuild or a guard met during the catalog search —, the fallbacks for values
+  the reader never records left as they were. Covering it found three faults: a `/Root null` reported as "not an
+  object", an unreadable object stream reported in no sentence, and an object stream whose dictionary
+  `MaxObjectLength` cut reported broken — an error — where the reader's limit, not the file, kept it from being
+  checked. The maintainer also settled `codecov.yml`, left to the project's coverage work ([#115]).
 
 ### 2026-09-27 — Milestones, slices and debt tracked on GitHub
 - **The question.** Whether GitHub's issues and milestones suit the milestones and the debt. Settled with the
@@ -668,3 +759,8 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#60]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/60
 [#61]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/61
 [#62]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/62
+[#107]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/107
+[#108]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/108
+[#109]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/109
+[#111]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/111
+[#115]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/115

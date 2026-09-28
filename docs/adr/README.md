@@ -51,6 +51,7 @@ A settled decision is not reopened without new evidence — that is what writing
 | [42](0042-image-codecs-and-scans.md) | Image codecs and scans | — |
 | [43](0043-skia-in-html-and-rendering-and-text-analysis-is-ours.md) | Skia in `.Html` and `.Rendering`, and text analysis is ours | — |
 | [44](0044-object-shape-rules-generated-from-the-arlington-model.md) | Object-shape rules generated from the Arlington model | — |
+| [45](0045-a-findings-severity-says-whether-the-file-reads-as-written.md) | A finding's severity says whether the file reads as written | — |
 
 ## Decisions too small for a record of their own
 

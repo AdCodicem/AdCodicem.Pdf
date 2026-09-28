@@ -155,6 +155,203 @@ public class DocumentReaderTests
         source.BytesRead.Should().BeGreaterThan(afterOpen + payload.Length - 1);
     }
 
+    [Theory]
+    [InlineData("a memory stream that shows its buffer")]
+    [InlineData("a memory stream that hides its buffer")]
+    [InlineData("a stream of another kind")]
+    public void Opens_a_document_from_any_stream(string kind)
+    {
+        var bytes = SampleDocument().BuildClassic(rootNumber: 1);
+        using Stream stream = kind switch
+        {
+            "a memory stream that shows its buffer" => new MemoryStream(bytes, 0, bytes.Length, writable: false, publiclyVisible: true),
+            "a memory stream that hides its buffer" => new MemoryStream(bytes),
+            _ => new BufferedStream(new MemoryStream(bytes)),
+        };
+
+        using var document = PdfDocument.Open(stream);
+
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
+        document.ObjectCount.Should().Be(5, "objects 1 to 4, and the free head of the table");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_source_reads_nothing_outside_itself(bool fromFile)
+    {
+        var path = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllBytes(path, "%PDF"u8.ToArray());
+            using var source = fromFile ? PdfFileSource.FromFile(path) : PdfFileSource.FromMemory("%PDF"u8.ToArray());
+            var buffer = new byte[4];
+
+            source.Read(-1, buffer).Should().Be(0);
+            source.Read(4, buffer).Should().Be(0);
+            source.Read(1, buffer).Should().Be(3);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Disposing_a_document_twice_is_harmless()
+    {
+        var document = PdfDocument.Open(SampleDocument().BuildClassic(rootNumber: 1));
+
+        document.Dispose();
+        FluentActions.Invoking(document.Dispose).Should().NotThrow();
+    }
+
+    [Fact]
+    public void Reads_a_cross_reference_stream_that_leaves_out_the_type_field()
+    {
+        // /W [0 4 2]: with no type field, every row is an object at an offset (ISO 32000-1, Table 17).
+        var file = new List<byte>();
+        void Append(string text) => file.AddRange(Encoding.Latin1.GetBytes(text));
+
+        Append("%PDF-1.5\n");
+        var catalog = file.Count;
+        Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = file.Count;
+        Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var stream = file.Count;
+        Append("3 0 obj\n<< /Type /XRef /Size 4 /Index [1 3] /W [0 4 2] /Root 1 0 R /Length 18 >>\nstream\n");
+        foreach (var offset in new[] { catalog, pages, stream })
+        {
+            file.AddRange([(byte)(offset >> 24), (byte)(offset >> 16), (byte)(offset >> 8), (byte)offset, 0, 0]);
+        }
+
+        Append($"\nendstream\nendobj\nstartxref\n{stream}\n%%EOF\n");
+
+        using var document = PdfDocument.Open(file.ToArray());
+
+        document.WasRepaired.Should().BeFalse();
+        document.Catalog.GetDictionary(PdfName.Pages).IsOfType(PdfName.Pages).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Reads_what_an_object_stream_header_lists_before_it_goes_wrong()
+    {
+        // The header lists object 2, then 3 at an offset that is not a number.
+        using var document = PdfDocument.Open(Packed(header => header[..6] + "x "));
+
+        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken && entry.Message == "An object stream header is malformed.");
+    }
+
+    [Fact]
+    public void Reads_an_object_where_its_stream_s_header_lists_it_rather_than_where_the_index_says()
+    {
+        // The header lists 3 at index 0 and 2 at index 1; the index places 2 at index 0.
+        using var document = PdfDocument.Open(Packed(header => "3" + header[1..4] + "2" + header[5..]));
+
+        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        document.Diagnostics.Should().Contain(entry =>
+            entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && entry.Message == "Object 2 was at index 1 of its object stream, not 0.");
+    }
+
+    [Fact]
+    public void An_object_its_stream_s_header_does_not_list_is_null()
+    {
+        using var document = PdfDocument.Open(Packed(header => header.Replace("3 ", "7 ", StringComparison.Ordinal)));
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void An_object_stream_whose_count_cannot_be_believed_serves_no_object()
+    {
+        var bytes = Packed(header => header);
+        var text = Encoding.Latin1.GetString(bytes);
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.Replace("/N 2", "/N 0", StringComparison.Ordinal)));
+
+        document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void Rebuilds_an_index_whose_objects_lie_past_the_first_megabyte()
+    {
+        // The scan reads the file a megabyte at a time: the catalog and the page lie in the second.
+        var bytes = new TestPdfBuilder()
+            .WithObject(9, "(" + new string('x', 1_100_000) + ")")
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>")
+            .Stream(4, string.Empty, "BT (Bonjour) Tj ET")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_does_not_find_either_is_null()
+    {
+        // The last row is malformed, which leaves the index incomplete: asking for an object it lacks rebuilds it.
+        using var document = PdfDocument.Open(PdfTemplate.SoundWith("{row:3}", "0000000abc 00000 n "));
+        document.WasRepaired.Should().BeFalse();
+
+        document.GetObject(new PdfObjectId(99)).Should().BeSameAs(PdfNull.Instance);
+
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Finds_an_object_whose_entry_points_past_the_end_of_the_file()
+    {
+        using var document = PdfDocument.Open(PdfTemplate.SoundWith("{row:3}", "0009999999 00000 n "));
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_rebuild_ignores_object_headers_numbered_zero_or_beyond_what_an_object_number_holds()
+    {
+        const string Objects = """
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [] /Count 0 >>
+            endobj
+            %%EOF
+
+            """;
+        const string Bogus = """
+            0 0 obj
+            (zero)
+            endobj
+            9999999999 0 obj
+            (too large)
+            endobj
+
+            """;
+
+        using var sound = PdfDocument.Open(Encoding.ASCII.GetBytes("%PDF-1.7\n" + Objects));
+        using var document = PdfDocument.Open(Encoding.ASCII.GetBytes("%PDF-1.7\n" + Bogus + Objects));
+
+        document.WasRepaired.Should().BeTrue();
+        document.ObjectCount.Should().Be(sound.ObjectCount);
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    /// <summary>The catalog, and the page tree and the page packed in object stream 4, its header rewritten.</summary>
+    private static byte[] Packed(Func<string, string> header) =>
+        new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: header);
+
     private static TestPdfBuilder SampleDocument(string content = "BT (Bonjour) Tj ET") =>
         new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
