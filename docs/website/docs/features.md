@@ -52,7 +52,7 @@ the next preview.
 | Guards against hostile files, on by default, each lifted by an option so that every valid PDF stays readable | ✅ Available |
 | Every standard filter and index form: Flate with predictors, LZW, ASCII85, ASCIIHex, RunLength, cross-reference and object streams, hybrid files | ✅ Available |
 | Structural validation with stable, public rule identifiers, a severity, a location and a remedy for each finding | 🚧 In progress — M02 |
-| Object-shape rules generated from the PDF Association's Arlington model, version-aware | 📅 Planned — M02 |
+| Object-shape rules generated from the PDF Association's Arlington model, version-aware | ✅ Available |
 | Revision history, what each signature covers, and changes made after signing, without cryptography | 📅 Planned — M04 |
 | Repair, conservative (incremental) or full rebuild, with a report of what was changed and what was lost | 📅 Planned — M05 |
 

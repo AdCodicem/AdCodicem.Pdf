@@ -18,19 +18,22 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   ([#58](https://github.com/AdCodicem/AdCodicem.Pdf/issues/58), closed); severities follow
   [ADR 45](adr/0045-a-findings-severity-says-whether-the-file-reads-as-written.md), accepted with it. The
   project's coverage and Codecov's rules ([#115]) merged with #116. Slice 3
-  ([#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59)) is in two pull requests: the first — [#51], the
-  object and page tree rules, the page in a finding's location, pages counted as qpdf's walk counts them — is on
-  `claude/m02-tranche-3-m85asb`; the second, the object-shape rules generated from the Arlington model (ADR 44),
-  follows on `claude/m02-tranche-3-arlington-m85asb` and closes #59. Slices 4 to 6 are issues
-  [#60](https://github.com/AdCodicem/AdCodicem.Pdf/issues/60) to [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
+  ([#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59)) is written, in two pull requests: the first, [#122]
+  — [#51], the object and page tree rules, the page in a finding's location, pages counted as qpdf's walk counts
+  them —, on `claude/m02-tranche-3-m85asb`; the second — the object-shape rules generated from the Arlington PDF
+  Model (ADR 44, amended on 2026-09-28) — on `claude/m02-tranche-3-arlington-m85asb`, stacked on the first, and
+  closing #59. Slices 4 to 6 are issues [#60](https://github.com/AdCodicem/AdCodicem.Pdf/issues/60) to
+  [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 1,976 unit (2 skipped by design) + 956 integration (skipped without Docker) + 23 for the remote
-  corpus's fetcher + 26 for the roadmap's mirror on GitHub, on slice 3's first branch. With the 240 remote documents
-  fetched here: 3,650 unit (23 skipped by design, on documents recorded as unsupported until #59's second pull
-  request or #47) and 2,275 integration tests.
+- **Tests**: 2,206 unit (2 skipped by design) + 1,124 integration (skipped without Docker) + 23 for the remote
+  corpus's fetcher + 26 for the roadmap's mirror on GitHub, on slice 3's second branch. With the 240 remote documents
+  fetched here: 3,880 unit (10 skipped by design, on the two documents recorded as unsupported until #47) and 2,683
+  integration tests.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial), 99.0 % of
   `src/`, up from 93.6 %. The 28 lines left are defensive, or branches the compiler and the coverage tool count
-  apart; the journal of 2026-09-28 lists them. `codecov.yml` asks 95 % of each patch, and lets the project drop by
+  apart; the journal of 2026-09-28 lists them. Slice 3's second branch covers 10,594 of the 10,626 lines it adds or
+  changes in `src/`, the generated tables included (99.7 %): four defensive lines are missed and 28 leave a branch
+  untaken; `src/` as a whole stands at 99.5 %. `codecov.yml` asks 95 % of each patch, and lets the project drop by
   half a point at most.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
@@ -76,18 +79,21 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Indexing | synthetic, 1000 pages, ~4 MB | 229 µs | 393 KB |
 | Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
 | Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 2.4 MB |
-| Validating under the structural profile, the document already open and read | synthetic, 1000 pages | 716 µs | 308 KB |
-| Opening and validating under the structural profile | synthetic, 1000 pages | 4.1 ms | 2.4 MB |
+| Validating under the structural profile, the document already open and read | synthetic, 1000 pages | 2.5 ms | 588 KB |
+| Typing and checking the objects the trailer reaches against the Arlington model, alone | synthetic, 1000 pages | 1.7 ms | 280 KB |
+| Opening and validating under the structural profile | synthetic, 1000 pages | 6.2 ms | 2.6 MB |
 | Decoding a whole Flate content stream | 4 MB decoded, about 330 KB encoded | 8.3 ms | 13.1 MB |
 | Decoding the same stream without its checksum, or without its last five bytes | 4 MB decoded | 11.7 ms | 13.1 MB |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content.
-The validation rows are slice 3's thirty-four rules. The first measures the rules alone on a document whose objects
+The validation rows are slice 3's thirty-eight rules. The first measures the rules alone on a document whose objects
 the reader has cached: each entry of the index probed, the page tree walked, every object the trailer reaches met
-once, every object of the index looked at for a page the tree leaves out — the allocation is the sets of object
-numbers met and each page's index. The second is what a caller validating a file it has not read pays: every
-object parsed for the first time, 2.4 KB each, no stream's data read. Slice 2's twenty-one rules took 214 µs and
-8.9 KB on the first row, slice 1's one rule 86 ns and 232 B; the rows grow with each slice of M02.
+once and typed and checked against the Arlington model, every object of the index looked at for a page the tree
+leaves out — the allocation is the sets of object numbers met, each page's index, and the Arlington walk's queue and
+tallies. The second is that walk alone, which the four rules generated from the model share. The third is what a
+caller validating a file it has not read pays: every object parsed for the first time, about 2.7 KB a page, no
+stream's data read. Slice 3's first thirty-four rules took 716 µs and 308 KB on the first row, slice 2's twenty-one
+214 µs and 8.9 KB, slice 1's one rule 86 ns and 232 B; the rows grow with each slice of M02.
 Indexing costs roughly 200 bytes per object, whatever the objects weigh. The third row is asserted as a
 budget in CI (`CorpusReadingTests`), so an allocation regression fails the build. A stream that ran out is
 read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams only; the
@@ -100,10 +106,12 @@ M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29); T32,
 before its cross-reference and object-graph rules, merged with #31. Its progress is the
 [M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestone/3) on GitHub. In the order its debts impose:
 
-1. Slice 3's first pull request: review and merge.
-2. Slice 3's second pull request, on `claude/m02-tranche-3-arlington-m85asb`: the generator in C# under `tools/`,
-   the vendored model at its pinned commit, the tables, the seven overrides, `NOTICE`; four remote documents wait
-   for it. It closes [#59].
+1. Slice 3's two pull requests: review and merge — the first, [#122], then the second, on
+   `claude/m02-tranche-3-arlington-m85asb`, which closes [#59] and with it slice 3. Two of its content overrides go
+   beyond the seven settled beforehand, and are for the maintainer to confirm: a form XObject's `/FormType`, `/Matrix`
+   and `/Name`, and an optional-content creator's `/SubType`. A `Remote corpus` run on the
+   branch is still to confirm the two remote documents GitHub refused here.
+2. A key newer than the version the file declares, the fifth rule the model offers, left for later: [#123].
 3. [#55] and [#56] before slice 4 ([#60]), whose stream rules check declared lengths and whether filters decode;
    slices 5 and 6 ([#61], [#62]); the reader debts slice 3 found, [#117] to [#120], before M02 closes. Each slice adds to the manifest's `findings` what its rules report, and every
    document is held to exactly its list.
@@ -112,6 +120,88 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-28 — M02 slice 3, second half: the Arlington object-shape rules
+- **Settled with the maintainer before the first line**, from a study of the model and a prototype of the subset
+  measured on the 408 documents here: a generator in C# under `tools/`, its output committed and regenerated by a unit
+  test rather than produced at build time (ADR 44, amended); the model's `tsv/latest` vendored at commit `c48b363`,
+  byte for byte, under a lock of SHA-256; a root `NOTICE` packed with the core, the license expression staying MIT;
+  four rules, the fifth — a key newer than the declared version — left to a debt issue; an override only where ISO
+  32000-1 does not require what the model says, its citation checked against the text, a genuine violation staying a
+  declared finding; a fault a hand-written rule reports silenced in the generated ones by a named "covered by" row.
+- **The generator.** `tools/AdCodicem.Pdf.Arlington`, a project of the solution held to its build rules: `generate`,
+  `verify`, `update --from <clone>`. It reduces the model's 613 objects and 3,983 rows to static tables — ten-byte
+  rows, names as ASCII bytes compared with `PdfName.Value`, the links of each type, the plain values, and for each of
+  the 78 lists of several candidates the plan that tells them apart —, one line per row of the model, in a file of 660
+  KB; it refuses what it cannot encode, and an override the model no longer needs. The encoding is one file both the
+  core and the tool compile. Dumped and compared with the prototype's compiled model, the tables differ only in the
+  rows the overrides edit.
+- **The walk.** Breadth-first from the trailer along the model's links, with a queue: candidates kept by kind, then
+  the plan, then the study's scores, a tie leaving the object unchecked; `/Parent`, a structure element's or an
+  annotation's `/P` and an outline item's `/Prev` checked but not followed; each indirect node or array of a name or
+  number tree expanded once, however its `/Kids` loop or share arrays; a reference to an object the file lacks or the
+  reader could not produce present and unchecked; an object a reader limit cut not judged, nor what is written inside
+  it, and an ancestor so cut taken to give an inherited key — the reader now records such objects, an object stream's
+  members that run into data `MaxDecodedStreamLength` cut among them. Of the trailer, only `/Root`, `/Info` and
+  `/Encrypt` are followed, and nothing it holds of its own is checked. What is wrong is tallied per rule and row of
+  the model, counting objects rather than occurrences, and written at the end. The version is the header's, or the
+  catalog's `/Version` when later, never rounded, and none without a header that names one.
+- **The rules.** `object.key-missing`, `object.value-type-wrong`, `object.type-value-wrong` (warnings) and
+  `object.key-deprecated` (information), after `object.name-null-character`: one finding per type and key, at the
+  first object, with how many; a row that stands for every key a type does not name gathers them into one finding.
+- **Overrides.** The seven the prototype proposed, each citation checked against ISO 32000-1's text and quoted — one
+  of them in part: an empty `/Order` sub-array is legal, and a sub-array nested in another, which Table 101 does not
+  describe, stays Esri's declared finding. Two more the corpus review found, where ISO 32000-1 is looser than the
+  model: a form XObject's `/FormType` and `/Matrix` optional and its `/Name` required in PDF 1.0 only, an
+  optional-content creator's `/SubType` — the model's row for a misspelled `/Subtype` — a name or a string. A third, a
+  Type 3 font's `/Encoding` as a name, was dropped on review: Table 112 types it "name or dictionary", but its text
+  requires "An encoding dictionary whose Differences array shall specify the complete character encoding", so the AFP
+  Batch Processor's fonts keep a declared finding. Eight "covered by" rows leave the page tree's faults to its
+  rules, and hold only where the page tree's walk judged the object: a page the tree does not list, which only a
+  destination names, is the generated rules' — the unlisted page of pikepdf's cyclic outline now earns
+  `object.key-missing` for its `/Resources`. The page tree rules were made to cover what the rows claim: a `null`
+  `/Kids`, `/Count`, `/MediaBox` or `/Resources`, written so or through a reference, is absent, a `/Kids` naming an
+  object that is no array is reported, and a missing `/Count` is reported on every node, above a loop or without
+  `/Kids` too. Running both on the corpus and on the first half's fixtures found no other fault reported twice. A
+  catalog without `/Pages` is the generated rules': no other reports it.
+- **The corpus.** 48 entries change, their findings all, four of them no longer unsupported. 21 of the 279 documents
+  the manifest calls clean earn a generated finding, each checked in the file against ISO 32000-1 — structure elements
+  without `/P`, FieldMDP references without `/Data`, PDFMaker's border styles written as strings, an action typed
+  `/A`, a `/ToUnicode` given a name, a destination whose first element is a name, a boolean in the document
+  information dictionary, an IRS form from Distiller 3 whose form XObjects lack `/Subtype`, the AFP Batch Processor's
+  Type 3 fonts whose `/Encoding` is a name —, one of them a deliberate iPRES file; 27 of the 129 others do. The last
+  four documents recorded as unsupported until M02 — `jhove-hul-142` ×2, iPRES `t02-02-009` and `t02-03-002` — are
+  diagnosed: none waits for M02 any more. The prototype's walk, its findings filtered by the same overrides, agrees on
+  403 of the 408 documents at the grain of rule, type and row; the five others are its limits or settled refinements —
+  in the two tiff2pdf scans, a thumbnail's `/Length` naming an object that is no integer, which the prototype saw as
+  dangling; a dangling reference counted as present; an object in a zeroed object stream left unjudged; and pikepdf's
+  cyclic outline's unlisted page, where the prototype reports the missing `/Resources` too and the check's filter
+  silences it without the page tree's condition. `ValidationRefereeTests`: the catalog's `/Type` is reported where,
+  and only where, `qpdf --check` finds it missing or invalid, on all 408. Two remote documents GitHub refused here
+  (HTTP 403) keep entries nothing here has checked.
+- **Tests.** `ArlingtonGeneratorTests`: the tables regenerated byte for byte, the lock, stale overrides, a refusal for
+  each thing the generator cannot encode. `ArlingtonModelTests`: every row decoded as the TSV gives it, an FsCheck
+  property over generated rows, 2,000 lookups that allocate nothing. `ArlingtonRuleTests`: each rule on a broken file,
+  a sound one and an unusual legal one, each override, ties, repeating groups, inheritance, the interactive form's
+  `/DA`, dangling and unproduced references, nulls, versions, a 20,000-long outline chain, a `/Parent` cycle among
+  fields, a looping name tree, a tree node written in the `/Kids` array it names and nodes sharing one `/Kids` or
+  `/Names` array, each expanded once, a tree node, an ancestor and an object stream's member cut at a limit, the page
+  tree's silences where its walk judged and not elsewhere, determinism. `PageTreeRuleTests`: `null` and referenced `/Kids`, `/Count`, `/MediaBox`, `/Resources`, and a missing
+  `/Count` where the pages below cannot be counted. The integration suite ran here against qpdf 11.9.1 and passed
+  whole: 1,124 tests on the committed corpus, 2,683 with the remote one.
+- **Measured.** `ValidationBenchmarks`, ShortRun, 1,000 synthetic pages: the walk alone 1.7 ms and 280 KB; the profile
+  2.5 ms and 588 KB on a document already read, 6.2 ms and 2.6 MB to open and validate one — the same, within
+  ShortRun's error, after the review's fixes, which keep only the exceptions of the page tree's judged parents so that
+  nothing grows with the pages. The journal validates within its 6 MB budget, 3.9 MB measured, 0.5 MB of it the walk,
+  which checks its 6,008 objects and values, as the prototype did. The core's assembly grows from 178,176 to 307,712
+  bytes, the tables' data 87,546 of them, and its build by about 0.8 s. On the largest walk, pdf.js's
+  `cairo-firefox-objstm-index-overflow-bug1978317.pdf`, 163,866 values checked, validating goes from 0.42 s to 1.0 s
+  and from 275 MB to 467 MB allocated: almost all of the difference is the reader reading again the objects its cache
+  of 8,192 had dropped. The walk's queue holds object numbers, not objects: holding the objects halved that
+  allocation, and kept 98,307 of them alive at once.
+- **Found on the way.** Two JHOVE files, `jhove-hul-2` and `jhove-hul-28`, earn `object.value-type-wrong` where a
+  reference written `0 0 R` is read as two integers ([#117]); once the reader reads it as a reference, the finding
+  becomes `object.reference-missing`'s.
 
 ### 2026-09-28 — M02 slice 3, first half: the object and page tree rules, and #51
 - **Settled with the maintainer before the rules were written**, from measurements: two pull requests, the
@@ -518,3 +608,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#119]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/119
 [#120]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/120
 [#121]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/121
+[#122]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/122
+[#123]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/123

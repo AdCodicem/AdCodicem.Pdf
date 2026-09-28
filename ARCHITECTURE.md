@@ -15,6 +15,9 @@ tests/
   AdCodicem.Pdf.TestSupport/        shared fixtures, the corpus manifest reader
   corpus/                           27 real documents from four producers, plus copies damaged on purpose
 benchmarks/                 BenchmarkDotNet; run on demand, never on every push
+tools/
+  AdCodicem.Pdf.Arlington/  generator of the Arlington tables, and the model it reads, vendored with a lock;
+                            run by hand, checked by a unit test, never packed
 samples/                    runnable examples referencing src/ directly
 docs/                       project documents, and the Docusaurus site under docs/website
 ```

@@ -165,7 +165,11 @@ Five fields serve that rule:
   that earns a warning nobody declared fails as surely as a damaged one that earns nothing. Like every
   expectation it comes from the file, not from the validator: for `file.eof-missing`, a search of the
   file's last 1,024 bytes; for the rules that follow, the referee's report or the damage the document was
-  made with. `build_corpus.py` writes it for the documents it damages.
+  made with; for the object-shape rules generated from the Arlington PDF Model, an independent walk of the model over
+  the document's objects, and, for a sound document, the words of ISO 32000-1 the object breaks, read in the file
+  itself — a finding the text does not support is an override, not an expectation (`docs/validation-rules.md`).
+  `build_corpus.py` writes it for the documents it damages. Updating the model's pinned commit is held to the same
+  lists: the corpus tests show every finding it adds or removes.
 - `source` — for a third-party file, the URL it was retrieved from, the date and the SHA-256 of the bytes
   as published, so provenance is checkable without trusting the repository. For a remote document it is
   mandatory, with the document's size in `bytes`, and it is what `fetch_remote.py` downloads and verifies.
