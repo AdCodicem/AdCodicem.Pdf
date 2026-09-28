@@ -7,6 +7,9 @@
     <Project Path="tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj" />
     <Project Path="tests/AdCodicem.Pdf.IntegrationTests/AdCodicem.Pdf.IntegrationTests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/AdCodicem.Pdf.Arlington/AdCodicem.Pdf.Arlington.csproj" />
+  </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ReadDocument/ReadDocument.csproj" />
   </Folder>

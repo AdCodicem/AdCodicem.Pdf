@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Generates src/AdCodicem.Pdf/Validation/Arlington/ArlingtonModel.g.cs from the vendored Arlington PDF Model
+       (model/) and the reviewed overrides (overrides.tsv). Run by hand, never by the build; a unit test regenerates
+       the tables in memory and compares them with the committed file (ADR 44). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AdCodicem.Pdf.Arlington</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The encoding of the tables: the core reads them with this very file, so writer and reader cannot drift. -->
+    <Compile Include="../../src/AdCodicem.Pdf/Validation/Arlington/ArlingtonEncoding.cs" Link="ArlingtonEncoding.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AdCodicem.Pdf.Tests" />
+  </ItemGroup>
+
+</Project>

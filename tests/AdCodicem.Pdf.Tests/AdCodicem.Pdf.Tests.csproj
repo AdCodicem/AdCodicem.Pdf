@@ -20,6 +20,9 @@
   <ItemGroup>
     <ProjectReference Include="../../src/AdCodicem.Pdf/AdCodicem.Pdf.csproj" />
     <ProjectReference Include="../AdCodicem.Pdf.TestSupport/AdCodicem.Pdf.TestSupport.csproj" />
+    <!-- The generator of the Arlington tables, whose tests regenerate them and compare them with the committed file.
+         Under an alias: it compiles the core's ArlingtonEncoding.cs too, and its copy must not shadow the core's. -->
+    <ProjectReference Include="../../tools/AdCodicem.Pdf.Arlington/AdCodicem.Pdf.Arlington.csproj" Aliases="ArlingtonTool" />
   </ItemGroup>
 
   <ItemGroup>

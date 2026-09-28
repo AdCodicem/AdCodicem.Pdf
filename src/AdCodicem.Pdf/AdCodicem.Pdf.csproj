@@ -12,6 +12,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The assembly carries tables derived from the Arlington PDF Model (Apache-2.0): its notice travels with the
+         package, and so does the license's text (Apache-2.0, section 4). PackageLicenseExpression stays MIT. -->
+    <None Include="$(MSBuildThisFileDirectory)../../NOTICE" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../../tools/AdCodicem.Pdf.Arlington/model/LICENSE" Pack="true" PackagePath="licenses/arlington-pdf-model/" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="AdCodicem.Pdf.Tests" />
     <InternalsVisibleTo Include="AdCodicem.Pdf.Html" />
     <InternalsVisibleTo Include="AdCodicem.Pdf.Html.Tests" />
