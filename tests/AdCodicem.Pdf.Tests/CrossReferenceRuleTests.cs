@@ -320,9 +320,11 @@ public class CrossReferenceRuleTests
 
         var report = Validate(file);
 
-        report.Findings.Select(finding => (finding.RuleId, finding.Location.Object)).Should().Equal(
-            (PdfValidationRuleIds.XRefEntryShifted, new PdfObjectId(2)),
-            (PdfValidationRuleIds.XRefEntryShifted, new PdfObjectId(3)));
+        // Read as the header lists them, object 2 is the page and object 3 the page tree: the page tree rules say so.
+        report.Findings.Where(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal))
+            .Select(finding => (finding.RuleId, finding.Location.Object)).Should().Equal(
+                (PdfValidationRuleIds.XRefEntryShifted, new PdfObjectId(2)),
+                (PdfValidationRuleIds.XRefEntryShifted, new PdfObjectId(3)));
         report.Findings[0].Message.Should().Be("The entry of object 2 places it at index 0 of object stream 4, whose header lists it at index 1.");
     }
 
@@ -523,7 +525,10 @@ public class CrossReferenceRuleTests
     [Fact]
     public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked()
     {
-        var file = Replace(XRefStreamFile(), "/Type /XRef", "/Type /XRef /Encrypt 99 0 R");
+        var file = Replace(
+            XRefStreamBuilder().WithObject(5, "<< /Filter /Standard /V 1 /R 2 >>").BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]),
+            "/Type /XRef",
+            "/Type /XRef /Encrypt 5 0 R");
         using var document = PdfDocument.Open(file, new PdfReaderOptions { ThrowOnEncrypted = false });
 
         var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
@@ -576,7 +581,7 @@ public class CrossReferenceRuleTests
         new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
-            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>");
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
 
     /// <summary>A cross-reference stream's row, as <see cref="TestPdfBuilder"/> writes it: an object at <paramref name="offset"/>.</summary>
     private static string Row(long offset) =>

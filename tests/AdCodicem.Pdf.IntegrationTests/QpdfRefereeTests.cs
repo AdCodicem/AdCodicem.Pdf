@@ -1,4 +1,4 @@
-using System.Globalization;
+using System.Text.Json;
 
 namespace AdCodicem.Pdf.IntegrationTests;
 
@@ -37,13 +37,17 @@ public class QpdfRefereeTests(RefereeContainer referee)
         Assert.SkipWhen(referee.Unavailable is not null, referee.Unavailable ?? string.Empty);
 
         var expected = Corpus.Get(file).Expect.Pages;
+
+        // qpdf's walk of the page tree, not --show-npages, which gives the root's /Count: a /Count that lies is a
+        // fault the validator reports, and the pages are the ones the tree lists (M02).
         var (exitCode, stdout, stderr) = await referee.RunAsync(
-            "qpdf", "--show-npages", RefereeContainer.PathInContainer(file));
+            "qpdf", "--json=2", "--json-key=pages", RefereeContainer.PathInContainer(file));
 
         // Exit code 3 is a count delivered with warnings on standard error, which is still a count: files
         // from the field often carry a /Size one too large or a stale linearization hint.
-        exitCode.Should().NotBe(2, $"qpdf could not count the pages of {file}:\n{stderr}");
-        int.Parse(stdout.Trim(), CultureInfo.InvariantCulture).Should().Be(expected!.Value, $"the manifest claims {expected} pages for {file}");
+        exitCode.Should().NotBe(2, $"qpdf could not walk the pages of {file}:\n{stderr}");
+        using var json = JsonDocument.Parse(stdout);
+        json.RootElement.GetProperty("pages").GetArrayLength().Should().Be(expected!.Value, $"the manifest claims {expected} pages for {file}");
     }
 
     public static TheoryData<string> AllDocuments =>

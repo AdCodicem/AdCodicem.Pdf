@@ -4,8 +4,8 @@ using AdCodicem.Pdf.Validation;
 namespace AdCodicem.Pdf.IntegrationTests;
 
 /// <summary>
-/// Checks the structural profile's verdicts on each corpus document's file structure and cross-references against
-/// qpdf's, running in a container.
+/// Checks the structural profile's verdicts on each corpus document's file structure, cross-references and page tree
+/// against qpdf's, running in a container.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -20,12 +20,27 @@ namespace AdCodicem.Pdf.IntegrationTests;
 /// and the validator still says what is wrong with it. On the corpus of 2026-09-27 the two agree on every document
 /// in both directions, without an exception to name.
 /// </para>
+/// <para>
+/// qpdf's check walks the page tree too, and says what it repairs there: a loop, a kid that is null or a stream, a
+/// page without a media box. The validator must then report something about the document — the page tree rules, or
+/// the cross-reference rules when the index qpdf reads through is the fault (M02's third slice). A page whose
+/// <c>/Type</c> is wrong waits for the object-shape rules.
+/// </para>
 /// </remarks>
 [Collection(RefereeCollection.Name)]
 public class ValidationRefereeTests(RefereeContainer referee)
 {
     /// <summary>What qpdf prints when it gives up on a file's index and scans the file for its objects.</summary>
     private const string Reconstructs = "Attempting to reconstruct cross-reference table";
+
+    /// <summary>What qpdf prints when it repairs the page tree it walks.</summary>
+    private static readonly string[] RepairsPages =
+    [
+        "Loop detected in /Pages structure",
+        "MediaBox is undefined",
+        "operation for dictionary attempted on object of type null",
+        "operation for dictionary attempted on object of type stream",
+    ];
 
     public static TheoryData<string> AllDocuments => Theory(Corpus.Paths);
 
@@ -49,13 +64,31 @@ public class ValidationRefereeTests(RefereeContainer referee)
 
     [Theory]
     [MemberData(nameof(AllDocuments))]
-    public async Task A_structural_error_is_a_document_qpdf_finds_fault_with(string file)
+    public async Task A_document_whose_pages_qpdf_repairs_earns_a_finding(string file)
+    {
+        Assert.SkipWhen(referee.Unavailable is not null, referee.Unavailable ?? string.Empty);
+
+        var entry = Corpus.Get(file);
+        var (_, output) = await Check(entry);
+        var repair = Array.Find(RepairsPages, message => output.Contains(message, StringComparison.Ordinal));
+
+        if (repair is null)
+        {
+            return;
+        }
+
+        Validate(entry).Findings.Should().NotBeEmpty($"qpdf repairs the pages of {file} — {repair} — and said:\n{output}");
+    }
+
+    [Theory]
+    [MemberData(nameof(AllDocuments))]
+    public async Task An_error_is_a_document_qpdf_finds_fault_with(string file)
     {
         Assert.SkipWhen(referee.Unavailable is not null, referee.Unavailable ?? string.Empty);
 
         var entry = Corpus.Get(file);
         var errors = Validate(entry).Findings
-            .Where(finding => IsStructural(finding) && finding.Severity == PdfValidationSeverity.Error)
+            .Where(finding => finding.Severity == PdfValidationSeverity.Error)
             .Select(finding => finding.ToString())
             .ToList();
 

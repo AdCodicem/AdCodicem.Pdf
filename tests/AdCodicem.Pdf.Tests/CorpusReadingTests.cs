@@ -446,50 +446,23 @@ public class CorpusReadingTests
     }
 
     /// <summary>
-    /// Walks the page tree, resolving each page's contents and resources. M01 has no page API — that is M06 —
-    /// so the traversal lives here, which also exercises reference resolution and inherited structure across
-    /// every producer in the corpus.
+    /// Counts the pages as the library's walk of the page tree counts them — each null or missing kid a page with
+    /// nothing on it, as qpdf does (M02) —, and resolves each page's contents and resources, which exercises reference
+    /// resolution and inherited structure across every producer in the corpus. The page API is M06's.
     /// </summary>
     private static int CountPages(PdfDocument document)
     {
-        var root = document.Catalog.GetDictionary(PdfName.Pages);
-        return root is null ? 0 : CountPages(root, [], depth: 0);
-    }
+        var walk = PageTreeWalk.Run(document);
 
-    private static int CountPages(PdfDictionary node, HashSet<PdfDictionary> visited, int depth)
-    {
-        if (depth > 64 || !visited.Add(node))
+        foreach (var (number, _) in walk.PageIndexes)
         {
-            return 0;
-        }
-
-        var kids = node.GetArray(PdfName.Kids);
-
-        if (kids is null)
-        {
-            ResolvePageEntries(node);
-            return node.IsOfType(PdfName.Page) ? 1 : 0;
-        }
-
-        var total = 0;
-
-        for (var index = 0; index < kids.Count; index++)
-        {
-            if (kids.Resolved(index).AsDictionary() is { } kid)
+            if (document.GetObject(new PdfObjectId(number)).AsDictionary() is { } page)
             {
-                if (kid.GetArray(PdfName.Kids) is null && !kid.IsOfType(PdfName.Pages))
-                {
-                    ResolvePageEntries(kid);
-                    total++;
-                }
-                else
-                {
-                    total += CountPages(kid, visited, depth + 1);
-                }
+                ResolvePageEntries(page);
             }
         }
 
-        return total;
+        return walk.PageCount;
     }
 
     private static void ResolvePageEntries(PdfDictionary page)

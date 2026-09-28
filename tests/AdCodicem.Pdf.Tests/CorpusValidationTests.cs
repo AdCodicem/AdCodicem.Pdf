@@ -21,6 +21,59 @@ public class CorpusValidationTests
     public static TheoryData<string> ConformanceFailures =>
         Theory(Corpus.PathsWhere(document => document.Expect.ConformanceValid == false));
 
+    public static TheoryData<string> DocumentsWithDiagnosedDamage =>
+        Theory(Corpus.PathsWhere(document => document.Features.Any(DiagnosedDamage.ContainsKey)));
+
+    /// <summary>The well-formed documents tagged with an anomaly every reader opens; a damaged one carries other faults too.</summary>
+    public static TheoryData<string> DocumentsWithFieldAnomalies =>
+        Theory(Corpus.PathsWhere(document => document.Expect.Clean && document.Features.Any(FieldAnomalies.Contains)));
+
+    /// <summary>
+    /// The damage the corpus tags documents with, and the rule that names it: a document so tagged earns that rule's
+    /// finding, whatever else it earns. These are the faults the reader read without a word until M02.
+    /// </summary>
+    private static readonly Dictionary<string, string> DiagnosedDamage = new(StringComparer.Ordinal)
+    {
+        ["trailer-without-size"] = PdfValidationRuleIds.FileSizeWrong,
+        ["xref-entry-wrong"] = PdfValidationRuleIds.XRefEntryBroken,
+        ["missing-endobj"] = PdfValidationRuleIds.ObjectEndObjMissing,
+        ["nul-in-name"] = PdfValidationRuleIds.ObjectNameNullCharacter,
+        ["dangling-reference"] = PdfValidationRuleIds.ObjectReferenceMissing,
+        ["reference-to-missing-object"] = PdfValidationRuleIds.ObjectReferenceMissing,
+        ["missing-mediabox"] = PdfValidationRuleIds.PageTreeMediaBoxInvalid,
+        ["missing-resources"] = PdfValidationRuleIds.PageTreeResourcesMissing,
+        ["page-object-is-stream"] = PdfValidationRuleIds.PageTreeKidInvalid,
+        ["page-tree-null-kid"] = PdfValidationRuleIds.PageTreeKidInvalid,
+        ["dangling-page-tree-kids"] = PdfValidationRuleIds.PageTreeKidInvalid,
+        ["ipres2017-t02-02-002"] = PdfValidationRuleIds.PageTreeCycle,
+        ["ipres2017-t02-02-003"] = PdfValidationRuleIds.PageTreeKidInvalid,
+        ["ipres2017-t02-02-004"] = PdfValidationRuleIds.PageTreeKidInvalid,
+        ["ipres2017-t02-02-005"] = PdfValidationRuleIds.PageTreeKidsMissing,
+        ["ipres2017-t02-02-007"] = PdfValidationRuleIds.PageTreeCountMismatch,
+        ["ipres2017-t02-02-008"] = PdfValidationRuleIds.PageTreeCountMismatch,
+        ["ipres2017-t02-03-006"] = PdfValidationRuleIds.PageTreeKidInvalid,
+    };
+
+    /// <summary>
+    /// The anomalies the corpus tags documents with that every reader opens: stale linearization hints, a /Size one
+    /// too large, a cross-reference stream without its own entry, references to objects the index lacks, and the
+    /// rest M02 names.
+    /// </summary>
+    private static readonly HashSet<string> FieldAnomalies = new(StringComparer.Ordinal)
+    {
+        "linearization-hints-inconsistent",
+        "size-off-by-one",
+        "xref-stream-missing-self-entry",
+        "xref-stream-missing-own-entry",
+        "references-missing-from-xref",
+        "reference-to-missing-object",
+        "malformed-font-xmp",
+        "utf16le-info-dictionary",
+        "two-startxref-lines-before-eof",
+        "markinfo-aliases-pages-node",
+        "invalid-creation-date-year-zero",
+    };
+
     [Theory]
     [MemberData(nameof(AllDocuments))]
     public void The_validator_reports_on_every_document_the_reader_opens(string file)
@@ -71,6 +124,62 @@ public class CorpusValidationTests
         var report = Validate(entry);
 
         report.HasErrors.Should().BeFalse($"{entry.Name} breaks PDF/A, not the structure: {Describe(report)}");
+    }
+
+    [Theory]
+    [MemberData(nameof(DocumentsWithDiagnosedDamage))]
+    public void Documents_waiting_for_M02_are_now_diagnosed(string file)
+    {
+        var entry = Corpus.Get(file);
+        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+
+        var report = Validate(entry);
+
+        foreach (var feature in entry.Features.Where(DiagnosedDamage.ContainsKey))
+        {
+            report.Contains(DiagnosedDamage[feature]).Should().BeTrue(
+                $"{entry.Name} is tagged {feature}, which {DiagnosedDamage[feature]} names, and the validator reported {Describe(report)}");
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(DocumentsWithFieldAnomalies))]
+    public void Field_anomalies_are_warnings_not_errors(string file)
+    {
+        // Every reader opens these files; a reference to an undefined object is null by the specification.
+        var entry = Corpus.Get(file);
+        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+
+        var report = Validate(entry);
+
+        report.HasErrors.Should().BeFalse($"{entry.Name} carries an anomaly every reader accepts, and the validator reported {Describe(report)}");
+    }
+
+    [Fact]
+    public void Validating_the_largest_document_stays_within_its_budget()
+    {
+        var entry = Corpus.Documents.First(document => document.Features.Contains("many-pages"));
+        var bytes = Corpus.Read(entry.File);
+
+        // Per-thread, as the reading budget measures it: the suite runs in parallel.
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        PdfValidationReport report;
+
+        using (var document = PdfDocument.Open(bytes, CorpusReadingTests.OptionsFor(entry)))
+        {
+            report = new PdfValidator().Validate(document);
+        }
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        // Opening the thousand-page journal and validating it — every entry of its index probed, its page tree
+        // walked, every object reachable from its trailer resolved once, every object of its index inspected for a
+        // page the tree leaves out — measured 3.9 MB, about 2 KB for each of its 2,006 objects: proportional to the objects,
+        // not to their content, since no stream's data is read. The budget leaves headroom and fails loudly on a regression.
+        report.Findings.Should().BeEmpty();
+        allocated.Should().BeLessThan(
+            ValidationBudget,
+            $"validating {entry.Name} allocated {allocated / 1024} KB");
     }
 
     [Theory]
@@ -136,6 +245,9 @@ public class CorpusValidationTests
             manifest.RootElement.GetProperty("documents"),
             new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
     }
+
+    /// <summary>What validating the thousand-page journal may allocate, opening included.</summary>
+    private const long ValidationBudget = 6 * 1024 * 1024;
 
     private static string Describe(IReadOnlyCollection<string> findings) =>
         findings.Count == 0 ? "no finding" : string.Join(", ", findings);
