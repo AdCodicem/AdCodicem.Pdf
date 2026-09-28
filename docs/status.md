@@ -17,14 +17,17 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#110](https://github.com/AdCodicem/AdCodicem.Pdf/pull/110) on 2026-09-28
   ([#58](https://github.com/AdCodicem/AdCodicem.Pdf/issues/58), closed); severities follow
   [ADR 45](adr/0045-a-findings-severity-says-whether-the-file-reads-as-written.md), accepted with it. The
-  project's coverage and Codecov's rules ([#115]) are done on `claude/prochaine-tache-0f0cxl`. Slices 3
-  to 6 are issues [#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59) to
-  [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
+  project's coverage and Codecov's rules ([#115]) merged with #116. Slice 3
+  ([#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59)) is in two pull requests: the first — [#51], the
+  object and page tree rules, the page in a finding's location, pages counted as qpdf's walk counts them — is on
+  `claude/m02-tranche-3-m85asb`; the second, the object-shape rules generated from the Arlington model (ADR 44),
+  follows on `claude/m02-tranche-3-arlington-m85asb` and closes #59. Slices 4 to 6 are issues
+  [#60](https://github.com/AdCodicem/AdCodicem.Pdf/issues/60) to [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 1,728 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
-  corpus's fetcher + 26 for the roadmap's mirror on GitHub, on #115's branch. With the remote corpus:
-  `Remote corpus` run 10, on slice 2's branch with the object stream fix and all 242 documents, passed 3,183 unit
-  (65 skipped by design, on documents recorded as unsupported until M02 or #47) and 1,875 integration tests.
+- **Tests**: 1,976 unit (2 skipped by design) + 956 integration (skipped without Docker) + 23 for the remote
+  corpus's fetcher + 26 for the roadmap's mirror on GitHub, on slice 3's first branch. With the 240 remote documents
+  fetched here: 3,650 unit (23 skipped by design, on documents recorded as unsupported until #59's second pull
+  request or #47) and 2,275 integration tests.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial), 99.0 % of
   `src/`, up from 93.6 %. The 28 lines left are defensive, or branches the compiler and the coverage tool count
   apart; the journal of 2026-09-28 lists them. `codecov.yml` asks 95 % of each patch, and lets the project drop by
@@ -73,14 +76,18 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Indexing | synthetic, 1000 pages, ~4 MB | 229 µs | 393 KB |
 | Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
 | Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 2.4 MB |
-| Validating under the structural profile, the document already open | synthetic, 1000 pages | 214 µs | 8.9 KB |
+| Validating under the structural profile, the document already open and read | synthetic, 1000 pages | 716 µs | 308 KB |
+| Opening and validating under the structural profile | synthetic, 1000 pages | 4.1 ms | 2.4 MB |
 | Decoding a whole Flate content stream | 4 MB decoded, about 330 KB encoded | 8.3 ms | 13.1 MB |
 | Decoding the same stream without its checksum, or without its last five bytes | 4 MB decoded | 11.7 ms | 13.1 MB |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content.
-The validation row is slice 2's twenty-one rules: each entry of the index probed where it places its object, a
-few dozen bytes read each and nothing kept but what is wrong — the allocation is the sorted object numbers.
-Slice 1's one rule took 86 ns and 232 B; the row grows with each slice of M02.
+The validation rows are slice 3's thirty-four rules. The first measures the rules alone on a document whose objects
+the reader has cached: each entry of the index probed, the page tree walked, every object the trailer reaches met
+once, every object of the index looked at for a page the tree leaves out — the allocation is the sets of object
+numbers met and each page's index. The second is what a caller validating a file it has not read pays: every
+object parsed for the first time, 2.4 KB each, no stream's data read. Slice 2's twenty-one rules took 214 µs and
+8.9 KB on the first row, slice 1's one rule 86 ns and 232 B; the rows grow with each slice of M02.
 Indexing costs roughly 200 bytes per object, whatever the objects weigh. The third row is asserted as a
 budget in CI (`CorpusReadingTests`), so an allocation regression fails the build. A stream that ran out is
 read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams only; the
@@ -93,16 +100,67 @@ M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29); T32,
 before its cross-reference and object-graph rules, merged with #31. Its progress is the
 [M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestone/3) on GitHub. In the order its debts impose:
 
-1. The project's coverage and Codecov's rules ([#115]): review and merge.
-2. Slice 3 ([#59]) with [#51] in the object-graph rules, and the finding for a reference to an object the
-   file lacks, which T27 left to it; [#55] and [#56] before slice 4 ([#60]), whose stream rules check
-   declared lengths and whether filters decode; slices 5 and 6 ([#61], [#62]). Each slice adds to the
-   manifest's `findings` what its rules report, and every document is held to exactly its list.
+1. Slice 3's first pull request: review and merge.
+2. Slice 3's second pull request, on `claude/m02-tranche-3-arlington-m85asb`: the generator in C# under `tools/`,
+   the vendored model at its pinned commit, the tables, the seven overrides, `NOTICE`; four remote documents wait
+   for it. It closes [#59].
+3. [#55] and [#56] before slice 4 ([#60]), whose stream rules check declared lengths and whether filters decode;
+   slices 5 and 6 ([#61], [#62]); the reader debts slice 3 found, [#117] to [#120], before M02 closes. Each slice adds to the manifest's `findings` what its rules report, and every
+   document is held to exactly its list.
 
 A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 34) is the reader's limit,
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-28 — M02 slice 3, first half: the object and page tree rules, and #51
+- **Settled with the maintainer before the rules were written**, from measurements: two pull requests, the
+  Arlington rules the second; one finding per fault, a hand-written rule owning what a generated one would also see;
+  generic identifiers for the generated rules; the object syntax faults in this slice; a reference to an object the
+  file lacks reported once per referring object, as a warning; a kid null or missing, a wrong `/Count` or `/Parent`,
+  a page without a media box or resources, all warnings — 7.3.10 makes the reference null, qpdf only warns, and M02
+  holds the iPRES files qpdf only warns about to no error —; a loop in the tree an error, as `xref.chain-loop` is; a
+  page the tree leaves out information; pages counted as qpdf's walk counts them; `PdfValidationLocation.PageIndex`,
+  from 0, written from 1; for the second pull request, a C# generator and a committed table checked by a test, the
+  model's `tsv/latest` vendored under `tools/`, a root `NOTICE` packed with the package, overrides only where ISO
+  32000-1 does not require what the model says.
+- **Measured before designing.** Independent walks of every page tree and of every object graph of the 408
+  documents here, from qpdf's JSON and the raw bytes, beside the reader's view; the Arlington model's own checker
+  and a prototype of the subset for the second pull request. The page tree walks agree with qpdf 11.9's on 380 of
+  381 documents once null and missing kids count as pages; five clean documents refer to objects they lack; one
+  forbidden cycle exists in the corpus; two real files leave pages out of their tree, and DocuSign types
+  marked-content property lists `/Page`.
+- **The reader.** [#51]: an object an object stream needs to be read — through its `/Length`, `/Filter`,
+  `/DecodeParms`, `/N` or `/First` — reads as null while the stream is decoded, is reported under a new code,
+  `stream.self-reference`, and is read again once the stream is; the null is no longer cached, nor one met while a
+  rebuilt index takes in its object streams. The reader says whether an object the index holds could be produced,
+  and records an object whose value `endobj` does not follow — a stream without `endstream` leaving it unjudged.
+- **The rules.** Thirteen: `xref.object-stream-circular` (error; `xref.object-stream-broken` silent on such a
+  stream), `object.reference-missing`, `object.endobj-missing`, `object.name-null-character`, `page-tree.cycle`
+  (error), `page-tree.node-repeated`, `page-tree.kids-missing`, `page-tree.kid-invalid`, `page-tree.count-mismatch`,
+  `page-tree.parent-wrong`, `page-tree.mediabox-invalid`, `page-tree.resources-missing` (warnings) and
+  `page-tree.page-orphaned` (information, judged only where the index is sound and whole). The page tree and the
+  objects the trailer reaches are walked once per validation, iteratively, each object by its number; a tree
+  20,000 levels deep and nodes listed twice at forty levels are walked in bounded time.
+- **The corpus.** 34 documents declare new findings, seven of them clean — warnings only; fourteen are no longer
+  unsupported, and five page counts are qpdf's walk rather than the root's `/Count`. An independent computation from
+  the files' bytes, without the rule code, gave the same rule identifiers and page counts on all 408 documents, and
+  found one false `object.endobj-missing` — a stream without `endstream` — which is fixed. `QpdfRefereeTests` counts
+  pages with qpdf's walk; `ValidationRefereeTests` holds every error of any family to a document qpdf finds fault
+  with, and every document whose page tree qpdf repairs to a finding. M02's three missing acceptance tests exist:
+  the damage the corpus tags diagnosed, the field anomalies no error, the thousand-page journal validated within
+  6 MB (3.9 MB measured).
+- **Tests.** `PageTreeRuleTests` and `ObjectRuleTests`, each rule on a broken file, a sound one and an unusual legal
+  one, and #51 in each order; the validator fuzzed on mutated corpus documents. Every line the change adds to `src/`
+  is covered on the committed corpus. The integration suite ran here against qpdf 11.9.1 and passed whole: 956
+  tests on the committed corpus, 2,275 with the remote one.
+- **Measured.** `ValidationBenchmarks`, ShortRun, 1,000 synthetic pages: 716 µs and 308 KB on a document already
+  read, 4.1 ms and 2.4 MB to open and validate one.
+- **Found on the way**, filed as debt: a reference written `0 0 R` is read as two integers and a stray `R` — the
+  reader says so, and no finding does — ([#117]), a rebuild records every object at generation 0 ([#118]), a
+  container left open to the end of an uncut window is not reported ([#119]), `stream.length-invalid` says
+  "declared -1" for a `/Length` that could not be resolved ([#120]), and each object is read through its own 8 KB
+  window ([#121], M23).
 
 ### 2026-09-28 — The project's coverage, and Codecov's rules
 - **Settled with the maintainer.** `codecov.yml`: the project may lose half a point of coverage at most against
@@ -322,323 +380,6 @@ not a fault of the file: the rules on it report at most, as information, that it
 - **Still open.** The first run of the comparison workflow, and its figures on the site; the corpus gaps,
   milestone by milestone as each begins; the PDF/X referee and whether PDF/X-4 is capped at PDF 1.6, both left
   to M29's first slice.
-### 2026-09-26 — T25: a cross-reference section `/Prev` misses is found nearby, or reported
-- **The defect.** The chain of sections stopped at the first `/Prev` or `/XRefStm` that did not lead to a
-  section, and kept what it had read, without a word unless the offset lay past the file's end. IBM's QMF
-  manual lost the 4,106 entries of its main table so, its `/Prev` 12 bytes past the keyword.
-- **Measured before designing.** Every one of the 401 documents readable here, each object resolved and each
-  reference inside it followed: one chain breaks in the whole corpus, the QMF manual's.
-- **The fix.** A section the chain names that is not where it is named is looked for within 512 bytes either
-  side, as an object is: an `xref` keyword standing on its own — not the end of `startxref` —, or an object
-  header that reads as a cross-reference stream, nearest first; found, it is read, and reported as
-  `xref.offset-adjusted`. One that is nowhere near is reported under a new code, `xref.section-missing`, a
-  warning naming the offset: the chain stops at a missing `/Prev` and goes on past a missing `/XRefStm`, and
-  what only the missing section indexed is found by the lazy rebuild when it is asked for — nothing is
-  rebuilt at opening that nobody asks for. The places tried are capped at 32 per document, each read through
-  a window of up to 64 KB: a file chooses how many headers lie near a section and how many sections miss.
-- **Why not rebuild at once, as qpdf does.** The first version did, and the hostile test of a hundred hybrid
-  sections whose streams never close read 169 MB instead of a bounded amount: a rebuild parses each of those
-  objects to the end of the file. Reporting the section and rebuilding only on demand keeps opening bounded,
-  and is the design T27 was recorded to build on.
-- **The corpus.** The QMF manual is supported: its section is found 12 bytes before where `/Prev` names it,
-  the index holds 4,366 objects without a rebuild, and it counts 429 pages, as qpdf does; its manifest entry
-  requires `xref.offset-adjusted` where it expected a rebuild. Twenty-eight remote entries stay unsupported.
-- **Tests.** `CrossReferenceChainTests`: a `/Prev` 7 and 2 bytes before its section and 1, 3 and 12 bytes
-  after it, read with one repair at the section's real offset; a `/Prev` naming the first object, reported,
-  with the rebuild left for the page it alone indexed; a `/Prev` past the end of the file; a hybrid file's
-  `/XRefStm` naming nothing, reported, the chain reaching the original section through `/Prev`; and one naming
-  its stream 4 bytes before or 6 after, read. Each fails when the search or the report is removed.
-
-### 2026-09-26 — T32: a Flate stream that lost its tail, and an LZW code never defined, are reported
-- **The defect.** .NET's inflater takes the end of its input for the end of the data: a Flate stream cut
-  short decoded to what was left, and nothing reached `FlateFilter`'s handling of a lost tail, written for an
-  exception that never came. An LZW stream stopped in silence at a code it had not defined — and a code past
-  the next one to define was worse than silent: decoded as if it were that code, it made up data.
-- **Measured before designing.** The framework's inflater, on some 166,000 cases — streams of thirteen
-  sizes, four compression levels and three kinds of data, read whole through five buffer sizes and cut at
-  every byte, or at 1,500 places for the longer ones —, never asks its source for bytes past the end of a
-  complete stream, zlib or raw, whatever follows it, and always does, or throws, for a cut one. .NET 10 has an `AppContext` switch, `System.IO.Compression.UseStrictValidation`,
-  that makes it throw instead; it is process-wide and the host's to set, not the library's, and a host that
-  sets it gets the same reports. qpdf, the referee, warns "input stream is complete but output may still be
-  valid" for a lost tail and for a lost checksum alike, errs on an undefined LZW code, accepts an LZW stream
-  without its end-of-data code — and does not check zlib's checksum at all.
-- **The fix.** The encoded bytes are read through `FlateInput`, which records a request past their end. A
-  zlib stream that ran out has its body read again as raw deflate, keeping nothing, to say which it lost: its
-  checksum only — a repair, the data decoded whole — or its tail — a warning, what decoded before the end was
-  kept. Corrupt data keeps its own report, reworded: "is corrupt; decoding stopped at the fault, losing up to
-  the last 64 KB decoded before it", no longer "was truncated". A stream a guard of the reader cut is
-  marked so, and its lost tail is left to the guard's report. What a Flate
-  stream decodes to is unchanged. The LZW decoder decodes a code up to the next one to define, stops at any
-  other, keeps what came before and names the code; a stream without its end-of-data code is still taken as
-  complete. And `Decode()` given no diagnostics now reports what it met to the document's own, as a reached
-  limit already did (ADR 34): through the public API the previews ship, a damaged stream is never silent.
-- **The corpus.** Ten of the 381 documents readable here without a password report a Flate stream that ran
-  out — 50 streams, 40 of them in NIDA's *Heads Up* —, all of them declared damaged, none of them silent before. Against qpdf,
-  in a new integration test over every document readable without a password (`FlateRefereeTests`, qpdf at its
-  specialized decode level, its offsets counted from the header): every stream qpdf finds cut short, the
-  reader reports at the same offset; the six only the reader reports are streams whose length qpdf had to
-  recover, so that the two read different bytes — four cut by the end of the file, which qpdf treats as
-  empty; the Census abstract's object 66, whose checksum lost its last byte, a carriage return, to an
-  end-of-line conversion, where qpdf takes in the line feed after it and ignores the checksum it then misreads;
-  and SAMHSA's object 27, whose `/Length` is 26 bytes short, which qpdf notices and the reader does not
-  (**T39**). The test excuses a stream only the reader reports when the reader itself said its bytes were not
-  the stream's — cut by the file, a wrong length, raw deflate —, and names SAMHSA's with T39, so that it fails
-  when T39 is fixed. The truncated invoice now requires `stream.truncated` and `filter.failed`, the cut falling in
-  its last Flate stream's data.
-- **Tests.** `FilterDamageTests`: four payloads cut at every byte — at 2,000 places and every byte of both ends
-  for the longer ones —, each cut reported as
-  a lost tail or a lost checksum, the bytes kept always the start of the data; whole streams followed by
-  whatever a `/Length` takes in, without a word; a lost checksum told from lost data at three compression
-  levels — the last byte of the body may hold only the end-of-block code, so data may be unfinished without
-  a byte of output lost —; raw deflate and white space before the header; a bound reached before the cut,
-  which says nothing of the cut; the second reading's allocation; `IsWholeDeflate` and `FlateInput`
-  directly; LZW codes on either side of the next to define, a first code with nothing before it, codes past
-  nine bits, a missing end-of-data code; and a document's stream reported where its data starts, to the
-  caller or to the document. Two tests that let the silence pass now assert the report.
-- **Measured.** `FilterBenchmarks`, ShortRun: a whole stream decodes as before — 81.6 µs and 86.41 KB for
-  64 KB, 8.3 ms and 13,413.59 KB for 4 MB, against 81.9 µs and 8.3 ms with the same allocations before the
-  change. A stream that ran out costs 1.4 to 1.6 times that, and 0.4 KB more.
-- **Found on the way.** **T39**: a stream whose data runs past the parser's window has its `/Length` taken as
-  it is, so a wrong one goes unnoticed — sixteen in the SAMHSA fact sheet by qpdf's count, eight by the
-  reader's. **T40**: a Flate stream that turns corrupt throws from the read that meets the fault, and what that
-  read decoded — up to 64 KB, or all of a small stream, which is then left encoded — is lost with it; for a
-  checksum that disagrees with whole data, qpdf, which does not check the checksum, keeps it all.
-- **On review.** Five reviewers — correctness against the pre-change library on 32,000 differential cases, the
-  tests' teeth by mutation on the Flate side and on the LZW side and the route, the rules and every claim,
-  the integration test and the corpus — and two skeptics on each finding above a nit. Upheld and fixed: a zlib
-  header asking for a preset dictionary raised an `IOException`, not an `InvalidDataException`, which escaped
-  the filter and made `PdfDocument.Open` throw on an object stream or a cross-reference stream that began so —
-  older than T32, in the code it rewrote, now a filter failure as qpdf has it; a stream cut by
-  `MaxObjectLength` was reported as a lost tail; the corrupt report claimed more than was kept; the
-  integration test excused any stream whose length qpdf recovered, hid T39, compared nothing where qpdf gives
-  up, and counted offsets from the file's start where qpdf counts from the header; and seven gaps in the
-  tests — LZW after a clear, a longer sequence extended by its first byte, `/EarlyChange 0`, the guard on raw
-  deflate, a stream decoded with nowhere to report, the second reading's allocation measured on data that
-  does not compress, and the position of each report. Each new test fails on its mutant. Refuted: duplicate
-  reports from a stream decoded twice — as a reached limit already is, each decode reports what it met —, and
-  the code widths past ten bits. Left as they are: the branch for hosts that set `UseStrictValidation`, which
-  cannot be tested in-process since the framework reads the switch once, and the cuts enumerated over four
-  payloads rather than drawn by FsCheck.
-
-### 2026-09-26 — The corpus manifest has a JSON schema
-- **Why.** Asked whether a schema was worth having, the answer was yes, in a pull request of its own: the
-  manifest is written by hand for every contributed or remote document, and M02's slices now edit its
-  `findings` across dozens of entries; the model refused unknown keys inside `expect` and `readerLimits` only,
-  so a misspelled `feature` on an entry dropped the document out of every selection by feature in silence.
-- **What.** `tests/corpus/manifest.schema.json`, draft 2020-12, named by the manifest's `"$schema"` so that an
-  editor applies it as it is typed: no unknown key at any level; the eight use-case categories and four
-  origins; the reader's seventeen diagnostic codes and the validation rules as enumerations; a remote
-  document with its pinned source and size, under `remote/`, and nothing else there; pins as lower-case hex;
-  archive members relative with no `..`; a raised reader limit above its default; `catalogRecoverable` only
-  as false; `conformanceValid` only beside a claim, `password` only beside `encrypted`; an `unsupported`
-  reason naming its milestone or debt row. `build_corpus.py` keeps the key when it rewrites the manifest,
-  byte for byte.
-- **What it found at once.** A feature listed twice on one entry (removed), and three committed files taken
-  out of the PDF/UA reference zip whose `source.url` names the member after the URL — allowed, in exactly
-  that form, for committed files only: `fetch_remote.py` downloads a remote URL as it stands.
-- **Tests.** `CorpusManifestSchemaTests`: the manifest and any `private.json` follow the schema; twelve sound
-  entries accepted; sixty refused, each one mistake away from a sound one and each required to fail on the
-  keyword that names its mistake, three whole manifests refused, and every required key left out once; and
-  the schema held to what reads the manifest — the model's properties, every `PdfReaderLimits` guard and its
-  default, `PdfDiagnosticCodes`, `PdfValidationRuleIds` —, so that neither can change without the other.
-  Eleven mutations of the schema, one per rule the review found unpinned, each fail a test.
-- **On review.** Two reviewers — the schema's correctness and portability, the tests' teeth — and two
-  skeptics on each of their eleven findings. Taken: a referee's verdict no script writes for a private entry
-  is no longer required of one; a remote path follows `fetch_remote.py`'s `remote/<source>/<name>.pdf`, and no
-  path may pass through `..`; the patterns end with `$(?!\n)` and use explicit ASCII classes, since .NET and
-  Python let `$` match before a final line feed and the three engines disagree on `\S`; a raised limit may not
-  sit beside a skip, nor a page count beside an unrecoverable catalog; `docs/corpus.md`'s example gained
-  the verdict the schema asks for; and a refused case that failed for a reason other than its own —
-  renaming `features` also made a required key go missing — now adds its unknown key beside it. Validation is `JsonSchema.Net` 9.4.0, MIT,
-  a dependency of the unit tests only; the framework exports schemas but does not validate against one.
-  Python's reference validator agreed with it on the manifest.
-### 2026-09-26 — CodeQL left to GitHub's default setup, and the merged branches
-- **T35, the maintainer's choice**: GitHub's default setup stays; `.github/workflows/codeql.yml`, disabled
-  since 2026-09-22, and `.github/codeql/codeql-config.yml` are deleted, and the ADR index says what runs now.
-  Nothing that depends on CodeQL changes: the default setup posts the check runs Scorecard's SAST reads — 10/10
-  on `74ce382`, already under the default setup — and meets the ruleset's code-scanning rule, as #29's checks
-  show. The four queries the configuration excluded may now raise alerts; the index says to dismiss them with
-  the reason the deleted file gave, which git keeps.
-- **The five merged branches** stay on the remote: asked to delete them, this session was refused by its git
-  proxy (HTTP 403), which lets it push only to the branches it created. Their tips are recorded under
-  *At a glance*.
-
-### 2026-09-26 — ADR 36 and M02's first slice: validation in the core, and `file.eof-missing`
-- **The question, then the decision.** Asked what came next, the answer was M02's first slice — but not before
-  settling where its public types live, since every merge publishes them: the roadmap put the engine in an
-  `AdCodicem.Pdf.Validation` satellite and `PdfRepair` in the core, driven by findings, which invariant 1 rules
-  out. The maintainer accepted ADR 36 — the engine and the structural profile in the core, the PDF/A and
-  PDF/UA profiles in `AdCodicem.Pdf.Conformance`, an identifier never published — and answered what it left
-  open: identifiers `family.name`, never a reader code; an instance with immutable options as the entry
-  point; the `PdfLimitExceededException` a caller asked for passes through; the engine internal until M20;
-  `file.eof-missing` read over the last 1,024 bytes; every corpus document held to exactly its findings.
-- **Previews carry no guarantee**, at the maintainer's request: an addition to ADR 30, said wherever a preview
-  is offered — the releasing guide, the README the package ships, the site's introduction and banners,
-  CONTRIBUTING, `CLAUDE.md` (which also dropped the fixed development branch it still named).
-- **What was built.** `PdfValidator` (stateless) and `PdfValidatorOptions`; `ValidationProfile.Structural`,
-  version 1; `PdfValidationReport`, which keeps at most `FindingCapacity` findings in the order found and
-  counts every one; `PdfValidationFinding`, `PdfValidationSeverity`, `PdfValidationLocation`,
-  `PdfValidationRuleIds`. One rule: `file.eof-missing`, a warning when no `%%EOF` lies in the file's last
-  1,024 bytes — the tolerance readers extend, not a reader guard, since a valid file ends with the marker —,
-  reading those bytes and nothing else. `docs/validation-rules.md` lists it, and a test holds the table to the
-  code.
-- **The corpus.** A manifest entry gains `expect.findings`, established from the file: eleven documents lack
-  the marker and declare it — the truncated invoice, five PDFBox and pdf.js files cut short or with junk
-  appended, two JHOVE files, and iPRES `t04-002` to `t04-004`, which qpdf accepts, so a warning is right there.
-  The other iPRES end-of-file cases stay silent, each for a reason M02 records; `t04-007` only because the file
-  is shorter than the window. `CorpusExpectation` refuses unknown keys; `build_corpus.py` writes the finding
-  for the tail it cuts.
-- **Tests.** The engine's order, capacity, counts, determinism and refusals; the rule on every shape of end of
-  file, the 1,024-byte edge one byte at a time, and the bytes it reads; a property over generated trailing
-  bytes; the identifiers' grammar; `CorpusValidationTests` over every document — reported on without a throw,
-  unsupported ones included, exactly the declared findings, no error on a well-formed file nor on a PDF/A
-  failure, the same report twice.
-- **On review.** Four reviewers — correctness, the repository's rules, the tests by mutation, the
-  documentation — and two skeptics on each of their 22 findings. Upheld and fixed: ten behaviors no test
-  held (six mutations checked killed afterwards), M02's account of three iPRES end-of-file cases and of the
-  acceptance row the strict one replaced, a stale comment, and this file. Refuted: a roadmap state, two
-  tests said to be vacuous, the skipping of unsupported entries. One was real and older than the change:
-  a `PdfFileSource` whose `Read` returns short counts misleads the whole reader, and now the rule — **T36**.
-- **Housekeeping.** This file's "At a glance", a week stale, re-checked against GitHub, nuget.org, Scorecard
-  and Codecov, and the journal summarized; T20 closed, T35 opened; the package's description, which promised
-  a writer, now says what it holds.
-- **Measured.** `ValidationBenchmarks`, ShortRun: 94 ns and 232 B for 10 pages, 86 ns and 232 B for 1,000.
-  The reader's benchmarks are unchanged: 231 µs and 392.92 KB to index 1,000 pages.
-
-### 2026-09-26 — Every line of #28's change is covered
-- **The report.** Codecov found ten lines of the pull request's change that no test reached (97.3 % of the
-  patch). Measured the same way here — the unit suite with CI's coverage command, without the remote
-  corpus, intersected with the lines the change adds — it gave the same ten.
-- **One was unreachable, and went**: a cut trailer's re-read tested an offset that is inside the file by
-  construction, for any source whose length holds.
-- **The rest were behavior without a test**, and have one: an LZW stream stopping at a code it has not
-  defined; an empty stream with a predictor, which must not be taken for rows too long for their data; the
-  predictor transform left alone without a predictor; a stream cut with nowhere to report; a guard at the
-  most the reader can hold; a chain of lengths running too deep — into an object with no offset (free,
-  unlisted, compressed), into one with an offset, bytes before the header included, and twice, reported
-  once —; and a keyword the section's probe saw as `xref` that is `xrefs`. Each test fails when its branch
-  is mutated (thirteen mutations). The LZW case is silent corruption, like a Flate stream's lost tail, and
-  is recorded under T32.
-- **On review.** Three reviewers in their own worktrees, each finding checked by two more. The first
-  version also dropped the pipeline's own check for a stream without a predictor, as a duplicate of the
-  transform's — and it was not one: without it, `/Colors`, `/BitsPerComponent` and `/Columns` were read,
-  and resolving a reference there could rebuild the index, throw a guard or change what other objects read
-  as. The check is back, with a test that a parameter nothing reads is not resolved; the transform's own
-  guard is tested directly. Also from the review: nothing asserted where a too-deep object with an offset
-  is reported, and the probe's length is now a named constant the test is built from. Found on the way,
-  older than the pull request: **T34**.
-
-### 2026-09-26 — ADR 34: every valid PDF is readable, and the reader's guards are options
-- **The rule.** Asked whether the 256 MB decoding bound came from the specification — it does not —, the
-  maintainer set one: every PDF valid under the specification must be readable; guards may protect against
-  the exceptional cases it allows, and options must be able to lift them. ADR 34 records it, and makes it
-  invariant 12. ADR 35, accepted alongside, allows unsafe code where a measurement asks for it; no code uses
-  it yet, and `AllowUnsafeBlocks` stays off.
-- **What implements it.** `PdfReaderLimits`, an immutable record on `PdfReaderOptions.Limits`, holds the
-  five bounds a valid file can exceed: what a stream decodes to (256 MB), an object's length (16 MB), a
-  classic cross-reference section's length (64 MB), the number of sections (1,024), a trailer's length
-  (64 KB). `Default` keeps them, `Unbounded` takes them to `Array.MaxLength` and `int.MaxValue`; zero or
-  less is refused, more than an array holds is taken as that. Reaching one keeps what fits and warns under
-  its own code — `limit.decoded-stream`, `limit.object`, `limit.xref-section-length`,
-  `limit.xref-section-count`, `limit.trailer`, replacing T31's `filter.limit-exceeded` before any release —
-  whose message ends "Raise PdfReaderLimits.<property> to read past it." `PdfReaderOptions.ThrowOnLimit`
-  makes it a `PdfLimitExceededException` instead, carrying the code, the property, its value and the
-  offset. A stream read from a document carries that document's guard, so it decodes under its limits
-  however long after opening, and reports to the document's diagnostics when its caller passed none.
-- **Details that decide behavior.** What the parser met where a guard cut an object is the reader's, not
-  the file's, and is dropped for the guard's own report. An object, a section or a trailer is reported once,
-  however often it is read again; with `ThrowOnLimit` it throws each time. A rebuild that reaches a guard
-  finishes its index before throwing, since a rebuild is never run twice. `PdfDocument.Open` releases a
-  source it was given to own when it throws — which it failed to do before on an empty input.
-- **Bounds that were not bounds.** A cross-reference stream was parsed through one 64 KB window that never
-  grew: a dictionary past it — a long `/Index` — sent the file to a rebuild without a word; it now grows up
-  to `MaxTrailerLength`, a cross-reference stream's dictionary being its trailer. The section count was
-  reported as `xref.chain-cycle`, a loop it is not. A classic table cut at its maximum was reported not at
-  all, and one whose `trailer` keyword the maximum cut was taken for a malformed table. A trailer cut by a
-  table at its maximum was kept cut, where a smaller window would have re-read it through its own.
-- **The corpus.** A manifest entry may give the limits it is opened with, in `readerLimits`, beside
-  `expect` — a setting, not an observation —, modeled with unknown keys refused. The USGS topographic map
-  is opened with `maxDecodedStreamLength` at 512 MB and reads whole and clean: object 155 decodes to
-  328,608,000 bytes. It loses its unsupported mark, and meets the laziness test for the first time: opening
-  reads 83 KB of its 63.1 MB. A negative control on the remote corpus opens every such entry
-  with the defaults — each limit reached must be one its entry raises — and with `ThrowOnLimit`, which must
-  throw from `Decode`, after `Open` succeeded. Fuzzing seeds leave such entries out, their budgets holding
-  under the defaults.
-- **Tests.** `ReaderLimitsTests`, 40 cases: each guard reached (what is kept, the code, the
-  message, the offset, and nothing else reported where the parser would have), raised (read whole, nothing
-  reported) and thrown (from `Open` or from the later operation, with the exception's four properties);
-  a stream decoded without diagnostics; an object read again after the cache let it go; a rebuild that
-  reaches a guard while expanding object streams, and while looking for the catalog; an object read no
-  further than its bound; the table's keywords and its trailer at the bound; the presets, the refusals and
-  the clamp, and an FsCheck property over every `int`. Thirty-five mutations — each report, bound, preset,
-  refusal, deferral and fallback — each fail a test; two needed a test of their own (a bound that falls
-  where the parser would report a cut, a length stated in kilobytes), and five were rewritten to compile.
-  The catalog search caught a defect
-  of its own before any commit: `reached ??= FindCatalog()` skipped the search whenever the expansion had
-  already reached a guard.
-- **The remote corpus.** Run 6 of `Remote corpus`, dispatched on the branch on 2026-09-26, fetched all 242
-  documents and passed 1,266 unit tests (61 skipped by design) and 668 integration tests: the map reads
-  whole on the runner too, and the negative control holds there. It is the first run to include T21, T23,
-  T29 and T31's fixes as well.
-- **Measured.** The USGS map under 512 MB: opening reads 83 KB of 63.1 MB; decoding every stream takes
-  1.8 s and allocates 1,785 MiB, its image's 328,608,000 bytes passing through an output that doubles to the
-  bound and is copied out — memory for M23's budgets (T28, T33). The reader's benchmarks allocate what they
-  did (392.86 KB to index 1,000 pages, 5,964.54 KB to read them); their times, on a short run, stay within
-  its spread.
-- **Documentation.** ADR 34 and 35, and the ADR index; `CLAUDE.md` (invariant 12, invariants 4 and 5
-  qualified, a convention on unsafe code); `ARCHITECTURE.md`, `docs/architecture.md`, `SECURITY.md` (what
-  "without bound" means once limits can be raised); the site's new *Reader limits* page, *Diagnostics*,
-  *Lazy reading* and the introduction; `docs/corpus.md` (whose example still showed fields the model never
-  had), `docs/corpus-contributions.md`, `docs/corpus-sources.md`, `tests/corpus/README.md`; the M02 stream
-  rule and M23's deliverables in `docs/roadmap.md`; T28, T30, T31 and T33 below.
-
-### 2026-09-26 — T31: every filter keeps the bound, and says when it reached it
-- **The defect.** `PdfFilterLimits.MaxDecodedLength`, 256 MB, was kept by two filters of five. RunLength
-  had no bound: two bytes in decode to 128 out, so 4.6 MB decoded to 294 MB, and a Flate stream feeding it
-  multiplied that by 64. ASCII85 had none either (a `z` is four bytes). LZW stopped at the bound without a
-  word. Flate reported the bound as damage — "a Flate stream was truncated" — which is what made the
-  USGS map, a sound file, look broken (T28). And each decoder sized its first buffer as a multiple of its
-  input, a length the file chose, whatever the bound.
-- **The fix.** Every filter keeps exactly the first 256 MB and says whether it had more. The four that can
-  expand their input — Flate, LZW, RunLength, ASCII85 — write into one bounded output, which grows to the
-  bound and no further and hands back a full buffer without copying it; ASCIIHex, whose output is at most
-  half its input, fills a fixed array capped at the bound. The pipeline reports reaching the bound under a
-  new code, `filter.limit-exceeded`, a warning worded as the reader's limit — decoding stopped there —;
-  `filter.failed` is left to data that is corrupt. The bound is a parameter inside the library, so the
-  tests run at a kilobyte rather than decoding 256 MB each time.
-- **Tests.** Each filter swept from a one-byte bound to past its whole output — Flate through its zlib, raw
-  and white-space paths, empty inputs of every filter —: the first bytes kept, exactly, the bound reported
-  once, only when met, beside what the data earns unbounded; a chain of Flate and RunLength that cannot
-  multiply; a corrupt Flate stream told apart from one reaching the bound; each expanding filter's first
-  buffer measured against a megabyte of input, and its whole allocation against a guess that lands 4 bytes
-  short of a 4 MB bound; a predictor keeping whole rows of a bounded output; three predictors whose rows
-  overflow; the bounded output's own rules; and T31's own file, 4.6 MB of RunLength decoded to exactly
-  256 MB at the real bound, with the message a user reads. Twenty-five mutations — eleven of the first
-  version, fourteen of the reviewed one, each filter's bound, the report, the bounded output's growth, the
-  predictor's checks — each fail a test.
-- **The map.** Object 155 of the USGS map now decodes to exactly 268,435,456 bytes with one
-  `filter.limit-exceeded`, where it gave 268,429,626 and a truncated-stream warning. It stays unsupported
-  for T28, whose remaining half — decoding such a stream a piece at a time — is M23's.
-- **On review.** Three reviewers went over the commit; of their twelve findings, each checked by two
-  others, eleven held outright and the twelfth — the doubled buffer — was judged a cost rather than a
-  defect by one of its checkers, and is fixed all the same. The bound
-  capped a decode's output, not its memory: the framework's buffer doubled past the bound, and a write of
-  nothing into a full one doubled it again — T31's own file allocated 809 MiB for 256 MB, a 1 MB Flate
-  stream 1,276 MiB. The bounded output allocates 528 and 508 MiB for them (measured), in arrays that double
-  up to the bound, go straight to it once within a quarter of it, and are handed back without a copy. Older than T31 and reachable from it: the predictor that
-  follows Flate and LZW took its row length from /Columns unchecked, so a 413-byte PDF hung
-  `PdfDocument.Open` for ever through its cross-reference stream (a row length that overflowed to zero),
-  another threw `OverflowException`, and a 12-byte stream allocated 512 MiB. The row length is now
-  computed without overflow and weighed against the data first; parameters describing rows the data
-  cannot hold leave it as decoded, with `filter.failed`. The report's wording, "the first 256 MB were
-  kept", was wrong after a predictor, which keeps whole rows; it now says decoding stopped there.
-- **Found on the way.** **T32**: a Flate stream whose tail was lost decodes to what is left, without a
-  diagnostic. Measured: a zlib stream cut in half decodes 27,939 of its 58,890 bytes and reports nothing,
-  because .NET's inflater returns the end of its input as the end of the data; a complete but wrong
-  Adler-32 trailer is caught, a missing one is not. **T33**, from the review: every decoded object stream
-  stays in the reader's cache for the life of the document, so four object streams that each decode to
-  the bound hold 1 GB once `Open` returns.
-
 ### Earlier, in brief
 
 The detail is in git and in the pull requests; what still matters is in the records and in this file.
@@ -676,6 +417,14 @@ The detail is in git and in the pull requests; what still matters is in the reco
   for what ends it. `WindowEdgeTests` slides nine objects across the edge a byte at a time, and ten mutations
   of the fix each fail a test. The five remote documents recorded for T21 and T23 are supported. Found on
   the way: T29, fixed in the next commit, T30 and T31.
+- **2026-09-26 — the reader's guards, validation's first rule, and three reader debts.** T31: every filter keeps
+  the 256 MB bound and says when it reached it; a predictor's row length can no longer overflow. ADR 34 and invariant
+  12: every valid PDF is readable, the reader's five guards are `PdfReaderLimits` a caller may raise, each reported
+  under its own `limit.*` code; ADR 35 allows measured unsafe code. ADR 36 and M02's first slice: validation in the
+  core, `PdfValidator`, the structural profile and `file.eof-missing`; previews carry no guarantee (ADR 30). The
+  manifest gained a JSON schema. T32: a Flate stream that lost its tail, and an LZW code never defined, are
+  reported, held to qpdf by `FlateRefereeTests`. T25: a section `/Prev` misses is found within 512 bytes or reported
+  as `xref.section-missing`. CodeQL left to GitHub's default setup. Every line of #28's change covered.
 
 ## Debt and open points
 
@@ -764,3 +513,8 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#109]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/109
 [#111]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/111
 [#115]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/115
+[#117]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/117
+[#118]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/118
+[#119]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/119
+[#120]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/120
+[#121]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/121

@@ -65,7 +65,10 @@ Diagnostics/  PdfDiagnostics: anomalies, repairs, guards reached, conformance lo
 Validation/   PdfValidator, the rule engine and the structural profile: findings with stable rule
               identifiers, a severity, a location and a remedy hint (ADR 36, severities ADR 45). The
               structural rules read the reader's internals: what it recorded of the file's structure,
-              and the file's own index. The PDF/A and PDF/UA profiles are the Conformance satellite's.
+              the file's own index, and whether an object the index holds could be produced. The
+              page tree and the objects the trailer reaches are walked once per validation, and the
+              walk of the page tree is the one M06's page API is to build on. The PDF/A and PDF/UA
+              profiles are the Conformance satellite's.
 ```
 
 Diagnostics and findings answer different questions. A diagnostic is the reader's account of what it did

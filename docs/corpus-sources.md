@@ -146,9 +146,9 @@ fonts when their `fsType` allows embedding.
 | `lu-legilux/antenna-house-legilux-memorial-pades-lta.pdf` | W05 | A qualified electronic seal: PAdES B-LTA, DSS, a document timestamp, three incremental updates |
 | `jp-nta/indesign-distiller18-nta-gift-tax-vertical.pdf` | W06, W09 | Vertical Japanese without ToUnicode, AES-128; it broke pdf.js (issue 11526) |
 | `pikepdf/scanner-ccitt-endofline.pdf` | W06, W03 | A scanner's CCITT G3 image with `/EndOfLine true`; it broke pikepdf (issue 601) |
-| `pikepdf/handwritten-cyclic-toc.pdf` | W06 | Cyclic destinations, no trailer `/Size`; it crashed pikepdf (issue 677). Unsupported until M02 |
+| `pikepdf/handwritten-cyclic-toc.pdf` | W06 | Cyclic destinations, no trailer `/Size`, a page without `/Parent`, `/MediaBox` or `/Resources`; it crashed pikepdf (issue 677). Reported since M02's third slice |
 | `pdf-association/handwritten-type3-recursion.pdf` | W06 | A Type 3 recursion cycle: a denial-of-service probe for invariant 4 |
-| `pdf-association/handwritten-dict-is-stream.pdf` | W06 | A page object given a stream body; qpdf finds no page. Unsupported until M02 |
+| `pdf-association/handwritten-dict-is-stream.pdf` | W06 | A page object given a stream body: qpdf 11.9's walk counts it as a page, libqpdf 12 drops it. Reported since M02's third slice |
 | `pdf-association/handwritten-indexed-color-out-of-range.pdf` | W06 | Indexed color addressed out of range |
 | `pyhanko/acrobat-reader-signed-twice.pdf` | W05 | Two Acrobat Reader signatures with timestamps, test certificates |
 | `zugferd/mustang-zugferd2-en16931-invoice.pdf` | W07, W12 | ZUGFeRD 2.0 EN 16931, PDF/A-3u, an `/AF` attachment |
@@ -480,7 +480,7 @@ purposes" only was left out.
 | W06, W11 | The Massachusetts COVID-19 dashboard of 25 October 2020, linked by pdf.js | Mass.gov forbids any copying beyond fair use | A Power BI export through PDFium, linearized and then saved nine more times by Acrobat, which kept PDFium as Producer: 24 pages at the end of a long `/Prev` chain |
 | W06 | A wine merchant's product sheet, from pdf-differences' UnknownFilter set | A third party's document under the PDF Association's CC BY | A PNG stored under `/DCTDecode`; Identity-H subsets without ToUnicode; no `/Info` |
 | W06 | Four files from PDFBox's JIRA downloads, damaged at their end: Amyuni PDF Converter output cut 1,950 bytes short, a Distiller 8 file with 7.6 KB of UTF-16LE text after `%%EOF`, a FrameMaker 10 budget book and a Word 2010 FEMA form each cut at 1 MB | Web-crawled bug attachments; the FEMA form is public domain, but a crawl cut short is not the publisher's bytes | A lost main cross-reference section and a `/Prev` past the end; `startxref` hidden from a 1 KB tail search; and no page count asserted for the two cut at 1 MB, since qpdf 11.9.1 finds no `/Root` in one, and qpdf 11.9.1, PDFium and qpdf 12 count 11, 8 and 4 pages in the other |
-| W06, W10 | Three more from PDFBox's JIRA: a 1998 PDFWriter 3.02 file whose CR LF line ends were stripped, a Distiller 6 report with a 32 KiB block zeroed, an Acrobat form with `#00` in names | Bug attachments; the report is a public-domain USGS work, but exists damaged only there, and weighs 2.1 MB | Offsets 3 to 175 bytes off and `startxref` 184 off; one object stream destroyed, which the reader detects only when it reaches it, so the entry expects no rebuild at opening and the rebuild diagnostic after a full read; a NUL in names used as values and keys, which the reader accepts silently (unsupported until M02) |
+| W06, W10 | Three more from PDFBox's JIRA: a 1998 PDFWriter 3.02 file whose CR LF line ends were stripped, a Distiller 6 report with a 32 KiB block zeroed, an Acrobat form with `#00` in names | Bug attachments; the report is a public-domain USGS work, but exists damaged only there, and weighs 2.1 MB | Offsets 3 to 175 bytes off and `startxref` 184 off; one object stream destroyed, which the reader detects only when it reaches it, so the entry expects no rebuild at opening and the rebuild diagnostic after a full read; a NUL in names used as values and keys, which the reader accepts silently until M02's third slice reports it |
 | W06, W09 | PDFium's `bug_182.pdf`, and two pdfplumber reporters' files | Bug-report files, licensed by nobody | UTF-16BE `/Info` strings opening with a language escape; an inverted MediaBox over a Flate-over-DCT scan; Chinese font names written as GBK bytes in `#xx` escapes |
 | W06 | A PDFpen page of text imprints, from OCRmyPDF | Its contributor agreed to CC BY-SA 4.0; OCRmyPDF's `REUSE.toml` now says MIT, with no MIT grant on record | Seven content streams whose `q` and `Q` fall in different streams; PDFpen's private keys and plist streams |
 | W07 | The FNFE-MPE's official Factur-X example, BASIC WL, in French | All rights reserved | `factur-x.xml` under /AF, a valid PDF/A-3b, written by the factur-x Python library through PyPDF2 |
@@ -518,8 +518,10 @@ were established the same way, pages by `qpdf --show-npages`.
 | GovDocs1 error files | 21 | Six are federal work over 2 MB — the VHA coding handbook, the VA Kernel guide (464 pages, a PDF/A-1b claim veraPDF rejects on seven rules), a USGS earthquake map, a USFWS recovery plan, the 1994 Transportation Statistics report whose `/Producer` names Distiller 1.0.2 for Macintosh, a Reclamation EA —; one is a Census Bureau section whose tables are partly copyrighted by the firms that supplied them; thirteen are not shown to be federal staff's work: contractors (ORNL, JPL), PIARC, WARDA, the EU's delegation, IBM, Scholastic, an unnamed consultant; one, the SAMHSA fact sheet, is screened in part | IBM ID Workbench and XPP, Xyvision's Parlance Publisher, WordPerfect through PDFWriter 4, PageMaker 6.5, a `/Prev` 12 bytes off (T25), a whole file broken by a text-mode transfer |
 | JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalog without `/Type`; a reference to object 0; a file whose tail was lost |
 
-Eighteen remote entries are recorded as unsupported; there were twenty-six until M02's second slice made eight
-of the iPRES files supported on 2026-09-27. From the first three passes: the signed web capture
+Six remote entries are recorded as unsupported: the signed web capture and the VHA handbook (T24), and four waiting
+for M02's object-shape rules — two catalogs without `/Type`, a page tree root typed `/Pagez` and a page typed `/Font`.
+There were twenty-six until M02's second slice made eight of the iPRES files supported on 2026-09-27, and eighteen
+until its third made twelve more supported on 2026-09-28. What follows says what each was recorded for. From the first three passes: the signed web capture
 (T24), the Axapta credit note and the `#00` form (M02); the topographic map was too, for T28, until ADR 34
 made its decoding bound an option. From the fourth: the
 VHA handbook (T24), two catalogs without `/Type`, the wPDF chapter's null kid, and two
@@ -573,7 +575,12 @@ M02's second slice made eight of the 17 supported on 2026-09-27: the table entry
 the trailer without `/Size` of the second item, and the six recoveries of the third. Each earns its finding,
 and the reader, where only `/Root` is broken, now finds the catalog among the indexed objects without
 rebuilding the index, as qpdf keeps its own; their expectations say what the reader does, where they had
-copied qpdf's rebuild. Nine remain, the page trees and the two misnamed types, for the third slice.
+copied qpdf's rebuild. Nine remained, the page trees and the two misnamed types, for the third slice.
+
+M02's third slice made seven of the nine supported on 2026-09-28, the seven page trees: each earns its page tree
+finding, and its page count is qpdf's walk of the tree — each missing kid a page with nothing on it, a kid that loops
+back nothing —, where the manifest had held the root's `/Count` as `qpdf --show-npages` gives it: `t02-02-002` and
+`t02-02-005` hold none, `t02-02-007` and `t02-02-008` one. The two misnamed types wait for the object-shape rules.
 
 ## Traps met along the way
 
