@@ -23,8 +23,14 @@ namespace AdCodicem.Pdf.IntegrationTests;
 /// <para>
 /// qpdf's check walks the page tree too, and says what it repairs there: a loop, a kid that is null or a stream, a
 /// page without a media box. The validator must then report something about the document — the page tree rules, or
-/// the cross-reference rules when the index qpdf reads through is the fault (M02's third slice). A page whose
-/// <c>/Type</c> is wrong waits for the object-shape rules.
+/// the cross-reference rules when the index qpdf reads through is the fault (M02's third slice).
+/// </para>
+/// <para>
+/// The one object shape qpdf checks is the catalog's <c>/Type</c>, which libqpdf 12 goes on to repair in memory, so
+/// pikepdf cannot referee it. Where qpdf finds it missing or invalid, the rules generated from the Arlington model
+/// report the catalog's <c>/Type</c> — or <c>file.root-invalid</c>, when <c>/Root</c> names no catalog at all —, and
+/// where those rules report it, qpdf finds fault with it too. On the corpus of 2026-09-28 the two agree on every
+/// document, six of them with a fault.
 /// </para>
 /// </remarks>
 [Collection(RefereeCollection.Name)]
@@ -41,6 +47,9 @@ public class ValidationRefereeTests(RefereeContainer referee)
         "operation for dictionary attempted on object of type null",
         "operation for dictionary attempted on object of type stream",
     ];
+
+    /// <summary>What qpdf prints when the catalog's <c>/Type</c> is not <c>/Catalog</c>.</summary>
+    private const string CatalogTypeInvalid = "catalog /Type entry missing or invalid";
 
     public static TheoryData<string> AllDocuments => Theory(Corpus.Paths);
 
@@ -101,6 +110,36 @@ public class ValidationRefereeTests(RefereeContainer referee)
 
         exitCode.Should().NotBe(0, $"the validator calls {file} broken — {string.Join("; ", errors)} — and qpdf said:\n{output}");
     }
+
+    [Theory]
+    [MemberData(nameof(AllDocuments))]
+    public async Task A_catalog_type_qpdf_rejects_is_reported_and_one_the_generated_rules_report_qpdf_rejects(string file)
+    {
+        Assert.SkipWhen(referee.Unavailable is not null, referee.Unavailable ?? string.Empty);
+
+        var entry = Corpus.Get(file);
+        var (_, output) = await Check(entry);
+        var findings = Validate(entry).Findings;
+        var generated = findings.Where(IsAboutTheCatalogType).Select(finding => finding.ToString()).ToList();
+
+        if (output.Contains(CatalogTypeInvalid, StringComparison.Ordinal))
+        {
+            findings.Should().Contain(
+                finding => IsAboutTheCatalogType(finding) || finding.RuleId == PdfValidationRuleIds.FileRootInvalid,
+                $"qpdf finds the catalog /Type of {file} missing or invalid, and said:\n{output}");
+            return;
+        }
+
+        generated.Should().BeEmpty($"the validator faults the catalog /Type of {file}, and qpdf said:\n{output}");
+    }
+
+    /// <summary>A finding of the generated rules on the catalog's <c>/Type</c>: missing, or not <c>/Catalog</c>.</summary>
+    private static bool IsAboutTheCatalogType(PdfValidationFinding finding) =>
+        finding.RuleId is PdfValidationRuleIds.ObjectKeyMissing or PdfValidationRuleIds.ObjectTypeValueWrong &&
+        (finding.Message.Contains(", a Catalog in the Arlington model, ", StringComparison.Ordinal) ||
+         finding.Message.StartsWith("A Catalog ", StringComparison.Ordinal)) &&
+        (finding.Message.Contains(" lacks /Type,", StringComparison.Ordinal) ||
+         finding.Message.Contains(" has /Type /", StringComparison.Ordinal));
 
     private static bool IsStructural(PdfValidationFinding finding) =>
         finding.RuleId.StartsWith("file.", StringComparison.Ordinal) || finding.RuleId.StartsWith("xref.", StringComparison.Ordinal);
