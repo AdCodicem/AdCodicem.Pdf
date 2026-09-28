@@ -142,6 +142,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private readonly HashSet<int> _unproduced = [];
 
     /// <summary>
+    /// The objects a guard cut, read only as far as the limit let the reader go: what they hold past it is unknown,
+    /// so the validation rules judge nothing of their shape.
+    /// </summary>
+    private readonly HashSet<int> _cutAtLimit = [];
+
+    /// <summary>
     /// The objects read whose value <c>endobj</c> does not follow, and where each was read. An object stream's
     /// members have none to follow them, and are never in it.
     /// </summary>
@@ -328,6 +334,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// gives where it was read.
     /// </summary>
     internal bool IsEndObjMissing(int number, out long position) => _endObjMissing.TryGetValue(number, out position);
+
+    /// <summary>
+    /// Determines whether object <paramref name="number"/>, as it was read, was cut by one of the reader's limits and
+    /// kept as far as the limit let it be read.
+    /// </summary>
+    internal bool IsCutAtLimit(int number) => _cutAtLimit.Contains(number);
 
     /// <summary>
     /// Answers null for object <paramref name="number"/>, a null that says nothing of the object and is not cached,
@@ -1553,6 +1565,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                     ReachLimit(limit, LimitSubject(number, maxWindow), offset);
                     MarkCutByGuard(parsed, offset + window.Length);
+
+                    if (foundNumber > 0)
+                    {
+                        _cutAtLimit.Add(foundNumber);
+                    }
                 }
 
                 _pending.MoveTo(_diagnostics, mark);
@@ -1834,7 +1851,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return notYet ? PdfNull.Instance : null;
         }
 
-        return contents.Parse(entry.IndexInObjectStream, id.Number, this, _diagnostics);
+        var value = contents.Parse(entry.IndexInObjectStream, id.Number, this, _diagnostics, out var cut);
+
+        if (cut)
+        {
+            // A member that runs into the end of data a guard cut is kept as far as it was read, like a regular object
+            // cut at MaxObjectLength.
+            _cutAtLimit.Add(id.Number);
+        }
+
+        return value;
     }
 
     /// <summary>
@@ -2227,18 +2253,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         private readonly int[] _offsets;
         private readonly int _first;
 
+        /// <summary>Whether a guard cut the stream's data, raw or decoded: its end is then the limit's, not the file's.</summary>
+        private readonly bool _cutByGuard;
+
         /// <summary>
         /// Where each number lies in the header, the first place when it lies in several; built the first time an
         /// entry's index is wrong, so that an index every entry of the file gets wrong costs a lookup, not a search.
         /// </summary>
         private Dictionary<int, int>? _indexes;
 
-        private ObjectStreamContents(ReadOnlyMemory<byte> data, int[] numbers, int[] offsets, int first)
+        private ObjectStreamContents(ReadOnlyMemory<byte> data, int[] numbers, int[] offsets, int first, bool cutByGuard)
         {
             _data = data;
             _numbers = numbers;
             _offsets = offsets;
             _first = first;
+            _cutByGuard = cutByGuard;
         }
 
         public int Count => _numbers.Length;
@@ -2260,7 +2290,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return null;
             }
 
+            var mark = diagnostics.GetMark();
             var data = stream.Decode(diagnostics);
+            var cutByGuard = LimitSince(diagnostics, mark) || stream.Data.CutByGuard;
 
             if (first > data.Length)
             {
@@ -2280,19 +2312,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 if (numberToken.Kind != PdfTokenKind.Integer || offsetToken.Kind != PdfTokenKind.Integer)
                 {
                     diagnostics.Warn(PdfDiagnosticCodes.SyntaxUnexpectedToken, "An object stream header is malformed.");
-                    return i > 0 ? new ObjectStreamContents(data, numbers[..i], offsets[..i], first) : null;
+                    return i > 0 ? new ObjectStreamContents(data, numbers[..i], offsets[..i], first, cutByGuard) : null;
                 }
 
                 numbers[i] = (int)numberToken.Integer;
                 offsets[i] = (int)offsetToken.Integer;
             }
 
-            return new ObjectStreamContents(data, numbers, offsets, first);
+            return new ObjectStreamContents(data, numbers, offsets, first, cutByGuard);
         }
 
         /// <summary>Parses the object the stream holds under <paramref name="expectedNumber"/>, or gives null when it holds none.</summary>
-        public PdfObject? Parse(int index, int expectedNumber, IPdfObjectSource source, PdfDiagnostics diagnostics)
+        /// <param name="index">Where the index says the object is among the stream's.</param>
+        /// <param name="expectedNumber">The object's number.</param>
+        /// <param name="source">Resolves what the object refers to.</param>
+        /// <param name="diagnostics">Receives what parsing met.</param>
+        /// <param name="cut">Whether the object runs into the end of data a guard cut, and was read only as far as it.</param>
+        public PdfObject? Parse(int index, int expectedNumber, IPdfObjectSource source, PdfDiagnostics diagnostics, out bool cut)
         {
+            cut = false;
+
             if (index < 0 || index >= _numbers.Length)
             {
                 // The index in the entry is a hint; the object number is the truth.
@@ -2327,7 +2366,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             var parser = new PdfObjectParser(_data, 0, source, diagnostics, streamData: null);
             parser.Position = start;
-            return parser.ParseObject();
+            var value = parser.ParseObject();
+            cut = _cutByGuard && parser.IsTruncated;
+            return value;
         }
 
         private int IndexOf(int number)
