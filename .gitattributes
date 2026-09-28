@@ -4,3 +4,7 @@
 *.pdf binary
 *.png binary
 *.jpg binary
+
+# The vendored Arlington PDF Model stays byte for byte what upstream publishes: its lock
+# (tools/AdCodicem.Pdf.Arlington/model/model.lock) holds each file's SHA-256, so no line ending is converted.
+tools/AdCodicem.Pdf.Arlington/model/** -text

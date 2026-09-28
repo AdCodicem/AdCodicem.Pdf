@@ -1,0 +1,32 @@
+AdCodicem.Pdf
+Copyright (c) 2026 AdCodicem
+Licensed under the MIT License, the package's license expression; its text is
+LICENSE in the source repository, https://github.com/AdCodicem/AdCodicem.Pdf.
+
+This product includes data derived from the Arlington PDF Model
+(https://github.com/pdf-association/arlington-pdf-model), commit
+c48b363e9b78902deea03e958693c09339248a3a: the object tables of
+src/AdCodicem.Pdf/Validation/Arlington/ArlingtonModel.g.cs, compiled into the
+AdCodicem.Pdf assembly. They were generated from the model's TSV files, and
+changed: reduced to lookup tables and overridden as
+tools/AdCodicem.Pdf.Arlington/overrides.tsv records. The model's own files are
+vendored unmodified in tools/AdCodicem.Pdf.Arlington/model/.
+
+The Arlington PDF Model, Copyright 2020 PDF Association, Inc., is licensed
+under the Apache License, Version 2.0. Its NOTICE.txt opens with the following
+attribution notice, quoted word for word; the rest of that file states the
+model's licenses, and the whole file is vendored as
+tools/AdCodicem.Pdf.Arlington/model/NOTICE.txt in the source repository:
+
+  Copyright 2020 PDF Association, Inc. https://www.pdfa.org
+
+  This material is based upon work supported by the Defense Advanced
+  Research Projects Agency (DARPA) under Contract No. HR001119C0079.
+  Any opinions, findings and conclusions or recommendations expressed
+  in this material are those of the author(s) and do not necessarily
+  reflect the views of the Defense Advanced Research Projects Agency
+  (DARPA). Approved for public release.
+
+The Apache License's text is licenses/arlington-pdf-model/LICENSE in the NuGet
+package, and tools/AdCodicem.Pdf.Arlington/model/LICENSE in the source
+repository.
