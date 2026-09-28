@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Objects;
 
@@ -17,6 +18,11 @@ internal ref struct PdfObjectParser
     /// Deepest nesting followed. Real documents rarely pass ten; a file that passes this is either broken
     /// or trying to exhaust the stack.
     /// </summary>
+    /// <remarks>
+    /// The bound holds within one object. An object loaded while another is parsed — an indirect <c>/Length</c> —
+    /// starts again at zero, so the stack is also asked, at each container, whether it has room for another level:
+    /// what the bound alone would allow, times the loads the reader nests, is more than a small thread holds.
+    /// </remarks>
     private const int MaxDepth = 128;
 
     /// <summary>The most white space accepted between a stream's data and its <c>endstream</c> keyword.</summary>
@@ -200,7 +206,7 @@ internal ref struct PdfObjectParser
 
     private PdfObject ParseArray(int depth)
     {
-        if (depth >= MaxDepth)
+        if (depth >= MaxDepth || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
             Report(PdfDiagnosticCodes.SyntaxDepthExceeded, "Nesting is deeper than the reader will follow.", _lexer.Position);
             SkipContainer(PdfTokenKind.ArrayEnd);
@@ -237,7 +243,7 @@ internal ref struct PdfObjectParser
 
     private PdfObject ParseDictionaryOrStream(int depth)
     {
-        if (depth >= MaxDepth)
+        if (depth >= MaxDepth || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
             Report(PdfDiagnosticCodes.SyntaxDepthExceeded, "Nesting is deeper than the reader will follow.", _lexer.Position);
             SkipContainer(PdfTokenKind.DictionaryEnd);

@@ -175,6 +175,55 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(32, 64)]
+    [InlineData(127, 64)]
+    public void A_file_nesting_objects_deeper_than_the_stack_allows_reads_them_as_null_without_crashing(int nesting, int streams)
+    {
+        // Each stream takes its /Length from the next and sits inside nested arrays, so every nested load parses
+        // that deep again: within both the parser's and the loader's bounds, yet more stack than a small thread
+        // has. The reader stops where the stack runs short, as it does at either bound.
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 3; number < 3 + streams; number++)
+        {
+            var length = number + 1 < 3 + streams ? $"{number + 1} 0 R" : "1";
+            builder.WithObject(
+                number,
+                new string('[', nesting) + $"<< /Length {length} >>\nstream\nx\nendstream" + new string(']', nesting));
+        }
+
+        var file = builder.BuildClassic(rootNumber: 1);
+        PdfObject? first = null;
+        PdfDiagnostics? diagnostics = null;
+        Exception? failure = null;
+
+        var thread = new Thread(
+            () =>
+            {
+                try
+                {
+                    using var document = PdfDocument.Open(file);
+                    first = document.GetObject(new PdfObjectId(3));
+                    diagnostics = document.Diagnostics;
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    failure = exception;
+                }
+            },
+            maxStackSize: 256 * 1024);
+
+        thread.Start();
+        thread.Join();
+
+        failure.Should().BeNull();
+        first.Should().BeOfType<PdfArray>();
+        diagnostics.Required().Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("free")]
     [InlineData("unlisted")]
     [InlineData("compressed")]

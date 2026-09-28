@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -54,7 +55,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>
     /// Deepest chain of objects loaded while loading another. Real documents stay within a handful — a stream
-    /// in an object stream whose <c>/Length</c> is indirect is three —; each level costs a dozen frames.
+    /// in an object stream whose <c>/Length</c> is indirect is three —; each level costs a dozen frames, and the
+    /// parsing of the object it loads besides. The count alone does not bound the stack, since each load parses
+    /// as deep as the parser allows: the stack is asked as well before each load.
     /// </summary>
     private const int MaxNestedLoads = 64;
 
@@ -183,10 +186,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         {
             // Loading an object can load another — an indirect /Length is resolved while its stream is
             // parsed — and a file can chain such objects as long as it likes, each a level deeper on the
-            // stack. Past a depth no real document comes near, the next one reads as null rather than taking
-            // the process with it. Nothing is cached, so the same object loaded from a shallower place reads
-            // normally.
-            if (_loading.Count > MaxNestedLoads)
+            // stack. Past a depth no real document comes near, or once the thread's stack has no room left for
+            // another load, the next one reads as null rather than taking the process with it. Nothing is
+            // cached, so the same object loaded from a shallower place reads normally.
+            if (_loading.Count > MaxNestedLoads || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
             {
                 ReportNestingTooDeep(id);
                 return PdfNull.Instance;
