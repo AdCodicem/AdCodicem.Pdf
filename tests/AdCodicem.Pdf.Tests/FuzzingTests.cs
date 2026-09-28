@@ -4,6 +4,7 @@ using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -52,6 +53,40 @@ public class FuzzingTests
                 },
                 mutated,
                 $"{Corpus.Get(file).Name}, seed {seed}");
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(SeedDocuments))]
+    public void Validating_a_mutated_document_the_reader_opens_reports_rather_than_throws(string file)
+    {
+        // The validator walks the page tree and every object the trailer reaches: a mutation there must give
+        // findings, within the same budgets as reading, never an exception.
+        var original = Corpus.Read(file);
+
+        for (var seed = 0; seed < Iterations; seed++)
+        {
+            var mutated = Mutate(original, seed);
+            PdfDocument document;
+
+            try
+            {
+                document = PdfDocument.Open(mutated, ReaderOptions);
+            }
+            catch (PdfException)
+            {
+                // Refused at opening, which the test above holds to its own outcome.
+                continue;
+            }
+
+            using (document)
+            {
+                Survives(
+                    () => new PdfValidator().Validate(document),
+                    mutated,
+                    $"validating {Corpus.Get(file).Name}, seed {seed}",
+                    allowTypedExceptions: false);
+            }
         }
     }
 

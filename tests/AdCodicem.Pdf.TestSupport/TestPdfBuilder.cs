@@ -53,12 +53,14 @@ public sealed class TestPdfBuilder
     /// <param name="objectStreamHeader">Rewrites the object stream's header — <c>2 0 3 57 </c> — before its /First is worked out.</param>
     /// <param name="compressObjectStream">Writes the object stream's data Flate-compressed.</param>
     /// <param name="compressXRefStream">Writes the cross-reference stream's rows Flate-compressed.</param>
+    /// <param name="objectStreamEntries">Entries added to the object stream's dictionary, such as <c>/DecodeParms 5 0 R</c>.</param>
     public byte[] BuildWithXRefStream(
         int rootNumber,
         int[]? compressedObjects = null,
         Func<string, string>? objectStreamHeader = null,
         bool compressObjectStream = false,
-        bool compressXRefStream = false)
+        bool compressXRefStream = false,
+        string? objectStreamEntries = null)
     {
         using var writer = new Writer();
         writer.WriteHeader("1.5");
@@ -95,7 +97,7 @@ public sealed class TestPdfBuilder
             offsets[objectStreamNumber] = writer.Position;
             writer.WriteObject(
                 objectStreamNumber,
-                StreamBody($"/Type /ObjStm /N {packed.Count} /First {headerText.Length}", data, compressObjectStream));
+                StreamBody($"/Type /ObjStm /N {packed.Count} /First {headerText.Length} {objectStreamEntries}".TrimEnd(), data, compressObjectStream));
         }
 
         var size = xrefNumber + 1;

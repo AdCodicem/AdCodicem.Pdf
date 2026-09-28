@@ -62,10 +62,23 @@ public class ValidatorTests
             PdfValidationRuleIds.XRefEntryBroken,
             PdfValidationRuleIds.XRefEntryShifted,
             PdfValidationRuleIds.XRefGenerationMismatch,
+            PdfValidationRuleIds.XRefObjectStreamCircular,
             PdfValidationRuleIds.XRefObjectStreamBroken,
             PdfValidationRuleIds.XRefOffsetImprecise,
             PdfValidationRuleIds.XRefObjectPastSize,
-            PdfValidationRuleIds.XRefCheckedInPart);
+            PdfValidationRuleIds.XRefCheckedInPart,
+            PdfValidationRuleIds.ObjectReferenceMissing,
+            PdfValidationRuleIds.ObjectEndObjMissing,
+            PdfValidationRuleIds.ObjectNameNullCharacter,
+            PdfValidationRuleIds.PageTreeCycle,
+            PdfValidationRuleIds.PageTreeNodeRepeated,
+            PdfValidationRuleIds.PageTreeKidsMissing,
+            PdfValidationRuleIds.PageTreeKidInvalid,
+            PdfValidationRuleIds.PageTreeCountMismatch,
+            PdfValidationRuleIds.PageTreeParentWrong,
+            PdfValidationRuleIds.PageTreeMediaBoxInvalid,
+            PdfValidationRuleIds.PageTreeResourcesMissing,
+            PdfValidationRuleIds.PageTreePageOrphaned);
         ValidationProfile.Structural.ToString().Should().Be("structural 1");
     }
 
@@ -287,13 +300,56 @@ public class ValidatorTests
     }
 
     [Fact]
+    public void A_location_on_a_page_counts_pages_from_zero_and_names_them_from_one()
+    {
+        var onPage = PdfValidationLocation.OnPage(2, new PdfObjectId(12));
+        var atOffset = PdfValidationLocation.OnPage(0, new PdfObjectId(7, 2), 99);
+
+        onPage.PageIndex.Should().Be(2);
+        onPage.Object.Should().Be(new PdfObjectId(12));
+        onPage.Position.Should().BeNull();
+        onPage.IsDocument.Should().BeFalse();
+        onPage.ToString().Should().Be("page 3, object 12 0");
+        atOffset.ToString().Should().Be("page 1, object 7 2, at offset 99");
+        PdfValidationLocation.OfObject(new PdfObjectId(12)).PageIndex.Should().BeNull();
+    }
+
+    [Fact]
+    public void Rule_messages_name_each_kind_of_value_a_file_writes()
+    {
+        RuleText.Kind(PdfInteger.Create(1)).Should().Be("a number");
+        RuleText.Kind(new PdfReal(1.5)).Should().Be("a number");
+        RuleText.Kind(PdfName.Get("A")).Should().Be("a name");
+        RuleText.Kind(new PdfString(ReadOnlyMemory<byte>.Empty)).Should().Be("a string");
+        RuleText.Kind(new PdfArray()).Should().Be("an array");
+        RuleText.Kind(new PdfDictionary()).Should().Be("a dictionary");
+        RuleText.Kind(new PdfStream(new PdfDictionary(), PdfStreamData.FromMemory(ReadOnlyMemory<byte>.Empty))).Should().Be("a stream");
+        RuleText.Kind(PdfBoolean.True).Should().Be("a boolean");
+        RuleText.Kind(new PdfReference(new PdfObjectId(1))).Should().Be("a reference");
+        RuleText.Kind(PdfNull.Instance).Should().Be("null");
+        RuleText.Pages(1).Should().Be("1 page");
+        RuleText.Pages(2).Should().Be("2 pages");
+        RuleText.Name(PdfName.Get("A\0B")).Should().Be("/A#00B");
+    }
+
+    [Fact]
     public void A_location_refuses_a_negative_offset()
     {
         var atOffset = () => PdfValidationLocation.AtPosition(-1);
         var atObject = () => PdfValidationLocation.OfObject(new PdfObjectId(1), -1);
+        var onPage = () => PdfValidationLocation.OnPage(0, new PdfObjectId(1), -1);
 
         atOffset.Should().Throw<ArgumentOutOfRangeException>();
         atObject.Should().Throw<ArgumentOutOfRangeException>();
+        onPage.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void A_location_refuses_a_negative_page()
+    {
+        var onPage = () => PdfValidationLocation.OnPage(-1, new PdfObjectId(1));
+
+        onPage.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Fact]

@@ -27,7 +27,7 @@ internal static class SyntheticDocument
             WriteObject(
                 stream,
                 pageNumber,
-                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {contentNumber} 0 R >>");
+                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents {contentNumber} 0 R >>");
 
             offsets[contentNumber] = stream.Position;
             WriteObject(stream, contentNumber, $"<< /Length {content.Length} >>\nstream\n{content}\nendstream");
