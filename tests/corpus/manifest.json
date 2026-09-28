@@ -645,6 +645,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.value-type-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": true
       }
@@ -785,6 +788,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Application for Employer Identification Number",
@@ -1019,7 +1025,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "findings": [
-          "file.size-wrong"
+          "file.size-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -1693,6 +1700,7 @@
         "requiredDiagnostics": [],
         "findings": [
           "file.size-wrong",
+          "object.key-missing",
           "page-tree.count-mismatch",
           "page-tree.parent-wrong",
           "page-tree.mediabox-invalid",
@@ -2482,6 +2490,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Online-Fassung Kapitel 3",
@@ -2622,6 +2633,9 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [
           "syntax.unexpected-token"
+        ],
+        "findings": [
+          "object.value-type-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -2812,6 +2826,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "U.S. Individual Income Tax Return",
@@ -3414,6 +3431,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Critical Police Undertakings",
@@ -3637,6 +3657,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Employment Eligibility Verification",
@@ -4498,7 +4521,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "findings": [
-          "file.size-wrong"
+          "file.size-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -4540,6 +4564,10 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing",
+          "object.value-type-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "WASHINGTON WEST QUADRANGLE"
@@ -5271,6 +5299,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Digitally signed by hello"
@@ -5328,7 +5359,9 @@
         "requiredDiagnostics": [],
         "findings": [
           "object.reference-missing",
-          "object.endobj-missing"
+          "object.endobj-missing",
+          "object.key-missing",
+          "object.value-type-wrong"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -5700,7 +5733,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "findings": [
-          "object.endobj-missing"
+          "object.endobj-missing",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -5912,6 +5946,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.value-type-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Amount in EUR Booked balance in",
@@ -6389,6 +6426,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.type-value-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "KETCHIKAN MINING DISTRICT, ALASKA",
@@ -6482,6 +6522,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Declaration for Federal Employment",
@@ -6697,6 +6740,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.value-type-wrong"
+        ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": true
       }
@@ -6735,6 +6781,9 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.value-type-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello world"
@@ -6886,6 +6935,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "refereeCheckSucceeds": true
       }
@@ -7287,7 +7339,9 @@
         ],
         "findings": [
           "xref.entry-broken",
-          "xref.object-stream-broken"
+          "xref.object-stream-broken",
+          "object.key-missing",
+          "object.value-type-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -7340,7 +7394,8 @@
         ],
         "findings": [
           "file.eof-missing",
-          "file.startxref-missing"
+          "file.startxref-missing",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -7698,6 +7753,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-deprecated"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "PDF 2.0 with UTF-8 test file",
@@ -9834,6 +9892,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.value-type-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "applications to modern technologies",
@@ -11319,7 +11380,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "findings": [
-          "file.size-wrong"
+          "file.size-wrong",
+          "object.value-type-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -11857,12 +11919,14 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "appendix provides additional information and results for",
           "consumer who switches from one brand"
         ],
-        "unsupported": "M02: the reader accepts a catalog without /Type in silence, while qpdf reports it; validation must report it",
         "refereeCheckSucceeds": false
       }
     },
@@ -11903,12 +11967,14 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.key-missing"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "tool in organic synthesis",
           "we are taller than they"
         ],
-        "unsupported": "M02: the reader accepts a catalog without /Type in silence, while qpdf reports it; validation must report it",
         "refereeCheckSucceeds": false
       }
     },
@@ -12038,7 +12104,9 @@
         ],
         "findings": [
           "xref.section-not-found",
-          "xref.entry-broken"
+          "xref.entry-broken",
+          "object.value-type-wrong",
+          "object.type-value-wrong"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -12080,7 +12148,9 @@
         ],
         "findings": [
           "xref.section-not-found",
-          "xref.entry-broken"
+          "xref.entry-broken",
+          "object.value-type-wrong",
+          "object.type-value-wrong"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -12247,7 +12317,8 @@
         "requiredDiagnostics": [],
         "findings": [
           "file.size-wrong",
-          "object.reference-missing"
+          "object.reference-missing",
+          "object.value-type-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -12361,7 +12432,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [],
         "findings": [
-          "object.reference-missing"
+          "object.reference-missing",
+          "object.value-type-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -13040,6 +13112,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.value-type-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "vital part of our daily lives",
@@ -13142,6 +13217,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.value-type-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "may differ from official coding guidelines based",
@@ -14042,7 +14120,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -14131,7 +14210,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14179,7 +14259,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.type-value-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14227,7 +14308,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14366,6 +14448,7 @@
         ],
         "findings": [
           "file.startxref-wrong",
+          "object.key-missing",
           "page-tree.kid-invalid",
           "page-tree.parent-wrong",
           "page-tree.mediabox-invalid",
@@ -14507,7 +14590,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14641,12 +14725,14 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.type-value-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
         ],
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: a page tree root typed /Pagez, which qpdf reports and the reader reads without a word"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -14688,7 +14774,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -14733,12 +14820,14 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.type-value-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
         ],
-        "refereeCheckSucceeds": false,
-        "unsupported": "M02: a page typed /Font, which qpdf reports and the reader reads without a word"
+        "refereeCheckSucceeds": false
       }
     },
     {
@@ -15242,7 +15331,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15338,7 +15428,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -15383,6 +15474,9 @@
         "clean": true,
         "indexRebuilt": false,
         "requiredDiagnostics": [],
+        "findings": [
+          "object.type-value-wrong"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "Hello PDF-world!"
@@ -16103,7 +16197,8 @@
         "findings": [
           "file.header-offset",
           "file.startxref-wrong",
-          "object.endobj-missing"
+          "object.endobj-missing",
+          "object.value-type-wrong"
         ],
         "hasExtractableText": false,
         "refereeCheckSucceeds": false
@@ -16199,7 +16294,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.value-type-wrong"
         ],
         "hasExtractableText": true,
         "textContains": [
@@ -16247,7 +16343,8 @@
           "xref.rebuilt"
         ],
         "findings": [
-          "file.startxref-wrong"
+          "file.startxref-wrong",
+          "object.key-missing"
         ],
         "hasExtractableText": true,
         "textContains": [

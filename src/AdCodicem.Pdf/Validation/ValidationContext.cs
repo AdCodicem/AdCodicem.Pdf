@@ -10,9 +10,10 @@ namespace AdCodicem.Pdf.Validation;
 /// <remarks>
 /// It lives for one validation. What several rules need is worked out once and shared: the probe of every entry
 /// of the file's index, which four cross-reference rules read; the walk of the page tree, which the page tree rules
-/// and the object rules read; the walk of the objects reachable from the trailer; and which object streams need
-/// themselves to be read. None of them keeps the objects it resolved: those stay in the reader's cache, bounded by
-/// <see cref="PdfReaderOptions.ObjectCacheCapacity"/>, and each analysis keeps what it found wrong.
+/// and the object rules read; the walk of the objects reachable from the trailer; the walk that checks their shapes
+/// against the Arlington PDF Model; and which object streams need themselves to be read. None of them keeps the
+/// objects it resolved: those stay in the reader's cache, bounded by <see cref="PdfReaderOptions.ObjectCacheCapacity"/>,
+/// and each analysis keeps what it found wrong.
 /// </remarks>
 internal sealed class ValidationContext
 {
@@ -21,6 +22,7 @@ internal sealed class ValidationContext
     private PageTreeWalk? _pageTree;
     private ObjectGraph? _graph;
     private ObjectStreamDependencies? _objectStreams;
+    private ArlingtonWalk? _arlington;
     private readonly List<PdfValidationFinding> _findings = [];
     private readonly HashSet<string> _ruleIds = new(StringComparer.Ordinal);
     private int _errors;
@@ -52,6 +54,12 @@ internal sealed class ValidationContext
 
     /// <summary>Gets the walk of the objects reachable from the trailer, made the first time a rule asks for it.</summary>
     public ObjectGraph Graph => _graph ??= ObjectGraph.Run(Document, PageTree);
+
+    /// <summary>
+    /// Gets the walk that types the objects reachable from the trailer in the Arlington PDF Model and checks them, made
+    /// the first time a rule asks for it.
+    /// </summary>
+    public ArlingtonWalk Arlington => _arlington ??= ArlingtonWalk.Run(Document, PageTree);
 
     /// <summary>Gets which object streams need themselves to be read, worked out the first time a rule asks for it.</summary>
     public ObjectStreamDependencies ObjectStreams => _objectStreams ??= ObjectStreamDependencies.Run(Document);

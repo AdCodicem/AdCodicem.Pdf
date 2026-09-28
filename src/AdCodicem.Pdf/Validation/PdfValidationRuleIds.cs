@@ -160,6 +160,30 @@ public static class PdfValidationRuleIds
     public const string ObjectNameNullCharacter = "object.name-null-character";
 
     /// <summary>
+    /// An object reachable from the trailer lacks a key the Arlington PDF Model requires of its type in the version
+    /// the file declares, or an array lacks an element it requires. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string ObjectKeyMissing = "object.key-missing";
+
+    /// <summary>
+    /// A value of an object reachable from the trailer is of a type the Arlington PDF Model does not allow for its key
+    /// — a string where an integer belongs, a stream where a dictionary does. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string ObjectValueTypeWrong = "object.value-type-wrong";
+
+    /// <summary>
+    /// The <c>/Type</c> or <c>/Subtype</c> of an object reachable from the trailer is a name the Arlington PDF Model does
+    /// not list for its type. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string ObjectTypeValueWrong = "object.type-value-wrong";
+
+    /// <summary>
+    /// An object reachable from the trailer has a key the Arlington PDF Model says the version the file declares
+    /// deprecates. <see cref="PdfValidationSeverity.Information"/>.
+    /// </summary>
+    public const string ObjectKeyDeprecated = "object.key-deprecated";
+
+    /// <summary>
     /// A kid of the page tree loops back to the node listing it or to a node above it: what the tree should have
     /// listed there is unknown. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
