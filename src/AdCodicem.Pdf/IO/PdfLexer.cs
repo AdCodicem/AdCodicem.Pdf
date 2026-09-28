@@ -25,9 +25,6 @@ internal ref struct PdfLexer
         set => _position = value;
     }
 
-    /// <summary>Gets the length of the buffer.</summary>
-    public readonly int Length => _data.Length;
-
     /// <summary>Gets a value indicating whether the whole buffer has been consumed.</summary>
     public readonly bool IsAtEnd => _position >= _data.Length;
 
@@ -120,15 +117,6 @@ internal ref struct PdfLexer
             default:
                 return ReadRegularRun();
         }
-    }
-
-    /// <summary>Reads the next token without advancing.</summary>
-    public PdfToken Peek()
-    {
-        var saved = _position;
-        var token = Read();
-        _position = saved;
-        return token;
     }
 
     /// <summary>

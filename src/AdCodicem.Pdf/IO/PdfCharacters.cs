@@ -13,8 +13,6 @@ internal static class PdfCharacters
 
     public static bool IsWhitespace(byte value) => Whitespace.Contains(value);
 
-    public static bool IsDelimiter(byte value) => Delimiters.Contains(value);
-
     /// <summary>A regular character is anything that is neither white space nor a delimiter.</summary>
     public static bool IsRegular(byte value) => !Whitespace.Contains(value) && !Delimiters.Contains(value);
 
