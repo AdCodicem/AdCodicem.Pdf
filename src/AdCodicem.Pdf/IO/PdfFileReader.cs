@@ -118,6 +118,34 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>The numbers of the objects being loaded, by number for the reason <see cref="_cache"/> gives.</summary>
     private readonly HashSet<int> _loading = [];
+
+    /// <summary>The object streams being decoded: an object one of them holds cannot be read meanwhile (#51).</summary>
+    private readonly HashSet<int> _objectStreamsLoading = [];
+
+    /// <summary>The object streams already reported as needing an object they hold to be read.</summary>
+    private readonly HashSet<int> _objectStreamsNeedingThemselves = [];
+
+    /// <summary>
+    /// The objects the index holds in use that the reader gave up on the last time they were asked for — nothing
+    /// where the entry places them nor near it, an object stream that cannot serve them —, for the validation rules
+    /// to tell an object the file lacks from one it holds and the reader could not produce.
+    /// </summary>
+    private readonly HashSet<int> _unproduced = [];
+
+    /// <summary>
+    /// The objects read whose value <c>endobj</c> does not follow, and where each was read. An object stream's
+    /// members have none to follow them, and are never in it.
+    /// </summary>
+    private readonly Dictionary<int, long> _endObjMissing = [];
+
+    /// <summary>
+    /// How many times a load answered null because the object was being loaded already, or because the object
+    /// stream holding it was: that null says nothing of the object, and is not cached (#51).
+    /// </summary>
+    private int _reentries;
+
+    /// <summary>Whether a rebuilt index is taking in the objects its object streams hold.</summary>
+    private bool _expandingObjectStreams;
     private readonly int _cacheCapacity;
     private readonly bool _ownsSource;
 
@@ -183,6 +211,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </remarks>
     public PdfXRefTable? ChainIndex => _structure.ChainRead ? _chainIndex ?? _xref : null;
 
+    /// <summary>
+    /// Gets the index the reader reads with now: the chain's, as corrected since, or the one a rebuild made. Read it
+    /// again for each lookup, as <see cref="ChainIndex"/>.
+    /// </summary>
+    public PdfXRefTable Index => _xref;
+
     /// <summary>Gets the bytes of decoded object stream data the reader keeps, which it bounds.</summary>
     internal long ObjectStreamBytes => _objectStreamBytes;
 
@@ -199,10 +233,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return cached;
         }
 
+        // An object stream whose decoding needs an object it holds — its /DecodeParms, its /N — cannot be read
+        // from while it is decoded: the object reads as null there, is reported, and is read again once the
+        // stream is decoded (#51).
+        if (IsHeldByObjectStreamBeingLoaded(id.Number, out var objectStream))
+        {
+            _reentries++;
+            ReportObjectStreamNeedsItself(objectStream, id.Number);
+            return PdfNull.Instance;
+        }
+
         // A file can make an object's length depend on the object itself, under any generation. Refusing to
         // re-enter turns an infinite recursion into a null.
         if (!_loading.Add(id.Number))
         {
+            _reentries++;
             return PdfNull.Instance;
         }
 
@@ -219,14 +264,87 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return PdfNull.Instance;
             }
 
+            var reentries = _reentries;
             var value = LoadObject(id);
-            Cache(id.Number, value);
+
+            // A null a guard against re-entry produced on the way is not the object's: it is read again when asked
+            // again, rather than kept for good (#51).
+            if (value is not PdfNull || reentries == _reentries)
+            {
+                Cache(id.Number, value);
+            }
+
             return value;
         }
         finally
         {
             _loading.Remove(id.Number);
         }
+    }
+
+    /// <summary>
+    /// Says whether the file holds object <paramref name="number"/> and whether the reader could produce it, as
+    /// of the last time it was asked for: call it after resolving the object.
+    /// </summary>
+    /// <remarks>
+    /// An object the index lacks, or holds as free — the one the chain gave as the reader first read it, and the
+    /// one it reads with now —, is missing: a reference to it is null (ISO 32000-1, 7.3.10). One either index holds
+    /// in use, and that the reader gave up on or lost in a rebuild, is unproduced: what went wrong is the index's
+    /// or the object stream's, and the cross-reference rules report it.
+    /// </remarks>
+    internal ObjectPresence GetPresence(int number)
+    {
+        if (_xref.TryGet(number, out var entry) && entry.Kind != XRefEntryKind.Free)
+        {
+            return _unproduced.Contains(number) ? ObjectPresence.Unproduced : ObjectPresence.Defined;
+        }
+
+        return ChainIndex?.TryGet(number, out var written) == true && written.Kind != XRefEntryKind.Free
+            ? ObjectPresence.Unproduced
+            : ObjectPresence.Missing;
+    }
+
+    /// <summary>
+    /// Determines whether object <paramref name="number"/>, as it was read, is not followed by <c>endobj</c>, and
+    /// gives where it was read.
+    /// </summary>
+    internal bool IsEndObjMissing(int number, out long position) => _endObjMissing.TryGetValue(number, out position);
+
+    /// <summary>Determines whether the index places object <paramref name="number"/> in an object stream being decoded.</summary>
+    private bool IsHeldByObjectStreamBeingLoaded(int number, out int objectStream)
+    {
+        objectStream = 0;
+
+        if (_objectStreamsLoading.Count == 0 ||
+            !_xref.TryGet(number, out var entry) ||
+            entry.Kind != XRefEntryKind.Compressed ||
+            !_objectStreamsLoading.Contains(entry.ObjectStreamNumber))
+        {
+            return false;
+        }
+
+        objectStream = entry.ObjectStreamNumber;
+        return true;
+    }
+
+    /// <summary>Reports, once for each, an object stream that needs one of the objects it holds to be read.</summary>
+    private void ReportObjectStreamNeedsItself(int objectStream, int number)
+    {
+        if (!_objectStreamsNeedingThemselves.Add(objectStream))
+        {
+            return;
+        }
+
+        var position = _xref.TryGet(objectStream, out var entry) && entry.Kind == XRefEntryKind.Regular
+            ? entry.Offset + _headerOffset
+            : -1;
+
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.StreamSelfReference,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Object stream {objectStream} needs object {number}, which it holds, to be read: the object reads as null while the stream is decoded, and the stream is decoded without it."),
+            position);
     }
 
     private void ReportNestingTooDeep(PdfObjectId id)
@@ -1194,6 +1312,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             // that may have lost entries is rebuilt to look for it, once.
             if (_repaired || !_indexIncomplete)
             {
+                // While a rebuilt index takes in what its object streams hold, the object may be in one not
+                // expanded yet: that null is not the object's, and is not kept.
+                if (_expandingObjectStreams)
+                {
+                    _reentries++;
+                }
+
                 return PdfNull.Instance;
             }
 
@@ -1204,12 +1329,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         return LoadFromEntry(id, entry);
     }
 
-    private PdfObject LoadFromEntry(PdfObjectId id, XRefEntry entry) => entry.Kind switch
+    private PdfObject LoadFromEntry(PdfObjectId id, XRefEntry entry)
     {
-        XRefEntryKind.Regular => LoadRegularObject(id, entry.Offset + _headerOffset),
-        XRefEntryKind.Compressed => LoadCompressedObject(id, entry),
-        _ => PdfNull.Instance,
-    };
+        var loaded = entry.Kind switch
+        {
+            XRefEntryKind.Regular => LoadRegularObject(id, entry.Offset + _headerOffset),
+            XRefEntryKind.Compressed => LoadCompressedObject(id, entry),
+            _ => PdfNull.Instance,
+        };
+
+        // Null for an object the index holds in use means the reader gave up on it, unless the object is a
+        // literal null: the loads say which.
+        if (loaded is { } value)
+        {
+            _unproduced.Remove(id.Number);
+            return value;
+        }
+
+        _unproduced.Add(id.Number);
+        return PdfNull.Instance;
+    }
 
     /// <summary>
     /// Loads an object the index places at <paramref name="offset"/>, in at most three attempts: where the
@@ -1220,7 +1359,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// loading, and a fuzzed file drove the two into each other until the stack ran out — a file killing
     /// the process is the exact outcome the reader exists to prevent.
     /// </remarks>
-    private PdfObject LoadRegularObject(PdfObjectId id, long offset)
+    private PdfObject? LoadRegularObject(PdfObjectId id, long offset)
     {
         if (offset < 0 || offset >= _source.Length)
         {
@@ -1249,7 +1388,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         if (_repaired)
         {
-            return PdfNull.Instance;
+            return null;
         }
 
         Repair();
@@ -1258,7 +1397,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                entry.Kind == XRefEntryKind.Regular &&
                TryParseObjectAt(id.Number, entry.Offset + _headerOffset, out var afterRebuild)
             ? afterRebuild
-            : PdfNull.Instance;
+            : null;
     }
 
     /// <summary>
@@ -1362,6 +1501,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 }
 
                 _pending.MoveTo(_diagnostics, mark);
+                RecordEndObj(number, foundNumber, parser.EndObj, cut, offset);
                 value = parsed;
                 return true;
             }
@@ -1370,6 +1510,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         {
             // Whatever an attempt that was not kept noticed is dropped with it, however it ended.
             _pending.RollBack(mark);
+        }
+    }
+
+    /// <summary>
+    /// Records whether <c>endobj</c> follows an object read at <paramref name="offset"/>: it does not when another
+    /// token follows it, or when the file ends first — not when the window the reader offered ended first, a
+    /// stream's data running past it included, where what follows was never seen.
+    /// </summary>
+    private void RecordEndObj(int number, int found, EndObjState state, bool cut, long offset)
+    {
+        if (number == DirectObject || found <= 0)
+        {
+            return;
+        }
+
+        if (state == EndObjState.Absent || (state == EndObjState.Unseen && !cut))
+        {
+            _endObjMissing[found] = offset;
+        }
+        else if (state == EndObjState.Present)
+        {
+            _endObjMissing.Remove(found);
         }
     }
 
@@ -1606,34 +1768,62 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         return true;
     }
 
-    private PdfObject LoadCompressedObject(PdfObjectId id, XRefEntry entry)
+    private PdfObject? LoadCompressedObject(PdfObjectId id, XRefEntry entry)
     {
-        var contents = GetObjectStream(entry.ObjectStreamNumber);
+        var contents = GetObjectStream(entry.ObjectStreamNumber, id.Number, out var notYet);
 
         if (contents is null)
         {
-            return PdfNull.Instance;
+            // A stream that cannot be read yet, because its own dictionary is being read, says nothing of the
+            // object: it is read again when asked again.
+            return notYet ? PdfNull.Instance : null;
         }
 
         return contents.Parse(entry.IndexInObjectStream, id.Number, this, _diagnostics);
     }
 
-    private ObjectStreamContents? GetObjectStream(int number)
+    /// <summary>
+    /// Gives what object stream <paramref name="number"/> holds, decoding it the first time, or null when it cannot
+    /// serve its objects — for good, or, when <paramref name="notYet"/> says so, only while its own dictionary is
+    /// being read.
+    /// </summary>
+    private ObjectStreamContents? GetObjectStream(int number, int wanted, out bool notYet)
     {
+        notYet = false;
+
         if (_objectStreams.TryGetValue(number, out var cached))
         {
             return cached;
         }
 
-        // Recorded before loading: an object stream that contains itself would otherwise recurse.
-        _objectStreams[number] = null;
+        // The stream's own dictionary is being read, and names an object the stream holds — its /Length —: the
+        // stream cannot be read yet, and will be once its dictionary is (#51). Nothing is recorded.
+        if (_loading.Contains(number))
+        {
+            _reentries++;
+            notYet = true;
+            ReportObjectStreamNeedsItself(number, wanted);
+            return null;
+        }
 
-        var contents = GetObject(new PdfObjectId(number)) is PdfStream stream
-            ? ObjectStreamContents.TryCreate(stream, _diagnostics)
-            : null;
+        // Marked while it is decoded: an object it holds, asked for meanwhile, reads as null rather than
+        // recursing, and is not kept as null.
+        _objectStreamsLoading.Add(number);
 
-        KeepObjectStream(number, contents);
-        return contents;
+        try
+        {
+            // What decoding without an object the stream holds gives is all the stream can give, and is kept.
+            var contents = GetObject(new PdfObjectId(number)) is PdfStream stream
+                ? ObjectStreamContents.TryCreate(stream, _diagnostics)
+                : null;
+
+            KeepObjectStream(number, contents);
+            return contents;
+        }
+        finally
+        {
+            _objectStreamsLoading.Remove(number);
+        }
     }
 
     /// <summary>
@@ -1808,6 +1998,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     private ExceptionDispatchInfo? ExpandObjectStreams()
     {
+        _expandingObjectStreams = true;
+
+        try
+        {
+            return ExpandEachObjectStream();
+        }
+        finally
+        {
+            _expandingObjectStreams = false;
+        }
+    }
+
+    private ExceptionDispatchInfo? ExpandEachObjectStream()
+    {
         var numbers = new List<int>(_xref.Entries.Keys);
         ExceptionDispatchInfo? reached = null;
 
@@ -1819,6 +2023,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             }
 
             ObjectStreamContents? contents;
+            var reentries = _reentries;
 
             try
             {
@@ -1841,7 +2046,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 continue;
             }
 
-            KeepObjectStream(number, contents);
+            // Contents decoded without an object the index did not hold yet are decoded again when first asked for.
+            if (reentries == _reentries)
+            {
+                KeepObjectStream(number, contents);
+            }
 
             for (var index = 0; index < contents.Count; index++)
             {
@@ -2015,7 +2224,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return new ObjectStreamContents(data, numbers, offsets, first);
         }
 
-        public PdfObject Parse(int index, int expectedNumber, IPdfObjectSource source, PdfDiagnostics diagnostics)
+        /// <summary>Parses the object the stream holds under <paramref name="expectedNumber"/>, or gives null when it holds none.</summary>
+        public PdfObject? Parse(int index, int expectedNumber, IPdfObjectSource source, PdfDiagnostics diagnostics)
         {
             if (index < 0 || index >= _numbers.Length)
             {
@@ -2023,7 +2233,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 index = IndexOf(expectedNumber);
                 if (index < 0)
                 {
-                    return PdfNull.Instance;
+                    return null;
                 }
             }
 
@@ -2032,7 +2242,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 var corrected = IndexOf(expectedNumber);
                 if (corrected < 0)
                 {
-                    return PdfNull.Instance;
+                    return null;
                 }
 
                 diagnostics.Repair(
@@ -2046,7 +2256,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             if (start < 0 || start >= _data.Length)
             {
-                return PdfNull.Instance;
+                return null;
             }
 
             var parser = new PdfObjectParser(_data, 0, source, diagnostics, streamData: null);
