@@ -13,19 +13,22 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   report and `file.eof-missing` — is done, merged with [#29](https://github.com/AdCodicem/AdCodicem.Pdf/pull/29) on
   2026-09-26 ([#57](https://github.com/AdCodicem/AdCodicem.Pdf/issues/57), closed). The three reader debts it
   waited on — T32, T25 and T27 — are fixed, merged with [#31](https://github.com/AdCodicem/AdCodicem.Pdf/pull/31).
-  Slice 2 — the file and cross-reference rules, twenty of them — is done on `claude/prochaine-tache-0f0cxl`,
-  its pull request closing [#58](https://github.com/AdCodicem/AdCodicem.Pdf/issues/58); severities follow
-  [ADR 45](adr/0045-a-findings-severity-says-whether-the-file-reads-as-written.md), accepted with it. Slices 3
+  Slice 2 — the file and cross-reference rules, twenty of them — is done, merged with
+  [#110](https://github.com/AdCodicem/AdCodicem.Pdf/pull/110) on 2026-09-28
+  ([#58](https://github.com/AdCodicem/AdCodicem.Pdf/issues/58), closed); severities follow
+  [ADR 45](adr/0045-a-findings-severity-says-whether-the-file-reads-as-written.md), accepted with it. The
+  project's coverage and Codecov's rules ([#115]) are done on `claude/prochaine-tache-0f0cxl`. Slices 3
   to 6 are issues [#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59) to
   [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 1,661 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
-  corpus's fetcher + 26 for the roadmap's mirror on GitHub, on slice 2's branch. With the remote corpus:
+- **Tests**: 1,728 unit (8 skipped by design) + 788 integration (skipped without Docker) + 23 for the remote
+  corpus's fetcher + 26 for the roadmap's mirror on GitHub, on #115's branch. With the remote corpus:
   `Remote corpus` run 10, on slice 2's branch with the object stream fix and all 242 documents, passed 3,183 unit
   (65 skipped by design, on documents recorded as unsupported until M02 or #47) and 1,875 integration tests.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial), 99.0 % of
-  slice 2's patch — what is left is defensive: fallbacks for values the reader never records — and 93.5 % of the
-  project.
+  `src/`, up from 93.6 %. The 28 lines left are defensive, or branches the compiler and the coverage tool count
+  apart; the journal of 2026-09-28 lists them. `codecov.yml` asks 95 % of each patch, and lets the project drop by
+  half a point at most.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -90,13 +93,8 @@ M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29); T32,
 before its cross-reference and object-graph rules, merged with #31. Its progress is the
 [M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestone/3) on GitHub. In the order its debts impose:
 
-1. Slice 2's pull request ([#110](https://github.com/AdCodicem/AdCodicem.Pdf/pull/110), closing [#58]): review
-   and merge; `Remote corpus` run 9 confirmed the nine remote documents this session could not fetch.
-2. The project's coverage and Codecov's rules ([#115]), in a pull request of their own once #110 is merged:
-   `codecov.yml` as the maintainer decided it — project coverage lowered by at most half a point, 95 % of each
-   patch, `tests/` not measured —, the rule for what coverage work may remove written into `CLAUDE.md`, and the
-   files with the largest gaps covered where what they do can be tested.
-3. Slice 3 ([#59]) with [#51] in the object-graph rules, and the finding for a reference to an object the
+1. The project's coverage and Codecov's rules ([#115]): review and merge.
+2. Slice 3 ([#59]) with [#51] in the object-graph rules, and the finding for a reference to an object the
    file lacks, which T27 left to it; [#55] and [#56] before slice 4 ([#60]), whose stream rules check
    declared lengths and whether filters decode; slices 5 and 6 ([#61], [#62]). Each slice adds to the
    manifest's `findings` what its rules report, and every document is held to exactly its list.
@@ -105,6 +103,29 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-28 — The project's coverage, and Codecov's rules
+- **Settled with the maintainer.** `codecov.yml`: the project may lose half a point of coverage at most against
+  its base, each patch is 95 % covered, `tests/` is not measured. The rule for coverage work, now in `CLAUDE.md`
+  and `CONTRIBUTING.md`: code goes only when no input can reach it, never because no file of the corpus does; a
+  defensive branch stays, covered or not; 100 % is not the goal; a public member nothing calls is asked about.
+- **From 93.6 % to 99.0 % of `src/`**, as Codecov counts it on the committed corpus, with 67 new cases.
+  - The object model as a caller uses it: arrays and dictionaries edited in place, typed accessors, a loop of
+    references, UTF-16LE text, names, shared values, streams and exceptions (`ObjectModelTests`).
+  - The PNG predictors against libpng: an 8 by 6 RGB image written by ImageMagick 6.9.12 with libpng's adaptive
+    filtering — Sub, Up, Average and Paeth — and with none, decoded through `/FlateDecode` and `/Predictor 15`
+    to its exact pixels; the TIFF predictor at widths other than a byte.
+  - The reader on shapes no corpus file had: a stream of any kind, a cross-reference stream without a type
+    field, object stream headers wrong in four ways, a rebuild past the first megabyte, an entry past the end
+    of the file, object headers numbered 0 or beyond an `int`; the lexer, parser and filters at their edges.
+  - Dead code removed: `PdfLexer.Peek`, `PdfLexer.Length` and `PdfCharacters.IsDelimiter`, which nothing called.
+- **Left uncovered, on purpose.** The reader's fallbacks — an empty source (`Open` refuses it first), an offset
+  outside the file (its callers check), a rebuild asked for twice, a stream shorter on read than it said, a window
+  outside the source; the lexer's guard against a delimiter its switch does not claim, which keeps it from
+  looping should the switch change; the rules' fallbacks for values the reader never records; the parser's
+  end-of-stream check past its buffer; the `}` after `reached?.Throw()`, which the tool counts apart; and the
+  branches the compiler adds to a switch over strings or types. Every public member nothing called is kept and
+  now tested.
 
 ### 2026-09-27 — M02 slice 2: the file and cross-reference rules, and ADR 45
 - **Settled with the maintainer, one question at a time, before the rules were written.** Severity (first "an
