@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using AdCodicem.Pdf.Validation.Rules;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -63,7 +65,13 @@ public class FileRuleTests
 
     [Theory]
     [InlineData("%PDF-1.8", "The header names version 1.8, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-2.1", "The header names version 2.1, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-2.2", "The header names version 2.2, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-2.3", "The header names version 2.3, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     [InlineData("%PDF-2.4", "The header names version 2.4, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-2.5", "The header names version 2.5, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-2.6", "The header names version 2.6, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-3.0", "The header names version 3.0, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     [InlineData("%PDF-14", "The header names version 14, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     [InlineData("%PDF-", "The header names no version after %PDF-.")]
     public void A_header_that_names_no_version_of_pdf_is_a_warning(string header, string message)
@@ -141,6 +149,23 @@ public class FileRuleTests
 
         Single(Validate(file), PdfValidationRuleIds.FileStartXRefWrong).Message
             .Should().EndWith("which holds object 2, which is not a cross-reference stream.");
+    }
+
+    [Fact]
+    public void A_first_section_not_found_for_no_stated_reason_is_said_to_hold_none()
+    {
+        // The reader says why every section it does not find is not there; the rule, given a record no file produces
+        // that says nothing, still writes a sentence.
+        var file = PdfTemplate.Build(PdfTemplate.Sound);
+        using var document = PdfDocument.Open(file);
+        document.Reader.Structure.Sections[0].State = XRefSectionState.NotFound;
+        var context = new ValidationContext(document, capacity: 16);
+
+        new StartXRefWrongRule().Check(context);
+
+        var finding = context.ToReport(ValidationProfile.Structural).Findings.Should().ContainSingle().Which;
+        finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "startxref"));
+        finding.Message.Should().Be($"startxref gives offset {PdfTemplate.OffsetOf(file, "xref\n")}, which holds no cross-reference section.");
     }
 
     [Fact]
@@ -288,6 +313,17 @@ public class FileRuleTests
     }
 
     [Fact]
+    public void A_root_written_as_a_stream_in_the_trailer_is_named_a_stream()
+    {
+        // A stream is an indirect object (ISO 32000-1, 7.3.8.1), but the parser takes a dictionary followed by stream
+        // for one wherever it is written, the trailer included.
+        var file = PdfTemplate.SoundWith("/Root 1 0 R", "/Root << /Length 0 >>\nstream\n\nendstream");
+
+        Single(Validate(file), PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root is a stream written in the trailer, not a reference to the document catalog. The reader took object 1, which is one, for the catalog.");
+    }
+
+    [Fact]
     public void A_file_whose_root_names_no_catalog_and_holds_none_says_so()
     {
         var file = PdfTemplate.SoundWith("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Outlines >>");
@@ -332,6 +368,27 @@ public class FileRuleTests
         finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "\n4 0 obj") + 1);
         finding.Message.Should().Be(
             "The trailer's /Root is a string, not a reference to the document catalog. The reader took object 1, which is one, for the catalog.");
+    }
+
+    [Fact]
+    public void A_missing_root_with_no_section_to_locate_the_trailer_is_reported_at_the_document()
+    {
+        // A trailer the chain gave comes with the section that holds it; the rule, given a structure no file produces
+        // — a chain read without a section, the index rebuilt from a file without startxref —, locates the finding at
+        // the document rather than at no offset.
+        using var document = PdfDocument.Open(PdfTemplate.SoundWith("startxref\n{xref:1}\n", string.Empty));
+        var structure = document.Reader.Structure;
+        structure.Sections.Should().BeEmpty();
+        structure.ChainRead = true;
+        structure.TrailerRead = true;
+        structure.RootUsable = false;
+        var context = new ValidationContext(document, capacity: 16);
+
+        new RootInvalidRule().Check(context);
+
+        var finding = context.ToReport(ValidationProfile.Structural).Findings.Should().ContainSingle().Which;
+        finding.Location.IsDocument.Should().BeTrue();
+        finding.Message.Should().Be("The trailer has no /Root. No object of the file is a catalog.");
     }
 
     [Theory]

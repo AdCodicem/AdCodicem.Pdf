@@ -62,6 +62,21 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void An_object_whose_whole_value_is_a_reference_to_nothing_is_reported_under_its_value()
+    {
+        var template = PdfTemplate.Sound
+            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Outlines 4 0 R", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", "4 0 obj\n9 0 R\nendobj\nxref\n0 5\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 5", StringComparison.Ordinal);
+
+        var finding = Single(Validate(PdfTemplate.Build(template)), PdfValidationRuleIds.ObjectReferenceMissing);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Message.Should().Be("Object 4 refers to object 9 0 under its value, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
     public void A_root_naming_nothing_is_the_file_rule_s_alone()
     {
         var report = Validate(PdfTemplate.SoundWith("/Root 1 0 R", "/Root 9 0 R"));
@@ -342,6 +357,32 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void An_object_stream_stored_in_another_that_needs_an_object_it_holds_is_reported_without_a_position()
+    {
+        // Object stream 10 is stored in object stream 11, whose /DecodeParms names object 5, which the index places in
+        // 10: reading 5 decodes 11, which needs 5. Stream 10 has no offset of its own to report.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(10, "<< /Type /ObjStm /N 1 /First 4 >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [10], compressObjectStream: true, objectStreamEntries: "/DecodeParms 5 0 R");
+
+        // The index's row for object 5, free as written, places it at index 0 of object stream 10.
+        var text = Encoding.Latin1.GetString(file);
+        var rows = text.IndexOf("stream\n", text.IndexOf("/Type /XRef", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length;
+        file[rows + (5 * 7)] = 2;
+        file[rows + (5 * 7) + 4] = 10;
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+        var diagnostic = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamSelfReference).Which;
+        diagnostic.Message.Should().Be(
+            "Object stream 10 needs object 5, which it holds, to be read: the object reads as null while the stream is decoded, and the stream is decoded without it.");
+        diagnostic.Position.Should().Be(-1);
+    }
+
+    [Fact]
     public void A_parameter_array_naming_an_object_the_stream_holds_is_circular()
     {
         Single(Validate(ObjectStream("/DecodeParms [5 0 R]", "<< /Predictor 1 >>")), PdfValidationRuleIds.XRefObjectStreamCircular)
@@ -376,6 +417,25 @@ public class ObjectRuleTests
         report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue("object 7's stream is not in the file");
     }
 
+    [Fact]
+    public void Object_streams_a_rebuild_during_the_walk_no_longer_places_are_still_reported_circular()
+    {
+        // Reading object stream 30, which is not where its entry says, rebuilds the index once 7 and 8 were read: the
+        // rebuild cannot find 7, whose header has a comment in it, and places 8 in object stream 20. Only because the
+        // walk reads the index a rebuild changes under it (#128) are 7 and 8 located this way: once it reads the index
+        // the file gave, this case goes, and the arms of Location it covers can no longer be reached.
+        using var document = PdfDocument.Open(RebuiltAfterTwoObjectStreams());
+
+        var dependencies = ObjectStreamDependencies.Run(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefRebuilt);
+        dependencies.CircularStreams.Should().BeEquivalentTo([7, 8]);
+        dependencies.Circular.Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(7), new PdfObjectId(8));
+        dependencies.Circular.Select(finding => finding.Message).Should().Equal(
+            "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.",
+            "Object stream 8 needs object 15, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+    }
+
     [Theory]
     [InlineData("/Type /Catalog /Names [/Ok /A#00]", "Object 1 holds the name /A#00, under /Names[1], and a name cannot contain a null character.")]
     [InlineData("/Type /Catalog /X << /Y 1 >> /Z [1 2] /Names [/A#00]", "Object 1 holds the name /A#00, under /Names[0], and a name cannot contain a null character.")]
@@ -384,6 +444,32 @@ public class ObjectRuleTests
     {
         Single(Validate(PdfTemplate.SoundWith("/Type /Catalog", catalog)), PdfValidationRuleIds.ObjectNameNullCharacter).Message
             .Should().Be(message);
+    }
+
+    [Fact]
+    public void A_name_with_a_null_character_in_the_trailer_is_found_past_the_keys_naming_sections()
+    {
+        // The update's trailer gives /Prev and /XRefStm, the keys that name sections, before /Kind: the search passes
+        // over them as the walk does, so the name it reports is the one under /Kind, not the one under /XRefStm.
+        var file = PdfTemplate.Build(PdfTemplate.Sound + """
+            4 0 obj
+            (an update)
+            endobj
+            xref
+            4 1
+            {row:4}
+            trailer
+            << /Size 5 /Root 1 0 R /Prev {xref:1} /XRefStm /A#00 /Kind /B#00 >>
+            startxref
+            {xref:2}
+            %%EOF
+
+            """);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.ObjectNameNullCharacter);
+
+        finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "trailer", occurrence: 2));
+        finding.Message.Should().Be("The trailer holds the name /B#00, under /Kind, and a name cannot contain a null character.");
     }
 
     [Fact]
@@ -484,6 +570,61 @@ public class ObjectRuleTests
         }
 
         Write($"12 0 obj\n<< /Type /XRef /Size 13 /W [1 4 2] /Root 1 0 R /Length {rows.Count} >>\nstream\n");
+        file.Write(rows.ToArray());
+        Write($"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n");
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// Object streams 7 and 8, each needing the first object it holds, their headers written <c>7 0 %x</c> then
+    /// <c>obj</c> on the next line — which the reader reads where the index places them, and a rebuild does not find —;
+    /// object stream 20, which no entry names and which lists object 8; and object stream 30, whose entry leads nowhere.
+    /// The index is a cross-reference stream, object 32.
+    /// </summary>
+    private static byte[] RebuiltAfterTwoObjectStreams()
+    {
+        using var file = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+
+        void Write(string text) => file.Write(Encoding.Latin1.GetBytes(text));
+
+        void WriteObjectStream(int number, string header, string objects, string entries)
+        {
+            offsets[number] = file.Position;
+            var data = header + objects;
+            Write($"{number} 0 %x\nobj\n<< /Type /ObjStm /N 2 /First {header.Length} {entries} /Length {data.Length} >>\nstream\n{data}\nendstream\nendobj\n");
+        }
+
+        Write("%PDF-1.5\n");
+        offsets[1] = file.Position;
+        Write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        offsets[2] = file.Position;
+        Write("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        WriteObjectStream(7, "5 0 6 19 ", "<< /Predictor 1 >> << /Title (six) >>", "/DecodeParms 5 0 R");
+        WriteObjectStream(8, "15 0 16 19 ", "<< /Predictor 1 >> << /Title (sixteen) >>", "/DecodeParms 15 0 R");
+        Write("20 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 9 >>\nstream\n8 0 << >>\nendstream\nendobj\n");
+
+        var xref = file.Position;
+        var rows = new List<byte>();
+
+        for (var number = 0; number <= 32; number++)
+        {
+            var (type, field2, field3) = number switch
+            {
+                1 or 2 or 7 or 8 => (1, offsets[number], 0),
+                5 or 15 => (2, number == 5 ? 7L : 8L, 0),
+                6 or 16 => (2, number == 6 ? 7L : 8L, 1),
+                30 => (1, 1L, 0),
+                31 => (2, 30L, 0),
+                32 => (1, xref, 0),
+                0 => (0, 0L, 65535),
+                _ => (0, 0L, 0),
+            };
+
+            rows.AddRange([(byte)type, (byte)(field2 >> 24), (byte)(field2 >> 16), (byte)(field2 >> 8), (byte)field2, (byte)(field3 >> 8), (byte)field3]);
+        }
+
+        Write($"32 0 obj\n<< /Type /XRef /Size 33 /W [1 4 2] /Root 1 0 R /Length {rows.Count} >>\nstream\n");
         file.Write(rows.ToArray());
         Write($"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n");
         return file.ToArray();
