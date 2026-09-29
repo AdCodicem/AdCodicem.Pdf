@@ -12586,7 +12586,8 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "stream.length-invalid"
         ],
         "findings": [
           "xref.entry-broken"
@@ -12635,7 +12636,8 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "stream.length-invalid"
         ],
         "findings": [
           "xref.entry-broken"
