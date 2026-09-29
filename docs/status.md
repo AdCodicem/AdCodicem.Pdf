@@ -27,20 +27,21 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#123] moved to M20. Since 2026-09-29 every milestone ends with an adversarial review by a session that worked on
   none of it ([ADR 46](adr/0046-every-milestone-ends-with-an-adversarial-review.md), `docs/milestone-review.md`):
   M02's is its slice 7, [#137], after the threat model's first version ([#135]) and M01's review after the fact
-  ([#136]).
+  ([#136]). [#55] and [#120] are fixed on `claude/m02-stream-length-e19dlq`, and close with its merge.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,279 unit (2 skipped by design) + 1,124 integration (skipped without Docker) + 23 for the remote
-  corpus's fetcher + 43 for the roadmap's mirror on GitHub, on `claude/m02-docs-catch-up-e19dlq`. With the 233 remote
-  documents fetched here: 3,927 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
+- **Tests**: 2,359 unit (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
+  wrong, which has no document without it) + 1,156 integration (skipped without Docker) + 23 for the remote corpus's
+  fetcher + 43 for the roadmap's mirror on GitHub, on `claude/m02-stream-length-e19dlq`. With the 233 remote
+  documents fetched here: 4,031 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
   until [#47], which every other test now holds to their expectations, and the private manifest this container
-  lacks. The integration suite did not run here (no Docker); CI and `Remote corpus` run it.
-- **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the
-  generated Arlington tables left out), 99.6 % of `src/` — 4,493 of 4,511 lines —, up from 98.9 % on `main`. The 18
-  left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private, or of a private
-  type, which no input reaches — nine in `ArlingtonWalk`, a defensive branch of the lexer —, a `?.` on an index
-  never null where it is read, a switch's default arm, and a line the compiler puts after a call that never returns;
-  the journal of 2026-09-29 lists them. `codecov.yml` asks 95 % of each patch, and lets the project drop by half a
-  point at most; the aim is 100 %.
+  lacks —, and 2,885 integration. The integration suite did not run here (no Docker); CI and `Remote corpus` run it.
+- **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
+  Arlington tables left out), 99.6 % of `src/` — 4,760 of 4,778 lines on `claude/m02-stream-length-e19dlq`, all 280 of
+  its patch among them, and 4,493 of 4,511 on `main`. The 18 left are those the rule of 2026-09-29 leaves
+  (`CLAUDE.md`, *Coverage*): members that are private, or of a private type, which no input reaches — nine in
+  `ArlingtonWalk`, a defensive branch of the lexer —, a `?.` on an index never null where it is read, a switch's
+  default arm, and a line the compiler puts after a call that never returns; the journal of 2026-09-29 lists them.
+  `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `d03a864` (CI run 352), and Release run 42 on it. `Remote corpus` run 12, on
   2026-09-29, on slice 3 with the flaky allocation test fixed (the commit `main` then took as `faef79c`), fetched all
   242 remote documents and passed its acceptance tests and referee checks: the two GitHub had refused a session
@@ -92,6 +93,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Opening and validating under the structural profile | synthetic, 1000 pages | 6.2 ms | 2.6 MB |
 | Decoding a whole Flate content stream | 4 MB decoded, about 330 KB encoded | 8.3 ms | 13.1 MB |
 | Decoding the same stream without its checksum, or without its last five bytes | 4 MB decoded | 11.7 ms | 13.1 MB |
+| Indexing, then parsing every page's content stream, each past the reader's first window | synthetic, 1000 pages of 16 KB | 3.9 ms from memory, 7.1 ms from a file | 2.0 MB |
+| The same, each stream declared 2 bytes too long and searched for its `endstream` | synthetic, 1000 pages of 16 KB | 6.4 ms from memory, 10.3 ms from a file | 2.8 MB |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content.
 The validation rows are slice 3's thirty-eight rules. The first measures the rules alone on a document whose objects
@@ -105,8 +108,19 @@ stream's data read. Slice 3's first thirty-four rules took 716 µs and 308 KB on
 Indexing costs roughly 200 bytes per object, whatever the objects weigh. The third row is asserted as a
 budget in CI (`CorpusReadingTests`), so an allocation regression fails the build. A stream that ran out is
 read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams only; the
-second reading keeps nothing. What a 4 MB decode allocates is the output doubling towards its size, T28's
-and M23's business.
+second reading keeps nothing. What a 4 MB decode allocates is the output doubling towards its size, T28's and
+M23's business. The last two rows are [#55]'s (`StreamLengthBenchmarks`, medium job, before the check and with
+it). A stream past the 8 KB window is checked by asking the file for the 64 bytes after its declared length.
+From memory that is a copy, and costs a valid document nothing measurable: 4.4 ms before, 3.9 ms with it,
+2.02 MB both. From a file, the way the library recommends opening a large document, it is one read more for each
+stream: 6.4 → 7.1 ms for the thousand, about 0.7 µs a stream, allocating nothing more. A length Distiller 3
+wrote two bytes too long sends the reader searching the 8 KB of data past the window for each stream —
+4.1 → 6.4 ms from memory, 6.8 → 10.3 ms from a file, 2.02 → 2.82 MB for a report and a record each. Inside the
+window the check is what it was, but a wrong length now costs its record and its mark of one report: about 440
+bytes more allocated per stream (the 4 KB streams, 2.20 → 2.64 MB), and about 180 bytes kept for the life of the
+document — 50,000 such streams, read with a cache of 64 objects, keep 9.1 MB more. A sound stream allocates and
+keeps nothing more. The 4 KB streams take 3.3 → 3.5 ms from memory and 5.2 → 5.3 ms from a file, 3.7 → 3.9 and
+6.0 → 6.0 ms when each length is wrong, within the measurement's error.
 
 ## Next concrete step
 
@@ -116,14 +130,14 @@ filed under it has; the maintainer settled on 2026-09-29 that each is paid in M0
 One pull request per batch, each design question put to the maintainer after measuring, in this order:
 
 1. The review of 2026-09-29 recorded, the specification brought up to date, the two [#47] documents held to every
-   test but the laziness one, and the damaged trees' page counts held to qpdf: `claude/m02-docs-catch-up-e19dlq`.
-2. [#55] and [#120], one path in `PdfObjectParser.ReadStream`: a stream's `/Length` checked past the parser's window,
-   and the form of a `/Length` that could not be read said as it is. Measured on the whole corpus first; then the
-   bound of the search for `endstream` (ADR 34) and what the reader records per stream, for slice 4, go to the
-   maintainer.
+   test but the laziness one, and the damaged trees' page counts held to qpdf — done, merged with [#133].
+2. [#55] and [#120], one path in `PdfObjectParser.ReadStream` — done on `claude/m02-stream-length-e19dlq`, after the
+   maintainer settled the bound of the search for `endstream` and what the reader records per stream (journal of
+   2026-09-29): a stream's `/Length` checked past the parser's window, and a `/Length` that gives no length said as
+   the file wrote it.
 3. [#56]: what a corrupt Flate stream decoded is kept, and a wrong checksum over whole data reported.
-4. The reader and validation debts: [#117], [#118], [#119], [#125] then [#126], [#128], [#129], [#132]; then [#107]
-   and [#111], each a new public rule whose name and severity the maintainer gives.
+4. The reader and validation debts: [#117], [#118], [#119], [#125] then [#126], [#128], [#129], [#132], [#134];
+   then [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -143,6 +157,92 @@ not a fault of the file: the rules on it report at most, as information, that it
 
 ## Journal
 
+### 2026-09-29 — A stream's length checked past the window ([#55]), and said as the file wrote it ([#120])
+- **The question.** A stream whose data ran past the 8 KB window the reader parses an object through had its `/Length`
+  taken as declared, and a wrong one cut the data short or took in what followed, in silence; a `/Length` that gave no
+  length was reported as "-1 bytes". Measured first on the whole corpus by three independent views, then settled with
+  the maintainer: ask the file whether `endstream` follows the declared length; when it does not, take the first
+  `endstream` after the data's start, searched no further than the next object either index places — the one the file
+  wrote and the one the reader reads with, both needed, since a rebuilt index lacks what a zeroed stretch erased and
+  an index rebuilt at opening is the only one — or the end of the file, and keep the declared length when there is
+  none; inside the window, what is read does not change. The bound is no guard (ADR 34): a valid file's `endstream`
+  follows its length, as it does for the 35,873 confirmed streams of the corpus, so only a damaged file is searched.
+- **The reader.** `PdfObjectParser` asks its provider for the 64 bytes after a declared length past the window — which
+  also say whether `endobj` follows the `endstream`, so that such an object's end is seen at last —, and for a search
+  when they hold no `endstream`: the window's part first, then the file through windows the source lends, always
+  advancing, allocating nothing per call. Each index keeps its offsets sorted once a search asks — sorted whole, in
+  place, the first time, then in runs merged as a binary counter carries —, so that a lookup costs a logarithm of the
+  index and one it grows between lookups costs what it adds (`SortedOffsets`). The stream's own entries are no next
+  object: an entry that missed its object may place it inside its own data. The search runs once per stream — its
+  result is kept by where the data starts —, and a stream is reported once however often it is parsed again, after the
+  cache let it go or a rebuild: the mark is set when a reading is kept, so a report a dropped reading made is made
+  again by the next. Inside the window too: PDFBox's zeroed object stream was reported once more each time it was
+  parsed. A stream first read before a rebuild of the index keeps what that search found, the bound the index gave
+  then; one first read after it has the rebuilt index's: what a damaged stream holds can depend on which objects were
+  read first, the price of one search per stream, pinned by a test. The searches of a document read four times the
+  file at most (`EndStreamSearchPasses`, no guard under ADR 34): searches of objects that lie apart read disjoint
+  stretches, twice the file at most across a rebuild, and only objects that overlap — one's header inside another's
+  dictionary — share a stretch each of their searches would read again; past the bound, a stream keeps its declared
+  length without a search, and says so. The `/Length` is read for its form — absent, not an integer, out of range, a
+  reference to an object the file lacks or that could not be read (a cycle, an object stream being decoded), or to a
+  non-integer —, and each form has its message; a stream `endobj` follows without an `endstream` no longer says it ran
+  past the end of the file. What the reader found of each stream whose length is not confirmed is recorded per object,
+  beside `endobj` and the limits (`TryGetStreamLengthFault`), for slice 4's length rule; a sound file records nothing.
+- **Measured on the whole corpus** (410 documents, the 233 remote ones fetched), before and after, every object read,
+  then the validator: `stream.length-invalid` 81 → 96 reports, seven documents changed. The count before depended on
+  how often a stream was parsed — PDFBox's zeroed object stream was reported two to five times in the readings the
+  reviews made —, where each stream is now reported once. Of the sixteen streams of six documents whose length is
+  wrong past the window, fifteen of five documents now read to their `endstream`: DEA-CFR's objects 10, 13 and 64,
+  IBM's QMF manual's 93 and 169, the ORNL PowerPoint's 144, SAMHSA's 27, 30, 35, 45, 50, 55, 60 and 72, and the Atypon
+  article's 49, 1,647 bytes where it declares 62,065. The sixteenth, PDFium's object 695, keeps its 202,154 declared
+  bytes and says no `endstream` follows them before object 696, which the index as written places 21 bytes past them.
+  The twelve reports of [#120] — iPRES's `61.5` and missing `/Length`, the tiff2pdf scans' `/Length` naming an image or
+  the linearization dictionary — now say what the file wrote. `stream.truncated` is unchanged in number; iPRES's
+  missing `endstream` says what it takes. No finding changed: no `object.endobj-missing` appeared with what the reader
+  now sees past the window. The review's fixes changed none of this: the survey after them is identical, bytes read too.
+- **Held to qpdf.** `StreamLengthRefereeTests` compares the length taken for every stream reported with qpdf's
+  `--show-object --raw-stream-data`, one end-of-line off qpdf's, every diagnostic kept — IBM's manual reports 4,013
+  relocated objects before two of its streams, which the default capacity of 1,000 dropped. Run here with qpdf 11.9.0
+  outside a container, as the test would: 85 streams compared, all agreeing but PDFium's 695, named with its reason —
+  qpdf takes object 778's `endstream`, 3.3 MB on. The Atypon article's 49 is not compared, qpdf reading another copy
+  of it; PDFBox's 417 agrees where both take object 441's `endstream`, the search inside the window being unbounded by
+  the maintainer's choice. `FlateRefereeTests` loses its one known exception, SAMHSA's object 27. Two documents now
+  require `stream.length-invalid` in the manifest: the Atypon article and PDFium's report, whose only length fault is
+  past the window.
+- **Cost**, open and every object read from a file, counted: the 1000-page journal reads the same 16,547,278 bytes in
+  the same 2,011 reads, no stream of it running past the window; DEA-CFR 38,505 bytes more (992,128 → 1,030,633) in 9
+  more reads (95 → 104), IBM's manual 168,962 more of 73.0 MB in 16 more (12,399 → 12,415), SAMHSA 63,114 more in 24
+  more (96 → 120), PDFium's report 215,586 more of 61.8 MB in 337 more (1,467 → 1,804). The times are within this
+  shared machine's noise: least of 40 runs over four alternating series, the journal took 6.6 to 7.6 ms before and 6.0
+  to 7.0 after, IBM's manual 20.1 to 21.9 and 21.0 to 21.5; SAMHSA's and PDFium's moved either way from one series to
+  the next. `StreamLengthBenchmarks` is in *Current measurements*, from memory and from a file.
+- **The review.** Four reviews of the branch — the corpus, the invariants against hostile files, the cost, the tests
+  and documents — found the reader right on the corpus, and these, fixed before it merges:
+  - The searches were bounded one by one, not in total: streams whose objects overlap each searched the same stretch
+    to the end of the file — 50 nested streams in a 20 MB file read 1.0 GB, 200 of them 4.0 GB. Now 100 MB, and
+    102 MB, in 0.1 s: the bound above.
+  - A stream relocated from an entry inside its own data was bounded by that entry, and reported "no `endstream`
+    before the next object" of itself; its own entries are now stepped over.
+  - The first search on a large index sorted its offsets through a list and two copies: a million entries allocated
+    32.8 MB and kept 16.4 MB more. Now it allocates and keeps 8.0 MB: the offsets once, sorted in place.
+  - The benchmark opened its document from memory only, where the new read is a copy; from a file it is a read of its
+    own, which costs a valid document about 0.7 µs a stream, not nothing.
+  - The next object bounds only a declared length past the window; the user documentation said it bounded a `/Length`
+    that gives none, or a declared length inside the window, which take the first `endstream` wherever it lies, as
+    before. It now says what the code does.
+  - The header's offset in the bound, the edge between two reads of the search, an `endstream` glued to what follows,
+    and what follows an `endstream` the search found had no test that failed when they were broken; they have.
+- **Tests**: 76 unit tests on synthetic files — every case above, the window's edge, a stream holding an embedded
+  PDF's `endstream`, the written index against the rebuilt one, the end of the file as the bound, junk before the
+  header, the edge between two reads of the search, each form of `/Length`, the record, one report and one search
+  after the cache let the stream go and after a rebuild, what a stream first read before a rebuild keeps, a report a
+  dropped reading made, and hostile values: an offset past the file, before the data or inside the stream's own data,
+  a million entries, 16 MB of data without `endstream` searched with nothing allocated for it, streams that share a
+  stretch, a source that shrinks —, DEA-CFR's three streams pinned, and a theory over the remote streams. Every line
+  the patch changes in `src/` is covered on the committed corpus, 280 of them, as Codecov counts it.
+- **Found on the way**: SAMHSA's object 27, now read whole, has a wrong Adler-32 checksum; the reader takes that for
+  corruption and loses up to 64 KB decoded before it — 126,219 bytes kept where the data holds 174,803, and 171,005 were
+  kept while it read 26 bytes short. [#56], next, keeps them; the case is named on it.
 ### 2026-09-29 — Every milestone ends with an adversarial review
 - **The question.** The maintainer asked for a final step to every milestone, one that checks the choices its
   sessions made are consistent with each other. Each choice below was put to them and settled.
@@ -784,6 +884,8 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#128]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/128
 [#129]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/129
 [#132]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/132
+[#133]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/133
+[#134]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/134
 [#135]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/135
 [#136]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/136
 [#137]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/137

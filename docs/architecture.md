@@ -65,7 +65,10 @@ Diagnostics/  PdfDiagnostics: anomalies, repairs, guards reached, conformance lo
 Validation/   PdfValidator, the rule engine and the structural profile: findings with stable rule
               identifiers, a severity, a location and a remedy hint (ADR 36, severities ADR 45). The
               structural rules read the reader's internals: what it recorded of the file's structure,
-              the file's own index, and whether an object the index holds could be produced. The
+              the file's own index, whether an object the index holds could be produced, and, per
+              object read, whether endobj follows it and whether a limit cut it. The reader also
+              records what it found of a stream whose declared length the file did not confirm, for
+              the stream slice's length rule — only such streams, so a sound file records nothing. The
               page tree and the objects the trailer reaches are walked once per validation, and the
               walk of the page tree is the one M06's page API is to build on. Arlington/ holds the
               object-shape tables, generated from the Arlington PDF Model by tools/AdCodicem.Pdf.Arlington
@@ -93,7 +96,15 @@ separate types, separate severity scales, and vocabularies that never share a co
    avoids reparsing hot objects (the page tree, shared resources) without ever retaining the whole document.
 4. **Streams** — stream data is neither read nor decoded until the caller asks, and then decodes under the
    limits of the document it came from; a stream built in memory decodes under the defaults. A stream copied
-   from one document to another travels **encoded**, with no decompress/recompress cycle.
+   from one document to another travels **encoded**, with no decompress/recompress cycle. Its declared
+   length is checked when it is parsed, against the `endstream` that must follow it: in the window the object
+   is parsed through, or by asking the file for the few bytes after it when the data runs past the window.
+   A length nothing confirms gives way to the first `endstream` after the data's start: found in the window,
+   grown up to the object's limit, when the declared length ends inside it or the `/Length` gives none;
+   searched in the file when a declared length runs past the window — once per stream, no further than the
+   next object an index places or the end of the file, the declared length kept when none lies before them,
+   and the searches of a document reading a few times the file at most. A stream the file ends inside runs
+   to the end of the file. Each is a diagnostic.
 5. **Guards** — every read sized by the file is bounded. A bound a valid file can exceed — a stream's
    decoded length, an object's length, a cross-reference section's length and their number, a trailer's
    length — is a `PdfReaderLimits` option, on by default and reported under its own `limit.*` code when
