@@ -48,8 +48,8 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `xref.section-missing` | A cross-reference section `/Prev` or `/XRefStm` names is neither there nor nearby; what only it indexed is found by rebuilding the index when it is asked for |
 | `xref.chain-cycle` | The chain of previous sections looped |
 | `xref.entry-out-of-range` | An entry pointed outside the file |
-| `stream.length-invalid` | A stream's declared length did not match where its data ended |
-| `stream.truncated` | A stream ran past the end of the file |
+| `stream.length-invalid` | A stream's `/Length` is not where its data ends: its `endstream` lies elsewhere and ends the data, or the `/Length` is no length — absent, not a non-negative integer, or naming an object the file lacks or that could not be read — and the `endstream` ends the data, or no `endstream` follows the declared length — none before the next object or the end of the file, or none looked for once the document's searches read as much as they may —, and that length is kept |
+| `stream.truncated` | A stream has no `endstream` before the end of the file, or before the `endobj` that follows its data, and its data runs to the end of the file |
 | `stream.self-reference` | An object stream's dictionary names an object the stream holds — as its `/Length`, `/N`, `/First`, a filter or a parameter —: that object reads as null while the stream is decoded, and the stream is decoded without it |
 | `syntax.unexpected-token` | A token was found where a value was expected |
 | `syntax.truncated-object` | The file ended in the middle of an object |
@@ -69,6 +69,35 @@ without its end or a stream without its `endstream`, is dropped with that attemp
 the object holds, not where a window happened to end. A stream whose declared length the file cannot hold
 is reported: as `stream.truncated` when the file ends inside its data, as `stream.length-invalid` when its
 `endstream` comes first.
+
+A stream's declared length is checked against the `endstream` that must follow it. When the data runs past
+the window, the reader asks the file for the few bytes after the declared length rather than reading the
+data, and they tell it whether `endobj` follows too. When no `endstream` is there, the first one after the
+start of the data ends it, and where it is looked for depends on where the declared length ends:
+
+- **Inside the window, or nowhere** — a `/Length` that gives no length —, the first `endstream` after the
+  data is taken wherever it lies, past the header of the next object too: the reader looks in the window,
+  and in a larger one while none is found, as far as `MaxObjectLength` allows.
+- **Past the window**, the reader searches the file from the start of the data up to the next object the
+  file's index places, as the file wrote it or as the reader rebuilt it, or up to the end of the file.
+  Stopping at the next object keeps a later object's `endstream` from ending this stream, which is what a
+  stretch of zeros that erased the end of one and the objects after it would otherwise do; when none lies
+  before it, the declared length is kept, and the report says so.
+
+The search is not one of the reader's limits: a valid file's `endstream` follows its length, so only a
+damaged file is searched, and once for each stream — a stream first read before the index is rebuilt keeps
+what that search found. What the searches of one document read together is bounded at a few times the
+file's length, which only a file whose objects overlap reaches, one's header inside another's dictionary;
+past it, a stream keeps its declared length without a search, and the report says so. Each stream is
+reported once, however often it is parsed again — after the cache let it go, or the index was rebuilt.
+
+```text
+Warning stream.length-invalid at 5501: The stream declared 19954 bytes but ended after 19952.
+Warning stream.length-invalid at 19901349: The stream declared 202154 bytes, and no endstream follows them before the next object, at 20103524; the declared length is kept.
+Warning stream.length-invalid at 316: The stream's /Length is a real number, 61.5, not a non-negative integer; its data ends after 68 bytes.
+Warning stream.length-invalid at 542577: The stream's /Length names object 18 0, which holds a stream, not a non-negative integer; its data ends after 5555 bytes.
+Warning stream.truncated at 315: The stream has no endstream before the endobj that follows its data; the 310 bytes to the end of the file are taken as its data.
+```
 
 Damaged stream data decodes as far as it goes, and what decoded is kept, with a report. A Flate stream whose
 tail was lost, as a file cut short or a producer that stopped writing leaves it, is a warning: what decoded
