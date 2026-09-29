@@ -20,13 +20,17 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   project's coverage and Codecov's rules ([#115]) merged with #116. Slice 3 — [#51], the object and page tree
   rules, the page in a finding's location, pages counted as qpdf's walk counts them, and the object-shape rules
   generated from the Arlington PDF Model (ADR 44, amended on 2026-09-28) — is done, merged with [#122] and [#124] on
-  2026-09-29 ([#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59), closed). The rest of `src/`, covered under
-  the rule of 2026-09-29, is on `claude/m02-tranche-3-m85asb`. Slices 4 to 6 are issues
-  [#60](https://github.com/AdCodicem/AdCodicem.Pdf/issues/60) to [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
+  2026-09-29 ([#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59), closed), and the rest of `src/` covered
+  after it. What remains was settled with the maintainer on 2026-09-29 (*Next concrete step*): every issue filed under
+  the milestone closes before it does — the reader debts [#55], [#56], [#117] to [#120], [#125] and [#126], the
+  validation debts [#107], [#111], [#128], [#129] and [#132], and slices 4 to 6, [#60] to [#62], in that order —;
+  [#123] moved to M20.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,273 unit (2 skipped by design) + 1,124 integration (skipped without Docker) + 23 for the remote
-  corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the 240 remote documents fetched here: 3,947 unit
-  (10 skipped by design, on the two documents recorded as unsupported until #47) and 2,683 integration tests.
+- **Tests**: 2,279 unit (2 skipped by design) + 1,124 integration (skipped without Docker) + 23 for the remote
+  corpus's fetcher + 43 for the roadmap's mirror on GitHub, on `claude/m02-docs-catch-up-e19dlq`. With the 233 remote
+  documents fetched here: 3,927 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
+  until [#47], which every other test now holds to their expectations, and the private manifest this container
+  lacks. The integration suite did not run here (no Docker); CI and `Remote corpus` run it.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the
   generated Arlington tables left out), 99.6 % of `src/` — 4,493 of 4,511 lines —, up from 98.9 % on `main`. The 18
   left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private, or of a private
@@ -34,13 +38,15 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   never null where it is read, a switch's default arm, and a line the compiler puts after a call that never returns;
   the journal of 2026-09-29 lists them. `codecov.yml` asks 95 % of each patch, and lets the project drop by half a
   point at most; the aim is 100 %.
-- **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
-  redeployed the preview's documentation.
+- **CI**: green on `main` at `d03a864` (CI run 352), and Release run 42 on it. `Remote corpus` run 12, on
+  2026-09-29, on slice 3 with the flaky allocation test fixed (the commit `main` then took as `faef79c`), fetched all
+  242 remote documents and passed its acceptance tests and referee checks: the two GitHub had refused a session
+  here are confirmed.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
-  88 of them out of their authors' archive (ADR 33), and tested every night by `Remote corpus`: run 5, on
-  `main` on 2026-09-26, and run 6, on the ADR 34 branch, both green. All 410 are described in
+  88 of them out of their authors' archive (ADR 33), and tested every night by `Remote corpus`, last green in run
+  12 on 2026-09-29. All 410 are described in
   `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.27`, previews from `main` through trusted publishing, 671 downloads on 2026-09-26. The
@@ -56,8 +62,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   Code-Review 0 (nothing has ever been approved by a second person), Branch-Protection 5 (T15), Maintained 0
   (the repository is younger than 90 days), Contributors 3, CII-Best-Practices 0 (T18), Signed-Releases
   unscored until a release exists (T19).
-- **Coverage**: 89.13 % on Codecov for `74ce382`, uploaded without a token. The Codecov GitHub App is installed
-  since 2026-09-27, and reports on each pull request as `codecov[bot]` (#40, formerly T14).
+- **Codecov**: uploaded without a token; the Codecov GitHub App is installed since 2026-09-27, and reports on each
+  pull request as `codecov[bot]` (#40, formerly T14).
 - **Repository settings**: the "Default" ruleset on `main` asks for a pull request with one code-owner
   approval and every review thread resolved, linear history, CodeQL and coverage of at least 61 %; it
   requires no status check by name, and only administrators bypass it. CodeQL runs as GitHub's default setup
@@ -101,23 +107,69 @@ and M23's business.
 
 ## Next concrete step
 
-M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29); T32, T25 and T27, the reader debts
-before its cross-reference and object-graph rules, merged with #31. Its progress is the
-[M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestone/3) on GitHub. In the order its debts impose:
+M02 — document validation (`docs/milestones/M02.md`), slices 1 to 3 done. Its progress is the
+[M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestone/3) on GitHub, which closes when every issue
+filed under it has; the maintainer settled on 2026-09-29 that each is paid in M02 rather than moved, [#123] aside.
+One pull request per batch, each design question put to the maintainer after measuring, in this order:
 
-1. The coverage of the rest of `src/`, on `claude/m02-tranche-3-m85asb`: review and merge. The nightly `Remote
-   corpus` run on `main` is still to confirm the two remote documents GitHub refused here.
-2. A key newer than the version the file declares, the fifth rule the model offers, left for later: [#123].
-3. [#55], [#56] and [#120] before slice 4 ([#60]), whose stream rules check declared lengths and whether filters
-   decode; slices 5 and 6 ([#61], [#62]), in that order; the reader debts slice 3 found, [#117] to [#120], before
-   M02 closes. The order is GitHub's too, as *blocked by* relationships, once the Tracking workflow's new job runs
-   from `main`. Each slice adds to the manifest's `findings` what its rules report, and every
-   document is held to exactly its list.
+1. The review of 2026-09-29 recorded, the specification brought up to date, the two [#47] documents held to every
+   test but the laziness one, and the damaged trees' page counts held to qpdf: `claude/m02-docs-catch-up-e19dlq`.
+2. [#55] and [#120], one path in `PdfObjectParser.ReadStream`: a stream's `/Length` checked past the parser's window,
+   and the form of a `/Length` that could not be read said as it is. Measured on the whole corpus first; then the
+   bound of the search for `endstream` (ADR 34) and what the reader records per stream, for slice 4, go to the
+   maintainer.
+3. [#56]: what a corrupt Flate stream decoded is kept, and a wrong checksum over whole data reported.
+4. The reader and validation debts: [#117], [#118], [#119], [#125] then [#126], [#128], [#129], [#132]; then [#107]
+   and [#111], each a new public rule whose name and severity the maintainer gives.
+5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
+   that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
+   content are left out and shown so, and the tools that referee both families.
+6. Slice 5 ([#61]) in three: security and the trailer's `/ID`, annotations and destinations, metadata — with
+   PDFDocEncoding ([#36]) and an XMP reader, or the `/Info`–XMP check moved, to settle first.
+7. Slice 6 ([#62]): the report's JSON, its schema and documentation, the budgets restated.
+8. The closing: a green `Remote corpus` run recorded here, M02.md's exit criteria ticked, the roadmap and
+   `features.json` set to done.
 
 A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 34) is the reader's limit,
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-29 — What remains of M02, settled with the maintainer
+- **The question.** What M02 still needs to be complete. The answer is an inventory of its open issues, exit
+  criteria, acceptance rows and tests required. Eight readers checked it against the code, the corpus and CI, one
+  area each, and a ninth tried to refute what they found and looked for what they missed. What remains is in *Next
+  concrete step*.
+- **Settled with the maintainer, one question at a time.**
+  - Every issue filed under the milestone closes before it does, and each is paid in M02: [#107], [#111], [#125]
+    and [#126] too, though no plan had named them.
+  - [#123], a key newer than the version a file declares, moves to M20. A newer key still conforms, and it is a
+    claim that bounds the version.
+  - The [#47] skip is narrowed.
+  - The Arlington overrides slice 3 made beyond the seven settled beforehand are confirmed, one by one against ISO
+    32000-1's text, and so are the two candidates the text did not support (ADR 44, *Reviewed on 2026-09-29*).
+  - The work goes one pull request per batch. Each design question goes to the maintainer after measuring.
+- **The two [#47] documents.** Opening them reads more than a quarter of the file, which fails the laziness test and
+  nothing else: with the marker lifted, every other acceptance test passes on them. Until now the marker made the
+  five validation theories skip them too. An entry's new `unsupportedTests` names the tests its reason concerns,
+  and only they skip the document. The schema requires the reason beside it, and a test fails on a name no test
+  has. Both now name the laziness test alone.
+- **What M02's rows name is now what the tests check.**
+  - `Documents_waiting_for_M02_are_now_diagnosed` missed eleven of the documents the acceptance rows name: the two
+    catalogs without `/Type`, and the iPRES file, cross-reference and object-shape cases. Each now earns its rule's
+    finding by its tag.
+  - `QpdfRefereeTests` counted pages on clean documents only; it now holds damaged ones too. It skips a tree qpdf
+    cannot walk, and a catalog the reader chose (`file.root-invalid`), which qpdf does not look for. Run here with
+    qpdf 11.9.0 on the damaged documents: 112 agree, five are trees qpdf cannot walk, and one is the Aspose file,
+    whose stale trailer names `/Info` as `/Root`.
+- **M02.md.**
+  - Slice 3 is marked done.
+  - The rule identifiers it gives as examples now exist.
+  - Its acceptance rows no longer speak of markers that are gone.
+  - The iPRES cases no slice had named have their verdicts: `t02-01-002` and `t02-03-010` here, and `t02-01-001`,
+    which has no catalog at all and earns nothing for it, in [#132].
+- **Found on the way**, filed as debt under M02: a document with no catalog earns no finding when its index was
+  rebuilt at opening ([#132]).
 
 ### 2026-09-29 — The rest of `src/` covered, two messages a direct test showed wrong, two tests that wavered
 - **Coverage.** `src/` goes from 98.9 % to 99.6 % as Codecov counts it (4,493 of 4,511 lines): 39 lines of the
@@ -690,3 +742,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#126]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/126
 [#128]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/128
 [#129]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/129
+[#132]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/132
