@@ -163,7 +163,9 @@ public class CorpusReadingTests
     public void Every_corpus_document_opens_as_its_manifest_describes(string file)
     {
         var entry = Corpus.Get(file);
-        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(Every_corpus_document_opens_as_its_manifest_describes)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
 
         if (entry.Expect.Encrypted)
         {
@@ -215,7 +217,9 @@ public class CorpusReadingTests
     public void Opening_does_not_read_the_content_of(string file)
     {
         var entry = Corpus.Get(file);
-        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(Opening_does_not_read_the_content_of)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
         Assert.SkipWhen(entry.Expect.Encrypted, $"{entry.Name}: an encrypted document is refused at opening until M16");
 
         var source = new CountingSource(Corpus.Read(file));
@@ -261,7 +265,9 @@ public class CorpusReadingTests
     public void Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them(string file)
     {
         var entry = Corpus.Get(file);
-        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
 
         using var document = PdfDocument.Open(Corpus.Read(file), OptionsFor(entry));
 

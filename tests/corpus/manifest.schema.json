@@ -373,12 +373,25 @@
         "unsupported": {
           "type": "string",
           "pattern": "^(M[0-9]+|#[0-9]+): \\S",
-          "description": "Why the library cannot yet meet the expectations, starting with the milestone or the issue that will, such as 'M02: …' or '#47: …': the acceptance tests skip the document with this reason."
+          "description": "Why the library cannot yet meet the expectations, starting with the milestone or the issue that will, such as 'M02: …' or '#47: …': the acceptance tests skip the document with this reason, every one of them unless unsupportedTests names those the reason concerns."
+        },
+        "unsupportedTests": {
+          "type": "array",
+          "description": "The acceptance tests the unsupported reason concerns, by method name: only they skip the document, and every other test holds it to its expectations. A test that no longer exists fails CorpusManifestSchemaTests.",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9_]*$(?!\\n)"
+          },
+          "uniqueItems": true
         }
       },
       "dependentRequired": {
         "password": [
           "encrypted"
+        ],
+        "unsupportedTests": [
+          "unsupported"
         ],
         "conformanceValid": [
           "claimsConformance"

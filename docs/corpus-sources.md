@@ -518,10 +518,10 @@ were established the same way, pages by `qpdf --show-npages`.
 | GovDocs1 error files | 21 | Six are federal work over 2 MB — the VHA coding handbook, the VA Kernel guide (464 pages, a PDF/A-1b claim veraPDF rejects on seven rules), a USGS earthquake map, a USFWS recovery plan, the 1994 Transportation Statistics report whose `/Producer` names Distiller 1.0.2 for Macintosh, a Reclamation EA —; one is a Census Bureau section whose tables are partly copyrighted by the firms that supplied them; thirteen are not shown to be federal staff's work: contractors (ORNL, JPL), PIARC, WARDA, the EU's delegation, IBM, Scholastic, an unnamed consultant; one, the SAMHSA fact sheet, is screened in part | IBM ID Workbench and XPP, Xyvision's Parlance Publisher, WordPerfect through PDFWriter 4, PageMaker 6.5, a `/Prev` 12 bytes off (T25), a whole file broken by a text-mode transfer |
 | JHOVE error files | 45 | Files attached to JHOVE's issue tracker, each filed under the JHOVE error it raised (`PDF-HUL-n`, kept in the file name): articles, theses, reports, posters, scans and a blank IRCC visa form, under their publishers' or authors' terms | A second independent verdict on each file; producers nothing else supplies — tiff2pdf, Apex PDFWriter, Pixel Translations, wPDF, activePDF, FreeHEP, cairo, Skia m89, SignNow, Atypon PDFplus, dvipdfm with PDFStamp, Acrobat 7 Paper Capture, a French Distiller 3.0 —; a MacBinary header and a `data:` URI prefix before `%PDF`; a page tree with a null kid; kids pointing at objects the file lacks; a catalog without `/Type`; a reference to object 0; a file whose tail was lost |
 
-Six remote entries are recorded as unsupported: the signed web capture and the VHA handbook (T24), and four waiting
-for M02's object-shape rules — two catalogs without `/Type`, a page tree root typed `/Pagez` and a page typed `/Font`.
-There were twenty-six until M02's second slice made eight of the iPRES files supported on 2026-09-27, and eighteen
-until its third made twelve more supported on 2026-09-28. What follows says what each was recorded for. From the first three passes: the signed web capture
+Two remote entries are recorded as unsupported: the signed web capture and the VHA handbook (T24). There
+were twenty-six until M02's second slice made eight of the iPRES files supported on 2026-09-27, eighteen until the
+first half of its third made twelve more supported on 2026-09-28, and six until the second half made the last four
+supported: two catalogs without `/Type`, a page tree root typed `/Pagez` and a page typed `/Font`. What follows says what each was recorded for. From the first three passes: the signed web capture
 (T24), the Axapta credit note and the `#00` form (M02); the topographic map was too, for T28, until ADR 34
 made its decoding bound an option. From the fourth: the
 VHA handbook (T24), two catalogs without `/Type`, the wPDF chapter's null kid, and two
@@ -529,7 +529,7 @@ page trees whose missing kids qpdf counts as pages (M02); IBM's manual was too, 
 2026-09-26 — its section is found 12 bytes from where `/Prev` names it. Five more were, until T21 and T23 were
 fixed on 2026-09-26: the hospital-bed guidance (T21), the 25-signature sheet, the 2015 BOE law, the VA Kernel guide
 and a poster (T23). From the iPRES 2017 set, the
-17 described below (M02); two more were, until T27 was fixed on 2026-09-27. The laziness test honors that mark, like the other acceptance tests; it skips encrypted documents visibly
+17 described below (M02); two more were, until T27 was fixed on 2026-09-27. The laziness test honors that mark, and since 2026-09-29 it alone does for the two documents left (`unsupportedTests`): every other acceptance test holds them to their expectations. It skips encrypted documents visibly
 until M16 brings decryption, and it no longer applies to a document whose index must be rebuilt, since a
 rebuild scans the file by definition.
 
@@ -553,7 +553,8 @@ content-stream cases came with broken lengths or offsets the reader does meet. O
 file holds no catalog at all, and its entry says so (`catalogRecoverable: false`): the reader must open
 it and hand back none.
 
-19 are recorded as unsupported, all until M02, which names them in its acceptance conditions:
+19 were recorded as unsupported, all until M02, which names them in its acceptance conditions; none is since
+M02's third slice (2026-09-28):
 
 - **Seven page trees counted differently**: a root listing itself, a root listing three kids of which one
   page, a kid the file lacks, a root without `/Kids`, a root claiming `/Count 9` for one page (qpdf trusts

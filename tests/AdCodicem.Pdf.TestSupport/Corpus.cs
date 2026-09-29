@@ -81,6 +81,19 @@ public sealed record CorpusExpectation
     /// the assertion waits for the milestone.
     /// </remarks>
     public string? Unsupported { get; init; }
+
+    /// <summary>
+    /// The acceptance tests <see cref="Unsupported"/> concerns, by method name; null when it concerns every one.
+    /// </summary>
+    /// <remarks>
+    /// A reason that holds for one test holds the document out of that test alone: the others still assert
+    /// every expectation, so that no document is skipped where nothing excuses it.
+    /// </remarks>
+    public string[]? UnsupportedTests { get; init; }
+
+    /// <summary>Whether <paramref name="test"/>, an acceptance test's method name, skips the document.</summary>
+    public bool IsUnsupportedIn(string test) =>
+        Unsupported is not null && (UnsupportedTests is null || UnsupportedTests.Contains(test, StringComparer.Ordinal));
 }
 
 /// <summary>
