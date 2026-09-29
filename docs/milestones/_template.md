@@ -18,7 +18,9 @@ loose enough not to freeze what will be discovered while writing.
 ## Slices
 
 Each slice is vertical, testable, and ends on a green commit. When the milestone starts, each becomes an issue
-labeled `slice`, filed under its GitHub milestone (`docs/roadmap.md`, *Tracking on GitHub*).
+labeled `slice`, filed under its GitHub milestone (`docs/roadmap.md`, *Tracking on GitHub*), with a
+`Blocked by:` line naming the slice before it when the order matters; an open issue whose `Blocks:` line names
+the slice in words has that line rewritten to the slice's number.
 
 ## Tests required
 

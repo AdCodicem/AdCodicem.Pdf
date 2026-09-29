@@ -790,8 +790,17 @@ that ticks them. The debt table `docs/status.md` held until 2026-09-27 is now it
 its former identifiers, T01 to T40, are mapped there. A commit names the issue it advances in its footer
 (`Refs #58`), never in its subject; the pull request closes what it completes (`Closes #58`), and an issue
 closes only that way. The documents the corpus still wants are issues labeled `help wanted`, one per row of
-`docs/corpus-contributions.md`, which stays their reference; the open questions below are discussions under
+`docs/corpus-contributions.md`, which stays their reference, each filed under the first milestone it
+unblocks that has not started; the open questions below are discussions under
 [Ideas](https://github.com/AdCodicem/AdCodicem.Pdf/discussions/categories/ideas).
+
+A milestone closes when all its issues have, so an order between them is written where it holds: a line
+`Blocked by: #55, #56` in the body of the issue that waits, or `Blocks: #60` in the body of the one waited on.
+A target that is not an issue yet is named in words — `Blocks: M03 slice 1` — until the slice is opened and
+its number takes that place. The bodies are the reference: whenever the owner or a collaborator opens or edits
+an issue, and on each of its runs from `main`, the same workflow adds the *blocked by* relationships they
+declare and removes those none declares any more; an issue opened by anyone else declares nothing. Being
+filed under a milestone is enough for what only its closing waits on.
 
 ## Definition of done
 
