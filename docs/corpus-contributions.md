@@ -38,7 +38,8 @@ Every row with something still wanted has an issue labeled
 [`help wanted`](https://github.com/AdCodicem/AdCodicem.Pdf/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22),
 linked from its number: say there what you have — never attach a confidential file to an issue, which is as
 public as this repository —, or offer it through the *Document contribution* issue form. This file stays the
-reference for what is wanted; an issue closes when its row has nothing left to want.
+reference for what is wanted; an issue closes when its row has nothing left to want. Each is filed under the
+first milestone of its *Unblocks* column that has not started, and that milestone does not close before it.
 
 | # | Document | Why it matters | Unblocks | Priority |
 |---|----------|----------------|----------|----------|

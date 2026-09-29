@@ -1,7 +1,9 @@
 using System.Text;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using AdCodicem.Pdf.Validation.Rules;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -93,6 +95,24 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
+    public void A_section_that_cannot_be_read_for_no_stated_reason_is_reported_without_one()
+    {
+        // The reader says what makes every section it cannot read unreadable; the rule, given a record no file produces
+        // that says nothing, ends its sentence where the reason would start.
+        var file = PdfTemplate.Build(Updated);
+        using var document = PdfDocument.Open(file);
+        var table = PdfTemplate.OffsetOf(file, "xref\n");
+        document.Reader.Structure.Add(new XRefSectionRecord("/Prev", table, namedFrom: -1) { State = XRefSectionState.Malformed });
+        var context = new ValidationContext(document, capacity: 16);
+
+        new SectionMalformedRule().Check(context);
+
+        var finding = context.ToReport(ValidationProfile.Structural).Findings.Should().ContainSingle().Which;
+        finding.Location.Position.Should().Be(table);
+        finding.Message.Should().Be($"The cross-reference table at offset {table} cannot be read.");
+    }
+
+    [Fact]
     public void A_table_a_limit_cut_is_not_malformed_and_is_said_to_be_checked_in_part()
     {
         // Three hundred rows, 6 KB of table, which a bound of 2 KB cuts before the trailer (ADR 34).
@@ -169,6 +189,25 @@ public class CrossReferenceRuleTests
             $"The cross-reference section /Prev names at offset {catalog} is not there, nor within 512 bytes of it: the offset holds object 1, which is not a cross-reference stream.");
     }
 
+    [Fact]
+    public void A_section_not_found_outside_the_file_and_named_from_nowhere_known_is_reported_at_the_document()
+    {
+        // The reader knows where every /Prev and /XRefStm is written, and says why each section it does not find is not
+        // there; the rule, given a record no file produces that knows neither, still locates and words its finding.
+        var file = PdfTemplate.Build(Updated);
+        using var document = PdfDocument.Open(file);
+        var outside = file.Length + 100L;
+        document.Reader.Structure.Add(new XRefSectionRecord("/Prev", outside, namedFrom: -1) { State = XRefSectionState.NotFound });
+        var context = new ValidationContext(document, capacity: 16);
+
+        new SectionNotFoundRule().Check(context);
+
+        var finding = context.ToReport(ValidationProfile.Structural).Findings.Should().ContainSingle().Which;
+        finding.Location.IsDocument.Should().BeTrue();
+        finding.Message.Should().Be(
+            $"The cross-reference section /Prev names at offset {outside} is not there, nor within 512 bytes of it: the offset holds no section.");
+    }
+
     [Theory]
     [InlineData(3, "3 bytes before it")]
     [InlineData(-7, "7 bytes after it")]
@@ -214,6 +253,24 @@ public class CrossReferenceRuleTests
         finding.Message.Should().Be($"The /Prev of the cross-reference section at offset {update} names offset {update}, a section the chain has already read: the chain loops.");
         document.Catalog.Should().NotBeNull("what only the lost section indexed is found by rebuilding the index, as for a missing section");
         report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse("the catalog /Root names is found, where the file put it");
+    }
+
+    [Fact]
+    public void A_loop_named_from_no_known_section_is_reported_at_the_document()
+    {
+        // Only a section the chain has read can name one it read before, so the reader always knows where the loop is
+        // written; the rule, given a structure no file produces that does not, locates the finding at the document.
+        using var document = PdfDocument.Open(PdfTemplate.Build(Updated));
+        var structure = document.Reader.Structure;
+        structure.LoopOffset = 9;
+        structure.LoopNamedBy = "/Prev";
+        var context = new ValidationContext(document, capacity: 16);
+
+        new ChainLoopRule().Check(context);
+
+        var finding = context.ToReport(ValidationProfile.Structural).Findings.Should().ContainSingle().Which;
+        finding.Location.IsDocument.Should().BeTrue();
+        finding.Message.Should().Be("A /Prev names offset 9, a section the chain has already read: the chain loops.");
     }
 
     [Fact]
@@ -398,6 +455,51 @@ public class CrossReferenceRuleTests
 
         finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
         finding.Location.Object.Should().Be(new PdfObjectId(5));
+    }
+
+    [Theory]
+    [InlineData(0x1_0000_0000UL, "4294967296")]
+    [InlineData(ulong.MaxValue, "-1")]
+    public void An_object_stream_whose_entry_lies_outside_the_file_is_that_entry_s_finding_alone(ulong offset, string given)
+    {
+        // The index written again with offsets of eight bytes, object stream 4's past the end of the file, or reading
+        // as negative: its header is looked for where no byte of the file is.
+        var sound = XRefStreamFile();
+        var xref = (int)PdfTemplate.OffsetOf(sound, "\n5 0 obj") + 1;
+        var rows = new List<byte>();
+
+        void AddRow(byte type, ulong field2, ushort field3)
+        {
+            rows.Add(type);
+
+            for (var shift = 56; shift >= 0; shift -= 8)
+            {
+                rows.Add((byte)(field2 >> shift));
+            }
+
+            rows.Add((byte)(field3 >> 8));
+            rows.Add((byte)field3);
+        }
+
+        AddRow(0, 0, 65535);
+        AddRow(1, (ulong)PdfTemplate.OffsetOf(sound, "\n1 0 obj") + 1, 0);
+        AddRow(2, 4, 0);
+        AddRow(2, 4, 1);
+        AddRow(1, offset, 0);
+        AddRow(1, (ulong)xref, 0);
+        byte[] file =
+        [
+            .. sound.AsSpan(0, xref),
+            .. Encoding.Latin1.GetBytes($"5 0 obj\n<< /Type /XRef /Size 6 /W [1 8 2] /Root 1 0 R /Length {rows.Count} >>\nstream\n"),
+            .. rows,
+            .. Encoding.Latin1.GetBytes($"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n"),
+        ];
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Message.Should().Be($"The entry of object 4 gives offset {given}, outside the file.");
     }
 
     [Fact]

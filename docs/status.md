@@ -17,25 +17,23 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#110](https://github.com/AdCodicem/AdCodicem.Pdf/pull/110) on 2026-09-28
   ([#58](https://github.com/AdCodicem/AdCodicem.Pdf/issues/58), closed); severities follow
   [ADR 45](adr/0045-a-findings-severity-says-whether-the-file-reads-as-written.md), accepted with it. The
-  project's coverage and Codecov's rules ([#115]) merged with #116. Slice 3
-  ([#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59)) is written, in two pull requests: the first, [#122]
-  — [#51], the object and page tree rules, the page in a finding's location, pages counted as qpdf's walk counts
-  them —, on `claude/m02-tranche-3-m85asb`; the second — the object-shape rules generated from the Arlington PDF
-  Model (ADR 44, amended on 2026-09-28) — on `claude/m02-tranche-3-arlington-m85asb`, stacked on the first, and
-  closing #59. Slices 4 to 6 are issues [#60](https://github.com/AdCodicem/AdCodicem.Pdf/issues/60) to
-  [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
+  project's coverage and Codecov's rules ([#115]) merged with #116. Slice 3 — [#51], the object and page tree
+  rules, the page in a finding's location, pages counted as qpdf's walk counts them, and the object-shape rules
+  generated from the Arlington PDF Model (ADR 44, amended on 2026-09-28) — is done, merged with [#122] and [#124] on
+  2026-09-29 ([#59](https://github.com/AdCodicem/AdCodicem.Pdf/issues/59), closed). The rest of `src/`, covered under
+  the rule of 2026-09-29, is on `claude/m02-tranche-3-m85asb`. Slices 4 to 6 are issues
+  [#60](https://github.com/AdCodicem/AdCodicem.Pdf/issues/60) to [#62](https://github.com/AdCodicem/AdCodicem.Pdf/issues/62).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,206 unit (2 skipped by design) + 1,124 integration (skipped without Docker) + 23 for the remote
-  corpus's fetcher + 26 for the roadmap's mirror on GitHub, on slice 3's second branch. With the 240 remote documents
-  fetched here: 3,880 unit (10 skipped by design, on the two documents recorded as unsupported until #47) and 2,683
-  integration tests.
-- **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial), 99.0 % of
-  `src/`, up from 93.6 %. The 28 lines left are defensive, or branches the compiler and the coverage tool count
-  apart; the journal of 2026-09-28 lists them. Slice 3's second branch covers 971 of the 980 lines it adds or changes
-  in `src/` (99.1 %, up from 96.7 %; Codecov leaves the generated tables out): the nine left are in private members
-  of `ArlingtonWalk`, defensive, or branches the compiler adds, as the rule of 2026-09-29 leaves them (`CLAUDE.md`,
-  *Coverage*). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is
-  100 %.
+- **Tests**: 2,273 unit (2 skipped by design) + 1,124 integration (skipped without Docker) + 23 for the remote
+  corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the 240 remote documents fetched here: 3,947 unit
+  (10 skipped by design, on the two documents recorded as unsupported until #47) and 2,683 integration tests.
+- **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the
+  generated Arlington tables left out), 99.6 % of `src/` — 4,493 of 4,511 lines —, up from 98.9 % on `main`. The 18
+  left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private, or of a private
+  type, which no input reaches — nine in `ArlingtonWalk`, a defensive branch of the lexer —, a `?.` on an index
+  never null where it is read, a switch's default arm, and a line the compiler puts after a call that never returns;
+  the journal of 2026-09-29 lists them. `codecov.yml` asks 95 % of each patch, and lets the project drop by half a
+  point at most; the aim is 100 %.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -107,20 +105,72 @@ M02 — document validation (`docs/milestones/M02.md`), slice 1 done (#29); T32,
 before its cross-reference and object-graph rules, merged with #31. Its progress is the
 [M02 milestone](https://github.com/AdCodicem/AdCodicem.Pdf/milestone/3) on GitHub. In the order its debts impose:
 
-1. Slice 3's two pull requests: review and merge — the first, [#122], then the second, on
-   `claude/m02-tranche-3-arlington-m85asb`, which closes [#59] and with it slice 3. Two of its content overrides go
-   beyond the seven settled beforehand, and are for the maintainer to confirm: a form XObject's `/FormType`, `/Matrix`
-   and `/Name`, and an optional-content creator's `/SubType`. A `Remote corpus` run on the
-   branch is still to confirm the two remote documents GitHub refused here.
+1. The coverage of the rest of `src/`, on `claude/m02-tranche-3-m85asb`: review and merge. The nightly `Remote
+   corpus` run on `main` is still to confirm the two remote documents GitHub refused here.
 2. A key newer than the version the file declares, the fifth rule the model offers, left for later: [#123].
-3. [#55] and [#56] before slice 4 ([#60]), whose stream rules check declared lengths and whether filters decode;
-   slices 5 and 6 ([#61], [#62]); the reader debts slice 3 found, [#117] to [#120], before M02 closes. Each slice adds to the manifest's `findings` what its rules report, and every
+3. [#55], [#56] and [#120] before slice 4 ([#60]), whose stream rules check declared lengths and whether filters
+   decode; slices 5 and 6 ([#61], [#62]), in that order; the reader debts slice 3 found, [#117] to [#120], before
+   M02 closes. The order is GitHub's too, as *blocked by* relationships, once the Tracking workflow's new job runs
+   from `main`. Each slice adds to the manifest's `findings` what its rules report, and every
    document is held to exactly its list.
 
 A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 34) is the reader's limit,
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-29 — The rest of `src/` covered, two messages a direct test showed wrong, two tests that wavered
+- **Coverage.** `src/` goes from 98.9 % to 99.6 % as Codecov counts it (4,493 of 4,511 lines): 39 lines of the
+  reader, its source and parser, the cross-reference probe, the object graph, the page tree walk and eight rules, each
+  covered through a document where one reaches it, otherwise by a call with what no file produces — an empty source
+  handed to the reader, a structure set by hand, a window outside the source, a catalog edited in memory. Each group
+  was reviewed by a second agent that tried to refute what the first called unreachable; one claim fell (an object
+  stream decoded again inside its own decoding, short both times, now tested), and one test was made to catch what its
+  name says (a null character in the trailer, past the keys that name sections).
+- **What stays uncovered**, 18 lines: nine in private members of `ArlingtonWalk` (settled with [#124]); a branch of
+  the lexer's `ReadRegularRun` for a byte the switch before it did not claim, which none can be — 65,536 two-byte
+  prefixes and 20,000 random buffers never took it —, kept as a guard against a later edit of the switch or of the
+  delimiters, since without it the lexer would stop advancing; the `?.` on `ChainIndex` in
+  `CrossReferenceProbe` (two lines) and `PageTreePageOrphanedRule`, never null once the chain is read, which is
+  checked before; `RootInvalidRule.Kind`'s default arm, which nothing reaches now that a stream has its own; and the
+  line the compiler puts after `ExceptionDispatchInfo.Throw` in `PdfFileReader.RecoverCatalog`.
+- **Two messages.** A chain loop whose naming section is unknown said "the section at offset -1"; it now says which
+  key names the loop, and no offset. A `/Root` written as a stream in the trailer was "not an object"; it is now "a
+  stream written in the trailer", as a dictionary is. Neither case comes from a file the reader produces a record for,
+  the second only from a trailer holding a stream.
+- **Two tests that wavered.** The allocation test of the Arlington lookups found 3,352 bytes on one CI run under
+  coverage and none on another run of the same commit: it now runs the lookups once, then measures the least of up to
+  five runs, which a lookup that allocates still fails at 48,000 bytes a run. The linear-time test of a mis-indexed
+  object stream failed once here in the full suite under coverage, at a ratio of 9.5 where it measures 3 to 6 alone:
+  it now runs in a collection of its own, after the others, the best of five runs of each size.
+- **Found on the way**, filed as debt: the object stream dependency walk reads an index a rebuild changes under it
+  ([#128]), and the page tree findings misword a kid written directly in its parent's `/Kids` ([#129]).
+
+### 2026-09-29 — Dependencies between issues, declared in their bodies
+- **The question.** Some issues wait on others — slice 4 ([#60]) on [#55] and [#56] — and GitHub did not know it.
+  Settled with the maintainer: GitHub's own *blocked by* relationships, the body of an issue as their reference,
+  every open issue reviewed, the convention written down (`CLAUDE.md`, *Conventions*; `docs/roadmap.md`,
+  *Tracking on GitHub*).
+- **The syntax.** A line `Blocked by: #55, #56` on the issue that waits, or `Blocks: #60` on the one waited on; a
+  target that is not an issue yet stays in words (`Blocks: M03 slice 1`) until the slice is opened. A milestone
+  closes when all its issues have, so what only its closing waits on — [#117] to [#120] for M02 — is filed under
+  it and needs no relationship.
+- **The workflow.** `sync_tracking.py dependencies` reads every body and makes GitHub's relationships match, adding
+  and removing; only the owner's, members' and collaborators' bodies count, and a relationship with another
+  repository is left alone. `Tracking` runs it on every issue they open or edit and on each of its runs from `main`;
+  every run rebuilds the whole set, so one its concurrency group drops loses nothing, and the listing's dependency
+  summary keeps it to a few requests. Seventeen new tests; 43 in all. This session cannot write GitHub's
+  relationships itself, so the first ones appear when the job first runs, on the merge.
+- **The issues.** Declared: [#60] blocked by [#55], [#56] and [#120] (the same `/Length` path); [#61] by [#60] and
+  [#62] by [#61]; [#126] by [#125]. In words, until their slices exist: [#35] blocks M03 slice 1 (it is slice 0),
+  [#52] M03 slice 6, [#36] M03 slice 8 and M06 slice 5, [#42] M10 slice 1, [#109] M05 slice 1. Left in prose: the
+  M23 debts done together ([#47], [#48], [#49], [#53], [#121]), a grouping rather than an order, and [#54],
+  [#41] and [#45], which wait on a stable release, not an issue. A simulation against the live issues, with the new
+  bodies, gives exactly those six relationships and misreads no other body.
+- **The help-wanted issues**, W03 to W30 ([#63] to [#89]), under no milestone until now, are each filed under the
+  first milestone of their *Unblocks* column that has not started: W05 ([#65]) under M03, W06 ([#66]) under M05, W10
+  and W22 under M06, W03, W13 and W29 under M07, and so on to W21 under M25. Such a milestone does not close before
+  its contribution arrives.
 
 ### 2026-09-29 — Slice 3's second pull request: covered, and a cast the walk no longer makes
 - **Coverage, by a rule the maintainer set today** (`CLAUDE.md`, *Coverage*): 100 % of each patch is the aim and
@@ -619,6 +669,10 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#60]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/60
 [#61]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/61
 [#62]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/62
+[#63]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/63
+[#65]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/65
+[#66]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/66
+[#89]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/89
 [#107]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/107
 [#108]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/108
 [#109]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/109
@@ -631,5 +685,8 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#121]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/121
 [#122]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/122
 [#123]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/123
+[#124]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/124
 [#125]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/125
 [#126]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/126
+[#128]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/128
+[#129]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/129
