@@ -60,10 +60,18 @@ public static class PdfDiagnosticCodes
     /// <summary>A cross-reference entry pointed outside the file.</summary>
     public const string XRefEntryOutOfRange = "xref.entry-out-of-range";
 
-    /// <summary>The declared length of a stream did not match where its data actually ended.</summary>
+    /// <summary>
+    /// A stream's <c>/Length</c> is not where its data ends: its <c>endstream</c> lies elsewhere and ends the data, the
+    /// <c>/Length</c> gives no length the reader can take and the <c>endstream</c> ends the data, or no <c>endstream</c>
+    /// follows the declared length — none before the next object or the end of the file, or none looked for once the
+    /// document's searches read as much of the file as they may — and that length is kept.
+    /// </summary>
     public const string StreamLengthInvalid = "stream.length-invalid";
 
-    /// <summary>A stream ran past the end of the file.</summary>
+    /// <summary>
+    /// A stream has no <c>endstream</c> before the end of the file, or before the <c>endobj</c> that follows its data:
+    /// its data runs to the end of the file.
+    /// </summary>
     public const string StreamTruncated = "stream.truncated";
 
     /// <summary>
