@@ -36,15 +36,16 @@ internal interface IPdfStreamDataProvider
     /// <summary>
     /// Looks for where the data of a stream that runs past the parser's buffer ends, when no <c>endstream</c> follows
     /// its declared length: the first <c>endstream</c> after the start of the data, before the next object the file's
-    /// indexes place, or before the end of the file.
+    /// index places — as the file wrote it, or as the reader rebuilt it as the document opened when the file wrote none —,
+    /// or before the end of the file.
     /// </summary>
     /// <remarks>
     /// The file is searched once for each stream: asked again for the data at the same place — the stream parsed
     /// again, after the cache let it go or the index was rebuilt —, the provider answers what it found the first time.
     /// </remarks>
     /// <param name="number">
-    /// The number of the object the stream is the value of, whose own entries in the indexes are no next object; 0 for
-    /// a stream read alone.
+    /// The number of the object the stream is the value of, whose own entry in the index is no next object; 0 for a
+    /// stream read alone.
     /// </param>
     /// <param name="absoluteDataStart">Where the data starts in the file.</param>
     /// <param name="buffered">The bytes of the data the parser holds, from its start, which are searched first.</param>

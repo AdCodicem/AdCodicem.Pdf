@@ -70,10 +70,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </summary>
     /// <remarks>
     /// Not a guard a valid file reaches (ADR 34): a valid file is never searched. Each search reads from a stream's data
-    /// to the next object, so the searches of a damaged file whose objects lie apart read disjoint stretches — each byte
-    /// at most once before a rebuild of the index and once after, twice the file at most. Only objects that overlap, the
-    /// header of one inside the dictionary of another, share a stretch, which each of their searches would read again:
-    /// this keeps what they read in proportion to the file, as a window keeps the parsing of their dictionaries.
+    /// to the next object the index that bounds it places, whatever was read before, so the searches of the streams that
+    /// index places read disjoint stretches — each byte at most once. A stream only a rebuilt index places lies inside the
+    /// stretch of the object before it, and objects can overlap, the header of one inside the dictionary of another: their
+    /// searches read again what they share with that stretch, and this keeps what they read in proportion to the file, as
+    /// a window keeps the parsing of their dictionaries.
     /// </remarks>
     internal const int EndStreamSearchPasses = 4;
 
@@ -527,20 +528,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The search stops at the next object after the start of the data that either index places — the one the chain
-    /// gave as the file wrote it, and the one the reader reads with now —, or at the end of the file. Both are needed:
-    /// a rebuilt index lacks the objects a damaged stretch of the file erased, which the index as written still places
-    /// there, and an index rebuilt as the document opened is the only one. Stopping there keeps an <c>endstream</c> that
-    /// belongs to a later object from ending this one; when none lies before it, the declared length is kept. The
-    /// stream's own entries are no next object: an entry that missed its object may place it inside its own data.
+    /// The search stops at the next object after the start of the data that <see cref="SearchIndex"/> places — the index
+    /// the chain gave, as the file wrote it, or, for a document whose chain gave none, the one rebuilt as it opened, as it
+    /// stood once opened —, or at the end of the file. Stopping there keeps an <c>endstream</c> that belongs to a later
+    /// object from ending this one; when none lies before it, the declared length is kept. The stream's own entry is no
+    /// next object: an entry that missed its object may place it inside its own data.
+    /// <para>
+    /// The index the reader reads with is left out on purpose, though a rebuild of it places objects the file wrote no
+    /// entry for: it changes as objects are read — rebuilt when a broken entry is met, corrected when an object is found
+    /// near its entry —, and a stream it bounded would end where it does according to what was read before it. Bounded
+    /// by an index that does not change, a stream holds the same data whatever order it is read in (invariant 6). What
+    /// only a rebuilt index places — a copy of an object the file superseded, an object its entries mark free — lies
+    /// inside the stretch of the object before it, whose data an <c>endstream</c> of its own then ends when that data
+    /// lost its own. The index as the file wrote it is the better bound besides: a rebuilt index lacks the objects a
+    /// damaged stretch of the file erased, which the written one still places there.
+    /// </para>
     /// <para>
     /// This bound is no guard (ADR 34): a valid file's <c>endstream</c> follows its declared length (ISO 32000-1,
     /// 7.3.8.1) — so do those of the 35,873 streams of the corpus whose length is confirmed, a gap of 0 to 2 bytes
     /// between them —, and only an invalid file is searched at all. What it reads is the stretch between the stream and
-    /// the next object, once for each stream: the result is kept, and a stream parsed again is not searched again —
-    /// after a rebuild of the index too, which is what one search per stream costs: a stream first read before the
-    /// rebuild keeps the bound the index gave then, one first read after it the rebuilt index's. What the searches read
-    /// together is bounded by <see cref="EndStreamSearchPasses"/>.
+    /// the next object, once for each stream: the result is kept, and a stream parsed again — after the cache let it go,
+    /// or a rebuild of the index — is not searched again. What the searches read together is bounded by
+    /// <see cref="EndStreamSearchPasses"/>.
     /// </para>
     /// </remarks>
     StreamEndSearch IPdfStreamDataProvider.FindEndStream(int number, long absoluteDataStart, ReadOnlySpan<byte> buffered)
@@ -591,52 +600,44 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         _lengthFaultsReported.Contains(absoluteDataStart);
 
     /// <summary>
-    /// Gives where the next object after <paramref name="position"/> starts, as the index the chain gave or the one the
-    /// reader reads with now places it, whichever is nearer, object <paramref name="number"/>'s own entries aside; null
-    /// when neither places one before the end of the file.
+    /// Gets the index whose offsets bound the searches for <c>endstream</c>: the one the chain gave, as the file wrote
+    /// it, or, for a document whose chain gave none, the one rebuilt as it opened.
+    /// </summary>
+    /// <remarks>
+    /// Neither changes once the document has opened, whatever is read. The reader changes the chain's index — an object
+    /// found near its entry, a rebuild — only after <see cref="PreserveChainIndex"/> has copied it. An index rebuilt as
+    /// the document opened is the one the reader keeps, and no copy of it is needed: the rebuild runs once, and loads
+    /// every object it places directly as it takes in the object streams, so that an object found near its entry is
+    /// found, and its entry changed, before the document has opened; object streams add entries that place no offset.
+    /// While the chain is read, and while a document whose chain gave none is rebuilt, the index being made bounds the
+    /// searches made meanwhile, which opening makes the same whatever is read after it.
+    /// </remarks>
+    private PdfXRefTable SearchIndex => ChainIndex ?? _xref;
+
+    /// <summary>
+    /// Gives where the next object after <paramref name="position"/> starts, as <see cref="SearchIndex"/> places it,
+    /// object <paramref name="number"/>'s own entry aside; null when it places none before the end of the file.
     /// </summary>
     /// <remarks>
     /// Offsets in an index count from the header, which <see cref="_headerOffset"/> places in the file; an offset past
-    /// the end of the file places nothing. Each index keeps its offsets sorted once asked, so that a lookup costs a
-    /// logarithm of it, however many streams are searched.
+    /// the end of the file places nothing. The index keeps its offsets sorted once asked, so that a lookup costs a
+    /// logarithm of it, however many streams are searched. The object's own entry is stepped over: the object read,
+    /// relocated from an entry that missed it, may have that entry past the start of its data. Its entry in the index the
+    /// reader reads with is not looked at: that one changes as objects are read, and the bound would change with it.
     /// </remarks>
     private long? NextObjectStart(int number, long position)
     {
-        var after = position - _headerOffset;
-        var written = ChainIndex is { } chain && !ReferenceEquals(chain, _xref) ? chain : null;
-        var own = OwnOffset(_xref, number);
-        var ownWritten = written is null ? own : OwnOffset(written, number);
-        var next = FirstOffsetAfter(_xref, after, own, ownWritten);
+        var index = SearchIndex;
+        var next = index.FirstOffsetAfter(position - _headerOffset);
 
-        if (written is not null)
-        {
-            next = Math.Min(next, FirstOffsetAfter(written, after, own, ownWritten));
-        }
-
-        return next < _source.Length - _headerOffset ? next + _headerOffset : null;
-    }
-
-    /// <summary>
-    /// Gives the first offset <paramref name="index"/> places after <paramref name="after"/> that is neither of an
-    /// object's own entries, <paramref name="own"/> and <paramref name="ownWritten"/>: the object read, relocated from
-    /// an entry that missed it, may have that entry among the offsets, whether it is still the index's or was replaced.
-    /// </summary>
-    private static long FirstOffsetAfter(PdfXRefTable index, long after, long own, long ownWritten)
-    {
-        var next = index.FirstOffsetAfter(after);
-
-        // Offsets come back each greater than the last, so each of the two is stepped over once at most.
-        for (var skipped = 0; skipped < 2 && (next == own || next == ownWritten); skipped++)
+        // Offsets come back each greater than the last, so the object's own is stepped over once at most.
+        if (index.TryGet(number, out var own) && own.Kind == XRefEntryKind.Regular && next == own.Offset)
         {
             next = index.FirstOffsetAfter(next);
         }
 
-        return next;
+        return next < _source.Length - _headerOffset ? next + _headerOffset : null;
     }
-
-    /// <summary>Gives the offset <paramref name="index"/> places object <paramref name="number"/> at, or <see cref="long.MinValue"/>, which no lookup gives, when it places none.</summary>
-    private static long OwnOffset(PdfXRefTable index, int number) =>
-        index.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Offset : long.MinValue;
 
     /// <summary>
     /// Finds the first <c>endstream</c> after <paramref name="dataStart"/> that ends before <paramref name="limit"/> —
@@ -733,6 +734,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
 
         _structure.ChainRead = true;
+
+        // The chain's index bounds the searches for endstream from here on by the offsets its entries give. A search made
+        // while the chain was read may have sorted them already, and an object found near its entry meanwhile — one an
+        // indirect /Length named — left the offset it replaced among them, which a copy of the index would lack: the
+        // index sorts them again when next asked, so that it answers as its copy does.
+        _xref.ForgetSortedOffsets();
         _structure.TrailerRead = Trailer.Count > 0;
         _structure.SizeAsWritten = Trailer.GetRaw(PdfName.Size);
         _structure.RootAsWritten = Trailer.GetRaw(PdfName.Root);
@@ -2491,13 +2498,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>
     /// Copies the index the chain gave before the reader changes it, so that the validation rules still judge the
-    /// file's own. Once is enough: the copy is taken before the first change.
+    /// file's own, and the searches for <c>endstream</c> are still bounded by it. Once is enough: the copy is taken
+    /// before the first change.
     /// </summary>
     private void PreserveChainIndex()
     {
         if (_structure.ChainRead && _chainIndex is null)
         {
             _chainIndex = _xref.CopyEntries();
+
+            // The copy bounds the searches from now on, and sorts its own offsets when one asks.
+            _xref.ForgetSortedOffsets();
         }
     }
 
