@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Mirrors the roadmap onto GitHub: its milestones, the labels issues carry, a discussion per open question.
+"""Mirrors the roadmap onto GitHub: its milestones, the labels issues carry, a discussion per open question;
+and turns what issues say they wait on into GitHub's own "blocked by" relationships.
 
 docs/roadmap.md stays the reference for what the milestones are and where each stands — FeatureTablesTests
 reads its index table, and CI never asks GitHub. This script makes GitHub say the same thing, so that issues
@@ -13,8 +14,16 @@ can be filed under a milestone and its progress read there, without a second lis
   other label is left alone.
 - discussions: one discussion in the Ideas category for each row of the roadmap's "Open questions" table that
   has none, matched by title. An existing discussion is never edited, moved or closed.
+- dependencies: the body of an issue is the reference for what it waits on. A line "Blocked by: #55, #56"
+  says the issue cannot close before #55 and #56; a line "Blocks: #60" says the same from the other side,
+  and may name a target that is not an issue yet ("Blocks: M03 slice 1"), which is skipped until the line
+  names its number. A relationship exists on GitHub exactly when one side declares it: the missing ones are
+  added, and one no body declares any more is removed. Only the bodies of issues opened by the owner, a
+  member or a collaborator count, so that an issue anyone can open cannot block the project's own; a
+  relationship with an issue of another repository is never touched.
 
-    python3 sync_tracking.py labels milestones      what the Tracking workflow runs on every change to main
+    python3 sync_tracking.py labels milestones dependencies   what the Tracking workflow runs on every change to main
+    python3 sync_tracking.py dependencies           on every issue opened or edited
     python3 sync_tracking.py discussions            from the workflow's manual dispatch
     python3 sync_tracking.py --dry-run milestones   say what would change, change nothing
 
@@ -48,6 +57,14 @@ ROADMAP_ROW = re.compile(
 # Subject and trigger; a third column, the discussion's link, is the roadmap's own and is not read.
 OPEN_QUESTION_ROW = re.compile(r"^\| (?P<subject>[^|]+?) \| (?P<trigger>[^|]+?) \|(?: [^|]*? \|)?$")
 NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
+# "Blocked by: #55, #56", "**Blocks**: #60", "- **Blocked by:** #61": a list item, bold or not, then the targets.
+DEPENDENCY_LINE = re.compile(
+    r"^\s*(?:[-*]\s+)?(?:\*\*)?(?P<kind>blocked by|blocks)\s*(?::\*\*|\*\*\s*:|:)(?P<targets>.*)$",
+    re.IGNORECASE)
+ISSUE_REFERENCE = re.compile(r"(?<![\w/&])#(\d+)\b")
+FENCE = re.compile(r"^\s*(```|~~~)")
+# Who may declare a dependency: author_association as the REST API reports it.
+TRUSTED = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
 
 
 @dataclass(frozen=True)
@@ -69,11 +86,22 @@ class OpenQuestion:
     trigger: str
 
 
+@dataclass(frozen=True, order=True)
+class Dependency:
+    """Issue `blocked` cannot close before issue `blocking` does."""
+
+    blocked: int
+    blocking: int
+
+    def __str__(self) -> str:
+        return f"#{self.blocked} blocked by #{self.blocking}"
+
+
 @dataclass(frozen=True)
 class Action:
     """One change to make on GitHub. `number` names what is updated; `fields` is what changes."""
 
-    kind: str  # "create", "update", or "orphan" (reported only)
+    kind: str  # "create", "update", "delete", or "orphan" (reported only)
     what: str
     number: int | None = None
     fields: dict | None = None
@@ -154,6 +182,25 @@ def read_open_questions(text: str) -> list[OpenQuestion]:
         if row and row["subject"] != "Subject" and not row["subject"].startswith("---"):
             questions.append(OpenQuestion(row["subject"].strip(), row["trigger"].strip()))
     return questions
+
+
+def read_dependencies(number: int, body: str | None) -> list[Dependency]:
+    """The dependencies an issue's body declares, in order, outside fenced code; a target that is not a number
+    is not one yet, and is skipped."""
+    dependencies = []
+    fenced = False
+    for line in (body or "").splitlines():
+        if FENCE.match(line):
+            fenced = not fenced
+            continue
+        declared = None if fenced else DEPENDENCY_LINE.match(line)
+        if not declared:
+            continue
+        blocked_by = declared["kind"].lower() == "blocked by"
+        for reference in ISSUE_REFERENCE.findall(declared["targets"]):
+            other = int(reference)
+            dependencies.append(Dependency(number, other) if blocked_by else Dependency(other, number))
+    return dependencies
 
 
 # --- Deciding what to change ----------------------------------------------------------------------------
@@ -255,6 +302,40 @@ def plan_discussions(questions: list[OpenQuestion], existing_titles: set[str], r
             for question in questions if question.subject.casefold() not in known]
 
 
+def wanted_dependencies(issues: list[dict]) -> tuple[set[Dependency], list[str]]:
+    """The dependencies the trusted bodies declare between issues of the repository, and each declaration
+    left aside with its reason. `issues` is what the REST API lists: pull requests included, and skipped."""
+    numbers = {issue["number"] for issue in issues if "pull_request" not in issue}
+    wanted: set[Dependency] = set()
+    ignored: list[str] = []
+    for issue in issues:
+        if "pull_request" in issue:
+            continue
+        number = issue["number"]
+        declared = read_dependencies(number, issue.get("body"))
+        if declared and issue.get("author_association") not in TRUSTED:
+            ignored.append(f"#{number}: opened by someone who is not a collaborator; its dependencies do not count")
+            continue
+        for dependency in declared:
+            other = dependency.blocking if dependency.blocked == number else dependency.blocked
+            if other == number:
+                ignored.append(f"#{number}: names itself")
+            elif other not in numbers:
+                ignored.append(f"#{number}: #{other} is not an issue of this repository")
+            else:
+                wanted.add(dependency)
+    return wanted, ignored
+
+
+def plan_dependencies(wanted: set[Dependency], existing: set[Dependency]) -> list[Action]:
+    """What makes GitHub's relationships between the repository's issues the ones the bodies declare."""
+    actions = [Action("create", str(dependency), number=dependency.blocked, fields={"blocking": dependency.blocking})
+               for dependency in sorted(wanted - existing)]
+    actions += [Action("delete", str(dependency), number=dependency.blocked, fields={"blocking": dependency.blocking})
+                for dependency in sorted(existing - wanted)]
+    return actions
+
+
 # --- Talking to GitHub ----------------------------------------------------------------------------------
 
 
@@ -321,7 +402,7 @@ mutation($repository: ID!, $category: ID!, $title: String!, $body: String!) {
 }"""
 
 
-# --- The three commands ---------------------------------------------------------------------------------
+# --- The four commands ---------------------------------------------------------------------------------
 
 
 def report(line: str, summary: list[str]) -> None:
@@ -417,10 +498,49 @@ def sync_discussions(github: GitHub | None, repository: str, dry_run: bool, summ
         report(f"discussions: all {len(questions)} open questions have one", summary)
 
 
+def existing_dependencies(github: GitHub, issues: list[dict]) -> set[Dependency]:
+    """The relationships GitHub holds between issues of this repository. The listing's summary says which
+    issues have any, so only those are asked; one with no summary is asked all the same."""
+    repository_url = f"{API}/repos/{github.repository}".casefold()
+    existing = set()
+    for issue in issues:
+        if "pull_request" in issue:
+            continue
+        summary = issue.get("issue_dependencies_summary")
+        if summary is not None and not summary.get("total_blocked_by"):
+            continue
+        for blocking in github.all(f"/issues/{issue['number']}/dependencies/blocked_by?per_page=100"):
+            if (blocking.get("repository_url") or "").casefold() == repository_url:
+                existing.add(Dependency(issue["number"], blocking["number"]))
+    return existing
+
+
+def sync_dependencies(github: GitHub | None, dry_run: bool, summary: list[str]) -> None:
+    issues = github.all("/issues?state=all&per_page=100") if github else []
+    wanted, ignored = wanted_dependencies(issues)
+    for reason in ignored:
+        report(f"dependency ignored: {reason}", summary)
+    existing = existing_dependencies(github, issues) if github else set()
+    identifiers = {issue["number"]: issue["id"] for issue in issues}
+    actions = plan_dependencies(wanted, existing)
+    for action in actions:
+        report(f"dependency {action.kind}: {action.what}", summary)
+        if dry_run:
+            continue
+        blocking = identifiers[action.fields["blocking"]]
+        if action.kind == "create":
+            github.rest("POST", f"/issues/{action.number}/dependencies/blocked_by", {"issue_id": blocking})
+        else:
+            github.rest("DELETE", f"/issues/{action.number}/dependencies/blocked_by/{blocking}")
+    if not actions:
+        report(f"dependencies: all {len(wanted)} the issues declare are on GitHub, and no other", summary)
+
+
 def main(arguments: list[str]) -> int:
     dry_run = "--dry-run" in arguments
     commands = [argument for argument in arguments if argument != "--dry-run"]
-    unknown = [command for command in commands if command not in ("labels", "milestones", "discussions")]
+    unknown = [command for command in commands
+               if command not in ("labels", "milestones", "discussions", "dependencies")]
     if not commands or unknown:
         print(__doc__, file=sys.stderr)
         return 2
@@ -438,6 +558,8 @@ def main(arguments: list[str]) -> int:
             sync_labels(github, dry_run, summary)
         elif command == "milestones":
             sync_milestones(github, repository, dry_run, summary)
+        elif command == "dependencies":
+            sync_dependencies(github, dry_run, summary)
         else:
             sync_discussions(github, repository, dry_run, summary)
 
