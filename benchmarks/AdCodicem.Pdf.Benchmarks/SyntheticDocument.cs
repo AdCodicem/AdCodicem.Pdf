@@ -5,7 +5,14 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// <summary>Builds a valid PDF of a chosen size, so the reader can be measured on something realistic.</summary>
 internal static class SyntheticDocument
 {
-    public static byte[] Create(int pageCount, int contentBytes)
+    /// <summary>Builds a document of <paramref name="pageCount"/> pages, each with a content stream of <paramref name="contentBytes"/>.</summary>
+    /// <param name="pageCount">How many pages.</param>
+    /// <param name="contentBytes">How many bytes each page's content stream holds.</param>
+    /// <param name="lengthError">
+    /// How many bytes each content stream's <c>/Length</c> declares more than it holds: 0 for a valid document, 2 for the
+    /// lengths Acrobat Distiller 3 wrote, which run over the end-of-line before <c>endstream</c>.
+    /// </param>
+    public static byte[] Create(int pageCount, int contentBytes, int lengthError = 0)
     {
         using var stream = new MemoryStream();
         var offsets = new Dictionary<int, long>();
@@ -30,7 +37,7 @@ internal static class SyntheticDocument
                 $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents {contentNumber} 0 R >>");
 
             offsets[contentNumber] = stream.Position;
-            WriteObject(stream, contentNumber, $"<< /Length {content.Length} >>\nstream\n{content}\nendstream");
+            WriteObject(stream, contentNumber, $"<< /Length {content.Length + lengthError} >>\nstream\n{content}\nendstream");
         }
 
         offsets[1] = stream.Position;
