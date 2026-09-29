@@ -79,17 +79,19 @@ start of the data ends it, and where it is looked for depends on where the decla
   data is taken wherever it lies, past the header of the next object too: the reader looks in the window,
   and in a larger one while none is found, as far as `MaxObjectLength` allows.
 - **Past the window**, the reader searches the file from the start of the data up to the next object the
-  file's index places, as the file wrote it or as the reader rebuilt it, or up to the end of the file.
+  file's index places as the file wrote it — as the reader rebuilt it when the document opened, if the file
+  wrote none —, or up to the end of the file.
   Stopping at the next object keeps a later object's `endstream` from ending this stream, which is what a
   stretch of zeros that erased the end of one and the objects after it would otherwise do; when none lies
   before it, the declared length is kept, and the report says so.
 
 The search is not one of the reader's limits: a valid file's `endstream` follows its length, so only a
-damaged file is searched, and once for each stream — a stream first read before the index is rebuilt keeps
-what that search found. What the searches of one document read together is bounded at a few times the
-file's length, which only a file whose objects overlap reaches, one's header inside another's dictionary;
-past it, a stream keeps its declared length without a search, and the report says so. Each stream is
-reported once, however often it is parsed again — after the cache let it go, or the index was rebuilt.
+damaged file is searched, and once for each stream, with the same result whatever was read before it: an
+index the reader rebuilds or corrects later does not move where the search stops. What the searches of one
+document read together is bounded at a few times the file's length, which only a file whose objects overlap
+reaches, one's header inside another's dictionary; past it, a stream keeps its declared length without a
+search, and the report says so. Each stream is reported once, however often it is parsed again — after the
+cache let it go, or the index was rebuilt.
 
 ```text
 Warning stream.length-invalid at 5501: The stream declared 19954 bytes but ended after 19952.

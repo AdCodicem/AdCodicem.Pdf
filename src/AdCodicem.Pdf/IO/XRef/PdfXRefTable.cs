@@ -106,6 +106,12 @@ internal sealed class PdfXRefTable
         return _offsets.FirstAfter(offset);
     }
 
+    /// <summary>
+    /// Lets go of the offsets sorted so far, with any an entry replaced since gave: the next lookup, if one comes, sorts
+    /// those the entries give then.
+    /// </summary>
+    public void ForgetSortedOffsets() => _offsets = null;
+
     /// <summary>Adds the offset an entry gives to the sorted ones, once they are kept.</summary>
     private void Track(XRefEntry entry)
     {

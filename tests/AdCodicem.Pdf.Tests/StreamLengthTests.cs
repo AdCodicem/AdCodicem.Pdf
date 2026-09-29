@@ -4,6 +4,7 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -17,9 +18,10 @@ namespace AdCodicem.Pdf.Tests;
 /// The reader parses an object through an 8 KB window. A stream whose data ends inside it has its length checked
 /// against the <c>endstream</c> after it; one whose data runs past it had its length taken as declared, and a wrong one
 /// cut the data short or took in what followed, in silence. The file is now asked whether <c>endstream</c> follows the
-/// declared length, and searched for the first one when it does not — up to the next object an index places, or the end
-/// of the file —, once for each stream. What the reader found of a stream whose length is not confirmed is recorded for
-/// the validation rules, and reported once however often the stream is parsed.
+/// declared length, and searched for the first one when it does not — up to the next object the file's index places, as
+/// the file wrote it or as the reader rebuilt it as the document opened, or the end of the file —, once for each stream,
+/// with the same result whatever was read before it. What the reader found of a stream whose length is not confirmed is
+/// recorded for the validation rules, and reported once however often the stream is parsed.
 /// </remarks>
 public class StreamLengthTests
 {
@@ -824,12 +826,13 @@ public class StreamLengthTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void A_stream_searched_before_the_index_is_rebuilt_keeps_what_that_search_found(bool rebuiltFirst)
+    public void A_stream_past_the_window_holds_the_same_data_whether_it_is_read_before_or_after_the_index_is_rebuilt(bool rebuiltFirst)
     {
         // Object 5 lost its endstream. Object 7, which the index as written marks free, follows it; object 8's entry
-        // leads nowhere near it, and asking for it rebuilds the index, which places object 7. The file is searched once
-        // for the stream: read first, it ends at object 7's endstream, and keeps that after the rebuild; read after the
-        // rebuild, it stops at object 7 and keeps its declared length.
+        // leads nowhere near it, and asking for it rebuilds the index, which places object 7. The search is bounded by the
+        // index as written, which places nothing between object 5 and object 6: read before the rebuild or after it, the
+        // stream ends at object 7's endstream. The rebuilt index is not asked, which would have kept the declared length
+        // of a stream read after the rebuild only: its data would depend on what was read first.
         var data = Data(3 * Window);
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -851,17 +854,130 @@ public class StreamLengthTests
         if (rebuiltFirst)
         {
             document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>();
+            document.WasRepaired.Should().BeTrue();
         }
 
-        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+        var first = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
         document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>();
         document.WasRepaired.Should().BeTrue();
+        var again = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        first.Data.Length.Should().Be(toSevensEndStream);
+        again.Data.Length.Should().Be(toSevensEndStream);
+        document.GetObject(new PdfObjectId(7)).AsStream().Required().Data.Length.Should().Be(5, "the rebuilt index serves object 7 in its own right");
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
+            Invariant($"The stream declared {data.Length + 400} bytes but ended after {toSevensEndStream}."));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_stream_past_the_window_stops_where_the_index_as_written_places_the_next_object_whether_or_not_it_was_found_elsewhere_first(bool nextReadFirst)
+    {
+        // As the IBM QMF manual's entries do, object 16's points one byte into its header, at "6 0 obj": reading object 16
+        // finds it a byte before, and corrects the index the reader reads with. The search for object 5's endstream, which
+        // it lost, is bounded by the index as the file wrote it, and stops at the same place whether object 16 was read and
+        // found first or not.
+        var data = Data(3 * Window);
+        var file = Document((StreamNumber, Stream(data.Length + 100, data, end: "\n")), (16, "(" + new string('p', 200) + ")"));
+        var header = HeaderOf(file, 16);
+        var row = Encoding.Latin1.GetString(file).LastIndexOf(Invariant($"{header:D10} 00000 n"), StringComparison.Ordinal);
+        Encoding.ASCII.GetBytes(Invariant($"{header + 1:D10}")).CopyTo(file, row);
+
+        using var document = PdfDocument.Open(file);
+
+        if (nextReadFirst)
+        {
+            document.GetObject(new PdfObjectId(16)).Should().BeOfType<PdfString>();
+            document.Reader.Index.TryGet(16, out var corrected).Should().BeTrue();
+            corrected.Offset.Should().Be(header);
+        }
+
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        stream.Data.Length.Should().Be(rebuiltFirst ? data.Length + 400 : toSevensEndStream);
-        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(rebuiltFirst
-            ? Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows them before the next object, at {HeaderOf(file, 7)}; the declared length is kept.")
-            : Invariant($"The stream declared {data.Length + 400} bytes but ended after {toSevensEndStream}."));
+        stream.Data.Length.Should().Be(data.Length + 100);
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+        fault.NextObject.Should().Be(header + 1, "the index as written places object 16 there");
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
+            Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {header + 1}; the declared length is kept."));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_index_rebuilt_as_the_document_opened_bounds_the_searches_as_it_stood_once_opened_whatever_is_read_after(bool reverse)
+    {
+        // No index was written. Object 8's string holds "7 0 objx", which the rebuild takes for object 7's last definition:
+        // object 7 is not there, and is found near it as the document opens, which corrects its entry. The rebuild loads
+        // every object it places as it takes in the object streams, so object 5, which lost its endstream, is searched as
+        // the document opens, up to object 6. Reading afterwards, in any order, searches nothing and changes neither the
+        // index nor what the stream holds: the index as it stood once opened is the one that bounds the searches.
+        var data = Data(3 * Window);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(StreamNumber, Stream(data.Length + 100, data, end: "\n"))
+            .WithObject(6, "(" + new string('p', 200) + ")")
+            .WithObject(7, Stream(5, "hello"))
+            .WithObject(8, "(7 0 objx)")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+        var dataStart = DataStartOf(file, StreamNumber);
+
+        using var source = new LoggingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.Forget();
+
+        document.Reader.ChainIndex.Should().BeNull("no index was written");
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).Should().BeTrue("object 7 was found near its entry as the document opened");
+        document.Reader.Index.TryGet(7, out var seven).Should().BeTrue();
+        seven.Offset.Should().Be(HeaderOf(file, 7));
+        var opened = new Dictionary<int, XRefEntry>(document.Reader.Index.Entries);
+
+        var numbers = document.ObjectNumbers.Order().ToList();
+        foreach (var number in reverse ? Enumerable.Reverse(numbers) : numbers)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length + 100);
+        document.GetObject(new PdfObjectId(7)).AsStream().Required().Data.Length.Should().Be(5);
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
+            Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {HeaderOf(file, 6)}; the declared length is kept."));
+        source.Searches(dataStart, data.Length).Should().Be(0, "the stream was searched as the document opened");
+        document.Reader.Index.Entries.Should().Equal(opened, "nothing read after the document opened changes an index rebuilt as it opened");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_next_object_a_search_stops_at_is_the_same_before_and_after_the_index_is_copied_though_the_chain_corrected_an_entry(bool copiedFirst)
+    {
+        // The newest section is a cross-reference stream past the first window whose length is 7 bytes long: searching it
+        // sorts the offsets of an index still empty. The older one's /Length names object 10, whose entry lies 2 bytes
+        // before its header, in the endobj of object 5: reading it finds object 10 there, and corrects the entry while the
+        // chain is read, the offset it replaced kept among those sorted. Object 5 lost its endstream; its search stops at
+        // object 10's header, where the index places it, whether the reader has copied the index since — object 6's entry
+        // points one byte into its header, and reading object 6 corrects it — or not.
+        var data = Data(3 * Window);
+        var file = CorrectedWhileTheChainIsRead(data, out var tenAt);
+
+        using var document = PdfDocument.Open(file);
+        document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && d.Position == tenAt);
+
+        if (copiedFirst)
+        {
+            document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>();
+            document.Reader.ChainIndex.Should().NotBeSameAs(document.Reader.Index, "correcting object 6's entry copied the index first");
+        }
+
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length + 100);
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+        fault.NextObject.Should().Be(tenAt);
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid && d.Position == DataStartOf(file, StreamNumber))
+            .Which.Message.Should().Be(
+                Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {tenAt}; the declared length is kept."));
     }
 
     [Theory]
@@ -1263,6 +1379,66 @@ public class StreamLengthTests
         Write(Invariant($"{size - 1} 0 obj\n<< /Type /XRef /Size {size} /W [1 4 2] /Root 1 0 R /Filter /FlateDecode /Length {compressed.Length} >>\nstream\n"));
         output.Write(compressed.ToArray());
         Write(Invariant($"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n"));
+        return output.ToArray();
+    }
+
+    /// <summary>
+    /// A file of two cross-reference streams: the newest, past the first window, 7 bytes shorter than its /Length says; the
+    /// older, whose /Length names object 10, which the newest places 2 bytes before its header. Object 5 is a stream whose
+    /// endstream is lost, object 10 follows it, then object 6, whose entry points one byte into its header.
+    /// </summary>
+    private static byte[] CorrectedWhileTheChainIsRead(string data, out long tenAt)
+    {
+        using var output = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+
+        void Write(string text) => output.Write(Encoding.Latin1.GetBytes(text));
+
+        byte[] Rows(int size)
+        {
+            var rows = new byte[size * 7];
+
+            for (var number = 1; number < size; number++)
+            {
+                if (offsets.TryGetValue(number, out var at))
+                {
+                    var offset = number switch { 10 => at - 2, 6 => at + 1, _ => at };
+                    rows.AsSpan(number * 7, 7).Clear();
+                    rows[number * 7] = 1;
+                    rows[(number * 7) + 1] = (byte)(offset >> 24);
+                    rows[(number * 7) + 2] = (byte)(offset >> 16);
+                    rows[(number * 7) + 3] = (byte)(offset >> 8);
+                    rows[(number * 7) + 4] = (byte)offset;
+                }
+            }
+
+            return rows;
+        }
+
+        Write("%PDF-1.5\n");
+        offsets[1] = output.Position;
+        Write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        offsets[2] = output.Position;
+        Write("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        offsets[StreamNumber] = output.Position;
+        Write(Invariant($"{StreamNumber} 0 obj\n{Stream(data.Length + 100, data, end: "\n")}endobj\n"));
+        offsets[10] = output.Position;
+        Write(Invariant($"10 0 obj\n{21 * 7}\nendobj\n"));
+        offsets[6] = output.Position;
+        Write("6 0 obj\n(" + new string('p', 200) + ")\nendobj\n");
+        offsets[20] = output.Position;
+        Write("20 0 obj\n<< /Type /XRef /Size 21 /W [1 4 2] /Root 1 0 R /Length 10 0 R >>\nstream\n");
+        output.Write(Rows(21));
+        Write("\nendstream\nendobj\n");
+        offsets[30] = output.Position;
+
+        // Ten thousand rows of 7 bytes run past the 64 KB window the reader first reads a section through.
+        const int Size = 10_000;
+        Write(Invariant($"30 0 obj\n<< /Type /XRef /Size {Size} /W [1 4 2] /Root 1 0 R /Prev {offsets[20]} /Length {(Size * 7) + 7} >>\nstream\n"));
+        output.Write(Rows(Size));
+        Write(Invariant($"\nendstream\nendobj\nstartxref\n{offsets[30]}\n%%EOF\n"));
+
+        tenAt = offsets[10];
         return output.ToArray();
     }
 

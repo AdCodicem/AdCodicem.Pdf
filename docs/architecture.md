@@ -102,9 +102,11 @@ separate types, separate severity scales, and vocabularies that never share a co
    A length nothing confirms gives way to the first `endstream` after the data's start: found in the window,
    grown up to the object's limit, when the declared length ends inside it or the `/Length` gives none;
    searched in the file when a declared length runs past the window — once per stream, no further than the
-   next object an index places or the end of the file, the declared length kept when none lies before them,
-   and the searches of a document reading a few times the file at most. A stream the file ends inside runs
-   to the end of the file. Each is a diagnostic.
+   next object the file's index places, as the file wrote it (as the reader rebuilt it when the document
+   opened, when the file wrote none), or the end of the file, the declared length kept when none lies before
+   them, and the searches of a document reading a few times the file at most. The bound is an index nothing
+   read later changes, so a stream holds the same data whatever was read before it. A stream the file ends
+   inside runs to the end of the file. Each is a diagnostic.
 5. **Guards** — every read sized by the file is bounded. A bound a valid file can exceed — a stream's
    decoded length, an object's length, a cross-reference section's length and their number, a trailer's
    length — is a `PdfReaderLimits` option, on by default and reported under its own `limit.*` code when
