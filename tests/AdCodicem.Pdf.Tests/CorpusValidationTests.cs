@@ -30,7 +30,8 @@ public class CorpusValidationTests
 
     /// <summary>
     /// The damage the corpus tags documents with, and the rule that names it: a document so tagged earns that rule's
-    /// finding, whatever else it earns. These are the faults the reader read without a word until M02.
+    /// finding, whatever else it earns. These are the faults the documents recorded as unsupported until M02 were held
+    /// for: read without a word, or recovered otherwise than qpdf recovers them.
     /// </summary>
     private static readonly Dictionary<string, string> DiagnosedDamage = new(StringComparer.Ordinal)
     {
@@ -45,13 +46,24 @@ public class CorpusValidationTests
         ["page-object-is-stream"] = PdfValidationRuleIds.PageTreeKidInvalid,
         ["page-tree-null-kid"] = PdfValidationRuleIds.PageTreeKidInvalid,
         ["dangling-page-tree-kids"] = PdfValidationRuleIds.PageTreeKidInvalid,
+        ["catalog-without-type"] = PdfValidationRuleIds.ObjectKeyMissing,
         ["ipres2017-t02-02-002"] = PdfValidationRuleIds.PageTreeCycle,
         ["ipres2017-t02-02-003"] = PdfValidationRuleIds.PageTreeKidInvalid,
         ["ipres2017-t02-02-004"] = PdfValidationRuleIds.PageTreeKidInvalid,
         ["ipres2017-t02-02-005"] = PdfValidationRuleIds.PageTreeKidsMissing,
         ["ipres2017-t02-02-007"] = PdfValidationRuleIds.PageTreeCountMismatch,
         ["ipres2017-t02-02-008"] = PdfValidationRuleIds.PageTreeCountMismatch,
+        ["ipres2017-t02-02-009"] = PdfValidationRuleIds.ObjectTypeValueWrong,
+        ["ipres2017-t02-03-002"] = PdfValidationRuleIds.ObjectTypeValueWrong,
         ["ipres2017-t02-03-006"] = PdfValidationRuleIds.PageTreeKidInvalid,
+        ["ipres2017-t03-007"] = PdfValidationRuleIds.XRefEntryShifted,
+        ["ipres2017-t03-010"] = PdfValidationRuleIds.XRefGenerationMismatch,
+        ["ipres2017-t04-010"] = PdfValidationRuleIds.FileTrailerMalformed,
+        ["ipres2017-t04-011"] = PdfValidationRuleIds.FileRootInvalid,
+        ["ipres2017-t04-012"] = PdfValidationRuleIds.FileRootInvalid,
+        ["ipres2017-t04-013"] = PdfValidationRuleIds.FileRootInvalid,
+        ["ipres2017-t04-014"] = PdfValidationRuleIds.FileRootInvalid,
+        ["ipres2017-t04-015"] = PdfValidationRuleIds.FileSizeWrong,
     };
 
     /// <summary>
