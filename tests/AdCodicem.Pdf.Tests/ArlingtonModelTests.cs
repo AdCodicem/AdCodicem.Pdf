@@ -320,25 +320,23 @@ public class ArlingtonModelTests
     public void Looking_rows_up_allocates_nothing()
     {
         ArlingtonModel.TryFindObject("PageObject", out var page).Should().BeTrue();
-        var found = 0;
-        var before = GC.GetAllocatedBytesForCurrentThread();
+        LookRowsUp(page).Should().Be(2000);
 
-        for (var i = 0; i < 1000; i++)
+        // The least of a few runs, after a first one: a lookup that allocates does so on every run, whereas the runtime
+        // can allocate on this thread once, outside the lookups, as it did on one CI run under coverage (3,352 bytes).
+        var least = long.MaxValue;
+
+        for (var run = 0; run < 5 && least > 0; run++)
         {
-            if (page.TryFindRow("Resources", out var row) && row.TryGetLink(ArlingtonType.Dictionary, out var link) && link.GetCandidate(0).NameIs("Resource"))
-            {
-                found++;
-            }
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var found = LookRowsUp(page);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            if (ArlingtonModel.TryFindObject("Catalog", out var catalog) && catalog.TryFindRow("Type", out var type) && type.HasValue(ArlingtonType.Name, "Catalog"))
-            {
-                found++;
-            }
+            found.Should().Be(2000);
+            least = Math.Min(least, allocated);
         }
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        found.Should().Be(2000);
-        allocated.Should().Be(0);
+        least.Should().Be(0);
     }
 
     [Theory]
@@ -547,6 +545,26 @@ public class ArlingtonModelTests
         {
             problems.Add($"{where}: {what} decodes as {actual}, where the generator has {expected}");
         }
+    }
+
+    private static int LookRowsUp(ArlingtonObject page)
+    {
+        var found = 0;
+
+        for (var i = 0; i < 1000; i++)
+        {
+            if (page.TryFindRow("Resources", out var row) && row.TryGetLink(ArlingtonType.Dictionary, out var link) && link.GetCandidate(0).NameIs("Resource"))
+            {
+                found++;
+            }
+
+            if (ArlingtonModel.TryFindObject("Catalog", out var catalog) && catalog.TryFindRow("Type", out var type) && type.HasValue(ArlingtonType.Name, "Catalog"))
+            {
+                found++;
+            }
+        }
+
+        return found;
     }
 
     private static ArlingtonRow ModelRow(string objectName, string key)
