@@ -13,11 +13,16 @@ Read these, in this order, and nothing else:
 4. **the current milestone's open issues** on GitHub, through the GitHub tools — its slices, and the debt
    filed under it. The rest of the known debt is the open issues labeled `debt`.
 
+**A milestone's review is the exception** (ADR 46): the session started with `/milestone-review Mxx` worked on
+none of the milestone, and its reading list and order are `docs/milestone-review.md`'s, not the list above.
+
 Load `docs/architecture.md` only when touching a boundary between layers, and `docs/adr/` only
 when considering reversing a settled choice. `docs/roadmap.md` places a milestone in the whole; it is not
 a daily working document. `docs/corpus.md` is required reading before closing any milestone; `docs/corpus-contributions.md` says
 what documents are still wanted and how they arrive; `docs/corpus-sources.md` says where the third-party ones came from and
 why most other libraries' corpora could not be used; `docs/releasing.md` covers packaging and publishing.
+`docs/threat-model.md` is required reading before opening or widening a surface a hostile input reaches —
+a parser, a decoder, a resource loader —, and is completed in the same change (#135 writes its first version).
 
 At the end of every session: update `docs/status.md` (actual state, not intentions), tick the milestone
 checklist, open an issue labeled `debt` for anything found and left, commit, push, and name in the pull
@@ -160,7 +165,8 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
 - **Tracking lives on GitHub; the roadmap stays the reference.** `docs/roadmap.md` says what the milestones
   are and where each stands, and the `Tracking` workflow mirrors it as GitHub milestones. A milestone's
   slices are issues labeled `slice`, opened when it starts; debt is issues labeled `debt`, filed under the
-  milestone that will pay it. A session opens, labels and comments on issues freely; an issue closes only
+  milestone that will pay it. A milestone's last slice is its adversarial review, labeled `review` as well, whose
+  findings are filed with that label too (ADR 46). A session opens, labels and comments on issues freely; an issue closes only
   through a merged pull request that says `Closes #n`. A commit names the issue it advances in its footer
   (`Refs #58`), never in its subject. Older commits cite debt as T01 to T40, mapped in `docs/status.md`.
 - **What an issue waits on is written in its body, and GitHub follows.** A line `Blocked by: #55, #56` on the

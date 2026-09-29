@@ -24,7 +24,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   after it. What remains was settled with the maintainer on 2026-09-29 (*Next concrete step*): every issue filed under
   the milestone closes before it does — the reader debts [#55], [#56], [#117] to [#120], [#125] and [#126], the
   validation debts [#107], [#111], [#128], [#129] and [#132], and slices 4 to 6, [#60] to [#62], in that order —;
-  [#123] moved to M20.
+  [#123] moved to M20. Since 2026-09-29 every milestone ends with an adversarial review by a session that worked on
+  none of it ([ADR 46](adr/0046-every-milestone-ends-with-an-adversarial-review.md), `docs/milestone-review.md`):
+  M02's is its slice 7, [#137], after the threat model's first version ([#135]) and M01's review after the fact
+  ([#136]).
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
 - **Tests**: 2,279 unit (2 skipped by design) + 1,124 integration (skipped without Docker) + 23 for the remote
   corpus's fetcher + 43 for the roadmap's mirror on GitHub, on `claude/m02-docs-catch-up-e19dlq`. With the 233 remote
@@ -127,13 +130,51 @@ One pull request per batch, each design question put to the maintainer after mea
 6. Slice 5 ([#61]) in three: security and the trailer's `/ID`, annotations and destinations, metadata — with
    PDFDocEncoding ([#36]) and an XMP reader, or the `/Info`–XMP check moved, to settle first.
 7. Slice 6 ([#62]): the report's JSON, its schema and documentation, the budgets restated.
-8. The closing: a green `Remote corpus` run recorded here, M02.md's exit criteria ticked, the roadmap and
+8. The threat model's first version, `docs/threat-model.md`, for the reader and the validator ([#135]): a session
+   that reads the code. It can come at any point before 9.
+9. M01's review after the fact ([#136]): the maintainer opens a fresh session and types `/milestone-review M01`.
+10. M02's review, slice 7 ([#137]), once every other issue filed under M02 is closed: a fresh session,
+   `/milestone-review M02`; then whatever it files under M02.
+11. The closing: a green `Remote corpus` run recorded here, M02.md's exit criteria ticked, the roadmap and
    `features.json` set to done.
 
 A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 34) is the reader's limit,
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-29 — Every milestone ends with an adversarial review
+- **The question.** The maintainer asked for a final step to every milestone, one that checks the choices its
+  sessions made are consistent with each other. Each choice below was put to them and settled.
+- **Settled, and recorded as [ADR 46](adr/0046-every-milestone-ends-with-an-adversarial-review.md).**
+  - The review is the milestone's last slice, labeled `slice` and `review`. It is blocked by every other issue under
+    the milestone, and is point 7 of the definition of done.
+  - It is run by a fresh session, which the maintainer starts with `/milestone-review Mxx`.
+  - It reads in two passes: blind first (code, tests, specification), then informed (journal, issues, pull requests,
+    commits).
+  - Five axes: the consistency of decisions, within the milestone and with those already closed; the code against
+    the specification; invariants 1 to 12; the public API and its documentation; and security (hostile input,
+    attack surface, supply chain, threat model). The specifications of milestones to come are not reviewed.
+  - Every finding is put to a sub-agent that tries to refute it.
+  - Triage: an inconsistency or a broken invariant is fixed before the milestone closes — by the review itself when
+    trivial, otherwise filed under the milestone. Anything else is debt under the milestone that pays it. A settled
+    choice goes to the maintainer. The maintainer sees the triage before anything is filed.
+  - The report goes in `docs/reviews/Mxx.md`.
+  - An XL milestone is reviewed once per sub-milestone, then once over the seams between them.
+  - The threat model is a single document, `docs/threat-model.md`, completed by each milestone that opens a surface.
+- **What changed.**
+  - New: `docs/milestone-review.md`, the procedure and the report's form; `docs/reviews/`, published with the
+    project documents; the `milestone-review` skill.
+  - Point 7 of the definition of done, in `docs/roadmap.md`, and the review in the milestone template.
+  - M02's slice 7 and its exit criteria.
+  - `CLAUDE.md`: the review session's reading list, the threat model's, and the `review` label. That label and
+    `area: security` were added to `.github/labels.json`.
+- **Filed under M02.**
+  - [#135]: the threat model's first version, for the reader and the validator, to be written by a session that
+    reads the code.
+  - [#136]: M01's review after the fact. The maintainer chose it so that M02's review finds a reader that has been
+    through one.
+  - [#137]: M02's review, slice 7, blocked by every other issue under M02, [#135] and [#136] among them.
 
 ### 2026-09-29 — What remains of M02, settled with the maintainer
 - **The question.** What M02 still needs to be complete. The answer is an inventory of its open issues, exit
@@ -743,3 +784,6 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#128]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/128
 [#129]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/129
 [#132]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/132
+[#135]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/135
+[#136]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/136
+[#137]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/137

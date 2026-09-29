@@ -22,6 +22,10 @@ labeled `slice`, filed under its GitHub milestone (`docs/roadmap.md`, *Tracking 
 `Blocked by:` line naming the slice before it when the order matters; an open issue whose `Blocks:` line names
 the slice in words has that line rewritten to the slice's number.
 
+The last slice is always the milestone's **adversarial review** (ADR 46, `docs/milestone-review.md`): an issue
+labeled `slice` and `review`, opened with the others, whose `Blocked by:` line names every other issue filed under
+the milestone. An XL milestone lists one review per sub-milestone, and a last one over their seams.
+
 ## Tests required
 
 **Unit** — the behaviors to cover, degenerate and hostile cases included.
@@ -46,5 +50,10 @@ A milestone that adds public API without documenting it is not finished.
 
 ## Exit criteria
 
-Checkboxes verifiable by tests, including the acceptance conditions above and the six points of the
-definition of done in `docs/roadmap.md`. The milestone closes when they are all ticked and CI is green.
+Checkboxes verifiable by tests, including the acceptance conditions above and the seven points of the
+definition of done in `docs/roadmap.md`. The last is always:
+
+- [ ] The milestone's review is recorded in `docs/reviews/M<n>.md`, and every issue it filed under the milestone is
+  closed.
+
+The milestone closes when they are all ticked and CI is green.
