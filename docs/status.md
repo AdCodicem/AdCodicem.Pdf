@@ -29,14 +29,14 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   M02's is its slice 7, [#137], after the threat model's first version ([#135]) and M01's review after the fact
   ([#136]). [#55] and [#120] are fixed on `claude/m02-stream-length-e19dlq`, and close with its merge.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,365 unit (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
+- **Tests**: 2,425 unit (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
   wrong, which has no document without it) + 1,156 integration (skipped without Docker) + 23 for the remote corpus's
   fetcher + 43 for the roadmap's mirror on GitHub, on `claude/m02-stream-length-e19dlq`. With the 233 remote
-  documents fetched here: 4,037 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
+  documents fetched here: 4,097 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
   until [#47], which every other test now holds to their expectations, and the private manifest this container
   lacks —, and 2,885 integration. The integration suite did not run here (no Docker); CI and `Remote corpus` run it.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.6 % of `src/` — 4,756 of 4,774 lines on `claude/m02-stream-length-e19dlq`, all 276 of
+  Arlington tables left out), 99.6 % of `src/` — 4,834 of 4,852 lines on `claude/m02-stream-length-e19dlq`, all 354 of
   its patch among them, and 4,493 of 4,511 on `main`. The 18 left are those the rule of 2026-09-29 leaves
   (`CLAUDE.md`, *Coverage*): members that are private, or of a private type, which no input reaches — nine in
   `ArlingtonWalk`, a defensive branch of the lexer —, a `?.` on an index never null where it is read, a switch's
@@ -94,7 +94,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Decoding a whole Flate content stream | 4 MB decoded, about 330 KB encoded | 8.3 ms | 13.1 MB |
 | Decoding the same stream without its checksum, or without its last five bytes | 4 MB decoded | 11.7 ms | 13.1 MB |
 | Indexing, then parsing every page's content stream, each past the reader's first window | synthetic, 1000 pages of 16 KB | 3.9 ms from memory, 7.1 ms from a file | 2.0 MB |
-| The same, each stream declared 2 bytes too long and searched for its `endstream` | synthetic, 1000 pages of 16 KB | 6.4 ms from memory, 10.3 ms from a file | 2.8 MB |
+| The same, each stream declared 2 bytes too long and searched for its `endstream` | synthetic, 1000 pages of 16 KB | 7.3 ms from memory, 12.5 ms from a file | 2.8 MB |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content.
 The validation rows are slice 3's thirty-eight rules. The first measures the rules alone on a document whose objects
@@ -115,12 +115,19 @@ From memory that is a copy, and costs a valid document nothing measurable: 4.4 m
 2.02 MB both. From a file, the way the library recommends opening a large document, it is one read more for each
 stream: 6.4 → 7.1 ms for the thousand, about 0.7 µs a stream, allocating nothing more. A length Distiller 3
 wrote two bytes too long sends the reader searching the 8 KB of data past the window for each stream —
-4.1 → 6.4 ms from memory, 6.8 → 10.3 ms from a file, 2.02 → 2.82 MB for a report and a record each. Inside the
-window the check is what it was, but a wrong length now costs its record and its mark of one report: about 440
-bytes more allocated per stream (the 4 KB streams, 2.20 → 2.64 MB), and about 180 bytes kept for the life of the
-document — 50,000 such streams, read with a cache of 64 objects, keep 9.1 MB more. A sound stream allocates and
-keeps nothing more. The 4 KB streams take 3.3 → 3.5 ms from memory and 5.2 → 5.3 ms from a file, 3.7 → 3.9 and
-6.0 → 6.0 ms when each length is wrong, within the measurement's error.
+4.1 → 6.4 ms from memory, 6.8 → 10.3 ms from a file, 2.02 → 2.82 MB for a report and a record each; looking for an
+object header in what it reads as well costs about 0.6 µs more a stream from memory and 1.4 µs from a file — 6.7 →
+7.3 ms and 11.2 → 12.5 ms, the means of two medium runs of each alternated, the same allocation; carrying what a
+read cuts of a header into the next, and the first read sized from what the parser holds, cost nothing measurable
+beside it, 7.1 → 7.0 ms and 11.4 → 11.1 ms measured the same way. Data made of near-headers costs the search more
+than data that holds none: 16 MB of ` obj` over and over take about 63 ms to search to the end, of `0 0 obj ` 44 ms,
+of letters 10 ms — some 4 ms a megabyte searched at worst, and, the budget letting a document's searches read about
+five times the file, some 20 ms a megabyte of file. Inside the window the check is what it was, but a wrong length
+now costs its record and its mark of one report: about 440 bytes more allocated per stream (the 4 KB streams,
+2.20 → 2.64 MB), and about 180 bytes kept for the life of the document — 50,000 such streams, read with a cache of
+64 objects, keep 9.1 MB more. A sound stream allocates and keeps nothing more. The 4 KB streams take 3.3 → 3.5 ms
+from memory and 5.2 → 5.3 ms from a file, 3.7 → 3.9 and 6.0 → 6.0 ms when each length is wrong, within the
+measurement's error.
 
 ## Next concrete step
 
@@ -162,11 +169,11 @@ not a fault of the file: the rules on it report at most, as information, that it
   taken as declared, and a wrong one cut the data short or took in what followed, in silence; a `/Length` that gave no
   length was reported as "-1 bytes". Measured first on the whole corpus by three independent views, then settled with
   the maintainer: ask the file whether `endstream` follows the declared length; when it does not, take the first
-  `endstream` after the data's start, searched no further than the next object the index as the file wrote it
-  places — the one rebuilt as the document opened when the file wrote none —, or the end of the file, and keep the
-  declared length when there is none; inside the window, what is read does not change. The bound is no guard (ADR 34):
-  a valid file's `endstream` follows its length, as it does for the 35,873 confirmed streams of the corpus, so only a
-  damaged file is searched.
+  `endstream` after the data's start, searched no further than the nearer of the next object the index as the file
+  wrote it places — the one rebuilt as the document opened when the file wrote none — and the first object header the
+  file's bytes hold (settled after the review, below), or the end of the file, and keep the declared length when there
+  is none; inside the window, what is read does not change. The bound is no guard (ADR 34): a valid file's `endstream`
+  follows its length, as it does for the 35,873 confirmed streams of the corpus, so only a damaged file is searched.
 - **The reader.** `PdfObjectParser` asks its provider for the 64 bytes after a declared length past the window — which
   also say whether `endobj` follows the `endstream`, so that such an object's end is seen at last —, and for a search
   when they hold no `endstream`: the window's part first, then the file through windows the source lends, always
@@ -177,18 +184,25 @@ not a fault of the file: the rules on it report at most, as information, that it
   result is kept by where the data starts —, and a stream is reported once however often it is parsed again, after the
   cache let it go or a rebuild: the mark is set when a reading is kept, so a report a dropped reading made is made
   again by the next. Inside the window too: PDFBox's zeroed object stream was reported once more each time it was
-  parsed. The bound does not depend on what was read before: neither index it may be changes once the document
-  has opened — the chain's is copied before the reader corrects or rebuilds its own, and one rebuilt as the document
-  opened loads every object it places as it opens, so any correction is made then. The searches of a document read
-  four times the file at most (`EndStreamSearchPasses`, no guard under ADR 34): searches of the streams that index
-  places read disjoint stretches, and only a stream it does not place, or objects that overlap — one's header inside
-  another's dictionary —, share a stretch each of their searches would read again; past the bound, a stream keeps its
-  declared length without a search, and says so. The `/Length` is read for its form — absent, not an integer, out of
-  range, a reference to an object the file lacks or that could not be read (a cycle, an object stream being decoded),
-  or to a non-integer —, and each form has its message; a stream `endobj` follows without an `endstream` no longer
-  says it ran past the end of the file. What the reader found of each stream whose length is not confirmed is recorded
-  per object, beside `endobj` and the limits (`TryGetStreamLengthFault`), for slice 4's length rule; a sound file
-  records nothing.
+  parsed. Nothing a read changes bounds the search. The index as written does not change once the document has opened
+  — the chain's is copied before the reader corrects or rebuilds its own, and one rebuilt as the document opened loads
+  every object it places as it opens, so any correction is made then —, nor do the file's bytes, where the search
+  stops at the first object header too: `N G obj` at a token boundary, a number and a generation whose values the
+  parser takes, however many zeros lead them, and white space between the tokens, however much. It is looked for in
+  the same reads as the `endstream`, before it; each read repeats 10 bytes of the one before and carries into it what
+  that one cut of a header — the runs of white space and digits it ends with, as a few bytes that decide every header
+  as they would —, and the reads grow from twice what the parser holds of the data, 16 KB under the default window, to
+  64 KB, so that a search stopped by a header it could not know of reads at most about twice what its object spans,
+  whatever window the object was parsed through. No search starts once the searches of a document have read four
+  times the file (`EndStreamSearchPasses`, no guard under ADR 34): those of objects whose headers follow one another
+  read disjoint stretches, twice the file at most, and only objects that overlap — one's header inside another's
+  dictionary —, or a header the search does not take — a regular character glued before its number — that the index
+  as written does not place, share a stretch each of their searches would read again; past the bound, a stream keeps
+  its declared length without a search, and says so. The `/Length` is read for its form — absent, not an integer, out of range, a reference to an object the file lacks or that could not
+  be read (a cycle, an object stream being decoded), or to a non-integer —, and each form has its message; a stream
+  `endobj` follows without an `endstream` no longer says it ran past the end of the file. What the reader found of
+  each stream whose length is not confirmed is recorded per object, beside `endobj` and the limits
+  (`TryGetStreamLengthFault`), for slice 4's length rule; a sound file records nothing.
 - **Measured on the whole corpus** (410 documents, the 233 remote ones fetched), before and after, every object read,
   then the validator: `stream.length-invalid` 81 → 96 reports, seven documents changed. The count before depended on
   how often a stream was parsed — PDFBox's zeroed object stream was reported two to five times in the readings the
@@ -246,15 +260,75 @@ not a fault of the file: the rules on it report at most, as information, that it
     another copy of seven objects, its 49 among them, when they are read before its index is rebuilt — the chain's —
     than after — the rebuild's last definition —, as before; each copy takes the same length in every order. No index
     rebuilt as a document opened changed after it opened, in any order, nor searched a stream after: 84 documents.
-- **Tests**: 82 unit tests on synthetic files — every case above, the window's edge, a stream holding an embedded
-  PDF's `endstream`, the written index against the rebuilt one, the end of the file as the bound, junk before the
-  header, the edge between two reads of the search, each form of `/Length`, the record, one report and one search
-  after the cache let the stream go and after a rebuild, the same length whatever was read first — before or after a
-  rebuild, a corrected entry, an entry corrected while the chain was read —, an index rebuilt as the document opened
-  that nothing read after changes, a report a dropped reading made, and hostile values: an offset past the file, before
-  the data or inside the stream's own data, a million entries, 16 MB of data without `endstream` searched with nothing
-  allocated for it, streams that share a stretch, a source that shrinks —, DEA-CFR's three streams pinned, and a
-  theory over the remote streams. Every line the patch changes in `src/` is covered on the committed corpus, 276 of
+  - An adversarial review of that bound found it let a stream only a rebuilt index places run into the objects after
+    it, where the branch's first bound, the index the reader reads with, had stopped it at the next object the rebuild
+    found. On its file C2 — 29 streams that lost their `endstream`, which the index as written marks free and only a
+    rebuild places, one a later read makes, then a stream the index as written places after them, whose `/Length` is
+    100 bytes too long —, each of the 29 ran to the first `endstream` after them all, the first taking 713,981 bytes;
+    the searches overlapped and spent the document's budget, and whether the last stream was searched — whether it
+    held 30,000 bytes or 30,100 — depended on whether it was read before the rebuild. The maintainer settled it on
+    2026-09-29: keep the index as written, and stop the search at the first object header the file's bytes hold as
+    well, which no read changes. Found on the way: reading the file 64 KB at a time, a search stopped by a header read
+    the whole 64 KB for each stream, and C2 with streams of 10,000 bytes spent the budget again; the reads now grow
+    from twice what the parser holds of the data.
+  - Measured against the stable bound alone, on the 401 documents present, every object read, then the validator:
+    lengths taken, `stream.*` reports and their messages, what the reader records per stream, and findings are
+    identical, and the sixteen streams keep their lengths — PDFium's 695 its 202,154 bytes, before the object at
+    20,103,524 whose header a block of zeros erased. The 2,823 runs of the nine orders are identical too, and no
+    stream of the corpus takes two lengths. The searches read 0.35 of a file at most (SAMHSA's fact sheet, 62,100
+    bytes of 180,381, measured with the second review's fixes below). C2 and four variants of it —
+    400,000 bytes after, `obj<<` and CR LF, every other `endstream` kept, streams of 10,000 bytes — hold the same data
+    in all nine orders, each stream stopping at the next header, and their searches read the file less than twice over
+    (1.5 to 1.9 times), where four of them read it more than four times over and gave up. A searched stream pays for
+    the header it looks for: about 0.6 µs more from memory, 1.4 µs from a file (*Current measurements*).
+  - The same review found the documents saying more than holds: that a stream holds the same data whatever was read
+    before it, and that only objects that overlap reach the budget. Crafted files still make what a search keeps
+    depend on the order. An entry that points into a stream's own data makes the number the stream is first read under
+    step over a different entry (the review's file D), and the rebuild's scan for trailers parses a stream under
+    number 0 (file F): both predate the stable bound, and are [#138], filed under M23. Its files A and B, whose entry
+    one byte into `169 0 obj` reads it as `69 0 obj`, now hold the same data in every order, the header the bytes hold
+    stopping both numbers' searches first. The budget is reached by objects that overlap, and by headers the search
+    does not take that no index as written places: C2 with a regular character glued before each header reads the file
+    4.4 times, and which streams go unsearched depends on the order, recorded on [#138] too. The code's remarks,
+    `architecture.md`, M02 and the user documentation now say what holds.
+  - A second review found the header stop narrower than the parser. It took at most 16 bytes of white space between
+    the tokens and a generation of five digits, where the rebuild's scan and the parser take any: C2 with 17 spaces,
+    17 NULs or `000000` in each header ran each stream to the last `endstream` again, the searches read the file 4.4
+    times over, and object 50 held 30,000 bytes or 30,100 according to the order, where the branch's first bound had
+    kept all three stable. The rule now takes a number and a generation by their values, however many zeros lead them,
+    and white space however long: each read of the search carries into the next what it cut of a header, as the few
+    bytes that stand for the runs of white space and digits it ends with — one space for a run of white space, the
+    digits of its value for a run of digits —, and the reads repeat only the 10 bytes an `endstream` and its
+    end-of-line need. The three files hold the same data in both orders, their searches reading 1.9 times the file,
+    and 30 or 200 streams whose 17-space headers only a rebuild places, read three times over with a cache of one
+    object, are each searched once, reading 1.9 and 2.0 times the file. The review also found the first read 16 KB
+    whatever window the object was parsed through: with `MaxObjectLength` at 1 KB, C2 with streams of 1,500 bytes
+    read the file four times over and depended on the order. The first read is now twice what the parser holds of the
+    data, and the same file reads 1.1 times the file, the same data in both orders. The rule still leaves out a
+    comment between the tokens, which the parser takes and the rebuild's scan does not, so that no stream only a
+    rebuilt index places has one: confirmed by the maintainer on 2026-09-30, the two rules to move together. Measured again, the survey of the 401 documents present
+    and the 2,823 runs of the nine orders are identical to the header stop's, the searches reading 0.344 of a file at
+    most; the review's crafted files are as they were — A, B, C, C2 and its variants stable; D, F and C2 with a regular
+    character glued before each header still depending on the order ([#138]). The documents said more than was
+    measured, and now say what was: 401 documents of 410, each stream the same length in every order, though a
+    damaged index serves the Atypon article's 49 from another copy according to what was read first; and the budget
+    as a third way a crafted file makes a search depend on the order.
+- **Tests**: 141 unit tests on synthetic files, the theory over the remote streams counted as the row it skips without
+  them — every case above, the window's edge, a stream holding an embedded PDF's `endstream`, the written index
+  against the rebuilt one, the end of the file as the bound, junk before the header, the edge between two reads of the
+  search, each form of `/Length`, the record, one report and one search after the cache let the stream go and after a
+  rebuild, the same length whatever was read first — before or after a rebuild, a corrected entry, an entry corrected
+  while the chain was read —, the first object header the bytes hold before the next object the index as written
+  places, 31 shapes of text that are a header or only look like one, the start and the end of the search as a header's
+  boundaries, headers and near-headers across the edges of the window and of the first two reads, headers whose runs
+  of white space or digits span whole reads, C2 in both orders with streams of 24 KB and of 10,000 bytes, with headers
+  of 17 spaces, 17 NULs or a generation of six digits, and with streams of 1,500 bytes read through a window of 1 KB,
+  an index rebuilt as the document opened that nothing read after changes, a report a dropped reading made, and
+  hostile values: an offset past the file, before the data or inside the stream's own data, a million entries, 16 MB
+  of data without `endstream` searched with nothing allocated for it, streams that share a stretch, a source that
+  shrinks —, DEA-CFR's three streams pinned, and a theory over the remote streams. The test pinned in both orders now
+  keeps the declared length in both, object 7's header stopping the search, and the search's reads are counted as one
+  search however many it makes. Every line the patch changes in `src/` is covered on the committed corpus, 354 of
   them, as Codecov counts it.
 - **Found on the way**: SAMHSA's object 27, now read whole, has a wrong Adler-32 checksum; the reader takes that for
   corruption and loses up to 64 KB decoded before it — 126,219 bytes kept where the data holds 174,803, and 171,005 were
@@ -905,3 +979,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#135]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/135
 [#136]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/136
 [#137]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/137
+[#138]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/138

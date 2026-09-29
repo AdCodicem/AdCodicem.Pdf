@@ -6,8 +6,9 @@ namespace AdCodicem.Pdf.IO;
 /// out; null when none lies before where the search stopped.
 /// </param>
 /// <param name="NextObject">
-/// The offset of the next object an index places after the start of the data, where the search stopped; null when
-/// none does, and the search ran to the end of the file.
+/// Where the search stopped short of the end of the file: the first object header the file's bytes hold after the start
+/// of the data, when one comes before any <c>endstream</c> and before the next object an index places, and that object
+/// otherwise; null when neither does, and the search ran to the end of the file.
 /// </param>
 /// <param name="EndObj">
 /// What follows the <c>endstream</c> found; <see cref="EndObjState.Unknown"/> when none was, and where the object ends

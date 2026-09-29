@@ -7,8 +7,8 @@ internal enum EndStreamState : byte
     Found,
 
     /// <summary>
-    /// Nowhere between the start of the data and the next object an index places after it: the declared length is
-    /// kept.
+    /// Nowhere between the start of the data and the next object after it — the one an index places, or the first header
+    /// the file's bytes hold, whichever is nearer —: the declared length is kept.
     /// </summary>
     MissingBeforeNextObject,
 
@@ -23,7 +23,8 @@ internal enum EndStreamState : byte
 
     /// <summary>
     /// Not looked for: the document's searches for <c>endstream</c> read as much of the file as they may, which only
-    /// objects that overlap make them do. The declared length is kept.
+    /// searches that share a stretch of it make them do — objects that overlap, or headers the search does not take that
+    /// no index as written places. The declared length is kept.
     /// </summary>
     NotSearched,
 }
