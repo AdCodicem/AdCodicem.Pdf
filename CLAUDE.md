@@ -138,11 +138,17 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   tool in a container. Shared fixtures live in `tests/AdCodicem.Pdf.TestSupport`.
 - Integration tests **skip** when Docker is absent rather than failing, so a sandbox without a daemon
   still gives a usable run. They are not optional in CI.
-- **Coverage is a signal, not a goal.** `codecov.yml` asks for 95 % of the lines a pull request changes and
-  lets the project's coverage drop by half a point at most, measuring `src/` only. Code is removed for
-  coverage only when no input can reach it — conditions that contradict each other, a dead branch, a member
-  nothing calls —, never because no file of the corpus does. A defensive branch stays, covered or not. A
-  public member nothing calls is a question for the maintainer, not a removal.
+- **Coverage aims at 100 % of each pull request's patch, as Codecov counts it.** `codecov.yml` is the floor,
+  not the aim: 95 % of the lines a pull request changes, and the project's coverage dropping by half a point
+  at most, measuring `src/` only. Every member that is not private — public, internal, protected — is covered
+  as far as it can be: through a document where one reaches it, otherwise by a test that calls it directly,
+  with what no file can produce. A private member, or a member of a private nested type, which a test could
+  reach only by reflection, is not tested directly: its callers cover it, or it stays uncovered. A branch the
+  compiler adds that no input can take — the default arm of an exhaustive switch expression, a `?.` on a
+  value never null — stays partial rather than being rewritten. Code is removed for coverage only when no
+  input can reach it — conditions that contradict each other, a dead branch, a member nothing calls —, never
+  because no file of the corpus does. A defensive branch stays, covered or not. A public member nothing
+  calls is a question for the maintainer, not a removal.
 - The documentation site is `docs/website` (Docusaurus). It publishes the user-facing documentation *and*
   `docs/` as they are, so a project document that does not build breaks CI. The user documentation is
   versioned (ADR 31): `docs/website/docs` is the preview; a released line is frozen in

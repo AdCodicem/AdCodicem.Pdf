@@ -31,10 +31,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   integration tests.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial), 99.0 % of
   `src/`, up from 93.6 %. The 28 lines left are defensive, or branches the compiler and the coverage tool count
-  apart; the journal of 2026-09-28 lists them. Slice 3's second branch covers 10,594 of the 10,626 lines it adds or
-  changes in `src/`, the generated tables included (99.7 %): four defensive lines are missed and 28 leave a branch
-  untaken; `src/` as a whole stands at 99.5 %. `codecov.yml` asks 95 % of each patch, and lets the project drop by
-  half a point at most.
+  apart; the journal of 2026-09-28 lists them. Slice 3's second branch covers 971 of the 980 lines it adds or changes
+  in `src/` (99.1 %, up from 96.7 %; Codecov leaves the generated tables out): the nine left are in private members
+  of `ArlingtonWalk`, defensive, or branches the compiler adds, as the rule of 2026-09-29 leaves them (`CLAUDE.md`,
+  *Coverage*). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is
+  100 %.
 - **CI**: green on `main` at `74ce382` (CI run 198). Release run 27 published `0.1.1-preview.27` and
   redeployed the preview's documentation.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
@@ -120,6 +121,26 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-29 — Slice 3's second pull request: covered, and a cast the walk no longer makes
+- **Coverage, by a rule the maintainer set today** (`CLAUDE.md`, *Coverage*): 100 % of each patch is the aim and
+  `codecov.yml`'s 95 % the floor; every member that is not private is covered, directly when no document reaches it,
+  and neither a private member nor a branch the compiler adds is tested for its own sake. The branch's patch went from
+  96.7 % to 99.1 % as Codecov counts it (971 of 980 lines): tests of the messages written directly, of handles of the
+  model's tables, of trees, discriminators, inherited keys and trailers the corpus does not hold. The nine lines left
+  are in private members of `ArlingtonWalk`: a guard for a model that would link the cross-reference stream, branches
+  the pinned model and overrides never take, and a switch's default arm.
+- **A cast the walk could not make.** An object the walk met as a dictionary and read again after a rebuild of the
+  reader's index — as a tree node, a candidate to type, or an ancestor to inherit from — could be a number by then,
+  and the walk threw `InvalidCastException`. Validation never met it, as the object graph resolves every object, and
+  so meets the rebuild, before the walk; the walk run alone did. It now skips what is no longer a dictionary.
+- **A test that timed out under coverage.** The linear lookup of a mis-indexed object stream (on `main` since
+  2026-09-28) was held to a fixed 10 s for a million objects, which coverage instrumentation, as CI runs it,
+  exceeded here. It now requires four times the objects to cost less than eight times the time, which the lookup
+  meets at about four and the search it replaced fails at more than eleven.
+- **Found on the way**, filed as debt: a `startxref` near the largest `long` wraps to a negative offset once the
+  header's offset is added ([#125]), and a finding on a trailer value is located past the end of the file when
+  `startxref` points beyond it ([#126]).
 
 ### 2026-09-28 — M02 slice 3, second half: the Arlington object-shape rules
 - **Settled with the maintainer before the first line**, from a study of the model and a prototype of the subset
@@ -610,3 +631,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#121]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/121
 [#122]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/122
 [#123]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/123
+[#125]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/125
+[#126]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/126
