@@ -113,14 +113,42 @@ before its cross-reference and object-graph rules, merged with #31. Its progress
    and `/Name`, and an optional-content creator's `/SubType`. A `Remote corpus` run on the
    branch is still to confirm the two remote documents GitHub refused here.
 2. A key newer than the version the file declares, the fifth rule the model offers, left for later: [#123].
-3. [#55] and [#56] before slice 4 ([#60]), whose stream rules check declared lengths and whether filters decode;
-   slices 5 and 6 ([#61], [#62]); the reader debts slice 3 found, [#117] to [#120], before M02 closes. Each slice adds to the manifest's `findings` what its rules report, and every
+3. [#55], [#56] and [#120] before slice 4 ([#60]), whose stream rules check declared lengths and whether filters
+   decode; slices 5 and 6 ([#61], [#62]), in that order; the reader debts slice 3 found, [#117] to [#120], before
+   M02 closes. The order is GitHub's too, as *blocked by* relationships, once the Tracking workflow's new job runs
+   from `main`. Each slice adds to the manifest's `findings` what its rules report, and every
    document is held to exactly its list.
 
 A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 34) is the reader's limit,
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-29 — Dependencies between issues, declared in their bodies
+- **The question.** Some issues wait on others — slice 4 ([#60]) on [#55] and [#56] — and GitHub did not know it.
+  Settled with the maintainer: GitHub's own *blocked by* relationships, the body of an issue as their reference,
+  every open issue reviewed, the convention written down (`CLAUDE.md`, *Conventions*; `docs/roadmap.md`,
+  *Tracking on GitHub*).
+- **The syntax.** A line `Blocked by: #55, #56` on the issue that waits, or `Blocks: #60` on the one waited on; a
+  target that is not an issue yet stays in words (`Blocks: M03 slice 1`) until the slice is opened. A milestone
+  closes when all its issues have, so what only its closing waits on — [#117] to [#120] for M02 — is filed under
+  it and needs no relationship.
+- **The workflow.** `sync_tracking.py dependencies` reads every body and makes GitHub's relationships match, adding
+  and removing; only the owner's, members' and collaborators' bodies count, and a relationship with another
+  repository is left alone. `Tracking` runs it on every issue they open or edit and on each of its runs from `main`;
+  every run rebuilds the whole set, so one its concurrency group drops loses nothing, and the listing's dependency
+  summary keeps it to a few requests. Seventeen new tests; 43 in all. This session cannot write GitHub's
+  relationships itself, so the first ones appear when the job first runs, on the merge.
+- **The issues.** Declared: [#60] blocked by [#55], [#56] and [#120] (the same `/Length` path); [#61] by [#60] and
+  [#62] by [#61]; [#126] by [#125]. In words, until their slices exist: [#35] blocks M03 slice 1 (it is slice 0),
+  [#52] M03 slice 6, [#36] M03 slice 8 and M06 slice 5, [#42] M10 slice 1, [#109] M05 slice 1. Left in prose: the
+  M23 debts done together ([#47], [#48], [#49], [#53], [#121]), a grouping rather than an order, and [#54],
+  [#41] and [#45], which wait on a stable release, not an issue. A simulation against the live issues, with the new
+  bodies, gives exactly those six relationships and misreads no other body.
+- **The help-wanted issues**, W03 to W30 ([#63] to [#89]), under no milestone until now, are each filed under the
+  first milestone of their *Unblocks* column that has not started: W05 ([#65]) under M03, W06 ([#66]) under M05, W10
+  and W22 under M06, W03, W13 and W29 under M07, and so on to W21 under M25. Such a milestone does not close before
+  its contribution arrives.
 
 ### 2026-09-29 — Slice 3's second pull request: covered, and a cast the walk no longer makes
 - **Coverage, by a rule the maintainer set today** (`CLAUDE.md`, *Coverage*): 100 % of each patch is the aim and
@@ -619,6 +647,10 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#60]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/60
 [#61]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/61
 [#62]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/62
+[#63]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/63
+[#65]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/65
+[#66]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/66
+[#89]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/89
 [#107]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/107
 [#108]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/108
 [#109]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/109

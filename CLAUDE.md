@@ -163,6 +163,13 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   milestone that will pay it. A session opens, labels and comments on issues freely; an issue closes only
   through a merged pull request that says `Closes #n`. A commit names the issue it advances in its footer
   (`Refs #58`), never in its subject. Older commits cite debt as T01 to T40, mapped in `docs/status.md`.
+- **What an issue waits on is written in its body, and GitHub follows.** A line `Blocked by: #55, #56` on the
+  issue that waits, or `Blocks: #60` on the one it waits on; a target that is not an issue yet is named in
+  words (`Blocks: M03 slice 1`), and the session that opens that milestone's slices writes each slice's number
+  in its place. The body is the reference: the `Tracking` workflow adds and removes GitHub's *blocked by*
+  relationships to match, so none is set by hand. A milestone closes when all its issues have: what only its
+  closing waits on is filed under it, with no relationship; a `help wanted` issue is filed under the first
+  milestone it unblocks that has not started.
 - **A preview carries no guarantee** (ADR 30): an API no stable release has shipped may be reshaped or
   withdrawn by the next merge. Compatibility is owed between stable releases only.
 
