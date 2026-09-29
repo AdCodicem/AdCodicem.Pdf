@@ -3,7 +3,9 @@ name: Tracking
 # docs/roadmap.md is the reference for the milestones and their state; GitHub mirrors it, so that issues can
 # be filed under a milestone and its progress read there. Every change to the roadmap, a specification or
 # the label list on main brings the milestones and labels back in line (sync_tracking.py says how). The
-# discussions for the roadmap's open questions are opened only on request, from the manual dispatch.
+# discussions for the roadmap's open questions are opened only on request, from the manual dispatch. The
+# "Blocked by" and "Blocks" lines of issue bodies are the reference for GitHub's dependencies between
+# issues: every issue a collaborator opens or edits, and every run of this workflow, brings them in line.
 on:
   push:
     branches: [main]
@@ -13,6 +15,8 @@ on:
       - .github/labels.json
       - .github/scripts/sync_tracking.py
       - .github/workflows/tracking.yml
+  issues:
+    types: [opened, edited]
   workflow_dispatch:
     inputs:
       discussions:
@@ -23,18 +27,18 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: tracking
-  cancel-in-progress: false
-
 jobs:
   mirror:
     name: Milestones and labels
+    if: github.event_name != 'issues'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       issues: write
+    concurrency:
+      group: tracking
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,6 +50,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 .github/scripts/sync_tracking.py labels milestones
 
+  # Every run rebuilds the whole set, from every body, so a run the concurrency group drops while another
+  # waits loses nothing: the one that runs last reads the latest bodies. The listing's dependency summary
+  # keeps it to a few requests. An issue opened by someone outside the project changes nothing
+  # (sync_tracking.py ignores its lines), so it starts no run.
+  dependencies:
+    name: Dependencies between issues
+    if: >-
+      github.event_name != 'issues' ||
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: tracking-dependencies
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Bring GitHub's dependencies in line with the issue bodies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/sync_tracking.py dependencies
+
   discussions:
     name: Discussions for the open questions
     if: github.event_name == 'workflow_dispatch' && inputs.discussions
@@ -54,6 +86,9 @@ jobs:
     permissions:
       contents: read
       discussions: write
+    concurrency:
+      group: tracking
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
