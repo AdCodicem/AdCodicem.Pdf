@@ -454,61 +454,6 @@ public class HostileInputTests
         document.GetObject(new PdfObjectId(5)).Should().Be(PdfInteger.Create(1));
     }
 
-    [Fact]
-    public void An_object_stream_whose_every_index_is_wrong_is_read_in_linear_time()
-    {
-        // One stream whose every entry in the index names the wrong place in it: each object is found by its
-        // number, through a lookup built once, not by a search of the stream's header for each. Four times as many
-        // objects then take about four times as long, where a search would take sixteen. The measure is that
-        // ratio, the best of three runs of each size, so that it holds on a slow machine and under coverage
-        // instrumentation alike, where a fixed time budget did not.
-        const int Small = 50_000;
-        const int Large = 4 * Small;
-        var small = ObjectStreams(streams: 1, decodedLength: 0, objectsPerStream: Small, everyIndexWrong: true);
-        var large = ObjectStreams(streams: 1, decodedLength: 0, objectsPerStream: Large, everyIndexWrong: true);
-
-        ReadEvery(small, Small);
-        var smallTime = TimeSpan.MaxValue;
-        var largeTime = TimeSpan.MaxValue;
-
-        for (var run = 0; run < 3; run++)
-        {
-            smallTime = Min(smallTime, Time(() => ReadEvery(small, Small)));
-            largeTime = Min(largeTime, Time(() => ReadEvery(large, Large)));
-        }
-
-        largeTime.Should().BeLessThan(
-            smallTime * 8,
-            "four times the objects must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
-            smallTime,
-            Small,
-            largeTime,
-            Large);
-
-        static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
-
-        static TimeSpan Time(Action action)
-        {
-            var stopwatch = Stopwatch.StartNew();
-            action();
-            return stopwatch.Elapsed;
-        }
-
-        static void ReadEvery(byte[] file, int count)
-        {
-            using var document = PdfDocument.Open(file);
-            var dictionaries = 0;
-
-            for (var i = 0; i < count; i++)
-            {
-                dictionaries += document.GetObject(new PdfObjectId(PackedNumber(0, i, count))) is PdfDictionary ? 1 : 0;
-            }
-
-            dictionaries.Should().Be(count);
-            document.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).Should().BeTrue();
-        }
-    }
-
     [Theory]
     [InlineData("free")]
     [InlineData("unlisted")]
@@ -850,14 +795,14 @@ public class HostileInputTests
     private static int StreamNumber(int stream) => 3 + stream;
 
     /// <summary>The number of the object at <paramref name="index"/> of object stream <paramref name="stream"/>.</summary>
-    private static int PackedNumber(int stream, int index, int objectsPerStream = 1) => 1000 + (stream * objectsPerStream) + index;
+    internal static int PackedNumber(int stream, int index, int objectsPerStream = 1) => 1000 + (stream * objectsPerStream) + index;
 
     /// <summary>
     /// Writes a file whose index is a cross-reference stream, with <paramref name="streams"/> object streams holding
     /// <paramref name="objectsPerStream"/> small dictionaries each, padded with white space to decode to at least
     /// <paramref name="decodedLength"/> bytes; with <paramref name="everyIndexWrong"/>, every entry gives index 0.
     /// </summary>
-    private static byte[] ObjectStreams(int streams, int decodedLength, int objectsPerStream, bool everyIndexWrong)
+    internal static byte[] ObjectStreams(int streams, int decodedLength, int objectsPerStream, bool everyIndexWrong)
     {
         using var output = new MemoryStream();
         void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
