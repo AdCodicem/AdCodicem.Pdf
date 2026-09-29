@@ -13,6 +13,10 @@ committed, and a test checks them, rather than generated at build time; an overr
 not require what the model says; a hand-written rule that reports a fault silences the generated ones on it
 (*Amended on 2026-09-28*, below).
 
+Reviewed on 2026-09-29, by the maintainer: the overrides the slice made beyond the seven settled beforehand, and the two
+candidates the text did not support, are confirmed; the fifth rule, a key newer than the declared version, moves to
+M20 (*Reviewed on 2026-09-29*, below).
+
 Implemented by `tools/AdCodicem.Pdf.Arlington` — the generator, the vendored model and its lock, `overrides.tsv` —,
 `src/AdCodicem.Pdf/Validation/Arlington/`, `ArlingtonWalk`, the rules `object.key-missing`, `object.value-type-wrong`,
 `object.type-value-wrong` and `object.key-deprecated`, `NOTICE`, and `ArlingtonGeneratorTests`, `ArlingtonModelTests`
@@ -112,3 +116,22 @@ there alone, and a page the tree does not list is the generated rules' to judge.
 notice; the core package carries it, with the Apache License's text as `licenses/arlington-pdf-model/LICENSE`. The
 package's license expression stays `MIT`, by the maintainer's choice: the Apache-2.0 data is attributed by `NOTICE`,
 as its section 4 asks.
+
+## Reviewed on 2026-09-29: the overrides confirmed, the version rule to M20
+
+**The overrides.** Slice 3 made three content overrides the seven settled beforehand did not name, and refused two
+candidates, each after reading ISO 32000-1. The maintainer reviewed each against the text and confirmed all five:
+
+- A form XObject's `/FormType` and `/Matrix` are optional in every version, and its `/Name` is required in PDF 1.0
+  only (8.10.2, Table 95).
+- An optional-content creator's `/SubType` may be a name or a text string (8.11.4.4, Table 102, "Additional entries
+  may be included").
+- A sub-array of `/Order` nested in another stays a finding (8.11.4.3, Table 101 describes "Arrays of optional content
+  groups").
+- A Type 3 font's `/Encoding` given as a name stays a finding (9.6.5, Table 112, whose text requires "An encoding
+  dictionary whose Differences array shall specify the complete character encoding").
+
+**The fifth rule.** A key newer than the version the file declares stays out of the structural profile: a newer key
+still conforms (ADR 45), and the rule flagged 72 to 85 of the corpus's 271 sound documents. The declared version
+matters where a claim bounds it — PDF/A-1 on PDF 1.4 —, so the rule is M20's to settle, in a profile's terms
+([#123](https://github.com/AdCodicem/AdCodicem.Pdf/issues/123), moved to M20).

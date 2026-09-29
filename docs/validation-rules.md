@@ -210,6 +210,9 @@ Checked against ISO 32000-1 and **not** overridden:
   "(Required) An encoding dictionary whose Differences array shall specify the complete character encoding for this
   font": the AFP Batch Processor's `/WinAnsiEncoding` stays a declared finding.
 
+The maintainer reviewed the last three overrides of the table and these two refusals on 2026-09-29, each against the
+text of ISO 32000-1, and confirmed all five.
+
 **Left to a hand-written rule.** One fault, one finding: where a rule written by hand reports a fault, the generated
 rules stay silent on it, by a named row of `overrides.tsv` whose reason reads "covered by" that rule. The page tree's
 rules judge what their walk entered, so their silences hold there alone: on a page the tree lists, as the model types
@@ -278,7 +281,9 @@ worth its noise:
   **deprecated values**, where the model deprecates a value rather than a key: only keys are judged deprecated.
 - **A key newer than the version the file declares** — a PDF 1.5 key in a file that declares 1.4. On the corpus's
   sound files it is the noisiest of the model's rules, and it would have to know the extensions that bring a key in
-  before ISO 32000 does, as PDF/A-3 brings `/AF` into PDF 1.7 files; left for later ([#123]).
+  before ISO 32000 does, as PDF/A-3 brings `/AF` into PDF 1.7 files. A newer key still conforms, so the structural
+  profile stays silent on it; where a claim bounds the version — PDF/A-1 on PDF 1.4 — it is M20's to judge ([#123],
+  moved there on 2026-09-29).
 - **An object two contexts type differently** — the first to type it wins, and the second is not heard. iPRES
   `t02-03-007`'s page names the page tree's root as its `/Resources`: the root, typed as the tree's root already, is not
   judged again as a resource dictionary, and a dictionary is what `/Resources` wants.

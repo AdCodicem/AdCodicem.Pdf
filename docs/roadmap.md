@@ -119,8 +119,8 @@ is wrong with it — separately from whether it could be read at all.
 they concern and a remedy hint; a `PdfValidationReport` that serializes; and the **structural profile** —
 file structure, object graph integrity, page tree consistency, stream integrity, font embedding, resource
 resolution, metadata coherence, annotation and destination targets. The object-shape rules — the keys each
-dictionary type requires, their types, the keys a version deprecates — are generated at build time from the
-PDF Association's Arlington PDF Model, at warning severity (ADR 44).
+dictionary type requires, their types, the keys a version deprecates — are generated from the PDF Association's
+Arlington PDF Model by a tool, into tables committed and checked by a test, at warning severity at most (ADR 44).
 
 Rule identifiers are part of the public contract from the day they ship: repair consumes them (M05),
 conformance profiles extend them (M20), and callers filter on them.

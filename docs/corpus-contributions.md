@@ -299,7 +299,7 @@ The milestone is closed, so nothing here blocks: these widen what the reader is 
 | Need | Why | Nearest in the corpus today | Source | Priority |
 |---|---|---|---|---|
 | A structurally sound file whose Flate stream lost its tail, and one whose LZW stream uses a code it never defined, as derived variants of our invoice | T32's fix and the 'filters decodable' rule meet these only in unit tests: the committed damage cuts a whole file, not a stream inside a sound one | documents/damaged/invoice-truncated-tail.pdf (the whole file cut); the committed LZW documents (vendor/us-federal/acrobat3-import-irs-1040-1988-scan.pdf, distiller3-irs-ss4-1995-form.pdf, pdfwriter3-copyright-office-dmca-summary-1998-rc4-40.pdf) | Generate here | 2 |
-| An object stream whose /DecodeParms names an object stored inside it, hand-built and marked as such | [#51]'s finding has no file to be held to, and the reader is silent on it today | none | Generate here | 3 |
+| An object stream whose /DecodeParms names an object stored inside it, hand-built and marked as such | Since M02's third slice the reader reports it (`stream.self-reference`) and so does the validator (`xref.object-stream-circular`), but on hand-built test files only | none | Generate here | 3 |
 | A widget that belongs to no field, and a destination naming a page the file lacks, from a real producer | The annotation rules meet these only in hand-written and damaged files | none from a real producer | Contribution | 3 |
 
 ### M03
