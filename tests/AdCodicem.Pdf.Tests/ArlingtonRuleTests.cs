@@ -1004,6 +1004,83 @@ public class ArlingtonRuleTests
         Validate(file).Findings.Should().BeEmpty("read whole, item 5 has its /Title");
     }
 
+    [Fact]
+    public void A_catalog_written_in_the_trailer_is_checked_there()
+    {
+        var template = Template("<< /Title (Direct) >>", Root, Page)
+            .Replace("/Root 1 0 R", "/Root << /Type /Catalog /Pages 2 0 R /PageMode 7 >> /Info 1 0 R", StringComparison.Ordinal);
+
+        var finding = Single(Validate(PdfTemplate.Build(template)), PdfValidationRuleIds.ObjectValueTypeWrong);
+
+        finding.Message.Should().Be(
+            "The dictionary under /Root of the trailer, a Catalog in the Arlington model, has /PageMode as an integer, where the model wants a name.");
+        finding.Location.Object.Should().BeNull();
+        finding.Location.Position.Should().BePositive();
+    }
+
+    [Fact]
+    public void A_type_written_as_an_object_of_its_own_is_judged_by_the_name_it_holds()
+    {
+        var report = Validate(Pdf(Catalog, Root, Page.Replace("/Type /Page ", "/Type 4 0 R ", StringComparison.Ordinal), "/Font"));
+
+        Single(report, PdfValidationRuleIds.ObjectTypeValueWrong).Message.Should().Be(
+            "Object 3 0, a PageObject in the Arlington model, has /Type /Font, where the model wants /Page or /Template.");
+    }
+
+    [Fact]
+    public void A_tree_node_written_as_a_stream_has_its_values_judged()
+    {
+        var report = Validate(Pdf(
+            "<< /Type /Catalog /Pages 2 0 R /Names << /Dests 4 0 R >> >>",
+            Root,
+            Page,
+            "<< /Kids [5 0 R] >>",
+            "<< /Names [(a) << /D 7 >>] /Length 0 >>\nstream\n\nendstream"));
+
+        Single(report, PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Be(
+            "The dictionary under /Names[1] of object 5 0, a DestDict in the Arlington model, has /D as an integer, where the model wants an array.");
+    }
+
+    [Fact]
+    public void Arrays_of_a_tree_met_first_under_another_key_are_still_expanded()
+    {
+        // The private keys come first in ordinal order: objects 5 and 7 are read there, before the tree reaches them as
+        // its /Kids and its /Names.
+        var report = Validate(Pdf(
+            "<< /Type /Catalog /Pages 2 0 R /Names << /ACME_Kids 5 0 R /ACME_Names 7 0 R /Dests 4 0 R >> >>",
+            Root,
+            Page,
+            "<< /Kids 5 0 R >>",
+            "[6 0 R]",
+            "<< /Names 7 0 R >>",
+            "[(a) << /D 8 >>]"));
+
+        Single(report, PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Be(
+            "The dictionary at [1] in object 7 0, a DestDict in the Arlington model, has /D as an integer, where the model wants an array.");
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_turns_into_an_integer_mid_walk_is_not_checked()
+    {
+        // The chain names a section that is not there: the index is rebuilt when /PageLabels asks for an object it lacks,
+        // after /Outlines typed object 4 and before object 4 is checked. A later definition of object 4, which the
+        // rebuilt index takes, leaves no outline to judge. Validation meets the rebuild before the walk, when the
+        // object graph resolves every object; the walk run alone does not.
+        var template = Template(
+            "<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R /PageLabels 9 0 R >>",
+            Root,
+            Page,
+            "<< /Type /Outlines /Count (x) >>").Replace("/Root 1 0 R", "/Root 1 0 R /Prev 999999", StringComparison.Ordinal);
+
+        var kept = Walk(PdfTemplate.Build(template));
+        var redefined = Walk(PdfTemplate.Build(template + "4 0 obj\n7\nendobj\n"));
+
+        kept.ValueTypesWrong.Should().ContainSingle().Which.Message.Should().Be(
+            "Object 4 0, an Outline in the Arlington model, has /Count as a string, where the model wants an integer.");
+        redefined.ValueTypesWrong.Should().NotContain(finding => finding.Message.Contains("Outline", StringComparison.Ordinal));
+        redefined.Checked.Should().Be(kept.Checked - 1, "object 4 is read again as it is checked, and is an integer by then");
+    }
+
     [Theory]
     [InlineData("tree node", "<< /Type /Catalog /Pages 2 0 R /Names << /ACME 5 0 R /AP 9 0 R /Dests 4 0 R >> >>", "<< /Kids [5 0 R] >>", "<< /Names [(a) << /D 7 >>] >>", 5)]
     [InlineData("candidate", "<< /Type /Catalog /Pages 2 0 R /ACME 4 0 R /ACMF 9 0 R /OpenAction 4 0 R >>", "<< /S /GoTo /D [3 0 R /Fit] >>", "null", 4)]
@@ -1024,6 +1101,82 @@ public class ArlingtonRuleTests
         document.Diagnostics.Contains(PdfDiagnosticCodes.XRefRebuilt).Should().BeTrue(role);
         document.GetObject(new PdfObjectId(redefined)).Should().BeOfType<PdfInteger>(role);
         walk.Checked.Should().BePositive(role);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("9 0 R")]
+    public void A_discriminator_written_as_null_or_naming_nothing_leaves_the_candidates_to_be_weighed(string subtype)
+    {
+        // /S is the plan's key among the actions, and gives it no name to read: /Flags 1, a value only ActionResetForm
+        // lists, makes it the best score, and the action is checked as one.
+        var file = Pdf($"<< /Type /Catalog /Pages 2 0 R /OpenAction << /S {subtype} /Flags 1 /Fields (all) >> >>", Root, Page);
+
+        Single(Validate(file), PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Be(
+            "The dictionary under /OpenAction of object 1 0, an ActionResetForm in the Arlington model, has /Fields as a string, where the model wants an array.");
+        Walk(file).ChosenByScore.Should().Be(1);
+    }
+
+    [Fact]
+    public void A_discriminator_several_objects_share_through_a_reference_chooses_for_each_of_them()
+    {
+        // Object 4 is read once, for the first annotation; the second reads the name the walk already knows.
+        var file = Pdf(
+            Catalog,
+            Root,
+            Page.Replace(">> >>", ">> /Annots [<< /Type /Annot /Subtype 4 0 R /Rect (a) >> << /Type /Annot /Subtype 4 0 R /Rect (b) >>] >>", StringComparison.Ordinal),
+            "/Link");
+
+        Single(Validate(file), PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Be(
+            "An AnnotLink has /Rect as a string, where the Arlington model wants a rectangle; 2 objects give /Rect a type it does not allow, the first the dictionary under /Annots[0] of object 3 0.");
+
+        var walk = Walk(file);
+        walk.ChosenByScore.Should().Be(0, "the plan reads /Link for both annotations");
+        walk.Ties.Should().Be(0);
+    }
+
+    [Fact]
+    public void An_inheritable_key_a_parent_written_as_a_stream_gives_is_not_missing()
+    {
+        // The stream's dictionary gives /DA to field 5: its parent's being a stream is the one fault.
+        var report = Validate(Pdf(
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R] >> >>",
+            Root,
+            Page,
+            "<< /FT /Tx /T (parent) /DA (/Helv 0 Tf 0 g) /Kids [5 0 R] /Length 0 >>\nstream\n\nendstream",
+            "<< /FT /Tx /T (child) /Parent 4 0 R >>"));
+
+        report.Findings.Should().ContainSingle().Which.Message.Should().Be(
+            "Object 5 0, a FieldTx in the Arlington model, has /Parent as a stream, where the model wants a dictionary.");
+    }
+
+    [Fact]
+    public void A_key_only_an_extension_requires_is_not_required_of_the_file()
+    {
+        // Adobe's Extension Level 3 requires /Symbology, /Width, /Height, /XSymWidth and /YSymHeight of a PaperMetaData;
+        // no version of ISO 32000 does. The dictionary is checked all the same: its /Version is no number.
+        var report = Validate(Pdf(
+            Catalog,
+            Root,
+            Page.Replace(">> >>", ">> /Annots [<< /Type /Annot /Subtype /Widget /Rect [0 0 1 1] /PMD << /Type /PaperMetaData /Version (1) >> >>] >>", StringComparison.Ordinal)));
+
+        report.Findings.Should().ContainSingle().Which.Message.Should().Be(
+            "The dictionary under /Annots[0]/PMD of object 3 0, a PaperMetaData in the Arlington model, has /Version as a string, where the model wants a number.");
+    }
+
+    [Fact]
+    public void A_value_of_a_trailer_no_section_locates_is_located_at_the_document()
+    {
+        // Without startxref, the trailer is found by scanning and no section is recorded: a finding on a value the
+        // trailer holds is located at the document.
+        var text = Encoding.Latin1.GetString(Declaring("1.7", "/Info << /Author 7 >>", Catalog, Root, Page));
+        var file = Encoding.Latin1.GetBytes(text[..text.IndexOf("startxref", StringComparison.Ordinal)]);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.ObjectValueTypeWrong);
+
+        finding.Message.Should().Be(
+            "The dictionary under /Info of the trailer, a DocInfo in the Arlington model, has /Author as an integer, where the model wants a string.");
+        finding.Location.IsDocument.Should().BeTrue();
     }
 
     private static PdfReaderOptions Limited(int maxObjectLength) =>
