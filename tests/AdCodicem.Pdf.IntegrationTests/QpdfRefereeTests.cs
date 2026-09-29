@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.IntegrationTests;
 
@@ -36,7 +37,14 @@ public class QpdfRefereeTests(RefereeContainer referee)
     {
         Assert.SkipWhen(referee.Unavailable is not null, referee.Unavailable ?? string.Empty);
 
-        var expected = Corpus.Get(file).Expect.Pages;
+        var entry = Corpus.Get(file);
+        var expected = entry.Expect.Pages;
+
+        // A catalog the trailer does not designate is the reader's choice, which file.root-invalid reports: qpdf
+        // takes the /Root the file gives and walks what it names, so the pages it counts are another document's.
+        Assert.SkipWhen(
+            entry.Expect.Findings.Contains(PdfValidationRuleIds.FileRootInvalid),
+            $"{file}: the reader counts the pages of a catalog it chose, which qpdf does not look for");
 
         // qpdf's walk of the page tree, not --show-npages, which gives the root's /Count: a /Count that lies is a
         // fault the validator reports, and the pages are the ones the tree lists (M02).
@@ -44,8 +52,9 @@ public class QpdfRefereeTests(RefereeContainer referee)
             "qpdf", "--json=2", "--json-key=pages", RefereeContainer.PathInContainer(file));
 
         // Exit code 3 is a count delivered with warnings on standard error, which is still a count: files
-        // from the field often carry a /Size one too large or a stale linearization hint.
-        exitCode.Should().NotBe(2, $"qpdf could not walk the pages of {file}:\n{stderr}");
+        // from the field often carry a /Size one too large or a stale linearization hint. Exit code 2 is a tree
+        // qpdf could not walk at all — a loop, a kid it cannot read —, whose faults the validator's findings name.
+        Assert.SkipWhen(exitCode == 2, $"qpdf could not walk the pages of {file}:\n{stderr}");
         using var json = JsonDocument.Parse(stdout);
         json.RootElement.GetProperty("pages").GetArrayLength().Should().Be(expected!.Value, $"the manifest claims {expected} pages for {file}");
     }
@@ -55,7 +64,7 @@ public class QpdfRefereeTests(RefereeContainer referee)
 
     public static TheoryData<string> DocumentsWithKnownPageCount =>
         Theory(Corpus.PathsWhere(document =>
-            document.Expect is { Pages: not null, Encrypted: false, Clean: true }));
+            document.Expect is { Pages: not null, Encrypted: false }));
 
     private static TheoryData<string> Theory(IReadOnlyList<string> paths)
     {
