@@ -724,7 +724,7 @@ internal ref struct PdfObjectParser
     /// <summary>
     /// Finds where a stream really ends when its declared length is wrong, and returns its true length.
     /// </summary>
-    internal static int FindEndStream(ReadOnlySpan<byte> span, int dataStart)
+    private static int FindEndStream(ReadOnlySpan<byte> span, int dataStart)
     {
         var index = span[dataStart..].IndexOf(EndStreamKeyword);
         if (index < 0)

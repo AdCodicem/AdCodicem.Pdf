@@ -78,20 +78,33 @@ start of the data ends it, and where it is looked for depends on where the decla
 - **Inside the window, or nowhere** — a `/Length` that gives no length —, the first `endstream` after the
   data is taken wherever it lies, past the header of the next object too: the reader looks in the window,
   and in a larger one while none is found, as far as `MaxObjectLength` allows.
-- **Past the window**, the reader searches the file from the start of the data up to the next object the
-  file's index places as the file wrote it — as the reader rebuilt it when the document opened, if the file
-  wrote none —, or up to the end of the file.
+- **Past the window**, the reader searches the file from the start of the data up to the next object —
+  the one the file's index places as the file wrote it (as the reader rebuilt it when the document opened, if
+  the file wrote none), or the first object header, `N G obj`, the file's bytes hold, whichever comes first —,
+  or up to the end of the file.
   Stopping at the next object keeps a later object's `endstream` from ending this stream, which is what a
-  stretch of zeros that erased the end of one and the objects after it would otherwise do; when none lies
-  before it, the declared length is kept, and the report says so.
+  stretch of zeros that erased the end of one and the objects after it would otherwise do, or an object whose
+  entry the index lost; when none lies before it, the declared length is kept, and the report says so. Text
+  in a damaged stream's data that reads as an object header stops the search as well, and the declared
+  length is kept: an object number and a generation the parser takes, however many zeros lead them, white
+  space between the three tokens, however much, and white space, a delimiter, or the start or the end of
+  the search around them. A comment between the tokens makes no header here, as it makes none for the scan
+  that rebuilds a damaged index; nor does a regular character glued before the number, though that scan
+  takes the digits after it for one.
 
 The search is not one of the reader's limits: a valid file's `endstream` follows its length, so only a
-damaged file is searched, and once for each stream, with the same result whatever was read before it: an
-index the reader rebuilds or corrects later does not move where the search stops. What the searches of one
-document read together is bounded at a few times the file's length, which only a file whose objects overlap
-reaches, one's header inside another's dictionary; past it, a stream keeps its declared length without a
-search, and the report says so. Each stream is reported once, however often it is parsed again — after the
-cache let it go, or the index was rebuilt.
+damaged file is searched, and once for each stream. Where it stops depends on the file's bytes and on its
+index as the file wrote it, which the reader rebuilding or correcting its own index later does not change:
+in the 401 documents of the project's test corpus measured, each stream takes the same length whatever was
+read before it — though a damaged index can still serve another copy of an object, at another offset,
+according to what was read first. A file crafted for it can still make what a stream holds depend on which
+object was asked for first. What the searches of one document read together is bounded: none starts once
+they have read four times the file's length. They read twice the file at most — 0.35 of it at most in the
+test corpus — unless their stretches overlap: one object's header inside another's dictionary, or a header
+the search does not take — a regular character glued before its number — that the index as the file wrote
+it does not place. Past the bound, a stream keeps its declared length without a search, and the report says
+so. Each stream is reported once, however often it is parsed again — after the cache let it go, or the index
+was rebuilt.
 
 ```text
 Warning stream.length-invalid at 5501: The stream declared 19954 bytes but ended after 19952.

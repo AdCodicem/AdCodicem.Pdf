@@ -18,16 +18,26 @@ namespace AdCodicem.Pdf.Tests;
 /// The reader parses an object through an 8 KB window. A stream whose data ends inside it has its length checked
 /// against the <c>endstream</c> after it; one whose data runs past it had its length taken as declared, and a wrong one
 /// cut the data short or took in what followed, in silence. The file is now asked whether <c>endstream</c> follows the
-/// declared length, and searched for the first one when it does not — up to the next object the file's index places, as
-/// the file wrote it or as the reader rebuilt it as the document opened, or the end of the file —, once for each stream,
-/// with the same result whatever was read before it. What the reader found of a stream whose length is not confirmed is
-/// recorded for the validation rules, and reported once however often the stream is parsed.
+/// declared length, and searched for the first one when it does not — up to the nearer of the next object the file's
+/// index places, as the file wrote it or as the reader rebuilt it as the document opened, and the first object header its
+/// bytes hold, or the end of the file —, once for each stream, bounded by nothing a read changes. What the reader found of
+/// a stream whose length is not confirmed is recorded for the validation rules, and reported once however often the
+/// stream is parsed.
 /// </remarks>
 public class StreamLengthTests
 {
     private const int StreamNumber = 5;
 
     private static readonly int Window = PdfFileReader.InitialObjectWindow;
+
+    /// <summary>More white space between two tokens than a read of the search repeats of the one before it.</summary>
+    private const string Spaces = "                 ";
+
+    /// <summary>
+    /// An object header wider than a read of the search repeats of the one before it: the largest number and generation,
+    /// zeros before them, white space between them.
+    /// </summary>
+    private const string Wide = "0002147483647" + Spaces + "00065535" + Spaces + "obj";
 
     [Fact]
     public void A_stream_past_the_window_whose_length_endstream_follows_is_read_as_declared_for_a_few_bytes_more()
@@ -180,8 +190,9 @@ public class StreamLengthTests
     public void The_search_stops_at_an_object_the_index_as_written_places_though_a_rebuilt_index_lacks_it()
     {
         // PDFium's urban planning report, object 695: a block of zeros erased the end of the stream's data, its endstream
-        // and the objects after it. The rebuilt index lacks them; the index as written still places object 6 there, and
-        // the endstream past it is object 7's.
+        // and the objects after it, their headers with them. The rebuilt index lacks them, and the first header the bytes
+        // still hold is object 7's; the index as written still places object 6 there, nearer, and the endstream past it is
+        // object 7's.
         var data = Data(3 * Window);
         var file = Document(
             (StreamNumber, Stream(data.Length, data)),
@@ -189,7 +200,8 @@ public class StreamLengthTests
             (7, Stream(5, "hello")));
         var dataStart = (int)DataStartOf(file, StreamNumber);
         var erased = HeaderOf(file, 6);
-        Array.Clear(file, dataStart + (2 * Window), (int)HeaderOf(file, 7) - (dataStart + (2 * Window)));
+        var seven = HeaderOf(file, 7);
+        Array.Clear(file, dataStart + (2 * Window), (int)seven - (dataStart + (2 * Window)));
 
         using var document = PdfDocument.Open(file);
         document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
@@ -197,6 +209,7 @@ public class StreamLengthTests
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
         stream.Data.Length.Should().Be(data.Length);
+        seven.Should().BeGreaterThan(erased, "the first header the bytes hold after the data is object 7's");
         document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Should().ContainSingle()
             .Which.Message.Should().Be(
                 Invariant($"The stream declared {data.Length} bytes, and no endstream follows them before the next object, at {erased}; the declared length is kept."));
@@ -221,6 +234,303 @@ public class StreamLengthTests
         stream.Data.Length.Should().Be(data.Length - 7);
         document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Should().ContainSingle()
             .Which.Message.Should().EndWith(Invariant($"before the next object, at {HeaderOf(file, 6)}; the declared length is kept."));
+    }
+
+    [Fact]
+    public void The_search_stops_at_an_object_header_the_bytes_hold_before_the_next_object_the_index_as_written_places()
+    {
+        // Object 5 lost its endstream, and object 12's header follows it, an object no index places: the index as written
+        // places object 6 next, past object 12's endstream. The header the bytes hold is the nearer, and the search stops
+        // there rather than take in object 12.
+        var data = Data(3 * Window);
+        var file = Document(
+            (StreamNumber, Stream(data.Length + 400, data, end: "\nendstreax\nendobj\n12 0 obj\n<< /Length 5 >>\nstream\nhello\nendstream")),
+            (6, "(" + new string('p', 2000) + ")"));
+        var twelve = HeaderOf(file, 12);
+        var dataStart = DataStartOf(file, StreamNumber);
+
+        using var document = PdfDocument.Open(file);
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length + 400);
+        HeaderOf(file, 6).Should().BeGreaterThan(twelve);
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+        fault.Should().Be(new StreamLengthFault
+        {
+            Form = StreamLengthForm.Integer,
+            Declared = data.Length + 400,
+            Taken = data.Length + 400,
+            EndStream = EndStreamState.MissingBeforeNextObject,
+            NextObject = twelve,
+            DataStart = dataStart,
+        });
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows them before the next object, at {twelve}; the declared length is kept."));
+    }
+
+    [Theory]
+    [InlineData("12 0 obj", 0)]
+    [InlineData("12 0 obj<< /Length 5 >>", 0)]
+    [InlineData("]12 0 obj", 1)]
+    [InlineData("0012 00000 obj", 0)]
+    [InlineData("2147483647 65535 obj", 0)]
+    [InlineData("12\t0\r\nobj%", 0)]
+    [InlineData("12\0\0 0\0obj\0", 0)]
+    [InlineData(Wide, 0)]
+    [InlineData("12 000000 obj", 0)]
+    [InlineData("01234567890 0 obj", 0)]
+    [InlineData("000000000000000000000012 0 obj", 0)]
+    [InlineData("12 " + Spaces + "0 obj", 0)]
+    [InlineData("12 0" + Spaces + " obj", 0)]
+    [InlineData("12\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\00 obj", 0)]
+    [InlineData("endobj", null)]
+    [InlineData("12 0 objx", null)]
+    [InlineData("12 0 objects", null)]
+    [InlineData("x12 0 obj", null)]
+    [InlineData("1.2 0 obj", null)]
+    [InlineData("12 0obj", null)]
+    [InlineData("12obj", null)]
+    [InlineData("0 obj", null)]
+    [InlineData("0 0 obj", null)]
+    [InlineData("12 +0 obj", null)]
+    [InlineData("12 65536 obj", null)]
+    [InlineData("12 0000065536 obj", null)]
+    [InlineData("2147483648 0 obj", null)]
+    [InlineData("02147483648 0 obj", null)]
+    [InlineData("99999999999999999999999 0 obj", null)]
+    [InlineData("12 0 %\nobj", null)]
+    [InlineData("12 %\n0 obj", null)]
+    public void Text_that_follows_a_lost_endstream_stops_the_search_when_it_is_an_object_header_and_only_then(string text, int? header)
+    {
+        // An object header is "N G obj" at a token boundary, as the bytes hold it: a number and a generation whose values
+        // the parser takes, however many zeros lead them, and white space between its tokens, however much. Text that is
+        // one stops the search before the endstream after it, and the declared length is kept; text that only looks like
+        // one — endobj, obj glued to what follows or precedes it, digits after a regular character, a number or a
+        // generation out of range, a comment between its tokens — is read past, and the endstream after it ends the data.
+        var data = Data(3 * Window);
+        var file = Document(
+            (StreamNumber, Stream(data.Length + 400, data, end: "\n" + text + "\nendstream")),
+            (6, "(" + new string('p', 2000) + ")"));
+        var dataStart = DataStartOf(file, StreamNumber);
+
+        using var document = PdfDocument.Open(file);
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+
+        if (header is { } at)
+        {
+            var start = dataStart + data.Length + 1 + at;
+            stream.Data.Length.Should().Be(data.Length + 400);
+            fault.EndStream.Should().Be(EndStreamState.MissingBeforeNextObject);
+            fault.NextObject.Should().Be(start);
+            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+                Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows them before the next object, at {start}; the declared length is kept."));
+        }
+        else
+        {
+            stream.Data.Length.Should().Be(data.Length + 1 + text.Length);
+            fault.EndStream.Should().Be(EndStreamState.Found);
+            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+                Invariant($"The stream declared {data.Length + 400} bytes but ended after {data.Length + 1 + text.Length}."));
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_start_and_the_end_of_the_search_bound_an_object_header_as_white_space_does(bool atStart)
+    {
+        // The data starts with a header: nothing before it is read, and the search stops where it starts. Or the data ends
+        // with one, and the index as written places object 6 at the byte after its obj: the search ends there, and the
+        // header stops it where it starts, before that offset.
+        var data = Data(3 * Window);
+        var file = Document(
+            (StreamNumber, Stream(data.Length + 400, atStart ? "12 0 obj\n" + data : data + "\n12 0 obj", end: string.Empty)),
+            (6, "(" + new string('p', 2000) + ")"));
+        var dataStart = DataStartOf(file, StreamNumber);
+        var header = atStart ? dataStart : dataStart + data.Length + 1;
+
+        if (!atStart)
+        {
+            Rewrite(file, 6, header + "12 0 obj".Length);
+        }
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length + 400);
+
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+        fault.NextObject.Should().Be(header);
+    }
+
+    [Theory]
+    [InlineData("7 0 obj", true)]
+    [InlineData(Wide, true)]
+    [InlineData("x" + Wide, false)]
+    [InlineData(Wide + "x", false)]
+    [InlineData("2147483648" + Spaces + "0 obj", false)]
+    [InlineData("7" + Spaces + "65536 obj", false)]
+    public void A_header_the_edge_between_two_reads_of_the_search_cuts_is_decided_whole(string text, bool header)
+    {
+        // The search reads the window's part of the data, then the file a read at a time, each repeating the last bytes of
+        // the one before and twice as large: a header, with the byte before it and the byte after its obj, is decided
+        // whole wherever the edge of the window or of the reads past it cuts it — here one wider than a read repeats, and
+        // the same with a regular character before or after it, or a number or a generation out of range, which are none.
+        // What a read's start cuts of a header, the read before carries into it. The start of a read is no boundary before
+        // a number, nor its end one after obj, unless the search starts or ends there. A header missed, the endstream after
+        // it would end the data; text taken for one, the declared length would be kept.
+        var prefix = Invariant($"{StreamNumber} 0 obj\n") + Stream(0, string.Empty, end: string.Empty, width: 7);
+        var read = PdfFileReader.EndStreamSearchFirstRead(Window - prefix.Length);
+        var first = Window - PdfFileReader.EndStreamSearchOverlap + read;
+        int[] edges = [Window, first, first - PdfFileReader.EndStreamSearchOverlap + (2 * read)];
+
+        foreach (var edge in edges)
+        {
+            for (var at = edge - text.Length - 2; at <= edge + 2; at++)
+            {
+                var length = at - prefix.Length - 1;
+                var data = Data(length);
+                var file = Document(
+                    (StreamNumber, Stream(length + 400, data, end: "\n" + text + "\nendstream", width: 7)),
+                    (6, "(" + new string('p', 2000) + ")"));
+
+                using var document = PdfDocument.Open(file);
+                var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+                var because = Invariant($"the text starts {at - edge} bytes from the edge at {edge}");
+                document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+
+                if (header)
+                {
+                    stream.Data.Length.Should().Be(length + 400, because);
+                    fault.NextObject.Should().Be(HeaderOf(file, StreamNumber) + at, because);
+                }
+                else
+                {
+                    stream.Data.Length.Should().Be(length + 1 + text.Length, because);
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("12{0}0 obj", ' ', true)]
+    [InlineData("12{0}0{0}obj", '\0', true)]
+    [InlineData("12 {0} obj", '0', true)]
+    [InlineData("{0}12 0 obj", '0', true)]
+    [InlineData("1{0} 0 obj", '0', false)]
+    [InlineData("12 1{0} obj", '0', false)]
+    [InlineData("x{0}12 0 obj", '0', false)]
+    [InlineData("12{0}x 0 obj", ' ', false)]
+    public void A_header_whose_runs_span_whole_reads_of_the_search_is_decided_as_its_bytes_say(string text, char fill, bool header)
+    {
+        // White space or digits that run on from inside the window across its edge and the whole of the first read past
+        // it: each read carries into the next what it cuts of a header, however long, and the search decides it as it
+        // would the bytes whole. Zeros leading a number or a generation change nothing; other digits make it too large;
+        // a regular character before the number, or in place of a token, makes none.
+        var spread = string.Format(CultureInfo.InvariantCulture, text, new string(fill, 5 * Window));
+        var data = Data(Window / 2);
+        var declared = data.Length + spread.Length + 400;
+        var file = Document(
+            (StreamNumber, Stream(declared, data, end: "\n" + spread + "\nendstream")),
+            (6, "(" + new string('p', 2000) + ")"));
+        var dataStart = DataStartOf(file, StreamNumber);
+
+        using var document = PdfDocument.Open(file);
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+
+        if (header)
+        {
+            stream.Data.Length.Should().Be(declared);
+            fault.NextObject.Should().Be(dataStart + data.Length + 1, "the header starts where its number does, its zeros with it");
+        }
+        else
+        {
+            stream.Data.Length.Should().Be(data.Length + 1 + spread.Length);
+            fault.EndStream.Should().Be(EndStreamState.Found);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, 24_576, "{0} 0 obj", null)]
+    [InlineData(true, 24_576, "{0} 0 obj", null)]
+    [InlineData(false, 10_000, "{0} 0 obj", null)]
+    [InlineData(true, 10_000, "{0} 0 obj", null)]
+    [InlineData(false, 24_576, "{0}" + Spaces + "0 obj", null)]
+    [InlineData(true, 24_576, "{0}" + Spaces + "0 obj", null)]
+    [InlineData(false, 24_576, "{0}\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\00 obj", null)]
+    [InlineData(true, 24_576, "{0}\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\00 obj", null)]
+    [InlineData(false, 24_576, "{0} 000000 obj", null)]
+    [InlineData(true, 24_576, "{0} 000000 obj", null)]
+    [InlineData(false, 1_500, "{0} 0 obj", 1024)]
+    [InlineData(true, 1_500, "{0} 0 obj", 1024)]
+    public void Streams_only_a_rebuilt_index_places_stop_at_the_next_header_and_hold_the_same_data_whatever_is_read_first(
+        bool rebuiltFirst, int length, string header, int? maxObjectLength)
+    {
+        // The review's file C2. Objects 10 to 38 are streams that lost their endstream, and object 39's endstream follows
+        // them, all after object 9's endobj, where the index as written places nothing; object 8's entry leads nowhere,
+        // and asking for it rebuilds the index, which places them. Object 50, which the index as written places after them
+        // all, declares 100 bytes more than its data, which its endstream follows. Bounded by the index as written alone,
+        // each of 10 to 38 ran to object 39's endstream: the searches read the file over and over and spent the document's
+        // budget, object 50 was searched only when read before the rebuild, and it held 30,000 bytes or 30,100 according
+        // to the order. Each stream now stops at the header of the one after it, and holds the same data in either order,
+        // however the headers are written that both the rebuild and the parser take: more white space than a read of the
+        // search repeats, zeros leading the generation. The searches cannot know where that header is before they read
+        // it: reading the file 64 KB at a time, or 16 KB at first whatever window the object was parsed through, the
+        // searches of streams of 10,000 bytes, or of 1,500 bytes read through a window of 1 KB, would read the file more
+        // than four times over, and spend the budget again; each read of a search is twice as large as the one before,
+        // from twice what the parser holds of the data, and the searches read twice the file at most.
+        var data = Data(length);
+        var fifty = Data(30_000);
+        var hidden = new StringBuilder("(nine)\nendobj\n");
+
+        for (var number = 10; number < 39; number++)
+        {
+            hidden.Append(Header(header, number)).Append('\n').Append(Stream(data.Length + 100, data, end: string.Empty)).Append("\nendobj\n");
+        }
+
+        hidden.Append(Header(header, 39)).Append('\n').Append(Stream(5, "hello"));
+
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(8, "(eight)")
+            .WithObject(9, hidden.ToString())
+            .WithObject(50, Stream(fifty.Length + 100, fifty))
+            .WithObject(51, "(" + new string('q', 300) + ")")
+            .BuildClassic(rootNumber: 1);
+
+        Rewrite(file, 8, 10_000_000);
+
+        var options = maxObjectLength is { } most
+            ? PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = most } }
+            : PdfReaderOptions.Default;
+        using var document = PdfDocument.Open(file, options);
+        int[] first = rebuiltFirst ? [8, 50] : [50, 8];
+
+        foreach (var number in first.Concat(Enumerable.Range(10, 29)))
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(50)).AsStream().Required().Data.Length.Should().Be(fifty.Length);
+        var text = Encoding.Latin1.GetString(file);
+
+        for (var number = 10; number < 39; number++)
+        {
+            document.GetObject(new PdfObjectId(number)).AsStream().Required().Data.Length.Should().Be(data.Length + 100);
+            document.Reader.TryGetStreamLengthFault(number, out var fault).Should().BeTrue();
+            fault.EndStream.Should().Be(EndStreamState.MissingBeforeNextObject, "the document's searches have read far less than they may");
+            fault.NextObject.Should().Be(text.IndexOf("\n" + Header(header, number + 1) + "\n", StringComparison.Ordinal) + 1);
+        }
+
+        document.Reader.TryGetStreamLengthFault(50, out var fiftyFault).Should().BeTrue();
+        fiftyFault.EndStream.Should().Be(EndStreamState.Found);
+
+        static string Header(string format, int number) => string.Format(CultureInfo.InvariantCulture, format, number);
     }
 
     [Theory]
@@ -829,10 +1139,11 @@ public class StreamLengthTests
     public void A_stream_past_the_window_holds_the_same_data_whether_it_is_read_before_or_after_the_index_is_rebuilt(bool rebuiltFirst)
     {
         // Object 5 lost its endstream. Object 7, which the index as written marks free, follows it; object 8's entry
-        // leads nowhere near it, and asking for it rebuilds the index, which places object 7. The search is bounded by the
-        // index as written, which places nothing between object 5 and object 6: read before the rebuild or after it, the
-        // stream ends at object 7's endstream. The rebuilt index is not asked, which would have kept the declared length
-        // of a stream read after the rebuild only: its data would depend on what was read first.
+        // leads nowhere near it, and asking for it rebuilds the index, which places object 7. The index as written places
+        // nothing between object 5 and object 6, but the bytes hold object 7's header: read before the rebuild or after
+        // it, the search stops there, and the stream keeps its declared length rather than object 7's header and data. The
+        // rebuilt index is not asked, which would have bounded a stream read after the rebuild only: its data would depend
+        // on what was read first.
         var data = Data(3 * Window);
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -842,12 +1153,9 @@ public class StreamLengthTests
             .WithObject(6, "(" + new string('p', 2000) + ")")
             .WithObject(8, "(eight)")
             .BuildClassic(rootNumber: 1);
-        var text = Encoding.Latin1.GetString(file);
-        var seven = text.LastIndexOf(Invariant($"{HeaderOf(file, 7):D10} 00000 n"), StringComparison.Ordinal);
-        Encoding.ASCII.GetBytes("0000000000 65535 f").CopyTo(file, seven);
-        var eight = text.LastIndexOf(Invariant($"{HeaderOf(file, 8):D10} 00000 n"), StringComparison.Ordinal);
-        Encoding.ASCII.GetBytes("0000000009").CopyTo(file, eight);
-        var toSevensEndStream = (int)(text.IndexOf("endstream", (int)HeaderOf(file, 7), StringComparison.Ordinal) - 1 - DataStartOf(file, StreamNumber));
+        Rewrite(file, 7, null);
+        Rewrite(file, 8, 9);
+        var seven = HeaderOf(file, 7);
 
         using var document = PdfDocument.Open(file);
 
@@ -862,11 +1170,13 @@ public class StreamLengthTests
         document.WasRepaired.Should().BeTrue();
         var again = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        first.Data.Length.Should().Be(toSevensEndStream);
-        again.Data.Length.Should().Be(toSevensEndStream);
+        first.Data.Length.Should().Be(data.Length + 400);
+        again.Data.Length.Should().Be(data.Length + 400);
         document.GetObject(new PdfObjectId(7)).AsStream().Required().Data.Length.Should().Be(5, "the rebuilt index serves object 7 in its own right");
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+        fault.NextObject.Should().Be(seven);
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
-            Invariant($"The stream declared {data.Length + 400} bytes but ended after {toSevensEndStream}."));
+            Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows them before the next object, at {seven}; the declared length is kept."));
     }
 
     [Theory]
@@ -987,11 +1297,11 @@ public class StreamLengthTests
     [InlineData("\r")]
     public void An_endstream_the_edge_between_two_reads_of_the_search_cuts_is_found_whole(string endOfLine)
     {
-        // The search reads the file past the window a chunk at a time, each read repeating the last bytes of the one
-        // before: the keyword, and the end-of-line before it that the data leaves out, are found whole wherever the edge
-        // of the first read cuts them. That read starts a few bytes before the end of the window the object was parsed in.
+        // The search reads the file past the window a read at a time, each repeating the last bytes of the one before:
+        // the keyword, and the end-of-line before it that the data leaves out, are found whole wherever the edge of the
+        // first read cuts them. That read starts a few bytes before the end of the window the object was parsed in.
         var prefix = Invariant($"{StreamNumber} 0 obj\n") + Stream(0, string.Empty, end: string.Empty, width: 7);
-        var firstReadEnd = Window - PdfFileReader.EndStreamSearchOverlap + PdfFileReader.EndStreamSearchChunk;
+        var firstReadEnd = Window - PdfFileReader.EndStreamSearchOverlap + PdfFileReader.EndStreamSearchFirstRead(Window - prefix.Length);
 
         for (var keyword = firstReadEnd - 20; keyword <= firstReadEnd + 5; keyword++)
         {
@@ -1131,7 +1441,8 @@ public class StreamLengthTests
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
         stream.Data.Length.Should().Be(Length - 100);
-        (source.BytesRead - opened).Should().BeInRange(Length - Window, Length + Window, "the data is read once");
+        var repeated = ((Length / PdfFileReader.EndStreamSearchChunk) + 1) * PdfFileReader.EndStreamSearchOverlap;
+        (source.BytesRead - opened).Should().BeInRange(Length - Window, Length + Window + repeated, "the data is read once, and what each read repeats of the one before");
         allocated.Should().BeLessThan(1024 * 1024, "the search reads through one pooled window at a time, and allocates nothing for what it reads");
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid)
             .Which.Message.Should().EndWith("before the end of the file; the declared length is kept.");
@@ -1321,6 +1632,16 @@ public class StreamLengthTests
         return builder.BuildClassic(rootNumber: 1);
     }
 
+    /// <summary>
+    /// Rewrites the row of object <paramref name="number"/> in a file <see cref="TestPdfBuilder"/> wrote with a classic
+    /// table: to place it at <paramref name="offset"/>, or to mark it free when null.
+    /// </summary>
+    private static void Rewrite(byte[] file, int number, long? offset)
+    {
+        var row = Encoding.Latin1.GetString(file).LastIndexOf(Invariant($"{HeaderOf(file, number):D10} 00000 n"), StringComparison.Ordinal);
+        Encoding.ASCII.GetBytes(offset is { } at ? Invariant($"{at:D10} 00000 n") : "0000000000 65535 f").CopyTo(file, row);
+    }
+
     /// <summary>Where the header of object <paramref name="number"/> starts, the first time a line starts with it.</summary>
     private static long HeaderOf(byte[] file, int number) =>
         Encoding.Latin1.GetString(file).IndexOf(Invariant($"\n{number} 0 obj"), StringComparison.Ordinal) + 1;
@@ -1461,11 +1782,28 @@ public class StreamLengthTests
         public override long Length => data.Length;
 
         /// <summary>
-        /// Counts the reads a search for endstream made in the data of a stream: those that start inside it and ask for
-        /// more than the few bytes the checks at its end read.
+        /// Counts the searches for endstream made in the data of a stream: the reads that start inside it and ask for more
+        /// than the few bytes the checks at its end read, a read that carries on from the one before — starting where it
+        /// ended, less what each read repeats — counted with it.
         /// </summary>
-        public int Searches(long dataStart, int length) =>
-            _reads.Count(read => read.Offset > dataStart && read.Offset < dataStart + length && read.Length > PdfObjectParser.EndObjLookahead);
+        public int Searches(long dataStart, int length)
+        {
+            var searches = 0;
+
+            for (var index = 0; index < _reads.Count; index++)
+            {
+                var (offset, size) = _reads[index];
+                var carriesOn = index > 0 &&
+                    offset == _reads[index - 1].Offset + _reads[index - 1].Length - PdfFileReader.EndStreamSearchOverlap;
+
+                if (offset > dataStart && offset < dataStart + length && size > PdfObjectParser.EndObjLookahead && !carriesOn)
+                {
+                    searches++;
+                }
+            }
+
+            return searches;
+        }
 
         /// <summary>Forgets the reads made so far: opening the document reads the tail of the file, where the data may be.</summary>
         public void Forget() => _reads.Clear();

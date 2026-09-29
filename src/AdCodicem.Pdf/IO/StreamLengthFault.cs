@@ -41,8 +41,9 @@ internal readonly record struct StreamLengthFault
     public required EndStreamState EndStream { get; init; }
 
     /// <summary>
-    /// Gets the offset of the object the search for the <c>endstream</c> stopped at, when
-    /// <see cref="EndStream"/> is <see cref="EndStreamState.MissingBeforeNextObject"/>; null otherwise.
+    /// Gets the offset of the object the search for the <c>endstream</c> stopped at — where an index places it, or where
+    /// its header starts in the file's bytes —, when <see cref="EndStream"/> is
+    /// <see cref="EndStreamState.MissingBeforeNextObject"/>; null otherwise.
     /// </summary>
     public long? NextObject { get; init; }
 
