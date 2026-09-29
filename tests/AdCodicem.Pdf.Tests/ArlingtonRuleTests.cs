@@ -1004,6 +1004,28 @@ public class ArlingtonRuleTests
         Validate(file).Findings.Should().BeEmpty("read whole, item 5 has its /Title");
     }
 
+    [Theory]
+    [InlineData("tree node", "<< /Type /Catalog /Pages 2 0 R /Names << /ACME 5 0 R /AP 9 0 R /Dests 4 0 R >> >>", "<< /Kids [5 0 R] >>", "<< /Names [(a) << /D 7 >>] >>", 5)]
+    [InlineData("candidate", "<< /Type /Catalog /Pages 2 0 R /ACME 4 0 R /ACMF 9 0 R /OpenAction 4 0 R >>", "<< /S /GoTo /D [3 0 R /Fit] >>", "null", 4)]
+    [InlineData("ancestor", "<< /Type /Catalog /Pages 2 0 R /ACME 5 0 R /ACMF 9 0 R /OpenAction [4 0 R /Fit] >>", "<< /Type /Page /Parent 5 0 R /Resources << >> >>", "<< /Type /Pages /Kids [4 0 R] /Count 1 /MediaBox [0 0 1 1] >>", 5)]
+    public void An_object_a_rebuild_turns_into_a_number_mid_walk_is_skipped_without_throwing(string role, string catalog, string four, string five, int redefined)
+    {
+        // The chain names a section that is not there: the index is rebuilt when /ACMF or /AP asks for object 9, which
+        // the file lacks, after the walk met object 4 or 5 as a dictionary and before it read that object again as a
+        // tree node, a candidate to type, or an ancestor to inherit from. The rebuilt index takes a later definition,
+        // a number: the walk skips what is no longer a dictionary rather than throwing. Validation meets the rebuild
+        // before the walk, when the object graph resolves every object; the walk run alone does not.
+        var template = Template(catalog, Root, Page, four, five).Replace("/Root 1 0 R", "/Root 1 0 R /Prev 999999", StringComparison.Ordinal)
+            + string.Create(CultureInfo.InvariantCulture, $"{redefined} 0 obj\n7\nendobj\n");
+
+        using var document = PdfDocument.Open(PdfTemplate.Build(template));
+        var walk = ArlingtonWalk.Run(document, PageTreeWalk.Run(document));
+
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefRebuilt).Should().BeTrue(role);
+        document.GetObject(new PdfObjectId(redefined)).Should().BeOfType<PdfInteger>(role);
+        walk.Checked.Should().BePositive(role);
+    }
+
     private static PdfReaderOptions Limited(int maxObjectLength) =>
         new() { Limits = PdfReaderLimits.Default with { MaxObjectLength = maxObjectLength } };
 
