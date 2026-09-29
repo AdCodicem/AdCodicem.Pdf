@@ -784,8 +784,8 @@ described by the goal its specification states, closed when the row says *done*,
 date: this roadmap is an intention, not a promise. It runs on every change to this file, a specification or
 `.github/labels.json` on `main`, and never deletes a milestone the table stops naming.
 
-A GitHub milestone's progress counts its issues: the slices of its specification, opened when it starts,
-and the debt filed under it. Its exit criteria stay checkboxes in its specification, reviewed with the code
+A GitHub milestone's progress counts its issues: the slices of its specification, opened when it starts —
+the last of them its review, labeled `review` too (ADR 46) —, and the debt filed under it. Its exit criteria stay checkboxes in its specification, reviewed with the code
 that ticks them. The debt table `docs/status.md` held until 2026-09-27 is now its issues labeled `debt`, and
 its former identifiers, T01 to T40, are mapped there. A commit names the issue it advances in its footer
 (`Refs #58`), never in its subject; the pull request closes what it completes (`Closes #58`), and an issue
@@ -804,7 +804,7 @@ filed under a milestone is enough for what only its closing waits on.
 
 ## Definition of done
 
-Every milestone, without exception, closes only when all six hold:
+Every milestone, without exception, closes only when all seven hold:
 
 | | Requirement |
 |---|---|
@@ -814,10 +814,15 @@ Every milestone, without exception, closes only when all six hold:
 | 4 | **Integration tests** confirm, through an independent tool running in a container, anything the milestone claims about a document: that it is valid, that it round-trips, that its text is what we say it is |
 | 5 | The **documentation site** matches what now exists: the user-facing pages under `docs/website/docs` for anything a consumer can call, the project documents for anything a contributor needs, and the state of the milestone's features in `docs/features/features.json`, from which the README's and the site's feature tables are generated |
 | 6 | **`docs/status.md`** records the measurements rather than promising them |
+| 7 | Its **adversarial review** is recorded in `docs/reviews/`, run by a session that worked on none of it, and every finding it kept under the milestone is closed ([ADR 46](adr/0046-every-milestone-ends-with-an-adversarial-review.md), `docs/milestone-review.md`) |
 
 Points 3 to 5 are not paperwork after the fact. An untested behavior is a guess; a claim no independent
 tool has checked is an opinion; and a feature nobody can find in the documentation does not exist for
 anyone outside this repository.
+
+Point 7 is the milestone's last slice. Each session checks its own change; the review checks that the decisions
+taken across the milestone's sessions still agree with each other, with the code, with the invariants and with
+the milestones already closed. An XL milestone is reviewed once per sub-milestone, then once over their seams.
 
 ## Adding a milestone
 
