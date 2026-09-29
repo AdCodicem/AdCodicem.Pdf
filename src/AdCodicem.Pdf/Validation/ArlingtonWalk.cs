@@ -545,8 +545,11 @@ internal sealed class ArlingtonWalk
                 continue;
             }
 
-            var value = resolved ?? Resolve(node.Raw);
-            var dictionary = value as PdfDictionary ?? ((PdfStream)value).Dictionary;
+            if (DictionaryOf(resolved ?? Resolve(node.Raw)) is not { } dictionary)
+            {
+                continue;
+            }
+
             var nodeHolder = node.Holder;
             int nodeStep;
 
@@ -647,7 +650,15 @@ internal sealed class ArlingtonWalk
         }
 
         var array = value as PdfArray;
-        var count = array is null ? Fill(value as PdfDictionary ?? ((PdfStream)value).Dictionary, ref _candidateEntries) : 0;
+        var dictionary = array is null ? DictionaryOf(value) : null;
+
+        if (array is null && dictionary is null)
+        {
+            chosen = default;
+            return false;
+        }
+
+        var count = dictionary is null ? 0 : Fill(dictionary, ref _candidateEntries);
 
         try
         {
@@ -895,8 +906,13 @@ internal sealed class ArlingtonWalk
                 }
             }
 
-            var value = resolved ?? Resolve(parent);
-            var ancestor = value as PdfDictionary ?? ((PdfStream)value).Dictionary;
+            // An ancestor a rebuild of the index turned into something else says nothing of the key: as one a limit
+            // cut, it is taken to give it.
+            if (DictionaryOf(resolved ?? Resolve(parent)) is not { } ancestor)
+            {
+                found = true;
+                break;
+            }
 
             if (Find(ancestor, key) is { } given && Classify(given, out _, out _) != ValueClass.Null)
             {
@@ -1073,6 +1089,17 @@ internal sealed class ArlingtonWalk
     };
 
     private static bool IsContainer(ValueClass kind) => kind is ValueClass.Array or ValueClass.Dictionary or ValueClass.Stream;
+
+    /// <summary>
+    /// Gives the dictionary of <paramref name="value"/>, its own or a stream's, or null when a rebuild of the reader's
+    /// index, after the walk first met the object as a dictionary, made it something else.
+    /// </summary>
+    private static PdfDictionary? DictionaryOf(PdfObject value) => value switch
+    {
+        PdfDictionary dictionary => dictionary,
+        PdfStream stream => stream.Dictionary,
+        _ => null,
+    };
 
     /// <summary>Copies a dictionary's entries into <paramref name="buffer"/>, in ordinal order of their keys.</summary>
     private static int Fill(PdfDictionary dictionary, ref KeyValuePair<PdfName, PdfObject>[] buffer)
