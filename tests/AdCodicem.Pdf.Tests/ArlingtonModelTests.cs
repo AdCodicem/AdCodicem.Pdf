@@ -462,6 +462,40 @@ public class ArlingtonModelTests
         first.Equals("Catalog/Type").Should().BeFalse();
     }
 
+    [Fact]
+    public void A_handle_equals_no_handle_of_another_kind_even_on_the_same_number()
+    {
+        // Each kind of handle is a number into its own table, and an object's name is the name of the object's number:
+        // handles of two kinds may hold the same number and name the same text, and are not equal.
+        var catalog = ArlingtonModel.GetObject(ArlingtonModel.Catalog);
+        var name = new ArlingtonName(catalog.Index);
+        var link = new ArlingtonLink(catalog.Index);
+        var value = new ArlingtonValue(catalog.Index);
+
+        name.ToString().Should().Be(catalog.ToString());
+        catalog.Equals((object)name).Should().BeFalse();
+        name.Equals((object)catalog).Should().BeFalse();
+        link.Equals((object)value).Should().BeFalse();
+        value.Equals((object)link).Should().BeFalse();
+        catalog.Equals(null).Should().BeFalse();
+        name.Equals(null).Should().BeFalse();
+        link.Equals(null).Should().BeFalse();
+        value.Equals(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_key_s_own_row_answers_before_the_wildcard()
+    {
+        ArlingtonModel.TryFindObject("ColorSpaceMap", out var colorSpaces).Should().BeTrue();
+
+        colorSpaces.TryFindRowOrWildcard("DefaultRGB", out var own).Should().BeTrue();
+        colorSpaces.TryFindRowOrWildcard("CS0", out var open).Should().BeTrue();
+
+        own.Key.ToString().Should().Be("DefaultRGB");
+        own.IsWildcard.Should().BeFalse();
+        open.IsWildcard.Should().BeTrue();
+    }
+
     private static Config PropertySettings => Config.QuickThrowOnFailure.WithMaxTest(200).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);
 
     private static void CompareRow(List<string> problems, ArlingtonObject obj, ArlingtonRow row, Tool.CompiledRow expected, Tool.CompiledModel compiled)
