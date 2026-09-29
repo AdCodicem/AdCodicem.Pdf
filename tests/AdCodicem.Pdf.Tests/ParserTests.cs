@@ -101,6 +101,15 @@ public class ParserTests
         diagnostics.Contains(PdfDiagnosticCodes.StreamLengthInvalid).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(-1, false)]
+    [InlineData(11, false)]
+    public void Looks_for_endstream_only_inside_the_bytes_it_is_given(long position, bool expected)
+    {
+        PdfObjectParser.IsEndStreamAt("\nendstream"u8, position).Should().Be(expected);
+    }
+
     [Fact]
     public void Recovers_a_stream_that_never_ends()
     {

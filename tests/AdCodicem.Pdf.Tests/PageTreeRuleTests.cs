@@ -214,6 +214,28 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_kid_that_is_no_page_past_the_last_page_index_is_located_at_its_node_alone()
+    {
+        // Each node lists the one below it twice: 2^32 pages before the root's last kid, more than a page index can say.
+        const int levels = 32;
+        var builder = new TestPdfBuilder().WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+
+        for (var node = 2; node < levels + 2; node++)
+        {
+            var last = node == 2 ? " null" : string.Empty;
+            builder.WithObject(node, $"<< /Type /Pages /Kids [{node + 1} 0 R {node + 1} 0 R{last}] /Count 2 >>");
+        }
+
+        builder.WithObject(levels + 2, "<< /Type /Page /MediaBox [0 0 595 842] /Resources << >> >>");
+
+        var finding = Single(Validate(builder.BuildClassic(rootNumber: 1)), PdfValidationRuleIds.PageTreeKidInvalid);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(2));
+        finding.Location.PageIndex.Should().BeNull();
+        finding.Message.Should().Be("The kid at index 2 of page tree node 2 is null: it counts as a page with nothing on it.");
+    }
+
+    [Fact]
     public void A_kid_naming_a_literal_null_takes_a_blank_page_s_place()
     {
         var template = Tree
@@ -243,6 +265,22 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_page_given_a_stream_body_in_the_array_is_reported_at_the_node_listing_it()
+    {
+        // The message names such a kid oddly (#129): only its start and its end are checked.
+        var file = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R << /Type /Page /Length 0 >>\nstream\n\nendstream] /Count 2");
+
+        using var document = PdfDocument.Open(file);
+        var report = new PdfValidator().Validate(document);
+
+        var finding = Single(report, PdfValidationRuleIds.PageTreeKidInvalid);
+        finding.Location.Object.Should().Be(new PdfObjectId(4), "the stream has no number of its own to be located by");
+        finding.Message.Should().StartWith("The kid at index 1 of page tree node 4 ").And.EndWith(
+            "a stream rather than a dictionary: the reader reads the stream's dictionary in its place.");
+        PageTreeWalk.Run(document).PageCount.Should().Be(3);
+    }
+
+    [Fact]
     public void A_page_written_in_the_array_is_read_as_it_is()
     {
         var file = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R << /Type /Page >>] /Count 2");
@@ -252,6 +290,17 @@ public class PageTreeRuleTests
         Single(report, PdfValidationRuleIds.PageTreeKidInvalid).Message.Should().Be(
             "The kid at index 1 of page tree node 4 is a dictionary written in the array, where the tree wants an indirect reference to one.");
         report.Contains(PdfValidationRuleIds.PageTreeParentWrong).Should().BeFalse("a kid with no number cannot be named by /Parent");
+    }
+
+    [Fact]
+    public void A_node_written_in_the_array_without_kids_is_named_by_where_it_is_written()
+    {
+        // Neither the message's start nor where the finding is located is settled yet (#129): only the end is checked.
+        var file = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R << /Type /Pages /Count 0 >>] /Count 2");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.PageTreeKidsMissing);
+
+        finding.Message.Should().EndWith("page tree node written in its parent's /Kids has no /Kids: it lists no page.");
     }
 
     [Fact]
@@ -512,6 +561,21 @@ public class PageTreeRuleTests
         report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreePageOrphaned)
             .Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(3), new PdfObjectId(5), new PdfObjectId(6));
         report.HasErrors.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_pages_entry_set_to_null_in_memory_leaves_no_tree_and_its_pages_orphaned()
+    {
+        // No file can hold it — the parser drops an entry whose value is null —, but the catalog is a dictionary a caller can edit.
+        using var document = PdfDocument.Open(PdfTemplate.Build(Tree));
+        document.Catalog!.Set(PdfName.Pages, PdfNull.Instance);
+
+        var walk = PageTreeWalk.Run(document);
+
+        walk.Partial.Should().BeFalse("a null in place of the tree is no object the reader failed to produce");
+        walk.PageCount.Should().Be(0);
+        new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreePageOrphaned)
+            .Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(3), new PdfObjectId(5), new PdfObjectId(6));
     }
 
     [Fact]

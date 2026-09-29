@@ -317,6 +317,91 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void An_object_stream_decoded_again_while_it_is_decoded_counts_once_against_the_budget()
+    {
+        // Object stream 7 takes its /DecodeParms from object 5, which it holds and the index does not list — its row is
+        // of a reserved type —, in an index that declares a row more than it holds. Decoding 7 asks for 5, which
+        // rebuilds the index; the rebuilt index places 5 in 7, which is decoded again, 5 read as null, and kept. The
+        // first decoding then keeps 7 in place of the second: its data counts once, as it does in the sound file.
+        var sound = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Predictor 1 >>")
+            .WithObject(6, "<< /Title (six) >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], compressObjectStream: true, objectStreamEntries: "/DecodeParms 5 0 R");
+        var text = Encoding.Latin1.GetString(sound);
+        var dictionary = text.IndexOf("/Type /XRef /Size 9 ", StringComparison.Ordinal);
+        var rows = text.IndexOf("stream\n", dictionary, StringComparison.Ordinal) + "stream\n".Length;
+        var chars = text.ToCharArray();
+        chars[rows + (5 * 7)] = '\u0003';
+        var file = Encoding.Latin1.GetBytes(new string(chars).Replace("/Type /XRef /Size 9 ", "/Type /XRef /Size 10 ", StringComparison.Ordinal));
+
+        using var expected = PdfDocument.Open(sound);
+        Title(expected.GetObject(new PdfObjectId(6))).Should().Be("six");
+
+        using var document = PdfDocument.Open(file);
+        var six = document.GetObject(new PdfObjectId(6));
+
+        Title(six).Should().Be("six");
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(5)).AsDictionary().Required().GetInteger(PdfName.Get("Predictor")).Should().Be(1);
+        document.Reader.ObjectStreamBytes.Should().Be(expected.Reader.ObjectStreamBytes).And.BePositive();
+    }
+
+    [Fact]
+    public void An_object_stream_decoded_again_while_it_is_decoded_and_short_both_times_reads_as_nothing_without_failing()
+    {
+        // Object stream 7 takes its /Filter from object 10, which object stream 9 holds, and its /DecodeParms from
+        // object 5, which 7 holds and the index does not list — its row is of a reserved type —, in an index a row
+        // short of its /Size. Decoding 7 asks for 5, which rebuilds the index while 10 is not yet in it: the rebuild
+        // reads 7 unfiltered, and places 5 in it. Reading 5 decodes 7 again inside the first decoding, through
+        // /ASCIIHexDecode this time, into fewer bytes than its /First: neither decoding gives anything to keep, and the
+        // second to end has nothing to take the place of.
+        using var output = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        void WriteObject(int number, string body)
+        {
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+        }
+
+        Write("%PDF-1.5\n");
+        WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        WriteObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        WriteObject(7, "<< /Type /ObjStm /N 2 /First 9 /Filter 10 0 R /DecodeParms 5 0 R /Length 47 >>\nstream\n5 0 6 19 << /Predictor 1 >>\n<< /Title (six) >>\n\nendstream");
+        WriteObject(9, "<< /Type /ObjStm /N 1 /First 5 /Length 21 >>\nstream\n10 0 /ASCIIHexDecode\n\nendstream");
+
+        var xref = output.Position;
+        using var rows = new MemoryStream();
+        (int Type, long Field, int Index)[] entries =
+        [
+            (0, 0, 65535), (1, offsets[1], 0), (1, offsets[2], 0), (0, 0, 0), (0, 0, 0), (3, 7, 0),
+            (2, 7, 1), (1, offsets[7], 0), (0, 0, 0), (1, offsets[9], 0), (2, 9, 0), (1, xref, 0),
+        ];
+
+        foreach (var (type, field, index) in entries)
+        {
+            rows.Write([(byte)type, (byte)(field >> 24), (byte)(field >> 16), (byte)(field >> 8), (byte)field, (byte)(index >> 8), (byte)index]);
+        }
+
+        Write(string.Create(CultureInfo.InvariantCulture, $"11 0 obj\n<< /Type /XRef /Size 13 /W [1 4 2] /Root 1 0 R /Length {rows.Length} >>\nstream\n"));
+        output.Write(rows.ToArray());
+        Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n"));
+
+        using var document = PdfDocument.Open(output.ToArray());
+        var six = document.GetObject(new PdfObjectId(6));
+
+        six.Should().BeOfType<PdfNull>();
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(10)).Should().Be(PdfName.Get("ASCIIHexDecode"));
+        document.Reader.ObjectStreamBytes.Should().Be(21, "only object stream 9 is kept");
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamTruncated).Should().HaveCount(2);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamSelfReference);
+    }
+
+    [Fact]
     public void Two_object_streams_that_need_each_other_read_the_same_after_the_budget_lets_them_go()
     {
         // Stream 10 takes its filter from 21, held by stream 11, which takes its own from 23, held by stream 10:

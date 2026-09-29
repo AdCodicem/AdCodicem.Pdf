@@ -78,6 +78,22 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void Rebuilds_the_index_of_a_file_cut_right_after_its_trailer_keyword()
+    {
+        var complete = SampleDocument().BuildClassic(rootNumber: 1);
+        var keyword = complete.AsSpan().LastIndexOf("trailer"u8);
+        var truncated = complete.AsSpan(0, keyword + "trailer".Length).ToArray();
+
+        using var document = PdfDocument.Open(truncated);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
+            .Which.Position.Should().Be(truncated.Length, "the trailer the keyword announces would start where the file ends");
+    }
+
+    [Fact]
     public void Prefers_the_newest_definition_after_an_incremental_update()
     {
         var original = SampleDocument().BuildClassic(rootNumber: 1);
@@ -138,6 +154,27 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_reader_handed_an_empty_source_finds_no_header_and_rebuilds_an_index_that_stays_empty()
+    {
+        // A document refuses an empty input before any reader sees it; handed one all the same, the reader finds
+        // neither a header nor a startxref, and says so.
+        var diagnostics = new PdfDiagnostics();
+        using var reader = new PdfFileReader(
+            PdfFileSource.FromMemory(ReadOnlyMemory<byte>.Empty),
+            diagnostics,
+            new PdfLimitGuard(PdfReaderLimits.Default, throwOnLimit: false),
+            cacheCapacity: 64,
+            ownsSource: true);
+
+        reader.ObjectCount.Should().Be(0);
+        reader.WasRepaired.Should().BeTrue();
+        reader.Structure.StartXRefPosition.Should().Be(-1);
+        diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Message)).Should().Equal(
+            (PdfDiagnosticCodes.XRefRebuilt, "The file does not start with a PDF header."),
+            (PdfDiagnosticCodes.XRefRebuilt, "The cross-reference index was rebuilt by scanning the file."));
+    }
+
+    [Fact]
     public void Does_not_read_stream_data_until_it_is_asked_for()
     {
         var payload = new string('A', 500_000);
@@ -153,6 +190,21 @@ public class DocumentReaderTests
         stream.GetRawBytes().Length.Should().Be(payload.Length);
 
         source.BytesRead.Should().BeGreaterThan(afterOpen + payload.Length - 1);
+    }
+
+    [Fact]
+    public void Stream_data_a_file_lost_after_its_dictionary_was_read_is_read_as_far_as_the_file_still_goes()
+    {
+        // The file is cut five bytes into the page's content once its dictionary is read: the data is those five bytes,
+        // not the eighteen its /Length gives with zeros where the rest was.
+        var bytes = SampleDocument().BuildClassic(rootNumber: 1);
+        var source = new CutShortSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+        var stream = Page(document).GetStream(PdfName.Contents).Required();
+
+        source.CutAt((int)PdfTemplate.OffsetOf(bytes, "BT (Bonjour)") + 5);
+
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("BT (B");
     }
 
     [Theory]
@@ -196,6 +248,21 @@ public class DocumentReaderTests
         {
             File.Delete(path);
         }
+    }
+
+    [Theory]
+    [InlineData(-1, 4)]
+    [InlineData(4, 4)]
+    [InlineData(0, 0)]
+    [InlineData(0, -1)]
+    public void A_source_gives_an_empty_window_for_a_range_outside_itself_or_of_no_length(long offset, int length)
+    {
+        using var source = PdfFileSource.FromMemory("%PDF"u8.ToArray());
+
+        using var window = source.GetWindow(offset, length);
+
+        window.Length.Should().Be(0);
+        window.Offset.Should().Be(0);
     }
 
     [Fact]
@@ -302,6 +369,43 @@ public class DocumentReaderTests
         document.GetObject(new PdfObjectId(99)).Should().BeSameAs(PdfNull.Instance);
 
         document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void An_index_a_rebuild_left_empty_while_the_chain_was_read_is_not_rebuilt_again()
+    {
+        // The only section is a cross-reference stream whose header a comment splits, which a rebuild's scan does not
+        // take for an object header. Its first range declares rows its data lacks, leaving the index incomplete; its
+        // second starts at object 9, which the index lacks: resolving it rebuilds the index, and the scan finds
+        // nothing. The chain then leaves an empty index, which asks for a rebuild once more — and the one done stands.
+        var file = Encoding.ASCII.GetBytes("""
+            %PDF-1.5
+            7 0 % a comment between the generation and the keyword
+            obj
+            << /Type /XRef /W [1 2 0] /Index [0 2 9 0 R 1] /Length 0 >>
+            stream
+
+            endstream
+            endobj
+            startxref
+            9
+            %%EOF
+
+            """);
+        var diagnostics = new PdfDiagnostics();
+
+        using var reader = new PdfFileReader(
+            PdfFileSource.FromMemory(file),
+            diagnostics,
+            new PdfLimitGuard(PdfReaderLimits.Default, throwOnLimit: false),
+            cacheCapacity: 64,
+            ownsSource: true);
+
+        reader.ObjectCount.Should().Be(0);
+        reader.WasRepaired.Should().BeTrue();
+        reader.Structure.ChainRead.Should().BeFalse();
+        diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefRebuilt).Should().ContainSingle()
+            .Which.Message.Should().Be("The cross-reference index was rebuilt by scanning the file.");
     }
 
     [Fact]
