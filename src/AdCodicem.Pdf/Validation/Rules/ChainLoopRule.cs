@@ -30,12 +30,18 @@ internal sealed class ChainLoopRule : IValidationRule
             return;
         }
 
+        var namedFrom = structure.LoopNamedFrom;
+
         context.Report(
             this,
-            structure.LoopNamedFrom >= 0 ? PdfValidationLocation.AtPosition(structure.LoopNamedFrom) : default,
-            string.Create(
-                CultureInfo.InvariantCulture,
-                $"The {structure.LoopNamedBy} of the cross-reference section at offset {structure.LoopNamedFrom} names offset {structure.LoopOffset}, a section the chain has already read: the chain loops."),
+            namedFrom >= 0 ? PdfValidationLocation.AtPosition(namedFrom) : default,
+            namedFrom >= 0
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The {structure.LoopNamedBy} of the cross-reference section at offset {namedFrom} names offset {structure.LoopOffset}, a section the chain has already read: the chain loops.")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"A {structure.LoopNamedBy} names offset {structure.LoopOffset}, a section the chain has already read: the chain loops."),
             "Point the /Prev at the section before it, or remove it from the oldest section.");
     }
 }
