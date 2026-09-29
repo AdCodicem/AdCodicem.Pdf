@@ -24,23 +24,23 @@ namespace AdCodicem.Pdf.IntegrationTests;
 /// empty, or one whose <c>/Length</c> the reader found wrong, where qpdf may recover a different length —, or
 /// raw deflate, which qpdf does not read at all. A document qpdf gives up on is checked in the first direction
 /// only, since its silence then means nothing. Qpdf does not check zlib's checksum, so a stream whose checksum is
-/// wrong is not compared: the reader's report of one is another report. The one known exception is named below,
-/// with the debt it waits on.
+/// wrong is not compared: the reader's report of one is another report. A known exception is named below, with the
+/// debt it waits on; there is none since issue #55.
 /// </para>
 /// </remarks>
 [Collection(RefereeCollection.Name)]
 public partial class FlateRefereeTests(RefereeContainer referee)
 {
     /// <summary>
-    /// Streams the reader alone finds cut short, for a reason of its own: it takes the <c>/Length</c> of a stream
-    /// longer than the parser's window as it is (issue #55), and SAMHSA's object 27 declares 26 bytes too few. qpdf
-    /// recovers the length and decodes the stream whole. The test fails when issue #55 is fixed, so that the entry
-    /// goes with it.
+    /// Streams the reader alone finds cut short, for a reason of its own, by document: none since issue #55. SAMHSA's
+    /// object 27, longer than the parser's window, declares 26 bytes too few, and the reader took its <c>/Length</c> as
+    /// it was; it now finds the endstream as qpdf does, and reads the stream's raw data whole. Its decoding is still
+    /// short: the data inflates to 174,803 bytes, but its Adler-32 checksum is wrong, which the reader takes for
+    /// corruption and reports as such, keeping 126,219 bytes — up to the last 64 KB lost — until issue #56; qpdf does
+    /// not check the checksum, and the two are not compared on it. An entry fails the test once its reason is fixed, so
+    /// that it goes with it.
     /// </summary>
-    private static readonly Dictionary<string, long[]> KnownReaderOnly = new(StringComparer.Ordinal)
-    {
-        ["remote/opf-format-corpus/quartz-word-samhsa-prevention-pathways-fact-sheet.pdf"] = [3278],
-    };
+    private static readonly Dictionary<string, long[]> KnownReaderOnly = new(StringComparer.Ordinal);
 
     [Theory]
     [MemberData(nameof(ReadableDocuments))]

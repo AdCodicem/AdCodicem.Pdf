@@ -55,6 +55,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </summary>
     private const long ObjectStreamBudget = 32L * 1024 * 1024;
 
+    /// <summary>How much of the file a search for a stream's <c>endstream</c> reads at once.</summary>
+    internal const int EndStreamSearchChunk = 64 * 1024;
+
+    /// <summary>
+    /// How many bytes each read of a search for <c>endstream</c> repeats of the one before it: the keyword, and the
+    /// end-of-line before it that the data leaves out, are then whole in one read wherever an edge cuts them.
+    /// </summary>
+    internal const int EndStreamSearchOverlap = 10;
+
+    /// <summary>
+    /// How many times the length of the file the searches for <c>endstream</c> of one document may read, together,
+    /// before a stream whose declared length no <c>endstream</c> follows keeps it without a search.
+    /// </summary>
+    /// <remarks>
+    /// Not a guard a valid file reaches (ADR 34): a valid file is never searched. Each search reads from a stream's data
+    /// to the next object, so the searches of a damaged file whose objects lie apart read disjoint stretches — each byte
+    /// at most once before a rebuild of the index and once after, twice the file at most. Only objects that overlap, the
+    /// header of one inside the dictionary of another, share a stretch, which each of their searches would read again:
+    /// this keeps what they read in proportion to the file, as a window keeps the parsing of their dictionaries.
+    /// </remarks>
+    internal const int EndStreamSearchPasses = 4;
+
     /// <summary>Asks <see cref="TryParseAt"/> for a direct object, with no object header: a trailer.</summary>
     private const int DirectObject = -1;
 
@@ -152,6 +174,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// members have none to follow them, and are never in it.
     /// </summary>
     private readonly Dictionary<int, long> _endObjMissing = [];
+
+    /// <summary>
+    /// What was found of each stream read whose length the file did not confirm, by object number, as the reading kept
+    /// last found it: a sound file records nothing.
+    /// </summary>
+    private readonly Dictionary<int, StreamLengthFault> _streamLengthFaults = [];
+
+    /// <summary>
+    /// What each search of the file for a stream's <c>endstream</c> found, by where the stream's data starts: the file
+    /// is searched once for each stream, however many times it is parsed.
+    /// </summary>
+    private readonly Dictionary<long, StreamEndSearch> _endStreamSearches = [];
+
+    /// <summary>
+    /// Where the data starts of each stream whose length fault a reading the reader kept reported: the stream is not
+    /// reported again when it is parsed again.
+    /// </summary>
+    private readonly HashSet<long> _lengthFaultsReported = [];
+
+    /// <summary>How many bytes the searches for <c>endstream</c> read, which <see cref="EndStreamSearchPasses"/> bounds.</summary>
+    private long _endStreamSearchBytes;
 
     /// <summary>
     /// How many times a load answered null because the object was being loaded already, or because the object
@@ -342,6 +385,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     internal bool IsCutAtLimit(int number) => _cutAtLimit.Contains(number);
 
     /// <summary>
+    /// Determines whether object <paramref name="number"/>, as it was read, is a stream whose length the file did not
+    /// confirm, and gives what the reader found of it.
+    /// </summary>
+    internal bool TryGetStreamLengthFault(int number, out StreamLengthFault fault) =>
+        _streamLengthFaults.TryGetValue(number, out fault);
+
+    /// <summary>
     /// Answers null for object <paramref name="number"/>, a null that says nothing of the object and is not cached,
     /// and records it for each object stream being decoded, which reads it as null again whenever it is decoded again.
     /// </summary>
@@ -459,6 +509,206 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         var available = (int)Math.Min(tail.Length, _source.Length - absoluteOffset);
         var read = _source.Read(absoluteOffset, tail[..available]);
         return PdfObjectParser.IsEndStreamAt(tail[..read], 0);
+    }
+
+    /// <inheritdoc/>
+    EndObjState? IPdfStreamDataProvider.CheckEndStream(long absoluteOffset)
+    {
+        if (absoluteOffset < 0 || absoluteOffset >= _source.Length)
+        {
+            return null;
+        }
+
+        Span<byte> tail = stackalloc byte[PdfObjectParser.EndObjLookahead];
+        var available = (int)Math.Min(tail.Length, _source.Length - absoluteOffset);
+        var read = _source.Read(absoluteOffset, tail[..available]);
+        return PdfObjectParser.ReadStreamEnd(tail[..read], absoluteOffset + read >= _source.Length);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The search stops at the next object after the start of the data that either index places — the one the chain
+    /// gave as the file wrote it, and the one the reader reads with now —, or at the end of the file. Both are needed:
+    /// a rebuilt index lacks the objects a damaged stretch of the file erased, which the index as written still places
+    /// there, and an index rebuilt as the document opened is the only one. Stopping there keeps an <c>endstream</c> that
+    /// belongs to a later object from ending this one; when none lies before it, the declared length is kept. The
+    /// stream's own entries are no next object: an entry that missed its object may place it inside its own data.
+    /// <para>
+    /// This bound is no guard (ADR 34): a valid file's <c>endstream</c> follows its declared length (ISO 32000-1,
+    /// 7.3.8.1) — so do those of the 35,873 streams of the corpus whose length is confirmed, a gap of 0 to 2 bytes
+    /// between them —, and only an invalid file is searched at all. What it reads is the stretch between the stream and
+    /// the next object, once for each stream: the result is kept, and a stream parsed again is not searched again —
+    /// after a rebuild of the index too, which is what one search per stream costs: a stream first read before the
+    /// rebuild keeps the bound the index gave then, one first read after it the rebuilt index's. What the searches read
+    /// together is bounded by <see cref="EndStreamSearchPasses"/>.
+    /// </para>
+    /// </remarks>
+    StreamEndSearch IPdfStreamDataProvider.FindEndStream(int number, long absoluteDataStart, ReadOnlySpan<byte> buffered)
+    {
+        if (_endStreamSearches.TryGetValue(absoluteDataStart, out var known))
+        {
+            return known;
+        }
+
+        StreamEndSearch search;
+
+        if (_endStreamSearchBytes >= EndStreamSearchPasses * _source.Length)
+        {
+            search = new StreamEndSearch(null, null, EndObjState.Unknown, Searched: false);
+        }
+        else
+        {
+            var nextObject = NextObjectStart(number, absoluteDataStart);
+            var dataEnd = SearchEndStream(absoluteDataStart, buffered, nextObject ?? _source.Length);
+
+            // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of
+            // more than 2 GB can put one there, and the declared length is kept, as when none is found.
+            search = dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue
+                ? new StreamEndSearch(
+                    (int)(dataEnd - absoluteDataStart),
+                    nextObject,
+                    ((IPdfStreamDataProvider)this).CheckEndStream(dataEnd) ?? EndObjState.Unseen)
+                : new StreamEndSearch(null, nextObject, EndObjState.Unknown);
+        }
+
+        _endStreamSearches[absoluteDataStart] = search;
+        return search;
+    }
+
+    /// <inheritdoc/>
+    PdfObject IPdfStreamDataProvider.ResolveLength(PdfObjectId id, out ObjectPresence presence)
+    {
+        var reentries = _reentries;
+        var value = GetObject(id);
+
+        // A null a guard against re-entry gave says nothing of the object: it could not be read from here.
+        presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(id.Number);
+        return value;
+    }
+
+    /// <inheritdoc/>
+    bool IPdfStreamDataProvider.IsLengthFaultReported(long absoluteDataStart) =>
+        _lengthFaultsReported.Contains(absoluteDataStart);
+
+    /// <summary>
+    /// Gives where the next object after <paramref name="position"/> starts, as the index the chain gave or the one the
+    /// reader reads with now places it, whichever is nearer, object <paramref name="number"/>'s own entries aside; null
+    /// when neither places one before the end of the file.
+    /// </summary>
+    /// <remarks>
+    /// Offsets in an index count from the header, which <see cref="_headerOffset"/> places in the file; an offset past
+    /// the end of the file places nothing. Each index keeps its offsets sorted once asked, so that a lookup costs a
+    /// logarithm of it, however many streams are searched.
+    /// </remarks>
+    private long? NextObjectStart(int number, long position)
+    {
+        var after = position - _headerOffset;
+        var written = ChainIndex is { } chain && !ReferenceEquals(chain, _xref) ? chain : null;
+        var own = OwnOffset(_xref, number);
+        var ownWritten = written is null ? own : OwnOffset(written, number);
+        var next = FirstOffsetAfter(_xref, after, own, ownWritten);
+
+        if (written is not null)
+        {
+            next = Math.Min(next, FirstOffsetAfter(written, after, own, ownWritten));
+        }
+
+        return next < _source.Length - _headerOffset ? next + _headerOffset : null;
+    }
+
+    /// <summary>
+    /// Gives the first offset <paramref name="index"/> places after <paramref name="after"/> that is neither of an
+    /// object's own entries, <paramref name="own"/> and <paramref name="ownWritten"/>: the object read, relocated from
+    /// an entry that missed it, may have that entry among the offsets, whether it is still the index's or was replaced.
+    /// </summary>
+    private static long FirstOffsetAfter(PdfXRefTable index, long after, long own, long ownWritten)
+    {
+        var next = index.FirstOffsetAfter(after);
+
+        // Offsets come back each greater than the last, so each of the two is stepped over once at most.
+        for (var skipped = 0; skipped < 2 && (next == own || next == ownWritten); skipped++)
+        {
+            next = index.FirstOffsetAfter(next);
+        }
+
+        return next;
+    }
+
+    /// <summary>Gives the offset <paramref name="index"/> places object <paramref name="number"/> at, or <see cref="long.MinValue"/>, which no lookup gives, when it places none.</summary>
+    private static long OwnOffset(PdfXRefTable index, int number) =>
+        index.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Offset : long.MinValue;
+
+    /// <summary>
+    /// Finds the first <c>endstream</c> after <paramref name="dataStart"/> that ends before <paramref name="limit"/> —
+    /// in the bytes the parser holds, then in the file past them —, and returns where the data ends, the end-of-line
+    /// before the keyword left out; -1 when there is none.
+    /// </summary>
+    /// <remarks>
+    /// The file is read forward through windows the source lends, each repeating the last
+    /// <see cref="EndStreamSearchOverlap"/> bytes of the one before, and each starting further on than the last whatever
+    /// the source returns: the search ends at <paramref name="limit"/>, at the end of the file, or at a source that has
+    /// nothing more to give, and reads no byte past the end of the file.
+    /// </remarks>
+    private long SearchEndStream(long dataStart, ReadOnlySpan<byte> buffered, long limit)
+    {
+        var inBuffer = (int)Math.Clamp(limit - dataStart, 0, buffered.Length);
+        var found = PdfObjectParser.FindEndStream(buffered[..inBuffer], 0);
+
+        if (found >= 0)
+        {
+            return dataStart + found;
+        }
+
+        var end = Math.Min(limit, _source.Length);
+
+        if (dataStart + buffered.Length >= end)
+        {
+            return -1;
+        }
+
+        // Each window starts before the end, and the next one further on than it: the loop ends at one of the returns.
+        var position = dataStart + Math.Max(0, buffered.Length - EndStreamSearchOverlap);
+
+        while (true)
+        {
+            using var window = _source.GetWindow(position, (int)Math.Min(EndStreamSearchChunk, end - position));
+            var span = window.Memory.Span;
+            _endStreamSearchBytes += span.Length;
+
+            if (span.IsEmpty)
+            {
+                return -1;
+            }
+
+            var index = span.IndexOf("endstream"u8);
+
+            if (index >= 0)
+            {
+                // The overlap puts the end-of-line before a keyword first seen in this window inside it, unless the
+                // keyword starts the data.
+                var dataEnd = position + index;
+
+                if (dataEnd > dataStart && index > 0 && span[index - 1] == (byte)'\n')
+                {
+                    dataEnd--;
+                    index--;
+                }
+
+                if (dataEnd > dataStart && index > 0 && span[index - 1] == (byte)'\r')
+                {
+                    dataEnd--;
+                }
+
+                return dataEnd;
+            }
+
+            if (position + span.Length >= end)
+            {
+                return -1;
+            }
+
+            position += Math.Max(1, span.Length - EndStreamSearchOverlap);
+        }
     }
 
     /// <inheritdoc/>
@@ -1553,6 +1803,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     foundNumber = found.Number;
                 }
 
+                var lengthFault = parser.LengthFault;
+
                 if (parser.IsTruncated && cut)
                 {
                     _pending.RollBack(mark);
@@ -1570,10 +1822,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     {
                         _cutAtLimit.Add(foundNumber);
                     }
+
+                    // A stream the guard cut ran into the window's edge, not the file's end: what the parser found of it
+                    // is the limit's, and was dropped with what it reported.
+                    lengthFault = null;
                 }
 
                 _pending.MoveTo(_diagnostics, mark);
                 RecordEndObj(number, foundNumber, parser.EndObj, cut, offset);
+                RecordStreamLength(number, foundNumber, parsed, lengthFault);
                 value = parsed;
                 return true;
             }
@@ -1587,8 +1844,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>
     /// Records whether <c>endobj</c> follows an object read at <paramref name="offset"/>: it does not when another
-    /// token follows it, or when the file ends first — not when the window the reader offered ended first, a
-    /// stream's data running past it included, where what follows was never seen.
+    /// token follows it, or when the file ends first — not when the window the reader offered ended first, where
+    /// what follows was never seen. A stream whose data runs past the window is seen to its end all the same: the
+    /// file is asked what follows its <c>endstream</c> (#55).
     /// </summary>
     private void RecordEndObj(int number, int found, EndObjState state, bool cut, long offset)
     {
@@ -1604,6 +1862,33 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         else if (state == EndObjState.Present)
         {
             _endObjMissing.Remove(found);
+        }
+    }
+
+    /// <summary>
+    /// Records what was found of the stream a kept reading of object <paramref name="found"/> ended with, when the file
+    /// did not confirm its length, and that it was reported: the stream is not reported again when it is parsed again.
+    /// A kept reading that shows the stream sound, or the object no stream, clears what an earlier one recorded.
+    /// </summary>
+    private void RecordStreamLength(int number, int found, PdfObject parsed, StreamLengthFault? fault)
+    {
+        if (fault is { } reported)
+        {
+            _lengthFaultsReported.Add(reported.DataStart);
+        }
+
+        if (number == DirectObject || found <= 0)
+        {
+            return;
+        }
+
+        if (fault is { } kept && parsed is PdfStream)
+        {
+            _streamLengthFaults[found] = kept;
+        }
+        else
+        {
+            _streamLengthFaults.Remove(found);
         }
     }
 
