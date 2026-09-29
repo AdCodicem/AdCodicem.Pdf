@@ -92,7 +92,9 @@ public class CorpusValidationTests
     public void Every_document_produces_exactly_its_declared_findings(string file)
     {
         var entry = Corpus.Get(file);
-        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(Every_document_produces_exactly_its_declared_findings)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
 
         var report = Validate(entry);
 
@@ -106,7 +108,9 @@ public class CorpusValidationTests
     public void Well_formed_documents_have_no_errors(string file)
     {
         var entry = Corpus.Get(file);
-        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(Well_formed_documents_have_no_errors)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
 
         var report = Validate(entry);
 
@@ -119,7 +123,9 @@ public class CorpusValidationTests
     {
         // veraPDF finds these PDF/A-invalid; the structural profile must not: conformance is M20's business.
         var entry = Corpus.Get(file);
-        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(Conformance_failures_are_not_structural_errors)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
 
         var report = Validate(entry);
 
@@ -131,7 +137,9 @@ public class CorpusValidationTests
     public void Documents_waiting_for_M02_are_now_diagnosed(string file)
     {
         var entry = Corpus.Get(file);
-        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(Documents_waiting_for_M02_are_now_diagnosed)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
 
         var report = Validate(entry);
 
@@ -148,7 +156,9 @@ public class CorpusValidationTests
     {
         // Every reader opens these files; a reference to an undefined object is null by the specification.
         var entry = Corpus.Get(file);
-        Assert.SkipWhen(entry.Expect.Unsupported is not null, $"{entry.Name}: {entry.Expect.Unsupported}");
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(Field_anomalies_are_warnings_not_errors)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
 
         var report = Validate(entry);
 

@@ -150,7 +150,9 @@ Five fields serve that rule:
 
 - `unsupported` — the reason the library cannot yet meet the entry's expectations, and the milestone or the
   issue that will. The acceptance tests skip the document with that reason in their output; the expectations stay as
-  the independent tool established them.
+  the independent tool established them. When the reason concerns some tests only, `unsupportedTests` names them by
+  method name, `["Opening_does_not_read_the_content_of"]`, and only they skip it: every other test holds the
+  document to its expectations, so that a gap in one respect keeps it out of no other.
 - `readerLimits` — beside `expect`, not in it, since it is a setting chosen rather than an observation:
   the reader limits the document is opened with, when it is valid but exceeds a default one (ADR 34), such
   as `"readerLimits": { "maxDecodedStreamLength": 536870912 }`. Its keys are the properties of

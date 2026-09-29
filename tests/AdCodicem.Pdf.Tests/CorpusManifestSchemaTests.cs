@@ -152,6 +152,26 @@ public class CorpusManifestSchemaTests
         Enumeration(expectation["findings"]!).Should().BeEquivalentTo(Constants(typeof(PdfValidationRuleIds)));
     }
 
+    [Fact]
+    public void Every_test_a_skip_names_is_an_acceptance_test_of_the_suite()
+    {
+        // A name the schema's pattern accepts but no test has would skip nothing, and a renamed test would quietly
+        // start holding the document to what its reason excuses: both are caught here.
+        var tests = typeof(CorpusManifestSchemaTests).Assembly.GetTypes()
+            .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            .Where(method => method.GetCustomAttribute<FactAttribute>() is not null)
+            .Select(method => method.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var document in Corpus.Documents)
+        {
+            foreach (var test in document.Expect.UnsupportedTests ?? [])
+            {
+                tests.Should().Contain(test, $"{document.File} skips {test}, which the suite must have");
+            }
+        }
+    }
+
     public static TheoryData<string> AcceptedEntries => [.. Accepted.Keys];
 
     public static TheoryData<string> RefusedEntries => [.. Refused.Keys];
@@ -189,6 +209,11 @@ public class CorpusManifestSchemaTests
         }),
         ["a document the library cannot meet yet"] = () => Committed().With(entry => entry["expect"]!["unsupported"] = "M02: why, and what will."),
         ["a document an issue will answer"] = () => Committed().With(entry => entry["expect"]!["unsupported"] = "#47: why, and what will."),
+        ["a document skipped by the tests its reason concerns"] = () => Committed().With(entry =>
+        {
+            entry["expect"]!["unsupported"] = "#47: why, and what will.";
+            entry["expect"]!["unsupportedTests"] = new JsonArray("Opening_does_not_read_the_content_of");
+        }),
         ["a document with no page count to expect"] = () => Committed().With(entry => entry["expect"]!["pages"] = null),
         ["a document without a catalog"] = () => Committed().With(entry =>
         {
@@ -245,6 +270,23 @@ public class CorpusManifestSchemaTests
             entry["expect"]!["unsupported"] = "the reader does not do this yet"), "pattern"),
         ["an unsupported reason naming a former debt row"] = (() => Committed().With(entry =>
             entry["expect"]!["unsupported"] = "T24: the debt table is now issues"), "pattern"),
+        ["tests to skip without the reason"] = (() => Committed().With(entry =>
+            entry["expect"]!["unsupportedTests"] = new JsonArray("Opening_does_not_read_the_content_of")), "dependentRequired"),
+        ["an empty list of tests to skip"] = (() => Committed().With(entry =>
+        {
+            entry["expect"]!["unsupported"] = "#47: why, and what will.";
+            entry["expect"]!["unsupportedTests"] = new JsonArray();
+        }), "minItems"),
+        ["a test to skip named twice"] = (() => Committed().With(entry =>
+        {
+            entry["expect"]!["unsupported"] = "#47: why, and what will.";
+            entry["expect"]!["unsupportedTests"] = new JsonArray("Opening_does_not_read_the_content_of", "Opening_does_not_read_the_content_of");
+        }), "uniqueItems"),
+        ["a test to skip named by its class"] = (() => Committed().With(entry =>
+        {
+            entry["expect"]!["unsupported"] = "#47: why, and what will.";
+            entry["expect"]!["unsupportedTests"] = new JsonArray("CorpusReadingTests.Opening_does_not_read_the_content_of");
+        }), "pattern"),
 
         // Reader limits.
         ["a reader limit that does not raise its default"] = (() => Committed().With(entry =>
