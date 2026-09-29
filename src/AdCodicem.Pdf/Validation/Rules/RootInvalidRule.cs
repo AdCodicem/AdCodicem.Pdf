@@ -90,6 +90,7 @@ internal sealed class RootInvalidRule : IValidationRule
         PdfString => "a string",
         PdfArray => "an array",
         PdfDictionary => "a dictionary written in the trailer",
+        PdfStream => "a stream written in the trailer",
         PdfBoolean => "a boolean",
         _ => "not an object",
     };
