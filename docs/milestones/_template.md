@@ -45,14 +45,23 @@ What has already bitten, or what is known to be treacherous in the specification
 
 ## Documentation
 
-Which pages of `docs/website/docs` this milestone adds or changes, and which project documents it touches.
+Which pages of `docs/website/docs` this milestone adds or changes, by Diátaxis section
+([ADR 47](../adr/0047-the-user-documentation-follows-diataxis.md)), and which project documents it touches:
+
+- **Tutorials** (`tutorials/`) — when the milestone opens a path a newcomer should learn by doing; its code is a
+  sample under `samples/`, held to the tutorial by a test.
+- **How-to guides** (`guides/`) — one per task the milestone makes possible.
+- **Reference** (`reference/`) — what a caller looks up: codes, rules, limits, options, formats.
+- **Explanation** (`concepts/`) — each design choice a user has to understand.
+
 A milestone that adds public API without documenting it is not finished.
 
 ## Exit criteria
 
 Checkboxes verifiable by tests, including the acceptance conditions above and the seven points of the
-definition of done in `docs/roadmap.md`. The last is always:
+definition of done in `docs/roadmap.md`. The last two are always:
 
+- [ ] The pages of *Documentation* are written, each in its Diátaxis section, one mode per page (ADR 47).
 - [ ] The milestone's review is recorded in `docs/reviews/M<n>.md`, and every issue it filed under the milestone is
   closed.
 

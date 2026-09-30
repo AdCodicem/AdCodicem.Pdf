@@ -158,6 +158,10 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   `docs/` as they are, so a project document that does not build breaks CI. The user documentation is
   versioned (ADR 31): `docs/website/docs` is the preview; a released line is frozen in
   `docs/website/versioned_docs` by the stable release, and edited there only to correct that release.
+- **The user documentation follows Diátaxis** (ADR 47): one mode per page, in its section — `tutorials/`,
+  `guides/` (how-to), `reference/` (with the generated API under `reference/api`), `concepts/` (explanation). A page
+  that mixes modes is split, and the parts link to each other. A tutorial's code is a sample under `samples/`, and a
+  test holds the tutorial's code blocks and outputs to it. A milestone names its pages by section.
 - Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`) — **these
   decide the version**: semantic-release reads them on every merge to `main`, so a malformed message
   produces no release rather than an untidy log. CI rejects one on a pull request.
