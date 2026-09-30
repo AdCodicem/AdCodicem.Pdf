@@ -1,6 +1,7 @@
 ---
 title: Reader limits
 sidebar_position: 3
+description: How the reader keeps every valid PDF readable while treating every file as hostile, and why its guards are on by default.
 ---
 
 # Reader limits
@@ -8,107 +9,62 @@ sidebar_position: 3
 Every PDF that is valid under the specification can be read. That promise has to live alongside another:
 a file arriving from outside your system is treated as hostile, and a few kilobytes of it must not be able
 to make the reader hold gigabytes. The two meet in the **reader limits**: bounds on what a file may make the
-reader hold, on by default, each of which you can raise.
+reader hold, on by default, each of which you can raise. The [reference](../reference/reader-limits.md) lists them;
+[Read or refuse a document that reaches a limit](../guides/handle-reader-limits.md) says what to do when one is
+reached.
 
-## The limits
+## Hostile input
 
-| Property of `PdfReaderLimits` | Default | Reached by | What is kept | Code |
-|---|---|---|---|---|
-| `MaxDecodedStreamLength` | 256 MB | A decompression bomb, or a large-format scan: a 9,600 × 11,410 RGB map decodes to 313 MB | The first bytes, up to the bound | `limit.decoded-stream` |
-| `MaxObjectLength` | 16 MB | An object that long, the data of a stream aside: an array of a million references | The object as far as the bound | `limit.object` |
-| `MaxXRefSectionLength` | 64 MB | A classic cross-reference table of more than about 3.3 million entries | The entries within the bound | `limit.xref-section-length` |
-| `MaxXRefSectionCount` | 1,024 | A document saved incrementally more than a thousand times | The newest sections | `limit.xref-section-count` |
-| `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary: its `/Index` grows with every scattered update | The trailer as far as the bound | `limit.trailer` |
+A PDF arrives from outside your system, so the reader treats every value in it as an attempt. No
+allocation is sized by a number read from the file without a checked bound, no recursion is unbounded,
+and no loop exits on an offset that came from the file.
 
-When a limit is reached, the reader keeps what fits and reports a warning under the limit's own code, whose
-message names the property to raise:
+That claim is tested rather than asserted. Besides the hand-written cases — a cross-reference chain that
+loops, a stream claiming two gigabytes, an object stream declaring a billion objects, containers nested
+twenty thousand deep, fifty thousand streams each taking its length from the next, a few megabytes of
+RunLength data that would decode to hundreds, predictor rows whose length overflows — a mutation campaign
+runs against the test corpus: bit flips, corrupted digits, truncations, spliced bytes and broken keywords,
+each input required to end either in a usable document or in a typed exception, inside a time and an
+allocation budget. A few thousand mutated documents go through
+the reader on every test run — every pull request, and every package before it is published — and a
+nightly campaign runs twenty thousand mutations per seed document.
 
-```text
-Warning limit.decoded-stream at 48213: The /FlateDecode data decodes to more than 256 MB; decoding stopped
-there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
-```
+The first campaign found a real defect within a minute: a mutated invoice made the reader's index lookup
+and its relocation search call each other until the stack ran out. Relocation is now bounded to three
+counted attempts. That is the kind of failure this exists to catch — no hand-written test had thought of
+it, and a file that kills the process is the worst outcome a document reader can have.
 
-The limit is the reader's, not a fault of the file, and it replaces what the parser met where it stopped:
-you are not told a stream was truncated when it was the reader that stopped reading it. An object, a
-cross-reference section or a trailer is reported once, however often it is read again; a stream is reported
-each time it is decoded past the bound — in the diagnostics you pass to `Decode`, or in the document's own
-when you pass none.
+## Guards a valid file can reach
 
-A classic trailer that ends within the window its cross-reference table was read through is read whole,
-whatever its length. `MaxTrailerLength` bounds how far the reader follows one past that window, which is
-where the cost lies.
+Some of those bounds are reachable by a sound document: a large-format scan decodes past the 256 MB a stream may
+decode to by default, and a file saved incrementally a thousand times has a thousand cross-reference sections. A
+bound like that is a **guard**. It is on by default, so an application that opens files it did not produce is
+protected without configuring anything; it is reported under its own `limit.*` code when a document reaches it; and
+its message names the option that lifts it, so that the document stays readable by whoever needs to read it.
 
-## Raising a limit
+When a guard is reached, the reader keeps what fits and warns rather than fails. The limit is the reader's, not a
+fault of the file, and it replaces what the parser met where it stopped: you are not told a stream was truncated
+when it was the reader that stopped reading it. The bounds live on the options rather than on a static setting, so
+two documents opened side by side can be read under different ones, and a stream decodes under the limits of the
+document it came from, however long after opening.
 
-The limits are an immutable record on `PdfReaderOptions`. Raise the one the report names:
+`PdfReaderLimits.Unbounded` takes every limit to the most the implementation can hold. It is for documents your own
+application produced, never for uploads: under it, a file can make the reader hold whatever it asks for, up to those
+maxima.
 
-```csharp
-var options = new PdfReaderOptions
-{
-    Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 512 * 1024 * 1024 },
-};
+## Bounds only a damaged file reaches
 
-using var document = PdfDocument.Open("topographic-map.pdf", options);
-```
+Other bounds protect the reader itself — its stack, its rebuild of a damaged index — and are not reached by the
+documents producers write: real documents nest a handful of levels, not 128, and producers write an object rather
+than a reference to a reference. Those stay internal constants, since lifting them would let nothing more be read,
+and each says where it is declared why no valid file reaches it.
 
-A stream read from a document decodes under **that document's** limits, however long after opening you
-decode it. A stream you build in memory decodes under `PdfReaderLimits.Default`.
+A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
+if a valid file can reach it, it becomes a limit, with its code and its test.
 
-A value of zero or less is refused with an `ArgumentOutOfRangeException`. A length above `Array.MaxLength`,
-about 2 GB, is taken as `Array.MaxLength`: a decoded stream is held in one piece, and no runtime allocates
-a larger one.
+## Refusing instead
 
-### Documents you trust
-
-`PdfReaderLimits.Unbounded` takes every limit to the most the implementation can hold. Use it for documents
-your own application produced, never for uploads: under it, a file can make the reader hold whatever it
-asks for, up to those maxima. Until the reader decodes streams a piece at a time, a stream that decodes past
-about 2 GB is still cut there, and still reported, even under `Unbounded`.
-
-Raising `MaxDecodedStreamLength` also raises what the reader may hold for object streams it keeps decoded,
-which are not yet bounded as a whole.
-
-## Throwing instead
-
-Some applications would rather refuse a document than read part of it. Set `ThrowOnLimit`, and reaching a
-limit throws a `PdfLimitExceededException` instead of warning:
-
-```csharp
-var options = new PdfReaderOptions { ThrowOnLimit = true };
-
-try
-{
-    using var document = PdfDocument.Open(path, options);
-    Process(document);
-}
-catch (PdfLimitExceededException exception)
-{
-    // exception.Code      "limit.decoded-stream"
-    // exception.LimitName "MaxDecodedStreamLength"
-    // exception.Limit     268435456
-    // exception.Position  the byte offset where the limit was reached
-    Reject(path, exception.Message);
-}
-```
-
-Reading is lazy, so the exception comes from whichever operation reaches the limit: `PdfDocument.Open`
-while it indexes the file, `GetObject` or resolving a reference when an object is too long, `Decode` when a
-stream decodes too far. With `ThrowOnLimit` set, be ready for it wherever the document is used, not only
-around `Open`. A document whose index had to be rebuilt finishes the rebuild before throwing, so it stays
-usable afterwards.
-
-## What cannot be lifted
-
-Some bounds protect the reader itself — its stack, its rebuild of a damaged index — and are not reached by
-the documents producers write. They are not options:
-
-| Bound | Value | Why it is not an option |
-|---|---|---|
-| Nesting of arrays and dictionaries | 128 levels | Real documents nest a handful of levels; the bound keeps a hostile file from exhausting the stack |
-| A reference that resolves to another reference | followed 32 times | Producers write the object itself; the bound breaks a chain that loops |
-| Objects loaded while loading another | 64 | An indirect `/Length` leads to an integer, which loads nothing further |
-| Objects indexed by a rebuild | 2,000,000 | A rebuild only runs on a damaged file |
-| Entries one subsection claims | 50,000,000 | A table's rows are bounded by `MaxXRefSectionLength` already; a count past that describes rows that are not there |
-
-A new bound is classified when it is added: if a valid file can reach it, it becomes a limit, with its code
-and its test.
+Some applications would rather refuse a document than read part of it, and `ThrowOnLimit` turns every limit into an
+exception. Reading is lazy, so that exception can come from any operation that reads — opening the document,
+resolving an object, decoding a stream, validating —, long after `Open` returned. That is the price of reading only
+what is asked for: a limit is met where the data is, and the data is read when you ask for it.

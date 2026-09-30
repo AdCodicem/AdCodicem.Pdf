@@ -1,8 +1,13 @@
+---
+title: Validation rules
+description: Every rule the validator runs, by its identifier, with its severity, what it reports and what it checks.
+---
+
 # Validation rules
 
 Every rule the validator runs, by its identifier. The identifiers are public API: callers filter on them and
 repair keys its remedies off them, so one is renamed only by a stable release that says so — and never by a
-preview's whim once a stable release carries it ([ADR 36](adr/0036-validation-lives-in-the-core-conformance-in-a-satellite.md)).
+preview's whim once a stable release carries it ([ADR 36](/project/adr/validation-lives-in-the-core-conformance-in-a-satellite)).
 
 An identifier is `family.name`, both in lowercase kebab case. One identifier names one rule, which always
 reports at the same severity, and no identifier is ever one of the reader's diagnostic codes: a diagnostic
@@ -15,7 +20,7 @@ says what the reader did to read the file, a finding what is wrong with the file
 | `Information` | Worth knowing; nothing is wrong, or something could not be checked. |
 
 The line between a warning and an error is whether the file reads as it was written
-([ADR 45](adr/0045-a-findings-severity-says-whether-the-file-reads-as-written.md)), checked against what the
+([ADR 45](/project/adr/a-findings-severity-says-whether-the-file-reads-as-written)), checked against what the
 reader did rather than argued about readers the project does not run. When in doubt, a rule says `Warning`: a
 validator that calls sound files broken teaches its users to ignore it.
 
@@ -105,7 +110,7 @@ A `/Pages` that names nothing is `object.reference-missing`'s, and leaves no tre
 ### Object shapes, from the Arlington PDF Model
 
 `object.key-missing`, `object.value-type-wrong`, `object.type-value-wrong` and `object.key-deprecated` are generated,
-not written by hand ([ADR 44](adr/0044-object-shape-rules-generated-from-the-arlington-model.md)). The
+not written by hand ([ADR 44](/project/adr/object-shape-rules-generated-from-the-arlington-model)). The
 [Arlington PDF Model](https://github.com/pdf-association/arlington-pdf-model) is the PDF Association's machine-readable
 description of every object ISO 32000-2 defines: each key, its types, whether it is required, the versions that
 introduce and deprecate it, and the objects its value may be. Its 613 objects and 3,983 rows, at commit

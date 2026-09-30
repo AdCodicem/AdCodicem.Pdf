@@ -7,7 +7,7 @@
           "files": ["**/*.csproj"]
         }
       ],
-      "dest": "../website/docs/api",
+      "dest": "../website/docs/reference/api",
       "outputFormat": "markdown",
       "filter": "filterConfig.yml",
       "properties": {

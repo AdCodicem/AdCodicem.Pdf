@@ -1,6 +1,7 @@
 ---
 title: Lazy reading
 sidebar_position: 1
+description: What opening a document does and deliberately does not do, what that costs, and what it measured.
 ---
 
 # Lazy reading
@@ -45,15 +46,8 @@ are, with no decompress/recompress cycle in between.
 
 Objects are cached once parsed, in a bounded cache, so hot objects such as the page tree are not reparsed.
 Beyond that bound, an object read again is read from the file again. That is the deliberate trade: memory
-stays predictable, and the pathological case is slower rather than fatal.
-
-```csharp
-using var document = PdfDocument.Open("catalog.pdf", new PdfReaderOptions
-{
-    ObjectCacheCapacity = 32_768,   // more memory, fewer re-reads
-    DiagnosticCapacity = 5_000,
-});
-```
+stays predictable, and the pathological case is slower rather than fatal. The bound is an option, and
+[Tune the reader's memory](../guides/tune-reader-memory.md) says when to move it.
 
 The same options carry the [reader limits](reader-limits.md), which bound what one file may make the reader
 hold.

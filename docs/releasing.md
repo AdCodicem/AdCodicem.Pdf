@@ -54,7 +54,7 @@ the license's text and the work's notice, and to say what was changed. So:
 - the generated file's header says the same, for whoever reads the source.
 
 The license expression stays `MIT`, the maintainer's choice on 2026-09-28: the package's code is MIT, and `NOTICE`
-attributes the data. When the model is updated (`docs/validation-rules.md`), the commit `NOTICE` names changes with
+attributes the data. When the model is updated (`docs/website/docs/reference/validation-rules.md`), the commit `NOTICE` names changes with
 the lock. A satellite that one day carries third-party material packs its notice the same way, and `NOTICE` gains a
 paragraph for it.
 

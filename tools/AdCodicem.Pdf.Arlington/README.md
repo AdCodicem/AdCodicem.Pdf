@@ -22,4 +22,4 @@ dotnet run --project tools/AdCodicem.Pdf.Arlington -- update --from <clone>  # v
 An update to the model is a reviewed change: `update` rewrites the lock and the tables, the corpus tests show every
 finding it adds or removes, an override the new commit makes useless must go, and the commit named in the root
 `NOTICE` changes with it. What the rules read of the model, the overrides and what is left silent are in
-[`docs/validation-rules.md`](../../docs/validation-rules.md).
+[`docs/website/docs/reference/validation-rules.md`](../../docs/website/docs/reference/validation-rules.md).

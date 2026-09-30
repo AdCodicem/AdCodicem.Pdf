@@ -95,7 +95,7 @@ and `object.key-deprecated`, information, since ISO 32000-2 still lets a file ho
 version is the header's, or the catalog's `/Version` when later, never rounded, and none without a header that names
 one; the model's predicates are evaluated
 only where they bear on the version alone. A key newer than the version the file declares is not reported: the
-noisiest of the candidate rules on sound files, it is left to a debt issue. `docs/validation-rules.md` says what the
+noisiest of the candidate rules on sound files, it is left to a debt issue. `docs/website/docs/reference/validation-rules.md` says what the
 rules read of the model and what they leave silent.
 
 **The bar for an override** replaces "disagrees with qpdf and with the corpus's well-formed documents", since qpdf
@@ -105,7 +105,7 @@ a finding, declared in the corpus manifest, however common. Every override is ch
 made, and the generator refuses one that no longer changes the pinned model. An override may bound a requirement by
 version rather than remove it: a form XObject's `/Resources`, which the model requires from PDF 1.2 on and ISO 32000-1
 only recommends, stays required in PDF 2.0 files, the version the model describes. The overrides made, and the part of
-a candidate the text did not support, are listed in `docs/validation-rules.md`.
+a candidate the text did not support, are listed in `docs/website/docs/reference/validation-rules.md`.
 
 **One fault, one finding.** Where a hand-written rule reports a fault — the page tree's `/MediaBox`, `/Resources`,
 `/Parent`, `/Kids`, `/Count` and kids —, the generated rules stay silent on it, by a named row of `overrides.tsv`

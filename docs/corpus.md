@@ -169,7 +169,7 @@ Five fields serve that rule:
   file's last 1,024 bytes; for the rules that follow, the referee's report or the damage the document was
   made with; for the object-shape rules generated from the Arlington PDF Model, an independent walk of the model over
   the document's objects, and, for a sound document, the words of ISO 32000-1 the object breaks, read in the file
-  itself — a finding the text does not support is an override, not an expectation (`docs/validation-rules.md`).
+  itself — a finding the text does not support is an override, not an expectation (`docs/website/docs/reference/validation-rules.md`).
   `build_corpus.py` writes it for the documents it damages. Updating the model's pinned commit is held to the same
   lists: the corpus tests show every finding it adds or removes.
 - `source` — for a third-party file, the URL it was retrieved from, the date and the SHA-256 of the bytes

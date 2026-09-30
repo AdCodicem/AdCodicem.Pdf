@@ -17,7 +17,7 @@ the file as written.
 
 Implemented by the `AdCodicem.Pdf.Validation` namespace of the core — `PdfValidator`, `PdfValidatorOptions`,
 `ValidationProfile`, `PdfValidationReport`, `PdfValidationFinding`, `PdfValidationSeverity`,
-`PdfValidationLocation`, `PdfValidationRuleIds` —, `docs/validation-rules.md`, and `CorpusValidationTests`.
+`PdfValidationLocation`, `PdfValidationRuleIds` —, `docs/website/docs/reference/validation-rules.md`, and `CorpusValidationTests`.
 
 ## Context
 
@@ -65,7 +65,7 @@ We will build validation into the core, and keep a satellite for the conformance
   `page-tree`, `stream`, `font`, `resource`, `annotation`, `metadata`, `security` — and never a profile's
   name, since a rule runs in every profile that includes it; M20's rules take families of their own. One
   identifier names one rule, with one severity. No identifier equals a reader diagnostic code; a test holds
-  both rules, and `docs/validation-rules.md` lists every identifier with its severity, its meaning, and the
+  both rules, and `docs/website/docs/reference/validation-rules.md` lists every identifier with its severity, its meaning, and the
   diagnostic codes a rule reads, if any.
 - **The entry point** is an instance: `new PdfValidator(PdfValidatorOptions)`, whose immutable options carry
   the profile — `ValidationProfile.Structural` by default — and the report's capacity. It holds no state,

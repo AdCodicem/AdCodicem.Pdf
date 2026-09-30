@@ -7,7 +7,8 @@ namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
 /// Rule identifiers are public API from the day they ship (ADR 21), and ADR 36 gives them rules: a grammar, no
-/// collision with the reader's diagnostic codes, one severity each, and a line in <c>docs/validation-rules.md</c>.
+/// collision with the reader's diagnostic codes, one severity each, and a line in the rules table of the user
+/// documentation's reference, <c>docs/website/docs/reference/validation-rules.md</c>.
 /// </summary>
 public partial class ValidationRuleIdTests
 {
@@ -49,7 +50,7 @@ public partial class ValidationRuleIdTests
 
         foreach (var rule in ValidationProfile.Structural.Rules)
         {
-            documented.Should().ContainKey(rule.Id, $"docs/validation-rules.md must list '{rule.Id}'");
+            documented.Should().ContainKey(rule.Id, $"the rules table must list '{rule.Id}'");
             documented[rule.Id].Should().Be(rule.Severity.ToString(), $"'{rule.Id}' reports at {rule.Severity}");
         }
 
@@ -59,7 +60,7 @@ public partial class ValidationRuleIdTests
     /// <summary>The identifier and severity of each row of the rules table: <c>| `file.eof-missing` | Warning | …</c>.</summary>
     private static Dictionary<string, string> DocumentedRules()
     {
-        var path = Path.Combine(Corpus.Root, "..", "..", "docs", "validation-rules.md");
+        var path = Path.Combine(Corpus.Root, "..", "..", "docs", "website", "docs", "reference", "validation-rules.md");
         var rules = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var line in File.ReadLines(path))
