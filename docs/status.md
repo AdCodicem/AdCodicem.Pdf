@@ -27,30 +27,33 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#123] moved to M20. Since 2026-09-29 every milestone ends with an adversarial review by a session that worked on
   none of it ([ADR 46](adr/0046-every-milestone-ends-with-an-adversarial-review.md), `docs/milestone-review.md`):
   M02's is its slice 7, [#137], after the threat model's first version ([#135]) and M01's review after the fact
-  ([#136]). [#55] and [#120] are fixed on `claude/m02-stream-length-e19dlq`, and close with its merge.
+  ([#136]). [#55] and [#120] merged with [#140] on 2026-09-30. [#56] and [#134] are fixed on
+  `claude/m02-flate-corrupt-e19dlq`, and close with its merge. Filed on 2026-09-30 while measuring and reviewing it,
+  [#141] and [#144] join the milestone's reader debts, both before slice 4.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,425 unit (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
-  wrong, which has no document without it) + 1,156 integration (skipped without Docker) + 23 for the remote corpus's
-  fetcher + 43 for the roadmap's mirror on GitHub, on `claude/m02-stream-length-e19dlq`. With the 233 remote
-  documents fetched here: 4,097 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
+- **Tests**: 2,472 unit (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
+  wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23 for the remote corpus's
+  fetcher + 43 for the roadmap's mirror on GitHub, on `claude/m02-flate-corrupt-e19dlq`. With the 233 remote
+  documents fetched here: 4,144 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
   until [#47], which every other test now holds to their expectations, and the private manifest this container
-  lacks —, and 2,885 integration. The integration suite did not run here (no Docker); CI and `Remote corpus` run it.
+  lacks —, and 3,266 integration. The integration suite ran here for the first time, against qpdf 11.9.1 in its
+  container as in CI (journal of 2026-09-30): 3,260 passed, 6 skipped where qpdf cannot walk a damaged document's
+  pages, none failed, in 12 minutes.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.6 % of `src/` — 4,834 of 4,852 lines on `claude/m02-stream-length-e19dlq`, all 354 of
-  its patch among them, and 4,493 of 4,511 on `main`. The 18 left are those the rule of 2026-09-29 leaves
+  Arlington tables left out), 99.6 % of `src/` — 4,886 of 4,904 lines on `claude/m02-flate-corrupt-e19dlq`, all 82 of
+  its patch among them, and 4,834 of 4,852 on `main`. The 18 left are those the rule of 2026-09-29 leaves
   (`CLAUDE.md`, *Coverage*): members that are private, or of a private type, which no input reaches — nine in
   `ArlingtonWalk`, a defensive branch of the lexer —, a `?.` on an index never null where it is read, a switch's
   default arm, and a line the compiler puts after a call that never returns; the journal of 2026-09-29 lists them.
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `d03a864` (CI run 352), and Release run 42 on it. `Remote corpus` run 12, on
-  2026-09-29, on slice 3 with the flaky allocation test fixed (the commit `main` then took as `faef79c`), fetched all
-  242 remote documents and passed its acceptance tests and referee checks: the two GitHub had refused a session
-  here are confirmed.
+- **CI**: green on `main` at `6603f01` (CI run 363), [#140]'s merge. `Remote corpus` run 15, on 2026-09-30, on
+  [#140]'s branch, and the nightly run 16 on `main` at `6603f01` fetched all 242 remote documents and passed their
+  acceptance tests and referee checks.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), and tested every night by `Remote corpus`, last green in run
-  12 on 2026-09-29. All 410 are described in
+  16 on 2026-09-30. All 410 are described in
   `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.27`, previews from `main` through trusted publishing, 671 downloads on 2026-09-26. The
@@ -93,6 +96,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Opening and validating under the structural profile | synthetic, 1000 pages | 6.2 ms | 2.6 MB |
 | Decoding a whole Flate content stream | 4 MB decoded, about 330 KB encoded | 8.3 ms | 13.1 MB |
 | Decoding the same stream without its checksum, or without its last five bytes | 4 MB decoded | 11.7 ms | 13.1 MB |
+| Decoding the same stream under a wrong checksum, kept whole | 4 MB decoded | 12.1 ms | 13.1 MB |
+| Decoding a stream that turns corrupt halfway, the 2 MB before the fault kept | 4 MB of content | 8.1 ms | 6.6 MB |
 | Indexing, then parsing every page's content stream, each past the reader's first window | synthetic, 1000 pages of 16 KB | 3.9 ms from memory, 7.1 ms from a file | 2.0 MB |
 | The same, each stream declared 2 bytes too long and searched for its `endstream` | synthetic, 1000 pages of 16 KB | 7.3 ms from memory, 12.5 ms from a file | 2.8 MB |
 
@@ -108,7 +113,16 @@ stream's data read. Slice 3's first thirty-four rules took 716 µs and 308 KB on
 Indexing costs roughly 200 bytes per object, whatever the objects weigh. The third row is asserted as a
 budget in CI (`CorpusReadingTests`), so an allocation regression fails the build. A stream that ran out is
 read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams only; the
-second reading keeps nothing. What a 4 MB decode allocates is the output doubling towards its size, T28's and
+second reading keeps nothing. A stream whose checksum is wrong, or that turns corrupt, is read again after the fault
+([#56]): its body as raw deflate, then, when that faults too, once more a byte at a time through the 8 KB piece of
+input the fault was met in. A sound stream is read once, as it was, and allocates 8 bytes more for it (88,480 →
+88,488 B at 64 KB); a medium job measured 93.5 → 88.8 µs at 64 KB and 10.0 → 8.85 ms at 4 MB, within noise, and the
+25,157 sound streams of the corpus decode to the same bytes in a time within the spread of four alternating runs.
+Damaged streams pay for the replay: the corrupt 64 KB stream took 54 µs to be left encoded and takes 671 µs to keep
+its 32 KB; the byte-at-a-time part costs about 0.3 µs an input byte, 8 KB at most per reading of a form of the data,
+so an 8,013-byte stream that faults at its end takes 1.8 to 2.5 ms instead of 64 µs, and a file made of nothing but
+small corrupt streams reads about 40 times slower than before — still in time linear in its size. The damaged streams
+of the corpus take 43 → 60 ms in all. What a 4 MB decode allocates is the output doubling towards its size, T28's and
 M23's business. The last two rows are [#55]'s (`StreamLengthBenchmarks`, medium job, before the check and with
 it). A stream past the 8 KB window is checked by asking the file for the 64 bytes after its declared length.
 From memory that is a copy, and costs a valid document nothing measurable: 4.4 ms before, 3.9 ms with it,
@@ -138,13 +152,13 @@ One pull request per batch, each design question put to the maintainer after mea
 
 1. The review of 2026-09-29 recorded, the specification brought up to date, the two [#47] documents held to every
    test but the laziness one, and the damaged trees' page counts held to qpdf — done, merged with [#133].
-2. [#55] and [#120], one path in `PdfObjectParser.ReadStream` — done on `claude/m02-stream-length-e19dlq`, after the
-   maintainer settled the bound of the search for `endstream` and what the reader records per stream (journal of
-   2026-09-29): a stream's `/Length` checked past the parser's window, and a `/Length` that gives no length said as
-   the file wrote it.
-3. [#56]: what a corrupt Flate stream decoded is kept, and a wrong checksum over whole data reported.
-4. The reader and validation debts: [#117], [#118], [#119], [#125] then [#126], [#128], [#129], [#132], [#134];
-   then [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
+2. [#55] and [#120], one path in `PdfObjectParser.ReadStream` — done, merged with [#140] on 2026-09-30: a stream's
+   `/Length` checked past the parser's window, and a `/Length` that gives no length said as the file wrote it.
+3. [#56], with [#134] — done on `claude/m02-flate-corrupt-e19dlq` (journal of 2026-09-30): what a damaged Flate stream
+   decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. It closes with its
+   merge, after a green `Remote corpus` run on the branch, which [#134] asks for.
+4. The reader and validation debts: [#117], [#118], [#119], [#125] then [#126], [#128], [#129], [#132], [#141],
+   [#144]; then [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -163,6 +177,73 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-30 — What a damaged Flate stream decoded is kept ([#56]), and the Flate referee reads every diagnostic ([#134])
+- **The question.** The framework's inflater throws from the read that meets a fault, and loses what that read decoded
+  from the last 8 KB of input it was handed — not "up to 64 KB", as the message said. Of the corpus's 26,578 Flate
+  streams, 272 are not whole: 86 decode to their end under a wrong Adler-32, 2 lose part of their checksum, 47 lose
+  their tail, and 137 turn corrupt partway. 72 of the first and 135 of the last were left encoded, as "could not be
+  decoded", and 16 others lost a prefix: 1,441,772 bytes in all. Three independent measurements — every Flate stream
+  against Python's zlib and libz through ctypes, prototypes of four ways to keep what decoded, qpdf's output — were
+  reconciled; where they disagreed, the bytes settled it: feeding the inflater one *input* byte per read keeps exactly
+  what libz keeps, asking it for one *output* byte per read loses one and costs 61 to 67 times as much on hostile data.
+- **Settled with the maintainer**, one question at a time after the measurement:
+  - Data that faults is read again, only after the fault. A zlib body behind a plain header (CM 8, CINFO ≤ 7, FCHECK,
+    no FDICT) is read as raw deflate at full speed; when that reads to its end, only the checksum disagreed, and all
+    of it is kept. Otherwise, and for raw deflate that faults, it is read once more, at full speed up to the 8 KB
+    piece of input the fault was met in, then one input byte at a time through that piece; each reading adds only
+    what the ones before did not keep. A managed inflater (450 to 600 lines, a second decoder of hostile data in the
+    core) and smaller reads everywhere (2.5 to 3.9 times the cost of every sound stream) were turned down.
+  - A new public code, `filter.checksum-mismatch`, a warning: "A Flate stream's checksum disagrees with the {L} bytes
+    its data decoded to; all were kept, and some may be wrong." It keeps the `filter.*` family, which M21's safeguard
+    reads before re-encoding a stream. The data is kept whole, as qpdf keeps it; none of the 86 could be shown
+    intact, and 39 were shown damaged, 28 of them by a change of line endings that, undone, makes the checksum agree.
+  - Corrupt data stays `filter.failed`, a warning: "A Flate stream is corrupt at byte {N} of its {E}; the {M} bytes
+    decoded before the fault was found were kept." N counts from 1 in the data the Flate filter was given, M before any
+    predictor. Data in which nothing decodes before its fault is still left encoded, as one that could not be decoded.
+  - [#134] went with it; qpdf referees both reports; a header that asks for a preset dictionary is not read again —
+    none in the corpus, and qpdf fails on it too.
+- **No new bound** (ADR 34): at most three readings per form of the data, all into one output under
+  `MaxDecodedStreamLength`, and at most one piece read a byte at a time, `FlateInput.ChunkLength` — the 8 KB the
+  framework's inflater asks for at once, now also the most `FlateInput` hands over, so that the piece stays one piece
+  whatever a later runtime asks. The reasoning is written where the code is.
+- **Found on the way.** Raw deflate that starts with a byte PDF counts as white space — a line feed starts a block of
+  fixed codes — decodes a byte or so from the white space and a zlib header after it before it faults. The old code
+  lost that byte with the read, which let zlib after the white space be tried; kept now, it would have won. Zlib after
+  the white space is now tried over a corrupt raw reading when a plain zlib header follows the white space, and taken
+  when it reads at least as far; raw deflate that goes further is kept, a case built from real bytes in which the zlib
+  reading faults after four bytes. What raw deflate kept is let go while zlib is read, and raw deflate read again when
+  it went further, so that a stream holds one output at a time: at most eight readings, three pieces a byte at a time.
+  Two older flaws seen then were filed rather than fixed ([#145], [#146], M23), and a third that slice 4 would meet:
+  a damaged object stream reports its fault each time the reader decodes it ([#144]).
+- **Measured on the whole corpus**, 381 documents, every Flate-first stream, against libz: the 272 damaged streams
+  keep exactly what libz keeps. The 86 whose checksum is wrong keep all their data, 3,361,116 bytes where 2,073,060
+  were kept; 98 corrupt streams keep 342,784 bytes where 189,068 were, reported at the byte libz meets the fault in,
+  98 of 98; the 39 in which nothing decodes stay encoded; the 49 others are unchanged, and the 25,157 sound streams
+  decode to the same bytes. 19 documents, 7 of them committed, now require `filter.checksum-mismatch`: the
+  expectation comes from zlib's "incorrect data check" on their streams, not from the library.
+- **Held to qpdf.** A new theory of `FlateRefereeTests` asks qpdf for each such stream's data
+  (`--show-object=N,G --filtered-stream-data --decode-level=specialized`): the 86 equal ours, qpdf warning of nothing
+  but the file's structure beside them; of the 98 corrupt ones qpdf serves a prefix of ours — nothing for 96, 65,536
+  bytes for two — and reports an error decoding each. `QpdfIndex` picks the entry placing the copy the reader read,
+  since a rebuilt index lists groff's object 304, and NUREG's 284 and 285, under two generations;
+  `StreamLengthRefereeTests` uses it too. qpdf keeps nothing of the three committed documents' corrupt streams, so
+  `CorpusReadingTests` holds those three to libz's figures. [#134]: the cut-short theory reads every diagnostic; the
+  default capacity of 1,000 dropped the later reports of IBM's QMF manual. The integration suite ran in this container
+  for the first time: `dockerd` starts, and the Alpine image the referee uses trusts the session proxy's certificate
+  once the proxy's CA bundle is appended to `/etc/ssl/certs/ca-certificates.crt` — a local image tagged
+  `alpine:3.21`, built in the session, which Testcontainers then uses; nothing of it is committed.
+- **Cost**, under *Current measurements*: a sound stream is read once, as before; a damaged one pays for the replay,
+  a file of nothing but small corrupt streams about 40 times what it did, linear in its size — a point for the threat
+  model ([#135]).
+- **Tests**: 4,144 unit with the remote corpus, 2,472 without — seeded FsCheck properties over data, levels, forms and
+  fault positions; sound data read once; only the piece the fault was met in read a byte at a time; allocation, bound
+  and throw-on-limit for each damage; counts before a predictor; a fault in the part a guard kept — and every changed
+  line of `src/` covered. An adversarial review over five lenses found 23 points; 21 survived their refuters and were
+  fixed, one of them — the order in which the forms are tried — by keeping the order and recording M23's constraint.
+- **Left, filed**: [#141] (ASCII85, ASCIIHex and RunLength skip in silence; M02, blocks [#60]), [#142] (a repair the
+  checksum guides; M05), [#143] (a checksum cut short is not checked against its bytes; M05), [#144] (M02), [#145] and
+  [#146] (M23).
 
 ### 2026-09-29 — A stream's length checked past the window ([#55]), and said as the file wrote it ([#120])
 - **The question.** A stream whose data ran past the 8 KB window the reader parses an object through had its `/Length`
@@ -921,8 +1002,8 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 | T36 | [#52] |
 | T37 | [#53] |
 | T38 | [#54] |
-| T39 | [#55] |
-| T40 | [#56] |
+| T39 | Fixed on 2026-09-30 by [#140]: a stream's length checked past the parser's window ([#55]) |
+| T40 | [#56], fixed on `claude/m02-flate-corrupt-e19dlq`: what a damaged Flate stream decoded is kept, and a wrong checksum reported |
 
 [#34]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/34
 [#35]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/35
@@ -980,3 +1061,10 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#136]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/136
 [#137]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/137
 [#138]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/138
+[#140]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/140
+[#141]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/141
+[#142]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/142
+[#143]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/143
+[#144]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/144
+[#145]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/145
+[#146]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/146

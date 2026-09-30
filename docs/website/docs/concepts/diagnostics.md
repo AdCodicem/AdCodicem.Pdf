@@ -55,7 +55,9 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `syntax.truncated-object` | The file ended in the middle of an object |
 | `syntax.depth-exceeded` | Nesting went deeper than the reader will follow |
 | `object.redefined` | An object was defined more than once; the last definition won |
-| `filter.failed` | A filter's data is damaged: left encoded when nothing could be decoded, kept as far as it decoded otherwise, and a repair when nothing was lost |
+| `trailer.root-recovered` | The trailer's `/Root` does not lead to a document catalog, and the catalog was found among the file's objects — those its index holds when the index is sound, a rebuilt index's otherwise |
+| `filter.failed` | A filter's data is damaged: left encoded when nothing decoded before the byte the fault lies in, kept up to that byte or to the end otherwise, and a repair when nothing was lost |
+| `filter.checksum-mismatch` | A Flate stream decoded to its end, but its zlib checksum disagrees with what it decoded to: all of it was kept, and some of it may be wrong |
 | `filter.unsupported` | The file names a filter the library does not implement |
 | `limit.decoded-stream` | A stream decodes to more than `MaxDecodedStreamLength`; the part within it was kept |
 | `limit.object` | An object is longer than `MaxObjectLength`, its stream data aside; the part within it was parsed |
@@ -118,15 +120,36 @@ Damaged stream data decodes as far as it goes, and what decoded is kept, with a 
 tail was lost, as a file cut short or a producer that stopped writing leaves it, is a warning: what decoded
 before the end is all there is. A Flate stream that lost only the zlib checksum after its last block decoded
 whole, unchecked, and is a repair, as a stream with no zlib header at all is. A Flate stream that turns
-corrupt is a warning too; decoding stops at the fault, and the last stretch decoded before it, up to 64 KB, is
-lost with it. An LZW stream that uses a code it has not defined is a warning naming the code: decoding stops
-there, since what follows cannot be read reliably. An LZW stream without its end-of-data code is taken as
-complete, as other readers take it. A stream the reader itself cut at one of its limits is reported as that
-limit, not as a lost tail.
+corrupt is a warning too: decoding stops at the fault, and what decoded before the byte the fault lies in is
+kept; what that one byte decoded ahead of the fault can be lost with it, though no stream in the project's test
+corpus lost any. The report says at which byte of the encoded data the fault was found and how many bytes were
+kept, and does not vouch for them: the damage may lie before the point where decoding found it, since damaged
+data can go on decoding, wrongly, for a while. A stream in which nothing decodes before that byte is left
+encoded, and reported as one that could not be decoded. Finding what decoded before a fault reads the stream's
+data again, the last few kilobytes before the fault a byte at a time; a sound stream is read once.
+
+A Flate stream that decodes to its end, but whose zlib checksum disagrees with what it decoded to, is a
+warning of its own, `filter.checksum-mismatch`: all of its data is kept, as other readers keep it, and some of
+it may be wrong — the checksum does not say where. In the project's test corpus, none of the 86 such streams
+could be shown intact, and 39 were shown damaged, 28 of them by a change of line endings that, undone, makes
+the checksum agree.
+
+The byte counts in these reports are the Flate filter's own. The bytes kept are counted before any predictor
+(`/DecodeParms` `/Predictor`) is applied, so `Decode` may return another length — a PNG predictor takes a byte
+off each row. The byte where the fault was found counts from the start of the data the Flate filter was given,
+and the length the report gives is that data's: the stream's data when Flate is its only filter, what the filter
+before it decoded to otherwise.
+
+An LZW stream that uses a code it has not defined is a warning naming the code: decoding stops there, since
+what follows cannot be read reliably. An LZW stream without its end-of-data code is taken as complete, as other
+readers take it. A stream the reader itself cut at one of its limits is reported as that limit, not as a lost
+tail; a fault in the part it did read is the file's, and is reported.
 
 ```text
 Warning filter.failed at 59534: A Flate stream ends before its data does; what decoded before the end was kept.
 Repair filter.failed at 63982: A Flate stream ends before its checksum does; its data decoded whole, unchecked.
+Warning filter.failed at 2102: A Flate stream is corrupt at byte 889 of its 20624; the 847 bytes decoded before the fault was found were kept.
+Warning filter.checksum-mismatch at 3278: A Flate stream's checksum disagrees with the 174803 bytes its data decoded to; all were kept, and some may be wrong.
 ```
 
 These reports go to the diagnostics you pass to `Decode`. A stream read from a document and decoded without
