@@ -101,11 +101,18 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// A filter's data is not what the filter says. Data that nothing could decode was left encoded; data that
-    /// decoded in part — a Flate stream that lost its tail, an LZW stream that uses a code it has not defined —
-    /// was kept as far as it went; data read despite a fault that lost nothing, such as a missing zlib header or
-    /// checksum, is reported as a repair. The message says which.
+    /// decoded in part — a Flate stream that lost its tail or turned corrupt, an LZW stream that uses a code it has
+    /// not defined — was kept as far as it went; data read despite a fault that lost nothing, such as a missing
+    /// zlib header or checksum, is reported as a repair. The message says which, and where a Flate stream's data
+    /// turned corrupt.
     /// </summary>
     public const string FilterFailed = "filter.failed";
+
+    /// <summary>
+    /// A Flate stream's data decoded to its end, but the zlib checksum that follows it disagrees with what it
+    /// decoded to: all of it was kept, as other readers keep it, and some of it may be wrong.
+    /// </summary>
+    public const string FilterChecksumMismatch = "filter.checksum-mismatch";
 
     /// <summary>A filter named by the file is not supported.</summary>
     public const string FilterUnsupported = "filter.unsupported";
