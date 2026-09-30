@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.Objects;
@@ -28,7 +27,7 @@ namespace AdCodicem.Pdf.IntegrationTests;
 /// </para>
 /// </remarks>
 [Collection(RefereeCollection.Name)]
-public partial class StreamLengthRefereeTests(RefereeContainer referee)
+public class StreamLengthRefereeTests(RefereeContainer referee)
 {
     /// <summary>
     /// Streams whose length the reader and qpdf take differently, for a reason of qpdf's, by document. PDFium's urban
@@ -57,18 +56,19 @@ public partial class StreamLengthRefereeTests(RefereeContainer referee)
             return;
         }
 
+        // A rebuilt index can hold one number under two generations: the one asked for is that of the entry placing the
+        // copy the reader read.
         var path = RefereeContainer.PathInContainer(file);
-        var header = HeaderOffset(bytes);
         var (_, xref, _) = await referee.RunAsync("qpdf", "--show-xref", path);
-        var offsets = UncompressedEntry().Matches(xref).ToDictionary(
-            match => int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture),
-            match => long.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture));
+        var entries = QpdfIndex.Entries(xref, bytes);
         var disagreements = new List<string>();
         var agreements = new List<int>();
 
         foreach (var (number, dataStart, length) in streams)
         {
-            if (!offsets.TryGetValue(number, out var offset) || !DataStartsAt(bytes, header + offset, dataStart))
+            var copy = entries.FindIndex(entry => entry.Number == number && QpdfIndex.DataStartsAt(bytes, entry.Offset, dataStart));
+
+            if (copy < 0)
             {
                 continue;
             }
@@ -79,7 +79,7 @@ public partial class StreamLengthRefereeTests(RefereeContainer referee)
                 "-c",
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"qpdf --show-object={number} --raw-stream-data '{path}' > /tmp/stream-data 2>/dev/null; wc -c < /tmp/stream-data; tail -c 2 /tmp/stream-data | od -An -tu1"));
+                    $"qpdf --show-object={number},{entries[copy].Generation} --raw-stream-data '{path}' > /tmp/stream-data 2>/dev/null; wc -c < /tmp/stream-data; tail -c 2 /tmp/stream-data | od -An -tu1"));
             var theirs = RecoveredLength(output);
 
             if (theirs == length)
@@ -148,43 +148,6 @@ public partial class StreamLengthRefereeTests(RefereeContainer referee)
     }
 
     /// <summary>
-    /// Determines whether the object whose header starts at <paramref name="objectOffset"/> is the stream whose data
-    /// starts at <paramref name="dataStart"/>: the first <c>stream</c> keyword after its header, and the end-of-line after
-    /// it, end there.
-    /// </summary>
-    private static bool DataStartsAt(byte[] bytes, long objectOffset, long dataStart)
-    {
-        if (objectOffset < 0 || objectOffset >= dataStart || dataStart > bytes.Length)
-        {
-            return false;
-        }
-
-        var span = bytes.AsSpan((int)objectOffset, (int)(dataStart - objectOffset));
-        var searchFrom = 0;
-
-        while (searchFrom < span.Length)
-        {
-            var index = span[searchFrom..].IndexOf("stream"u8);
-
-            if (index < 0)
-            {
-                return false;
-            }
-
-            var afterKeyword = searchFrom + index + "stream".Length;
-
-            if (afterKeyword < span.Length && span[afterKeyword] is (byte)'\r' or (byte)'\n')
-            {
-                return span.Length - afterKeyword is 1 or 2;
-            }
-
-            searchFrom = afterKeyword;
-        }
-
-        return false;
-    }
-
-    /// <summary>
     /// Reads what the shell printed — the size of the data qpdf served, then its last two bytes in decimal — and gives
     /// the length qpdf recovered without the end-of-line before <c>endstream</c>.
     /// </summary>
@@ -209,14 +172,4 @@ public partial class StreamLengthRefereeTests(RefereeContainer referee)
 
         return length;
     }
-
-    /// <summary>Where <c>%PDF-</c> starts, in the first kilobyte as readers look for it: qpdf's offsets count from there.</summary>
-    private static long HeaderOffset(byte[] bytes)
-    {
-        var header = bytes.AsSpan(0, Math.Min(bytes.Length, 1024)).IndexOf("%PDF-"u8);
-        return Math.Max(header, 0);
-    }
-
-    [GeneratedRegex(@"^(\d+)/\d+: uncompressed; offset = (\d+)", RegexOptions.Multiline)]
-    private static partial Regex UncompressedEntry();
 }

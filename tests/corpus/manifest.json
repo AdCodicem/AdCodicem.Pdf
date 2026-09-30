@@ -1065,7 +1065,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "stream.length-invalid"
+          "stream.length-invalid",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -6783,7 +6784,9 @@
         "pages": 1,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "filter.checksum-mismatch"
+        ],
         "findings": [
           "object.value-type-wrong"
         ],
@@ -8503,7 +8506,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -8545,7 +8549,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -8735,7 +8740,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -8818,7 +8824,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -9839,7 +9846,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -10511,7 +10519,9 @@
         "pages": 86,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "filter.checksum-mismatch"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "and trade names in this report",
@@ -10556,7 +10566,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -10654,7 +10665,9 @@
         "pages": 54,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "filter.checksum-mismatch"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "first two authors are respectively economist",
@@ -10696,7 +10709,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -10738,7 +10752,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -10926,7 +10941,8 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [
-          "xref.offset-adjusted"
+          "xref.offset-adjusted",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "xref.section-shifted",
@@ -10976,7 +10992,9 @@
         "pages": 24,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "filter.checksum-mismatch"
+        ],
         "hasExtractableText": true,
         "textContains": [
           "facts about the real effects of drugs",
@@ -13063,7 +13081,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13423,7 +13442,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13465,7 +13485,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13513,7 +13534,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -13617,7 +13639,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "filter.checksum-mismatch"
         ],
         "findings": [
           "file.startxref-wrong"
