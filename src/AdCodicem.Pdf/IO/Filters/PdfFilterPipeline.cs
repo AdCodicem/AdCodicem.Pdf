@@ -103,7 +103,7 @@ internal static class PdfFilterPipeline
 
         if (name == PdfName.FlateDecode)
         {
-            if (!FlateFilter.TryDecode(data, out var decoded, out var repaired, out var ending, out var limited, maxLength))
+            if (!FlateFilter.TryDecode(data, out var decoded, out var repaired, out var ending, out var faultAt, out var limited, maxLength))
             {
                 diagnostics?.Warn(PdfDiagnosticCodes.FilterFailed, "A Flate stream could not be decoded.", position);
                 return data;
@@ -115,9 +115,13 @@ internal static class PdfFilterPipeline
             }
 
             // Data a guard of the reader's cut ends early because the reader stopped reading it, which the guard
-            // reported: that it ran out says nothing of the file.
+            // reported: that it ran out says nothing of the file. A fault, or a checksum that disagrees, lies in
+            // bytes the reader did read, and the whole data would meet it at the same point: it is the file's.
             ReportEnding(
                 source.CutByGuard && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing ? FlateEnding.Whole : ending,
+                decoded.Length,
+                faultAt,
+                data.Length,
                 diagnostics,
                 position);
             ReportLimit(limited, name, diagnostics, position, guard);
@@ -176,10 +180,17 @@ internal static class PdfFilterPipeline
     }
 
     /// <summary>
-    /// Reports a Flate stream whose data did not end where its format says it does. Whatever decoded was
-    /// kept; the report says whether any of the data was lost.
+    /// Reports a Flate stream whose data did not end where its format says it does, or whose checksum disagrees
+    /// with it. Whatever decoded was kept; the report says whether any of the data was lost, and where.
     /// </summary>
-    private static void ReportEnding(FlateEnding ending, PdfDiagnostics? diagnostics, long position)
+    /// <param name="ending">How the data ended.</param>
+    /// <param name="decoded">How many bytes were kept, before any predictor.</param>
+    /// <param name="faultAt">For corrupt data, where in it, counted from 1, lies the byte the inflater met the fault in.</param>
+    /// <param name="encoded">How many bytes of encoded data the filter was given.</param>
+    /// <param name="diagnostics">Receives the report.</param>
+    /// <param name="position">Where the stream's data starts.</param>
+    private static void ReportEnding(
+        FlateEnding ending, int decoded, int faultAt, int encoded, PdfDiagnostics? diagnostics, long position)
     {
         switch (ending)
         {
@@ -187,6 +198,15 @@ internal static class PdfFilterPipeline
                 diagnostics?.Repair(
                     PdfDiagnosticCodes.FilterFailed,
                     "A Flate stream ends before its checksum does; its data decoded whole, unchecked.",
+                    position);
+                break;
+
+            case FlateEnding.ChecksumMismatch:
+                diagnostics?.Warn(
+                    PdfDiagnosticCodes.FilterChecksumMismatch,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"A Flate stream's checksum disagrees with the {decoded} bytes its data decoded to; all were kept, and some may be wrong."),
                     position);
                 break;
 
@@ -200,7 +220,9 @@ internal static class PdfFilterPipeline
             case FlateEnding.Corrupt:
                 diagnostics?.Warn(
                     PdfDiagnosticCodes.FilterFailed,
-                    "A Flate stream is corrupt; decoding stopped at the fault, losing up to the last 64 KB decoded before it.",
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {decoded} bytes decoded before the fault was found were kept."),
                     position);
                 break;
         }

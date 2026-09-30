@@ -22,9 +22,11 @@ public static class PdfStreamDecodingExtensions
     /// </para>
     /// <para>
     /// Data that is damaged decodes as far as it can, and what decoded is kept: a Flate stream that lost its
-    /// tail, or an LZW stream that uses a code it has not defined, comes back as what came before, reported as
-    /// <see cref="PdfDiagnosticCodes.FilterFailed"/>. Data that nothing could decode comes back encoded,
-    /// reported under the same code.
+    /// tail or turned corrupt, or an LZW stream that uses a code it has not defined, comes back as what came
+    /// before, reported as <see cref="PdfDiagnosticCodes.FilterFailed"/>. A Flate stream that decodes to its end
+    /// but whose zlib checksum disagrees comes back whole, reported as
+    /// <see cref="PdfDiagnosticCodes.FilterChecksumMismatch"/>, since some of it may be wrong. Data that nothing
+    /// could decode comes back encoded, reported as <see cref="PdfDiagnosticCodes.FilterFailed"/>.
     /// </para>
     /// <para>
     /// A stream read from a document decodes under that document's
