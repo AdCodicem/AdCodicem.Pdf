@@ -27,27 +27,32 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#123] moved to M20. Since 2026-09-29 every milestone ends with an adversarial review by a session that worked on
   none of it ([ADR 46](adr/0046-every-milestone-ends-with-an-adversarial-review.md), `docs/milestone-review.md`):
   M02's is its slice 7, [#137], after the threat model's first version ([#135]) and M01's review after the fact
-  ([#136]). [#55] and [#120] merged with [#140] on 2026-09-30. [#56] and [#134] are fixed on
-  `claude/m02-flate-corrupt-e19dlq`, and close with its merge. Filed on 2026-09-30 while measuring and reviewing it,
-  [#141] and [#144] join the milestone's reader debts, both before slice 4.
+  ([#136]). [#55] and [#120] merged with [#140] on 2026-09-30, [#56] and [#134] with [#147] the same day. Filed on
+  2026-09-30 while measuring and reviewing [#147], [#141] and [#144] join the milestone's reader debts, both before
+  slice 4.
+- **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
+  [#148]), on `claude/cool-brown-qvs5lv`: a tutorial held to its sample by a test, four how-to guides, four reference
+  pages — the validation rules among them, moved from the project documents — with the API reference under them, and
+  four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,472 unit (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
+- **Tests**: 2,474 unit on `claude/cool-brown-qvs5lv` — `main`'s 2,472 and the two that hold the tutorial to its
+  sample — (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
   wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23 for the remote corpus's
-  fetcher + 43 for the roadmap's mirror on GitHub, on `claude/m02-flate-corrupt-e19dlq`. With the 233 remote
+  fetcher + 43 for the roadmap's mirror on GitHub, the last three counted on [#147]'s branch. With the 233 remote
   documents fetched here: 4,144 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
   until [#47], which every other test now holds to their expectations, and the private manifest this container
   lacks —, and 3,266 integration. The integration suite ran here for the first time, against qpdf 11.9.1 in its
   container as in CI (journal of 2026-09-30): 3,260 passed, 6 skipped where qpdf cannot walk a damaged document's
   pages, none failed, in 12 minutes.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.6 % of `src/` — 4,886 of 4,904 lines on `claude/m02-flate-corrupt-e19dlq`, all 82 of
-  its patch among them, and 4,834 of 4,852 on `main`. The 18 left are those the rule of 2026-09-29 leaves
+  Arlington tables left out), 99.6 % of `src/` — 4,886 of 4,904 lines on `main` since [#147], all 82 of its patch
+  among them. The 18 left are those the rule of 2026-09-29 leaves
   (`CLAUDE.md`, *Coverage*): members that are private, or of a private type, which no input reaches — nine in
   `ArlingtonWalk`, a defensive branch of the lexer —, a `?.` on an index never null where it is read, a switch's
   default arm, and a line the compiler puts after a call that never returns; the journal of 2026-09-29 lists them.
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `6603f01` (CI run 363), [#140]'s merge. `Remote corpus` run 15, on 2026-09-30, on
-  [#140]'s branch, the nightly run 16 on `main` at `6603f01`, and run 17 on `claude/m02-flate-corrupt-e19dlq`
+  [#140]'s branch, the nightly run 16 on `main` at `6603f01`, and run 17 on [#147]'s branch
   fetched all 242 remote documents and passed their acceptance tests and referee checks.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
@@ -154,9 +159,9 @@ One pull request per batch, each design question put to the maintainer after mea
    test but the laziness one, and the damaged trees' page counts held to qpdf — done, merged with [#133].
 2. [#55] and [#120], one path in `PdfObjectParser.ReadStream` — done, merged with [#140] on 2026-09-30: a stream's
    `/Length` checked past the parser's window, and a `/Length` that gives no length said as the file wrote it.
-3. [#56], with [#134] — done on `claude/m02-flate-corrupt-e19dlq` (journal of 2026-09-30): what a damaged Flate stream
+3. [#56], with [#134] — done, merged with [#147] on 2026-09-30 (journal of 2026-09-30): what a damaged Flate stream
    decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. The `Remote corpus`
-   run [#134] asks for on the branch, run 17, is green; it closes with its merge.
+   run [#134] asks for on the branch, run 17, was green; it closed with the merge.
 4. The reader and validation debts: [#117], [#118], [#119], [#125] then [#126], [#128], [#129], [#132], [#141],
    [#144]; then [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
@@ -177,6 +182,38 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-09-30 — The user documentation organized along Diátaxis ([#148])
+- **The question.** The maintainer asked for the documentation to follow [Diátaxis](https://diataxis.fr/), and to be
+  asked whatever it took to leave nothing ambiguous. Each choice below was put to them and settled, and recorded as
+  [ADR 47](adr/0047-the-user-documentation-follows-diataxis.md).
+  - **Scope**: the user documentation, `docs/website/docs`. The project documents stay as they are.
+  - **Sections**: `tutorials/`, `guides/`, `reference/` and `concepts/` — the names the milestones already used —,
+    shown as *Tutorials*, *How-to guides*, *Reference* and *Explanation*. The introduction and the feature comparison
+    stay first, outside them, and the introduction's code goes to the tutorial.
+  - **One mode per page**: the four *Concepts* pages were split, not moved; the parts link to each other.
+  - **A tutorial held to its output**: it writes a one-page PDF, opens it, cuts it short and validates both. Its code
+    is `samples/FirstSteps`, and `FirstStepsTutorialTests` requires every C# block of the page in the sample and every
+    output it shows to be what the sample prints. Other pages' snippets are not compiled.
+  - **Four how-to guides**: what the reader repaired, validating a received document, limits (raise or refuse), the
+    reader's memory.
+  - **The rules table moved** into the reference, so that it is versioned with each release;
+    `ValidationRuleIdTests` reads it there, and every document that cited it cites its new path. The API reference
+    moved under `reference/api`. `@docusaurus/plugin-client-redirects` keeps `/api/*` and `/project/validation-rules`
+    working in the built site.
+  - **The framework follows**: `CLAUDE.md`, `CONTRIBUTING.md`, the milestone template, point 5 of the definition of
+    done, and the *Documentation* sections of M03 to M31 remapped to the sections — codes to
+    `reference/diagnostics.md`, the tool's pages to `reference/tool/` and a guide to install it, the planned pages
+    that mixed modes split, a tutorial planned for M06 and M12 — with an exit criterion in each. M02's section names
+    the pages it now has.
+  - **Tracking**: [#148], outside any milestone, closed by this pull request.
+- **Found on the way.** `PdfDocument.Open(Stream)` copies every stream but a `MemoryStream` into memory, a seekable one
+  included, while its XML documentation says only a non-seekable one is. The memory guide says what the code does;
+  filed as [#149], its milestone the maintainer's to choose. The tutorial's first minimal PDF had a page without
+  `/Resources`, which `page-tree.resources-missing` reported: the validator caught the documentation's own mistake.
+- **Checked**: the solution builds with no warning; 2,474 unit tests pass; the site builds, 193 pages, with no broken
+  link and nothing `check-site.mjs` refuses, and the redirect pages point at the new addresses. Code coverage runs the
+  sample too, so `codecov.yml` leaves `samples/**` out, as it leaves `tests/**`: neither is shipped.
 
 ### 2026-09-30 — What a damaged Flate stream decoded is kept ([#56]), and the Flate referee reads every diagnostic ([#134])
 - **The question.** The framework's inflater throws from the read that meets a fault, and loses what that read decoded
@@ -744,7 +781,7 @@ not a fault of the file: the rules on it report at most, as information, that it
   `file.trailer-malformed`, `file.root-invalid`, `file.size-wrong`, `xref.section-malformed`,
   `xref.section-not-found`, `xref.section-shifted`, `xref.chain-loop`, `xref.entry-broken`, `xref.entry-shifted`,
   `xref.generation-mismatch`, `xref.object-stream-broken`, `xref.offset-imprecise`, `xref.object-past-size`,
-  `xref.checked-in-part`. `docs/validation-rules.md` gives each its severity, meaning and reference, and what the
+  `xref.checked-in-part`. `docs/website/docs/reference/validation-rules.md` gives each its severity, meaning and reference, and what the
   profile leaves silent on purpose — a row not twenty bytes long ([#107]), linearization ([#108]), a catalog
   written in the trailer rather than referred to ([#111]).
 - **The corpus.** Every entry declares its findings: 65 documents earn `file.startxref-wrong`, 11
@@ -1003,7 +1040,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 | T37 | [#53] |
 | T38 | [#54] |
 | T39 | Fixed on 2026-09-30 by [#140]: a stream's length checked past the parser's window ([#55]) |
-| T40 | [#56], fixed on `claude/m02-flate-corrupt-e19dlq`: what a damaged Flate stream decoded is kept, and a wrong checksum reported |
+| T40 | Fixed on 2026-09-30 by [#147]: what a damaged Flate stream decoded is kept, and a wrong checksum reported ([#56]) |
 
 [#34]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/34
 [#35]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/35
@@ -1068,3 +1105,6 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#144]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/144
 [#145]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/145
 [#146]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/146
+[#147]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/147
+[#148]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/148
+[#149]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/149
