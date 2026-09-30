@@ -47,8 +47,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   default arm, and a line the compiler puts after a call that never returns; the journal of 2026-09-29 lists them.
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `6603f01` (CI run 363), [#140]'s merge. `Remote corpus` run 15, on 2026-09-30, on
-  [#140]'s branch, and the nightly run 16 on `main` at `6603f01` fetched all 242 remote documents and passed their
-  acceptance tests and referee checks.
+  [#140]'s branch, the nightly run 16 on `main` at `6603f01`, and run 17 on `claude/m02-flate-corrupt-e19dlq`
+  fetched all 242 remote documents and passed their acceptance tests and referee checks.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
@@ -155,8 +155,8 @@ One pull request per batch, each design question put to the maintainer after mea
 2. [#55] and [#120], one path in `PdfObjectParser.ReadStream` — done, merged with [#140] on 2026-09-30: a stream's
    `/Length` checked past the parser's window, and a `/Length` that gives no length said as the file wrote it.
 3. [#56], with [#134] — done on `claude/m02-flate-corrupt-e19dlq` (journal of 2026-09-30): what a damaged Flate stream
-   decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. It closes with its
-   merge, after a green `Remote corpus` run on the branch, which [#134] asks for.
+   decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. The `Remote corpus`
+   run [#134] asks for on the branch, run 17, is green; it closes with its merge.
 4. The reader and validation debts: [#117], [#118], [#119], [#125] then [#126], [#128], [#129], [#132], [#141],
    [#144]; then [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
