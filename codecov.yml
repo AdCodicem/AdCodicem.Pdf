@@ -12,6 +12,8 @@ coverage:
       default:
         target: 95%
 
-# Only the shipped code is measured: the test support assembly is loaded by the tests, not shipped.
+# Only the shipped code is measured: the test support assembly is loaded by the tests, not shipped, and neither is
+# the tutorial's sample, which a test runs to hold the tutorial to its output (ADR 47).
 ignore:
   - "tests/**"
+  - "samples/**"

@@ -11,6 +11,7 @@
     <Project Path="tools/AdCodicem.Pdf.Arlington/AdCodicem.Pdf.Arlington.csproj" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/FirstSteps/FirstSteps.csproj" />
     <Project Path="samples/ReadDocument/ReadDocument.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
