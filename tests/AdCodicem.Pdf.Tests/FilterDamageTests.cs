@@ -5,29 +5,45 @@ using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.Objects;
+using FsCheck;
+using FsCheck.Fluent;
 
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// What decoding says about data that stops short or uses what it never defined (T32): a Flate stream that
-/// lost its tail or its checksum, and an LZW stream that uses a code it has not defined.
+/// What decoding says about data that stops short, turns corrupt, or uses what it never defined (T32, #56): a
+/// Flate stream that lost its tail or its checksum, whose checksum is wrong, or that turns corrupt part of the
+/// way, and an LZW stream that uses a code it has not defined.
 /// </summary>
 /// <remarks>
 /// The framework's inflater takes the end of its input for the end of the data, so a Flate stream cut short
 /// decoded to what was left without a word. What decodes is unchanged: the prefix is kept, as it always was.
 /// What changed is that the loss is reported, and told apart from the loss of the checksum alone, which
-/// loses nothing of the data.
+/// loses nothing of the data. The same inflater throws from the read that meets a fault, losing what that read
+/// decoded — a stream whose checksum alone was wrong lost its end, or was left encoded, and so was one that turned
+/// corrupt within the first input the inflater took. Such data is read again, and keeps what decoded before the
+/// byte the fault lies in.
 /// </remarks>
 public class FilterDamageTests
 {
     private const string TailLost = "A Flate stream ends before its data does; what decoded before the end was kept.";
     private const string ChecksumMissing = "A Flate stream ends before its checksum does; its data decoded whole, unchecked.";
     private const string NotZlib = "A Flate stream was not valid zlib data.";
-    private const string Corrupt = "A Flate stream is corrupt; decoding stopped at the fault, losing up to the last 64 KB decoded before it.";
     private const string NotDecoded = "A Flate stream could not be decoded.";
 
     /// <summary>The length of zlib's Adler-32 checksum, which ends a zlib stream.</summary>
     private const int ChecksumLength = 4;
+
+    /// <summary>The first byte of a last block of the type deflate reserves, and defines no data for: BFINAL 1, BTYPE 3.</summary>
+    private const byte UndefinedBlock = 0x07;
+
+    /// <summary>The most input the framework's inflater takes at once.</summary>
+    private const int InflaterInput = 8 * 1024;
+
+    private const ulong Seed = 0x5EED_0056UL;
+
+    /// <summary>The second half of FsCheck's random state, which must be odd.</summary>
+    private const ulong Gamma = 0x9E37_79B9_7F4A_7C15UL;
 
     /// <summary>Data compressed with zlib, each chosen to reach a different part of the inflater.</summary>
     public static TheoryData<string, byte[]> Payloads => new()
@@ -240,23 +256,380 @@ public class FilterDamageTests
         Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Repair, NotZlib) + "; " + Report(severity, report));
     }
 
-    [Fact]
-    public void Reports_a_zlib_stream_whose_checksum_is_wrong_as_corrupt()
+    [Theory]
+    [MemberData(nameof(Payloads))]
+    public void Keeps_all_of_a_zlib_stream_whose_checksum_is_wrong_and_warns_that_some_may_be_wrong(string payload, byte[] plain)
     {
-        // A whole checksum that disagrees with the data is checked, as it was before: the data is corrupt
-        // somewhere, which is not the same report as data that stops short. The framework throws from the
-        // read that meets the checksum, so what that read decoded is lost with it (issue #56); what came before
-        // is kept.
-        var plain = ContentStream(3000);
-        var compressed = Compress(plain, CompressionLevel.Optimal);
-        compressed[^1] ^= 0xFF;
+        // A whole checksum that disagrees with whole data: the framework throws from the read that meets it, and
+        // what that read decoded was lost with it — all of it for data one read takes, which was left encoded. The
+        // body read again as raw deflate reads to its end, so every byte is kept, as other readers keep it; the
+        // disagreement is a warning of its own, since the data may be wrong anywhere. Whatever the stream's length
+        // took in after the checksum changes nothing.
+        var compressed = WithWrongChecksum(Compress(plain, CompressionLevel.Optimal));
+        byte[][] tails = [[], [0x0A], [0x0D], [0x0D, 0x0A]];
+        var failures = new List<string>();
+
+        foreach (var tail in tails)
+        {
+            var diagnostics = new PdfDiagnostics();
+            var decoded = Decode([.. compressed, .. tail], PdfName.FlateDecode, diagnostics).ToArray();
+
+            if (!decoded.AsSpan().SequenceEqual(plain) || Describe(diagnostics) != ChecksumReport(plain.Length))
+            {
+                failures.Add($"followed by {Convert.ToHexString(tail)}: {decoded.Length} bytes, [{Describe(diagnostics)}]");
+            }
+        }
+
+        failures.Should().BeEmpty($"{payload} decoded whole");
+    }
+
+    [Fact]
+    public void Decodes_a_short_zlib_stream_whose_checksum_is_wrong_rather_than_leaving_it_encoded()
+    {
+        // The inflater takes the whole of it at once, and decodes it in the one read that meets the checksum: that
+        // read lost everything, and the data was left encoded as if nothing could decode it.
+        var plain = ContentStream(100);
+        var compressed = WithWrongChecksum(Compress(plain, CompressionLevel.Optimal));
+        compressed.Length.Should().BeLessThan(InflaterInput);
         var diagnostics = new PdfDiagnostics();
 
-        var decoded = Decode(compressed, PdfName.FlateDecode, diagnostics).ToArray();
+        var decoded = Decode(compressed, PdfName.FlateDecode, diagnostics);
 
-        decoded.Length.Should().BeGreaterThan(0);
-        plain.AsSpan().StartsWith(decoded).Should().BeTrue();
-        Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Warning, Corrupt));
+        decoded.ToArray().Should().Equal(plain);
+        Describe(diagnostics).Should().Be(ChecksumReport(plain.Length));
+    }
+
+    [Fact]
+    public void Keeps_every_byte_decoded_before_the_fault_of_a_stream_that_turns_corrupt_and_says_where_it_lies()
+    {
+        // 131,071 zeros take a few hundred bytes of input and two reads of 64 KB: the read that met the fault had
+        // decoded the last 65,535, and lost them. Read again one byte at a time through the input the fault was met
+        // in, the stream keeps all of them. The fault lies in the byte after the flushed zeros, which the stream
+        // was made to hold: that is the one reported, among all the data.
+        var plain = new byte[131_071];
+        var data = CorruptAfter(plain, out var faultAt, after: [0x00, 0x00, 0x00]);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(data, PdfName.FlateDecode, diagnostics);
+
+        decoded.ToArray().Should().Equal(plain);
+        Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, data.Length, plain.Length)));
+    }
+
+    [Fact]
+    public void Keeps_what_decoded_before_a_fault_in_the_first_input_the_inflater_took_rather_than_leaving_it_encoded()
+    {
+        // The whole stream is one input and one read: the read that met the fault lost everything before it, and
+        // the data was left encoded as if nothing could decode it.
+        var plain = ContentStream(50);
+        var data = CorruptAfter(plain, out var faultAt);
+        data.Length.Should().BeLessThan(InflaterInput);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(data, PdfName.FlateDecode, diagnostics);
+
+        decoded.ToArray().Should().Equal(plain);
+        Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, data.Length, plain.Length)));
+    }
+
+    [Fact]
+    public void Leaves_encoded_a_stream_that_turns_corrupt_before_anything_decodes()
+    {
+        // A header, then a first block deflate does not define: nothing decoded before the fault, read any way.
+        byte[] data = [0x78, 0x9C, UndefinedBlock, 0x00, 0x00, 0x00];
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(data, PdfName.FlateDecode, diagnostics);
+
+        decoded.ToArray().Should().Equal(data, "data nothing could decode is left encoded");
+        Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Warning, NotDecoded));
+    }
+
+    [Theory]
+    [InlineData("raw deflate")]
+    [InlineData("zlib after white space")]
+    public void Keeps_what_decoded_before_the_fault_of_a_stream_that_is_not_zlib_as_the_file_wrote_it(string form)
+    {
+        // Raw deflate is read again one byte at a time from the input the fault was met in, as a zlib body is; zlib
+        // after white space as zlib is. The byte reported counts from the start of the data the filter was given,
+        // the white space included.
+        var plain = ContentStream(3000);
+        var raw = CorruptAfter(plain, out var rawFault, zlib: false);
+        var zlib = CorruptAfter(plain, out var zlibFault);
+        var (data, faultAt) = form == "raw deflate" ? (raw, rawFault) : ([0x0D, 0x0A, .. zlib], zlibFault + 2);
+        data.Length.Should().BeGreaterThan(InflaterInput, "the fault must lie past the first input the inflater takes");
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(data, PdfName.FlateDecode, diagnostics);
+
+        decoded.ToArray().Should().Equal(plain);
+        Describe(diagnostics).Should().Be(
+            Report(PdfDiagnosticSeverity.Repair, NotZlib) + "; " + Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, data.Length, plain.Length)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Reads_zlib_after_white_space_rather_than_the_bytes_raw_deflate_decodes_from_it_before_a_fault(bool corrupt)
+    {
+        // A line feed reads as the first byte of a block of fixed codes, which decodes a byte from the white space and
+        // the header after it before it faults. Once lost with the read that met the fault, that byte is now kept:
+        // the zlib stream after the white space reads further, whole or up to a fault of its own, and is taken over
+        // it.
+        var plain = Encoding.ASCII.GetBytes("Hello, PDF filters!Hello, PDF filters!Hello, PDF filters!");
+        var faultAt = 0;
+        var zlib = corrupt ? CorruptAfter(plain, out faultAt, level: CompressionLevel.SmallestSize) : Compress(plain, CompressionLevel.SmallestSize);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode([0x0A, 0x20, .. zlib], PdfName.FlateDecode, diagnostics);
+
+        decoded.ToArray().Should().Equal(plain);
+        Describe(diagnostics).Should().Be(
+            Report(PdfDiagnosticSeverity.Repair, NotZlib) +
+            (corrupt ? "; " + Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt + 2, zlib.Length + 2, plain.Length)) : string.Empty));
+    }
+
+    [Fact]
+    public void Keeps_raw_deflate_that_starts_with_a_line_feed_over_the_few_bytes_a_zlib_header_after_it_passes_for()
+    {
+        // A block of fixed codes that holds six bytes, then a flush: its first byte is a line feed, and the two after it
+        // pass for a zlib header, behind which the bytes decode to four bytes before they fault — long before the raw
+        // deflate, which goes on with a content stream and turns corrupt at its end. The reading that goes further is
+        // what the data is: the zlib reading after the white space is not taken over it.
+        byte[] head = [0x0A, 0x08, 0x5B, 0x72, 0xD2, 0xFF, 0x22, 0x00, 0x00, 0x00, 0xFF, 0xFF];
+        byte[] headPlain = [0x50, 0x56, 0xA4, 0xC9, 0x4F, 0xD1];
+        var content = ContentStream(3000);
+        byte[] data = [.. head, .. CorruptAfter(content, out var contentFault, zlib: false)];
+        FlateFilter.HasPlainZlibHeader(data.AsSpan(1)).Should().BeTrue();
+        FlateFilter.TryDecode(data.AsMemory(1), out var passedFor, out _, out var passedForEnding, out var passedForFault, out _, int.MaxValue)
+            .Should().BeTrue();
+        passedForEnding.Should().Be(FlateEnding.Corrupt);
+        passedFor.Length.Should().BeLessThan(headPlain.Length);
+        passedForFault.Should().BeLessThan(head.Length + 4, "the zlib reading faults within the first bytes after the head");
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(data, PdfName.FlateDecode, diagnostics);
+
+        decoded.ToArray().Should().Equal([.. headPlain, .. content]);
+        Describe(diagnostics).Should().Be(
+            Report(PdfDiagnosticSeverity.Repair, NotZlib) + "; " +
+            Report(PdfDiagnosticSeverity.Warning, CorruptAt(head.Length + contentFault, data.Length, headPlain.Length + content.Length)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Reads_raw_deflate_that_starts_with_a_byte_of_white_space_as_raw_deflate(bool corrupt)
+    {
+        // Bytes that do not compress are stored: the first block, not the last, starts with a zero byte, which is
+        // white space. Nothing after it reads as zlib, and the data is raw deflate, whole or turned corrupt.
+        var plain = RandomBytes(100_000);
+        var faultAt = 0;
+        var data = corrupt ? CorruptAfter(plain, out faultAt, zlib: false) : CompressRaw(plain);
+        data[0].Should().Be(0x00);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(data, PdfName.FlateDecode, diagnostics);
+
+        decoded.ToArray().Should().Equal(plain);
+        Describe(diagnostics).Should().Be(
+            Report(PdfDiagnosticSeverity.Repair, NotZlib) +
+            (corrupt ? "; " + Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, data.Length, plain.Length)) : string.Empty));
+    }
+
+    [Fact]
+    public void Keeps_exactly_what_decoded_before_a_block_deflate_does_not_define_wherever_the_inflater_meets_it()
+    {
+        // Data of any kind and length, compressed at any level and flushed to a byte boundary, then a block deflate
+        // does not define: whatever read and whichever input of the inflater's the fault falls in, the data is kept
+        // whole, and the fault is reported at the byte after it — both known from how the stream was made, not from
+        // how it was read. Raw deflate, and zlib after white space, alike.
+        var cases =
+            from length in Gen.Choose(1, 200_000)
+            from text in Gen.Elements(true, false)
+            from level in Gen.Elements(CompressionLevel.Optimal, CompressionLevel.Fastest, CompressionLevel.NoCompression, CompressionLevel.SmallestSize)
+            from form in Gen.Elements("zlib", "raw deflate", "zlib after white space")
+            from last in Gen.Elements(true, false)
+            from after in Gen.Choose(0, 16)
+            select (length, text, level, form, last, after);
+
+        Check.One(Properties(100), Prop.ForAll(cases.ToArbitrary(), c =>
+        {
+            var plain = c.text ? Text(c.length) : RandomBytes(c.length);
+            var data = CorruptAfter(plain, out var faultAt, zlib: c.form != "raw deflate", c.level, new byte[c.after], c.last);
+            var expected = Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, data.Length, plain.Length));
+
+            if (c.form == "zlib after white space")
+            {
+                data = [0x0D, 0x0A, .. data];
+                expected = Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt + 2, data.Length, plain.Length));
+            }
+
+            if (c.form != "zlib")
+            {
+                expected = Report(PdfDiagnosticSeverity.Repair, NotZlib) + "; " + expected;
+            }
+
+            var diagnostics = new PdfDiagnostics();
+            var decoded = Decode(data, PdfName.FlateDecode, diagnostics);
+
+            return decoded.Span.SequenceEqual(plain) && Describe(diagnostics) == expected;
+        }));
+    }
+
+    [Fact]
+    public void Keeps_all_of_any_zlib_stream_whose_checksum_is_wrong()
+    {
+        // Data of any kind and length, compressed at any level, one byte of its checksum wrong, and what a stream's
+        // length often takes in after it: all of it is kept, and the disagreement reported.
+        var cases =
+            from length in Gen.Choose(0, 200_000)
+            from text in Gen.Elements(true, false)
+            from level in Gen.Elements(CompressionLevel.Optimal, CompressionLevel.Fastest, CompressionLevel.NoCompression, CompressionLevel.SmallestSize)
+            from wrong in Gen.Choose(1, ChecksumLength)
+            from flip in Gen.Choose(1, 255)
+            from tail in Gen.Elements(Array.Empty<byte>(), [0x0A], [0x0D], [0x0D, 0x0A])
+            select (length, text, level, wrong, flip, tail);
+
+        Check.One(Properties(100), Prop.ForAll(cases.ToArbitrary(), c =>
+        {
+            var plain = c.text ? Text(c.length) : RandomBytes(c.length);
+            var compressed = Compress(plain, c.level);
+            compressed[^c.wrong] ^= (byte)c.flip;
+            var diagnostics = new PdfDiagnostics();
+
+            var decoded = Decode([.. compressed, .. c.tail], PdfName.FlateDecode, diagnostics);
+
+            return decoded.Span.SequenceEqual(plain) && Describe(diagnostics) == ChecksumReport(plain.Length);
+        }));
+    }
+
+    [Theory]
+    [InlineData("checksum")]
+    [InlineData("corrupt")]
+    public void Reading_damaged_data_again_up_to_the_bound_reports_only_the_bound(string damage)
+    {
+        // The reading that met the fault kept less than the bound, and reading again reaches it. That stops short of
+        // the fault, which is never seen: only the reader's guard is reported, as for any data that reaches it.
+        var (data, bound) = BoundByReadingAgain(damage);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = DecodeWithin(data, bound, diagnostics);
+
+        decoded.Length.Should().Be(bound);
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Theory]
+    [InlineData("checksum")]
+    [InlineData("corrupt")]
+    public void Reading_damaged_data_again_up_to_the_bound_throws_when_the_document_asked_for_it(string damage)
+    {
+        var (data, bound) = BoundByReadingAgain(damage);
+        var diagnostics = new PdfDiagnostics();
+
+        var thrown = FluentActions.Invoking(() => DecodeWithin(data, bound, diagnostics, throwOnLimit: true))
+            .Should().Throw<PdfLimitExceededException>().Which;
+
+        thrown.Code.Should().Be(PdfDiagnosticCodes.LimitDecodedStream);
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("sound")]
+    [InlineData("checksum")]
+    [InlineData("corrupt")]
+    public void Reading_damaged_data_again_allocates_no_second_output_and_sound_data_nothing_to_read_it_again_with(string damage)
+    {
+        // Within a bound equal to what 2 MB of data that does not compress decode to, the output is one array of
+        // exactly that size, handed back as it is. Sound data allocates what the least decoding of it does — that
+        // array and one inflater's own objects — and the stream it is read from. Data read again after a fault — its
+        // body as raw deflate, then one byte at a time — adds what it decodes to the same array: give or take the
+        // inflaters' own objects, it allocates what sound data does, neither a second output nor a copy of its input.
+        // That sound data is read once the margin cannot show: a second reading costs a few hundred bytes, its input
+        // pooled and its inflater's state native. The count of reads below shows it.
+        const int Length = 2 * 1024 * 1024;
+        var plain = RandomBytes(Length);
+        var sound = Compress(plain, CompressionLevel.Optimal);
+        var data = damage switch
+        {
+            "sound" => sound,
+            "checksum" => WithWrongChecksum(sound),
+            _ => CorruptAfter(plain, out _),
+        };
+        LeastAllocation(sound, Length);
+        DecodeWithin(data, Length, new PdfDiagnostics());
+        var diagnostics = new PdfDiagnostics();
+
+        var least = LeastAllocation(sound, Length);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var decoded = DecodeWithin(data, Length, diagnostics);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        decoded.Length.Should().Be(Length);
+        diagnostics.Select(d => d.Code).Should().NotContain(PdfDiagnosticCodes.LimitDecodedStream);
+        (allocated - least).Should().BeLessThan(damage == "sound" ? 1024 : 16 * 1024);
+    }
+
+    [Fact]
+    public void Tries_raw_deflate_that_starts_with_white_space_and_turns_corrupt_as_zlib_after_it_only_behind_a_zlib_header()
+    {
+        // Bytes that do not compress are stored, and raw deflate of them starts with a zero byte, which is white space;
+        // turned corrupt, it is read as zlib after the white space only when a zlib header follows, and none does here.
+        // Within a bound equal to what the data decodes to, it allocates the output it keeps, and the one the zlib
+        // reading from its first byte takes before it meets the header: not a third, which a zlib reading after the
+        // white space would take before it met its header.
+        const int Length = 2 * 1024 * 1024;
+        var plain = RandomBytes(Length);
+        var data = CorruptAfter(plain, out _, zlib: false);
+        data[0].Should().Be(0x00);
+        FlateFilter.HasPlainZlibHeader(data.AsSpan(1)).Should().BeFalse();
+        var least = LeastAllocation(Compress(plain, CompressionLevel.Optimal), Length);
+        DecodeWithin(data, Length, new PdfDiagnostics());
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var decoded = DecodeWithin(data, Length, new PdfDiagnostics());
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        decoded.ToArray().Should().Equal(plain);
+        (allocated - least).Should().BeLessThan(Length + (16 * 1024));
+    }
+
+    [Fact]
+    public void Reads_sound_data_once()
+    {
+        // The inflater takes its input a piece at a time, and each piece is one look at the memory behind the data:
+        // one reading of 2 MB takes 257 pieces, and a second would take as many again. A few looks more are the
+        // filter's own, at the data's first bytes.
+        var sound = Compress(RandomBytes(2 * 1024 * 1024), CompressionLevel.Optimal);
+        using var memory = new UnexposedMemory(sound);
+
+        var decoded = DecodeWithin(memory.Memory, int.MaxValue, new PdfDiagnostics());
+
+        decoded.Length.Should().Be(2 * 1024 * 1024);
+        memory.Looks.Should().BeLessThanOrEqualTo(Pieces(sound.Length) + 4);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Reads_again_a_byte_at_a_time_only_the_piece_of_input_the_fault_was_met_in(bool zlib)
+    {
+        // 2 MB that do not compress, turned corrupt at their end: read again after the fault, the data is handed over
+        // at full speed up to the piece the fault was met in, and a byte at a time through that piece alone — never
+        // more than one, whatever the data's length. Each reading at full speed takes as many pieces as the first;
+        // zlib's body is read again once more than raw deflate.
+        var plain = RandomBytes(2 * 1024 * 1024);
+        var data = CorruptAfter(plain, out var faultAt, zlib);
+        using var memory = new UnexposedMemory(data);
+
+        FlateFilter.TryDecode(memory.Memory, out var decoded, out _, out var ending, out var reported, out _, int.MaxValue)
+            .Should().BeTrue();
+
+        decoded.Should().Equal(plain);
+        ending.Should().Be(FlateEnding.Corrupt);
+        reported.Should().Be(faultAt);
+        memory.Looks.Should().BeLessThanOrEqualTo((3 * Pieces(data.Length)) + FlateInput.ChunkLength + 16);
     }
 
     [Fact]
@@ -386,6 +759,60 @@ public class FilterDamageTests
         input.ReadByte().Should().Be('a');
     }
 
+    [Fact]
+    public void The_flate_input_hands_its_bytes_over_one_at_a_time_from_where_it_is_told_and_says_where_the_last_started()
+    {
+        using var input = new FlateInput("abcdefgh"u8.ToArray(), slowFrom: 5);
+        var buffer = new byte[4];
+
+        input.Read(buffer, 0, 4).Should().Be(4);
+        input.LastReadStart.Should().Be(0);
+        input.Read(buffer, 0, 4).Should().Be(1, "a read at full speed stops where reading one byte at a time starts");
+        input.LastReadStart.Should().Be(4);
+        input.Read(buffer, 0, 4).Should().Be(1);
+        buffer[0].Should().Be((byte)'f');
+        input.LastReadStart.Should().Be(5);
+        input.BytesRead.Should().Be(6);
+
+        input.Read(buffer, 0, 4).Should().Be(1);
+        input.Read(buffer, 0, 4).Should().Be(1);
+        input.Read(buffer, 0, 4).Should().Be(0);
+        input.ReadPastEnd.Should().BeTrue();
+        input.BytesRead.Should().Be(8);
+        input.LastReadStart.Should().Be(7, "asking past the end hands nothing over");
+    }
+
+    [Fact]
+    public void The_flate_input_hands_over_no_more_than_a_piece_at_once_however_much_is_asked_for()
+    {
+        // The piece is what the framework's inflater asks for at once; a reader that asked for more would make the
+        // part read again a byte at a time after a fault longer, and it is not given more.
+        using var input = new FlateInput(new byte[(3 * FlateInput.ChunkLength) + 1]);
+        var buffer = new byte[4 * FlateInput.ChunkLength];
+
+        input.Read(buffer.AsSpan()).Should().Be(FlateInput.ChunkLength);
+        input.Read(buffer.AsSpan()).Should().Be(FlateInput.ChunkLength);
+        input.LastReadStart.Should().Be(FlateInput.ChunkLength);
+    }
+
+    [Theory]
+    [InlineData(new byte[] { 0x78, 0x9C }, true)]
+    [InlineData(new byte[] { 0x78, 0xDA }, true)]
+    [InlineData(new byte[] { 0x08, 0x1D }, true)]
+    [InlineData(new byte[] { 0x78 }, false)]
+    [InlineData(new byte[] { 0x79, 0x18 }, false)]
+    [InlineData(new byte[] { 0x88, 0x1C }, false)]
+    [InlineData(new byte[] { 0x78, 0x9D }, false)]
+    [InlineData(new byte[] { 0x78, 0xBB }, false)]
+    public void A_zlib_header_is_read_past_only_with_deflate_a_window_of_at_most_32_KB_a_check_that_holds_and_no_preset_dictionary(
+        byte[] header,
+        bool plain)
+    {
+        // Deflate, a window of 256 bytes to 32 KB, a check that holds, and no preset dictionary. A byte alone is
+        // refused, and each of the other refused headers fails one of these alone.
+        FlateFilter.HasPlainZlibHeader(header).Should().Be(plain);
+    }
+
     /// <summary>Codes after the table was cleared and 'A' and 'B' read: 258 is "AB", and 259 the next to define.</summary>
     [Theory]
     [InlineData(258, "ABABC", -1)]
@@ -504,6 +931,8 @@ public class FilterDamageTests
     {
         { "tail", false }, { "tail", true },
         { "checksum", false }, { "checksum", true },
+        { "wrong checksum", false }, { "wrong checksum", true },
+        { "corrupt", false }, { "corrupt", true },
         { "lzw", false }, { "lzw", true },
     };
 
@@ -513,12 +942,16 @@ public class FilterDamageTests
     {
         // The report goes where the caller asks, or to the document when the caller passes nowhere, and names
         // where the data starts. The data travels in hex, so that the file stays text.
-        var compressed = Compress(ContentStream(100), CompressionLevel.Optimal);
-        var (filter, data, severity, message) = damage switch
+        var plain = ContentStream(100);
+        var compressed = Compress(plain, CompressionLevel.Optimal);
+        var corrupt = CorruptAfter(plain, out var faultAt);
+        var (filter, data, code, severity, message) = damage switch
         {
-            "tail" => ("/FlateDecode", compressed.AsSpan(0, compressed.Length / 2).ToArray(), PdfDiagnosticSeverity.Warning, TailLost),
-            "checksum" => ("/FlateDecode", compressed.AsSpan(0, compressed.Length - ChecksumLength).ToArray(), PdfDiagnosticSeverity.Repair, ChecksumMissing),
-            _ => ("/LZWDecode", NineBitCodes(256, 'A', 'B', 300, 257), PdfDiagnosticSeverity.Warning, LzwUndefined(300)),
+            "tail" => ("/FlateDecode", compressed.AsSpan(0, compressed.Length / 2).ToArray(), PdfDiagnosticCodes.FilterFailed, PdfDiagnosticSeverity.Warning, TailLost),
+            "checksum" => ("/FlateDecode", compressed.AsSpan(0, compressed.Length - ChecksumLength).ToArray(), PdfDiagnosticCodes.FilterFailed, PdfDiagnosticSeverity.Repair, ChecksumMissing),
+            "wrong checksum" => ("/FlateDecode", WithWrongChecksum(compressed), PdfDiagnosticCodes.FilterChecksumMismatch, PdfDiagnosticSeverity.Warning, ChecksumMismatch(plain.Length)),
+            "corrupt" => ("/FlateDecode", corrupt, PdfDiagnosticCodes.FilterFailed, PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, corrupt.Length, plain.Length)),
+            _ => ("/LZWDecode", NineBitCodes(256, 'A', 'B', 300, 257), PdfDiagnosticCodes.FilterFailed, PdfDiagnosticSeverity.Warning, LzwUndefined(300)),
         };
         var hex = Convert.ToHexString(data) + ">";
         var file = new TestPdfBuilder()
@@ -535,10 +968,70 @@ public class FilterDamageTests
         decoded.Length.Should().BeGreaterThan(0);
         (callerCollects ? document.Diagnostics : collected).Should().BeEmpty();
         var report = (callerCollects ? collected : document.Diagnostics).Should().ContainSingle().Which;
-        report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+        report.Code.Should().Be(code);
         report.Severity.Should().Be(severity);
         report.Message.Should().Be(message);
         report.Position.Should().Be(dataStart);
+    }
+
+    [Theory]
+    [InlineData("checksum")]
+    [InlineData("corrupt")]
+    public void Counts_the_bytes_a_damaged_stream_kept_before_its_predictor_takes_the_tag_off_each_row(string damage)
+    {
+        // 200 rows of four bytes, each behind the tag of the PNG predictor that changes nothing: 1,000 bytes decode,
+        // and the predictor hands 800 on. The report counts what the Flate data decoded to, the tags included.
+        var rows = new byte[1000];
+        var predicted = new byte[800];
+        for (var index = 0; index < predicted.Length; index++)
+        {
+            predicted[index] = (byte)(index * 7);
+            rows[(index / 4 * 5) + 1 + (index % 4)] = predicted[index];
+        }
+
+        var faultAt = 0;
+        var data = damage == "checksum" ? WithWrongChecksum(Compress(rows, CompressionLevel.Optimal)) : CorruptAfter(rows, out faultAt);
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(12));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(4));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(data, PdfName.FlateDecode, diagnostics, parameters);
+
+        decoded.ToArray().Should().Equal(predicted);
+        Describe(diagnostics).Should().Be(
+            damage == "checksum" ? ChecksumReport(1000) : Report(PdfDiagnosticSeverity.Warning, CorruptAt(faultAt, data.Length, 1000)));
+    }
+
+    [Fact]
+    public void Reports_a_fault_in_the_part_of_a_stream_a_guard_of_the_reader_kept_and_counts_that_part()
+    {
+        // A /Length far too short sends the reader looking for endstream, past the largest window MaxObjectLength
+        // allows, which ends 10,000 bytes into the stream's data, well past the byte its Flate data turns corrupt
+        // at. The guard is reported, and so is the fault, which lies in bytes the reader read and is the file's:
+        // counted in the data the Flate filter was given, which is what the window kept.
+        const int Kept = 10_000;
+        var plain = ContentStream(200);
+        var hex = Convert.ToHexString(CorruptAfter(plain, out var faultAt, after: RandomBytes(60_000))) + ">";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, $"<< /Filter [/ASCIIHexDecode /FlateDecode] /Length 10 >>\nstream\n{hex}\nendstream")
+            .BuildClassic(rootNumber: 1);
+        var header = file.AsSpan().IndexOf("3 0 obj"u8);
+        var dataStart = file.AsSpan().IndexOf(Encoding.ASCII.GetBytes(hex));
+        var options = PdfReaderOptions.Default with
+        {
+            Limits = PdfReaderLimits.Default with { MaxObjectLength = dataStart + (2 * Kept) - header },
+        };
+        faultAt.Should().BeLessThan(Kept);
+
+        using var document = PdfDocument.Open(file, options);
+        var decoded = document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        decoded.ToArray().Should().Equal(plain);
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.FilterFailed);
+        document.Diagnostics.Last().Message.Should().Be(CorruptAt(faultAt, Kept, plain.Length));
     }
 
     [Fact]
@@ -621,8 +1114,36 @@ public class FilterDamageTests
         }
     }
 
-    private static string Report(PdfDiagnosticSeverity severity, string message) =>
-        $"{severity} {PdfDiagnosticCodes.FilterFailed}: {message}";
+    private static string CorruptAt(int faultAt, int encoded, int kept) =>
+        $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {kept} bytes decoded before the fault was found were kept.";
+
+    private static string ChecksumMismatch(int decoded) =>
+        $"A Flate stream's checksum disagrees with the {decoded} bytes its data decoded to; all were kept, and some may be wrong.";
+
+    private static string ChecksumReport(int decoded) =>
+        Report(PdfDiagnosticSeverity.Warning, ChecksumMismatch(decoded), PdfDiagnosticCodes.FilterChecksumMismatch);
+
+    private static string Report(PdfDiagnosticSeverity severity, string message, string code = PdfDiagnosticCodes.FilterFailed) =>
+        $"{severity} {code}: {message}";
+
+    private static Config Properties(int cases) =>
+        Config.QuickThrowOnFailure.WithMaxTest(cases).WithReplay(Seed, Gamma).WithQuietOnSuccess(true);
+
+    /// <summary>
+    /// Damaged data whose reading that met the fault keeps less than the bound, and reading again reaches it: a
+    /// stream the inflater takes whole, whose checksum is wrong, and 131,071 zeros that turn corrupt, of which the
+    /// reading that met the fault kept the first 65,536.
+    /// </summary>
+    private static (byte[] Data, int Bound) BoundByReadingAgain(string damage)
+    {
+        if (damage == "checksum")
+        {
+            var plain = ContentStream(500);
+            return (WithWrongChecksum(Compress(plain, CompressionLevel.Optimal)), plain.Length - 1);
+        }
+
+        return (CorruptAfter(new byte[131_071], out _), 100_000);
+    }
 
     private static string Describe(PdfDiagnostics diagnostics) =>
         string.Join("; ", diagnostics.Select(d => $"{d.Severity} {d.Code}: {d.Message}"));
@@ -640,11 +1161,14 @@ public class FilterDamageTests
         return new PdfStream(dictionary, PdfStreamData.FromMemory(data)).Decode(diagnostics);
     }
 
-    private static ReadOnlyMemory<byte> DecodeWithin(byte[] data, int maxLength, PdfDiagnostics diagnostics)
+    /// <summary>How many pieces the framework's inflater takes <paramref name="length"/> bytes of input in.</summary>
+    private static int Pieces(int length) => (length + FlateInput.ChunkLength - 1) / FlateInput.ChunkLength;
+
+    private static ReadOnlyMemory<byte> DecodeWithin(ReadOnlyMemory<byte> data, int maxLength, PdfDiagnostics diagnostics, bool throwOnLimit = false)
     {
         var dictionary = new PdfDictionary();
         dictionary.Set(PdfName.Filter, PdfName.FlateDecode);
-        var guard = new PdfLimitGuard(PdfReaderLimits.Default with { MaxDecodedStreamLength = maxLength }, throwOnLimit: false);
+        var guard = new PdfLimitGuard(PdfReaderLimits.Default with { MaxDecodedStreamLength = maxLength }, throwOnLimit);
         return PdfFilterPipeline.Decode(new PdfStream(dictionary, PdfStreamData.FromMemory(data)), diagnostics, guard);
     }
 
@@ -659,6 +1183,9 @@ public class FilterDamageTests
 
         return Encoding.ASCII.GetBytes(text.ToString());
     }
+
+    /// <summary>The first <paramref name="length"/> bytes of a content stream.</summary>
+    private static byte[] Text(int length) => ContentStream((length / 50) + 1)[..length];
 
     private static byte[] RandomBytes(int length)
     {
@@ -677,6 +1204,51 @@ public class FilterDamageTests
 
         // The framework writes nothing at all for nothing; zlib itself writes an empty block and its checksum.
         return compressed.Length == 0 ? [0x78, 0xDA, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01] : compressed.ToArray();
+    }
+
+    /// <summary>What decoding zlib data allocates at the least: its output, and one inflater's own objects.</summary>
+    private static long LeastAllocation(byte[] compressed, int length)
+    {
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var output = new byte[length];
+
+        using (var zlib = new ZLibStream(new MemoryStream(compressed), CompressionMode.Decompress))
+        {
+            zlib.ReadExactly(output);
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    private static byte[] WithWrongChecksum(byte[] compressed)
+    {
+        byte[] wrong = [.. compressed];
+        wrong[^1] ^= 0xFF;
+        return wrong;
+    }
+
+    /// <summary>
+    /// Compresses <paramref name="prefix"/>, flushed so that its data ends at a byte, then a block of the type deflate
+    /// reserves — the last one, or not —, and <paramref name="after"/>: an inflater decodes the whole prefix, and
+    /// meets the fault in the byte after it, the <paramref name="faultAt"/>th of the data.
+    /// </summary>
+    private static byte[] CorruptAfter(
+        byte[] prefix,
+        out int faultAt,
+        bool zlib = true,
+        CompressionLevel level = CompressionLevel.Optimal,
+        byte[]? after = null,
+        bool last = true)
+    {
+        using var compressed = new MemoryStream();
+        using Stream deflate = zlib
+            ? new ZLibStream(compressed, level, leaveOpen: true)
+            : new DeflateStream(compressed, level, leaveOpen: true);
+        deflate.Write(prefix);
+        deflate.Flush();
+        var flushed = compressed.ToArray();
+        faultAt = flushed.Length + 1;
+        return [.. flushed, (byte)(last ? UndefinedBlock : UndefinedBlock - 1), .. after ?? []];
     }
 
     private static byte[] CompressRaw(byte[] data)
@@ -763,10 +1335,17 @@ public class FilterDamageTests
         return [.. bytes];
     }
 
-    /// <summary>Memory that no array is exposed behind, as a file's own buffer may be.</summary>
+    /// <summary>Memory that no array is exposed behind, as a file's own buffer may be, and that counts the looks at it.</summary>
     private sealed class UnexposedMemory(byte[] contents) : System.Buffers.MemoryManager<byte>
     {
-        public override Span<byte> GetSpan() => contents;
+        /// <summary>Gets how many times the memory was looked at: once each time a span of it was asked for.</summary>
+        public int Looks { get; private set; }
+
+        public override Span<byte> GetSpan()
+        {
+            Looks++;
+            return contents;
+        }
 
         public override System.Buffers.MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
 

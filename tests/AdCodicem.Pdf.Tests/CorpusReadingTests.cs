@@ -285,6 +285,34 @@ public class CorpusReadingTests
         }
     }
 
+    [Theory]
+    [InlineData("vendor/opf-format-corpus/distiller7-pscript5-census-housing-units-2005.pdf", 14, 484, 3879, 1499)]
+    [InlineData("vendor/opf-format-corpus/groff-distiller405-mac-usgs-gps-noise-spectra.pdf", 211, 1118, 1310, 3804)]
+    [InlineData("vendor/opf-format-corpus/word9-distiller405-usgs-nwql-volatile-organics-methods.pdf", 237, 791, 3067, 2004)]
+    public void A_flate_stream_that_turns_corrupt_keeps_what_libz_keeps_and_is_reported_at_the_byte_libz_meets_the_fault_in(
+        string file,
+        int number,
+        int faultAt,
+        int encoded,
+        int kept)
+    {
+        // The figures are libz's, not the reader's: the input its inflater had taken and the bytes it had written when
+        // it met the fault, "invalid distance too far back" in each — within a block, where the unit tests' streams
+        // fault at the start of one. qpdf keeps none of these three streams, so its referee cannot say how much the
+        // reader keeps of them: this does, on the corpus CI always has.
+        using var document = PdfDocument.Open(Corpus.Read(file));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = document.GetObject(new PdfObjectId(number)).AsStream().Required().Decode(diagnostics);
+
+        decoded.Length.Should().Be(kept);
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Message.Should().Be(
+            $"A Flate stream is corrupt at byte {faultAt} of its {encoded}; the {kept} bytes decoded before the fault was found were kept.");
+    }
+
     [Fact]
     public void A_raised_reader_limit_raises_a_default_and_replaces_a_skip()
     {
