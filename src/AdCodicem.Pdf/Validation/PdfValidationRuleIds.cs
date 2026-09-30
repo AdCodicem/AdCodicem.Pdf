@@ -8,7 +8,8 @@ namespace AdCodicem.Pdf.Validation;
 /// An identifier is <c>family.name</c>, both in lowercase kebab case. The family is never a profile's name,
 /// since a rule runs in every profile that includes it. One identifier names one rule, which always reports at
 /// the same severity, and no identifier equals one of <see cref="Diagnostics.PdfDiagnosticCodes"/>: findings
-/// and diagnostics are different things. <c>docs/validation-rules.md</c> lists every identifier.
+/// and diagnostics are different things. <c>docs/website/docs/reference/validation-rules.md</c> lists every
+/// identifier.
 /// </remarks>
 public static class PdfValidationRuleIds
 {

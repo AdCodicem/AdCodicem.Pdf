@@ -15,7 +15,7 @@ import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-const directory = path.join(import.meta.dirname, "..", "docs", "api");
+const directory = path.join(import.meta.dirname, "..", "docs", "reference", "api");
 
 if (!existsSync(directory)) {
   console.error(`No generated API reference at ${directory}; run the DocFX metadata step first.`);

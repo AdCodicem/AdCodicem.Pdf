@@ -44,6 +44,20 @@ your jurisdiction and your trust services. Nothing in this project is legal, tax
 
 :::
 
+## How this documentation is organized
+
+It follows [Diátaxis](https://diataxis.fr/): each page is written for one need, and sits in the section for that need.
+
+| Section | For when you want to | Start with |
+|---|---|---|
+| [Tutorials](/tutorials) | Learn the library by using it, one step at a time | [Open, inspect and validate a PDF](tutorials/first-steps.md) |
+| [How-to guides](/guides) | Get a task done that you already have in mind | [Validate a document before accepting it](guides/validate-a-received-document.md) |
+| [Reference](/reference) | Look up a code, a rule, a limit or a type while you work | [Diagnostics](reference/diagnostics.md), [Validation rules](reference/validation-rules.md), the API reference |
+| [Explanation](/concepts) | Understand why the library works the way it does | [Lazy reading](concepts/lazy-reading.md) |
+
+New to the library? The [tutorial](tutorials/first-steps.md) opens, repairs and validates a document in about fifteen
+minutes, with nothing to download but the package.
+
 ## Why another PDF library
 
 Most .NET options force a trade-off. Browser-based converters give perfect fidelity but cost hundreds of
@@ -93,45 +107,3 @@ satellite brings the PDF/A and PDF/UA profiles.
 | `AdCodicem.Pdf.Rendering` | Rasterization | Planned, M25 |
 | `AdCodicem.Pdf.Signing` | PAdES signing, long-term signatures, signature validation | Planned, M26 |
 | `AdCodicem.Pdf.Docx` | DOCX to HTML | Planned, M31 |
-
-## Reading a document today
-
-What the library can do right now:
-
-```csharp
-using AdCodicem.Pdf.Documents;
-using AdCodicem.Pdf.Objects;
-
-using var document = PdfDocument.Open("invoice.pdf");
-
-Console.WriteLine(document.Version);      // 1.7
-Console.WriteLine(document.ObjectCount);  // how many objects the file defines
-Console.WriteLine(document.WasRepaired);  // did the index have to be rebuilt?
-
-var pages = document.Catalog.GetDictionary(PdfName.Pages);
-Console.WriteLine(pages.GetInteger(PdfName.Count));
-
-foreach (var entry in document.Diagnostics)
-{
-    Console.WriteLine(entry);             // what the reader noticed, and where
-}
-```
-
-Nothing above reads page content. It is read when, and only when, you ask for it.
-
-## Validating a document
-
-The reader opens damaged files and says what it repaired; the validator says what is wrong with a file,
-with rule identifiers you can filter on. It is being built rule by rule — see [Validation](concepts/validation.md).
-
-```csharp
-using AdCodicem.Pdf.Validation;
-
-var report = new PdfValidator().Validate(document);
-
-Console.WriteLine(report);                // structural 1: errors 0, warnings 1, information 0
-foreach (var finding in report.Findings)
-{
-    Console.WriteLine(finding);           // Warning file.eof-missing at offset 48213: …
-}
-```

@@ -10,8 +10,8 @@
 Managed PDF toolkit for .NET 10: generate PDF documents from HTML, and read, assemble and transform
 existing ones — with no headless browser, no native PDF engine and no external process.
 
-**[Read the documentation](https://adcodicem.github.io/AdCodicem.Pdf/)** — concepts, guides and the
-generated API reference, versioned alongside each release.
+**[Read the documentation](https://adcodicem.github.io/AdCodicem.Pdf/)** — a tutorial, how-to guides, the
+reference (the generated API reference among it) and explanations, versioned alongside each release.
 
 > **Status: early development.** The public API is not stable yet. See `docs/roadmap.md`.
 

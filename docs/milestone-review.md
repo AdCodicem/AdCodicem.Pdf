@@ -144,7 +144,7 @@ between sessions:
 - `docs/website/docs` documents what now exists and nothing that does not. `docs/features/features.json`
   records the milestone's features in their real state.
 - Rule identifiers, diagnostic codes and limit codes are listed where the documentation says they are, for
-  example `docs/validation-rules.md`.
+  example `docs/website/docs/reference/validation-rules.md`.
 
 ### 5. Security
 

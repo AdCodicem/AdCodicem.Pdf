@@ -7,7 +7,7 @@ Date: 2026-09-27
 Accepted on 2026-09-27, by the maintainer, during M02's second slice, before any of its rules shipped. It
 amends [36](0036-validation-lives-in-the-core-conformance-in-a-satellite.md), whose bar for `Error` — readers
 will disagree about the document — it replaces. Implemented by `PdfValidationSeverity` and the severities of the
-structural profile's rules, listed in `docs/validation-rules.md`.
+structural profile's rules, listed in `docs/website/docs/reference/validation-rules.md`.
 
 ## Context
 
@@ -83,6 +83,6 @@ There is no `Critical` level; whether one is needed is M05's question, when repa
   tell a scan that recovered the file from one that brought back what an update deleted.
 - **Rejected** — a `Critical` level now: it would apply to one case, and its definition belongs to repair.
 - **Amended on acceptance**: ADR 36 (a note), `PdfValidationSeverity`, `docs/milestones/M02.md`,
-  `docs/validation-rules.md`, and the site's validation page.
+  `docs/website/docs/reference/validation-rules.md`, and the site's validation page.
 - **What would reopen it**: a rule whose faults cannot be told apart by what the reader did, or M05 finding that
   repair needs a level the three do not give.

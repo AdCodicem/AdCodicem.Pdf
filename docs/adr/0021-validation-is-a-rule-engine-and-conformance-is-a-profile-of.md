@@ -21,7 +21,7 @@ PDF/A and PDF/UA arrive later (M20) as further profiles, not as a separate valid
 
 ## Consequences
 
-- **Consequence** — rule identifiers are public API from the day they ship, and `docs/validation-rules.md`
+- **Consequence** — rule identifiers are public API from the day they ship, and `docs/website/docs/reference/validation-rules.md`
 documents them.
 
 ---

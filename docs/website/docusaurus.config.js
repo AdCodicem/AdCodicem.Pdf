@@ -31,6 +31,10 @@ if (includePreview) {
     : { label: previewLabel };
 }
 
+// Where DocFX writes the generated API reference, under the Reference quadrant of the user documentation
+// (ADR 47); docs/docfx/docfx.json and scripts/tidy-api-reference.mjs name the same directory.
+const apiDirectory = 'reference/api';
+
 /**
  * The generated API reference is one flat directory, one page per type and per namespace. Sorted by file
  * name, a namespace's own page lands after its types; grouped here instead, each namespace is a category
@@ -39,9 +43,9 @@ if (includePreview) {
  * @type {import('@docusaurus/plugin-content-docs').PluginOptions['sidebarItemsGenerator']}
  */
 async function sidebarItems({ defaultSidebarItemsGenerator, ...args }) {
-  if (args.item.dirName !== 'api') return defaultSidebarItemsGenerator(args);
+  if (args.item.dirName !== apiDirectory) return defaultSidebarItemsGenerator(args);
 
-  const pages = args.docs.filter((doc) => doc.sourceDirName === 'api');
+  const pages = args.docs.filter((doc) => doc.sourceDirName === apiDirectory);
   const uid = (doc) => doc.id.slice(doc.id.lastIndexOf('/') + 1);
   const byName = (a, b) => a.label.localeCompare(b.label);
 
@@ -112,7 +116,9 @@ const config = {
           // The API reference is generated from the XML documentation comments: its source is the code,
           // and a link to a Markdown file that exists only during the build would lead to a 404.
           editUrl: ({ versionDocsDirPath, docPath }) =>
-            docPath.startsWith('api/') ? undefined : `${source}/docs/website/${versionDocsDirPath}/${docPath}`,
+            docPath.startsWith(`${apiDirectory}/`)
+              ? undefined
+              : `${source}/docs/website/${versionDocsDirPath}/${docPath}`,
         },
         blog: false,
         theme: { customCss: './src/css/custom.css' },
@@ -134,6 +140,21 @@ const config = {
         sidebarPath: './sidebars-project.js',
         // Edits go to the originals in docs/, not to the copy.
         editUrl: ({ docPath }) => `${source}/docs/${docPath}`,
+      },
+    ],
+    [
+      // Pages that moved when the user documentation took the Diátaxis quadrants (ADR 47): a link published
+      // before the move lands on the page's new address rather than on a 404. Only the built site carries the
+      // redirects, as small pages at the old addresses; `npm start` does not.
+      '@docusaurus/plugin-client-redirects',
+      {
+        redirects: [{ from: '/project/validation-rules', to: '/reference/validation-rules' }],
+        // Every page of the API reference, in every version, under its address before the move.
+        createRedirects: (existingPath) => {
+          const marker = `/${apiDirectory}/`;
+          const at = existingPath.indexOf(marker);
+          return at < 0 ? undefined : `${existingPath.slice(0, at)}/api/${existingPath.slice(at + marker.length)}`;
+        },
       },
     ],
   ],
@@ -160,13 +181,17 @@ const config = {
           title: 'Documentation',
           items: [
             { label: 'Introduction', to: '/' },
-            { label: 'Roadmap', to: '/project/roadmap' },
-            { label: 'Decisions', to: '/project/adr/' },
+            { label: 'Tutorials', to: '/tutorials' },
+            { label: 'How-to guides', to: '/guides' },
+            { label: 'Reference', to: '/reference' },
+            { label: 'Explanation', to: '/concepts' },
           ],
         },
         {
           title: 'Project',
           items: [
+            { label: 'Roadmap', to: '/project/roadmap' },
+            { label: 'Decisions', to: '/project/adr/' },
             { label: 'GitHub', href: `https://github.com/${organization}/${repository}` },
             { label: 'Contributing documents', to: '/project/corpus-contributions' },
           ],
