@@ -88,7 +88,7 @@ internal static class FuzzingSeeds
         return share;
     }
 
-    private static IReadOnlyList<Seed> Load()
+    private static List<Seed> Load()
     {
         var seeds = new List<Seed>();
 

@@ -1031,7 +1031,7 @@ public class FilterDamageTests
 
         decoded.ToArray().Should().Equal(plain);
         document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.FilterFailed);
-        document.Diagnostics.Last().Message.Should().Be(CorruptAt(faultAt, Kept, plain.Length));
+        document.Diagnostics[^1].Message.Should().Be(CorruptAt(faultAt, Kept, plain.Length));
     }
 
     [Fact]
