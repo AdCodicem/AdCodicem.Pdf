@@ -499,13 +499,16 @@ public class DocumentReaderTests
         report.Message.Should().Be("Object stream 5 " + fault);
     }
 
-    [Fact]
-    public void Reports_an_object_stream_whose_header_starts_with_a_stray_token_as_serving_none_of_its_objects()
+    [Theory]
+    [InlineData("6 x <<>>", "/N 1 /First 4")]
+    [InlineData("/X <<>>", "/N 1 /First 3")]
+    public void Reports_an_object_stream_whose_header_starts_with_a_stray_token_as_serving_none_of_its_objects(string data, string entries)
     {
+        // A stray object number is the fault, though the header ends right after it.
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .WithObject(5, "<< /Type /ObjStm /N 1 /First 4 /Length 8 >>\nstream\n6 x <<>>\nendstream")
+            .WithObject(5, $"<< /Type /ObjStm {entries} /Length {data.Length} >>\nstream\n{data}\nendstream")
             .BuildClassic(rootNumber: 1, includeXRef: false);
 
         using var document = PdfDocument.Open(file);
@@ -513,6 +516,42 @@ public class DocumentReaderTests
         document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
             "Object stream 5 has a header that holds something other than an object number and an offset after 0 of the 1 objects its /N declares; none of its objects can be read from it.");
+    }
+
+    [Theory]
+    [InlineData(64)]
+    [InlineData(1_000_000)]
+    public void Reports_an_object_at_another_index_of_its_stream_once_however_often_it_is_parsed(int cacheCapacity)
+    {
+        // The header swaps objects 2 and 3: both entries are wrong. Between two readings of them, a hundred other
+        // objects push them out of a cache of 64, which parses them again every time.
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>");
+
+        for (var number = 10; number < 110; number++)
+        {
+            builder.WithObject(number, string.Create(CultureInfo.InvariantCulture, $"({number})"));
+        }
+
+        var file = builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: header => "3" + header[1..4] + "2" + header[5..]);
+        using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = cacheCapacity });
+
+        for (var round = 0; round < 3; round++)
+        {
+            document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+            document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+
+            for (var number = 10; number < 110; number++)
+            {
+                document.GetObject(new PdfObjectId(number)).Should().BeOfType<PdfString>();
+            }
+        }
+
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamMemberMoved).Select(entry => entry.Message).Should().Equal(
+            "Object 2 is at index 1 of object stream 110, not at index 0, where the cross-reference index places it.",
+            "Object 3 is at index 0 of object stream 110, not at index 1, where the cross-reference index places it.");
     }
 
     [Fact]
