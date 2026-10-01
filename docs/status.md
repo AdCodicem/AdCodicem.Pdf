@@ -60,8 +60,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   default arm, and a line the compiler puts after a call that never returns; the journal of 2026-09-29 lists them.
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `6603f01` (CI run 363), [#140]'s merge. `Remote corpus` run 15, on 2026-09-30, on
-  [#140]'s branch, the nightly run 16 on `main` at `6603f01`, and run 17 on [#147]'s branch
-  fetched all 242 remote documents and passed their acceptance tests and referee checks.
+  [#140]'s branch, the nightly run 16 on `main` at `6603f01`, run 17 on [#147]'s branch, the nightly run 18 on `main` at
+  `8c54490`, and run 19 on [#117]'s branch, rerun once after web.archive.org refused a document, fetched all 242 remote
+  documents and passed their acceptance tests and referee checks. CI is green on [#117]'s branch at `8ca30f4`.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
@@ -180,7 +181,7 @@ One pull request per batch, each design question put to the maintainer after mea
    questions are put to the maintainer when it starts, after measuring; one that can move what a remote document gives
    runs `Remote corpus` on its branch before it merges; [#158]'s tests are written in the batch that changes their
    code, and it closes last.
-   1. [#117] — done on `ccr-6d6c0ee6-dqm4lm`, `Remote corpus` run 19 on the branch (journal of 2026-10-01).
+   1. [#117] — done on `ccr-6d6c0ee6-dqm4lm`, `Remote corpus` run 19 green on the branch (journal of 2026-10-01).
    2. [#187], the reader's codes and positions, so that the batches after it report under their final codes.
    3. [#159], what a message quotes of the file, bounded and escaped, before any batch adds a message that quotes it.
    4. [#193], the memory and time budgets the index changes are measured against.
@@ -285,7 +286,9 @@ not a fault of the file: the rules on it report at most, as information, that it
   4,176 with the remote corpus; the integration suite ran against qpdf in its container with the remote corpus,
   3,266 tests, 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages, in 19 minutes; the
   patch's 21 measurable lines of `src/` are covered, every branch taken, on the committed corpus alone; the site
-  builds, 196 pages. `Remote corpus` run 19, on the branch at `b7fb2c9`, was still running when this entry was written.
+  builds, 196 pages. `Remote corpus` run 19, on the branch at `b7fb2c9`: its first attempt fetched 241 of the 242
+  remote documents — web.archive.org refused ECan's Konica scan — and passed every test over them; the one rerun
+  fetched all 242 and passed, 4,224 acceptance tests with 3 skipped and 3,329 referee checks with 6 skipped.
 - **Left**: the journal passes a dozen entries, and `docs/status.md` asks that it be summarized; no session has done so
   yet.
 - **Next**: batch 2, [#187], its questions put when it starts.
