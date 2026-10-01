@@ -36,21 +36,22 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   the core's dependencies, under none. M01's review after the fact ([#136]) was recorded on 2026-10-01
   ([`docs/reviews/M01.md`](reviews/M01.md)): of its 23 findings it fixed 9 in its own pull request and filed 11 under
   M02, in nine issues M02 now waits on — [#185] to [#190], [#192], [#193] and [#197] —, [#191] under M03, [#194]
-  under M23 and [#195] under none; [#196], noticed outside its extent, is filed under none.
+  under M23 and [#195] under none; [#196], noticed outside its extent, is filed under none. Step 4's order, thirty-two
+  batches, was settled with the maintainer on 2026-10-01; its first batch, [#117], is done on `ccr-6d6c0ee6-dqm4lm`,
+  and the planning filed four more debts under M02, [#199] to [#202] (journal of 2026-10-01).
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,488 unit on M01's review branch, `ccr-28147900-n5opmm` — `main`'s 2,474 and the fourteen the review
-  added — (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
-  wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23 for the remote corpus's
-  fetcher + 43 for the roadmap's mirror on GitHub, the last three counted on [#147]'s branch. With the 233 remote
-  documents fetched on that branch: 4,144 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
-  until [#47], which every other test now holds to their expectations, and the private manifest this container
-  lacks —, and 3,266 integration. The integration suite ran here for the first time, against qpdf 11.9.1 in its
-  container as in CI (journal of 2026-09-30): 3,260 passed, 6 skipped where qpdf cannot walk a damaged document's
-  pages, none failed, in 12 minutes.
+- **Tests**: 2,504 unit on [#117]'s branch, `ccr-6d6c0ee6-dqm4lm` — `main`'s 2,488 and the sixteen it added — (3
+  skipped: 2 by design, and the theory over the remote corpus's streams whose length is wrong, which has no document
+  without it) + 1,306 integration (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's
+  mirror on GitHub, the last three counted on [#147]'s branch. With the 233 remote documents fetched on [#117]'s branch:
+  4,176 unit, 3 skipped — the laziness test on the two documents recorded as unsupported until [#47], which every other
+  test holds to their expectations, and the private manifest this container lacks —, and 3,266 integration, run here
+  against qpdf in its container as in CI: 3,260 passed, 6 skipped where qpdf cannot walk a damaged document's pages,
+  none failed, in 19 minutes.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
   Arlington tables left out), 99.6 % of `src/` — 4,886 of 4,904 lines on `main` since [#147], all 82 of its patch
   among them. The 18 left are those the rule of 2026-09-29 leaves
@@ -234,6 +235,60 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-01 — Step 4's order, and its first batch: a reference to object 0 ([#117])
+- **The question.** The maintainer asked for the next step to begin and for every ambiguity to be put to them. Seven
+  analysts read the 46 debts filed under M02 against the code at `8c54490`, a planner grouped them, and a critic
+  checked the grouping; none of the 46 was stale or already fixed. The critic moved three batches before the work
+  that rests on them, [#187], [#159] and [#193], and [#182] before the index changes. It also recommended putting
+  each batch's questions when that batch starts, after measuring, rather than all 113 at once.
+- **Settled with the maintainer**, each as recommended:
+  - the thirty-four debts filed since 2026-09-29 join the twelve already in step 4, interleaved where they share code
+    or where their dependencies let them, the denial-of-service debts brought forward: thirty-two batches, listed in
+    *Next concrete step*;
+  - batches by code path, one pull request each; this session pays the first alone;
+  - a batch's design questions are put when it starts, after measuring;
+  - a batch that can move what a remote document gives runs `Remote corpus` on its branch before it merges;
+  - [#158]'s tests are written, as `Refs #158`, in the batch that changes their code, and [#158] closes last;
+  - a defect found outside every issue is reproduced, then filed as debt;
+  - for [#117], both of the validator's "no reference" sentinels are replaced.
+- **[#117].** The parser made a reference only of an object number above 0, so `0 0 R` read as two integers and a
+  stray `R`: an array gained values, a dictionary's keys shifted, and `syntax.unexpected-token` was reported. It is
+  now a reference to object 0, which heads the free list and is never in use (ISO 32000-1, 7.5.4), and reads as null
+  (7.3.10). The reader holds object 0 missing whatever the table's first row says. `ObjectGraph`'s search for the
+  first missing reference says whether it found one apart from what it names, the page tree walk tells a kid by its
+  being a reference, and the object stream dependency walk skips object 0, which no stream can need. A `/Length 0 0 R`
+  reads as "names object 0 0, which the file lacks", and `/Root 0 0 R` as a reference to it, the trailer whole.
+- **Measured.** Over the 401 corpus documents this container holds — 168 committed, 233 of the 242 remote ones
+  fetched —, the baseline and the change give the same findings and diagnostics but on two of JHOVE's error files,
+  `jhove-hul-2` and `jhove-hul-28`: an `object.value-type-wrong` becomes the `object.reference-missing` at `/AP/N` and
+  `/Contents[4]`, and their `syntax.unexpected-token` reports go. Their rule-id sets are unchanged; hul-28 is tagged
+  `reference-to-object-zero`, as hul-2 was. qpdf, too, ignores hul-28's `/Contents[4]` as no stream. No committed
+  document writes a reference to object 0.
+- **Reviewed.** An adversarial review over four lenses gave fifteen findings, each put to a refuter; none was refuted.
+  They came to seven: a false `xref.object-stream-circular` when a decoding key names `0 0 R` and the table places
+  object 0 in that stream, fixed; no test of the lower bound against a negative number that narrows to a real one,
+  `-4294967291 0 R` to 5, added; `/Root 0 0 R`'s message and location, now held; and four in this file — the batch
+  list's numbering, this entry, the `Remote corpus` run, and the date of the twelve debts' order —, corrected.
+- **Tests**: sixteen new, each failing when the defense it names is removed — the parser's bounds on both sides and the
+  generation's, the presence of object 0, the two sentinels, the dependency walk's skip. #158's four reference forms,
+  with the two negative ones, are among them.
+- **Tracking.** [#144] blocks slice 4 ([#60]), as M02 says; [#137] waits on every issue under M02, the threat model's
+  twenty-five, [#141], [#144] and [#199] to [#202] added; [#107]'s body and two documents say iPRES `t03-008`'s last
+  row is two digits short, eighteen bytes, where they said one. Of the six defects the planning found outside every
+  issue, four were reproduced twice and filed under M02, each with its batch: [#199] (a step after one the guard cut
+  reports a false `filter.failed`), [#200] (object-stream members one byte apart, quadratic: 844 KB read in 59 s),
+  [#201] (the dependency walk again for every stream, the page tree walk's frames past the cache), [#202] (a member the
+  reader gives up on, reported by no rule). The fifth, a cut and a loop that wrap negative, is what [#125]'s closing
+  asks, and is commented there; the sixth, `2^63` read as `long.MinValue`, is [#157]'s.
+- **Checked**: the solution builds with no warning, and `dotnet format` finds nothing; 2,504 unit tests, 3 skipped,
+  4,176 with the remote corpus; the integration suite ran against qpdf in its container with the remote corpus,
+  3,266 tests, 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages, in 19 minutes; the
+  patch's 21 measurable lines of `src/` are covered, every branch taken, on the committed corpus alone; the site
+  builds, 196 pages. `Remote corpus` run 19, on the branch at `b7fb2c9`, was still running when this entry was written.
+- **Left**: the journal passes a dozen entries, and `docs/status.md` asks that it be summarized; no session has done so
+  yet.
+- **Next**: batch 2, [#187], its questions put when it starts.
 
 ### 2026-10-01 — M01's review after the fact ([#136])
 - **What it is.** The adversarial review ADR 46 asks of every milestone, run on M01 after the fact, under M02, by a
