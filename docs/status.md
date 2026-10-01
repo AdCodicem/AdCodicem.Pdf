@@ -12,11 +12,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   the engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object,
   page tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two
   batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first two of which, [#117]
-  and [#187], merged with [#203] and [#211] that day; then slices 4 to 6 ([#60] to [#62]); then the milestone's
+  and [#187], merged with [#203] and [#211] that day, and the third, [#159], is in review in [#213]; then slices 4 to 6 ([#60] to [#62]); then the milestone's
   adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
-  fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]) and its second batch ([#207] to
-  [#210]); [#123] moved to M20.
+  fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
+  [#210]) and its third ([#212]); [#123] moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
@@ -24,12 +24,12 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
 - **Tests**: 2,553 unit on `main` since [#211] (3 skipped: 2 by design, and the theory over the remote corpus's
   streams whose length is wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23
-  for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the remote documents fetched, on
-  [#211]'s branch: 4,225 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
+  for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. On [#213]'s branch, 2,799 unit; with the
+  remote documents fetched, 4,704 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
   unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
   lacks —; 3,266 integration against qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and, with all 242, `Remote corpus` run 20's 4,273 acceptance tests and 3,329 referee
-  checks.
+  checks, on [#211]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
   Arlington tables left out), 99.6 % of `src/` — 5,036 of 5,054 lines on `main` since [#211], all 186 of its patch
   among them. The 18 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private,
@@ -37,7 +37,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   1061, 1077) and three of a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it
   is read and a switch's default arm (`CrossReferenceProbe` 86 and 225, `PageTreePageOrphanedRule` 51,
   `RootInvalidRule` 86 and 95), and a line the compiler puts after a call that never returns (`PdfFileReader` 1098).
-  `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
+  On [#213]'s branch, 5,145 of 5,165: the same 18, shifted (`PdfFileReader` 1100, `RootInvalidRule` 87 and 96), and two
+  of its patch's 151 measurable lines partial on a branch the compiler adds that no input takes (`FileQuote` 138,
+  `PdfObjectParser` 647). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `c40d90c` (CI run 410), [#211]'s merge. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
   after web.archive.org refused a document ([#204]).
@@ -162,7 +164,8 @@ One pull request per batch, each design question put to the maintainer after mea
       2026-10-01).
    2. [#187], the reader's codes and positions — done, merged with [#211] on 2026-10-01, `Remote corpus` run 20 green
       on its branch (journal of 2026-10-01).
-   3. [#159], what a message quotes of the file, bounded and escaped, before any batch adds a message that quotes it.
+   3. [#159], what a message quotes of the file, bounded and escaped — done, in review in [#213], `Remote corpus` run 21
+      on its branch (journal of 2026-10-01).
    4. [#193], the memory and time budgets the index changes are measured against.
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
    6. [#182], a cross-reference stream's dictionary read as written.
@@ -195,6 +198,7 @@ One pull request per batch, each design question put to the maintainer after mea
 
    Slice 4 waits on [#141] and [#144]. The four defects the planning found outside every issue, [#199] to [#202], and
    the four batch 2 found, [#207] to [#210], are filed under M02 and paid in the batches above (journal of 2026-10-01).
+   [#212], which batch 3 filed, is proposed for batch 10, with [#190]; its place is the maintainer's.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -215,6 +219,64 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-01 — Batch 3: what a message quotes of the file ([#159])
+- **The question.** [#159], from the threat model: messages quoted the file's names and keywords whole and unescaped,
+  and numbers under the host's culture. A name of megabytes was copied into every report, and kept for the document's
+  life in a stream's length fault. A line feed, an escape sequence or a C1 control reached the host's logs as itself.
+  The corpus, the reader, the validator and hostile shapes were measured first, and ten questions followed.
+- **Settled with the maintainer**, each as recommended:
+  - a quote is written as a PDF writer writes a name (ISO 32000-1, 7.3.5), keywords by the same rule;
+  - it is cut past 127 bytes, an internal constant, with ADR 34 amended to say so;
+  - the cut note gives the whole's length;
+  - a stream's length fault keeps what `/Length` held, not words about it;
+  - decoding stops at the first unknown filter;
+  - strings are never quoted;
+  - every number of `src/` is formatted with the invariant culture, held by a corpus test under a Persian culture;
+  - one helper in `AdCodicem.Pdf.IO`, which the validator shares;
+  - a key path keeps its first and last four steps;
+  - the public `ToString`s are left to a debt ([#212]).
+- **Done**, in [#213]:
+  - `FileQuote` writes through a buffer on the stack: a 64 MB name costs its 127-byte quote and no copy;
+  - every reader message and validator finding that quoted a name now goes through it, and `RuleText.Name` is gone;
+  - `StreamLengthFault` keeps `Value`, and its `Kind` is a fixed literal;
+  - `filter.unsupported` stops the chain, "decoding stopped there";
+  - `PdfName.IsBytes`, known when a name is interned, spares a cut quote reading a file's name whole to count it.
+  
+  Docs: the diagnostics reference's *How a message quotes the file*, the validation reference, *Reader limits*, the
+  threat model and ADR 34's amendment of 2026-10-01.
+- **Measured.** Each hostile shape is held to an allocation budget:
+  - four streams taking a 4M-character name for their `/Length`: under 2 MB;
+  - fifty sharing a 1M-character name: under 4 MB;
+  - a filter of a million characters decoded a hundred times: under 1 MB;
+  - a path through ten keys of a megabyte: 126 MB copying the keys, under 4 MB now.
+  
+  No message of the 401 documents changes under the invariant culture, and none earned `filter.unsupported`.
+- **Reviewed.** An adversarial review over five lenses (the quote, its sites, the paths, the filters, the culture
+  and the documentation), each finding put to a refuter.
+  - Kept and fixed: a caller's name with characters past U+00FF was cut and counted in characters, a surrogate pair
+    astride the cut written as U+FFFD, and its characters up to U+00FF counted as two bytes in the whole; then
+    `FileQuote.Keyword`'s summary, and *Reader limits*, which stated ADR 34 unamended.
+  - Refuted as this batch's: a `/Filter` element that is not a name, skipped in silence, which predates it
+    ([#162], [#209]; commented).
+- **Tests**: 246 new, 2,553 to 2,799, 168 of them the corpus theory under fa-IR. Each defense — the escapes, the cut,
+  the byte count, the path cap, each call site, the stop at an unknown filter — fails a test when removed. The batch
+  rewrote the loop over a chain's filters, so it pays [#158]'s intermediate step cut at the bound.
+- **Tracking.** Filed under M02, reproduced twice: [#212] (the public `ToString`s of `PdfName`, `PdfDictionary`,
+  `PdfStream` and `PdfString` raw and unbounded), which [#137] waits on. Commented, each reproduced twice: [#161] (a
+  stream in an object-stream member reports its length fault at every parse), [#175] (`file.root-invalid` judges a
+  catalog a guard cut, "/Type /Catalo"), [#162] (the non-name `/Filter` element now differs from the stop).
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - 2,799 unit tests, 3 skipped, and 4,704 with the remote corpus;
+  - the integration suite against qpdf, with the remote corpus, at `1b14d05`: 3,266 tests, 3,260 passed and 6
+    skipped, as on `main`;
+  - on the committed corpus alone, 149 of the patch's 151 measurable lines covered, the two left partial on a branch
+    the compiler adds that no input takes (`FileQuote` 138, `PdfObjectParser` 647); the project at 5,145 of 5,165,
+    the same 18 lines left besides;
+  - the site builds, 196 pages.
+- **Next**: batch 4, [#193], the memory and time budgets the index changes are measured against, its questions put
+  when it starts.
 
 ### 2026-10-01 — Batch 2: the reader's codes and positions ([#187])
 - **The question.** [#187], from M01's review: five situations raised under codes whose meaning does not cover them, a
@@ -750,3 +812,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#209]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/209
 [#210]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/210
 [#211]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/211
+[#212]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/212
+[#213]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/213
