@@ -172,10 +172,28 @@ One pull request per batch, each design question put to the maintainer after mea
 3. [#56], with [#134] — done, merged with [#147] on 2026-09-30 (journal of 2026-09-30): what a damaged Flate stream
    decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. The `Remote corpus`
    run [#134] asks for on the branch, run 17, was green; it closed with the merge.
-4. The reader and validation debts: [#117], [#118], [#119], [#125] then [#126], [#128], [#129], [#132], [#141],
-   [#144]; then [#107] and [#111], each a new public rule whose name and severity the maintainer gives. The
-   twenty-five the threat model filed under M02 join them, in an order to settle with the maintainer: [#154] to
-   [#175] and [#181] to [#183]. [#163] makes `MaxDepth` and `MaxNestedLoads` guards, as the maintainer decided.
+4. The reader and validation debts, in thirty-two batches settled with the maintainer on 2026-10-01 (journal of
+   2026-10-01). The twelve agreed on 2026-09-29 keep their order; the twenty-five the threat model filed under M02 and
+   the nine of M01's review join them where they share code or where their dependencies let them, the denial-of-service
+   debts brought forward. A batch is one pull request; its design questions are put to the maintainer when it starts,
+   after measuring; one that can move what a remote document gives runs `Remote corpus` on its branch before it merges;
+   [#158]'s tests are written in the batch that changes their code, and it closes last.
+   1. [#117] — done on `ccr-6d6c0ee6-dqm4lm` (journal of 2026-10-01).
+   2. [#187], the reader's codes and positions, so that the batches after it report under their final codes.
+   3. [#159], what a message quotes of the file, bounded and escaped, before any batch adds a message that quotes it.
+   4. [#193], the memory and time budgets the index changes are measured against.
+   5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
+   6. [#182], a cross-reference stream's dictionary read as written.
+   7. [#118]. 8. [#119] and [#172]. 9. [#125] and [#126]. 10. [#190].
+   11. [#164] and [#183], the index's size, the first new guard. 12. [#165] and [#166], filter chains.
+   13. [#128]. 14. [#129] and [#175]. 15. [#160] and [#161], object-stream members. 16. [#174] and [#170], stream data.
+   17. [#155]. 18. [#167] and [#168]. 19. [#188], [#197] and [#156]. 20. [#189]. 21. [#154] and [#171]. 22. [#132].
+   23. [#141]. 24. [#144] and [#169]. 25. [#181]. 26. [#162]. 27. [#163], `MaxDepth` and `MaxNestedLoads` made guards,
+   as the maintainer decided. 28. [#185]. 29. [#173]. 30. [#192]. 31. [#107] and [#111], each a new public rule whose
+   name and severity the maintainer gives. 32. What remains of [#158].
+
+   Slice 4 waits on [#141] and [#144]; the six defects the planning found outside every issue are filed under M02,
+   each with the batch that pays it (journal of 2026-10-01).
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -185,8 +203,8 @@ One pull request per batch, each design question put to the maintainer after mea
 8. The threat model's first version, `docs/threat-model.md`, for the reader and the validator ([#135]) — done on
    2026-10-01 (journal of 2026-10-01).
 9. M01's review after the fact ([#136]) — done on 2026-10-01 (journal of 2026-10-01, `docs/reviews/M01.md`). The
-   nine issues it filed under M02, [#185] to [#190], [#192], [#193] and [#197], join step 4's debts, in an order to
-   settle with the maintainer; [#186] comes before M03's slice 1, which it blocks.
+   nine issues it filed under M02, [#185] to [#190], [#192], [#193] and [#197], are among step 4's batches; [#186]
+   comes before M03's slice 1, which it blocks.
 10. M02's review, slice 7 ([#137]), once every other issue filed under M02 is closed: a fresh session,
    `/milestone-review M02`; then whatever it files under M02.
 11. The closing: a green `Remote corpus` run recorded here, M02.md's exit criteria ticked, the roadmap and
@@ -1232,9 +1250,12 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#149]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/149
 [#154]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/154
 [#155]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/155
+[#156]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/156
 [#157]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/157
 [#158]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/158
+[#159]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/159
 [#160]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/160
+[#161]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/161
 [#162]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/162
 [#163]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/163
 [#164]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/164
@@ -1245,6 +1266,9 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#169]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/169
 [#170]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/170
 [#171]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/171
+[#172]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/172
+[#173]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/173
+[#174]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/174
 [#175]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/175
 [#176]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/176
 [#177]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/177
@@ -1252,6 +1276,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#179]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/179
 [#180]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/180
 [#181]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/181
+[#182]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/182
 [#183]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/183
 [#185]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/185
 [#186]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/186
