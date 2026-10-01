@@ -93,7 +93,7 @@ Requires the .NET 10 SDK.
 
 ```bash
 dotnet build AdCodicem.Pdf.slnx -c Release
-dotnet test  AdCodicem.Pdf.slnx -c Release
+dotnet test --solution AdCodicem.Pdf.slnx -c Release
 ```
 
 ## Contributing
