@@ -26,7 +26,8 @@ public static class PdfDiagnosticCodes
     /// it is named nor near it — nothing there reads as a section, which <see cref="XRefSectionUnreadable"/> reports
     /// otherwise —, lies outside the file, or is named by a value that is not an offset. The objects only it
     /// indexes are missing from the index, which is rebuilt by scanning the file when one of them is asked for. The report
-    /// is placed where the section was named, or, when that lies outside the file, at the section whose trailer named it.
+    /// is placed at the offset the section was named at, or, when that offset lies outside the file or the value is not an
+    /// offset, at the section whose trailer named it.
     /// </summary>
     public const string XRefSectionMissing = "xref.section-missing";
 
@@ -40,14 +41,15 @@ public static class PdfDiagnosticCodes
     public const string XRefSectionUnreadable = "xref.section-unreadable";
 
     /// <summary>
-    /// The chain of previous cross-reference sections looped back on itself. The report is placed at the section the
+    /// The chain of previous cross-reference sections looped back on itself: a <c>/Prev</c> or <c>/XRefStm</c> names an
+    /// offset the chain has already reached, read or, outside the file, named. The report is placed at the section the
     /// chain looped back to, or at the section whose trailer named it when that offset lies outside the file.
     /// </summary>
     public const string XRefChainCycle = "xref.chain-cycle";
 
     /// <summary>
-    /// An object's cross-reference entry places it outside the file. The report carries no position, since none in the
-    /// file names the entry; its message gives the offset. A section named outside the file is
+    /// An object's cross-reference entry places it outside the file. The report carries no position, since the index
+    /// does not keep where the entry was read; its message gives the offset. A section named outside the file is
     /// <see cref="XRefSectionMissing"/>'s, or the rebuild's when <c>startxref</c> names it.
     /// </summary>
     public const string XRefEntryOutOfRange = "xref.entry-out-of-range";
@@ -81,9 +83,10 @@ public static class PdfDiagnosticCodes
     public const string ObjectStreamMemberMoved = "object-stream.member-moved";
 
     /// <summary>
-    /// What an object stream says of itself cannot be believed: its <c>/N</c> or its <c>/First</c> is absent or
-    /// negative, its <c>/N</c> declares more objects than its header can list, its <c>/First</c> lies past its decoded
-    /// data, or its header ends or breaks before listing as many objects as its <c>/N</c> declares. The objects listed
+    /// What an object stream — a stream an entry of the index names as one — says of itself cannot be believed: its
+    /// <c>/N</c> or its <c>/First</c> is absent or no non-negative integer, its <c>/N</c> declares more objects than
+    /// its header can list, its <c>/First</c> lies past its decoded data, or its header ends or breaks before listing as
+    /// many objects as its <c>/N</c> declares. The objects listed
     /// before the fault, if any, are read; the others cannot be read from it. The report is placed where the object
     /// stream's data starts, and names the object stream and its fault.
     /// </summary>
@@ -96,7 +99,7 @@ public static class PdfDiagnosticCodes
     /// </summary>
     public const string SyntaxUnexpectedToken = "syntax.unexpected-token";
 
-    /// <summary>The file ended in the middle of an object.</summary>
+    /// <summary>The file, or an object stream's decoded data, ended in the middle of an object.</summary>
     public const string SyntaxTruncatedObject = "syntax.truncated-object";
 
     /// <summary>Nesting exceeded the depth the reader is willing to follow.</summary>
@@ -105,7 +108,7 @@ public static class PdfDiagnosticCodes
     /// <summary>
     /// Rebuilding the index met more than one definition of an object number: the file was updated, or copies an
     /// object. It is reported once for each rebuild, as information with no position: how many definitions met a number
-    /// already found, the first of those numbers, and which definition was kept — the last written directly in the
+    /// already found, the first ten of those numbers, and which definition was kept — the last written directly in the
     /// file, or, for a number written only inside object streams, the first listed in the object stream read first.
     /// </summary>
     public const string ObjectRedefined = "object.redefined";

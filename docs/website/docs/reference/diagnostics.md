@@ -18,7 +18,7 @@ One entry, a record struct in `AdCodicem.Pdf.Diagnostics`.
 | `Severity` | A `PdfDiagnosticSeverity`, below |
 | `Code` | The code, such as `xref.rebuilt`: stable, and what you filter on — one of the constants of `PdfDiagnosticCodes` |
 | `Message` | What happened, in English, for a person to read |
-| `Position` | The byte offset in the file the entry relates to, or -1 when it relates to none. An offset the file names outside itself is no position: the entry is placed at what named it, or has none, the offset in the message. What concerns an object stream is placed where its data starts, the byte of decoded data in the message |
+| `Position` | The byte offset in the file the entry relates to, or -1 when it relates to none. An offset a section's trailer or an object's entry names outside the file is no position: the entry is placed at the section that named it, or has none, the offset in the message. The `object-stream.*` entries, and a fault met inside an object an object stream holds, are placed where the stream's data starts, the byte of decoded data in the message |
 
 `ToString()` gives `Severity Code at Position: Message`, or `Severity Code: Message` when there is no position:
 
@@ -74,17 +74,17 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `header.missing` | The file has no `%PDF-` header in its first 4,096 bytes; it was read all the same, its offsets counted from its first byte |
 | `xref.rebuilt` | The index was rebuilt by scanning the whole file |
 | `xref.offset-adjusted` | An object, or a cross-reference section the chain names, was not where the file said, and was found nearby |
-| `xref.section-missing` | A cross-reference section `/Prev` or `/XRefStm` names holds nothing that reads as a section, nor does any place nearby, lies outside the file, or is named by a value that is not an offset; what only it indexed is found by rebuilding the index when it is asked for. Reported where the section was named, or, when that lies outside the file, at the section whose trailer named it |
+| `xref.section-missing` | A cross-reference section `/Prev` or `/XRefStm` names holds nothing that reads as a section, nor does any place nearby, lies outside the file, or is named by a value that is not an offset; what only it indexed is found by rebuilding the index when it is asked for. Reported at the offset the section was named at, or, when that offset lies outside the file or the value is not an offset, at the section whose trailer named it |
 | `xref.section-unreadable` | A cross-reference section `/Prev` or `/XRefStm` names is there and cannot be read — a stray token among a table's rows or in place of its trailer, a stream whose `/W` or data cannot give rows — and nothing nearby can be read in its place; the rows read before the fault are kept, and what only the rest indexed is found by rebuilding the index when it is asked for. Reported at the section, the fault in the message |
-| `xref.chain-cycle` | The chain of previous sections looped; reported at the section it looped back to, or, when that offset lies outside the file, at the section whose trailer named it |
+| `xref.chain-cycle` | The chain of previous sections looped: a `/Prev` or `/XRefStm` names an offset the chain has already reached, read or, outside the file, named. Reported at the section it looped back to, or, when that offset lies outside the file, at the section whose trailer named it |
 | `xref.entry-out-of-range` | An object's entry places it outside the file; reported with no position, the offset in the message. A section named outside the file is `xref.section-missing`'s, or the rebuild's when `startxref` names it |
 | `stream.length-invalid` | A stream's `/Length` is not where its data ends: its `endstream` lies elsewhere and ends the data, or the `/Length` is no length — absent, not a non-negative integer, or naming an object the file lacks or that could not be read — and the `endstream` ends the data, or no `endstream` follows the declared length — none before the next object or the end of the file, or none looked for once the document's searches read as much as they may —, and that length is kept |
 | `stream.truncated` | A stream has no `endstream` before the end of the file, or before the `endobj` that follows its data, and its data runs to the end of the file |
 | `stream.self-reference` | An object stream's dictionary names an object the stream holds — as its `/Length`, `/N`, `/First`, a filter or a parameter —: that object reads as null while the stream is decoded, and the stream is decoded without it |
 | `object-stream.member-moved` | An object is in the object stream its entry names, at another index than the entry gives, and was read where the stream's header lists it. Reported where the stream's data starts, the object, the stream and both indexes in the message |
-| `object-stream.unreadable` | What an object stream says of itself cannot be believed: its `/N` or `/First` is absent or negative, its `/N` declares more objects than its header can list, its `/First` lies past its decoded data, or its header ends or breaks before listing as many objects as `/N` declares. The objects listed before the fault are read, the others cannot be read from it. Reported where the stream's data starts, the stream and its fault in the message |
+| `object-stream.unreadable` | What an object stream — a stream an entry of the index names as one — says of itself cannot be believed: its `/N` or `/First` is absent or no non-negative integer, its `/N` declares more objects than its header can list, its `/First` lies past its decoded data, or its header ends or breaks before listing as many objects as `/N` declares. The objects listed before the fault are read, the others cannot be read from it. Reported where the stream's data starts, the stream and its fault in the message |
 | `syntax.unexpected-token` | A token stood where the syntax does not allow it: where a value or a dictionary key was expected, after a key that has no value, or closing an array with a dictionary's end; it was read as null, skipped, or it ended what it stood in |
-| `syntax.truncated-object` | The file ended in the middle of an object |
+| `syntax.truncated-object` | The file, or an object stream's decoded data, ended in the middle of an object |
 | `syntax.depth-exceeded` | Nesting went deeper than the reader will follow |
 | `object.redefined` | Rebuilding the index met more than one definition of an object number. Raised once for each rebuild, as `Information` with no position: how many definitions met a number already found, the first ten of those numbers, and which definition was kept — the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first |
 | `trailer.root-recovered` | The trailer's `/Root` does not lead to a document catalog, and the catalog was found among the file's objects — those its index holds when the index is sound, a rebuilt index's otherwise |
@@ -117,11 +117,11 @@ Warning stream.truncated at 315: The stream has no endstream before the endobj t
 
 ### Object streams
 
-An object stream's reports, and the faults met inside the objects it holds, are placed where the stream's data starts
-in the file: a byte of its decoded data is no offset in the file, so the message gives it, with the object stream's
-number and, for a fault inside an object, that object's. Each object stream's own fault is reported once, and each
-object found at another index than its entry gives once, however often the stream is decoded or the object parsed
-again.
+The `object-stream.*` entries, and the faults met inside the objects an object stream holds, are placed where the
+stream's data starts in the file: a byte of its decoded data is no offset in the file, so the message gives it, with
+the object stream's number and, for a fault inside an object, that object's. Each object stream's own fault is
+reported once, and each object found at another index than its entry gives once, however often the stream is decoded
+or the object parsed again.
 
 ```text
 Repair object-stream.member-moved at 274206: Object 2 is at index 65540 of object stream 65547, not at index 4, where the cross-reference index places it.
