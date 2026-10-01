@@ -4,9 +4,9 @@ namespace AdCodicem.Pdf.Objects;
 /// Typed access to the object graph.
 /// </summary>
 /// <remarks>
-/// Every accessor here resolves indirect references on the way. Reading a dictionary entry without
-/// resolving it is the single most common defect in code that manipulates PDF, because it works on the
-/// files you tested with and fails on the ones you did not.
+/// Every accessor here but <see cref="GetRaw"/> resolves indirect references on the way. Reading a dictionary
+/// entry without resolving it is the single most common defect in code that manipulates PDF, because it works on
+/// the files you tested with and fails on the ones you did not.
 /// </remarks>
 public static class PdfObjectExtensions
 {

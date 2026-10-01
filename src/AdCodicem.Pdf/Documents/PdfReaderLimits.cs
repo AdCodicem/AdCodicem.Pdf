@@ -96,7 +96,9 @@ public sealed record PdfReaderLimits
     /// trailer. Defaults to 64 KB; real ones are a few hundred bytes.
     /// </summary>
     /// <remarks>
-    /// A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
+    /// A classic trailer that ends within the window its cross-reference table was read through is read whole,
+    /// whatever its length: the guard bounds how far the reader follows one past that window. A value above
+    /// <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitTrailer"/>.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>

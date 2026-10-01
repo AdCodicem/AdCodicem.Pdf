@@ -26,7 +26,10 @@ public static class PdfStreamDecodingExtensions
     /// before, reported as <see cref="PdfDiagnosticCodes.FilterFailed"/>. A Flate stream that decodes to its end
     /// but whose zlib checksum disagrees comes back whole, reported as
     /// <see cref="PdfDiagnosticCodes.FilterChecksumMismatch"/>, since some of it may be wrong. Data that nothing
-    /// could decode comes back encoded, reported as <see cref="PdfDiagnosticCodes.FilterFailed"/>.
+    /// could decode comes back encoded, reported as <see cref="PdfDiagnosticCodes.FilterFailed"/>. A filter the
+    /// library does not recognize leaves the data as it found it, reported as
+    /// <see cref="PdfDiagnosticCodes.FilterUnsupported"/>, as does a <c>/Filter</c> entry that is neither a name
+    /// nor an array.
     /// </para>
     /// <para>
     /// A stream read from a document decodes under that document's

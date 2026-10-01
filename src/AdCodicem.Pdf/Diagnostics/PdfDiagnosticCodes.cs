@@ -49,7 +49,11 @@ public static class PdfDiagnosticCodes
     /// </summary>
     public const string StreamSelfReference = "stream.self-reference";
 
-    /// <summary>A token could not be understood and was skipped.</summary>
+    /// <summary>
+    /// A token stood where the syntax does not allow it: where a value or a dictionary key was expected, after a key
+    /// that has no value, closing an array with a dictionary's end, or in an object stream's header. It was read as
+    /// null, skipped, or it ended what it stood in.
+    /// </summary>
     public const string SyntaxUnexpectedToken = "syntax.unexpected-token";
 
     /// <summary>The file ended in the middle of an object.</summary>

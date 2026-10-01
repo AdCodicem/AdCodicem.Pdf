@@ -16,7 +16,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     private int _suppressed;
 
     /// <summary>
-    /// Gets or sets the largest number of entries kept. A pathological file can produce an unbounded
+    /// Gets the largest number of entries kept. A pathological file can produce an unbounded
     /// number of observations; beyond this limit they are counted but not stored.
     /// </summary>
     public int Capacity { get; init; } = 1000;
@@ -112,7 +112,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         return false;
     }
 
-    /// <inheritdoc/>
+    /// <summary>Returns a non-allocating enumerator over the entries.</summary>
     public List<PdfDiagnostic>.Enumerator GetEnumerator() => _entries.GetEnumerator();
 
     IEnumerator<PdfDiagnostic> IEnumerable<PdfDiagnostic>.GetEnumerator() => _entries.GetEnumerator();
