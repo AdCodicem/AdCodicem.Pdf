@@ -260,6 +260,23 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void Quotes_a_keyword_holding_an_escape_where_a_trailer_should_be_escaped()
+    {
+        // The original table's trailer keyword holds ESC: the report quotes the keyword the file wrote, escaped (#159).
+        var (file, original) = Updated(padding: 600);
+        var text = Encoding.Latin1.GetString(file);
+        var trailer = text.IndexOf("trailer", StringComparison.Ordinal);
+        file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, trailer), "tr\u001Biler", text.AsSpan(trailer + 7)));
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Which.Message.Should().StartWith(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The cross-reference table /Prev names at offset {original} is there but cannot be read: it holds the keyword tr#1Biler at offset {trailer},"));
+    }
+
+    [Fact]
     public void Reports_a_table_whose_rows_run_into_a_dictionary_with_no_trailer_keyword_as_unreadable()
     {
         var (file, original) = Updated(padding: 600);

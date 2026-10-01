@@ -90,6 +90,38 @@ public class PropertyTests
     }
 
     [Fact]
+    public void A_quote_of_the_file_is_printable_ascii_on_one_line_and_bounded_whatever_the_bytes()
+    {
+        Check.One(Settings, Prop.ForAll(Buffers, bytes =>
+        {
+            // A name or keyword holds any byte the file chose; what a message repeats of it holds none a terminal
+            // or a log could take for something else, and never more than the bound's worth (#159).
+            var keyword = FileQuote.Keyword(bytes);
+            var name = FileQuote.Name(PdfName.Get(Encoding.Latin1.GetString(bytes)));
+            const int Longest = 1 + (3 * FileQuote.MaxBytes) + 48;
+
+            return keyword.All(c => c is >= ' ' and <= '~') && name.All(c => c is >= ' ' and <= '~') &&
+                keyword.Length <= Longest && name.Length <= Longest;
+        }));
+    }
+
+    [Fact]
+    public void A_quote_of_a_name_of_at_most_127_bytes_reads_back_as_that_name()
+    {
+        Check.One(Settings, Prop.ForAll(Buffers, bytes =>
+        {
+            // The quote is the name as a writer writes it: lexed and decoded, it gives the bytes it quotes.
+            var value = Encoding.Latin1.GetString(bytes.AsSpan(0, Math.Min(bytes.Length, FileQuote.MaxBytes)));
+            var quote = Encoding.ASCII.GetBytes(FileQuote.Name(PdfName.Get(value)));
+            var lexer = new PdfLexer(quote);
+            var token = lexer.Read();
+
+            return token.Kind == PdfTokenKind.Name && token.End == quote.Length &&
+                PdfStringDecoder.DecodeName(token.Text) == value;
+        }));
+    }
+
+    [Fact]
     public void The_parser_answers_for_any_bytes_without_leaving_the_buffer()
     {
         Check.One(Settings, Prop.ForAll(Buffers, bytes =>

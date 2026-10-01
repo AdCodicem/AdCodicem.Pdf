@@ -629,6 +629,18 @@ public class FilterTests
     }
 
     [Fact]
+    public void Quotes_a_filter_it_does_not_know_escaped()
+    {
+        // An escape sequence and C1 controls in a filter's name reach no message as themselves (#159).
+        var diagnostics = new PdfDiagnostics();
+
+        Decode([1, 2, 3], PdfName.Get("A\u001B[31mred\u0080\u009F"), diagnostics: diagnostics);
+
+        diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.FilterUnsupported)
+            .Which.Message.Should().StartWith("The filter /A#1B#5B31mred#80#9F is not supported.");
+    }
+
+    [Fact]
     public void Leaves_the_data_as_it_is_under_a_filter_entry_that_is_neither_a_name_nor_an_array()
     {
         var dictionary = new PdfDictionary();

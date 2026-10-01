@@ -855,6 +855,37 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void A_length_written_as_a_name_holding_control_characters_is_quoted_escaped()
+    {
+        // A name gives itself any byte through #xx: the message writes them back that way, and holds none (#159).
+        var file = Document((StreamNumber, "<< /Length /X#0Aforged#20line#1B#9B >>\nstream\nhello\nendstream"));
+
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(StreamNumber));
+
+        var diagnostic = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which;
+        diagnostic.Message.Should().Be(
+            "The stream's /Length is a name, /X#0Aforged#20line#1B#9B, not a non-negative integer; its data ends after 5 bytes.");
+        diagnostic.ToString().Should().MatchRegex("^[ -~]*$");
+    }
+
+    [Fact]
+    public void A_stream_inside_an_object_stream_quotes_its_length_s_name_escaped()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< /Length /Q#0Aw#1B >>\nstream\nabc\nendstream")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(3));
+
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().StartWith("The stream's /Length is a name, /Q#0Aw#1B, not a non-negative integer;").And.MatchRegex("^[ -~]*$");
+    }
+
+    [Fact]
     public void A_length_naming_an_object_the_index_places_nowhere_could_not_be_read()
     {
         // The entry is in use and leads outside the file: the object is the index's to produce, and it could not.

@@ -175,7 +175,7 @@ internal static class PdfFilterPipeline
         }
 
         diagnostics?.Warn(
-            PdfDiagnosticCodes.FilterUnsupported, $"The filter /{name.Value} is not supported.", position);
+            PdfDiagnosticCodes.FilterUnsupported, $"The filter {FileQuote.Name(name)} is not supported.", position);
         return data;
     }
 
@@ -240,7 +240,7 @@ internal static class PdfFilterPipeline
             guard.Reach(
                 PdfLimit.DecodedStream,
                 diagnostics,
-                $"The /{name.Value} data decodes to more than {bound}; decoding stopped there.",
+                $"The {FileQuote.Name(name)} data decodes to more than {bound}; decoding stopped there.",
                 position);
         }
     }

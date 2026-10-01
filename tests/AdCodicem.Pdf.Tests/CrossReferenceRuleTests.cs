@@ -86,6 +86,8 @@ public class CrossReferenceRuleTests
     [InlineData("[", "an array delimiter")]
     [InlineData(">>", "the end of a dictionary")]
     [InlineData(")", "a byte that starts no token")]
+    [InlineData("key", "the keyword key")]
+    [InlineData("k\u001Bey#", "the keyword k#1Bey#23")]
     public void A_table_holding_something_else_where_a_subsection_should_start_says_what(string text, string what)
     {
         var file = PdfTemplate.SoundWith("{row:3}\ntrailer", "{row:3}\n" + text + "\ntrailer");
@@ -151,6 +153,7 @@ public class CrossReferenceRuleTests
     [InlineData("12 0 R", "The /Prev of the cross-reference section at offset {update} is the reference 12 0 R, not an offset.")]
     [InlineData("-1", "The /Prev of the cross-reference section at offset {update} is the integer -1, not an offset.")]
     [InlineData("/Offset", "The /Prev of the cross-reference section at offset {update} is the name /Offset, not an offset.")]
+    [InlineData("/Na#0Ame#1B", "The /Prev of the cross-reference section at offset {update} is the name /Na#0Ame#1B, not an offset.")]
     [InlineData("1.5", "The /Prev of the cross-reference section at offset {update} is a value of type real, not an offset.")]
     public void A_section_prev_names_where_none_is_is_not_found(string prev, string message)
     {
