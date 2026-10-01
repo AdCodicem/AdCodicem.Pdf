@@ -185,15 +185,15 @@ One pull request per batch, each design question put to the maintainer after mea
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
    6. [#182], a cross-reference stream's dictionary read as written.
    7. [#118]. 8. [#119] and [#172]. 9. [#125] and [#126]. 10. [#190].
-   11. [#164] and [#183], the index's size, the first new guard. 12. [#165] and [#166], filter chains.
-   13. [#128]. 14. [#129] and [#175]. 15. [#160] and [#161], object-stream members. 16. [#174] and [#170], stream data.
-   17. [#155]. 18. [#167] and [#168]. 19. [#188], [#197] and [#156]. 20. [#189]. 21. [#154] and [#171]. 22. [#132].
+   11. [#164] and [#183], the index's size, the first new guard. 12. [#165] and [#166], filter chains, with [#199].
+   13. [#128]. 14. [#129] and [#175]. 15. [#160] and [#161], object-stream members, with [#200] and [#202]. 16. [#174] and [#170], stream data.
+   17. [#155]. 18. [#167] and [#168], with [#201]. 19. [#188], [#197] and [#156]. 20. [#189]. 21. [#154] and [#171]. 22. [#132].
    23. [#141]. 24. [#144] and [#169]. 25. [#181]. 26. [#162]. 27. [#163], `MaxDepth` and `MaxNestedLoads` made guards,
    as the maintainer decided. 28. [#185]. 29. [#173]. 30. [#192]. 31. [#107] and [#111], each a new public rule whose
    name and severity the maintainer gives. 32. What remains of [#158].
 
-   Slice 4 waits on [#141] and [#144]; the six defects the planning found outside every issue are filed under M02,
-   each with the batch that pays it (journal of 2026-10-01).
+   Slice 4 waits on [#141] and [#144]. The four defects the planning found outside every issue, [#199] to [#202], are
+   filed under M02 and paid in the batches above (journal of 2026-10-01).
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -1291,3 +1291,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#195]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/195
 [#196]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/196
 [#197]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/197
+[#199]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/199
+[#200]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/200
+[#201]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/201
+[#202]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/202
