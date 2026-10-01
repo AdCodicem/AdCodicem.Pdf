@@ -144,6 +144,96 @@ public class CrossReferenceChainTests
             $"The cross-reference section /XRefStm names at offset {FirstObjectOffset} is not there, nor near it"));
     }
 
+    [Fact]
+    public void Reports_a_table_that_prev_names_and_cannot_be_read_as_unreadable_and_keeps_the_rows_read_before_the_fault()
+    {
+        // The original table's trailer keyword is a stray name: its rows are read, its trailer is not. The padding
+        // keeps the update's table beyond the search near the original's, which would land on it (#188).
+        var (file, original) = Updated(padding: 600);
+        var text = Encoding.Latin1.GetString(file);
+        var trailer = text.IndexOf("trailer", StringComparison.Ordinal);
+        trailer.Should().BeGreaterThan((int)original, "the original's trailer comes first");
+        file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, trailer), "/Bad 1 ", text.AsSpan(trailer + 7)));
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(original);
+        report.Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table /Prev names at offset {original} is there but cannot be read: it holds a name at offset {trailer}, where a subsection or the trailer should start."));
+
+        ReadsWhole(document);
+        document.WasRepaired.Should().BeFalse("the rows read before the fault index the original's objects");
+    }
+
+    [Fact]
+    public void Reports_a_table_whose_rows_run_into_a_dictionary_with_no_trailer_keyword_as_unreadable()
+    {
+        var (file, original) = Updated(padding: 600);
+        var text = Encoding.Latin1.GetString(file);
+        var trailer = text.IndexOf("trailer", StringComparison.Ordinal);
+        file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, trailer), "       ", text.AsSpan(trailer + 7)));
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(original);
+        report.Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference table /Prev names at offset {original} is there but cannot be read: its rows are not followed by the trailer keyword."));
+        ReadsWhole(document);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Reports_a_cross_reference_stream_that_prev_names_and_cannot_be_read_as_unreadable_and_finds_its_objects_when_asked()
+    {
+        var (file, original) = Updated(padding: 600, originalAsStream: true);
+        var text = Encoding.Latin1.GetString(file);
+        var widths = text.IndexOf("/W [1 4 2]", StringComparison.Ordinal);
+        widths.Should().BeGreaterThan((int)original, "the original's stream comes first");
+        file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, widths), "/W [1 9 2]", text.AsSpan(widths + 10)));
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(original);
+        report.Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream /Prev names at offset {original} is there but cannot be read: its /W gives a field a width outside 0 to 8 bytes."));
+
+        document.WasRepaired.Should().BeFalse("nothing asked yet for what the stream indexed");
+        ReadsWhole(document);
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Reports_a_cross_reference_stream_that_xrefstm_names_and_cannot_be_read_as_unreadable_and_finds_its_objects_when_asked()
+    {
+        var (file, stream) = Updated(xrefStm: XRefStm.Present, padding: 600);
+        file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file).Replace("/W [1 4 2]", "/W [1 4]  ", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionUnreadable);
+        report.Position.Should().Be(stream);
+        report.Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream /XRefStm names at offset {stream} is there but cannot be read: its /W does not give the widths of three fields."));
+
+        ReadsWhole(document);
+        document.WasRepaired.Should().BeFalse("the chain goes on through /Prev past the stream");
+        Text(document, 6).Should().Be("only in the stream");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(d => d.Code == PdfDiagnosticCodes.XRefSectionMissing);
+    }
+
     [Theory]
     [InlineData(-4)]
     [InlineData(6)]
@@ -244,6 +334,37 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void Reports_a_table_that_prev_names_and_the_guard_cuts_before_any_row_under_the_guard_alone()
+    {
+        // The newest section indexes nothing and fits the 16 bytes tables are read to; the original's does not reach
+        // its first row within them. The guard's report names the limit that lifts it: the section is not reported again.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>")
+            .WithObject(4, "(original)")
+            .WithObject(5, $"({new string('x', 1024)})")
+            .BuildClassic(rootNumber: 1);
+        var section = StartXRef(original);
+        var update = original.Length + 602;
+        byte[] file =
+        [
+            .. original,
+            .. Encoding.ASCII.GetBytes(string.Create(
+                CultureInfo.InvariantCulture,
+                $"%{new string('-', 600)}\nxref\ntrailer\n<< /Size 6 /Root 1 0 R /Prev {section} >>\nstartxref\n{update}\n%%EOF\n")),
+        ];
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 16 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        // The catalog only the original indexes is needed at opening: the index is rebuilt there.
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionLength, PdfDiagnosticCodes.XRefRebuilt);
+        document.Diagnostics[0].Position.Should().Be(section);
+        Text(document, 4).Should().Be("original");
+    }
+
+    [Fact]
     public void Looks_for_an_object_a_cross_reference_stream_holds_no_row_for()
     {
         // The stream declares six rows, objects 0 to 5, and its data holds five: object 5, written in the file,
@@ -301,19 +422,26 @@ public class CrossReferenceChainTests
 
     /// <summary>
     /// Builds the document and its update. Returns the file, and where the section the test is about really
-    /// starts: the original section, or the update's cross-reference stream.
+    /// starts: the original section, or the update's cross-reference stream. A <paramref name="padding"/> keeps
+    /// each of them more than <c>padding</c> bytes from the section that follows it; <paramref name="originalAsStream"/>
+    /// writes the original section as a cross-reference stream.
     /// </summary>
     private static (byte[] File, long Section) Updated(
-        int prevError = 0, Offset prevAt = Offset.Section, XRefStm xrefStm = XRefStm.None, int xrefStmError = 0)
+        int prevError = 0,
+        Offset prevAt = Offset.Section,
+        XRefStm xrefStm = XRefStm.None,
+        int xrefStmError = 0,
+        int padding = 0,
+        bool originalAsStream = false)
     {
         // Filler keeps the original section more than half a kilobyte from the first object.
-        var original = new TestPdfBuilder()
+        var builder = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
             .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>")
             .WithObject(4, "(original)")
-            .WithObject(5, $"({new string('x', 1024)})")
-            .BuildClassic(rootNumber: 1);
+            .WithObject(5, $"({new string('x', 1024)})");
+        var original = originalAsStream ? builder.BuildWithXRefStream(rootNumber: 1) : builder.BuildClassic(rootNumber: 1);
         var originalSection = StartXRef(original);
         original.AsSpan().IndexOf("1 0 obj"u8).Should().Be((int)FirstObjectOffset);
 
@@ -322,6 +450,16 @@ public class CrossReferenceChainTests
 
         void Append(string text) => file.AddRange(Encoding.Latin1.GetBytes(text));
 
+        // A comment line after each section the test is about keeps the next one out of reach of the search near it.
+        void Pad()
+        {
+            if (padding > 0)
+            {
+                Append($"%{new string('-', padding)}\n");
+            }
+        }
+
+        Pad();
         offsets[1] = file.Count;
         Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
         offsets[4] = file.Count;
@@ -336,6 +474,7 @@ public class CrossReferenceChainTests
             Append("7 0 obj\n<< /Type /XRef /W [1 4 2] /Size 8 /Index [6 1] /Length 7 >>\nstream\n");
             file.AddRange([1, (byte)(sixth >> 24), (byte)(sixth >> 16), (byte)(sixth >> 8), (byte)sixth, 0, 0]);
             Append("\nendstream\nendobj\n");
+            Pad();
         }
 
         var xref = file.Count;

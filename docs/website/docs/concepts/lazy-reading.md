@@ -35,8 +35,8 @@ specification says. The map is rebuilt by scanning the whole file, once at most:
 - at opening, when `startxref` cannot be found or read, when the section it names cannot be read, when the
   chain indexes nothing, or when `/Root` leads to no catalog and no object of the map is one;
 - when an object the map lacks is asked for, by opening or after it, while the map may have lost entries: a
-  cross-reference section the chain names cannot be found or read, or a `/Prev` or `/XRefStm` is not an offset
-  (`xref.section-missing`); the chain loops back on itself (`xref.chain-cycle`); a limit stopped the chain or a
+  cross-reference section the chain names cannot be found, or a `/Prev` or `/XRefStm` is not an offset
+  (`xref.section-missing`); one is found and cannot be read (`xref.section-unreadable`); the chain loops back on itself (`xref.chain-cycle`); a limit stopped the chain or a
   table before its end; a row of a classic table cannot be read, which ends its subsection; or a
   cross-reference stream holds fewer rows than it declares, or gives a subsection a count of rows out of range;
 - when an object is asked for, by opening or after it, that is neither where the map says nor within 512 bytes

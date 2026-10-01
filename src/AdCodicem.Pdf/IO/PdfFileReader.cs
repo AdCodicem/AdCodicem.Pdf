@@ -1244,7 +1244,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (!TryRelocateXRefSection(offset, section, out previous, out hybrid))
                 {
-                    ReportMissingSection(naming, offset, namedFrom);
+                    ReportLostSection(section, naming, offset, namedFrom);
                     break;
                 }
             }
@@ -1259,7 +1259,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 if (TryReadXRefSection(hybrid, stream, out _, out _) != XRefSectionState.Read &&
                     !TryRelocateXRefSection(hybrid, stream, out _, out _))
                 {
-                    ReportMissingSection("/XRefStm", hybrid, section.Offset);
+                    ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
                 }
             }
 
@@ -1273,6 +1273,41 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>Determines whether <paramref name="position"/>, a position in the file, lies inside it.</summary>
     private bool IsInFile(long position) => position >= 0 && position < _source.Length;
+
+    /// <summary>
+    /// Reports a section of the chain that could not be read where it was named, nor found near it, and marks the
+    /// index incomplete: as one that is there and cannot be read when the named offset holds a section, as a missing
+    /// one otherwise.
+    /// </summary>
+    /// <remarks>
+    /// A table the section length guard cut before any row was indexed is already reported, under the guard's own
+    /// code, which names the limit that lifts it.
+    /// </remarks>
+    private void ReportLostSection(XRefSectionRecord section, string naming, long offset, long namedFrom)
+    {
+        if (section.State != XRefSectionState.Malformed)
+        {
+            ReportMissingSection(naming, offset, namedFrom);
+            return;
+        }
+
+        _indexIncomplete = true;
+
+        if (section.Fault is null && section.CutByLimit)
+        {
+            return;
+        }
+
+        // Every fault but a table's missing trailer keyword is described where it is met: rows that run into a
+        // dictionary, or into the end of the file, are the one left.
+        var fault = section.Fault ?? "its rows are not followed by the trailer keyword";
+        _diagnostics.Warn(
+            PdfDiagnosticCodes.XRefSectionUnreadable,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The cross-reference {(section.Kind == XRefSectionKind.Stream ? "stream" : "table")} {naming} names at offset {section.Offset} is there but cannot be read: {fault}. The rows read before the fault, if any, were kept; the objects only the rest indexes are looked for by rebuilding the index."),
+            section.Offset);
+    }
 
     /// <summary>
     /// Reports a section of the chain that could not be found, and marks the index incomplete: at the offset it was
