@@ -28,8 +28,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   remote documents fetched, 4,704 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
   unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
   lacks —; 3,266 integration against qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a
-  damaged document's pages; and, with all 242, `Remote corpus` run 20's 4,273 acceptance tests and 3,329 referee
-  checks, on [#211]'s branch.
+  damaged document's pages; and, with all 242, `Remote corpus` run 21's 4,761 acceptance tests and 3,329 referee
+  checks, on [#213]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
   Arlington tables left out), 99.6 % of `src/` — 5,036 of 5,054 lines on `main` since [#211], all 186 of its patch
   among them. The 18 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private,
@@ -42,12 +42,13 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   `PdfObjectParser` 647). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `c40d90c` (CI run 410), [#211]'s merge. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
-  after web.archive.org refused a document ([#204]).
+  after web.archive.org refused a document ([#204]), and in run 21, on [#213]'s branch, at its first attempt. [#213]'s
+  CI is green at `8b935a8`.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 20 on 2026-10-01. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in run 21 on 2026-10-01. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.49`, previews from `main` through trusted publishing, 1,141 downloads on 2026-10-01. The
   `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified.
@@ -274,7 +275,9 @@ not a fault of the file: the rules on it report at most, as information, that it
   - on the committed corpus alone, 149 of the patch's 151 measurable lines covered, the two left partial on a branch
     the compiler adds that no input takes (`FileQuote` 138, `PdfObjectParser` 647); the project at 5,145 of 5,165,
     the same 18 lines left besides;
-  - the site builds, 196 pages.
+  - the site builds, 196 pages;
+  - `Remote corpus` run 21, on the branch at `1475ef8`, fetched all 242 remote documents at its first attempt and
+    passed every test over them: 4,761 acceptance tests with 3 skipped, and 3,329 referee checks with 6 skipped.
 - **Next**: batch 4, [#193], the memory and time budgets the index changes are measured against, its questions put
   when it starts.
 
