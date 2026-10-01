@@ -257,6 +257,8 @@
               "stream.length-invalid",
               "stream.truncated",
               "stream.self-reference",
+              "object-stream.member-moved",
+              "object-stream.unreadable",
               "syntax.unexpected-token",
               "syntax.truncated-object",
               "syntax.depth-exceeded",

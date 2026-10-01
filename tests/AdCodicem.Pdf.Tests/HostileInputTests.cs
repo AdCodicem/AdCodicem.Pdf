@@ -413,7 +413,7 @@ public class HostileInputTests
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(10)).Should().Be(PdfName.Get("ASCIIHexDecode"));
         document.Reader.ObjectStreamBytes.Should().Be(21, "only object stream 9 is kept");
-        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamTruncated).Should().HaveCount(2);
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Should().HaveCount(2);
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamSelfReference);
     }
 

@@ -63,7 +63,7 @@ public class ReaderTimingTests
             }
 
             dictionaries.Should().Be(count);
-            document.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).Should().BeTrue();
+            document.Diagnostics.Contains(PdfDiagnosticCodes.ObjectStreamMemberMoved).Should().BeTrue();
         }
     }
 }
