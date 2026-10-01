@@ -42,8 +42,9 @@ specification says. The map is rebuilt by scanning the whole file, once at most:
 - when an object is asked for, by opening or after it, that is neither where the map says nor within 512 bytes
   of it.
 
-A section or an object named a few bytes from where it lies is found nearby (`xref.offset-adjusted`), and the
-map is not rebuilt for it.
+An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes from where it is said to be is
+found nearby (`xref.offset-adjusted`), and the map is not rebuilt for it. The section `startxref` names is not
+looked for nearby: when it is not where `startxref` says, the map is rebuilt.
 
 ## What it deliberately does not do
 
