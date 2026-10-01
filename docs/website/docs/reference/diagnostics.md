@@ -51,7 +51,8 @@ read where a host prints it — a console, a log, a web page. What the file wrot
   what it holds.
 
 These rules are the library's own messages'. A name a caller builds can hold characters past U+00FF, which no file can:
-a quote writes their UTF-8 bytes as `#xx`.
+a quote writes their UTF-8 bytes as `#xx`, counts those bytes against the 127 and in the whole, and stops before a
+character it cannot write whole.
 
 ## `PdfDiagnostics`
 

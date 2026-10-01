@@ -93,6 +93,47 @@ public class FileQuoteTests
         FileQuote.Name(PdfName.Get("a" + '\uD800' + "b")).Should().Be("/a#EF#BF#BDb");
     }
 
+    [Theory]
+    [InlineData(42, 126, 126)]
+    [InlineData(43, 126, 129)]
+    [InlineData(200, 126, 600)]
+    public void Cuts_a_caller_s_name_at_127_bytes_never_inside_a_character_and_counts_the_whole_in_bytes(int euros, int shown, int whole)
+    {
+        // A euro sign is three bytes: 42 make 126, and a 43rd would pass 127.
+        var quote = FileQuote.Name(PdfName.Get(new string('€', euros)));
+
+        var written = "/" + string.Concat(Enumerable.Repeat("#E2#82#AC", Math.Min(euros, 42)));
+        quote.Should().Be(whole == shown ? written : written + $" (the first {shown} of {whole} bytes)");
+    }
+
+    [Theory]
+    [InlineData(123, "#F0#9F#98#80", "")]
+    [InlineData(124, "", " (the first 124 of 128 bytes)")]
+    [InlineData(126, "", " (the first 126 of 130 bytes)")]
+    public void Never_splits_a_surrogate_pair_at_the_cut(int prefix, string pair, string note)
+    {
+        // The pair is four bytes: after 123 others it ends at byte 127; after more, the quote stops before it.
+        var quote = FileQuote.Name(PdfName.Get(new string('a', prefix) + "\U0001F600"));
+
+        quote.Should().Be("/" + new string('a', prefix) + pair + note);
+    }
+
+    [Fact]
+    public void Counts_a_caller_s_lone_surrogates_as_the_replacement_character_s_bytes()
+    {
+        FileQuote.Name(PdfName.Get(new string('\uDC00', 50))).Should().EndWith(" (the first 126 of 150 bytes)");
+    }
+
+    [Theory]
+    [InlineData("Type", true)]
+    [InlineData("\0\u00FF", true)]
+    [InlineData("a€", false)]
+    [InlineData("\uD800", false)]
+    public void Knows_whether_a_name_holds_one_byte_per_character(string value, bool isBytes)
+    {
+        PdfName.Get(value).IsBytes.Should().Be(isBytes);
+    }
+
     [Fact]
     public void Appends_a_name_as_it_writes_it()
     {
