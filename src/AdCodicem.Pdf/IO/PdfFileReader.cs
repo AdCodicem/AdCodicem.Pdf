@@ -519,7 +519,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         _diagnostics.Warn(
             PdfDiagnosticCodes.SyntaxDepthExceeded,
-            $"Object {id.Number} is reached through more nested objects than the reader will follow, and reads as null.",
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Object {id.Number} is reached through more nested objects than the reader will follow, and reads as null."),
             position);
     }
 
@@ -1124,7 +1126,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             _headerOffset = index;
             _diagnostics.Repair(
                 PdfDiagnosticCodes.XRefOffsetAdjusted,
-                $"The PDF header starts {index} bytes into the file; offsets were shifted accordingly.",
+                string.Create(CultureInfo.InvariantCulture, $"The PDF header starts {index} bytes into the file; offsets were shifted accordingly."),
                 index);
         }
 
@@ -2084,7 +2086,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         {
             _diagnostics.Repair(
                 PdfDiagnosticCodes.XRefOffsetAdjusted,
-                $"Object {id.Number} was found {nearby - offset} bytes from where the index said.",
+                string.Create(CultureInfo.InvariantCulture, $"Object {id.Number} was found {nearby - offset} bytes from where the index said."),
                 nearby);
 
             PreserveChainIndex();
@@ -2297,7 +2299,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     {
         DirectObject => $"A trailer runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
         AnyObject => $"A cross-reference stream's dictionary runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
-        _ => $"Object {number} runs past {PdfLimitGuard.FormatLength(bound)}, its stream data aside; only what lies within it was read.",
+        _ => string.Create(
+            CultureInfo.InvariantCulture,
+            $"Object {number} runs past {PdfLimitGuard.FormatLength(bound)}, its stream data aside; only what lies within it was read."),
     };
 
     /// <summary>

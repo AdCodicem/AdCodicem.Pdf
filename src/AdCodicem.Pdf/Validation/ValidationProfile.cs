@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using AdCodicem.Pdf.Validation.Rules;
 
 namespace AdCodicem.Pdf.Validation;
@@ -99,5 +100,5 @@ public sealed class ValidationProfile
     internal IReadOnlyList<IValidationRule> Rules { get; }
 
     /// <inheritdoc/>
-    public override string ToString() => $"{Name} {Version}";
+    public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Name} {Version}");
 }

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace AdCodicem.Pdf.Objects;
 
 /// <summary>
@@ -35,6 +37,8 @@ public sealed class PdfStream : PdfObject
     {
         var subtype = Dictionary[PdfName.Subtype] as PdfName;
         var type = subtype ?? Dictionary[PdfName.Type] as PdfName;
-        return type is null ? $"<<stream of {RawLength} bytes>>" : $"<<{type} stream of {RawLength} bytes>>";
+        return type is null
+            ? string.Create(CultureInfo.InvariantCulture, $"<<stream of {RawLength} bytes>>")
+            : string.Create(CultureInfo.InvariantCulture, $"<<{type} stream of {RawLength} bytes>>");
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Globalization;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Objects;
 using NSubstitute;
@@ -75,6 +76,26 @@ public class ObjectModelTests
 
         dictionary.Remove(PdfName.Type);
         dictionary.ToString().Should().Be("<<dictionary of 1>>");
+    }
+
+    [Theory]
+    [InlineData("sv-SE")]
+    [InlineData("fa-IR")]
+    public void Writes_an_object_identifier_the_same_whatever_the_culture(string name)
+    {
+        // A caller can build an identifier of negative numbers, which Swedish and Persian would write with U+2212.
+        var culture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(name);
+
+            new PdfReference(new PdfObjectId(-1, -2)).ToString().Should().Be("-1 -2 R");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
     }
 
     [Fact]

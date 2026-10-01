@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Globalization;
 
 namespace AdCodicem.Pdf.Objects;
 
@@ -64,5 +65,5 @@ public sealed class PdfArray : PdfObject, IReadOnlyList<PdfObject>
     IEnumerator IEnumerable.GetEnumerator() => _items.GetEnumerator();
 
     /// <inheritdoc/>
-    public override string ToString() => $"[array of {_items.Count}]";
+    public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"[array of {_items.Count}]");
 }

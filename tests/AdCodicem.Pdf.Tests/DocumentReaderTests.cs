@@ -53,6 +53,30 @@ public class DocumentReaderTests
         document.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("sv-SE")]
+    [InlineData("fa-IR")]
+    public void Writes_the_distance_to_an_object_found_before_its_entry_the_same_whatever_the_culture(string name)
+    {
+        // Every entry points 3 bytes past its object. Swedish writes a minus sign as U+2212, Persian as U+200E U+2212.
+        var bytes = SampleDocument().BuildClassic(rootNumber: 1, offsetError: 3);
+        var culture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(name);
+            using var document = PdfDocument.Open(bytes);
+            _ = PageContent(document);
+
+            document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted).Should().NotBeEmpty()
+                .And.OnlyContain(entry => entry.Message.EndsWith(" was found -3 bytes from where the index said.", StringComparison.Ordinal));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+    }
+
     [Fact]
     public void Rebuilds_the_index_of_a_file_that_has_none()
     {

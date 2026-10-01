@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace AdCodicem.Pdf.Validation.Rules;
 
 /// <summary>
@@ -45,7 +47,7 @@ internal sealed class EndOfFileMarkerRule : IValidationRule
         context.Report(
             this,
             PdfValidationLocation.AtPosition(length),
-            $"The file does not end with an end-of-file marker: no %%EOF in its last {searched} bytes.",
+            string.Create(CultureInfo.InvariantCulture, $"The file does not end with an end-of-file marker: no %%EOF in its last {searched} bytes."),
             "Append %%EOF on a line of its own at the end of the file, after checking that nothing was cut off before it.");
     }
 }

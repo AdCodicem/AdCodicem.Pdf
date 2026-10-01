@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace AdCodicem.Pdf.Diagnostics;
 
 /// <summary>A single observation made while reading, writing or transforming a document.</summary>
@@ -19,5 +21,7 @@ public readonly record struct PdfDiagnostic(
 {
     /// <inheritdoc/>
     public override string ToString() =>
-        Position >= 0 ? $"{Severity} {Code} at {Position}: {Message}" : $"{Severity} {Code}: {Message}";
+        Position >= 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{Severity} {Code} at {Position}: {Message}")
+            : $"{Severity} {Code}: {Message}";
 }
