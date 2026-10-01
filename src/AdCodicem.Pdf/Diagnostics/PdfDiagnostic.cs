@@ -5,10 +5,11 @@ namespace AdCodicem.Pdf.Diagnostics;
 /// <param name="Code">Stable machine-readable code; part of the public contract.</param>
 /// <param name="Message">Human-readable explanation, in English.</param>
 /// <param name="Position">
-/// Byte offset in the file the observation relates to, or -1 when it relates to no position. An offset the file names
-/// outside itself is no position: the entry is placed at what named it, or has none, and the offset is in the message.
-/// What concerns an object stream — its own fault, or one met inside an object it holds — is placed where the stream's
-/// data starts in the file, the byte of decoded data in the message.
+/// Byte offset in the file the observation relates to, or -1 when it relates to no position. An offset a section's
+/// trailer or an object's entry names outside the file is no position: the entry is placed at the section that named
+/// it, or has none, and the offset is in the message. The <c>object-stream.*</c> entries, and a fault met inside an
+/// object an object stream holds, are placed where the stream's data starts in the file, the byte of decoded data in
+/// the message.
 /// </param>
 public readonly record struct PdfDiagnostic(
     PdfDiagnosticSeverity Severity,
