@@ -2656,13 +2656,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         _objectStreamBytes = 0;
         _nullWhileDecoding.Clear();
 
-        ScanForObjects();
+        var redefinitions = new Redefinitions();
+        ScanForObjects(redefinitions);
         ScanForTrailers();
 
         // Loading objects can reach a guard. A document opened to throw on one throws once the index is
         // whole, not half-way through rebuilding it: a rebuild is never run twice, and one abandoned mid-way
         // would leave the document unable to find the objects it had not reached.
-        var reached = ExpandObjectStreams();
+        var reached = ExpandObjectStreams(redefinitions);
+
+        if (redefinitions.Count > 0)
+        {
+            // An updated file defines its changed objects again, so this is what most rebuilds meet: worth knowing,
+            // once, rather than a report for each number.
+            _diagnostics.Add(PdfDiagnosticSeverity.Information, PdfDiagnosticCodes.ObjectRedefined, redefinitions.Describe());
+        }
 
         if (!HasUsableRoot())
         {
@@ -2674,7 +2682,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         reached?.Throw();
     }
 
-    private void ScanForObjects()
+    private void ScanForObjects(Redefinitions redefinitions)
     {
         var position = 0L;
         var found = 0;
@@ -2698,8 +2706,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (TryReadHeaderBackwards(span, objPosition, out var number, out var headerStart))
                 {
-                    // The last definition wins: that is what an incrementally updated file means.
-                    _xref.Set(number, XRefEntry.Regular(position + headerStart - _headerOffset, 0));
+                    // The last definition wins: that is what an incrementally updated file means. A header in the
+                    // overlap of two windows is found twice, and is one definition.
+                    var offset = position + headerStart - _headerOffset;
+
+                    if (_xref.TryGet(number, out var earlier) && earlier.Offset != offset)
+                    {
+                        redefinitions.Add(number);
+                    }
+
+                    _xref.Set(number, XRefEntry.Regular(offset, 0));
                     found++;
                 }
 
@@ -2760,13 +2776,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
     }
 
-    private ExceptionDispatchInfo? ExpandObjectStreams()
+    private ExceptionDispatchInfo? ExpandObjectStreams(Redefinitions redefinitions)
     {
         _expandingObjectStreams = true;
 
         try
         {
-            return ExpandEachObjectStream();
+            return ExpandEachObjectStream(redefinitions);
         }
         finally
         {
@@ -2774,7 +2790,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
     }
 
-    private ExceptionDispatchInfo? ExpandEachObjectStream()
+    private ExceptionDispatchInfo? ExpandEachObjectStream(Redefinitions redefinitions)
     {
         var numbers = new List<int>(_xref.Entries.Keys);
         ExceptionDispatchInfo? reached = null;
@@ -2818,8 +2834,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             for (var index = 0; index < contents.Count; index++)
             {
-                // An object written directly in the file wins over a copy inside an object stream.
-                _xref.TryAdd(contents.NumberAt(index), XRefEntry.Compressed(number, index));
+                // An object written directly in the file wins over a copy inside an object stream, and the first
+                // copy listed in the object streams read wins over the others.
+                if (!_xref.TryAdd(contents.NumberAt(index), XRefEntry.Compressed(number, index)))
+                {
+                    redefinitions.Add(contents.NumberAt(index));
+                }
             }
         }
 
@@ -2918,6 +2938,56 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var read = source.Read(offset, buffer);
             _bytes = read == length ? buffer : buffer[..read];
             return _bytes;
+        }
+    }
+
+    /// <summary>
+    /// The definitions a rebuild met of object numbers it had already found: how many, and the first few numbers, kept
+    /// without allocating for each.
+    /// </summary>
+    private sealed class Redefinitions
+    {
+        /// <summary>How many numbers the report lists at most: enough to look a few up in the file, few enough to read.</summary>
+        private const int Listed = 10;
+
+        private readonly int[] _numbers = new int[Listed];
+        private int _listed;
+        private bool _unlisted;
+
+        /// <summary>Gets how many definitions met a number already found.</summary>
+        public int Count { get; private set; }
+
+        /// <summary>Records a definition of <paramref name="number"/>, which was already found.</summary>
+        public void Add(int number)
+        {
+            Count++;
+
+            if (_numbers.AsSpan(0, _listed).Contains(number))
+            {
+                return;
+            }
+
+            if (_listed < Listed)
+            {
+                _numbers[_listed++] = number;
+            }
+            else
+            {
+                _unlisted = true;
+            }
+        }
+
+        /// <summary>Says how many definitions were met, of which numbers, and which definition was kept.</summary>
+        public string Describe()
+        {
+            var numbers = string.Join(", ", _numbers.AsSpan(0, _listed).ToArray());
+            var met = Count == 1
+                ? string.Create(CultureInfo.InvariantCulture, $"Rebuilding the index met a second definition of object {numbers}.")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Rebuilding the index met {Count:N0} definitions of object numbers it had already found, {(_unlisted ? "among them those of objects" : _listed == 1 ? "of object" : "of objects")} {numbers}.");
+            return met +
+                " Of each number, the definition kept is the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first.";
         }
     }
 

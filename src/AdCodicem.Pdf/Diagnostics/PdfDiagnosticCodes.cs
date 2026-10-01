@@ -102,7 +102,12 @@ public static class PdfDiagnosticCodes
     /// <summary>Nesting exceeded the depth the reader is willing to follow.</summary>
     public const string SyntaxDepthExceeded = "syntax.depth-exceeded";
 
-    /// <summary>An object was defined more than once; the last definition won.</summary>
+    /// <summary>
+    /// Rebuilding the index met more than one definition of an object number: the file was updated, or copies an
+    /// object. It is reported once for each rebuild, as information with no position: how many definitions met a number
+    /// already found, the first of those numbers, and which definition was kept — the last written directly in the
+    /// file, or, for a number written only inside object streams, the first listed in the object stream read first.
+    /// </summary>
     public const string ObjectRedefined = "object.redefined";
 
     /// <summary>

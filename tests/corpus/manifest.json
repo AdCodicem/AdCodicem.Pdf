@@ -5245,7 +5245,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "object.redefined"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -7344,7 +7345,8 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "stream.length-invalid",
-          "object-stream.unreadable"
+          "object-stream.unreadable",
+          "object.redefined"
         ],
         "findings": [
           "xref.entry-broken",
@@ -7400,7 +7402,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "object-stream.unreadable"
+          "object-stream.unreadable",
+          "object.redefined"
         ],
         "findings": [
           "file.eof-missing",
@@ -7449,7 +7452,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "object.redefined"
         ],
         "findings": [
           "file.eof-missing",
@@ -8829,7 +8833,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "object.redefined"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -10571,7 +10576,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "object.redefined"
         ],
         "findings": [
           "file.startxref-wrong"
@@ -11898,7 +11904,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "object.redefined"
         ],
         "findings": [
           "file.eof-missing",
@@ -12610,7 +12617,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "stream.length-invalid"
+          "stream.length-invalid",
+          "object.redefined"
         ],
         "findings": [
           "xref.entry-broken"
@@ -13540,7 +13548,8 @@
         "indexRebuilt": true,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "filter.checksum-mismatch"
+          "filter.checksum-mismatch",
+          "object.redefined"
         ],
         "findings": [
           "file.startxref-wrong"
