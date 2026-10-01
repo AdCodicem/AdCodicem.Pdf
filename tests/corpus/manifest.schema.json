@@ -251,6 +251,7 @@
               "xref.rebuilt",
               "xref.offset-adjusted",
               "xref.section-missing",
+              "xref.section-unreadable",
               "xref.chain-cycle",
               "xref.entry-out-of-range",
               "stream.length-invalid",

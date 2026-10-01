@@ -23,11 +23,21 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// A cross-reference section the chain names, through <c>/Prev</c> or <c>/XRefStm</c>, is neither where
-    /// it is named nor near it, lies outside the file, or is named by a value that is not an offset. The objects only it
+    /// it is named nor near it — nothing there reads as a section, which <see cref="XRefSectionUnreadable"/> reports
+    /// otherwise —, lies outside the file, or is named by a value that is not an offset. The objects only it
     /// indexes are missing from the index, which is rebuilt by scanning the file when one of them is asked for. The report
     /// is placed where the section was named, or, when that lies outside the file, at the section whose trailer named it.
     /// </summary>
     public const string XRefSectionMissing = "xref.section-missing";
+
+    /// <summary>
+    /// A cross-reference section the chain names, through <c>/Prev</c> or <c>/XRefStm</c>, is where it is named but
+    /// cannot be read — a stray token among a table's rows or in place of its trailer, a cross-reference stream whose
+    /// <c>/W</c> or data cannot give rows —, and nothing near it can be read in its place. The rows read before the
+    /// fault, if any, were kept; the objects only the rest indexes are missing from the index, which is rebuilt by
+    /// scanning the file when one of them is asked for. The report is placed at the section, the fault in its message.
+    /// </summary>
+    public const string XRefSectionUnreadable = "xref.section-unreadable";
 
     /// <summary>
     /// The chain of previous cross-reference sections looped back on itself. The report is placed at the section the
