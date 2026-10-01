@@ -185,6 +185,10 @@ Known gaps:
 - [#149] `Open(Stream)` copies a seekable stream into memory, where its documentation says only a non-seekable one is.
 - [#52] A source whose `Read` returns fewer bytes than asked is taken as the end of the data.
 - [#125] A `startxref` near the largest `long` wraps to a negative offset once the header's offset is added.
+- [#190] A disposed document keeps answering through every member but `GetObject`, and `Open(Stream)` reads a
+  `MemoryStream` from its start or from its position depending on how it was built.
+- [#191] A reference taken before `Dispose` resolves through the reader, not the document, and skips its disposed
+  check: it keeps resolving for a document opened from memory.
 
 ### Object syntax
 
@@ -248,6 +252,12 @@ Known gaps:
 - [#47] Each section is read through a window of up to 64 KB, whatever its size.
 - [#49] A rebuild reads a 64 KB window at every `trailer` keyword.
 - [#118] A rebuilt index records every object at generation 0.
+- [#188] Relocating a section the chain cannot read can land on one it already read: a loop and a shift the file does
+  not have are reported, or a hybrid table taken for its own `/XRefStm` loses what only the stream indexes.
+- [#189] A rebuild serves a direct definition over a newer copy in a later object stream, and takes `10 0 objx` for a
+  header.
+- [#197] Near the start of the file, the nearby search for an object or a section reaches up to 1,024 bytes past the
+  offset named, not the 512 either side the rows above and below state.
 
 ### Resolving objects and object streams
 
@@ -275,6 +285,8 @@ Known gaps:
 - [#37] The cache is bounded by count, not weight, and a parsed object weighs about thirty times its syntax.
 - [#121] Each object is read through its own 8 KB window, however small.
 - [#144] A damaged object stream reports its filter fault each time it is decoded.
+- [#185] A reference's generation is compared with nothing: `5 1 R` reads `5 0 obj`, and `7 0 R` reads `7 2 obj`,
+  with no report.
 
 ### Stream data and its length
 
@@ -325,6 +337,8 @@ Known gaps:
 - [#141] ASCII85, ASCIIHex and RunLength data that cannot be decoded is skipped in silence.
 - [#146] A Flate reading allocates its output before the zlib header says it can go on.
 - [#142], [#143], [#145] Damaged Flate data is repaired and checked less than it could be.
+- [#192] LZW decoding allocates an array for nearly every code: several times what it decodes to, bounded by the
+  output's guard.
 
 ## The validator
 
@@ -405,6 +419,9 @@ Known gaps:
 - [#176] The campaign never reaches RunLength, ASCIIHex, most predictor rows, any guard, encrypted files or inputs
   past 120 KB, and cannot see a read past the end.
 - [#38] Throughput is not held in CI.
+- [#194] The nightly campaign starts its seeds at 0 every night, so it runs the same mutants of a document each time.
+- [#193] No test holds a valid index of several hundred thousand objects to a memory budget, nor a corpus document's
+  full read to a time budget, and the CI jobs set no timeout.
 
 ## The package and its supply chain
 
@@ -435,6 +452,10 @@ Known gaps:
 - [#41] The stable release cannot push through the ruleset, and the ruleset requires no CI check by name.
 - [#45] The release packages carry no attestation.
 - [#44] The project has no OpenSSF Best Practices badge.
+- [#196] Dependabot's auto-merge refuses only what it recognizes as a major bump, and nothing requires CI before the
+  merge it queues.
+- [#195] The corpus build's Python producers are pinned by version, without hashes, and the packages they pull in are
+  not pinned.
 
 ## Surfaces still to come
 
@@ -594,3 +615,14 @@ The last column also names the questions they leave open, which that milestone s
 [#181]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/181
 [#182]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/182
 [#183]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/183
+[#185]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/185
+[#188]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/188
+[#189]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/189
+[#190]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/190
+[#191]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/191
+[#192]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/192
+[#193]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/193
+[#194]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/194
+[#195]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/195
+[#196]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/196
+[#197]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/197

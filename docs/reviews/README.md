@@ -7,9 +7,10 @@ to refute it, its verdict and what became of it, and what each axis examined and
 
 | Milestone | Date | Kept | Fixed in the review | Filed | Issue |
 |---|---|---|---|---|---|
+| [M01 — Object model and tolerant reading](M01.md), after the fact | 2026-10-01 | 23 | 9 | 14, in 12 issues: 9 under M02, 1 under M03, 1 under M23, 1 under none | [#136] |
 
-No review has been recorded yet. The first two are owed under M02: M01's, after the fact ([#136]), and then
-M02's own, its last slice ([#137]).
+M01's review was done after the fact, under M02, which now waits on the nine issues it filed there. M02's own review,
+its last slice ([#137]), comes next.
 
 [#136]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/136
 [#137]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/137
