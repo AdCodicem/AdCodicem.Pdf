@@ -29,23 +29,23 @@ internal static class FileQuote
     internal const int MaxBytes = 127;
 
     /// <summary>
-    /// The longest quote: a solidus, nine characters for each of <see cref="MaxBytes"/> characters — a character above
-    /// U+00FF, which only a caller's name can hold, writes up to three bytes —, and the note of a cut.
+    /// The longest quote: a solidus, three characters for each of <see cref="MaxBytes"/> bytes, and the note of a cut,
+    /// which the longest length a <see langword="long"/> can say keeps within 64 characters.
     /// </summary>
-    private const int BufferLength = 1 + (9 * MaxBytes) + 64;
+    private const int BufferLength = 1 + (3 * MaxBytes) + 64;
 
     /// <summary>Writes <paramref name="name"/> as a PDF writer would, with its solidus.</summary>
     public static string Name(PdfName name)
     {
         Span<char> buffer = stackalloc char[BufferLength];
-        return new string(buffer[..Write('/', name.Value, name.Value.Length, buffer)]);
+        return new string(buffer[..Write('/', name.Value, WholeOf(name), buffer)]);
     }
 
     /// <summary>Appends <paramref name="name"/> to <paramref name="text"/> as a PDF writer would, with its solidus.</summary>
     public static void AppendName(StringBuilder text, PdfName name)
     {
         Span<char> buffer = stackalloc char[BufferLength];
-        text.Append(buffer[..Write('/', name.Value, name.Value.Length, buffer)]);
+        text.Append(buffer[..Write('/', name.Value, WholeOf(name), buffer)]);
     }
 
     /// <summary>Writes a keyword's bytes, each outside printable ASCII as <c>#xx</c>.</summary>
@@ -58,11 +58,21 @@ internal static class FileQuote
     }
 
     /// <summary>
-    /// Writes into <paramref name="destination"/> the lead, at most <see cref="MaxBytes"/> characters of
-    /// <paramref name="value"/>, one per byte, and, when the whole is longer, the note that says how long, and returns how
-    /// many characters it wrote.
+    /// How many bytes a name holds, where that is known without reading it: one for each character of a name read from a
+    /// file. A name a caller built with characters past U+00FF gives -1, its UTF-8 length counted only if its quote is cut.
     /// </summary>
-    private static int Write(char? lead, ReadOnlySpan<char> value, int whole, Span<char> destination)
+    private static long WholeOf(PdfName name) => name.IsBytes ? name.Value.Length : -1;
+
+    /// <summary>
+    /// Writes into <paramref name="destination"/> the lead, the bytes of <paramref name="value"/> up to
+    /// <see cref="MaxBytes"/>, a character never split, and, when the whole is longer, the note that says how long, and
+    /// returns how many characters it wrote.
+    /// </summary>
+    /// <param name="lead">The solidus of a name, or nothing.</param>
+    /// <param name="value">The characters to quote, each up to U+00FF one byte.</param>
+    /// <param name="whole">How many bytes the whole holds, or -1 to count them from <paramref name="value"/> on a cut.</param>
+    /// <param name="destination">Where the quote is written, <see cref="BufferLength"/> characters long.</param>
+    private static int Write(char? lead, ReadOnlySpan<char> value, long whole, Span<char> destination)
     {
         var length = 0;
 
@@ -71,39 +81,75 @@ internal static class FileQuote
             destination[length++] = solidus;
         }
 
-        var shown = Math.Min(value.Length, MaxBytes);
+        var bytes = 0;
+        var index = 0;
         Span<byte> encoded = stackalloc byte[4];
 
-        for (var index = 0; index < shown; index++)
+        while (index < value.Length)
         {
             var current = value[index];
 
             if (current <= 0xFF)
             {
+                if (bytes == MaxBytes)
+                {
+                    break;
+                }
+
                 length += Write((byte)current, destination[length..]);
+                bytes++;
+                index++;
                 continue;
             }
 
             // Only a caller's PdfName.Get makes such a name: its UTF-8 bytes, a lone surrogate as U+FFFD's.
-            if (Rune.DecodeFromUtf16(value[index..shown], out var rune, out var consumed) != OperationStatus.Done)
+            if (Rune.DecodeFromUtf16(value[index..], out var rune, out var consumed) != OperationStatus.Done)
             {
                 rune = Rune.ReplacementChar;
             }
 
-            index += Math.Max(consumed, 1) - 1;
             var count = rune.EncodeToUtf8(encoded);
+
+            if (bytes + count > MaxBytes)
+            {
+                break;
+            }
 
             for (var b = 0; b < count; b++)
             {
                 length += Write(encoded[b], destination[length..]);
             }
+
+            bytes += count;
+            index += Math.Max(consumed, 1);
         }
 
-        if (whole > shown)
+        if (whole < 0)
+        {
+            whole = bytes + Utf8Length(value[index..]);
+        }
+
+        if (whole > bytes)
         {
             // A space no quote holds: the note cannot be read as the name's.
-            destination[length..].TryWrite(CultureInfo.InvariantCulture, $" (the first {shown} of {whole:N0} bytes)", out var written);
+            destination[length..].TryWrite(CultureInfo.InvariantCulture, $" (the first {bytes} of {whole:N0} bytes)", out var written);
             length += written;
+        }
+
+        return length;
+    }
+
+    /// <summary>Counts the UTF-8 bytes of a caller's characters, a lone surrogate as U+FFFD's three.</summary>
+    private static long Utf8Length(ReadOnlySpan<char> value)
+    {
+        long length = 0;
+
+        while (!value.IsEmpty)
+        {
+            // An invalid sequence decodes as U+FFFD.
+            _ = Rune.DecodeFromUtf16(value, out var rune, out var consumed);
+            length += rune.Utf8SequenceLength;
+            value = value[Math.Max(consumed, 1)..];
         }
 
         return length;

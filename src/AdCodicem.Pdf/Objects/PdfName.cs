@@ -10,10 +10,21 @@ public sealed class PdfName : PdfObject, IEquatable<PdfName>
 {
     private static readonly ConcurrentDictionary<string, PdfName> Interned = new(StringComparer.Ordinal);
 
-    private PdfName(string value) => Value = value;
+    private PdfName(string value)
+    {
+        Value = value;
+        IsBytes = !value.AsSpan().ContainsAnyExceptInRange('\0', '\u00FF');
+    }
 
     /// <summary>Gets the name without its leading solidus.</summary>
     public string Value { get; }
+
+    /// <summary>
+    /// Gets whether each character of <see cref="Value"/> stands for one byte, as in every name read from a file. A
+    /// name a caller builds can hold characters past U+00FF, which a PDF writer writes as their UTF-8 bytes.
+    /// </summary>
+    /// <remarks>Known once, when the name is interned: a message that quotes a name need not read it whole again.</remarks>
+    internal bool IsBytes { get; }
 
     /// <summary>Returns the interned name for <paramref name="value"/>.</summary>
     public static PdfName Get(string value)
