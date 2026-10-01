@@ -39,7 +39,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <summary>
     /// How much of the file's start is searched for <c>%PDF-</c>. Not a guard a valid file reaches: ISO 32000-1
     /// (7.5.2) puts the header on the file's first line. A file that has none within these bytes is reported as
-    /// lacking one.
+    /// lacking one, under <see cref="PdfDiagnosticCodes.HeaderMissing"/>.
     /// </summary>
     private const int HeaderSearchLength = 4096;
 
@@ -1101,7 +1101,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         if (index < 0)
         {
-            _diagnostics.Warn(PdfDiagnosticCodes.XRefRebuilt, "The file does not start with a PDF header.");
+            // Nothing is rebuilt for it: the offsets the file gives are counted from its first byte, as from a header
+            // there. An empty source has no first byte to point at.
+            _diagnostics.Repair(
+                PdfDiagnosticCodes.HeaderMissing,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The file has no PDF header (%PDF-) in its first {HeaderSearchLength:N0} bytes; its offsets were counted from its first byte."),
+                _source.Length > 0 ? 0 : -1);
             return;
         }
 

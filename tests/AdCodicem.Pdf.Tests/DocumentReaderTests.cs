@@ -169,9 +169,27 @@ public class DocumentReaderTests
         reader.ObjectCount.Should().Be(0);
         reader.WasRepaired.Should().BeTrue();
         reader.Structure.StartXRefPosition.Should().Be(-1);
-        diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Message)).Should().Equal(
-            (PdfDiagnosticCodes.XRefRebuilt, "The file does not start with a PDF header."),
-            (PdfDiagnosticCodes.XRefRebuilt, "The cross-reference index was rebuilt by scanning the file."));
+        diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Message, diagnostic.Position)).Should().Equal(
+            (PdfDiagnosticCodes.HeaderMissing, "The file has no PDF header (%PDF-) in its first 4,096 bytes; its offsets were counted from its first byte.", -1L),
+            (PdfDiagnosticCodes.XRefRebuilt, "The cross-reference index was rebuilt by scanning the file.", -1L));
+    }
+
+    [Theory]
+    [InlineData("%PDF.1.7\n")]
+    [InlineData("")]
+    public void A_file_without_a_header_is_read_through_its_table_and_its_header_reported_as_a_repair(string header)
+    {
+        // Nothing is rebuilt for a missing header: the file's offsets count from its first byte, as from a header
+        // there (#187).
+        using var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound.Replace("%PDF-1.7\n", header, StringComparison.Ordinal)));
+
+        document.Catalog.Should().NotBeNull();
+        document.WasRepaired.Should().BeFalse();
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.HeaderMissing);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Repair);
+        report.Position.Should().Be(0);
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefRebuilt).Should().Be(document.WasRepaired);
     }
 
     [Fact]

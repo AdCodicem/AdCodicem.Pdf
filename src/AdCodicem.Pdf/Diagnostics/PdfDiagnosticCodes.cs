@@ -6,6 +6,12 @@ namespace AdCodicem.Pdf.Diagnostics;
 /// </summary>
 public static class PdfDiagnosticCodes
 {
+    /// <summary>
+    /// The file has no <c>%PDF-</c> header within the bytes the reader searches at its start (ISO 32000-1, 7.5.2): the
+    /// file was read all the same, its offsets counted from its first byte.
+    /// </summary>
+    public const string HeaderMissing = "header.missing";
+
     /// <summary>The cross-reference table was rebuilt by scanning the whole file.</summary>
     public const string XRefRebuilt = "xref.rebuilt";
 

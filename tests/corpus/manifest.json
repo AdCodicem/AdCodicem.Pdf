@@ -13864,6 +13864,7 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
+          "header.missing",
           "xref.rebuilt"
         ],
         "findings": [
@@ -13912,7 +13913,9 @@
         "pages": 1,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "header.missing"
+        ],
         "findings": [
           "file.header-missing"
         ],
@@ -13959,6 +13962,7 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
+          "header.missing",
           "xref.rebuilt"
         ],
         "findings": [
@@ -14008,6 +14012,7 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
+          "header.missing",
           "xref.rebuilt"
         ],
         "findings": [

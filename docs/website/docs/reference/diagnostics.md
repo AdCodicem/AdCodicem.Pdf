@@ -71,6 +71,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 
 | Code | Raised when |
 |---|---|
+| `header.missing` | The file has no `%PDF-` header in its first 4,096 bytes; it was read all the same, its offsets counted from its first byte |
 | `xref.rebuilt` | The index was rebuilt by scanning the whole file |
 | `xref.offset-adjusted` | An object, or a cross-reference section the chain names, was not where the file said, and was found nearby |
 | `xref.section-missing` | A cross-reference section `/Prev` or `/XRefStm` names is neither there nor nearby; what only it indexed is found by rebuilding the index when it is asked for |
