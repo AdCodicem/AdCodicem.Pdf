@@ -13,12 +13,13 @@ namespace AdCodicem.Pdf.IO;
 /// Indexes a PDF file and reads its objects on demand.
 /// </summary>
 /// <remarks>
-/// Opening a document reads the cross-reference chain and resolves the trailer's <c>/Root</c>; it loads other
-/// objects only to look for a catalog that <c>/Root</c> does not lead to, or to rebuild the index. Objects are
-/// parsed the first time something asks for them and kept in a bounded cache, so memory follows what the caller
-/// touches rather than the size of the file. When the index turns out to be wrong — which real files manage in a
-/// remarkable number of ways — the reader rebuilds it by scanning, and says so in the diagnostics. A rebuild loads
-/// every object written directly in the file, to take in those its object streams hold.
+/// Opening a document reads the cross-reference chain, with the objects a cross-reference stream's dictionary refers
+/// to for its data and its rows, and resolves the trailer's <c>/Root</c>; it loads other objects only to look for a
+/// catalog that <c>/Root</c> does not lead to, or to rebuild the index. Objects are parsed the first time something
+/// asks for them and kept in a bounded cache, so memory follows what the caller touches rather than the size of the
+/// file. When the index turns out to be wrong — which real files manage in a remarkable number of ways — the reader
+/// rebuilds it by scanning, and says so in the diagnostics. A rebuild loads every object written directly in the
+/// file, to take in those its object streams hold.
 /// </remarks>
 internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, IDisposable
 {
