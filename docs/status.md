@@ -290,7 +290,9 @@ not a fault of the file: the rules on it report at most, as information, that it
   remote documents — web.archive.org refused ECan's Konica scan — and passed every test over them; the one rerun
   fetched all 242 and passed, 4,224 acceptance tests with 3 skipped and 3,329 referee checks with 6 skipped.
 - **Left**: the journal passes a dozen entries, and `docs/status.md` asks that it be summarized; no session has done so
-  yet.
+  yet. Asked by the maintainer how hard the remote job leans on web.archive.org — 7 of the 242 remote documents, about
+  140 requests in a week, no 429 logged —, filed [#204], under no milestone: the fetcher ignores `Retry-After`, logs no
+  failed attempt, and the job caches nothing between runs, a cache being the maintainer's call under ADR 32.
 - **Next**: batch 2, [#187], its questions put when it starts.
 
 ### 2026-10-01 — M01's review after the fact ([#136])
@@ -1373,3 +1375,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#200]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/200
 [#201]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/201
 [#202]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/202
+[#204]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/204
