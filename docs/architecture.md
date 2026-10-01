@@ -46,8 +46,8 @@ AngleSharp or a native dependency into it is a sign the split is wrong.
 ## 3. The core, `AdCodicem.Pdf`
 
 ```
-Objects/      COS object model: PdfName, PdfNumber, PdfString, PdfArray, PdfDictionary, PdfStream,
-              PdfReference. Immutable where it can be, interned for names.
+Objects/      COS object model: PdfName, PdfInteger, PdfReal, PdfString, PdfArray, PdfDictionary,
+              PdfStream, PdfReference. Immutable where it can be, interned for names.
 IO/           PdfLexer (tokens), PdfObjectParser (objects), Filters/ (Flate with predictors, LZW,
               ASCII85, ASCIIHex, RunLength, DCT and JPX passed through), XRef/ (classic tables,
               cross-reference streams, object streams, the /Prev chain, rebuilding),

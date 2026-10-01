@@ -410,10 +410,12 @@ Known gaps:
 
 - **The core has no dependency** (invariant 1): its project references no package and no other project. Review
   alone keeps it so ([#179]). The AOT and trimming analyzers run, and warnings fail the build. Unsafe code is off.
-- **Workflows** default to `contents: read` and raise a permission per job where one is needed, except
-  `docs.yml`, which grants `pages: write` and `id-token: write` to the whole workflow ([#177]). Every action is
-  pinned to a commit SHA. CI and the commit checks run on `pull_request`, so a fork's pull request gets no secret
-  and no write token. The one `pull_request_target` workflow, Dependabot's auto-merge, checks out no code.
+- **Workflows** declare read-only permissions at their top — `contents: read`, with `pull-requests: read` added
+  in `commits.yml`, and `read-all` in `scorecards.yml`, whose one job replaces it with the four permissions it
+  needs — and raise a permission per job where one is needed, except `docs.yml`, which grants `pages: write` and
+  `id-token: write` to the whole workflow ([#177]). Every action is pinned to a commit SHA. CI and the commit
+  checks run on `pull_request`, so a fork's pull request gets no secret and no write token. The one
+  `pull_request_target` workflow, Dependabot's auto-merge, checks out no code.
 - **Publishing** uses trusted publishing ([ADR 25](adr/0025-trusted-publishing-rather-than-an-api-key.md)): a
   key valid one hour, exchanged for the job's OIDC token just before the push, and no NuGet secret stored. The
   `AdCodicem.*` prefix is reserved on nuget.org. Builds are deterministic and carry their sources' location and

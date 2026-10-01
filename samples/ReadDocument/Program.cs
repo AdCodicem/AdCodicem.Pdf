@@ -20,9 +20,11 @@ Console.WriteLine($"Objects         {document.ObjectCount}");
 Console.WriteLine($"Index rebuilt   {document.WasRepaired}");
 Console.WriteLine($"Pages           {CountPages(document)}");
 
+// No diagnostics means the reader worked around nothing in what it read, not that the file is well formed:
+// that is the validator's verdict.
 if (document.Diagnostics.Count == 0)
 {
-    Console.WriteLine("Diagnostics     none — the file is well formed");
+    Console.WriteLine("Diagnostics     none — the reader worked around nothing");
 }
 else
 {
@@ -35,7 +37,7 @@ else
 
 return 0;
 
-// The page tree is walked here rather than by the library: pages arrive with milestone 5.
+// The page tree is walked here rather than by the library: pages arrive with M06.
 static int CountPages(PdfDocument document)
 {
     var root = document.Catalog.GetDictionary(PdfName.Pages);

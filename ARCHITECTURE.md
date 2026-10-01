@@ -13,7 +13,8 @@ tests/
   AdCodicem.Pdf.Tests/              unit tests — our own behavior
   AdCodicem.Pdf.IntegrationTests/   integration tests — what independent tools say about it, in containers
   AdCodicem.Pdf.TestSupport/        shared fixtures, the corpus manifest reader
-  corpus/                           27 real documents from four producers, plus copies damaged on purpose
+  corpus/                           168 committed documents from many producers, five copies damaged on purpose
+                                    among them, and 242 remote ones fetched by a script, never committed
 benchmarks/                 BenchmarkDotNet; run on demand, never on every push
 tools/
   AdCodicem.Pdf.Arlington/  generator of the Arlington tables, and the model it reads, vendored with a lock;
