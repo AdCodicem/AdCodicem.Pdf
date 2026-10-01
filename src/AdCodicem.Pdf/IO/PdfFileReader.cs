@@ -32,8 +32,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// count past both describes rows that are not there.
     /// </summary>
     private const int MaxSubsectionEntries = 50_000_000;
+
+    /// <summary>
+    /// How much of the file's start is searched for <c>%PDF-</c>. Not a guard a valid file reaches: ISO 32000-1
+    /// (7.5.2) puts the header on the file's first line. A file that has none within these bytes is reported as
+    /// lacking one.
+    /// </summary>
     private const int HeaderSearchLength = 4096;
+
+    /// <summary>
+    /// How much of the file's end is searched for <c>startxref</c>. Not a guard a valid file reaches: ISO 32000-1
+    /// (7.5.5) puts <c>startxref</c> and its offset just before the <c>%%EOF</c> that ends the file. A file that has
+    /// none within these bytes has its index rebuilt by scanning, which is reported.
+    /// </summary>
     internal const int TailSearchLength = 4096;
+
+    /// <summary>
+    /// How far either side of the offset it was given the reader looks for an object or a cross-reference section
+    /// that is not there. Not a guard a valid file reaches: a valid file's index places every object and every
+    /// section exactly. An object not found this near is looked for by rebuilding the index; a section, reported
+    /// missing.
+    /// </summary>
     internal const int NearbySearchRadius = 512;
 
     /// <summary>

@@ -47,8 +47,8 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   its length. `MaxTrailerLength` bounds how far the reader follows one past that window.
 - Until the reader decodes streams a piece at a time, a stream that decodes past about 2 GB is cut there, and
   reported, even under `Unbounded`.
-- Raising `MaxDecodedStreamLength` also raises what the reader may hold for object streams it keeps decoded, which
-  are not yet bounded as a whole.
+- The reader keeps the object streams it decoded within a budget of 32 MB, and always keeps the one it decoded last,
+  whatever its size. Raising `MaxDecodedStreamLength` raises how large that one can be.
 
 ## `ThrowOnLimit`
 

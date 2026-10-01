@@ -11,6 +11,11 @@ internal static class LzwFilter
     private const int ClearCode = 256;
     private const int EndOfDataCode = 257;
     private const int FirstFreeCode = 258;
+
+    /// <summary>
+    /// The size of the code table. Not a bound a file chooses: LZW codes are at most 12 bits wide (ISO 32000-1,
+    /// 7.4.4.2), so the table holds every code a stream can name.
+    /// </summary>
     private const int MaxCodes = 4096;
 
     /// <summary>

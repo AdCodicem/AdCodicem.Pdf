@@ -44,5 +44,9 @@ prefer otherwise. Published advisories are listed on the
 Its supply-chain posture is measured rather than asserted, and the report is public:
 [the OpenSSF Scorecard report](https://scorecard.dev/viewer/?uri=github.com/AdCodicem/AdCodicem.Pdf).
 Every GitHub Action used by a
-workflow here is pinned to a commit hash, dependency versions are locked, and every merge is analyzed by
-CodeQL.
+workflow here is pinned to a commit hash, NuGet dependency versions are set in one central file, and every merge
+is analyzed by CodeQL. Lock files for the restore are not committed yet
+([#43](https://github.com/AdCodicem/AdCodicem.Pdf/issues/43)).
+
+What the library defends against, where each defense lives, and the defenses still missing are written down in
+the [threat model](https://github.com/AdCodicem/AdCodicem.Pdf/blob/main/docs/threat-model.md).
