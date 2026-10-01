@@ -593,7 +593,7 @@ internal ref struct PdfObjectParser
     private static string DescribeKind(PdfObject value) => value switch
     {
         PdfReal real => $"a real number, {real}",
-        PdfName name => $"a name, /{name.Value}",
+        PdfName name => "a name, " + FileQuote.Name(name),
         PdfBoolean boolean => boolean.Value ? "a boolean, true" : "a boolean, false",
         PdfString => "a string",
         PdfArray => "an array",

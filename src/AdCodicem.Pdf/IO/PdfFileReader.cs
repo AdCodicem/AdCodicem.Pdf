@@ -1708,7 +1708,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <summary>Says what a token is, for a message about what stood where something else should have.</summary>
     private static string DescribeToken(PdfToken token) => token.Kind switch
     {
-        PdfTokenKind.Keyword => $"the keyword {System.Text.Encoding.Latin1.GetString(token.Text)}",
+        PdfTokenKind.Keyword => "the keyword " + FileQuote.Keyword(token.Text),
         PdfTokenKind.Name => "a name",
         PdfTokenKind.Real => "a real number",
         PdfTokenKind.LiteralString or PdfTokenKind.HexString => "a string",
@@ -1919,7 +1919,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
 
         _indexIncomplete = true;
-        _structure.Add(new XRefSectionRecord("/" + key.Value, -1, section)
+        _structure.Add(new XRefSectionRecord(FileQuote.Name(key), -1, section)
         {
             State = XRefSectionState.NotFound,
             Fault = $"is {DescribeValue(value)}, not an offset",
@@ -1928,7 +1928,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             PdfDiagnosticCodes.XRefSectionMissing,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"The /{key.Value} of the cross-reference section at offset {section} is not an offset; the sections it names are looked for by rebuilding the index."),
+                $"The {FileQuote.Name(key)} of the cross-reference section at offset {section} is not an offset; the sections it names are looked for by rebuilding the index."),
             section);
         return -1;
     }
@@ -1939,7 +1939,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         PdfReference reference => string.Create(
             CultureInfo.InvariantCulture, $"the reference {reference.Id.Number} {reference.Id.Generation} R"),
         PdfInteger integer => string.Create(CultureInfo.InvariantCulture, $"the integer {integer.Value}"),
-        PdfName name => $"the name /{name.Value}",
+        PdfName name => "the name " + FileQuote.Name(name),
         _ => $"a value of type {value.GetType().Name.Replace("Pdf", string.Empty, StringComparison.Ordinal).ToLowerInvariant()}",
     };
 

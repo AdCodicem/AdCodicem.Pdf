@@ -11,6 +11,13 @@ internal static class PdfCharacters
     /// <summary>The bytes that delimit a token regardless of what surrounds them.</summary>
     public static readonly SearchValues<byte> Delimiters = SearchValues.Create("()<>[]{}/%"u8);
 
+    /// <summary>
+    /// The bytes a writer writes in a name as themselves (ISO 32000-1, 7.3.5): printable ASCII but the number sign and
+    /// the delimiters. Every other byte is written <c>#xx</c>.
+    /// </summary>
+    public static readonly SearchValues<byte> NameVerbatim = SearchValues.Create(
+        "!\"$&'*+,-.0123456789:;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz|~"u8);
+
     public static bool IsWhitespace(byte value) => Whitespace.Contains(value);
 
     /// <summary>A regular character is anything that is neither white space nor a delimiter.</summary>

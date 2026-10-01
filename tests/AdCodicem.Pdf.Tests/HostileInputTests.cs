@@ -6,6 +6,7 @@ using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -53,6 +54,104 @@ public class HostileInputTests
         using var document = Measure(() => PdfDocument.Open(bytes));
 
         document.Catalog.Required();
+    }
+
+    [Fact]
+    public void Reads_streams_whose_length_names_a_name_of_millions_of_characters_within_an_allocation_budget()
+    {
+        // #159's shape, scaled down: an object stream inflates to a name of 4M characters, and four streams take it as
+        // their /Length. Each report quotes the name's first 127 bytes, never a copy of the whole.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "/" + new string('A', 4 * 1024 * 1024))
+            .WithObject(6, "<< /Length 5 0 R >>\nstream\nabc\nendstream")
+            .WithObject(7, "<< /Length 5 0 R >>\nstream\nabc\nendstream")
+            .WithObject(8, "<< /Length 5 0 R >>\nstream\nabc\nendstream")
+            .WithObject(9, "<< /Length 5 0 R >>\nstream\nabc\nendstream")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5], compressObjectStream: true);
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(5));
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        Measure(() =>
+        {
+            for (var number = 6; number <= 9; number++)
+            {
+                _ = document.GetObject(new PdfObjectId(number));
+            }
+
+            return 0;
+        });
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        allocated.Should().BeLessThan(2 * 1024 * 1024, "a report quotes 127 bytes of the name, whatever its length");
+        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Should().HaveCount(4)
+            .And.OnlyContain(d => d.Message.Contains(" (the first 127 of 4,194,304 bytes)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Reads_fifty_streams_whose_length_names_one_long_name_within_an_allocation_budget()
+    {
+        // A diagnostic capacity of one keeps no message: what reading the streams costs is all that is left to bound.
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "/" + new string('A', 1_000_000));
+
+        for (var number = 6; number < 56; number++)
+        {
+            builder.WithObject(number, "<< /Length 5 0 R >>\nstream\nabc\nendstream");
+        }
+
+        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1), PdfReaderOptions.Default with { DiagnosticCapacity = 1 });
+        _ = document.GetObject(new PdfObjectId(5));
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        for (var number = 6; number < 56; number++)
+        {
+            _ = document.GetObject(new PdfObjectId(number));
+        }
+
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        allocated.Should().BeLessThan(4 * 1024 * 1024, "no stream copies the name it takes for its length");
+    }
+
+    [Fact]
+    public void Decodes_a_stream_under_a_filter_name_of_a_million_characters_a_hundred_times_within_a_budget()
+    {
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfName.Get(new string('X', 1_000_000)));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory("abc"u8.ToArray()));
+        var diagnostics = new PdfDiagnostics();
+        _ = stream.Decode(diagnostics);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        for (var time = 0; time < 100; time++)
+        {
+            _ = stream.Decode(diagnostics);
+        }
+
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        allocated.Should().BeLessThan(1024 * 1024, "each report quotes 127 bytes of the filter's name");
+        diagnostics[0].Message.Should().StartWith("The filter /" + new string('X', 127) + " (the first 127 of 1,000,000 bytes)");
+    }
+
+    [Fact]
+    public void Quotes_a_keyword_of_ten_megabytes_where_a_subsection_should_start_by_its_first_bytes()
+    {
+        // The table's window grows until it holds the keyword whole; what the section's fault keeps of it, and the
+        // finding repeats, is 127 bytes and its length.
+        var keyword = new string('k', 10 * 1024 * 1024);
+        var file = PdfTemplate.SoundWith("{row:3}\ntrailer", "{row:3}\n" + keyword + "\ntrailer");
+
+        using var document = PdfDocument.Open(file);
+        var finding = new PdfValidator().Validate(document).Findings.Single(f => f.RuleId == PdfValidationRuleIds.XRefSectionMalformed);
+
+        finding.Message.Length.Should().BeLessThan(512);
+        finding.Message.Should().Contain("it holds the keyword " + new string('k', 127) + " (the first 127 of 10,485,760 bytes) at offset ");
     }
 
     [Fact]
