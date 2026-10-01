@@ -124,6 +124,15 @@ public class FileQuoteTests
         FileQuote.Name(PdfName.Get(new string('\uDC00', 50))).Should().EndWith(" (the first 126 of 150 bytes)");
     }
 
+    [Fact]
+    public void Counts_a_caller_s_characters_up_to_u00ff_as_one_byte_each_as_it_writes_them()
+    {
+        // A name read from a file holds such a character for its byte: the quote writes #E9, and counts what it writes.
+        var quote = FileQuote.Name(PdfName.Get(new string('é', 200) + "€"));
+
+        quote.Should().Be("/" + string.Concat(Enumerable.Repeat("#E9", 127)) + " (the first 127 of 203 bytes)");
+    }
+
     [Theory]
     [InlineData("Type", true)]
     [InlineData("\0\u00FF", true)]

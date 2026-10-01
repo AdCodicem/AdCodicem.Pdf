@@ -62,6 +62,11 @@ and each says where it is declared why no valid file reaches it.
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
 if a valid file can reach it, it becomes a limit, with its code and its test.
 
+One kind stays an internal constant though a valid file reaches it: a bound on what the library repeats of what it
+read, not on what it reads. A message quotes at most 127 bytes of a name, which PDF 2.0 lets be longer, and the whole
+name stays in the document; there is nothing more to read by lifting it. Its declaration says so instead ([How a
+message quotes the file](../reference/diagnostics.md#how-a-message-quotes-the-file)).
+
 ## Refusing instead
 
 Some applications would rather refuse a document than read part of it, and `ThrowOnLimit` turns every limit into an
