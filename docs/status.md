@@ -265,10 +265,11 @@ not a fault of the file: the rules on it report at most, as information, that it
   reader report left outside the file), [#157] (`/N` and `/First` are now checked as `long`; member numbers are not),
   [#171] (the straddling header the overlap fix stops). M02's checklist ticks M01's review, merged with [#198].
 - **Checked**: the solution builds with no warning, and `dotnet format` finds nothing; 2,553 unit tests, 3 skipped,
-  4,225 with the remote corpus; the integration suite against qpdf, with the remote corpus, on the branch at `86ad974`, before the review's fixes, 3,266
-  tests, 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages, its rerun at `a6c90c8` running; the patch's
+  4,225 with the remote corpus; the integration suite against qpdf, with the remote corpus, on the branch at `86ad974` and again at `a6c90c8`, after
+  the review's fixes, 3,266 tests each time, 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's
+  pages; the patch's
   186 measurable lines of `src/` covered, every branch taken, on the committed corpus alone, and the project at 5,036
-  of 5,054, the same 18 lines left; the site's build running. `Remote corpus` run 20, on the branch at `a6c90c8`: running.
+  of 5,054, the same 18 lines left; the site builds, 196 pages. `Remote corpus` run 20, on the branch at `a6c90c8`: running.
 - **Next**: batch 3, [#159], what a message quotes of the file, its questions put when it starts.
 
 ### 2026-10-01 — Step 4's order, and its first batch: a reference to object 0 ([#117])
