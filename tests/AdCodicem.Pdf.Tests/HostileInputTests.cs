@@ -139,6 +139,21 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Survives_deeply_nested_dictionaries_inside_an_object()
+    {
+        var deep = NestedDictionaries(20000, "0");
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, $"<< /Type /Pages /Kids [] /Count 0 /Deep {deep} >>")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = Measure(() => PdfDocument.Open(bytes));
+
+        document.GetObject(new PdfObjectId(2)).Required();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+    }
+
+    [Fact]
     public void Survives_a_chain_of_lengths_longer_than_the_stack_is_deep()
     {
         // Each stream takes its /Length from the next, so reading the first loads the second while it is
@@ -195,32 +210,33 @@ public class HostileInputTests
                 new string('[', nesting) + $"<< /Length {length} >>\nstream\nx\nendstream" + new string(']', nesting));
         }
 
-        var file = builder.BuildClassic(rootNumber: 1);
-        PdfObject? first = null;
-        PdfDiagnostics? diagnostics = null;
-        Exception? failure = null;
-
-        var thread = new Thread(
-            () =>
-            {
-                try
-                {
-                    using var document = PdfDocument.Open(file);
-                    first = document.GetObject(new PdfObjectId(3));
-                    diagnostics = document.Diagnostics;
-                }
-                catch (Exception exception) when (exception is not OutOfMemoryException)
-                {
-                    failure = exception;
-                }
-            },
-            maxStackSize: 256 * 1024);
-
-        thread.Start();
-        thread.Join();
+        var (first, diagnostics, failure) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
 
         failure.Should().BeNull();
         first.Should().BeOfType<PdfArray>();
+        diagnostics.Required().Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(32, 64)]
+    [InlineData(127, 64)]
+    public void A_file_nesting_dictionaries_deeper_than_the_stack_allows_reads_them_as_null_without_crashing(int nesting, int streams)
+    {
+        // The same chain of streams as above, each inside nested dictionaries instead of nested arrays.
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 3; number < 3 + streams; number++)
+        {
+            var length = number + 1 < 3 + streams ? $"{number + 1} 0 R" : "1";
+            builder.WithObject(number, NestedDictionaries(nesting, $"<< /Length {length} >>\nstream\nx\nendstream"));
+        }
+
+        var (first, diagnostics, failure) = ReadObject3OnASmallStack(builder.BuildClassic(rootNumber: 1));
+
+        failure.Should().BeNull();
+        first.Should().BeOfType<PdfDictionary>();
         diagnostics.Required().Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
     }
 
@@ -888,6 +904,46 @@ public class HostileInputTests
 
         stopwatch.Elapsed.Should().BeLessThan(Budget, "A hostile input must not be allowed to take unbounded time.");
         return result;
+    }
+
+    /// <summary>
+    /// Writes <paramref name="innermost"/> as the value of <paramref name="depth"/> nested dictionaries:
+    /// <c>&lt;&lt; /A &lt;&lt; /A … &gt;&gt; &gt;&gt;</c>.
+    /// </summary>
+    private static string NestedDictionaries(int depth, string innermost) =>
+        string.Concat(Enumerable.Repeat("<< /A ", depth)) + innermost + string.Concat(Enumerable.Repeat(" >>", depth));
+
+    /// <summary>
+    /// Opens <paramref name="file"/> and reads its object 3 on a small thread, whose stack is 256 KB: what was read,
+    /// the document's diagnostics, and what was thrown instead, if anything.
+    /// </summary>
+    private static (PdfObject? First, PdfDiagnostics? Diagnostics, Exception? Failure) ReadObject3OnASmallStack(
+        byte[] file)
+    {
+        PdfObject? first = null;
+        PdfDiagnostics? diagnostics = null;
+        Exception? failure = null;
+
+        var thread = new Thread(
+            () =>
+            {
+                try
+                {
+                    using var document = PdfDocument.Open(file);
+                    first = document.GetObject(new PdfObjectId(3));
+                    diagnostics = document.Diagnostics;
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    failure = exception;
+                }
+            },
+            maxStackSize: 256 * 1024);
+
+        thread.Start();
+        thread.Join();
+
+        return (first, diagnostics, failure);
     }
 
     /// <summary>How an object stream's data is written.</summary>

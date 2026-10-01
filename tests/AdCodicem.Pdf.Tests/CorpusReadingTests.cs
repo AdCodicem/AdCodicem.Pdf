@@ -20,18 +20,25 @@ public class CorpusReadingTests
 {
     private static readonly TimeSpan OpenBudget = TimeSpan.FromSeconds(20);
 
-    private static readonly string[] CorpusFolders = ["documents", "vendor", "private", "remote"];
-
     /// <summary>How the corpus model reads the manifest: the key <c>readerLimits</c> is its <c>ReaderLimits</c>.</summary>
     private static readonly JsonSerializerOptions ManifestOptions = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>
+    /// Every folder under the one enumerated and every file in them, hidden ones included, matched whatever the case.
+    /// </summary>
+    private static readonly EnumerationOptions EveryFile = new()
+    {
+        RecurseSubdirectories = true,
+        MatchCasing = MatchCasing.CaseInsensitive,
+        AttributesToSkip = 0,
+    };
 
     [Fact]
     public void The_corpus_manifest_describes_every_document_present()
     {
-        var onDisk = CorpusFolders
-            .Select(folder => Path.Combine(Corpus.Root, folder))
-            .Where(Directory.Exists)
-            .SelectMany(folder => Directory.EnumerateFiles(folder, "*.pdf", SearchOption.AllDirectories))
+        // Every PDF under the corpus root, wherever it lies — documents/, vendor/, the private/ and remote/ folders
+        // git ignores, or a folder nobody thought of — and whether its extension is .pdf or .PDF.
+        var onDisk = Directory.EnumerateFiles(Corpus.Root, "*.pdf", EveryFile)
             .Select(path => Path.GetRelativePath(Corpus.Root, path).Replace(Path.DirectorySeparatorChar, '/'))
             .Order()
             .ToList();
@@ -156,6 +163,7 @@ public class CorpusReadingTests
         useCases.Should().Contain("form");
         useCases.Should().Contain("scan");
         useCases.Should().Contain("archival");
+        useCases.Should().Contain("damaged");
     }
 
     [Theory]
@@ -252,9 +260,9 @@ public class CorpusReadingTests
 
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        // Indexing a thousand-page document and walking its whole page tree measured 2.4 MB, roughly
-        // 2.4 KB per page: proportional to the number of objects, not to the weight of the content.
-        // The budget leaves headroom for producer variation and fails loudly on a regression.
+        // Indexing a thousand-page document and walking its whole page tree measured 2.4 MB when M01 closed, and
+        // 3.2 MB on 2026-10-01, roughly 3.3 KB per page: proportional to the number of objects, not to the weight
+        // of the content. The budget leaves headroom for producer variation and fails loudly on a regression.
         allocated.Should().BeLessThan(
             4 * 1024 * 1024,
             $"indexing {entry.Name} allocated {allocated / 1024} KB");

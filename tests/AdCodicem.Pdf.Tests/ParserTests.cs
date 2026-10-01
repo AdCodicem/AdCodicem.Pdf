@@ -20,6 +20,17 @@ public class ParserTests
     }
 
     [Fact]
+    public void Keeps_whether_a_string_was_written_in_hexadecimal()
+    {
+        var hexadecimal = Parse("<74657874>").Should().BeOfType<PdfString>().Subject;
+        var literal = Parse("(text)").Should().BeOfType<PdfString>().Subject;
+
+        hexadecimal.IsHexadecimal.Should().BeTrue();
+        literal.IsHexadecimal.Should().BeFalse();
+        hexadecimal.ToText().Should().Be(literal.ToText());
+    }
+
+    [Fact]
     public void Parses_an_array()
     {
         var array = Parse("[1 2 /Three (four)]").Should().BeOfType<PdfArray>().Subject;
@@ -168,6 +179,22 @@ public class ParserTests
         parser.ParseObject();
 
         diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Refuses_to_follow_dictionaries_nested_deeper_than_its_limit()
+    {
+        var diagnostics = new PdfDiagnostics();
+        var bytes = Encoding.ASCII.GetBytes(
+            string.Concat(Enumerable.Repeat("<< /A ", 5000)) + "0" + string.Concat(Enumerable.Repeat(" >>", 5000)));
+        var parser = new PdfObjectParser(bytes, diagnostics: diagnostics);
+
+        parser.ParseObject().Should().BeOfType<PdfDictionary>();
+
+        diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
+
+        // The levels past the limit are skipped whole, their delimiters balanced: the parse ends with the input.
+        parser.Position.Should().Be(bytes.Length);
     }
 
     [Fact]

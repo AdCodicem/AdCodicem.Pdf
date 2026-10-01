@@ -77,6 +77,32 @@ public class ObjectModelTests
         dictionary.ToString().Should().Be("<<dictionary of 1>>");
     }
 
+    [Fact]
+    public void A_scalar_describes_itself_in_PDF_syntax()
+    {
+        PdfNull.Instance.ToString().Should().Be("null");
+        PdfBoolean.True.ToString().Should().Be("true");
+        PdfBoolean.False.ToString().Should().Be("false");
+        PdfInteger.Create(42).ToString().Should().Be("42");
+        PdfInteger.Create(-17).ToString().Should().Be("-17");
+        PdfInteger.Create(long.MaxValue).ToString().Should().Be("9223372036854775807");
+        new PdfReference(new PdfObjectId(12)).ToString().Should().Be("12 0 R");
+        new PdfReference(new PdfObjectId(12, 3)).ToString().Should().Be("12 3 R");
+    }
+
+    [Theory]
+    [InlineData(3.5, "3.5")]
+    [InlineData(-0.25, "-0.25")]
+    [InlineData(4.0, "4")]
+    [InlineData(2.0 / 3, "0.666667")]
+    [InlineData(1e20, "100000000000000000000")]
+    [InlineData(1e-7, "0")]
+    [InlineData(-1e-7, "-0")]
+    public void A_real_describes_itself_without_an_exponent_and_to_six_decimals(double value, string described)
+    {
+        new PdfReal(value).ToString().Should().Be(described);
+    }
+
     [Theory]
     [InlineData(4.0, 4L)]
     [InlineData(4.5, null)]
