@@ -297,6 +297,7 @@ public class FileRuleTests
     [InlineData("/Root /Catalog", "The trailer's /Root is a name, not a reference to the document catalog.")]
     [InlineData("/Root 3 0 R", "The trailer's /Root names object 3 0, which is a dictionary of /Type /Page, not a document catalog.")]
     [InlineData("/Root 9 0 R", "The trailer's /Root names object 9 0, which the file does not hold.")]
+    [InlineData("/Root 0 0 R", "The trailer's /Root names object 0 0, which the file does not hold.")]
     [InlineData("/Root null", "The trailer has no /Root.")]
     [InlineData("/Root 1.5", "The trailer's /Root is a number, not a reference to the document catalog.")]
     [InlineData("/Root (the catalog)", "The trailer's /Root is a string, not a reference to the document catalog.")]
@@ -310,6 +311,17 @@ public class FileRuleTests
         var finding = Single(Validate(file), PdfValidationRuleIds.FileRootInvalid);
 
         finding.Message.Should().Be(message + " The reader took object 1, which is one, for the catalog.");
+    }
+
+    [Fact]
+    public void A_root_naming_object_0_is_located_at_the_object_it_names_in_a_trailer_read_whole()
+    {
+        // Read as two integers and a stray keyword before #117, /Root 0 0 R left the trailer malformed and the finding at
+        // the trailer; it is a reference, located as a reference to any object the file lacks is.
+        var report = Validate(PdfTemplate.SoundWith("/Root 1 0 R", "/Root 0 0 R"));
+
+        Single(report, PdfValidationRuleIds.FileRootInvalid).Location.Object.Should().Be(new PdfObjectId(0));
+        report.Contains(PdfValidationRuleIds.FileTrailerMalformed).Should().BeFalse();
     }
 
     [Fact]

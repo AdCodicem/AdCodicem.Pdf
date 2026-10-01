@@ -92,6 +92,8 @@ public class ParserTests
     [Theory]
     [InlineData("[3000000000 0 R]", "an object number past int.MaxValue")]
     [InlineData("[4294967301 0 R]", "an object number that would wrap to 5 if narrowed to an int")]
+    [InlineData("[-1 0 R]", "a negative object number")]
+    [InlineData("[-4294967291 0 R]", "a negative object number that would wrap to 5 if narrowed to an int")]
     [InlineData("[5 -1 R]", "a negative generation")]
     [InlineData("[5 65536 R]", "a generation past 65535")]
     public void Makes_no_reference_of_numbers_an_object_identifier_cannot_hold(string text, string because)
