@@ -86,7 +86,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `syntax.unexpected-token` | A token stood where the syntax does not allow it: where a value or a dictionary key was expected, after a key that has no value, or closing an array with a dictionary's end; it was read as null, skipped, or it ended what it stood in |
 | `syntax.truncated-object` | The file ended in the middle of an object |
 | `syntax.depth-exceeded` | Nesting went deeper than the reader will follow |
-| `object.redefined` | An object was defined more than once; the last definition won |
+| `object.redefined` | Rebuilding the index met more than one definition of an object number. Raised once for each rebuild, as `Information` with no position: how many definitions met a number already found, the first ten of those numbers, and which definition was kept — the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first |
 | `trailer.root-recovered` | The trailer's `/Root` does not lead to a document catalog, and the catalog was found among the file's objects — those its index holds when the index is sound, a rebuilt index's otherwise |
 | `filter.failed` | A filter's data is damaged: left encoded when nothing decoded before the byte the fault lies in, kept up to that byte or to the end otherwise, and a repair when nothing was lost |
 | `filter.checksum-mismatch` | A Flate stream decoded to its end, but its zlib checksum disagrees with what it decoded to: all of it was kept, and some of it may be wrong |

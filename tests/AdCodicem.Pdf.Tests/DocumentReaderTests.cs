@@ -573,6 +573,101 @@ public class DocumentReaderTests
         document.Diagnostics.Should().BeEmpty();
     }
 
+    private const string KeptRule =
+        " Of each number, the definition kept is the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first.";
+
+    [Fact]
+    public void Reports_an_object_a_rebuild_finds_defined_twice_in_the_file_once_as_information()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(4, "(first)")
+            .WithObject(4, "(second)")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("second");
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined).Which;
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Information);
+        report.Position.Should().Be(-1);
+        report.Message.Should().Be("Rebuilding the index met a second definition of object 4." + KeptRule);
+    }
+
+    [Theory]
+    [InlineData("6 0 6 6 ", "(one)\n(two)", "(one)")]
+    [InlineData("6 0 ", "(one)", "(one)")]
+    public void Reports_an_object_a_rebuild_finds_twice_inside_object_streams_and_keeps_the_first_listed(string header, string body, string kept)
+    {
+        // Listed twice in one header, or once in each of two object streams: the first listed in the stream read
+        // first is kept.
+        var data = header + body;
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {header.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length / 2} /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream"))
+            .WithObject(7, "<< /Type /ObjStm /N 1 /First 4 /Length 9 >>\nstream\n6 0 (two)\nendstream")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(kept.Trim('(', ')'));
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined).Which;
+        report.Message.Should().StartWith("Rebuilding the index met ").And.EndWith(KeptRule);
+    }
+
+    [Theory]
+    [InlineData(new[] { 4, 4, 4 }, "met 2 definitions of object numbers it had already found, of object 4.")]
+    [InlineData(new[] { 4, 4, 5, 5 }, "met 2 definitions of object numbers it had already found, of objects 4, 5.")]
+    [InlineData(
+        new[] { 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19, 20, 20 },
+        "met 11 definitions of object numbers it had already found, among them those of objects 10, 11, 12, 13, 14, 15, 16, 17, 18, 19.")]
+    public void Lists_the_first_numbers_a_rebuild_finds_defined_more_than_once(int[] numbers, string met)
+    {
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        foreach (var number in numbers)
+        {
+            builder.WithObject(number, "null");
+        }
+
+        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1, includeXRef: false));
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be("Rebuilding the index " + met + KeptRule);
+    }
+
+    [Fact]
+    public void Reports_no_redefinition_when_a_rebuild_finds_each_number_once()
+    {
+        using var document = PdfDocument.Open(SampleDocument().BuildClassic(rootNumber: 1, includeXRef: false));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+    }
+
+    [Fact]
+    public void Takes_a_header_the_scan_finds_in_the_overlap_of_two_windows_for_one_definition()
+    {
+        // The scan reads a megabyte at a time, each window overlapping the last by 64 bytes: object 1's header lies
+        // 40 bytes before the first megabyte ends, so both windows find it.
+        var file = new TestPdfBuilder()
+            .WithObject(9, "(" + new string('x', 1_048_503) + ")")
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+        file.AsSpan().IndexOf("1 0 obj"u8).Should().Be((1024 * 1024) - 40);
+
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+    }
+
     [Fact]
     public void Rebuilds_an_index_whose_objects_lie_past_the_first_megabyte()
     {
