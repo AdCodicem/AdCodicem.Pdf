@@ -8,14 +8,17 @@ namespace AdCodicem.Pdf.Documents;
 /// A PDF document opened for reading.
 /// </summary>
 /// <remarks>
-/// Opening a document indexes it from its cross-reference sections and reads its catalog through the trailer's
-/// <c>/Root</c>. When <c>/Root</c> leads to no catalog, opening loads the indexed objects one after another until
-/// one is a catalog, and rebuilds the index when none is. A rebuild — as the document opens, when its sections
-/// cannot be read or lead to no catalog, or later, as <see cref="WasRepaired"/> says — scans the whole file and
-/// loads every object written directly in it, to take in those its object streams hold, then looks for the catalog
-/// the same way if <c>/Root</c> still leads to none. Anything else is read when something asks for it. A document
-/// is not thread-safe: it caches what it parses, so one document belongs to one thread at a time. Several documents
-/// can of course be processed in parallel, and the reader holds no shared mutable state to make that unsafe.
+/// Opening a document indexes it from its cross-reference sections, with the objects a cross-reference stream's
+/// dictionary refers to for its data and its rows, and reads its catalog through the trailer's <c>/Root</c>. When
+/// <c>/Root</c> leads to no catalog, opening loads the indexed objects one after another until one is a catalog, and
+/// rebuilds the index when none is. A rebuild scans the whole file and loads every object written directly in it, to
+/// take in those its object streams hold, then looks for the catalog the same way if <c>/Root</c> still leads to
+/// none. It happens as the document opens when its sections cannot be read or lead to no catalog, and, as it opens or
+/// later, when an object it reads is neither where its entry places it nor near it, or is missing from an index the
+/// sections did not give whole: <see cref="WasRepaired"/> can turn true after opening. Anything else is read when
+/// something asks for it. A document is not thread-safe: it caches what it parses, so one document belongs to one
+/// thread at a time. Several documents can of course be processed in parallel, and the reader holds no shared
+/// mutable state to make that unsafe.
 /// </remarks>
 public sealed class PdfDocument : IDisposable
 {
@@ -50,8 +53,8 @@ public sealed class PdfDocument : IDisposable
 
     /// <summary>
     /// Gets the number of entries in the cross-reference index, one per object number: those in use, and those the
-    /// file's sections mark free, object 0 — the head of the free list — among them. An index rebuilt by scanning
-    /// holds no free entry.
+    /// file's sections mark free, object 0 — the head of the free list — among them. A rebuild empties the index,
+    /// free entries included, and fills it with the objects its scan finds and those their object streams hold.
     /// </summary>
     public int ObjectCount => _reader.ObjectCount;
 
