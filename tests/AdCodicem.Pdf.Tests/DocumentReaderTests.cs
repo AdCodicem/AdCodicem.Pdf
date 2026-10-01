@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -122,6 +123,29 @@ public class DocumentReaderTests
 
         document.Catalog.Required();
         document.Diagnostics.Contains(PdfDiagnosticCodes.XRefChainCycle).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Reports_a_loop_in_the_chain_at_the_section_it_loops_back_to_whatever_precedes_the_header()
+    {
+        // The offset a /Prev gives counts from the header; the report gives a position in the file (#187).
+        var original = SampleDocument().BuildClassic(rootNumber: 1);
+        var looping = TestPdfBuilder.AppendIncrementalUpdate(
+            original,
+            rootNumber: 1,
+            [(4, "<< /Length 18 >>\nstream\nBT (Bonjour) Tj ET\nendstream")],
+            pointPreviousAtSelf: true);
+        var junk = Encoding.ASCII.GetBytes(new string('j', 101) + "\n");
+        var prefixed = junk.Concat(looping).ToArray();
+        var section = Encoding.Latin1.GetString(prefixed).LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
+
+        using var document = PdfDocument.Open(prefixed);
+
+        var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        cycle.Position.Should().Be(section);
+        cycle.Message.Should().EndWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"the /Prev of the section at offset {section} names offset {section}, which the chain has already read."));
     }
 
     [Fact]

@@ -1198,11 +1198,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             {
                 // The section the chain should have gone on to is unknown: what only it indexed is the index's to
                 // find, as a missing section's is.
+                // Placed at the section looped back to, a position in the file; one named outside the file, as an
+                // /XRefStm and a /Prev naming the same offset past its end are, is placed at what named it.
                 _indexIncomplete = true;
                 _structure.LoopOffset = offset + _headerOffset;
                 _structure.LoopNamedBy = naming;
                 _structure.LoopNamedFrom = namedFrom;
-                _diagnostics.Warn(PdfDiagnosticCodes.XRefChainCycle, "The cross-reference chain loops back on itself.", offset);
+                _diagnostics.Warn(
+                    PdfDiagnosticCodes.XRefChainCycle,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The cross-reference chain loops back on itself: the {naming} of the section at offset {namedFrom} names offset {offset + _headerOffset}, which the chain has already read."),
+                    IsInFile(offset + _headerOffset) ? offset + _headerOffset : namedFrom);
                 break;
             }
 
@@ -1263,6 +1270,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         return _xref.Count > 0;
     }
+
+    /// <summary>Determines whether <paramref name="position"/>, a position in the file, lies inside it.</summary>
+    private bool IsInFile(long position) => position >= 0 && position < _source.Length;
 
     /// <summary>Reports a section of the chain that could not be found, and marks the index incomplete.</summary>
     private void ReportMissingSection(string naming, long offset)

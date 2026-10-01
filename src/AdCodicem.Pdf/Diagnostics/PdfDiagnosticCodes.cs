@@ -28,7 +28,10 @@ public static class PdfDiagnosticCodes
     /// </summary>
     public const string XRefSectionMissing = "xref.section-missing";
 
-    /// <summary>The chain of previous cross-reference sections looped back on itself.</summary>
+    /// <summary>
+    /// The chain of previous cross-reference sections looped back on itself. The report is placed at the section the
+    /// chain looped back to, or at the section whose trailer named it when that offset lies outside the file.
+    /// </summary>
     public const string XRefChainCycle = "xref.chain-cycle";
 
     /// <summary>A cross-reference entry pointed outside the file.</summary>
