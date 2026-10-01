@@ -3099,7 +3099,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return null;
             }
 
-            var parser = new PdfObjectParser(_data, 0, source, diagnostics, streamData: null);
+            var parser = PdfObjectParser.ForObjectStreamMember(_data, _number, _position, expectedNumber, source, diagnostics);
             parser.Position = start;
             var value = parser.ParseObject();
             cut = _cutByGuard && parser.IsTruncated;
