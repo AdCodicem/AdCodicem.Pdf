@@ -90,7 +90,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `trailer.root-recovered` | The trailer's `/Root` does not lead to a document catalog, and the catalog was found among the file's objects — those its index holds when the index is sound, a rebuilt index's otherwise |
 | `filter.failed` | A filter's data is damaged: left encoded when nothing decoded before the byte the fault lies in, kept up to that byte or to the end otherwise, and a repair when nothing was lost |
 | `filter.checksum-mismatch` | A Flate stream decoded to its end, but its zlib checksum disagrees with what it decoded to: all of it was kept, and some of it may be wrong |
-| `filter.unsupported` | The file names a filter the library does not implement |
+| `filter.unsupported` | The file names a filter the library does not implement; decoding stopped there, with what the filters before it decoded |
 | `limit.decoded-stream` | A stream decodes to more than `MaxDecodedStreamLength`; the part within it was kept |
 | `limit.object` | An object is longer than `MaxObjectLength`, its stream data aside; the part within it was parsed |
 | `limit.xref-section-length` | A classic cross-reference table is longer than `MaxXRefSectionLength`; the entries within it were read |
