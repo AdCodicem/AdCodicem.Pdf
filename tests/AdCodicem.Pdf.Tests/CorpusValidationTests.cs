@@ -86,6 +86,12 @@ public class CorpusValidationTests
         "invalid-creation-date-year-zero",
     };
 
+    /// <summary>
+    /// How the corpus model reads the manifest: the key <c>readerLimits</c> is its <c>ReaderLimits</c>.
+    /// </summary>
+    private static readonly System.Text.Json.JsonSerializerOptions ManifestOptions =
+        new() { PropertyNameCaseInsensitive = true };
+
     [Theory]
     [MemberData(nameof(AllDocuments))]
     public void The_validator_reports_on_every_document_the_reader_opens(string file)
@@ -243,8 +249,7 @@ public class CorpusValidationTests
     {
         // Ignored, "finding" would leave the entry declaring no finding, and a sound-looking document would pass
         // for the wrong reason: the model refuses what it does not know, under the options the corpus loads with.
-        var loading = () => System.Text.Json.JsonSerializer.Deserialize<CorpusDocument>(
-            entry, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var loading = () => System.Text.Json.JsonSerializer.Deserialize<CorpusDocument>(entry, ManifestOptions);
 
         loading.Should().Throw<System.Text.Json.JsonException>();
     }
@@ -266,15 +271,14 @@ public class CorpusValidationTests
     {
         using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Corpus.Root, "manifest.json")));
         return System.Text.Json.JsonSerializer.Deserialize<List<CorpusDocument>>(
-            manifest.RootElement.GetProperty("documents"),
-            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+            manifest.RootElement.GetProperty("documents"), ManifestOptions)!;
     }
 
     /// <summary>What validating the thousand-page journal may allocate, opening included.</summary>
     private const long ValidationBudget = 6 * 1024 * 1024;
 
-    private static string Describe(IReadOnlyCollection<string> findings) =>
-        findings.Count == 0 ? "no finding" : string.Join(", ", findings);
+    private static string Describe(string[] findings) =>
+        findings.Length == 0 ? "no finding" : string.Join(", ", findings);
 
     private static string Describe(PdfValidationReport report) =>
         report.Findings.Count == 0 ? "nothing" : string.Join("; ", report.Findings.Select(finding => finding.ToString()));

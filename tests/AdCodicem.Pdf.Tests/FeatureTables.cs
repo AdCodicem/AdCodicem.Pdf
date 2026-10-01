@@ -217,7 +217,7 @@ internal static partial class FeatureTables
 
                 if (answer.Note.Length > 0)
                 {
-                    text.Append(" ").Append(answer.Note);
+                    text.Append(' ').Append(answer.Note);
                 }
 
                 if (answer.Source.Length > 0)
