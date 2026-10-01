@@ -18,7 +18,7 @@ One entry, a record struct in `AdCodicem.Pdf.Diagnostics`.
 | `Severity` | A `PdfDiagnosticSeverity`, below |
 | `Code` | The code, such as `xref.rebuilt`: stable, and what you filter on — one of the constants of `PdfDiagnosticCodes` |
 | `Message` | What happened, in English, for a person to read |
-| `Position` | The byte offset in the file the entry relates to, or -1 when it relates to none |
+| `Position` | The byte offset in the file the entry relates to, or -1 when it relates to none. An offset the file names outside itself is no position: the entry is placed at what named it, or has none, the offset in the message. What concerns an object stream is placed where its data starts, the byte of decoded data in the message |
 
 `ToString()` gives `Severity Code at Position: Message`, or `Severity Code: Message` when there is no position:
 
