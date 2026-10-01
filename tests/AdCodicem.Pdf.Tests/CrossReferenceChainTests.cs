@@ -78,6 +78,22 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void Places_a_loop_back_to_a_section_named_outside_the_file_at_what_named_it()
+    {
+        // An /XRefStm and a /Prev naming one offset past the end: the /Prev loops back to what the /XRefStm named,
+        // and the report goes to the section whose trailer names both, a position in the file (#187).
+        var (file, _) = Updated(prevAt: Offset.PastTheEnd);
+        var text = Encoding.Latin1.GetString(file).Replace("/Prev 99999999", "/Prev 99999999 /XRefStm 99999999", StringComparison.Ordinal);
+        var section = text.LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
+
+        var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        cycle.Position.Should().Be(section);
+        cycle.Message.Should().Contain("names offset 99999999");
+    }
+
+    [Fact]
     public void Goes_on_through_prev_past_an_xrefstm_that_names_nothing()
     {
         // A hybrid file's stream indexes what its classic table leaves out. When it is missing, that is reported,

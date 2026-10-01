@@ -75,7 +75,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `xref.rebuilt` | The index was rebuilt by scanning the whole file |
 | `xref.offset-adjusted` | An object, or a cross-reference section the chain names, was not where the file said, and was found nearby |
 | `xref.section-missing` | A cross-reference section `/Prev` or `/XRefStm` names is neither there nor nearby; what only it indexed is found by rebuilding the index when it is asked for |
-| `xref.chain-cycle` | The chain of previous sections looped |
+| `xref.chain-cycle` | The chain of previous sections looped; reported at the section it looped back to, or, when that offset lies outside the file, at the section whose trailer named it |
 | `xref.entry-out-of-range` | An entry pointed outside the file |
 | `stream.length-invalid` | A stream's `/Length` is not where its data ends: its `endstream` lies elsewhere and ends the data, or the `/Length` is no length — absent, not a non-negative integer, or naming an object the file lacks or that could not be read — and the `endstream` ends the data, or no `endstream` follows the declared length — none before the next object or the end of the file, or none looked for once the document's searches read as much as they may —, and that length is kept |
 | `stream.truncated` | A stream has no `endstream` before the end of the file, or before the `endobj` that follows its data, and its data runs to the end of the file |
