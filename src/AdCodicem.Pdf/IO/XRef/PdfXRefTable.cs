@@ -6,9 +6,11 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// The index of a document: where every object is, and the trailer that names the roots.
 /// </summary>
 /// <remarks>
-/// This is the only structure the reader keeps for the whole document. It holds a few dozen bytes per
-/// object, so indexing a file of a hundred thousand objects costs a few megabytes whatever the objects
-/// themselves weigh.
+/// The reader keeps one for the whole document. Once it has changed the one the chain gave — an object found away
+/// from its entry, or a rebuild —, it also keeps a copy of that one as it was, which
+/// <see cref="PdfFileReader.ChainIndex"/> serves. An index holds a few dozen bytes per object, so indexing a file
+/// of a hundred thousand objects costs a few megabytes whatever the objects themselves weigh, and the copy about
+/// as much again.
 /// </remarks>
 internal sealed class PdfXRefTable
 {

@@ -13,10 +13,12 @@ namespace AdCodicem.Pdf.IO;
 /// Indexes a PDF file and reads its objects on demand.
 /// </summary>
 /// <remarks>
-/// Opening a document reads the cross-reference chain and nothing else. Objects are parsed the first time
-/// something asks for them and kept in a bounded cache, so memory follows what the caller touches rather
-/// than the size of the file. When the index turns out to be wrong — which real files manage in a
-/// remarkable number of ways — the reader rebuilds it by scanning, and says so in the diagnostics.
+/// Opening a document reads the cross-reference chain and resolves the trailer's <c>/Root</c>; it loads other
+/// objects only to look for a catalog that <c>/Root</c> does not lead to, or to rebuild the index. Objects are
+/// parsed the first time something asks for them and kept in a bounded cache, so memory follows what the caller
+/// touches rather than the size of the file. When the index turns out to be wrong — which real files manage in a
+/// remarkable number of ways — the reader rebuilds it by scanning, and says so in the diagnostics. A rebuild loads
+/// every object written directly in the file, to take in those its object streams hold.
 /// </remarks>
 internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, IDisposable
 {
@@ -274,7 +276,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <summary>Gets the number of indexed objects.</summary>
     public int ObjectCount => _xref.Count;
 
-    /// <summary>Gets the object numbers the file defines.</summary>
+    /// <summary>Gets the object numbers the index holds an entry for, free ones included.</summary>
     public IEnumerable<int> ObjectNumbers => _xref.Entries.Keys;
 
     /// <summary>Gets the bytes the file is read from.</summary>
@@ -918,7 +920,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         /// 2,147,483,647, and one whose value it takes for a generation, 0 to 65,535, however many zeros lead them; white
         /// space before each of the generation and <c>obj</c>, as much as the file holds; and white space, a delimiter or the
         /// end of the search after <c>obj</c>. <c>endobj</c> is no header, nor <c>10 0 objx</c>, nor digits a regular
-        /// character precedes, nor tokens a comment separates — which the scan that rebuilds an index does not take either.
+        /// character precedes, nor tokens a comment separates. The scan that rebuilds an index refuses <c>endobj</c> and
+        /// tokens a comment separates too, but takes <c>10 0 objx</c> and digits a regular character precedes (#171).
         /// A header lies whole in what the search reads, from the start of the data to the next object the index places: the
         /// stream's own header, and whatever precedes the data, is never one, and one that the next object's offset cuts is
         /// not seen, that offset stopping the search first. The rule reads nothing but the bytes, so where it stops cannot

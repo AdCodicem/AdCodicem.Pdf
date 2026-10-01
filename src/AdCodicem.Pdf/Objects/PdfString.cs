@@ -31,8 +31,14 @@ public sealed class PdfString : PdfObject
     public int Length => Bytes.Length;
 
     /// <summary>
-    /// Creates a text string, choosing the narrowest encoding that can represent <paramref name="text"/>.
+    /// Creates a text string: <paramref name="text"/> in ASCII, a byte per character, when it holds only printable
+    /// ASCII, from space to tilde; otherwise in UTF-16BE with a byte order mark, in hexadecimal notation.
     /// </summary>
+    /// <remarks>
+    /// The choice is made for the whole text: one character outside printable ASCII — an accent, a tab, a line
+    /// break — writes all of it in two bytes per UTF-16 code unit, after the two of the mark, so <c>é</c> alone
+    /// takes four bytes. PDFDocEncoding, which holds it in one, is not used.
+    /// </remarks>
     public static PdfString FromText(string text)
     {
         ArgumentNullException.ThrowIfNull(text);

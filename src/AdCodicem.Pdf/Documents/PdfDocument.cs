@@ -8,9 +8,14 @@ namespace AdCodicem.Pdf.Documents;
 /// A PDF document opened for reading.
 /// </summary>
 /// <remarks>
-/// Opening a document indexes it and reads nothing else. A document is not thread-safe: it caches what it
-/// parses, so one document belongs to one thread at a time. Several documents can of course be processed
-/// in parallel, and the reader holds no shared mutable state to make that unsafe.
+/// Opening a document indexes it from its cross-reference sections and reads its catalog through the trailer's
+/// <c>/Root</c>. When <c>/Root</c> leads to no catalog, opening loads the indexed objects one after another until
+/// one is a catalog, and rebuilds the index when none is. A rebuild — as the document opens, when its sections
+/// cannot be read or lead to no catalog, or later, as <see cref="WasRepaired"/> says — scans the whole file and
+/// loads every object written directly in it, to take in those its object streams hold, then looks for the catalog
+/// the same way if <c>/Root</c> still leads to none. Anything else is read when something asks for it. A document
+/// is not thread-safe: it caches what it parses, so one document belongs to one thread at a time. Several documents
+/// can of course be processed in parallel, and the reader holds no shared mutable state to make that unsafe.
 /// </remarks>
 public sealed class PdfDocument : IDisposable
 {
@@ -36,17 +41,32 @@ public sealed class PdfDocument : IDisposable
     public string Version => _reader.Version;
 
     /// <summary>Gets a value indicating whether the cross-reference index had to be rebuilt.</summary>
+    /// <remarks>
+    /// The index is rebuilt as the document opens, or later, when something read asks for it: an object that is
+    /// neither where the index places it nor near it, or one missing from an index the file's sections did not give
+    /// whole. It can therefore turn true after the document has opened, as more of the document is read.
+    /// </remarks>
     public bool WasRepaired => _reader.WasRepaired;
 
-    /// <summary>Gets the number of objects the file defines.</summary>
+    /// <summary>
+    /// Gets the number of entries in the cross-reference index, one per object number: those in use, and those the
+    /// file's sections mark free, object 0 — the head of the free list — among them. An index rebuilt by scanning
+    /// holds no free entry.
+    /// </summary>
     public int ObjectCount => _reader.ObjectCount;
 
     /// <summary>Gets a value indicating whether the document is encrypted.</summary>
     public bool IsEncrypted => Trailer.ContainsKey(PdfName.Encrypt);
 
     /// <summary>Opens a document from a file, reading its contents on demand.</summary>
+    /// <param name="path">The path of the file, which stays open until the document is disposed.</param>
+    /// <param name="options">How to open the document, or null for <see cref="PdfReaderOptions.Default"/>.</param>
+    /// <exception cref="PdfFormatException">The file is empty, or no object could be found in it.</exception>
+    /// <exception cref="PdfEncryptedException">
+    /// The document is encrypted, and <see cref="PdfReaderOptions.ThrowOnEncrypted"/> is set, as it is by default.
+    /// </exception>
     /// <exception cref="PdfLimitExceededException">
-    /// Indexing reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// Opening reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
     /// </exception>
     public static PdfDocument Open(string path, PdfReaderOptions? options = null)
     {
@@ -55,15 +75,29 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>Opens a document from bytes already in memory.</summary>
+    /// <param name="bytes">The bytes of the file, which the document reads where they are, not copied.</param>
+    /// <param name="options">How to open the document, or null for <see cref="PdfReaderOptions.Default"/>.</param>
+    /// <exception cref="PdfFormatException">The bytes are empty, or no object could be found in them.</exception>
+    /// <exception cref="PdfEncryptedException">
+    /// The document is encrypted, and <see cref="PdfReaderOptions.ThrowOnEncrypted"/> is set, as it is by default.
+    /// </exception>
     /// <exception cref="PdfLimitExceededException">
-    /// Indexing reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// Opening reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
     /// </exception>
     public static PdfDocument Open(ReadOnlyMemory<byte> bytes, PdfReaderOptions? options = null) =>
         Open(PdfFileSource.FromMemory(bytes), options, ownsSource: true);
 
     /// <summary>Opens a document from a stream. A non-seekable stream is buffered in full.</summary>
+    /// <param name="stream">The stream that holds the file, which the document does not dispose of.</param>
+    /// <param name="options">How to open the document, or null for <see cref="PdfReaderOptions.Default"/>.</param>
+    /// <exception cref="PdfFormatException">
+    /// What was read from the stream is empty, or no object could be found in it.
+    /// </exception>
+    /// <exception cref="PdfEncryptedException">
+    /// The document is encrypted, and <see cref="PdfReaderOptions.ThrowOnEncrypted"/> is set, as it is by default.
+    /// </exception>
     /// <exception cref="PdfLimitExceededException">
-    /// Indexing reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// Opening reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
     /// </exception>
     public static PdfDocument Open(Stream stream, PdfReaderOptions? options = null)
     {
@@ -71,9 +105,22 @@ public sealed class PdfDocument : IDisposable
         return Open(PdfFileSource.FromStream(stream), options, ownsSource: true);
     }
 
-    /// <summary>Opens a document from a source the caller keeps ownership of.</summary>
+    /// <summary>
+    /// Opens a document from a source, which the document takes over or leaves to the caller as
+    /// <paramref name="ownsSource"/> says.
+    /// </summary>
+    /// <param name="source">The bytes of the file.</param>
+    /// <param name="options">How to open the document, or null for <see cref="PdfReaderOptions.Default"/>.</param>
+    /// <param name="ownsSource">
+    /// Whether the document takes <paramref name="source"/> over: when true, disposing of the document disposes of the
+    /// source, and so does an opening that fails; when false, the source stays the caller's to dispose of.
+    /// </param>
+    /// <exception cref="PdfFormatException">The source is empty, or no object could be found in it.</exception>
+    /// <exception cref="PdfEncryptedException">
+    /// The document is encrypted, and <see cref="PdfReaderOptions.ThrowOnEncrypted"/> is set, as it is by default.
+    /// </exception>
     /// <exception cref="PdfLimitExceededException">
-    /// Indexing reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
+    /// Opening reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
     /// </exception>
     public static PdfDocument Open(PdfFileSource source, PdfReaderOptions? options, bool ownsSource)
     {
@@ -132,7 +179,10 @@ public sealed class PdfDocument : IDisposable
         return _reader.GetObject(id);
     }
 
-    /// <summary>Returns the object numbers the file defines.</summary>
+    /// <summary>
+    /// Gets the object numbers of the entries <see cref="ObjectCount"/> counts, those the file's sections mark free
+    /// included — object 0, the head of the free list, among them.
+    /// </summary>
     public IEnumerable<int> ObjectNumbers => _reader.ObjectNumbers;
 
     /// <summary>Gets the bytes the document is read from, for the validation rules that look at the file itself.</summary>
