@@ -637,7 +637,37 @@ public class FilterTests
         Decode([1, 2, 3], PdfName.Get("A\u001B[31mred\u0080\u009F"), diagnostics: diagnostics);
 
         diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.FilterUnsupported)
-            .Which.Message.Should().StartWith("The filter /A#1B#5B31mred#80#9F is not supported.");
+            .Which.Message.Should().Be("The filter /A#1B#5B31mred#80#9F is not supported; decoding stopped there.");
+    }
+
+    [Fact]
+    public void Stops_a_chain_at_the_first_filter_it_does_not_know_and_reports_it_once()
+    {
+        // The filters after an unknown one would read what it encoded: Flate would find no zlib data there, and the
+        // second unknown filter would be reported for data nothing decoded.
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.Get("MadeUpDecode"), PdfName.FlateDecode, PdfName.Get("OtherDecode")]));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory("plain"u8.ToArray())).Decode(diagnostics);
+
+        Text(decoded).Should().Be("plain");
+        diagnostics.Should().ContainSingle()
+            .Which.Message.Should().Be("The filter /MadeUpDecode is not supported; decoding stopped there.");
+    }
+
+    [Fact]
+    public void Returns_what_the_filters_before_an_unknown_one_decoded()
+    {
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.ASCIIHexDecode, PdfName.Get("MadeUpDecode"), PdfName.ASCIIHexDecode]));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory("3730363936453631>"u8.ToArray())).Decode(diagnostics);
+
+        // One hex decoding undone, the second left: the data is what the first filter gave.
+        Text(decoded).Should().Be("70696E61");
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.FilterUnsupported);
     }
 
     [Fact]

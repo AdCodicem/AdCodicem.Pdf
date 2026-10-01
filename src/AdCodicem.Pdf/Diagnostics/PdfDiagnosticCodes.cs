@@ -134,7 +134,11 @@ public static class PdfDiagnosticCodes
     /// </summary>
     public const string FilterChecksumMismatch = "filter.checksum-mismatch";
 
-    /// <summary>A filter named by the file is not supported.</summary>
+    /// <summary>
+    /// A filter named by the file is not supported, and decoding stopped there: the data is what the filters before
+    /// it decoded, or the stream's own when it is the first. A <c>/Filter</c> entry that is neither a name nor an
+    /// array leaves the data as the stream holds it.
+    /// </summary>
     public const string FilterUnsupported = "filter.unsupported";
 
     /// <summary>

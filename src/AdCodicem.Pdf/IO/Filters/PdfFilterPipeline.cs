@@ -8,11 +8,13 @@ namespace AdCodicem.Pdf.IO.Filters;
 internal static class PdfFilterPipeline
 {
     /// <summary>
-    /// Decodes a stream's data, stopping at an image filter.
+    /// Decodes a stream's data, stopping at an image filter, and at a filter it does not know.
     /// </summary>
     /// <remarks>
     /// Image filters are left in place on purpose: a JPEG inside a PDF is already a JPEG, and decoding it
-    /// to pixels only to encode it again is both slow and lossy. Callers that want pixels ask for them.
+    /// to pixels only to encode it again is both slow and lossy. Callers that want pixels ask for them. A filter
+    /// the library does not know leaves the data as the filters before it decoded it: the filters after it would
+    /// decode what it encoded, and meet a fault of their own, or none, in data they cannot read.
     /// </remarks>
     /// <param name="stream">The stream to decode.</param>
     /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
@@ -44,7 +46,7 @@ internal static class PdfFilterPipeline
 
         if (filters is PdfName single)
         {
-            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics, stream.Data, guard);
+            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics, stream.Data, guard, out _);
         }
 
         if (filters is not PdfArray chain)
@@ -71,7 +73,12 @@ internal static class PdfFilterPipeline
                 return data;
             }
 
-            data = ApplyOne(name, data, stepParameters, diagnostics, stream.Data, guard);
+            data = ApplyOne(name, data, stepParameters, diagnostics, stream.Data, guard, out var unknown);
+
+            if (unknown)
+            {
+                return data;
+            }
         }
 
         return data;
@@ -90,9 +97,11 @@ internal static class PdfFilterPipeline
         PdfDictionary? parameters,
         PdfDiagnostics? diagnostics,
         PdfStreamData source,
-        PdfLimitGuard guard)
+        PdfLimitGuard guard,
+        out bool unknown)
     {
         var position = source.Position;
+        unknown = false;
 
         if (IsImageFilter(name))
         {
@@ -174,8 +183,11 @@ internal static class PdfFilterPipeline
             return data;
         }
 
+        unknown = true;
         diagnostics?.Warn(
-            PdfDiagnosticCodes.FilterUnsupported, $"The filter {FileQuote.Name(name)} is not supported.", position);
+            PdfDiagnosticCodes.FilterUnsupported,
+            $"The filter {FileQuote.Name(name)} is not supported; decoding stopped there.",
+            position);
         return data;
     }
 
