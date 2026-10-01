@@ -6657,7 +6657,9 @@
         "pages": 1,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "object-stream.member-moved"
+        ],
         "findings": [
           "xref.entry-shifted"
         ],
@@ -7341,7 +7343,8 @@
         "indexRebuilt": false,
         "requiredDiagnostics": [
           "xref.rebuilt",
-          "stream.length-invalid"
+          "stream.length-invalid",
+          "object-stream.unreadable"
         ],
         "findings": [
           "xref.entry-broken",
@@ -7396,7 +7399,8 @@
         "clean": false,
         "indexRebuilt": true,
         "requiredDiagnostics": [
-          "xref.rebuilt"
+          "xref.rebuilt",
+          "object-stream.unreadable"
         ],
         "findings": [
           "file.eof-missing",

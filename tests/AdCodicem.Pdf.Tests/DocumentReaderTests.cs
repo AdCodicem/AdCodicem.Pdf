@@ -369,22 +369,89 @@ public class DocumentReaderTests
     public void Reads_what_an_object_stream_header_lists_before_it_goes_wrong()
     {
         // The header lists object 2, then 3 at an offset that is not a number.
-        using var document = PdfDocument.Open(Packed(header => header[..6] + "x "));
+        var file = Packed(header => header[..6] + "x ");
+        using var document = PdfDocument.Open(file);
 
         document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
         document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
-        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken && entry.Message == "An object stream header is malformed.");
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which;
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(ObjectStreamDataStart(file));
+        report.Message.Should().Be(
+            "Object stream 4 has a header that holds something other than an object number and an offset after 1 of the 2 objects its /N declares; only the first 1 of its 2 objects can be read from it.");
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken);
     }
 
     [Fact]
     public void Reads_an_object_where_its_stream_s_header_lists_it_rather_than_where_the_index_says()
     {
         // The header lists 3 at index 0 and 2 at index 1; the index places 2 at index 0.
-        using var document = PdfDocument.Open(Packed(header => "3" + header[1..4] + "2" + header[5..]));
+        var file = Packed(header => "3" + header[1..4] + "2" + header[5..]);
+        using var document = PdfDocument.Open(file);
 
         document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
-        document.Diagnostics.Should().Contain(entry =>
-            entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && entry.Message == "Object 2 was at index 1 of its object stream, not 0.");
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamMemberMoved).Which;
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Repair);
+        report.Position.Should().Be(ObjectStreamDataStart(file));
+        report.Message.Should().Be("Object 2 is at index 1 of object stream 4, not at index 0, where the cross-reference index places it.");
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+    }
+
+    [Fact]
+    public void Reads_an_object_whose_index_lies_past_its_stream_s_header_where_the_header_lists_it()
+    {
+        // The header lists object 3 alone, at index 0, and ends there; the index places 3 at index 1.
+        var file = Packed(header => header[4..]);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable)
+            .Which.Message.Should().Be(
+                "Object stream 4 has a header that ends after 1 of the 2 objects its /N declares; only the first 1 of its 2 objects can be read from it.");
+        var moved = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamMemberMoved).Which;
+        moved.Position.Should().Be(ObjectStreamDataStart(file));
+        moved.Message.Should().Be("Object 3 is at index 0 of object stream 4, not at index 1, where the cross-reference index places it.");
+    }
+
+    [Theory]
+    [InlineData("/First 4", "has no /N that gives a count of objects; none of its objects can be read from it.")]
+    [InlineData("/N -1 /First 4", "has no /N that gives a count of objects; none of its objects can be read from it.")]
+    [InlineData("/N 1", "has no /First that gives where its objects start; none of its objects can be read from it.")]
+    [InlineData("/N 1 /First -4", "has no /First that gives where its objects start; none of its objects can be read from it.")]
+    [InlineData("/N 9 /First 4", "declares 9 objects in /N, more than a header of the 4 bytes its /First gives can list; none of its objects can be read from it.")]
+    [InlineData("/N 1 /First 40", "gives in /First an offset, 40, past the end of its decoded data, which is 8 bytes long; none of its objects can be read from it.")]
+    [InlineData("/N 2 /First 4", "has a header that ends after 1 of the 2 objects its /N declares; only the first 1 of its 2 objects can be read from it.")]
+    public void Reports_an_object_stream_whose_dictionary_or_header_cannot_be_believed_where_its_data_starts(string entries, string fault)
+    {
+        // The index is rebuilt, which reads every object stream the file holds: object stream 5 holds object 6.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, $"<< /Type /ObjStm {entries} /Length 8 >>\nstream\n6 0 <<>>\nendstream")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which;
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(ObjectStreamDataStart(file));
+        report.Message.Should().Be("Object stream 5 " + fault);
+    }
+
+    [Fact]
+    public void Reports_an_object_stream_whose_header_starts_with_a_stray_token_as_serving_none_of_its_objects()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Type /ObjStm /N 1 /First 4 /Length 8 >>\nstream\n6 x <<>>\nendstream")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
+            "Object stream 5 has a header that holds something other than an object number and an offset after 0 of the 1 objects its /N declares; none of its objects can be read from it.");
     }
 
     [Fact]
@@ -396,13 +463,14 @@ public class DocumentReaderTests
     }
 
     [Fact]
-    public void An_object_stream_whose_count_cannot_be_believed_serves_no_object()
+    public void An_object_stream_that_declares_no_object_serves_none_and_is_not_reported()
     {
         var bytes = Packed(header => header);
         var text = Encoding.Latin1.GetString(bytes);
         using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.Replace("/N 2", "/N 0", StringComparison.Ordinal)));
 
         document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().BeEmpty();
     }
 
     [Fact]
@@ -510,6 +578,14 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeTrue();
         document.ObjectCount.Should().Be(sound.ObjectCount);
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    /// <summary>Where the data of the file's object stream starts.</summary>
+    private static long ObjectStreamDataStart(byte[] file)
+    {
+        var text = Encoding.Latin1.GetString(file);
+        var dictionary = text.IndexOf("/Type /ObjStm", StringComparison.Ordinal);
+        return text.IndexOf("stream\n", dictionary, StringComparison.Ordinal) + "stream\n".Length;
     }
 
     /// <summary>The catalog, and the page tree and the page packed in object stream 4, its header rewritten.</summary>

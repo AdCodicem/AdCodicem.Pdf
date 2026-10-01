@@ -74,9 +74,25 @@ public static class PdfDiagnosticCodes
     public const string StreamSelfReference = "stream.self-reference";
 
     /// <summary>
+    /// An object is in the object stream its entry names, at another index than the entry gives: the object stream's
+    /// header lists it elsewhere, and it was read from there. The report is placed where the object stream's data
+    /// starts, and names the object, the object stream and both indexes.
+    /// </summary>
+    public const string ObjectStreamMemberMoved = "object-stream.member-moved";
+
+    /// <summary>
+    /// What an object stream says of itself cannot be believed: its <c>/N</c> or its <c>/First</c> is absent or
+    /// negative, its <c>/N</c> declares more objects than its header can list, its <c>/First</c> lies past its decoded
+    /// data, or its header ends or breaks before listing as many objects as its <c>/N</c> declares. The objects listed
+    /// before the fault, if any, are read; the others cannot be read from it. The report is placed where the object
+    /// stream's data starts, and names the object stream and its fault.
+    /// </summary>
+    public const string ObjectStreamUnreadable = "object-stream.unreadable";
+
+    /// <summary>
     /// A token stood where the syntax does not allow it: where a value or a dictionary key was expected, after a key
-    /// that has no value, closing an array with a dictionary's end, or in an object stream's header. It was read as
-    /// null, skipped, or it ended what it stood in.
+    /// that has no value, or closing an array with a dictionary's end. It was read as null, skipped, or it ended what
+    /// it stood in.
     /// </summary>
     public const string SyntaxUnexpectedToken = "syntax.unexpected-token";
 
