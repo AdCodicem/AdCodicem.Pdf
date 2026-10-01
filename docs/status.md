@@ -33,14 +33,17 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   reader and the validator ([#135]) and is published with the project documents. Checking each defense it names
   against the code filed thirty debts, [#154] to [#183]: twenty-five under M02 at the maintainer's choice ([#154] to
   [#175], [#181] to [#183]), [#176] under M23, [#180] under M16, and [#177] to [#179], on the release workflows and
-  the core's dependencies, under none.
+  the core's dependencies, under none. M01's review after the fact ([#136]) was recorded on 2026-10-01
+  ([`docs/reviews/M01.md`](reviews/M01.md)): of its 23 findings it fixed 9 in its own pull request and filed 11 under
+  M02, in nine issues M02 now waits on — [#185] to [#190], [#192], [#193] and [#197] —, [#191] under M03, [#194]
+  under M23 and [#195] under none; [#196], noticed outside its extent, is filed under none.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
-  [#148]), on `claude/cool-brown-qvs5lv`: a tutorial held to its sample by a test, four how-to guides, four reference
+  [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,474 unit on `claude/cool-brown-qvs5lv` — `main`'s 2,472 and the two that hold the tutorial to its
-  sample — (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
+- **Tests**: 2,488 unit on M01's review branch, `ccr-28147900-n5opmm` — `main`'s 2,474 and the fourteen the review
+  added — (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
   wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23 for the remote corpus's
   fetcher + 43 for the roadmap's mirror on GitHub, the last three counted on [#147]'s branch. With the 233 remote
   documents fetched here: 4,144 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
@@ -101,7 +104,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 |---|---|---|---|
 | Indexing | synthetic, 1000 pages, ~4 MB | 229 µs | 393 KB |
 | Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
-| Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 2.4 MB |
+| Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 3.2 MB |
 | Validating under the structural profile, the document already open and read | synthetic, 1000 pages | 2.5 ms | 588 KB |
 | Typing and checking the objects the trailer reaches against the Arlington model, alone | synthetic, 1000 pages | 1.7 ms | 280 KB |
 | Opening and validating under the structural profile | synthetic, 1000 pages | 6.2 ms | 2.6 MB |
@@ -122,7 +125,8 @@ caller validating a file it has not read pays: every object parsed for the first
 stream's data read. Slice 3's first thirty-four rules took 716 µs and 308 KB on the first row, slice 2's twenty-one
 214 µs and 8.9 KB, slice 1's one rule 86 ns and 232 B; the rows grow with each slice of M02.
 Indexing costs roughly 200 bytes per object, whatever the objects weigh. The third row is asserted as a
-budget in CI (`CorpusReadingTests`), so an allocation regression fails the build. A stream that ran out is
+budget in CI (`CorpusReadingTests`), so an allocation regression fails the build; it was 2.4 MB when M01 closed, and
+M01's review measured 3.2 MB on 2026-10-01, under the 4 MB budget. A stream that ran out is
 read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams only; the
 second reading keeps nothing. A stream whose checksum is wrong, or that turns corrupt, is read again after the fault
 ([#56]): its body as raw deflate, then, when that faults too, once more a byte at a time through the 8 KB piece of
@@ -180,7 +184,9 @@ One pull request per batch, each design question put to the maintainer after mea
 7. Slice 6 ([#62]): the report's JSON, its schema and documentation, the budgets restated.
 8. The threat model's first version, `docs/threat-model.md`, for the reader and the validator ([#135]) — done on
    2026-10-01 (journal of 2026-10-01).
-9. M01's review after the fact ([#136]): the maintainer opens a fresh session and types `/milestone-review M01`.
+9. M01's review after the fact ([#136]) — done on 2026-10-01 (journal of 2026-10-01, `docs/reviews/M01.md`). The
+   nine issues it filed under M02, [#185] to [#190], [#192], [#193] and [#197], join step 4's debts, in an order to
+   settle with the maintainer; [#186] comes before M03's slice 1, which it blocks.
 10. M02's review, slice 7 ([#137]), once every other issue filed under M02 is closed: a fresh session,
    `/milestone-review M02`; then whatever it files under M02.
 11. The closing: a green `Remote corpus` run recorded here, M02.md's exit criteria ticked, the roadmap and
@@ -190,6 +196,53 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-01 — M01's review after the fact ([#136])
+- **What it is.** The adversarial review ADR 46 asks of every milestone, run on M01 after the fact, under M02, by a
+  session that worked on none of it, as `docs/milestone-review.md` describes. It covers M01's fifteen commits,
+  `c9d751f` to `1f90e8f`, and the reader as it stands on `main` at `2183466`. The report is
+  [`docs/reviews/M01.md`](reviews/M01.md), indexed in `docs/reviews/README.md`.
+- **Counts.** Pass 1, blind, gave 107 candidates. Pass 2 dropped 37 as justified or already filed, most of them by the
+  threat model's debts of the day before, and merged the rest into 20 findings. Refutation refuted none and narrowed
+  13, and two findings were split so each part has one outcome, giving 22. A twenty-third surfaced after the triage,
+  while an issue was checked. Of the 23: 9 fixed here, 11 filed under M02 in nine issues, 2 under later milestones,
+  1 under none, none put to the maintainer.
+- **Fixed in the review's pull request**:
+  - each public type of the object model and the diagnostics in its own file (R-08);
+  - analysis back at `latest-recommended`, as ADR 29 and `CLAUDE.md` say: six test findings fixed, and CA1720
+    suppressed where it fires, with its reason (R-09);
+  - the core's `InternalsVisibleTo` grant to the HTML assemblies removed, as ADR 36 reasons (R-10);
+  - the tests M01 requires and lacked: deep dictionaries, exotic white space, `IsHexadecimal` and the `ToString`
+    forms, the `damaged` use case, and the manifest's completeness over the whole corpus folder (R-16);
+  - `M01.md`, the XML documentation, the site and the project documents brought in line with the code (R-14, R-18
+    to R-20). The memory row above now reads 3.2 MB, as measured;
+  - `docs.yml`'s checkout no longer keeps its token beside `pages: write` and `id-token: write` (R-21).
+
+  The fixes are `refactor:`, `test:` and `docs:` commits, with `build:` for R-09 and R-10 and `ci:` for R-21. None of
+  them starts a release.
+- **Filed under M02**, which now waits on them:
+  - [#185], a reference's generation is compared with nothing, so `5 1 R` reads `5 0 obj` with no report;
+  - [#186], reals are not read as the nearest `double`. It blocks M03's slice 1;
+  - [#187], codes raised outside their meaning, `object.redefined` never raised, positions that are not file offsets;
+  - [#188], a relocated section that lands on one already read;
+  - [#189], a rebuild keeping an older direct definition, and taking `10 0 objx` for a header;
+  - [#190], `PdfDocument`'s version, stream position and behavior after `Dispose`;
+  - [#192], LZW decoding allocating per code;
+  - [#193], no memory budget for a large index, and no time budget for a corpus document's full read;
+  - [#197], the nearby search reaching 1,024 bytes past an offset near the start of the file, found after the triage
+    and filed as R-06's was.
+- **Filed elsewhere**: [#191] under M03, before [#35] records the API baseline; [#194], the nightly fuzzing's
+  repeated seeds, under M23; [#195], the corpus build's unhashed Python pins, under none.
+- **Noticed outside the extent**: Dependabot's auto-merge fails open on an update it cannot classify, and no CI check
+  gates the merge. It is filed as [#196], under none, at the maintainer's choice. It is not counted as a finding.
+- **Decided by the maintainer**: the triage as proposed; [#186] and [#192] under M02 rather than M03 and M23;
+  `M01.md`'s first acceptance row aligned with the manifest's floor rather than the test tightened.
+- **Updated**: [#137]'s `Blocked by:` line names the nine issues filed under M02. The threat model's *Known gaps*
+  name every issue the review filed but [#186] and [#187], which concern correctness and the diagnostics' contract,
+  not a defense.
+- **Checked**: the solution builds with no warning at `latest-recommended`; 2,488 unit tests, 2,485 passed and
+  3 skipped; the site builds.
+- **Next**: the reader and validation debts of step 4, with the nine this review added, then slices 4 to 6.
 
 ### 2026-10-01 — The threat model's first version ([#135])
 - **What it is.** `docs/threat-model.md`, written against `13e06bb`. It covers:
@@ -1200,3 +1253,16 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#180]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/180
 [#181]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/181
 [#183]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/183
+[#185]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/185
+[#186]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/186
+[#187]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/187
+[#188]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/188
+[#189]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/189
+[#190]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/190
+[#191]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/191
+[#192]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/192
+[#193]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/193
+[#194]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/194
+[#195]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/195
+[#196]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/196
+[#197]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/197
