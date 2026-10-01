@@ -413,6 +413,67 @@ public class DocumentReaderTests
         moved.Message.Should().Be("Object 3 is at index 0 of object stream 4, not at index 1, where the cross-reference index places it.");
     }
 
+    [Fact]
+    public void Places_a_fault_met_inside_an_object_stream_member_where_the_stream_s_data_starts()
+    {
+        // A byte of decoded data is no offset in the file: the report is placed at the stream, the byte in its message.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Rotate ) >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+        var dataStart = ObjectStreamDataStart(file);
+        var stray = Encoding.Latin1.GetString(file).IndexOf(')', (int)dataStart) - dataStart;
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken).Which;
+        report.Position.Should().Be(dataStart);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"A token was found where a value was expected. It was met in object 3, at byte {stray} of object stream 4's decoded data."));
+    }
+
+    [Fact]
+    public void Says_that_an_object_stream_s_data_rather_than_the_file_ended_in_the_middle_of_a_member()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< /Type /Page /Rotate")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+        var dataStart = ObjectStreamDataStart(file);
+        var dataEnd = Encoding.Latin1.GetString(file).IndexOf("\nendstream", (int)dataStart, StringComparison.Ordinal) - dataStart;
+
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(3));
+
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject).Which;
+        report.Position.Should().Be(dataStart);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The object stream's decoded data ended in the middle of an object. It was met in object 3, at byte {dataEnd} of object stream 4's decoded data."));
+    }
+
+    [Fact]
+    public void Places_a_length_fault_of_a_stream_written_inside_an_object_stream_where_the_object_stream_s_data_starts()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< /Length 99 >>\nstream\nabc\nendstream")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+        var dataStart = ObjectStreamDataStart(file);
+
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(3));
+
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which;
+        report.Position.Should().Be(dataStart);
+        report.Message.Should().Contain("It was met in object 3, at byte ").And.EndWith(" of object stream 4's decoded data.");
+    }
+
     [Theory]
     [InlineData("/First 4", "has no /N that gives a count of objects; none of its objects can be read from it.")]
     [InlineData("/N -1 /First 4", "has no /N that gives a count of objects; none of its objects can be read from it.")]

@@ -71,6 +71,12 @@ internal ref struct PdfObjectParser
     /// </summary>
     private int _objectNumber;
 
+    /// <summary>
+    /// The object stream member the buffer holds, when it is an object stream's decoded data rather than bytes of the
+    /// file; null otherwise.
+    /// </summary>
+    private ObjectStreamMember? _member;
+
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
         long baseOffset = 0,
@@ -84,6 +90,25 @@ internal ref struct PdfObjectParser
         _source = source;
         _diagnostics = diagnostics;
         _streamData = streamData;
+    }
+
+    /// <summary>
+    /// Creates a parser over an object stream's decoded data, to read member <paramref name="objectNumber"/>. A byte of
+    /// decoded data is no position in the file: what the parser meets is placed where the stream's data starts, and the
+    /// member and the byte are given in the message.
+    /// </summary>
+    /// <param name="data">The object stream's decoded data.</param>
+    /// <param name="streamNumber">The object stream's number.</param>
+    /// <param name="dataStart">Where the object stream's data starts in the file.</param>
+    /// <param name="objectNumber">The member being read.</param>
+    /// <param name="source">Resolves what the member refers to.</param>
+    /// <param name="diagnostics">Receives what parsing met.</param>
+    public static PdfObjectParser ForObjectStreamMember(
+        ReadOnlyMemory<byte> data, int streamNumber, long dataStart, int objectNumber, IPdfObjectSource source, PdfDiagnostics diagnostics)
+    {
+        var parser = new PdfObjectParser(data, 0, source, diagnostics);
+        parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber);
+        return parser;
     }
 
     /// <summary>
@@ -202,7 +227,10 @@ internal ref struct PdfObjectParser
         {
             case PdfTokenKind.EndOfInput:
                 _truncated = true;
-                Report(PdfDiagnosticCodes.SyntaxTruncatedObject, "The file ended in the middle of an object.", token.Start);
+                Report(
+                    PdfDiagnosticCodes.SyntaxTruncatedObject,
+                    _member is null ? "The file ended in the middle of an object." : "The object stream's decoded data ended in the middle of an object.",
+                    token.Start);
                 return PdfNull.Instance;
 
             case PdfTokenKind.Integer:
@@ -631,7 +659,11 @@ internal ref struct PdfObjectParser
     {
         _lengthFault = fault;
 
-        if (_streamData?.IsLengthFaultReported(fault.DataStart) != true)
+        if (_member is { } member)
+        {
+            _diagnostics?.Warn(code, member.Locate(message, fault.DataStart), member.DataStart);
+        }
+        else if (_streamData?.IsLengthFaultReported(fault.DataStart) != true)
         {
             _diagnostics?.Warn(code, message, fault.DataStart);
         }
@@ -781,8 +813,28 @@ internal ref struct PdfObjectParser
         }
     }
 
-    private readonly void Report(string code, string message, long position) =>
+    private readonly void Report(string code, string message, long position)
+    {
+        if (_member is { } member)
+        {
+            _diagnostics?.Warn(code, member.Locate(message, position), member.DataStart);
+            return;
+        }
+
         _diagnostics?.Warn(code, message, _baseOffset + position);
+    }
+
+    /// <summary>The object stream member a parser reads, and where what it meets is placed.</summary>
+    /// <param name="StreamNumber">The object stream's number.</param>
+    /// <param name="DataStart">Where the object stream's data starts in the file.</param>
+    /// <param name="ObjectNumber">The member's number.</param>
+    private readonly record struct ObjectStreamMember(int StreamNumber, long DataStart, int ObjectNumber)
+    {
+        /// <summary>Adds to <paramref name="message"/> the member, and the byte of decoded data it is about.</summary>
+        public string Locate(string message, long position) => string.Create(
+            CultureInfo.InvariantCulture,
+            $"{message} It was met in object {ObjectNumber}, at byte {position} of object stream {StreamNumber}'s decoded data.");
+    }
 
     /// <summary>A stream's <c>/Length</c>, as <see cref="ReadLength"/> read it.</summary>
     /// <param name="Form">How it was written, or what the object it names holds.</param>
