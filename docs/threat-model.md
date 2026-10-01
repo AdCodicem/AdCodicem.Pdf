@@ -6,9 +6,9 @@ A milestone that opens or widens a surface a hostile input reaches completes its
 Every milestone's review checks the code against it (`docs/milestone-review.md`, *Security*). Read it before you
 touch a parser, a decoder or a resource loader (`CLAUDE.md`).
 
-This first version was written on 2026-09-30 against `13e06bb` ([#135]). It covers what exists there: the reader
-(M01) and the validator (M02, slices 1 to 3). Each defense below was checked against the code as it stands, and
-each test it names was read. A defense found missing is not written as if it held. It is listed under the
+This first version was written on 2026-09-30 and 2026-10-01 against `13e06bb` ([#135]). It covers what exists
+there: the reader (M01) and the validator (M02, slices 1 to 3). Each defense below was checked against the code as
+it stands, and each test it names was read. A defense found missing is not written as if it held. It is listed under the
 *Known gaps* of its surface, with the issue that pays it.
 
 ## How to read it
@@ -30,9 +30,10 @@ What a caller entrusts to the library when it opens a file it did not produce:
 - **The process's memory.** Memory follows the heaviest object the caller touches, not the size of the file
   (invariant 2). No allocation is sized by a value from the file without a checked bound (invariant 4). The five
   guards cap what a valid but exceptional file may make the reader hold.
-- **The process's time, and the calling thread.** Every call does work in proportion to the bytes it reads, under
-  the guards. No call can be cancelled yet ([M03] slice 9, [M23] slice 11). A .NET thread cannot be aborted, so a
-  slow call holds its thread until it returns.
+- **The process's time, and the calling thread.** The aim is that every call does work in proportion to the bytes
+  it reads, under the guards. Several shapes break it today ([#155], [#166], [#168], [#181]). No call can be
+  cancelled yet ([M03] slice 9, [M23] slice 11). A .NET thread cannot be aborted, so a slow call holds its thread
+  until it returns.
 - **The stack.** A `StackOverflowException` cannot be caught in .NET: it ends the process. Every recursion whose
   depth a file chooses is bounded, and the reader also asks the runtime whether stack is left
   (`RuntimeHelpers.TryEnsureSufficientExecutionStack`) before it goes one level deeper.
@@ -112,8 +113,9 @@ mutation campaign opens with the defaults and never with `ThrowOnLimit`.
 - **Every walk the validator makes across objects is iterative**, with a visited set by object number: the
   object graph, the page tree, the Arlington walk, name and number trees, and the dependencies between object
   streams. The searches inside one object recurse no deeper than the parser nested it.
-- **Chains are followed once.** The `/Prev` chain keeps the offsets it has read. `PdfReference.Resolve` follows
-  at most `MaxChainLength` (32) references. The index is rebuilt at most once per document (`_repaired`).
+- **Chains are followed once.** The `/Prev` chain keeps the offsets it has read. `PdfReference.Resolve` fetches
+  at most `MaxChainLength` (32) objects, so a chain of 31 references to references already reads as null ([#173]).
+  The index is rebuilt at most once per document (`_repaired`).
 - **Reports are made once.** A guard is reported once per `(limit, position)`, a stream's length fault once per
   data start, and a search for a lost `endstream` runs once per data start.
 
@@ -146,17 +148,291 @@ It opens no path, URL or process that a file names. It loads no type and writes 
 the core is `File.OpenHandle` on the path the caller gives, read-only. A search of `src/` finds no `HttpClient`,
 `Process`, `Assembly.Load`, `Type.GetType`, `Activator`, P/Invoke, `Console`, `Trace` or logger.
 
-The only shared mutable state is `PdfName`'s interned table. It is a `ConcurrentDictionary`, so it is safe to
-share across threads, but it grows for the life of the process ([#37]). Every other static value is an immutable
-record or singleton. A `PdfDocument` is not thread-safe, and nothing detects two threads using one.
+The only shared mutable state the library keeps is `PdfName`'s interned table. It is a `ConcurrentDictionary`, so
+it is safe to share across threads, but it grows for the life of the process ([#37]). Every other static value is an
+immutable record or singleton. Windows and Flate buffers are rented from the process-wide `ArrayPool<byte>.Shared`
+and go back to it uncleared ([#180]). A `PdfDocument` is not thread-safe, and nothing detects two threads using one.
 
-<!-- READER -->
+## The reader
 
-<!-- VALIDATOR -->
+Everything below reads bytes the file chose. The reader opens a file by indexing it. It reads the header, the tail
+and the cross-reference chain, or it rebuilds the index by scanning the file when the chain fails. After that it
+parses only the objects a caller asks for, each through a window of the file, and decodes a stream only when the
+caller asks for its data.
 
-<!-- HOLDS -->
+### Opening and the file source
 
-<!-- SUPPLY -->
+| Threat | Defense | Held by | Fuzzed |
+|---|---|---|---|
+| An empty input, or one that holds no object | `PdfDocument.Open` refuses it with `PdfFormatException` and releases a source it owns | `DocumentReaderTests.Refuses_an_empty_input`; `HostileInputTests.Refuses_an_input_that_contains_no_objects`; `ReaderLimitsTests.Opening_an_empty_input_releases_the_source_it_owns` | The second |
+| Junk before the header; a header or a `startxref` searched for across the whole file | `%PDF-` is looked for in the first 4 KB, and the bytes before it shift every offset. `startxref` is looked for in the last 4 KB. One that is missing, negative or not a number rebuilds the index | `DocumentReaderTests.Reads_a_file_that_starts_with_junk_before_the_header`, `Rebuilds_the_index_of_a_file_whose_tail_was_lost` | Yes |
+| A failure while indexing that leaks the file handle | A guard thrown while indexing releases a source the document owns. A rebuild that reaches a guard finishes the index before it throws | `ReaderLimitsTests.Opening_releases_a_source_it_owns_when_a_guard_throws`, `A_rebuild_that_reaches_a_guard_finishes_the_index_before_it_throws` | No |
+| Ciphertext handed out as content | With `ThrowOnEncrypted`, on by default, `Open` refuses a trailer that holds `/Encrypt` with `PdfEncryptedException`. A rebuilt index can lose the key ([#154]) | `DocumentReaderTests.Refuses_an_encrypted_document_with_a_typed_exception` | No: encrypted seeds are left out |
+| Opening that reads the whole file | The index comes from the cross-reference sections, and stream data is read only when asked for | `DocumentReaderTests.Does_not_read_stream_data_until_it_is_asked_for`; `CorpusReadingTests.Opening_does_not_read_the_content_of` | — |
+| Use after dispose | `Dispose` is idempotent, `GetObject` throws `ObjectDisposedException` after it, and the validator refuses a disposed document | `DocumentReaderTests.Disposing_a_document_twice_is_harmless`; `ValidatorTests.Validating_a_disposed_document_throws_before_any_rule_runs` | — |
+| Limits that allow nothing | Every `PdfReaderLimits` property refuses zero or less, and `PdfReaderOptions.Limits` refuses null | `ReaderLimitsTests.A_limit_of_zero_or_less_is_refused_and_named`, `The_options_refuse_limits_that_are_not_there` | — |
+
+Known gaps:
+
+- [#154] Encryption is decided by the merged trailer's `/Encrypt` key, unresolved. A rebuilt index loses one kept in a
+  cross-reference stream and hands out ciphertext; one that resolves to null refuses an unencrypted file.
+- [#159] Messages quote the file's names and keywords whole and unescaped. Each reference copies them, records keep
+  them for the document's life, and control characters reach the host's logs.
+- [#180] Pooled buffers go back to the shared pool uncleared, and the windows a hostile file grew stay pooled, per
+  thread, after the document is disposed.
+- [#167] `ObjectNumbers` and `Diagnostics` are live: a read that rebuilds the index while a caller enumerates them
+  throws `InvalidOperationException`.
+- [#149] `Open(Stream)` copies a seekable stream into memory, where its documentation says only a non-seekable one is.
+- [#52] A source whose `Read` returns fewer bytes than asked is taken as the end of the data.
+- [#125] A `startxref` near the largest `long` wraps to a negative offset once the header's offset is added.
+
+### Object syntax
+
+| Threat | Defense | Held by | Fuzzed |
+|---|---|---|---|
+| The lexer looping, or reading past its buffer | Every token but the end of input consumes a byte. Look-aheads check the length, and a string that never closes ends at the buffer's end | `PropertyTests.The_lexer_terminates_on_any_bytes_and_stays_inside_the_buffer`; `LexerTests.Never_loops_on_a_stray_delimiter`, `Recovers_from_an_unterminated_literal_string` | Property, over buffers of about 100 bytes |
+| Nesting that exhausts the stack | `PdfObjectParser.MaxDepth` (128) and a stack probe at each container. Past either, `SkipContainer` counts brackets without recursion, and `syntax.depth-exceeded` is reported | `ParserTests.Refuses_to_follow_nesting_deeper_than_its_limit`; `HostileInputTests.Survives_deeply_nested_containers_inside_an_object`, `A_file_nesting_objects_deeper_than_the_stack_allows_reads_them_as_null_without_crashing` | No |
+| A token or an object of any length, or one that never closes | The window grows ×8 from 8 KB up to `MaxObjectLength`. Past it, the object is kept as far as it was read and `limit.object` is reported. The parses of one object add up to about 1.3 times the last window | `HostileInputTests.Survives_a_string_longer_than_the_largest_window`; `ReaderLimitsTests.An_object_is_read_no_further_than_its_bound`, `An_object_cut_by_its_bound_is_not_reported_as_damage`; `WindowEdgeTests.An_anomaly_inside_an_object_longer_than_the_window_is_reported_once` | Growth yes, the bound no |
+| Look-ahead that makes parsing superlinear | Look-ahead is a constant number of tokens, so each token is lexed three times at most | `ParserTests.Distinguishes_a_reference_from_two_integers`, `Backtracks_when_two_integers_are_not_followed_by_R` | Property |
+| An object number or a generation overflowing its cast | The parser builds a header or a reference only from a number in 1..`int.MaxValue` and a generation in 0..65,535, checked before the cast. The index and object streams do not ([#157]) | `ParserTests.Refuses_an_object_header_whose_number_or_generation_is_out_of_range` (headers only: [#158]) | No |
+| Decoding strings and names past their buffer | A literal string's output is at most its input, and a hex string's at most half of it plus one. A `#xx` escape is decoded only when two hex digits follow inside the token. A name of up to 128 bytes is decoded on the stack, a longer one on the heap | `LexerTests.Decodes_the_octal_and_control_escapes_of_a_literal_string`, `Pads_an_odd_hexadecimal_string_with_a_trailing_zero`, `Reads_a_name_with_its_escapes_intact` | Property |
+| Malformed syntax that throws | A key that is not a name, a missing value, an array closed by `>>`, a stray token: each becomes a null or a skipped token with `syntax.unexpected-token` | `PropertyTests.The_parser_answers_for_any_bytes_without_leaving_the_buffer`; `ParserTests.Drops_entries_whose_value_is_null_as_the_specification_requires` | Property |
+| Names chosen to collide in a hash table | `PdfName` hashes as an ordinal string, which the runtime randomizes per process | — | — |
+| A parsed value pointing into a pooled window | Values are copied out of the window: strings into arrays, names into strings, stream data as an offset into the file | Structural | — |
+
+Known gaps:
+
+- [#157] Numbers wrap, overflow or are narrowed without a check. A 19-digit integer reads as a value the file
+  chose, a 309-digit real as an infinity, and the numbers of the index and of object streams are cast to `int`
+  before their checks. The range check in the row above holds in the parser only.
+- [#163] Nesting past 128 levels, and loads nested past 64, are cut though a valid file can reach both. They become
+  guards.
+- [#172] Malformed strings, names and repeated keys are read in silence. A string that never closes swallows the
+  objects after it, and a repeated key keeps its last value.
+- [#158] No test reaches the parser's range check on a reference's number and generation.
+- [#117] `0 0 R` is read as two integers and a stray keyword.
+- [#119] An array or dictionary left open until the end of the data is read in silence.
+- [#36] `PdfString.ToText` misreads PDFDocEncoding, PDF 2.0 UTF-8 strings and UTF-16 language escapes.
+- [#37] Interned names grow for the life of the process.
+
+### Indexing: the cross-reference chain, trailers and the rebuild
+
+| Threat | Defense | Held by | Fuzzed |
+|---|---|---|---|
+| A `/Prev` chain that loops | The offsets read are kept, and a repeat ends the chain with `xref.chain-cycle` | `DocumentReaderTests.Stops_when_the_chain_of_sections_loops`; `CrossReferenceRuleTests.A_prev_that_names_a_section_already_read_is_a_loop_and_an_error` | Yes |
+| A chain without end | `MaxXRefSectionCount` counts the `/Prev` links | `ReaderLimitsTests.Reaching_a_guard_keeps_what_fits_and_names_the_property_that_lifts_it`; `CrossReferenceChainTests.Looks_for_an_object_the_index_lacks_when_a_guard_stopped_the_chain` | No |
+| A section offset outside the file; `/Prev` or `/XRefStm` given as a reference | Offsets are checked against the file. `/Prev` and `/XRefStm` are read as written, never resolved, and anything but an offset names no section | `CrossReferenceChainTests.Reports_a_section_that_prev_names_past_the_end_of_the_file`, `Reports_a_prev_that_is_not_an_offset_and_finds_what_it_named_when_asked` | Yes |
+| A missing section tried at many places | Candidates within 512 bytes either side, nearest first, and 32 attempts at most per document (`MaxRelocationCandidates`) | `CrossReferenceChainTests.Reads_a_section_that_prev_names_a_few_bytes_off`; `HostileInputTests.Opening_a_chain_of_hybrid_sections_whose_streams_never_close_reads_a_bounded_amount` | Yes |
+| A classic table of any length | Its window grows ×4 from 64 KB up to `MaxXRefSectionLength`, and the rows read are kept | `ReaderLimitsTests.A_table_whose_keywords_the_bound_cuts_reports_the_bound`; `WindowEdgeTests.A_classic_table_reads_whole_wherever_its_window_edge_falls_near_its_trailer` | No: seeds stay under 120 KB |
+| A subsection claiming a huge count | The count is at most 50,000,000 (`MaxSubsectionEntries`, with its reason) and the first number at most `int.MaxValue`. The rows are bounded by the window as well | `CrossReferenceRuleTests.A_subsection_header_without_a_first_number_and_a_count_it_can_hold_makes_the_table_malformed` | Yes |
+| A trailer, or a cross-reference stream's dictionary, of any length | `MaxTrailerLength`; a trailer's references are not resolved | `ReaderLimitsTests.A_trailer_that_the_table_bound_cuts_is_read_through_a_window_of_its_own`; `HostileInputTests.Opening_a_chain_of_trailers_that_never_close_reads_a_bounded_amount` | Yes |
+| `/W` widths that overflow a field or give empty rows; `/Size` or `/Index` claiming rows the data lacks | At least three widths of 0 to 8 bytes, summing above zero. Rows are read only while they fit in the decoded data | `CrossReferenceRuleTests.A_cross_reference_stream_whose_widths_or_ranges_cannot_be_read_is_malformed`; `CrossReferenceChainTests.Looks_for_an_object_a_cross_reference_stream_holds_no_row_for` | Seldom: the rows are compressed |
+| A rebuild run again and again | At most one per document. A missing object rebuilds only when the index is known to be incomplete | `DocumentReaderTests.An_index_a_rebuild_left_empty_while_the_chain_was_read_is_not_rebuilt_again`; `CrossReferenceChainTests.Reads_a_reference_to_an_object_the_file_does_not_define_as_null_without_rebuilding` | Yes |
+| The rebuild's scan | 1 MB pieces overlapping by 64 bytes. A header is read backwards and must have at most 10 digits and a number in 1..`int.MaxValue` | `DocumentReaderTests.Rebuilds_an_index_whose_objects_lie_past_the_first_megabyte`, `A_rebuild_ignores_object_headers_numbered_zero_or_beyond_what_an_object_number_holds`; `HostileInputTests.Survives_a_file_made_only_of_object_headers` | Partly |
+| A guard reached in the middle of a rebuild | The guard's exception is held, and thrown once the index is whole | `ReaderLimitsTests.A_rebuild_that_reaches_a_guard_finishes_the_index_before_it_throws`, `A_rebuild_that_reaches_a_guard_looking_for_the_catalog_still_finds_it` | No |
+| Searches for the next object turning quadratic | `SortedOffsets` keeps sorted runs, a logarithm of them, and searches each by halves | `SortedOffsetsTests.The_first_offset_after_a_position_is_found_whatever_order_offsets_and_lookups_come_in` | Fixed-seed property |
+| Validation judging an index the reader repaired | The chain's index is copied before the first change the reader makes | `StreamLengthTests.The_next_object_a_search_stops_at_is_the_same_before_and_after_the_index_is_copied_though_the_chain_corrected_an_entry` | — |
+
+Known gaps:
+
+- [#164] Nothing bounds how many entries the index holds. A cross-reference stream of one-byte rows indexes an
+  object per decoded byte, 268 million under the default guards.
+- [#155] Object numbers chosen to collide put the index, the object cache and the validator's sets in one hash
+  bucket, and every lookup walks it.
+- [#171] A rebuild takes headers cut at a chunk's edge, or lying in stream data or strings, and serves another object
+  under their number.
+- [#183] A rebuild stops after two million headers in silence, and a sound file whose table a guard cut can reach it.
+- [#182] A cross-reference stream's dictionary is resolved while the chain is read. The rebuild or correction that
+  can cause is then judged as the file's own index, despite the last row of the table above.
+- [#156] An `/XRefStm` naming a section already read, or a classic table, leaves no record and no finding.
+- [#47] Each section is read through a window of up to 64 KB, whatever its size.
+- [#49] A rebuild reads a 64 KB window at every `trailer` keyword.
+- [#118] A rebuilt index records every object at generation 0.
+
+### Resolving objects and object streams
+
+| Threat | Defense | Held by | Fuzzed |
+|---|---|---|---|
+| An object whose load needs itself, or loads chained without end | `_loading` turns a load of an object being loaded into null. `PdfFileReader.MaxNestedLoads` (64) and a stack probe bound the chain, reported once as `syntax.depth-exceeded` | `HostileInputTests.Survives_an_object_whose_length_refers_to_itself`, `Survives_a_chain_of_lengths_longer_than_the_stack_is_deep`, `Reports_chains_that_run_too_deep_once` | The load path, not the bound |
+| References to references that loop | `PdfReference.Resolve` gives up after 32 fetches and reads null, with no report ([#173]) | `ObjectModelTests.A_chain_of_references_that_loops_resolves_to_null` | No |
+| An object stream that needs an object it holds, or two that need each other | While an object stream is decoded, an object it holds reads as null and is reported once as `stream.self-reference`; the null is remembered, so a later decode reads the same | `HostileInputTests.An_object_stream_that_needs_an_object_it_holds_reads_the_same_after_the_budget_lets_it_go`, `Two_object_streams_that_need_each_other_read_the_same_after_the_budget_lets_them_go` | Object-stream seeds, not the cycle |
+| An offset table that lies | The header is read up to its first pair that is not two integers. A wrong index falls back on a lookup by number built once. A member's start is checked against the data | `ReaderTimingTests.An_object_stream_whose_every_index_is_wrong_is_read_in_linear_time`; `DocumentReaderTests.Reads_an_object_where_its_stream_s_header_lists_it_rather_than_where_the_index_says` | Yes |
+| Many large object streams held at once | `ObjectStreamBudget` (32 MB, with its reason): the oldest are let go and decoded again on demand | `HostileInputTests.Object_streams_are_kept_decoded_within_a_budget_and_decoded_again_when_needed` | No |
+| Parsed objects piling up | The object cache is FIFO, bounded by count (`ObjectCacheCapacity`, 8,192), not by weight ([#37], [#170]), and keyed by number, so an object named under many generations is parsed once | `HostileInputTests.An_object_referenced_under_many_generations_is_read_once`; `StreamLengthTests.A_stream_whose_length_is_wrong_is_searched_and_reported_once_however_often_the_cache_lets_it_go` | No |
+| An object that is not where its entry says | The entry is checked against the file, a header is looked for within 512 bytes, and then the index is rebuilt once: three counted attempts. This answers a stack overflow the fuzzing found in M01 | `DocumentReaderTests.Finds_objects_whose_recorded_offsets_are_wrong`, `Finds_an_object_whose_entry_points_past_the_end_of_the_file`, `An_object_a_rebuild_does_not_find_either_is_null` | Yes |
+| A reference to what the index lacks, forcing a rebuild each time | A rebuild runs only when the index is known to be incomplete, and once | `CrossReferenceChainTests.Looks_for_an_object_the_index_lacks_when_a_guard_stopped_the_chain` | Yes |
+
+Known gaps:
+
+- [#160] An object in an object stream is parsed with no `MaxObjectLength` bound, and `/N` sizes the header's tables
+  before an entry is read.
+- [#161] A stream written inside an object stream decodes under the default guards, and keeps its object stream's
+  decoded data alive past `ObjectStreamBudget`.
+- [#165] Decodes nested through filter parameters each hold a whole output: up to 64 of them at once.
+- [#181] Nothing bounds the work one document asks. Two large object streams evict each other on every member, and
+  objects are parsed again through windows grown to 16 MB.
+- [#173] A chain or a loop of references reads as null with no report, one reference short of its bound.
+- [#37] The cache is bounded by count, not weight, and a parsed object weighs about thirty times its syntax.
+- [#121] Each object is read through its own 8 KB window, however small.
+- [#144] A damaged object stream reports its filter fault each time it is decoded.
+
+### Stream data and its length
+
+| Threat | Defense | Held by | Fuzzed |
+|---|---|---|---|
+| A `/Length` that is negative, past `int.MaxValue`, not an integer or unresolvable | Only 0..`int.MaxValue` is taken as a length. Anything else sends the reader to the first `endstream` in the window | `StreamLengthTests.A_length_that_cannot_be_taken_is_reported_as_the_file_wrote_it` | Partly |
+| An indirect `/Length` leading back to its stream, or chained | The loading set and `MaxNestedLoads`, as above | `HostileInputTests.Survives_an_object_whose_length_refers_to_itself`, `Survives_a_chain_of_lengths_longer_than_the_stack_is_deep` | No |
+| A declared length past the file | It is checked against the file before the file is asked, and the length a stream is given is clamped to what the file holds | `HostileInputTests.Ignores_a_stream_length_larger_than_the_file`; `WindowEdgeTests.A_stream_whose_length_the_file_cannot_hold_is_read_to_its_endstream` | Yes |
+| Confirming a length by reading past the buffer or the file | The look-ahead after the data is a fixed stack buffer of 13 bytes, or 64 past the window, refused outside the file and clamped to it | `WindowEdgeTests.A_stream_the_file_cuts_short_is_reported_without_asking_the_source_past_its_end`; `StreamLengthTests.A_stream_past_the_window_whose_length_endstream_follows_is_read_as_declared_for_a_few_bytes_more` | Property |
+| A search for a lost `endstream` running into other objects | It stops at the next object the index places, the first object header the bytes hold, or the end of the file. When none of these comes first, the declared length is kept and reported | `StreamLengthTests.A_stream_past_the_window_with_no_endstream_before_the_next_object_keeps_its_declared_length`, `The_search_stops_at_the_next_object_of_an_index_rebuilt_as_the_document_opened` | Plausibly |
+| Many searches over one stretch of the file | The searches past the window read at most four times the file in a document (`EndStreamSearchPasses`, with its reason). Past that, the declared length is kept unsearched | `StreamLengthTests.Streams_whose_data_share_a_stretch_read_the_file_a_bounded_number_of_times_over` | No |
+| One search reading without end | Reads of at most 64 KB, each strictly after the last, ending at the bound, at the end of the file, at a header, or on an empty read | `StreamLengthTests.A_file_of_data_with_no_endstream_is_searched_once_to_its_end`, `A_source_that_returns_less_than_it_holds_ends_the_search` | No |
+| The same search made at every new parse | The result is kept by data start for the life of the document | `StreamLengthTests.A_stream_whose_length_is_wrong_is_searched_and_reported_once_however_often_the_cache_lets_it_go` | — |
+| A stream decoded long after opening escaping its document's guards | The stream's data carries its document's guard and diagnostics | `ReaderLimitsTests.A_stream_decoded_without_diagnostics_reports_the_bound_to_its_document` | Yes |
+
+Known gaps:
+
+- [#170] Raw data is bounded only by the file. Every cached stream keeps its own copy, overlapping streams multiply
+  it, and data passed through undecoded escapes `MaxDecodedStreamLength`.
+- [#174] A length is misjudged when more than four white-space bytes precede `endstream`, when the file cannot hold
+  the `/Length`, or when the search inside the window crosses into the next object.
+- [#138] A stream searched for its `endstream` can keep a length that depends on the object read first.
+- [#53] Encoded data past about 2 GB cannot be represented, and a length just under `int.MaxValue` throws
+  `OutOfMemoryException`.
+- [#48] Data that decodes past about 2 GB cannot be read whole.
+
+### Decoding
+
+Flate data is inflated by native code: the runtime's `System.IO.Compression.Native`. Microsoft's builds link
+zlib-ng into it, and distribution builds of .NET link the system's zlib. So a host that keeps its .NET runtime and
+its zlib patched is keeping part of the reader patched.
+
+| Threat | Defense | Held by | Fuzzed |
+|---|---|---|---|
+| A decompression bomb | Every decoder writes through `PdfBoundedOutput`, or a buffer capped like it, at `MaxDecodedStreamLength`. Each step of a chain is capped on its own, and nothing bounds how many steps there are ([#166]) | `FilterTests.Keeps_exactly_what_the_bound_allows_and_reports_only_a_bound_it_met`; `HostileInputTests.Decodes_a_run_length_stream_no_further_than_the_bound` | Not at the bound |
+| An output buffer sized from the file | The first buffer is an estimate from the input, capped at the bound; it doubles and never grows past it | `FilterTests.A_filter_s_first_buffer_is_sized_by_its_bound_not_by_its_input`, `A_bounded_output_never_grows_past_its_bound_and_hands_back_a_full_buffer_as_it_is` | Yes |
+| Predictor parameters that overflow or size a row before a check | The row length is computed in 64 bits and compared with the data before anything is allocated | `FilterTests.Leaves_the_data_as_decoded_when_the_predictor_describes_rows_it_cannot_hold` | Seeds only |
+| An LZW code past the table | A fixed table of 4,096 codes. A code not yet defined stops decoding, keeps what came before and reports `filter.failed` | `FilterDamageTests.Decodes_an_lzw_code_up_to_the_next_one_to_define_and_stops_at_any_past_it`; `FilterTests.Stops_an_lzw_stream_at_a_code_it_has_not_defined_and_says_so` | Two seeds |
+| Damaged Flate data read again and again | A form is read again only after a fault, into the same output. The byte-at-a-time pass covers only the 8 KB piece the fault was met in (`FlateInput.ChunkLength`). A stream costs at most eight readings, three of them byte by byte. This is accepted: damaged streams read about 40 times slower, still linear in the file (#135, comment of 2026-09-30) | `FilterDamageTests.Reads_sound_data_once`, `Reads_again_a_byte_at_a_time_only_the_piece_of_input_the_fault_was_met_in`, `Reading_damaged_data_again_allocates_no_second_output_and_sound_data_nothing_to_read_it_again_with` | Yes |
+| The inflater's exceptions escaping | Only its complaints about the data (`InvalidDataException`, `IOException`) are faults; a preset-dictionary header is refused | `FilterDamageTests.Takes_only_the_inflater_s_complaints_about_its_data_as_faults`, `Reports_a_zlib_header_that_asks_for_a_preset_dictionary_instead_of_throwing` | Yes |
+| Image codecs | DCT, JPX, JBIG2 and CCITT data is never decoded: the chain stops and the data comes back as it is. An unknown filter is `filter.unsupported` | Structural | — |
+
+Known gaps:
+
+- [#166] A `/Filter` array of any length decodes every step up to the bound: a 513-byte file allocates 3.3 GB as it
+  opens. Over damaged Flate data, every entry pays the replay again.
+- [#162] Predictors and filter parameters the reader does not apply decode to wrong bytes with no report.
+- [#141] ASCII85, ASCIIHex and RunLength data that cannot be decoded is skipped in silence.
+- [#146] A Flate reading allocates its output before the zlib header says it can go on.
+- [#142], [#143], [#145] Damaged Flate data is repaired and checked less than it could be.
+
+## The validator
+
+`PdfValidator.Validate` reads a document the caller opened, under that document's `PdfReaderOptions`. Whatever
+it resolves goes through the reader and its guards, and joins the reader's cache. It adds reads of its own: the
+file's last 1,024 bytes (`EndOfFileMarkerRule`), 64 bytes at every entry's offset (`CrossReferenceProbe`), and
+each object stream's header, decoded again outside the reader's budget (`PdfFileReader.ReadObjectStreamHeader`).
+It decodes no content or image stream.
+
+The rules share five analyses, each built once per validation (`ValidationContext`): the cross-reference
+probe, the page tree walk, the object graph, the Arlington walk and the dependencies between object streams.
+Guarding the validator means guarding them.
+
+| Threat | Defense | Held by | Fuzzed |
+|---|---|---|---|
+| A report that grows with the file's faults | The report keeps `FindingCapacity` findings (1,000) and counts the rest by severity; a negative capacity is refused. One finding per object for its missing references and null characters. The four Arlington rules tally per rule and model row, so they give at most four findings per row of the model | `ValidatorTests.The_report_keeps_as_many_findings_as_its_capacity_and_counts_them_all`, `A_capacity_of_zero_keeps_no_finding_and_still_counts_them`; `ObjectRuleTests.Several_references_to_nothing_in_one_object_are_one_finding_naming_the_first`; `ArlingtonRuleTests.Several_objects_with_one_fault_are_one_finding_at_the_first_with_their_count` | Yes |
+| Cycles and depth in the object graph: `/Parent`, `/P`, destinations | `ObjectGraph` walks with an explicit stack and resolves each number once. The trailer's `/Prev` and `/XRefStm` are not followed | `PageTreeRuleTests.Back_links_through_parents_and_destinations_are_no_loop`; `ArlingtonRuleTests.A_long_outline_chain_is_walked_without_recursion` (20,000 items) | Yes |
+| A page tree deeper than the stack, with cycles, or with nodes listed many times | `PageTreeWalk` keeps one heap frame per node on the path. A kid on the path is a loop and counts nothing. A node already walked is counted, not walked again | `PageTreeRuleTests.A_tree_nested_deeper_than_any_stack_is_walked` (20,000 levels), `A_kid_naming_the_node_that_lists_it_is_a_loop_and_an_error`, `Nodes_listed_twice_at_every_level_are_counted_without_being_walked_again` (2^40 pages in under 5 s) | Yes |
+| The orphaned-page sweep rebuilding the index | `PageTreePageOrphanedRule` runs only on a chain read whole, with no loop, no cut, no repair and no broken entry | `PageTreeRuleTests.A_kid_whose_entry_leads_nowhere_is_the_entry_s_finding_and_still_takes_a_page_s_place` | Yes |
+| Re-checking in the Arlington walk: shared trees, ties, `/Parent` chains | Breadth-first over a queue, each indirect object typed once. Tree nodes and arrays are expanded once. Ties are weighed once per candidate set. Inherited keys are memoized per ancestor and key, and a `/Parent` cycle ends the search. Back-links are checked, never followed | `ArlingtonRuleTests.A_name_tree_whose_kids_loop_is_walked_once`, `Tree_nodes_that_share_one_kids_array_expand_it_once`, `An_object_many_contexts_tie_on_is_weighed_once`, `A_parent_cycle_among_fields_ends_the_search_for_an_inherited_key`, `A_parent_types_nothing_even_under_a_key_a_wildcard_allows` | Yes |
+| Judging what a guard cut | The Arlington walk and the object stream probe skip an object the reader cut at a limit, while the diagnostics have room to say so ([#169]); the page tree rules do not ([#175]). A guard reached under `ThrowOnLimit` throws out of `Validate` | `ArlingtonRuleTests.An_object_a_limit_cut_is_not_judged`; `CrossReferenceRuleTests.An_object_stream_a_limit_cut_before_its_header_ended_is_said_to_be_unchecked`; `ValidatorTests.A_guard_reached_during_validation_throws_when_the_document_was_opened_to_throw` | Defaults only |
+| Circular object streams | `ObjectStreamDependencies` walks the decoding keys (`/Length`, `/Filter`, `/DecodeParms`, `/N`, `/First`) iteratively with seen sets, and decodes nothing itself | `ObjectRuleTests.Two_object_streams_that_each_need_an_object_of_the_other_are_both_circular`, `A_chain_of_object_streams_that_leads_elsewhere_is_not_circular` | Yes |
+| Reading the file's bytes | The tail read is at most 1,024 bytes. The probe reads 64 bytes into a stack buffer per entry and refuses an offset outside the file, though a read near the end asks the source past it ([#167]). The header version echoed is at most 8 digits and dots | `EndOfFileMarkerRuleTests.Checking_reads_the_last_1024_bytes_and_nothing_else`; `CrossReferenceRuleTests.An_entry_outside_the_file_is_broken`; `PropertyTests.The_end_of_file_rule_reports_exactly_when_the_last_1024_bytes_hold_no_marker` | Yes |
+| Shared state between validations | `PdfValidator` holds only its immutable options, rules hold no fields, and the Arlington tables are read-only spans | — | — |
+
+The validator has no guard of its own. `FindingCapacity` is an option on the report, visible through
+`SuppressedCount`, and not a `limit.*`.
+
+Known gaps:
+
+- [#167] `Validate` throws untyped exceptions: a page count that wraps, a negative entry offset handed to a location,
+  and a probe that reads past a source's end.
+- [#168] The analyses cost more than the file: a quadratic probe and dependency walk, faults kept before
+  `FindingCapacity` applies, and values yet to visit held past the reader's cache. The first row of the table above
+  holds for the report, not for what builds it.
+- [#169] Once the diagnostics are full, a guard reached is neither reported nor seen, and the validator blames the
+  file for the reader's cut.
+- [#175] The page tree rules judge objects a guard cut, and a valid object header longer than 64 bytes is
+  `xref.entry-broken`.
+- [#173] The Arlington walk takes a reference to a reference for a missing key.
+- [#182] A rebuild that happened while the chain was read is judged as the file's own index.
+- [#128] The object stream dependency walk reads an index that a rebuild changes under it.
+- [#132] A document with no catalog at all earns no finding when its index was rebuilt at opening.
+
+## What holds the defenses
+
+- **Hand-written hostile tests**, on every commit: `HostileInputTests`, `ReaderLimitsTests`, `ReaderTimingTests`
+  (a ratio, not a wall-clock budget), `WindowEdgeTests`, `StreamLengthTests`, `FilterTests`, `FilterDamageTests`,
+  `DiagnosticsTests`, and the validation rule tests. They hold the bounds a mutation of a small file cannot reach.
+- **Budgets on real documents.** `CorpusReadingTests` holds what indexing a 1,000-page document and walking its
+  page tree allocate. `CorpusValidationTests.Validating_the_largest_document_stays_within_its_budget` holds validation to
+  6 MB. Throughput is not held in CI yet ([#38]).
+- **The mutation campaign** (`FuzzingTests`, `FuzzingSeeds`, `.github/workflows/fuzz.yml`). It has three
+  targets:
+  - open a mutated document, resolve every indexed object and decode every stream without an image filter;
+  - validate every mutant the reader opens, with no exception allowed at all;
+  - parse the mutated bytes as one object, which in most seeds is only the first object's number ([#158]).
+
+  The mutations are bit flips, digit rewrites, truncation, a random overwrite of 1 to 64 bytes, and a broken
+  `endstream` or `obj`. Each input must finish within 5 seconds, checked once it returns, and allocate under 64 MB.
+  The seeds are corpus documents of 120 KB at most, not encrypted, read under the default limits. Every commit
+  runs 104 seeds 60 times each. Each night runs the smallest seed of each of the 32 reader structures plus 16 in
+  rotation, 20,000 times each, so every seed is reached within five runs.
+- **Properties** (`PropertyTests`, FsCheck): the lexer, the parser, the number parsers, text strings, window edges,
+  the limits' validation and the end-of-file rule. 200 cases per commit with a fixed seed; 50,000 a night with a
+  seed from the run number.
+- **Referees**: qpdf, in a container, judges the corpus as we do (`QpdfRefereeTests`, `FlateRefereeTests`,
+  `StreamLengthRefereeTests`, `ValidationRefereeTests`).
+
+What none of them reaches is the subject of the gaps below. A mutation never makes a file longer, so nothing
+size-dependent is fuzzed: the guards, the budgets, the rebuild's pieces. FsCheck's default sizes keep generated
+buffers near 100 bytes and integers within ±100. No coverage-guided fuzzer exists yet ([M23] slice 11).
+
+Known gaps:
+
+- [#158] The parser target, three properties and three hostile-input tests hold less than their names claim, and
+  several defenses have no test.
+- [#176] The campaign never reaches RunLength, ASCIIHex, most predictor rows, any guard, encrypted files or inputs
+  past 120 KB, and cannot see a read past the end.
+- [#38] Throughput is not held in CI.
+
+## The package and its supply chain
+
+- **The core has no dependency** (invariant 1): its project references no package and no other project. Review
+  alone keeps it so ([#179]). The AOT and trimming analyzers run, and warnings fail the build. Unsafe code is off.
+- **Workflows** default to `contents: read` and raise a permission per job where one is needed, except
+  `docs.yml`, which grants `pages: write` and `id-token: write` to the whole workflow ([#177]). Every action is
+  pinned to a commit SHA. CI and the commit checks run on `pull_request`, so a fork's pull request gets no secret
+  and no write token. The one `pull_request_target` workflow, Dependabot's auto-merge, checks out no code.
+- **Publishing** uses trusted publishing ([ADR 25](adr/0025-trusted-publishing-rather-than-an-api-key.md)): a
+  key valid one hour, exchanged for the job's OIDC token just before the push, and no NuGet secret stored. The
+  `AdCodicem.*` prefix is reserved on nuget.org. Builds are deterministic and carry their sources' location and
+  symbols.
+- **Test data is pinned**: remote corpus documents by size and SHA-256, the Arlington model by a lock file that a
+  test checks.
+- **Measured, not asserted**: OpenSSF Scorecard runs weekly and on every push to `main`. CodeQL runs as GitHub's
+  default setup, which the ruleset on `main` requires.
+
+Known gaps:
+
+- [#177] The release jobs restore, build and test while holding the right to publish, and the stable one runs an
+  unlocked npm tree beside the NuGet key.
+- [#178] A branch can publish a package without review: nothing ties the `nuget` environment to `main`.
+- [#179] Nothing but review checks that the core has no dependency.
+- [#43] The NuGet restore is not locked.
+- [#41] The stable release cannot push through the ruleset, and the ruleset requires no CI check by name.
+- [#45] The release packages carry no attestation.
+- [#44] The project has no OpenSSF Best Practices badge.
 
 ## Surfaces still to come
 
@@ -229,7 +505,6 @@ The last column also names the questions they leave open, which that milestone s
 - A milestone's review checks the code against this document (`docs/milestone-review.md`, axis 5). Any
   difference it finds is a finding.
 
-[#61]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/61
 [M02]: milestones/M02.md
 [M05]: milestones/M05.md
 [M06]: milestones/M06.md
@@ -248,8 +523,6 @@ The last column also names the questions they leave open, which that milestone s
 [M29]: milestones/M29.md
 [M31]: milestones/M31.md
 
-[#37]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/37
-[#135]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/135
 [M03]: milestones/M03.md
 [M04]: milestones/M04.md
 [M08]: milestones/M08.md
@@ -259,3 +532,63 @@ The last column also names the questions they leave open, which that milestone s
 [M25]: milestones/M25.md
 [M26]: milestones/M26.md
 [M27]: milestones/M27.md
+
+[#36]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/36
+[#37]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/37
+[#38]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/38
+[#41]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/41
+[#43]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/43
+[#44]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/44
+[#45]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/45
+[#47]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/47
+[#48]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/48
+[#49]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/49
+[#52]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/52
+[#53]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/53
+[#61]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/61
+[#117]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/117
+[#118]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/118
+[#119]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/119
+[#121]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/121
+[#125]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/125
+[#128]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/128
+[#132]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/132
+[#135]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/135
+[#138]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/138
+[#141]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/141
+[#142]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/142
+[#143]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/143
+[#144]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/144
+[#145]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/145
+[#146]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/146
+[#149]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/149
+[#154]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/154
+[#155]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/155
+[#156]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/156
+[#157]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/157
+[#158]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/158
+[#159]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/159
+[#160]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/160
+[#161]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/161
+[#162]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/162
+[#163]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/163
+[#164]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/164
+[#165]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/165
+[#166]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/166
+[#167]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/167
+[#168]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/168
+[#169]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/169
+[#170]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/170
+[#171]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/171
+[#172]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/172
+[#173]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/173
+[#174]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/174
+[#175]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/175
+[#176]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/176
+[#177]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/177
+[#178]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/178
+[#179]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/179
+[#180]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/180
+[#181]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/181
+[#182]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/182
+[#183]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/183

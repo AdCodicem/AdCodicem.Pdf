@@ -9,6 +9,7 @@ const sidebars = {
     'corpus-sources',
     'releasing',
     'status',
+    'threat-model',
     'milestone-review',
     {
       type: 'category',
