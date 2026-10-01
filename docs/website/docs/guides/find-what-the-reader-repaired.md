@@ -29,7 +29,8 @@ if (document.Diagnostics.HasRepairs || document.Diagnostics.HasWarnings)
 ```
 
 `WasRepaired` is true only when the whole index had to be rebuilt. `Diagnostics` holds everything else the reader
-worked around.
+worked around. Both say what the reader did so far: a read after `Open` can still rebuild the index, and add to
+the diagnostics.
 
 ## List what the reader did
 
@@ -73,9 +74,9 @@ foreach (var entry in document.Diagnostics)
 
 ## Catch what decoding reports
 
-Opening reads the index and nothing else, so a damaged stream is reported when it is decoded, into the same
-`Diagnostics`. To keep the reports of one stream apart — to know which image of a page lost its tail —, pass a list of
-your own:
+Opening reads the index and the catalog and decodes no page's content, image or font, so a damaged stream is
+reported when it is decoded, into the same `Diagnostics`. To keep the reports of one stream apart — to know which
+image of a page lost its tail —, pass a list of your own:
 
 ```csharp
 using AdCodicem.Pdf.Objects;
@@ -108,6 +109,12 @@ else
     Store(path, document.Diagnostics);   // keep the account beside the file
 }
 ```
+
+Apply it once you have read what you need from the document, or once you have validated it — not straight after
+`Open`. The index can be rebuilt after `Open` returned, when a read asks for an object the index lacks while the
+index may have lost entries, or for one that is neither where the index says nor near it
+([Lazy reading](../concepts/lazy-reading.md) lists when): `WasRepaired` turns true then, and a policy applied
+before that read accepts a file it would have refused after it.
 
 ## Keep the account
 
