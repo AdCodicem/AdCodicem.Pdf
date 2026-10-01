@@ -29,7 +29,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   M02's is its slice 7, [#137], after the threat model's first version ([#135]) and M01's review after the fact
   ([#136]). [#55] and [#120] merged with [#140] on 2026-09-30, [#56] and [#134] with [#147] the same day. Filed on
   2026-09-30 while measuring and reviewing [#147], [#141] and [#144] join the milestone's reader debts, both before
-  slice 4.
+  slice 4. The threat model's first version, `docs/threat-model.md`, was written on 2026-09-30 and 2026-10-01 for the
+  reader and the validator ([#135]) and is published with the project documents. Checking each defense it names
+  against the code filed thirty debts, [#154] to [#183]: twenty-five under M02 at the maintainer's choice ([#154] to
+  [#175], [#181] to [#183]), [#176] under M23, [#180] under M16, and [#177] to [#179], on the release workflows and
+  the core's dependencies, under none.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `claude/cool-brown-qvs5lv`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
@@ -70,10 +74,12 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   ruleset lets GitHub Actions bypass it (T15); nothing is published when it fails.
 - **The site**, <https://adcodicem.github.io/AdCodicem.Pdf/>, is versioned (ADR 31) and redeployed by every
   preview; before the first stable release the preview is the whole site.
-- **Supply chain**: OpenSSF Scorecard **7.6** on `74ce382`. What remains is settings and people, not code:
-  Code-Review 0 (nothing has ever been approved by a second person), Branch-Protection 5 (T15), Maintained 0
+- **Supply chain**: OpenSSF Scorecard **7.6** on `74ce382`. What Scorecard still marks down is settings and
+  people: Code-Review 0 (nothing has ever been approved by a second person), Branch-Protection 5 (T15), Maintained 0
   (the repository is younger than 90 days), Contributors 3, CII-Best-Practices 0 (T18), Signed-Releases
-  unscored until a release exists (T19).
+  unscored until a release exists (T19). What it does not measure, the threat model found in code: the release jobs
+  build and test with the right to publish ([#177]), nothing ties publishing to `main` ([#178]), and nothing but
+  review keeps the core free of dependencies ([#179]).
 - **Codecov**: uploaded without a token; the Codecov GitHub App is installed since 2026-09-27, and reports on each
   pull request as `codecov[bot]` (#40, formerly T14).
 - **Repository settings**: the "Default" ruleset on `main` asks for a pull request with one code-owner
@@ -163,15 +169,17 @@ One pull request per batch, each design question put to the maintainer after mea
    decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. The `Remote corpus`
    run [#134] asks for on the branch, run 17, was green; it closed with the merge.
 4. The reader and validation debts: [#117], [#118], [#119], [#125] then [#126], [#128], [#129], [#132], [#141],
-   [#144]; then [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
+   [#144]; then [#107] and [#111], each a new public rule whose name and severity the maintainer gives. The
+   twenty-five the threat model filed under M02 join them, in an order to settle with the maintainer: [#154] to
+   [#175] and [#181] to [#183]. [#163] makes `MaxDepth` and `MaxNestedLoads` guards, as the maintainer decided.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
 6. Slice 5 ([#61]) in three: security and the trailer's `/ID`, annotations and destinations, metadata — with
    PDFDocEncoding ([#36]) and an XMP reader, or the `/Info`–XMP check moved, to settle first.
 7. Slice 6 ([#62]): the report's JSON, its schema and documentation, the budgets restated.
-8. The threat model's first version, `docs/threat-model.md`, for the reader and the validator ([#135]): a session
-   that reads the code. It can come at any point before 9.
+8. The threat model's first version, `docs/threat-model.md`, for the reader and the validator ([#135]) — done on
+   2026-10-01 (journal of 2026-10-01).
 9. M01's review after the fact ([#136]): the maintainer opens a fresh session and types `/milestone-review M01`.
 10. M02's review, slice 7 ([#137]), once every other issue filed under M02 is closed: a fresh session,
    `/milestone-review M02`; then whatever it files under M02.
@@ -182,6 +190,67 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-01 — The threat model's first version ([#135])
+- **What it is.** `docs/threat-model.md`, written against `13e06bb`. It covers:
+  - assets, attackers and trust boundaries;
+  - the defenses every surface shares;
+  - a section for each surface the reader and the validator open. Each defense there names where it lives in the
+    code, the test that fails if it goes, and whether the fuzzing reaches it;
+  - what holds the defenses;
+  - the package and its supply chain;
+  - the twenty-nine surfaces still to come, each with the milestone that opens it and what its specification leaves
+    open;
+  - what is out of scope.
+
+  It is in the project documents' sidebar.
+- **How it was checked.** The surfaces were mapped by reading the code, and every test the document names was read.
+  Every gap suspected was then reproduced against the Release build. The exceptions were traced in the code: those
+  that need GitHub's runners, and those that need a file past 2 GB. Each gap was compared with the open and closed
+  issues. What survived went into thirty issues, each with its shape, its measurement and what closes it. None is
+  fixed here: #135 asks for them to be filed, not paid.
+- **What it found**, the worst first:
+  - **Files of a few hundred bytes that make the reader hold gigabytes**:
+    - a `/Filter` array of RunLength steps, where 513 bytes allocate 3.3 GB as the file opens ([#166]);
+    - a cross-reference stream of one-byte rows ([#164]);
+    - decodes nested through filter parameters ([#165]);
+    - overlapping streams, each keeping its own copy of the raw data ([#170]);
+    - an object-stream member with no object bound ([#160]).
+  - **Work beyond the file**:
+    - object numbers chosen to collide ([#155]);
+    - object streams decoded again for every member ([#181]);
+    - the validator's quadratic probe and walk ([#168]).
+  - **Wrong answers**:
+    - encryption lost when the index is rebuilt ([#154]);
+    - numbers that wrap to a value the file chose ([#157]);
+    - a rebuild serving a header found inside stream data ([#171]);
+    - filter parameters decoded wrong, in silence ([#162]);
+    - a guard's report dropped once the diagnostics are full ([#169]).
+  - **Untyped exceptions** from `Validate` and from enumerating `ObjectNumbers` ([#167]).
+  - **Tests**: some hold less than their names claim, and the fuzzing never reaches a guard ([#158], [#176]).
+  - **Supply chain**:
+    - release jobs that build and test while holding the right to publish ([#177]);
+    - nothing tying publishing to `main` ([#178]);
+    - a dependency-free core held by review alone ([#179]).
+- **Fixed in passing**:
+  - Four internal constants now give, where they are declared, the reason ADR 34 asks for: `HeaderSearchLength`,
+    `TailSearchLength`, `NearbySearchRadius` and `LzwFilter.MaxCodes`.
+  - `SECURITY.md` no longer calls the dependency versions locked; [#43] is open.
+  - The reader-limits reference no longer says decoded object streams are unbounded.
+  - The security bullet of `docs/architecture.md` states its rule as an aim.
+- **Decided by the maintainer**:
+  - The reader's and the validator's debts go under M02, not M23.
+  - `MaxDepth` and `MaxNestedLoads` become guards, since a valid file can exceed both ([#163]).
+  - Proposed and accepted:
+    - the fuzzing gaps go under M23, beside its coverage-guided fuzzing ([#176]);
+    - the pooled buffers go under M16, where decryption brings secrets into them ([#180]);
+    - the three supply-chain issues go under no milestone.
+- **Comments**:
+  - On [#37]: a cached object weighs about thirty times its syntax (a 15 MB array retained 483 MB), and a cached
+    stream keeps its raw data.
+  - On [#53]: a length between `Array.MaxLength` and `int.MaxValue` throws an `OutOfMemoryException`.
+- **Next**: M01's review after the fact ([#136]), in a fresh session, with `/milestone-review M01`. The review
+  checks the code against this document.
 
 ### 2026-09-30 — The user documentation organized along Diátaxis ([#148])
 - **The question.** The maintainer asked for the documentation to follow [Diátaxis](https://diataxis.fr/), and to be
@@ -1108,3 +1177,26 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#147]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/147
 [#148]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/148
 [#149]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/149
+[#154]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/154
+[#155]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/155
+[#157]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/157
+[#158]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/158
+[#160]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/160
+[#162]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/162
+[#163]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/163
+[#164]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/164
+[#165]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/165
+[#166]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/166
+[#167]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/167
+[#168]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/168
+[#169]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/169
+[#170]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/170
+[#171]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/171
+[#175]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/175
+[#176]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/176
+[#177]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/177
+[#178]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/178
+[#179]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/179
+[#180]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/180
+[#181]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/181
+[#183]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/183
