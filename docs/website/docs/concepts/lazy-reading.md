@@ -6,7 +6,7 @@ description: What opening a document does and deliberately does not do, what tha
 
 # Lazy reading
 
-Opening a document builds an index and stops there.
+Opening a document builds an index, finds the catalog, and stops there.
 
 ## What opening actually does
 
@@ -15,23 +15,43 @@ Opening a document builds an index and stops there.
    stream, or a hybrid of both, and may point at object streams.
 3. Builds a map from object number to a location: either a byte offset, or a position inside an object
    stream.
+4. Resolves the trailer's `/Root`, which reads the document catalog, and decodes the object stream that holds
+   it when one does. When `/Root` leads to no catalog, it loads the objects the map holds, one after the
+   other, until one is a catalog (`trailer.root-recovered`), and rebuilds the map when none is.
 
-That map is the only thing kept. It costs roughly 200 bytes per object, whatever the objects weigh — a
-scanned page holding a 3 MB image costs the same to index as an empty one.
+On a file whose index and `/Root` are sound, that is all: no page is read, and no stream's data but that of the
+cross-reference streams and of the object stream holding the catalog. The search for a lost catalog parses
+objects, and a rebuild scans the whole file, but neither decodes a page's content, an image or a font.
+
+Opening allocates roughly 200 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
+costs the same to index as an empty one. An open document keeps about half of that: on the corpus's
+thousand-page journal, about 107 bytes per object, of which the map takes about 48 bytes an entry. When the
+reader relocates an object or rebuilds the map once the chain is read, it keeps a copy of the map the chain gave
+as well, so that validation still judges the file's own.
 
 An object the map does not hold is one the file does not define, and a reference to it reads as null, as the
-specification says. The map is rebuilt by scanning the file only when it may have lost entries — a
-cross-reference section the chain names cannot be found (`xref.section-missing`), a limit stopped the chain
-or a table before its end, or a cross-reference stream holds fewer rows than it declares — and then only when
-such an object is asked for. A section named a few bytes from where it lies is found nearby
-(`xref.offset-adjusted`).
+specification says. The map is rebuilt by scanning the whole file, once at most:
+
+- at opening, when `startxref` cannot be found or read, when the section it names cannot be read, when the
+  chain indexes nothing, or when `/Root` leads to no catalog and no object of the map is one;
+- when an object the map lacks is asked for, by opening or after it, while the map may have lost entries: a
+  cross-reference section the chain names cannot be found or read, or a `/Prev` or `/XRefStm` is not an offset
+  (`xref.section-missing`); the chain loops back on itself (`xref.chain-cycle`); a limit stopped the chain or a
+  table before its end; a row of a classic table cannot be read, which ends its subsection; or a
+  cross-reference stream holds fewer rows than it declares, or gives a subsection a count of rows out of range;
+- when an object is asked for, by opening or after it, that is neither where the map says nor within 512 bytes
+  of it.
+
+A section or an object named a few bytes from where it lies is found nearby (`xref.offset-adjusted`), and the
+map is not rebuilt for it.
 
 ## What it deliberately does not do
 
-Nothing is parsed until something asks for it, and stream data is not even read from disk. A
-`PdfStream` holds the offset and length of its bytes; the bytes arrive when you call `Decode()`, and not
-before. This is asserted by a test that counts how many bytes are read from the file while opening a
-500 KB document: opening reads a small fraction of it.
+Past the index and the catalog, nothing is parsed until something asks for it, and — short of a rebuild, which
+scans the whole file — stream data is not even read from disk. A `PdfStream` holds the offset and length of its
+bytes; the bytes arrive when you call `Decode()`, and not before. A test holds this on a document of about
+500 KB, nearly all of it one page's content: opening it reads less than 200,000 bytes of the file, and reading
+that content's bytes afterwards reads at least its 500,000 more.
 
 When it is decoded, a stream decodes under the [limits](reader-limits.md) of the document it came from,
 however long after opening — so with `ThrowOnLimit` set, `Decode()` can throw long after `Open` returned.
@@ -39,8 +59,10 @@ What decoding meets — a stream that lost its tail, a limit reached — is repo
 diagnostics you pass to `Decode`, or in the document's own when you pass none: a damaged stream nobody
 decodes is never reported, since nothing reads it.
 
-Copying a stream between documents — merging, assembling, stamping — moves the **encoded** bytes as they
-are, with no decompress/recompress cycle in between.
+Holding a stream as an offset and a length is what will let a copy between documents — merging, assembling,
+stamping — move its **encoded** bytes as they are, with no decompress/recompress cycle in between, since nothing
+has to decode a stream to copy it. No API copies one yet: merging and assembling come with M06 on the
+[roadmap](/project/roadmap), stamping with M09.
 
 ## The cost of the trade
 
@@ -58,6 +80,7 @@ hold.
 |---|---|---|---|
 | Indexing | 1000 pages, ~4 MB | 229 µs | 393 KB |
 | Indexing, then reading every page | 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
-| Indexing and walking the page tree | real 1000-page file | — | 2.4 MB |
+| Indexing and walking the page tree | real 1000-page file | — | 3.2 MB |
 
-The last row is enforced as a budget in CI: an allocation regression fails the build.
+The last row was measured on 2026-10-01, in Release, and is enforced as a budget of 4 MB in CI: an allocation
+regression past it fails the build.

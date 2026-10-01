@@ -79,7 +79,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `stream.length-invalid` | A stream's `/Length` is not where its data ends: its `endstream` lies elsewhere and ends the data, or the `/Length` is no length — absent, not a non-negative integer, or naming an object the file lacks or that could not be read — and the `endstream` ends the data, or no `endstream` follows the declared length — none before the next object or the end of the file, or none looked for once the document's searches read as much as they may —, and that length is kept |
 | `stream.truncated` | A stream has no `endstream` before the end of the file, or before the `endobj` that follows its data, and its data runs to the end of the file |
 | `stream.self-reference` | An object stream's dictionary names an object the stream holds — as its `/Length`, `/N`, `/First`, a filter or a parameter —: that object reads as null while the stream is decoded, and the stream is decoded without it |
-| `syntax.unexpected-token` | A token was found where a value was expected |
+| `syntax.unexpected-token` | A token stood where the syntax does not allow it: where a value or a dictionary key was expected, after a key that has no value, closing an array with a dictionary's end, or in an object stream's header; it was skipped, or it ended what it stood in |
 | `syntax.truncated-object` | The file ended in the middle of an object |
 | `syntax.depth-exceeded` | Nesting went deeper than the reader will follow |
 | `object.redefined` | An object was defined more than once; the last definition won |
@@ -122,6 +122,7 @@ Warning stream.truncated at 315: The stream has no endstream before the endobj t
 | Flate, checksum disagrees with what decoded to its end | `filter.checksum-mismatch`, Warning | All of it; some may be wrong |
 | LZW, uses a code it has not defined | `filter.failed`, Warning, naming the code | What decoded before the code |
 | LZW, no end-of-data code | — | All of it, taken as complete |
+| Flate or LZW, a predictor whose parameters describe rows longer than the decoded data | `filter.failed`, Warning | The data as decoded, the predictor not undone |
 | Nothing decodes before the fault | `filter.failed`, Warning | The data, still encoded |
 | Decodes past `MaxDecodedStreamLength` | `limit.decoded-stream`, Warning | The data up to the bound |
 

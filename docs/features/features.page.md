@@ -26,9 +26,10 @@ the next preview.
   NuGet or native, and the HTML engine is our own, written in C#: there is no headless browser to ship, start
   and patch. It will use SkiaSharp and HarfBuzzSharp for images and text shaping; everything that needs a
   dependency lives in a satellite package you add knowingly.
-- **Memory follows what you read, not the size of the file.** Opening a document reads its index and
-  nothing else: indexing a thousand-page document costs 229 µs and 393 KB, and reading every page of it
-  afterwards 6.2 ms and 5.9 MB (BenchmarkDotNet, `docs/status.md`). The writer only moves forward.
+- **Memory follows what you read, not the size of the file.** Opening a document reads its index and its
+  catalog, and decodes no page content: indexing a thousand-page document costs 229 µs and 393 KB, and reading
+  every page of it afterwards 6.2 ms and 5.9 MB (BenchmarkDotNet, `docs/status.md`). The writer only moves
+  forward.
 - **Honest about damaged input.** Real files are often malformed. The reader rebuilds what it can and
   reports every repair as a structured diagnostic; the validator gives a verdict with stable, public rule
   identifiers you can filter on.

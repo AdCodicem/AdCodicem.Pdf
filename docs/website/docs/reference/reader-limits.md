@@ -66,8 +66,8 @@ The exception comes from whichever operation reaches the limit:
 
 | Operation | When |
 |---|---|
-| `PdfDocument.Open` | While it indexes the file |
-| `GetObject`, or resolving a reference | When an object is too long |
+| `PdfDocument.Open` | While it indexes the file and reads its catalog |
+| `GetObject`, or resolving a reference | When an object is too long, or the object stream that holds it decodes too far; or, when the read rebuilds the index, at any limit the rebuild reaches, once the rebuild is finished |
 | `Decode` | When a stream decodes too far |
 | `PdfValidator.Validate` | As it reads, like any other caller |
 
