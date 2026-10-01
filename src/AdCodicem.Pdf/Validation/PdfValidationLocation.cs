@@ -21,6 +21,10 @@ public readonly record struct PdfValidationLocation
     }
 
     /// <summary>Gets the object the finding concerns, or null when it concerns no single object.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Naming",
+        "CA1720:Identifiers should not contain type names",
+        Justification = "The location names the object of the file a finding concerns, as ISO 32000 calls it; a member of a location cannot be mistaken for the type System.Object.")]
     public PdfObjectId? Object { get; }
 
     /// <summary>

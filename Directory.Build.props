@@ -13,7 +13,7 @@
   <PropertyGroup Label="Analysis">
     <!-- A warning nobody has to fix is a warning nobody reads. The build has none, and keeps none. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
