@@ -29,6 +29,22 @@ public class LexerTests
         kinds.Should().Equal(PdfTokenKind.Integer);
     }
 
+    [Fact]
+    public void Separates_tokens_by_every_white_space_byte_and_either_end_of_line()
+    {
+        // NUL, tab, form feed, a lone carriage return, CR LF, and a comment that a lone carriage return ends.
+        var lexer = new PdfLexer("1\u00002\t3\f4\r5\r\n6 % a comment\r7"u8.ToArray());
+        var integers = new List<long>();
+
+        for (var token = lexer.Read(); token.Kind != PdfTokenKind.EndOfInput; token = lexer.Read())
+        {
+            token.Kind.Should().Be(PdfTokenKind.Integer);
+            integers.Add(token.Integer);
+        }
+
+        integers.Should().Equal(1, 2, 3, 4, 5, 6, 7);
+    }
+
     [Theory]
     [InlineData("0", 0L)]
     [InlineData("42", 42L)]
