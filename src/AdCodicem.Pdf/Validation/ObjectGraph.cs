@@ -186,16 +186,16 @@ internal sealed class ObjectGraph
             var where = (isKey, first.Length) switch
             {
                 (true, 0) => "as a key of its dictionary",
-                (true, _) => $"as a key under {first}",
+                (true, _) => $"as a key under {RuleText.Path(first)}",
                 (false, 0) => "as its value",
-                _ => $"under {first}",
+                _ => $"under {RuleText.Path(first)}",
             };
 
             NullCharacterNames.Add(new ProbeFinding(
                 LocationOf(owner),
                 count == 1
-                    ? $"{holder} holds the name {RuleText.Name(name!)}, {where}, and a name cannot contain a null character."
-                    : Invariant($"{holder} holds {count} names with a null character, which a name cannot contain; the first is {RuleText.Name(name!)}, {where}.")));
+                    ? $"{holder} holds the name {FileQuote.Name(name!)}, {where}, and a name cannot contain a null character."
+                    : Invariant($"{holder} holds {count} names with a null character, which a name cannot contain; the first is {FileQuote.Name(name!)}, {where}.")));
         }
 
         var visited = new int[_visited.Count];
@@ -242,7 +242,7 @@ internal sealed class ObjectGraph
                     }
 
                     var length = path.Length;
-                    path.Append(RuleText.Name(key));
+                    FileQuote.AppendName(path, key);
 
                     if (TryFindMissing(entry, owner, isNode: false, path, out target))
                     {
@@ -306,7 +306,7 @@ internal sealed class ObjectGraph
                     }
 
                     var length = path.Length;
-                    path.Append(RuleText.Name(key));
+                    FileQuote.AppendName(path, key);
 
                     if (FindNullCharacter(entry, owner, path, out isKey) is { } found)
                     {
@@ -362,7 +362,7 @@ internal sealed class ObjectGraph
     private static string Holder(int owner) =>
         owner == 0 ? "The trailer" : string.Create(CultureInfo.InvariantCulture, $"Object {owner}");
 
-    private static string Path(StringBuilder path) => path.Length == 0 ? "its value" : path.ToString();
+    private static string Path(StringBuilder path) => path.Length == 0 ? "its value" : RuleText.Path(path);
 
     private static bool IsSectionKey(PdfName key) => key == PdfName.Prev || key == PdfName.XRefStm;
 

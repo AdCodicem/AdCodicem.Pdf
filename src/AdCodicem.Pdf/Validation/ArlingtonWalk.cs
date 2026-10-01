@@ -1204,7 +1204,7 @@ internal sealed class ArlingtonWalk
 
             if (step.Key is not null)
             {
-                text.Append(RuleText.Name(step.Key));
+                FileQuote.AppendName(text, step.Key);
             }
 
             if (step.Element >= 0)
@@ -1216,7 +1216,9 @@ internal sealed class ArlingtonWalk
         var what = tally.Row.Object.IsArray ? "array" : "dictionary";
 
         // A value written in an array that is an object of its own lies at an index, not under a key.
-        return text.Length > 0 && text[0] == '[' ? $"the {what} at {text} in {owner}" : $"the {what} under {text} of {owner}";
+        return text.Length > 0 && text[0] == '['
+            ? $"the {what} at {RuleText.Path(text)} in {owner}"
+            : $"the {what} under {RuleText.Path(text)} of {owner}";
     }
 
     private PdfValidationLocation LocationOf(PdfObjectId holder)

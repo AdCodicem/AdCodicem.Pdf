@@ -1,5 +1,7 @@
+using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -333,7 +335,19 @@ public class ValidatorTests
         RuleText.Kind(PdfNull.Instance).Should().Be("null");
         RuleText.Pages(1).Should().Be("1 page");
         RuleText.Pages(2).Should().Be("2 pages");
-        RuleText.Name(PdfName.Get("A\0B")).Should().Be("/A#00B");
+        FileQuote.Name(PdfName.Get("A\0B")).Should().Be("/A#00B");
+    }
+
+    [Theory]
+    [InlineData("/A/B/C/D/E/F/G/H", "/A/B/C/D/E/F/G/H")]
+    [InlineData("/A/B/C/D/E/F/G/H/I", "/A/B/C/D (1 step) /F/G/H/I")]
+    [InlineData("[0]/A[1]/B[2]/C[3]/D[4]/E[5]", "[0]/A[1]/B (3 steps) /D[4]/E[5]")]
+    [InlineData("/A#2FB/C#5BD/E/F/G/H/I/J/K", "/A#2FB/C#5BD/E/F (1 step) /H/I/J/K")]
+    [InlineData("/A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q/R/S/T", "/A/B/C/D (12 steps) /Q/R/S/T")]
+    public void A_path_of_more_than_eight_steps_keeps_its_first_and_last_four(string path, string written)
+    {
+        // A quoted key writes a solidus or a bracket as #xx, so only a step starts with one.
+        RuleText.Path(new StringBuilder(path)).Should().Be(written);
     }
 
     [Fact]

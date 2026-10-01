@@ -164,6 +164,38 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Validating_an_object_whose_key_path_holds_megabyte_keys_stays_within_an_allocation_budget()
+    {
+        // Ten keys of a megabyte each lead to a reference to nothing. The finding names the path by its first and last
+        // four keys, each quoted by its first 127 bytes, never by copies of the ten megabytes.
+        var keys = new string[10];
+        var value = new StringBuilder("99 0 R");
+
+        for (var index = keys.Length - 1; index >= 0; index--)
+        {
+            keys[index] = new string((char)('A' + index), 1024 * 1024);
+            value.Insert(0, "<< /" + keys[index] + " ").Append(" >>");
+        }
+
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Extra 3 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, value.ToString())
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file);
+        _ = document.GetObject(new PdfObjectId(3));
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var findings = new PdfValidator().Validate(document).Findings;
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        allocated.Should().BeLessThan(4 * 1024 * 1024, "a path quotes 127 bytes of each of the eight keys it keeps");
+        var quoted = "/" + new string('A', 127) + " (the first 127 of 1,048,576 bytes)";
+        findings.Single(f => f.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Message
+            .Should().Contain("under " + quoted).And.Contain(" (2 steps) /" + new string('G', 127));
+    }
+
+    [Fact]
     public void Formats_no_message_for_the_faults_of_an_object_stream_member_once_the_diagnostics_are_full()
     {
         // A member of a million stray tokens meets a fault at each. Past the thousand entries kept, each is counted and
