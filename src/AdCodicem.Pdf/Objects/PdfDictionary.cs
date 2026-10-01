@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Globalization;
 
 namespace AdCodicem.Pdf.Objects;
 
@@ -73,6 +74,8 @@ public sealed class PdfDictionary : PdfObject, IEnumerable<KeyValuePair<PdfName,
     public override string ToString()
     {
         var type = this[PdfName.Type] as PdfName;
-        return type is null ? $"<<dictionary of {_entries.Count}>>" : $"<</Type {type} … {_entries.Count} entries>>";
+        return type is null
+            ? string.Create(CultureInfo.InvariantCulture, $"<<dictionary of {_entries.Count}>>")
+            : string.Create(CultureInfo.InvariantCulture, $"<</Type {type} … {_entries.Count} entries>>");
     }
 }

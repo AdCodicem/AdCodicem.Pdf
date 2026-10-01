@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace AdCodicem.Pdf.Objects;
 
 /// <summary>
@@ -11,5 +13,5 @@ public readonly record struct PdfObjectId(int Number, int Generation = 0)
     public bool IsEmpty => Number <= 0;
 
     /// <inheritdoc/>
-    public override string ToString() => $"{Number} {Generation} R";
+    public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Number} {Generation} R");
 }
