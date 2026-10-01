@@ -23,8 +23,9 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// A cross-reference section the chain names, through <c>/Prev</c> or <c>/XRefStm</c>, is neither where
-    /// it is named nor near it. The objects only it indexes are missing from the index, which is rebuilt by
-    /// scanning the file when one of them is asked for.
+    /// it is named nor near it, lies outside the file, or is named by a value that is not an offset. The objects only it
+    /// indexes are missing from the index, which is rebuilt by scanning the file when one of them is asked for. The report
+    /// is placed where the section was named, or, when that lies outside the file, at the section whose trailer named it.
     /// </summary>
     public const string XRefSectionMissing = "xref.section-missing";
 
@@ -34,7 +35,11 @@ public static class PdfDiagnosticCodes
     /// </summary>
     public const string XRefChainCycle = "xref.chain-cycle";
 
-    /// <summary>A cross-reference entry pointed outside the file.</summary>
+    /// <summary>
+    /// An object's cross-reference entry places it outside the file. The report carries no position, since none in the
+    /// file names the entry; its message gives the offset. A section named outside the file is
+    /// <see cref="XRefSectionMissing"/>'s, or the rebuild's when <c>startxref</c> names it.
+    /// </summary>
     public const string XRefEntryOutOfRange = "xref.entry-out-of-range";
 
     /// <summary>

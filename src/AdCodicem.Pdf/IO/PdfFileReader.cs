@@ -1244,7 +1244,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (!TryRelocateXRefSection(offset, section, out previous, out hybrid))
                 {
-                    ReportMissingSection(naming, offset);
+                    ReportMissingSection(naming, offset, namedFrom);
                     break;
                 }
             }
@@ -1259,7 +1259,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 if (TryReadXRefSection(hybrid, stream, out _, out _) != XRefSectionState.Read &&
                     !TryRelocateXRefSection(hybrid, stream, out _, out _))
                 {
-                    ReportMissingSection("/XRefStm", hybrid);
+                    ReportMissingSection("/XRefStm", hybrid, section.Offset);
                 }
             }
 
@@ -1274,16 +1274,25 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <summary>Determines whether <paramref name="position"/>, a position in the file, lies inside it.</summary>
     private bool IsInFile(long position) => position >= 0 && position < _source.Length;
 
-    /// <summary>Reports a section of the chain that could not be found, and marks the index incomplete.</summary>
-    private void ReportMissingSection(string naming, long offset)
+    /// <summary>
+    /// Reports a section of the chain that could not be found, and marks the index incomplete: at the offset it was
+    /// named at, or, when that lies outside the file, at <paramref name="namedFrom"/>, the section whose trailer named
+    /// it.
+    /// </summary>
+    private void ReportMissingSection(string naming, long offset, long namedFrom)
     {
         _indexIncomplete = true;
+        var absolute = offset + _headerOffset;
         _diagnostics.Warn(
             PdfDiagnosticCodes.XRefSectionMissing,
-            string.Create(
-                CultureInfo.InvariantCulture,
-                $"The cross-reference section {naming} names at offset {offset + _headerOffset} is not there, nor near it; the objects only it indexes are looked for by rebuilding the index."),
-            offset + _headerOffset);
+            IsInFile(absolute)
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The cross-reference section {naming} names at offset {absolute} is not there, nor near it; the objects only it indexes are looked for by rebuilding the index.")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The cross-reference section {naming} names at offset {absolute} lies outside the file, which is {_source.Length:N0} bytes long; the objects only it indexes are looked for by rebuilding the index."),
+            IsInFile(absolute) ? absolute : namedFrom);
     }
 
     /// <summary>
@@ -1415,7 +1424,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         var absolute = offset + _headerOffset;
         if (absolute < 0 || absolute >= _source.Length)
         {
-            _diagnostics.Warn(PdfDiagnosticCodes.XRefEntryOutOfRange, "A cross-reference section points outside the file.", absolute);
+            // Reported once, by what the chain makes of it: a missing section, or a rebuild for the first.
             section.Fault = "lies outside the file";
             section.State = XRefSectionState.NotFound;
             return section.State;
@@ -2018,8 +2027,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     {
         if (offset < 0 || offset >= _source.Length)
         {
+            // No position in the file names the entry, which the index does not keep where it was read.
             _diagnostics.Warn(
-                PdfDiagnosticCodes.XRefEntryOutOfRange, $"Object {id.Number} points outside the file.", offset);
+                PdfDiagnosticCodes.XRefEntryOutOfRange,
+                string.Create(CultureInfo.InvariantCulture, $"The entry of object {id.Number} places it at offset {offset}, outside the file."));
         }
         else if (TryParseObjectAt(id.Number, offset, out var atRecordedOffset))
         {
