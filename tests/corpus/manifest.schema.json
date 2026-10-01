@@ -247,6 +247,7 @@
           "description": "Diagnostic codes the reader must report (PdfDiagnosticCodes).",
           "items": {
             "enum": [
+              "header.missing",
               "xref.rebuilt",
               "xref.offset-adjusted",
               "xref.section-missing",
