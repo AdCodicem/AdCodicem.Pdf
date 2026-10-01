@@ -48,7 +48,10 @@ internal static class FileQuote
         text.Append(buffer[..Write('/', name.Value, WholeOf(name), buffer)]);
     }
 
-    /// <summary>Writes a keyword's bytes, each outside printable ASCII as <c>#xx</c>.</summary>
+    /// <summary>
+    /// Writes a keyword's bytes as a name's, with no solidus: each byte a writer would not write as itself — the number
+    /// sign, a delimiter, any byte outside printable ASCII — as <c>#xx</c>, and cut past <see cref="MaxBytes"/>.
+    /// </summary>
     public static string Keyword(ReadOnlySpan<byte> keyword)
     {
         Span<char> shown = stackalloc char[MaxBytes];
@@ -126,7 +129,7 @@ internal static class FileQuote
 
         if (whole < 0)
         {
-            whole = bytes + Utf8Length(value[index..]);
+            whole = bytes + ByteLength(value[index..]);
         }
 
         if (whole > bytes)
@@ -139,13 +142,23 @@ internal static class FileQuote
         return length;
     }
 
-    /// <summary>Counts the UTF-8 bytes of a caller's characters, a lone surrogate as U+FFFD's three.</summary>
-    private static long Utf8Length(ReadOnlySpan<char> value)
+    /// <summary>
+    /// Counts the bytes a quote would write of a caller's characters: one for a character up to U+00FF, as for a name
+    /// read from a file, and the UTF-8 bytes of one past it, a lone surrogate as U+FFFD's three.
+    /// </summary>
+    private static long ByteLength(ReadOnlySpan<char> value)
     {
         long length = 0;
 
         while (!value.IsEmpty)
         {
+            if (value[0] <= 0xFF)
+            {
+                length++;
+                value = value[1..];
+                continue;
+            }
+
             // An invalid sequence decodes as U+FFFD.
             _ = Rune.DecodeFromUtf16(value, out var rune, out var consumed);
             length += rune.Utf8SequenceLength;
