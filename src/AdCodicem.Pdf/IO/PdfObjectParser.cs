@@ -661,7 +661,7 @@ internal ref struct PdfObjectParser
 
         if (_member is { } member)
         {
-            _diagnostics?.Warn(code, member.Locate(message, fault.DataStart), member.DataStart);
+            member.Report(_diagnostics, code, message, fault.DataStart);
         }
         else if (_streamData?.IsLengthFaultReported(fault.DataStart) != true)
         {
@@ -817,7 +817,7 @@ internal ref struct PdfObjectParser
     {
         if (_member is { } member)
         {
-            _diagnostics?.Warn(code, member.Locate(message, position), member.DataStart);
+            member.Report(_diagnostics, code, message, position);
             return;
         }
 
@@ -830,10 +830,28 @@ internal ref struct PdfObjectParser
     /// <param name="ObjectNumber">The member's number.</param>
     private readonly record struct ObjectStreamMember(int StreamNumber, long DataStart, int ObjectNumber)
     {
-        /// <summary>Adds to <paramref name="message"/> the member, and the byte of decoded data it is about.</summary>
-        public string Locate(string message, long position) => string.Create(
-            CultureInfo.InvariantCulture,
-            $"{message} It was met in object {ObjectNumber}, at byte {position} of object stream {StreamNumber}'s decoded data.");
+        /// <summary>
+        /// Reports, where the object stream's data starts, what was met at byte <paramref name="position"/> of its
+        /// decoded data, the member and the byte added to <paramref name="message"/>. A report the diagnostics drop,
+        /// being full, is counted with its message as it stands: hostile data can meet a fault at every token, and none
+        /// of those is formatted for nothing.
+        /// </summary>
+        public void Report(PdfDiagnostics? diagnostics, string code, string message, long position)
+        {
+            if (diagnostics is null)
+            {
+                return;
+            }
+
+            diagnostics.Warn(
+                code,
+                diagnostics.IsFull
+                    ? message
+                    : string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"{message} It was met in object {ObjectNumber}, at byte {position} of object stream {StreamNumber}'s decoded data."),
+                DataStart);
+        }
     }
 
     /// <summary>A stream's <c>/Length</c>, as <see cref="ReadLength"/> read it.</summary>

@@ -125,29 +125,6 @@ public class DocumentReaderTests
         document.Diagnostics.Contains(PdfDiagnosticCodes.XRefChainCycle).Should().BeTrue();
     }
 
-    [Fact]
-    public void Reports_a_loop_in_the_chain_at_the_section_it_loops_back_to_whatever_precedes_the_header()
-    {
-        // The offset a /Prev gives counts from the header; the report gives a position in the file (#187).
-        var original = SampleDocument().BuildClassic(rootNumber: 1);
-        var looping = TestPdfBuilder.AppendIncrementalUpdate(
-            original,
-            rootNumber: 1,
-            [(4, "<< /Length 18 >>\nstream\nBT (Bonjour) Tj ET\nendstream")],
-            pointPreviousAtSelf: true);
-        var junk = Encoding.ASCII.GetBytes(new string('j', 101) + "\n");
-        var prefixed = junk.Concat(looping).ToArray();
-        var section = Encoding.Latin1.GetString(prefixed).LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
-
-        using var document = PdfDocument.Open(prefixed);
-
-        var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
-        cycle.Position.Should().Be(section);
-        cycle.Message.Should().EndWith(string.Create(
-            CultureInfo.InvariantCulture,
-            $"the /Prev of the section at offset {section} names offset {section}, which the chain has already read."));
-    }
-
     [Theory]
     [InlineData("0000099999")]
     [InlineData("-000000001")]
@@ -469,9 +446,12 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(file);
         _ = document.GetObject(new PdfObjectId(3));
 
+        var data = Encoding.Latin1.GetString(file).IndexOf("stream\nabc", (int)dataStart, StringComparison.Ordinal) + "stream\n".Length - dataStart;
         var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which;
         report.Position.Should().Be(dataStart);
-        report.Message.Should().Contain("It was met in object 3, at byte ").And.EndWith(" of object stream 4's decoded data.");
+        report.Message.Should().EndWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $" It was met in object 3, at byte {data} of object stream 4's decoded data."));
     }
 
     [Theory]
@@ -497,6 +477,39 @@ public class DocumentReaderTests
         report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
         report.Position.Should().Be(ObjectStreamDataStart(file));
         report.Message.Should().Be("Object stream 5 " + fault);
+    }
+
+    [Fact]
+    public void Reports_an_object_stream_whose_header_ends_after_an_object_number_with_no_offset()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Type /ObjStm /N 2 /First 6 /Length 10 >>\nstream\n6 0 7 <<>>\nendstream")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfDictionary>();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
+            "Object stream 5 has a header that ends after 1 of the 2 objects its /N declares; only the first 1 of its 2 objects can be read from it.");
+    }
+
+    [Fact]
+    public void Leaves_a_first_past_data_a_guard_cut_to_the_guard_s_report()
+    {
+        // The decoded-stream guard stops the object stream's data before its /First: the stream is not at fault.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: header => header + new string(' ', 200), compressObjectStream: true);
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 100 } };
+
+        using var document = PdfDocument.Open(file, options);
+        document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
     }
 
     [Theory]
@@ -560,6 +573,20 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(Packed(header => header.Replace("3 ", "7 ", StringComparison.Ordinal)));
 
         document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void An_object_stream_that_declares_no_object_needs_no_first_and_is_not_reported()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Type /ObjStm /N 0 /Length 0 >>\nstream\n\nendstream")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable);
     }
 
     [Fact]
@@ -666,6 +693,101 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeTrue();
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+    }
+
+    [Fact]
+    public void Counts_two_definitions_the_scan_finds_in_the_overlap_of_two_windows_as_one_redefinition()
+    {
+        // Both headers of object 7 lie in the 64 bytes the first and second megabyte's windows share; object 8 takes the
+        // file past the first.
+        byte[] Build(int filler) => new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(9, "(" + new string('x', filler) + ")")
+            .WithObject(7, "null")
+            .WithObject(7, "1")
+            .WithObject(8, "(" + new string('y', 200) + ")")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+        var probe = Build(1_000_000);
+        var file = Build(1_000_000 + ((1024 * 1024) - 61) - probe.AsSpan().IndexOf("7 0 obj"u8));
+        file.AsSpan().IndexOf("7 0 obj"u8).Should().Be((1024 * 1024) - 61);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(7)).AsInteger().Should().Be(1);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+            .Which.Message.Should().Be("Rebuilding the index met a second definition of object 7." + KeptRule);
+    }
+
+    [Fact]
+    public void Reads_a_header_that_straddles_the_start_of_a_scan_window_under_its_own_number()
+    {
+        // "123 0 obj" starts a byte before the second megabyte's window, which object 8 makes the file reach: that window
+        // must not read it as object 23.
+        byte[] Build(int filler) => new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(23, "(the real object 23)")
+            .WithObject(9, "(" + new string('x', filler) + ")")
+            .WithObject(123, "(object 123)")
+            .WithObject(8, "(" + new string('y', 200) + ")")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+        var probe = Build(1_000_000);
+        var file = Build(1_000_000 + ((1024 * 1024) - 65) - probe.AsSpan().IndexOf("123 0 obj"u8));
+        file.AsSpan().IndexOf("123 0 obj"u8).Should().Be((1024 * 1024) - 65);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(23)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("the real object 23");
+        document.GetObject(new PdfObjectId(123)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("object 123");
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+    }
+
+    [Fact]
+    public void Writes_the_numbers_a_rebuild_finds_redefined_whatever_the_culture()
+    {
+        // Two object streams list -5, a number no object can have (#157): Swedish writes its minus sign as U+2212.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Type /ObjStm /N 1 /First 5 /Length 10 >>\nstream\n-5 0 (one)\nendstream")
+            .WithObject(7, "<< /Type /ObjStm /N 1 /First 5 /Length 10 >>\nstream\n-5 0 (two)\nendstream")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+        var culture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("sv-SE");
+            using var document = PdfDocument.Open(file);
+
+            document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
+                .Which.Message.Should().Be("Rebuilding the index met a second definition of object -5." + KeptRule);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+    }
+
+    [Fact]
+    public void Drops_what_parsing_meets_where_a_guard_cut_an_object_stream_s_data()
+    {
+        // The data is cut right after object 3's /Parent key: what the parser makes of the end is the guard's.
+        const string Pages = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>";
+        const string Page = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>";
+        var header = string.Create(CultureInfo.InvariantCulture, $"2 0 3 {Pages.Length + 1} ");
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, Pages)
+            .WithObject(3, Page)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], compressObjectStream: true);
+        var cut = header.Length + Pages.Length + 1 + "<< /Type /Page /Parent".Length;
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = cut } };
+
+        using var document = PdfDocument.Open(file, options);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
     }
 
     [Fact]

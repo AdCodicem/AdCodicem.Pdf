@@ -111,6 +111,28 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void Reports_a_loop_in_the_chain_at_the_section_it_loops_back_to_whatever_precedes_the_header()
+    {
+        // The offset a /Prev gives counts from the header; the report gives a position in the file (#187).
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildClassic(rootNumber: 1);
+        var looping = TestPdfBuilder.AppendIncrementalUpdate(
+            original, rootNumber: 1, [(2, "<< /Type /Pages /Kids [] /Count 0 >>")], pointPreviousAtSelf: true);
+        byte[] prefixed = [.. Encoding.ASCII.GetBytes(new string('j', 101) + "\n"), .. looping];
+        var section = Encoding.Latin1.GetString(prefixed).LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
+
+        using var document = PdfDocument.Open(prefixed);
+
+        var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        cycle.Position.Should().Be(section);
+        cycle.Message.Should().EndWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"the /Prev of the section at offset {section} names offset {section}, which the chain has already read."));
+    }
+
+    [Fact]
     public void Places_a_loop_back_to_a_section_named_outside_the_file_at_what_named_it()
     {
         // An /XRefStm and a /Prev naming one offset past the end: the /Prev loops back to what the /XRefStm named,
@@ -123,7 +145,75 @@ public class CrossReferenceChainTests
 
         var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
         cycle.Position.Should().Be(section);
-        cycle.Message.Should().Contain("names offset 99999999");
+        cycle.Message.Should().EndWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"the /Prev of the section at offset {section} names offset 99999999, outside the file, which the chain has already named."));
+    }
+
+    [Fact]
+    public void Places_a_loop_at_the_section_it_loops_back_to_rather_than_at_the_one_that_named_it()
+    {
+        // The newest section names the older through /Prev, and the older names the newest back.
+        var (file, newest, older) = Looping();
+
+        using var document = PdfDocument.Open(file);
+
+        var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        cycle.Position.Should().Be(newest).And.NotBe(older);
+        cycle.Message.Should().EndWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"the /Prev of the section at offset {older} names offset {newest}, which the chain has already read."));
+    }
+
+    [Fact]
+    public void Places_sections_the_chain_cannot_read_or_find_in_the_file_whatever_precedes_the_header()
+    {
+        // Five bytes before the header shift every offset the file gives; a report gives an offset in the file.
+        var (unreadable, original) = Updated(padding: 600);
+        var text = Encoding.Latin1.GetString(unreadable);
+        var trailer = text.IndexOf("trailer", StringComparison.Ordinal);
+        unreadable = Encoding.Latin1.GetBytes("junk\n" + string.Concat(text.AsSpan(0, trailer), "/Bad 1 ", text.AsSpan(trailer + 7)));
+        var (missing, _) = Updated(prevAt: Offset.FirstObject);
+        missing = [.. "junk\n"u8, .. missing];
+
+        using var first = PdfDocument.Open(unreadable);
+        using var second = PdfDocument.Open(missing);
+
+        first.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Which.Position.Should().Be(original + 5);
+        second.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefSectionMissing).Which.Position.Should().Be(FirstObjectOffset + 5);
+    }
+
+    [Fact]
+    public void Places_a_section_whose_offset_wraps_once_the_header_s_is_added_at_the_section_naming_it()
+    {
+        // Five bytes before the header and a /Prev of the largest long: the sum wraps negative (#125), and is no
+        // position in the file either.
+        var (file, _) = Updated(prevAt: Offset.PastTheEnd);
+        var text = "junk\n" + Encoding.Latin1.GetString(file).Replace("/Prev 99999999", "/Prev 9223372036854775807", StringComparison.Ordinal);
+        var naming = text.LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
+
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefSectionMissing).Which.Position.Should().Be(naming);
+    }
+
+    [Fact]
+    public void Takes_a_section_named_at_the_file_s_length_for_one_outside_it()
+    {
+        // The last byte of the file is at its length less one: the length itself is past the end.
+        var (file, _) = Updated(prevAt: Offset.PastTheEnd);
+        var text = Encoding.Latin1.GetString(file);
+        file = Encoding.Latin1.GetBytes(text.Replace("/Prev 99999999", "/Prev " + file.Length.ToString("D8", CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        var naming = text.LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
+
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionMissing);
+        report.Position.Should().Be(naming);
+        report.Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference section /Prev names at offset {file.Length} lies outside the file, which is {file.Length:N0} bytes long"));
     }
 
     [Fact]
@@ -334,6 +424,21 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void Reports_a_cross_reference_stream_whose_dictionary_the_guard_cuts_under_the_guard_alone()
+    {
+        // The original section's dictionary is longer than the 48 bytes trailers are read to: what the reader makes of
+        // the cut — no stream data after it — is not the file's fault, and the guard's report is the only one.
+        var (file, _) = Updated(padding: 600, originalAsStream: true);
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 48 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer);
+        ReadsWhole(document);
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
     public void Reports_a_table_that_prev_names_and_the_guard_cuts_before_any_row_under_the_guard_alone()
     {
         // The newest section indexes nothing and fits the 16 bytes tables are read to; the original's does not reach
@@ -503,6 +608,26 @@ public class CrossReferenceChainTests
             $"trailer\n<< /Size 8 /Root 1 0 R /Prev {prev}{hybrid} >>\nstartxref\n{xref}\n%%EOF\n"));
 
         return ([.. file], xrefStm == XRefStm.Present ? stream : originalSection);
+    }
+
+    /// <summary>
+    /// Builds a file of two classic tables that name each other through <c>/Prev</c>, and returns it with where the
+    /// newest and the older table start.
+    /// </summary>
+    private static (byte[] File, long Newest, long Older) Looping()
+    {
+        const string Objects = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n";
+        var older = Objects.Length;
+        var catalog = Objects.IndexOf("1 0 obj", StringComparison.Ordinal);
+        var pages = Objects.IndexOf("2 0 obj", StringComparison.Ordinal);
+        string Older(long newest) => string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3\n0000000000 65535 f\r\n{catalog:D10} 00000 n\r\n{pages:D10} 00000 n\r\ntrailer\n<< /Size 3 /Root 1 0 R /Prev {newest:D10} >>\n");
+        var newest = older + Older(0).Length;
+        var text = Objects + Older(newest) + string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\ntrailer\n<< /Size 3 /Root 1 0 R /Prev {older} >>\nstartxref\n{newest}\n%%EOF\n");
+        return (Encoding.Latin1.GetBytes(text), newest, older);
     }
 
     /// <summary>Checks the objects each section alone indexes: the update's catalog and object 4, the original's page tree.</summary>

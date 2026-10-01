@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
+using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO.XRef;
@@ -1207,12 +1208,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 _structure.LoopOffset = offset + _headerOffset;
                 _structure.LoopNamedBy = naming;
                 _structure.LoopNamedFrom = namedFrom;
+                var inFile = IsInFile(offset + _headerOffset);
                 _diagnostics.Warn(
                     PdfDiagnosticCodes.XRefChainCycle,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The cross-reference chain loops back on itself: the {naming} of the section at offset {namedFrom} names offset {offset + _headerOffset}, which the chain has already read."),
-                    IsInFile(offset + _headerOffset) ? offset + _headerOffset : namedFrom);
+                        $"The cross-reference chain loops back on itself: the {naming} of the section at offset {namedFrom} names offset {offset + _headerOffset}, {(inFile ? "which the chain has already read" : "outside the file, which the chain has already named")}."),
+                    inFile ? offset + _headerOffset : namedFrom);
                 break;
             }
 
@@ -1283,8 +1285,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// one otherwise.
     /// </summary>
     /// <remarks>
-    /// A table the section length guard cut before any row was indexed is already reported, under the guard's own
-    /// code, which names the limit that lifts it.
+    /// A section one of the reader's guards cut is already reported, under the guard's own code, which names the limit
+    /// that lifts it: what the reader met past the cut is not the file's fault (ADR 34).
     /// </remarks>
     private void ReportLostSection(XRefSectionRecord section, string naming, long offset, long namedFrom)
     {
@@ -1296,7 +1298,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         _indexIncomplete = true;
 
-        if (section.Fault is null && section.CutByLimit)
+        if (section.CutByLimit)
         {
             return;
         }
@@ -2523,16 +2525,30 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return notYet ? PdfNull.Instance : null;
         }
 
-        var value = contents.Parse(entry.IndexInObjectStream, id.Number, this, _diagnostics, out var cut);
+        var mark = _pending.GetMark();
 
-        if (cut)
+        try
         {
-            // A member that runs into the end of data a guard cut is kept as far as it was read, like a regular object
-            // cut at MaxObjectLength.
-            _cutAtLimit.Add(id.Number);
-        }
+            var value = contents.Parse(entry.IndexInObjectStream, id.Number, this, _diagnostics, _pending, out var cut);
 
-        return value;
+            if (cut)
+            {
+                // A member that runs into the end of data a guard cut is kept as far as it was read, like a regular
+                // object cut at MaxObjectLength; what the parser met at the cut is the guard's, not the file's, and is
+                // dropped with it (ADR 34).
+                _cutAtLimit.Add(id.Number);
+            }
+            else
+            {
+                _pending.MoveTo(_diagnostics, mark);
+            }
+
+            return value;
+        }
+        finally
+        {
+            _pending.RollBack(mark);
+        }
     }
 
     /// <summary>
@@ -2692,7 +2708,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
             using var window = _source.GetWindow(position, length);
             var span = window.Memory.Span;
-            var searchFrom = 0;
+
+            // An obj keyword wholly within the overlap was found by the window before, which held it and what precedes
+            // it: each header is read once.
+            var searchFrom = position == 0 ? 0 : ScanOverlap - ObjKeyword.Length + 1;
 
             while (searchFrom < span.Length)
             {
@@ -2706,16 +2725,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (TryReadHeaderBackwards(span, objPosition, out var number, out var headerStart))
                 {
-                    // The last definition wins: that is what an incrementally updated file means. A header in the
-                    // overlap of two windows is found twice, and is one definition.
-                    var offset = position + headerStart - _headerOffset;
-
-                    if (_xref.TryGet(number, out var earlier) && earlier.Offset != offset)
+                    // The last definition wins: that is what an incrementally updated file means.
+                    if (_xref.TryGet(number, out _))
                     {
                         redefinitions.Add(number);
                     }
 
-                    _xref.Set(number, XRefEntry.Regular(offset, 0));
+                    _xref.Set(number, XRefEntry.Regular(position + headerStart - _headerOffset, 0));
                     found++;
                 }
 
@@ -2954,8 +2970,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         private int _listed;
         private bool _unlisted;
 
-        /// <summary>Gets how many definitions met a number already found.</summary>
-        public int Count { get; private set; }
+        /// <summary>
+        /// Gets how many definitions met a number already found: a long, since the object streams a rebuild expands can
+        /// list more members than an int counts.
+        /// </summary>
+        public long Count { get; private set; }
 
         /// <summary>Records a definition of <paramref name="number"/>, which was already found.</summary>
         public void Add(int number)
@@ -2980,7 +2999,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         /// <summary>Says how many definitions were met, of which numbers, and which definition was kept.</summary>
         public string Describe()
         {
-            var numbers = string.Join(", ", _numbers.AsSpan(0, _listed).ToArray());
+            var numbers = new StringBuilder();
+
+            foreach (var number in _numbers.AsSpan(0, _listed))
+            {
+                numbers.Append(numbers.Length == 0 ? string.Empty : ", ").Append(number.ToString(CultureInfo.InvariantCulture));
+            }
+
             var met = Count == 1
                 ? string.Create(CultureInfo.InvariantCulture, $"Rebuilding the index met a second definition of object {numbers}.")
                 : string.Create(
@@ -3173,9 +3198,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         /// <param name="index">Where the index says the object is among the stream's.</param>
         /// <param name="expectedNumber">The object's number.</param>
         /// <param name="source">Resolves what the object refers to.</param>
-        /// <param name="diagnostics">Receives what parsing met.</param>
+        /// <param name="diagnostics">Receives what the index got wrong of the object's place.</param>
+        /// <param name="parsing">Receives what parsing met, for the caller to keep or drop.</param>
         /// <param name="cut">Whether the object runs into the end of data a guard cut, and was read only as far as it.</param>
-        public PdfObject? Parse(int index, int expectedNumber, IPdfObjectSource source, PdfDiagnostics diagnostics, out bool cut)
+        public PdfObject? Parse(
+            int index, int expectedNumber, IPdfObjectSource source, PdfDiagnostics diagnostics, PdfDiagnostics parsing, out bool cut)
         {
             cut = false;
 
@@ -3210,7 +3237,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return null;
             }
 
-            var parser = PdfObjectParser.ForObjectStreamMember(_data, _number, _position, expectedNumber, source, diagnostics);
+            var parser = PdfObjectParser.ForObjectStreamMember(_data, _number, _position, expectedNumber, source, parsing);
             parser.Position = start;
             var value = parser.ParseObject();
             cut = _cutByGuard && parser.IsTruncated;

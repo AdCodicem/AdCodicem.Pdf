@@ -56,6 +56,28 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Formats_no_message_for_the_faults_of_an_object_stream_member_once_the_diagnostics_are_full()
+    {
+        // A member of a million stray tokens meets a fault at each. Past the thousand entries kept, each is counted and
+        // dropped, and its message, which names the member and the byte, is not built for nothing.
+        var member = "[" + string.Concat(Enumerable.Repeat(") ", 1_000_000)) + "]";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, member)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3]);
+        using var document = PdfDocument.Open(file);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var array = Measure(() => document.GetObject(new PdfObjectId(3)).AsArray().Required());
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        array.Count.Should().Be(1_000_000);
+        document.Diagnostics.SuppressedCount.Should().BeGreaterThan(990_000);
+        allocated.Should().BeLessThan(64 * 1024 * 1024, "a message is built only for an entry the diagnostics keep");
+    }
+
+    [Fact]
     public void Survives_a_cross_reference_stream_with_impossible_field_widths()
     {
         var bytes = new TestPdfBuilder()
