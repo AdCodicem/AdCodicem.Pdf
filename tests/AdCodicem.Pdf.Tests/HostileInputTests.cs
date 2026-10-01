@@ -116,6 +116,15 @@ public class HostileInputTests
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
         allocated.Should().BeLessThan(4 * 1024 * 1024, "no stream copies the name it takes for its length");
+
+        // What the reader keeps of each stream's fault for the document's life is the name itself, not words about it.
+        var name = document.GetObject(new PdfObjectId(5));
+        for (var number = 6; number < 56; number++)
+        {
+            document.Reader.TryGetStreamLengthFault(number, out var fault).Should().BeTrue();
+            fault.Kind.Should().Be("a name");
+            fault.Value.Should().BeSameAs(name);
+        }
     }
 
     [Fact]

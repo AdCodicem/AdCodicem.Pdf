@@ -796,33 +796,33 @@ public class StreamLengthTests
         source.Searches(dataStart, data.Length).Should().Be(1, "the file was searched once");
     }
 
-    public static TheoryData<string, string?, string, string, string?> LengthForms => new()
+    public static TheoryData<string, string?, string, string, string?, string?> LengthForms => new()
     {
-        { string.Empty, null, "The stream has no /Length; its data ends after 5 bytes.", nameof(StreamLengthForm.Absent), null },
-        { "/Length 5.5", null, "The stream's /Length is a real number, 5.5, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a real number, 5.5" },
-        { "/Length /Five", null, "The stream's /Length is a name, /Five, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a name, /Five" },
-        { "/Length (5)", null, "The stream's /Length is a string, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a string" },
-        { "/Length [5]", null, "The stream's /Length is an array, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "an array" },
-        { "/Length true", null, "The stream's /Length is a boolean, true, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a boolean, true" },
-        { "/Length false", null, "The stream's /Length is a boolean, false, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a boolean, false" },
-        { "/Length << /N 5 >>", null, "The stream's /Length is a dictionary, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a dictionary" },
-        { "/Length -5", null, "The stream's /Length is -5, a length no stream can have; its data ends after 5 bytes.", nameof(StreamLengthForm.OutOfRange), null },
-        { "/Length 3000000000", null, "The stream's /Length is 3000000000, more than the reader can take as a length; its data ends after 5 bytes.", nameof(StreamLengthForm.OutOfRange), null },
-        { "/Length 9 0 R", null, "The stream's /Length names object 9 0, which the file lacks; its data ends after 5 bytes.", nameof(StreamLengthForm.ObjectMissing), null },
-        { "/Length 0 0 R", null, "The stream's /Length names object 0 0, which the file lacks; its data ends after 5 bytes.", nameof(StreamLengthForm.ObjectMissing), null },
-        { "/Length 5 0 R", null, "The stream's /Length names object 5 0, which could not be read; its data ends after 5 bytes.", nameof(StreamLengthForm.ObjectUnreadable), null },
-        { "/Length 6 0 R", "5.5", "The stream's /Length names object 6 0, which holds a real number, 5.5, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a real number, 5.5" },
-        { "/Length 6 0 R", "<< /N 5 >>", "The stream's /Length names object 6 0, which holds a dictionary, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a dictionary" },
-        { "/Length 6 0 R", "<< /Length 1 >>\nstream\nx\nendstream", "The stream's /Length names object 6 0, which holds a stream, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a stream" },
-        { "/Length 6 0 R", "null", "The stream's /Length names object 6 0, which holds null, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "null" },
-        { "/Length 6 0 R", "-5", "The stream's /Length names object 6 0, which holds -5, a length no stream can have; its data ends after 5 bytes.", nameof(StreamLengthForm.OutOfRange), null },
-        { "/Length 6 0 R", "3", "The stream declared 3 bytes but ended after 5.", nameof(StreamLengthForm.Integer), null },
+        { string.Empty, null, "The stream has no /Length; its data ends after 5 bytes.", nameof(StreamLengthForm.Absent), null, null },
+        { "/Length 5.5", null, "The stream's /Length is a real number, 5.5, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a real number", "5.5" },
+        { "/Length /Five", null, "The stream's /Length is a name, /Five, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a name", "/Five" },
+        { "/Length (5)", null, "The stream's /Length is a string, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a string", null },
+        { "/Length [5]", null, "The stream's /Length is an array, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "an array", null },
+        { "/Length true", null, "The stream's /Length is a boolean, true, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a boolean", "true" },
+        { "/Length false", null, "The stream's /Length is a boolean, false, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a boolean", "false" },
+        { "/Length << /N 5 >>", null, "The stream's /Length is a dictionary, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a dictionary", null },
+        { "/Length -5", null, "The stream's /Length is -5, a length no stream can have; its data ends after 5 bytes.", nameof(StreamLengthForm.OutOfRange), null, null },
+        { "/Length 3000000000", null, "The stream's /Length is 3000000000, more than the reader can take as a length; its data ends after 5 bytes.", nameof(StreamLengthForm.OutOfRange), null, null },
+        { "/Length 9 0 R", null, "The stream's /Length names object 9 0, which the file lacks; its data ends after 5 bytes.", nameof(StreamLengthForm.ObjectMissing), null, null },
+        { "/Length 0 0 R", null, "The stream's /Length names object 0 0, which the file lacks; its data ends after 5 bytes.", nameof(StreamLengthForm.ObjectMissing), null, null },
+        { "/Length 5 0 R", null, "The stream's /Length names object 5 0, which could not be read; its data ends after 5 bytes.", nameof(StreamLengthForm.ObjectUnreadable), null, null },
+        { "/Length 6 0 R", "5.5", "The stream's /Length names object 6 0, which holds a real number, 5.5, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a real number", "5.5" },
+        { "/Length 6 0 R", "<< /N 5 >>", "The stream's /Length names object 6 0, which holds a dictionary, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a dictionary", null },
+        { "/Length 6 0 R", "<< /Length 1 >>\nstream\nx\nendstream", "The stream's /Length names object 6 0, which holds a stream, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a stream", null },
+        { "/Length 6 0 R", "null", "The stream's /Length names object 6 0, which holds null, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "null", null },
+        { "/Length 6 0 R", "-5", "The stream's /Length names object 6 0, which holds -5, a length no stream can have; its data ends after 5 bytes.", nameof(StreamLengthForm.OutOfRange), null, null },
+        { "/Length 6 0 R", "3", "The stream declared 3 bytes but ended after 5.", nameof(StreamLengthForm.Integer), null, null },
     };
 
     [Theory]
     [MemberData(nameof(LengthForms))]
     public void A_length_that_cannot_be_taken_is_reported_as_the_file_wrote_it(
-        string entry, string? named, string message, string form, string? kind)
+        string entry, string? named, string message, string form, string? kind, string? value)
     {
         // #120: every one of these used to say the stream "declared -1 bytes".
         var objects = new List<(int, string)> { (StreamNumber, Invariant($"<< {entry} >>\nstream\nhello\nendstream")) };
@@ -845,6 +845,7 @@ public class StreamLengthTests
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
         fault.Form.ToString().Should().Be(form);
         fault.Kind.Should().Be(kind);
+        (fault.Value?.ToString()).Should().Be(value);
         fault.Reference.Should().Be(entry.EndsWith(" R", StringComparison.Ordinal) ? new PdfObjectId(entry[8] - '0') : null);
         fault.Declared.Should().Be(form is nameof(StreamLengthForm.Integer) or nameof(StreamLengthForm.OutOfRange)
             ? long.Parse(named ?? entry["/Length ".Length..], CultureInfo.InvariantCulture)

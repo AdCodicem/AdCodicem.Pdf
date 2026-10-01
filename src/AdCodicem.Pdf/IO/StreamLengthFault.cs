@@ -26,10 +26,18 @@ internal readonly record struct StreamLengthFault
     public long? Declared { get; init; }
 
     /// <summary>
-    /// Gets what the <c>/Length</c>, or the object it names, holds when that is not an integer, in words:
-    /// <c>a real number, 61.5</c>, <c>a dictionary</c>.
+    /// Gets what kind of value the <c>/Length</c>, or the object it names, holds when that is not an integer:
+    /// <c>a real number</c>, <c>a name</c>, <c>a dictionary</c>.
     /// </summary>
     public string? Kind { get; init; }
+
+    /// <summary>
+    /// Gets the value the <c>/Length</c>, or the object it names, holds when it is a real number, a name or a boolean,
+    /// as the file wrote it; null for any other. The value is kept, not copied into words: a name of millions of
+    /// characters that many streams take for their length costs each of them a reference, which a message quotes
+    /// only when it is written.
+    /// </summary>
+    public PdfObject? Value { get; init; }
 
     /// <summary>Gets the length the reader took for the data.</summary>
     public required int Taken { get; init; }
