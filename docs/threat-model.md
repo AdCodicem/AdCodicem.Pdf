@@ -21,7 +21,9 @@ it stands, and each test it names was read. A defense found missing is not writt
 - A bound is classified as [ADR 34](adr/0034-every-valid-pdf-is-readable-and-the-readers-guards-are.md) requires.
   A **guard** is a `PdfReaderLimits` property, on by default and reported under a `limit.*` code: a valid file
   may reach it. An **internal constant** is a bound that only an invalid file reaches, and the reason is written
-  where the constant is declared.
+  where the constant is declared. A bound on what the library repeats of a value, not on what it reads, is an
+  internal constant too, though a valid file may reach it, and its declaration says so: a message quotes 127 bytes
+  of a name ([ADR 34](adr/0034-every-valid-pdf-is-readable-and-the-readers-guards-are.md), amended 2026-10-01).
 
 ## Assets
 
@@ -47,7 +49,8 @@ What a caller entrusts to the library when it opens a file it did not produce:
   something? A file that makes the report lie defeats the caller as surely as a crash does. That covers hiding its
   encryption, hiding a cut, or getting the reader's own limit blamed on the file.
 - **The host's logs and terminals.** Diagnostic and finding messages quote names and keywords from the file, and
-  hosts log and print them.
+  hosts log and print them. A quote is printable ASCII on one line and at most 127 bytes of what the file wrote, so
+  what a host prints is the library's text, not the file's (*Reports*, below).
 
 The library holds more later: the files it writes ([M03]), the original bytes and existing signatures an
 incremental update preserves ([M03], [M04]), passwords and file keys ([M16]), signing keys and certificates
@@ -76,7 +79,7 @@ Where a byte from outside the caller's code enters today:
 |---|---|---|
 | The file source | `PdfDocument.Open(string)`, `Open(ReadOnlyMemory<byte>)`, `Open(Stream)`, `Open(PdfFileSource, PdfReaderOptions?, bool)` | Every byte of the file, read lazily through windows |
 | What the reader derives | `GetObject`, `PdfReference.Resolve`, the `PdfObjectExtensions` accessors, `Trailer`, `Catalog`, `ObjectNumbers`, `PdfStream.GetRawBytes`, `Decode` | Values the file chose, handed to the caller's code |
-| Messages | `PdfDiagnostic.Message` and `ToString`, `PdfValidationFinding.Message` | Text that quotes names and keywords from the file |
+| Messages | `PdfDiagnostic.Message` and `ToString`, `PdfValidationFinding.Message` and `ToString` | Text that quotes names and keywords from the file, escaped and cut |
 | The validator | `PdfValidator.Validate` | The same document, plus bytes the validator reads itself: the file's tail, 64 bytes at each entry's offset, object stream headers |
 
 Every surface still to come adds a boundary of its own: HTML, CSS and template data, the resource loader, font
@@ -132,8 +135,22 @@ Held by `DocumentReaderTests.A_source_reads_nothing_outside_itself`,
 
 `PdfDiagnostics` keeps `PdfReaderOptions.DiagnosticCapacity` entries (1,000) and counts the rest in
 `SuppressedCount`. `PdfValidationReport` keeps `PdfValidatorOptions.FindingCapacity` findings (1,000) and counts
-the rest by severity and rule. Both bound the **number** of entries, not their size: see the gaps of *Opening*
-and of *The validator*.
+the rest by severity and rule. Both bound the **number** of entries; *The validator*'s gaps say what building them
+costs.
+
+An entry's **size** is bounded by how it quotes the file ([#159]). Every name and keyword a message quotes goes
+through `FileQuote`, which writes it as a PDF writer writes a name: printable ASCII on one line, every other byte, the
+number sign and the delimiters as `#xx`. Past `FileQuote.MaxBytes` (127) it is cut, with the whole's length, from a
+buffer on the stack, so a name of 64 MB costs its quote and no copy. A path of keys in a finding keeps its first and
+last `RuleText.PathEnds` (4) steps. A string from the file is never quoted. Numbers are written in the invariant
+culture. What the reader keeps of a stream's length fault for the document's life is the value it found, not words
+about it. Held by `FileQuoteTests`; `PropertyTests.A_quote_of_the_file_is_printable_ascii_on_one_line_and_bounded_whatever_the_bytes`;
+`HostileInputTests.Reads_streams_whose_length_names_a_name_of_millions_of_characters_within_an_allocation_budget`,
+`Reads_fifty_streams_whose_length_names_one_long_name_within_an_allocation_budget`,
+`Quotes_a_keyword_of_ten_megabytes_where_a_subsection_should_start_by_its_first_bytes`,
+`Validating_an_object_whose_key_path_holds_megabyte_keys_stays_within_an_allocation_budget`; and
+`CorpusReadingTests.Every_message_a_document_earns_is_printable_ascii_on_one_line_whatever_the_culture`, under a Persian
+culture.
 
 ### What may be thrown
 
@@ -176,8 +193,6 @@ Known gaps:
 
 - [#154] Encryption is decided by the merged trailer's `/Encrypt` key, unresolved. A rebuilt index loses one kept in a
   cross-reference stream and hands out ciphertext; one that resolves to null refuses an unencrypted file.
-- [#159] Messages quote the file's names and keywords whole and unescaped. Each reference copies them, records keep
-  them for the document's life, and control characters reach the host's logs.
 - [#180] Pooled buffers go back to the shared pool uncleared, and the windows a hostile file grew stay pooled, per
   thread, after the document is disposed.
 - [#167] `ObjectNumbers` and `Diagnostics` are live: a read that rebuilds the index while a caller enumerates them
@@ -325,7 +340,7 @@ its zlib patched is keeping part of the reader patched.
 | An LZW code past the table | A fixed table of 4,096 codes. A code not yet defined stops decoding, keeps what came before and reports `filter.failed` | `FilterDamageTests.Decodes_an_lzw_code_up_to_the_next_one_to_define_and_stops_at_any_past_it`; `FilterTests.Stops_an_lzw_stream_at_a_code_it_has_not_defined_and_says_so` | Two seeds |
 | Damaged Flate data read again and again | A form is read again only after a fault, into the same output. The byte-at-a-time pass covers only the 8 KB piece the fault was met in (`FlateInput.ChunkLength`). A stream costs at most eight readings, three of them byte by byte. This is accepted: damaged streams read about 40 times slower, still linear in the file (#135, comment of 2026-09-30) | `FilterDamageTests.Reads_sound_data_once`, `Reads_again_a_byte_at_a_time_only_the_piece_of_input_the_fault_was_met_in`, `Reading_damaged_data_again_allocates_no_second_output_and_sound_data_nothing_to_read_it_again_with` | Yes |
 | The inflater's exceptions escaping | Only its complaints about the data (`InvalidDataException`, `IOException`) are faults; a preset-dictionary header is refused | `FilterDamageTests.Takes_only_the_inflater_s_complaints_about_its_data_as_faults`, `Reports_a_zlib_header_that_asks_for_a_preset_dictionary_instead_of_throwing` | Yes |
-| Image codecs | DCT, JPX, JBIG2 and CCITT data is never decoded: the chain stops and the data comes back as it is. An unknown filter is `filter.unsupported`, and the chain stops there too: no filter after it reads data it cannot read (#159) | Structural; `FilterTests.Stops_a_chain_at_the_first_filter_it_does_not_know_and_reports_it_once` | — |
+| Image codecs | DCT, JPX, JBIG2 and CCITT data is never decoded: the chain stops and the data comes back as it is. An unknown filter is `filter.unsupported`, and the chain stops there too: no filter after it reads data it cannot read ([#159]) | Structural; `FilterTests.Stops_a_chain_at_the_first_filter_it_does_not_know_and_reports_it_once` | — |
 
 Known gaps:
 
