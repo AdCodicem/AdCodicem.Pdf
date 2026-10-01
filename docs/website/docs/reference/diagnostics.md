@@ -115,6 +115,20 @@ Warning stream.length-invalid at 542577: The stream's /Length names object 18 0,
 Warning stream.truncated at 315: The stream has no endstream before the endobj that follows its data; the 310 bytes to the end of the file are taken as its data.
 ```
 
+### Object streams
+
+An object stream's reports, and the faults met inside the objects it holds, are placed where the stream's data starts
+in the file: a byte of its decoded data is no offset in the file, so the message gives it, with the object stream's
+number and, for a fault inside an object, that object's. Each object stream's own fault is reported once, and each
+object found at another index than its entry gives once, however often the stream is decoded or the object parsed
+again.
+
+```text
+Repair object-stream.member-moved at 274206: Object 2 is at index 65540 of object stream 65547, not at index 4, where the cross-reference index places it.
+Warning object-stream.unreadable at 1037994: Object stream 6396 gives in /First an offset, 29,927, past the end of its decoded data, which is 21,501 bytes long; none of its objects can be read from it.
+Warning syntax.unexpected-token at 125: A token was found where a value was expected. It was met in object 3, at byte 112 of object stream 4's decoded data.
+```
+
 ### Damaged stream data
 
 | Stream | Code and severity | What `Decode` returns |
