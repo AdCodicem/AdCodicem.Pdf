@@ -106,7 +106,9 @@ internal sealed class ObjectStreamDependencies
             {
                 switch (item)
                 {
-                    case PdfReference reference when seen.Add(reference.Id.Number) && index.TryGet(reference.Id.Number, out var entry):
+                    // Object 0 heads the free list and is never in use (ISO 32000-1, 7.5.4): the reader never reads it,
+                    // whatever the index's first entry says, so no stream needs it.
+                    case PdfReference reference when reference.Id.Number > 0 && seen.Add(reference.Id.Number) && index.TryGet(reference.Id.Number, out var entry):
                         if (entry.Kind == XRefEntryKind.Compressed)
                         {
                             found.Add(new Need(entry.ObjectStreamNumber, reference.Id.Number, RuleText.Name(key)));

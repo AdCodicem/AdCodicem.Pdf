@@ -82,6 +82,25 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_reference_to_object_0_under_an_object_stream_s_keys_needs_nothing_though_the_table_places_object_0_in_it()
+    {
+        // The cross-reference stream's first row is rewritten to place object 0 at index 0 of object stream 7: the reader
+        // still never reads object 0, so the stream does not need itself.
+        var file = ObjectStream("/DecodeParms 0 0 R", "<< /Predictor 1 >>");
+        var text = Encoding.Latin1.GetString(file);
+        var rows = text.IndexOf("stream\n", text.IndexOf("/Type /XRef", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length;
+        file[rows] = 2;
+        file[rows + 4] = 7;
+        file[rows + 5] = 0;
+        file[rows + 6] = 0;
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfDictionary>();
+
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+    }
+
+    [Fact]
     public void A_reference_in_the_trailer_is_located_at_the_trailer()
     {
         var file = PdfTemplate.SoundWith("/Size 4 /Root 1 0 R", "/Size 4 /Root 1 0 R /Info 9 0 R");
