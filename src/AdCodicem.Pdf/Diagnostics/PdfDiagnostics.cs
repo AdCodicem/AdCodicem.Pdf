@@ -27,6 +27,12 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// <summary>Gets the number of entries dropped because <see cref="Capacity"/> was reached.</summary>
     public int SuppressedCount => _suppressed;
 
+    /// <summary>
+    /// Gets a value indicating whether <see cref="Capacity"/> is reached: what is added now is counted and dropped, so a
+    /// message built only for it need not be.
+    /// </summary>
+    internal bool IsFull => _entries.Count >= Capacity;
+
     /// <inheritdoc/>
     public PdfDiagnostic this[int index] => _entries[index];
 
