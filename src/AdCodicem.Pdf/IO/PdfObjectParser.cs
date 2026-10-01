@@ -582,19 +582,23 @@ internal ref struct PdfObjectParser
 
         if (value.AsInteger() is not { } integer)
         {
-            return new DeclaredLength(StreamLengthForm.NotAnInteger, Reference: reference, Kind: DescribeKind(value));
+            return new DeclaredLength(
+                StreamLengthForm.NotAnInteger,
+                Reference: reference,
+                Kind: KindOf(value),
+                Written: value is PdfReal or PdfName or PdfBoolean ? value : null);
         }
 
         return new DeclaredLength(
             integer is >= 0 and <= int.MaxValue ? StreamLengthForm.Integer : StreamLengthForm.OutOfRange, integer, reference);
     }
 
-    /// <summary>Says what a <c>/Length</c> that is not an integer holds: <c>a real number, 61.5</c>, <c>a dictionary</c>.</summary>
-    private static string DescribeKind(PdfObject value) => value switch
+    /// <summary>Says what kind of value a <c>/Length</c> that is not an integer holds: <c>a real number</c>, <c>a dictionary</c>.</summary>
+    private static string KindOf(PdfObject value) => value switch
     {
-        PdfReal real => $"a real number, {real}",
-        PdfName name => "a name, " + FileQuote.Name(name),
-        PdfBoolean boolean => boolean.Value ? "a boolean, true" : "a boolean, false",
+        PdfReal => "a real number",
+        PdfName => "a name",
+        PdfBoolean => "a boolean",
         PdfString => "a string",
         PdfArray => "an array",
         PdfStream => "a stream",
@@ -630,10 +634,19 @@ internal ref struct PdfObjectParser
             string.Create(CultureInfo.InvariantCulture, $"names object {reference.Number} {reference.Generation}, {what}");
 
         static string Value(DeclaredLength declared) => declared.Form == StreamLengthForm.NotAnInteger
-            ? $"{declared.Kind}, not a non-negative integer"
+            ? $"{Holds(declared)}, not a non-negative integer"
             : string.Create(
                 CultureInfo.InvariantCulture,
                 $"{declared.Value}, {(declared.Value < 0 ? "a length no stream can have" : "more than the reader can take as a length")}");
+
+        // A string's or a container's content is not quoted: what it is is enough to say why it is no length.
+        static string Holds(DeclaredLength declared) => declared.Written switch
+        {
+            PdfName name => declared.Kind + ", " + FileQuote.Name(name),
+            PdfBoolean boolean => declared.Kind + (boolean.Value ? ", true" : ", false"),
+            { } real => declared.Kind + ", " + real,
+            _ => declared.Kind!,
+        };
     }
 
     /// <summary>Describes what was found of the stream being read, whose data starts at <paramref name="dataStart"/>.</summary>
@@ -644,6 +657,7 @@ internal ref struct PdfObjectParser
             Reference = declared.Reference,
             Declared = declared.Value,
             Kind = declared.Kind,
+            Value = declared.Written,
             Taken = taken,
             Found = found,
             EndStream = endStream,
@@ -852,7 +866,8 @@ internal ref struct PdfObjectParser
     /// <param name="Form">How it was written, or what the object it names holds.</param>
     /// <param name="Value">The integer it gives, in range or not; null when it gives none.</param>
     /// <param name="Reference">The object it names, when it is a reference.</param>
-    /// <param name="Kind">What it holds, in words, when that is not an integer.</param>
+    /// <param name="Kind">What kind of value it holds, when that is not an integer.</param>
+    /// <param name="Written">The real number, name or boolean it holds, as the file wrote it; null for any other value.</param>
     private readonly record struct DeclaredLength(
-        StreamLengthForm Form, long? Value = null, PdfObjectId? Reference = null, string? Kind = null);
+        StreamLengthForm Form, long? Value = null, PdfObjectId? Reference = null, string? Kind = null, PdfObject? Written = null);
 }
