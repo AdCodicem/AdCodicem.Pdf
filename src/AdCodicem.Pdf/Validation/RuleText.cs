@@ -1,14 +1,24 @@
 using System.Globalization;
+using System.Text;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.Validation;
 
 /// <summary>
-/// Words the rules' messages share: counts of bytes, objects and pages, distances either way, and what kind of value
-/// a file wrote where another was due.
+/// Words the rules' messages share: counts of bytes, objects and pages, distances either way, what kind of value a file
+/// wrote where another was due, and the path to a value. A name the file wrote is quoted through
+/// <see cref="IO.FileQuote"/>.
 /// </summary>
 internal static class RuleText
 {
+    /// <summary>The steps a path keeps at either end: the first four and the last four, those between counted.</summary>
+    /// <remarks>
+    /// No guard (ADR 34): it bounds what a message repeats, not what is read. A key quotes at most
+    /// <see cref="IO.FileQuote.MaxBytes"/> bytes, but a path can hold as many keys as values nest; the steps at either
+    /// end are the ones that locate a value, from its object and to it.
+    /// </remarks>
+    internal const int PathEnds = 4;
+
     /// <summary>Says a number of bytes: <c>1 byte</c>, <c>12 bytes</c>.</summary>
     public static string Bytes(long count) =>
         count == 1 ? "1 byte" : string.Create(CultureInfo.InvariantCulture, $"{count} bytes");
@@ -40,9 +50,61 @@ internal static class RuleText
     };
 
     /// <summary>
-    /// Writes a name as the file would, with its solidus, and a null character as <c>#00</c> so that the text stays
-    /// readable.
+    /// Writes a path of keys and indexes, <c>/Resources/Font/F1</c> or <c>[2]/Next</c>, whole up to
+    /// <c>2 × <see cref="PathEnds"/></c> steps, and past that its first and last <see cref="PathEnds"/> steps, with how
+    /// many lie between: <c>/A/B/C/D (7 steps) /W/X/Y/Z</c>.
     /// </summary>
-    public static string Name(PdfName name) =>
-        "/" + (name.Value.Contains('\0', StringComparison.Ordinal) ? name.Value.Replace("\0", "#00", StringComparison.Ordinal) : name.Value);
+    /// <remarks>
+    /// A step starts at a solidus or a left bracket: a quoted key holds neither, since a quote writes both as
+    /// <c>#xx</c>, and the space of the count cannot be read as part of a key.
+    /// </remarks>
+    public static string Path(StringBuilder path)
+    {
+        var text = path.ToString();
+        var steps = 0;
+        var head = -1;
+        var tail = -1;
+        var total = Steps(text);
+
+        if (total <= 2 * PathEnds)
+        {
+            return text;
+        }
+
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (text[index] is not ('/' or '['))
+            {
+                continue;
+            }
+
+            if (steps == PathEnds)
+            {
+                head = index;
+            }
+
+            if (steps == total - PathEnds)
+            {
+                tail = index;
+            }
+
+            steps++;
+        }
+
+        var between = total - (2 * PathEnds);
+        return string.Create(
+            CultureInfo.InvariantCulture, $"{text.AsSpan(0, head)} ({between} {(between == 1 ? "step" : "steps")}) {text.AsSpan(tail)}");
+
+        static int Steps(string text)
+        {
+            var count = 0;
+
+            foreach (var character in text)
+            {
+                count += character is '/' or '[' ? 1 : 0;
+            }
+
+            return count;
+        }
+    }
 }

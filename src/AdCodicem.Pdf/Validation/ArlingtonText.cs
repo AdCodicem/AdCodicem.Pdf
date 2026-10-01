@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation.Arlington;
 
@@ -47,7 +48,7 @@ internal static class ArlingtonText
                 return single ? fault + "." : $"{fault}; {count} {objects} give {Slot(tally, key)} a type it does not allow, the first {where}.";
 
             case ArlingtonWalk.Rule.TypeValueWrong:
-                var value = tally.Detail is PdfName name ? RuleText.Name(name) : "a value";
+                var value = tally.Detail is PdfName name ? FileQuote.Name(name) : "a value";
                 var wrong = $"{subject} has {key} {value}, where {model} wants {Values(tally.Row)}";
                 return single ? wrong + "." : $"{wrong}; {count} {objects} give {key} a value it does not list, the first {where}.";
 
@@ -71,7 +72,7 @@ internal static class ArlingtonText
 
     /// <summary>Names the key or element of the first occurrence: <c>/Rotate</c>, <c>element 2</c>.</summary>
     private static string Key(ArlingtonWalk.Tally tally) =>
-        tally.Key is { } key ? RuleText.Name(key)
+        tally.Key is { } key ? FileQuote.Name(key)
         : tally.Element >= 0 ? string.Create(CultureInfo.InvariantCulture, $"element {tally.Element}")
         : "/" + tally.Row.Key;
 

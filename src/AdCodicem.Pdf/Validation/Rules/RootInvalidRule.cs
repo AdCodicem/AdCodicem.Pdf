@@ -1,4 +1,5 @@
 using System.Globalization;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.Validation.Rules;
@@ -78,7 +79,7 @@ internal sealed class RootInvalidRule : IValidationRule
         null or PdfNull => "the file does not hold",
         PdfStream => "is a stream, not a document catalog",
         PdfDictionary dictionary when dictionary.GetName(PdfName.Type) is { } type =>
-            $"is a dictionary of /Type /{type.Value}, not a document catalog",
+            $"is a dictionary of /Type {FileQuote.Name(type)}, not a document catalog",
         PdfDictionary => "is a dictionary that is not a document catalog",
         _ => $"is {Kind(resolved)}, not a document catalog",
     };

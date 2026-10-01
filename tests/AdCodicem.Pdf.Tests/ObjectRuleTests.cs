@@ -490,10 +490,21 @@ public class ObjectRuleTests
     [InlineData("/Type /Catalog /Names [/Ok /A#00]", "Object 1 holds the name /A#00, under /Names[1], and a name cannot contain a null character.")]
     [InlineData("/Type /Catalog /X << /Y 1 >> /Z [1 2] /Names [/A#00]", "Object 1 holds the name /A#00, under /Names[0], and a name cannot contain a null character.")]
     [InlineData("/Type /Catalog /AP << /D << /Of#00f 1 >> >>", "Object 1 holds the name /Of#00f, as a key under /AP/D, and a name cannot contain a null character.")]
+    [InlineData("/Type /Catalog /AP << /D#0A#1B << /Of#00f#9B 1 >> >>", "Object 1 holds the name /Of#00f#9B, as a key under /AP/D#0A#1B, and a name cannot contain a null character.")]
+    [InlineData("/Type /Catalog /A << /B << /C << /D << /E << /F << /G << /H << /I << /J#00 1 >> >> >> >> >> >> >> >> >>", "Object 1 holds the name /J#00, as a key under /A/B/C/D (1 step) /F/G/H/I, and a name cannot contain a null character.")]
     public void A_name_with_a_null_character_is_located_inside_its_object(string catalog, string message)
     {
         Single(Validate(PdfTemplate.SoundWith("/Type /Catalog", catalog)), PdfValidationRuleIds.ObjectNameNullCharacter).Message
             .Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("/O#0At#1B 9 0 R", "Object 1 refers to object 9 0 under /O#0At#1B, which the file lacks: the reference reads as null.")]
+    [InlineData("/A << /B << /C << /D << /E << /F << /G << /H << /I << /J 9 0 R >> >> >> >> >> >> >> >> >>", "Object 1 refers to object 9 0 under /A/B/C/D (2 steps) /G/H/I/J, which the file lacks: the reference reads as null.")]
+    public void A_path_to_a_missing_object_quotes_its_keys_escaped_and_keeps_its_ends(string entry, string message)
+    {
+        Single(Validate(PdfTemplate.SoundWith("/Type /Catalog", "/Type /Catalog " + entry)), PdfValidationRuleIds.ObjectReferenceMissing)
+            .Message.Should().Be(message);
     }
 
     [Fact]

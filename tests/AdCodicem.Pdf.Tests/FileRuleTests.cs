@@ -314,6 +314,18 @@ public class FileRuleTests
     }
 
     [Fact]
+    public void A_root_whose_type_holds_control_characters_quotes_it_escaped()
+    {
+        // A line feed, an escape, a null character and a C1 control in /Type reach the finding as #xx (#159).
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("/Root 1 0 R", "/Root 3 0 R", StringComparison.Ordinal)
+            .Replace("<< /Type /Page ", "<< /Type /X#0Aforged#1B#00z#9B ", StringComparison.Ordinal));
+
+        Single(Validate(file), PdfValidationRuleIds.FileRootInvalid).Message.Should().StartWith(
+            "The trailer's /Root names object 3 0, which is a dictionary of /Type /X#0Aforged#1B#00z#9B, not a document catalog.");
+    }
+
+    [Fact]
     public void A_root_naming_object_0_is_located_at_the_object_it_names_in_a_trailer_read_whole()
     {
         // Read as two integers and a stray keyword before #117, /Root 0 0 R left the trailer malformed and the finding at

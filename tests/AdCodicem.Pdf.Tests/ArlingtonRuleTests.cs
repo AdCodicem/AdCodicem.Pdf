@@ -82,6 +82,15 @@ public class ArlingtonRuleTests
     }
 
     [Fact]
+    public void A_type_value_holding_control_characters_is_quoted_escaped()
+    {
+        var report = Validate(Pdf(Catalog, "<< /Type /Pa#0Age#1B /Kids [3 0 R] /Count 1 >>", Page));
+
+        Single(report, PdfValidationRuleIds.ObjectTypeValueWrong).Message.Should().Be(
+            "Object 2 0, a PageTreeNodeRoot in the Arlington model, has /Type /Pa#0Age#1B, where the model wants /Pages.");
+    }
+
+    [Fact]
     public void A_page_typed_font_is_still_a_page_whose_type_the_model_does_not_list()
     {
         var report = Validate(Pdf(Catalog, Root, Page.Replace("/Type /Page ", "/Type /Font ", StringComparison.Ordinal)));
@@ -368,6 +377,32 @@ public class ArlingtonRuleTests
 
         Single(report, PdfValidationRuleIds.ObjectKeyMissing).Message.Should().Be(
             "The array under /Resources/ColorSpace/CS0 of object 3 0, an IndexedColorSpace in the Arlington model, lacks element 3, which the model requires: it holds 3 elements.");
+    }
+
+    [Fact]
+    public void A_path_of_more_than_eight_keys_keeps_its_first_and_last_four()
+    {
+        var nested = "/S (x)";
+
+        for (var level = 0; level < 10; level++)
+        {
+            nested = "/S /P /K << " + nested + " >>";
+        }
+
+        var report = Validate(StructureWith("/K << " + nested + " >>"));
+
+        // Eleven structure elements nest under /K; the path keeps the four first and the four last.
+        Single(report, PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().StartWith(
+            "The dictionary under /K/K/K/K (3 steps) /K/K/K/K of object 5 0, ");
+    }
+
+    [Fact]
+    public void A_path_through_a_key_holding_control_characters_quotes_it_escaped()
+    {
+        var report = Validate(Pdf(Catalog, Root, Page.Replace("/Resources << >>", "/Resources << /ColorSpace << /C#0AS#1B0 [/Indexed /DeviceRGB 1] >> >>", StringComparison.Ordinal)));
+
+        Single(report, PdfValidationRuleIds.ObjectKeyMissing).Message.Should().StartWith(
+            "The array under /Resources/ColorSpace/C#0AS#1B0 of object 3 0, an IndexedColorSpace in the Arlington model, lacks element 3");
     }
 
     [Fact]

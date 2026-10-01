@@ -1,5 +1,6 @@
 using System.Globalization;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 
@@ -111,7 +112,7 @@ internal sealed class ObjectStreamDependencies
                     case PdfReference reference when reference.Id.Number > 0 && seen.Add(reference.Id.Number) && index.TryGet(reference.Id.Number, out var entry):
                         if (entry.Kind == XRefEntryKind.Compressed)
                         {
-                            found.Add(new Need(entry.ObjectStreamNumber, reference.Id.Number, RuleText.Name(key)));
+                            found.Add(new Need(entry.ObjectStreamNumber, reference.Id.Number, FileQuote.Name(key)));
                         }
                         else if (entry.Kind == XRefEntryKind.Regular)
                         {
