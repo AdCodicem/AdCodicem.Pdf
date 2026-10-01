@@ -198,7 +198,7 @@ Known gaps:
 | Nesting that exhausts the stack | `PdfObjectParser.MaxDepth` (128) and a stack probe at each container. Past either, `SkipContainer` counts brackets without recursion, and `syntax.depth-exceeded` is reported | `ParserTests.Refuses_to_follow_nesting_deeper_than_its_limit`; `HostileInputTests.Survives_deeply_nested_containers_inside_an_object`, `A_file_nesting_objects_deeper_than_the_stack_allows_reads_them_as_null_without_crashing` | No |
 | A token or an object of any length, or one that never closes | The window grows ×8 from 8 KB up to `MaxObjectLength`. Past it, the object is kept as far as it was read and `limit.object` is reported. The parses of one object add up to about 1.3 times the last window | `HostileInputTests.Survives_a_string_longer_than_the_largest_window`; `ReaderLimitsTests.An_object_is_read_no_further_than_its_bound`, `An_object_cut_by_its_bound_is_not_reported_as_damage`; `WindowEdgeTests.An_anomaly_inside_an_object_longer_than_the_window_is_reported_once` | Growth yes, the bound no |
 | Look-ahead that makes parsing superlinear | Look-ahead is a constant number of tokens, so each token is lexed three times at most | `ParserTests.Distinguishes_a_reference_from_two_integers`, `Backtracks_when_two_integers_are_not_followed_by_R` | Property |
-| An object number or a generation overflowing its cast | The parser builds a header or a reference only from a number in 1..`int.MaxValue` and a generation in 0..65,535, checked before the cast. The index and object streams do not ([#157]) | `ParserTests.Refuses_an_object_header_whose_number_or_generation_is_out_of_range` (headers only: [#158]) | No |
+| An object number or a generation overflowing its cast | The parser builds a header only from a number in 1..`int.MaxValue`, and a reference only from one in 0..`int.MaxValue` — object 0 heads the free list and reads as null —, each with a generation in 0..65,535, checked before the cast. The index and object streams do not ([#157]) | `ParserTests.Refuses_an_object_header_whose_number_or_generation_is_out_of_range`, `Makes_no_reference_of_numbers_an_object_identifier_cannot_hold` | No |
 | Decoding strings and names past their buffer | A literal string's output is at most its input, and a hex string's at most half of it plus one. A `#xx` escape is decoded only when two hex digits follow inside the token. A name of up to 128 bytes is decoded on the stack, a longer one on the heap | `LexerTests.Decodes_the_octal_and_control_escapes_of_a_literal_string`, `Pads_an_odd_hexadecimal_string_with_a_trailing_zero`, `Reads_a_name_with_its_escapes_intact` | Property |
 | Malformed syntax that throws | A key that is not a name, a missing value, an array closed by `>>`, a stray token: each becomes a null or a skipped token with `syntax.unexpected-token` | `PropertyTests.The_parser_answers_for_any_bytes_without_leaving_the_buffer`; `ParserTests.Drops_entries_whose_value_is_null_as_the_specification_requires` | Property |
 | Names chosen to collide in a hash table | `PdfName` hashes as an ordinal string, which the runtime randomizes per process | — | — |
@@ -213,8 +213,6 @@ Known gaps:
   guards.
 - [#172] Malformed strings, names and repeated keys are read in silence. A string that never closes swallows the
   objects after it, and a repeated key keeps its last value.
-- [#158] No test reaches the parser's range check on a reference's number and generation.
-- [#117] `0 0 R` is read as two integers and a stray keyword.
 - [#119] An array or dictionary left open until the end of the data is read in silence.
 - [#36] `PdfString.ToText` misreads PDFDocEncoding, PDF 2.0 UTF-8 strings and UTF-16 language escapes.
 - [#37] Interned names grow for the life of the process.
@@ -569,7 +567,6 @@ The last column also names the questions they leave open, which that milestone s
 [#52]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/52
 [#53]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/53
 [#61]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/61
-[#117]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/117
 [#118]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/118
 [#119]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/119
 [#121]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/121

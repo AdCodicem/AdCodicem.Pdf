@@ -388,10 +388,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// An object the index lacks, or holds as free — the one the chain gave as the reader first read it, and the
     /// one it reads with now —, is missing: a reference to it is null (ISO 32000-1, 7.3.10). One either index holds
     /// in use, and that the reader gave up on or lost in a rebuild, is unproduced: what went wrong is the index's
-    /// or the object stream's, and the cross-reference rules report it.
+    /// or the object stream's, and the cross-reference rules report it. Object 0 is missing whatever its entry says: it
+    /// heads the free list and is never in use (ISO 32000-1, 7.5.4), and the reader never reads it.
     /// </remarks>
     internal ObjectPresence GetPresence(int number)
     {
+        if (number <= 0)
+        {
+            return ObjectPresence.Missing;
+        }
+
         if (_xref.TryGet(number, out var entry) && entry.Kind != XRefEntryKind.Free)
         {
             return _unproduced.Contains(number) ? ObjectPresence.Unproduced : ObjectPresence.Defined;

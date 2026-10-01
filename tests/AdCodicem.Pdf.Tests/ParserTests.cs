@@ -60,6 +60,51 @@ public class ParserTests
         array.Count.Should().Be(2);
     }
 
+    [Theory]
+    [InlineData("[0 0 R]", 0)]
+    [InlineData("[0 65535 R]", 65535)]
+    public void Reads_a_reference_to_object_0_as_one_value(string text, int generation)
+    {
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        var array = parser.ParseObject().Should().BeOfType<PdfArray>().Subject;
+
+        array.Count.Should().Be(1, "object 0 heads the free list, and a reference to it is one value (ISO 32000-1, 7.5.4)");
+        array[0].Should().BeOfType<PdfReference>().Subject.Id.Should().Be(new PdfObjectId(0, generation));
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Keeps_a_dictionary_s_pairs_around_a_reference_to_object_0()
+    {
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("<< /Parent 0 0 R /X 1 >>"), diagnostics: diagnostics);
+
+        var dictionary = parser.ParseObject().Should().BeOfType<PdfDictionary>().Subject;
+
+        dictionary.Count.Should().Be(2);
+        dictionary.GetRaw(PdfName.Parent).Should().BeOfType<PdfReference>().Subject.Id.Should().Be(new PdfObjectId(0));
+        dictionary.GetInteger(PdfName.Get("X")).Should().Be(1);
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("[3000000000 0 R]", "an object number past int.MaxValue")]
+    [InlineData("[4294967301 0 R]", "an object number that would wrap to 5 if narrowed to an int")]
+    [InlineData("[5 -1 R]", "a negative generation")]
+    [InlineData("[5 65536 R]", "a generation past 65535")]
+    public void Makes_no_reference_of_numbers_an_object_identifier_cannot_hold(string text, string because)
+    {
+        var target = new PdfDictionary();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), source: ObjectSourceReturning(new PdfObjectId(5), target));
+
+        var array = parser.ParseObject().Should().BeOfType<PdfArray>().Subject;
+
+        array.Should().NotContain(value => value is PdfReference, because);
+        array.Should().NotContain(value => ReferenceEquals(value.Resolve(), target), "nothing in it may lead to object 5");
+    }
+
     [Fact]
     public void Backtracks_when_two_integers_are_not_followed_by_R()
     {

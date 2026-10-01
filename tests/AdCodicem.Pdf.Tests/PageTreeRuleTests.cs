@@ -194,6 +194,7 @@ public class PageTreeRuleTests
     [Theory]
     [InlineData("null", "The kid at index 1 of page tree node 2 is null: it counts as a page with nothing on it.")]
     [InlineData("9 0 R", "The kid at index 1 of page tree node 2 names object 9, which the file lacks: it counts as a page with nothing on it.")]
+    [InlineData("0 0 R", "The kid at index 1 of page tree node 2 names object 0, which the file lacks: it counts as a page with nothing on it.")]
     [InlineData("42", "The kid at index 1 of page tree node 2 is a number, neither a page nor a node: it counts as a page with nothing on it.")]
     [InlineData("/Page", "The kid at index 1 of page tree node 2 is a name, neither a page nor a node: it counts as a page with nothing on it.")]
     public void A_kid_that_is_no_page_takes_a_blank_page_s_place(string kid, string message)

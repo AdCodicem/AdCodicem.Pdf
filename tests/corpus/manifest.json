@@ -12445,7 +12445,8 @@
         "widget-annotation",
         "jhove-error",
         "pdf-hul-28",
-        "real-world-damage"
+        "real-world-damage",
+        "reference-to-object-zero"
       ],
       "expect": {
         "pages": 7,
