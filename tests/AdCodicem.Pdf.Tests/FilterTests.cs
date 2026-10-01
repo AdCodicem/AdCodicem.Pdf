@@ -510,6 +510,39 @@ public class FilterTests
     }
 
     [Fact]
+    public void Bounds_a_filter_in_the_middle_of_a_chain_as_well_as_the_last()
+    {
+        // 15,000 RunLength pairs, 30,000 bytes once inflated: Flate, the first step, stops at the bound, and RunLength
+        // decodes what it kept, until it stops at the bound in turn (#158).
+        var runs = new byte[30_000];
+        for (var pair = 0; pair < 15_000; pair++)
+        {
+            runs[2 * pair] = 0x81;
+            runs[(2 * pair) + 1] = (byte)'A';
+        }
+
+        using var compressed = new MemoryStream();
+        using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(runs);
+        }
+
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.FlateDecode, PdfName.RunLengthDecode]));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(compressed.ToArray()));
+        var diagnostics = new PdfDiagnostics();
+
+        var output = PdfFilterPipeline.Decode(stream, diagnostics, Within(10_000));
+
+        output.Length.Should().Be(10_000);
+        diagnostics.Select(d => d.Message).Should().Equal(
+            "The /FlateDecode data decodes to more than 10,000 bytes; decoding stopped there. " +
+            "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.",
+            "The /RunLengthDecode data decodes to more than 10,000 bytes; decoding stopped there. " +
+            "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
+    }
+
+    [Fact]
     public void Tells_a_corrupt_flate_stream_from_one_that_reaches_the_bound()
     {
         var corrupt = new PdfDiagnostics();
