@@ -243,7 +243,7 @@ a page without `/Type` or of the wrong one — `/Pagez`, a page typed `/Font`.
 
 Some faults the structural profile does not report, each for a reason:
 
-- **A classic table row that is not twenty bytes long** — an offset one digit short (iPRES `t03-008`), a single
+- **A classic table row that is not twenty bytes long** — an offset two digits short (iPRES `t03-008`), a single
   end-of-line byte. The reader reads rows as tokens, as pdf.js does; qpdf accepts them with a warning. A rule for
   the fixed row width is left for later ([#107]).
 - **An update's trailer without `/Root`** where the file is linearized: ISO 32000-1 (F.3.11) makes the main
