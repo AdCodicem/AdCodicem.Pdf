@@ -51,6 +51,37 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_reference_to_object_0_names_an_object_the_file_lacks_where_it_lies()
+    {
+        // Object 0 heads the free list and is never in use (ISO 32000-1, 7.5.4); jhove-hul-28's page writes one in its
+        // /Contents.
+        var report = Validate(PdfTemplate.SoundWith("/Resources << >>", "/Resources << >> /Annots [0 0 R 5 0 R]"));
+
+        var finding = Single(report, PdfValidationRuleIds.ObjectReferenceMissing);
+        finding.Location.Object.Should().Be(new PdfObjectId(3));
+        finding.Message.Should().Be(
+            "Object 3 holds 2 references to objects the file lacks, which read as null; the first refers to object 0 0 under /Annots[0].");
+
+        Single(Validate(PdfTemplate.SoundWith("/Resources << >>", "/Resources << >> /Annots [0 0 R]")), PdfValidationRuleIds.ObjectReferenceMissing)
+            .Message.Should().Be("Object 3 refers to object 0 0 under /Annots[0], which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
+    public void A_reference_to_object_0_names_an_object_the_file_lacks_though_the_table_holds_entry_0_in_use()
+    {
+        // A table that writes its first row in use still holds no object 0: the reader never reads one.
+        var template = PdfTemplate.Sound
+            .Replace("{free}\n", "{row:1}\n", StringComparison.Ordinal)
+            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Outlines 0 0 R", StringComparison.Ordinal);
+
+        using var document = PdfDocument.Open(PdfTemplate.Build(template));
+        document.GetObject(new PdfObjectId(0)).Should().BeSameAs(PdfNull.Instance);
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "Object 1 refers to object 0 0 under /Outlines, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
     public void A_reference_in_the_trailer_is_located_at_the_trailer()
     {
         var file = PdfTemplate.SoundWith("/Size 4 /Root 1 0 R", "/Size 4 /Root 1 0 R /Info 9 0 R");

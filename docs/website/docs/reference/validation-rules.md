@@ -72,7 +72,7 @@ the chain gave no index, the file rules have said why, and no entry is checked.
 
 | Rule | Severity | Meaning | Reads |
 |---|---|---|---|
-| `object.reference-missing` | Warning | An object reachable from the trailer refers to an object the file does not define — none in its index, or a free entry —, which is null (7.3.10): the reader reads it so, rebuilding nothing, and what the reference was to give is lost. One finding per object that holds such references, naming the first. An object the index holds and the reader cannot produce is `xref.entry-broken`'s or `xref.object-stream-broken`'s, a kid of the page tree `page-tree.kid-invalid`'s, and the trailer's `/Root` `file.root-invalid`'s. | Every object reachable from the trailer, once each |
+| `object.reference-missing` | Warning | An object reachable from the trailer refers to an object the file does not define — none in its index, a free entry, or object 0, which heads the free list and is never in use (7.5.4) —, which is null (7.3.10): the reader reads it so, rebuilding nothing, and what the reference was to give is lost. One finding per object that holds such references, naming the first. An object the index holds and the reader cannot produce is `xref.entry-broken`'s or `xref.object-stream-broken`'s, a kid of the page tree `page-tree.kid-invalid`'s, and the trailer's `/Root` `file.root-invalid`'s. | Every object reachable from the trailer, once each |
 | `object.endobj-missing` | Warning | An object reachable from the trailer does not end with `endobj` (7.3.10): another token, or the end of the file, follows its value. The reader reads the value as far as it goes, as qpdf does while reporting it. An empty object, `2 0 obj endobj`, has its `endobj`. After a stream whose data runs past the 8 KB window the reader first reads through, the file is asked for the bytes after its `endstream` since [#55]. More than a few dozen bytes of white space or comment before the next token leave what follows unseen, and a stream whose declared length the reader kept for want of an `endstream`, or whose data an `endobj` follows without one, leaves where the object ends unknown: neither is judged. | What follows each reachable object's value, as the reader read it |
 | `object.name-null-character` | Warning | An object reachable from the trailer holds a name with a null character, written `#00`, which a name cannot contain (7.3.5). The reader keeps the name; qpdf refuses it and reads dictionaries without the keys so named. One finding per object, naming the first. | Every name of every reachable object |
 | `object.key-missing` | Warning | An object reachable from the trailer lacks a key the [Arlington PDF Model](#object-shapes-from-the-arlington-pdf-model) requires of its type — absent, or `null`, which in a dictionary is the same (7.3.7): a key the model requires once the version the file declares has it, or one it requires in some versions only, such as a form XObject's `/Name` in PDF 1.0. An inheritable key is looked for up the `/Parent` chain, and a field's `/DA` in the interactive form's too; a key only an extension of ISO 32000 defines is never required. An array shorter than the elements it requires lacks each required element it does not hold, one finding per element. [One finding per type and key](#object-shapes-from-the-arlington-pdf-model), at the first object, with how many lack it. | Every object reachable from the trailer, typed along the model's links, once each |
@@ -261,9 +261,6 @@ Some faults the structural profile does not report, each for a reason:
 - **A page-like object reachable only through a destination or an annotation, with neither `/Parent` nor
   `/Contents`** — pikepdf's `handwritten-cyclic-toc.pdf` holds one —: not a page of the tree, and too bare to be told
   from a stray dictionary typed `/Page`.
-- **A reference written `0 0 R`** — to object 0, never in use — is read as two integers and a stray keyword, which
-  the reader reports as a syntax diagnostic; `object.reference-missing` will report it once the reader reads it as a
-  reference ([#117]).
 - **An array or dictionary still open at the end of the data** — the reader takes it as it stands, and only
   `object.endobj-missing` reports an object that runs to the end of the file; a finding of its own waits on the
   reader ([#119]).
@@ -312,6 +309,5 @@ PDF/UA profiles of the `AdCodicem.Pdf.Conformance` package (M20) take families o
 [#107]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/107
 [#108]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/108
 [#111]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/111
-[#117]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/117
 [#119]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/119
 [#123]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/123

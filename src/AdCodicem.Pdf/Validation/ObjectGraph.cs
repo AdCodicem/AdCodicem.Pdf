@@ -168,7 +168,7 @@ internal sealed class ObjectGraph
         {
             var value = ValueOf(owner);
             var first = new StringBuilder();
-            var target = FindMissing(value, owner, isNode: _pages.Nodes.Contains(owner), first);
+            TryFindMissing(value, owner, isNode: _pages.Nodes.Contains(owner), first, out var target);
             var holder = Holder(owner);
 
             MissingReferences.Add(new ProbeFinding(
@@ -218,15 +218,20 @@ internal sealed class ObjectGraph
     /// Finds, in file order, the first reference inside <paramref name="value"/> to an object the file lacks, and
     /// writes where it lies into <paramref name="path"/>; the references of other objects are not followed.
     /// </summary>
-    private PdfObjectId FindMissing(PdfObject value, int owner, bool isNode, StringBuilder path)
+    /// <remarks>
+    /// Whether one was found is said apart from what it names: a reference to object 0, which heads the free list and
+    /// is never in use, is one to an object the file lacks like any other.
+    /// </remarks>
+    private bool TryFindMissing(PdfObject value, int owner, bool isNode, StringBuilder path, out PdfObjectId target)
     {
         switch (value)
         {
             case PdfReference reference when _missing.Contains(reference.Id.Number):
-                return reference.Id;
+                target = reference.Id;
+                return true;
 
             case PdfStream stream:
-                return FindMissing(stream.Dictionary, owner, isNode, path);
+                return TryFindMissing(stream.Dictionary, owner, isNode, path, out target);
 
             case PdfDictionary dictionary:
                 foreach (var (key, entry) in dictionary)
@@ -239,15 +244,15 @@ internal sealed class ObjectGraph
                     var length = path.Length;
                     path.Append(RuleText.Name(key));
 
-                    if (FindMissing(entry, owner, isNode: false, path) is { IsEmpty: false } found)
+                    if (TryFindMissing(entry, owner, isNode: false, path, out target))
                     {
-                        return found;
+                        return true;
                     }
 
                     path.Length = length;
                 }
 
-                return default;
+                break;
 
             case PdfArray array:
                 for (var index = 0; index < array.Count; index++)
@@ -255,19 +260,19 @@ internal sealed class ObjectGraph
                     var length = path.Length;
                     path.Append(CultureInfo.InvariantCulture, $"[{index}]");
 
-                    if (FindMissing(array[index], owner, isNode: false, path) is { IsEmpty: false } found)
+                    if (TryFindMissing(array[index], owner, isNode: false, path, out target))
                     {
-                        return found;
+                        return true;
                     }
 
                     path.Length = length;
                 }
 
-                return default;
-
-            default:
-                return default;
+                break;
         }
+
+        target = default;
+        return false;
     }
 
     /// <summary>

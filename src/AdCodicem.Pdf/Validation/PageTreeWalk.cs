@@ -174,9 +174,12 @@ internal sealed class PageTreeWalk
 
     private void Visit(Frame frame, int index, PdfObject kid)
     {
-        var id = kid is PdfReference reference ? reference.Id : default;
+        // A kid is told from one written in the array by being a reference, not by its number: "0 0 R" names object 0,
+        // which heads the free list, and reads as null as any object the file lacks does.
+        var reference = kid as PdfReference;
+        var id = reference?.Id ?? default;
 
-        if (id.Number > 0)
+        if (reference is not null)
         {
             if (_onPath.Contains(id.Number))
             {
@@ -200,7 +203,7 @@ internal sealed class PageTreeWalk
 
         switch (kid.Resolve())
         {
-            case PdfNull when id.Number > 0:
+            case PdfNull when reference is not null:
                 switch (_reader.GetPresence(id.Number))
                 {
                     case ObjectPresence.Unproduced:
@@ -226,13 +229,13 @@ internal sealed class PageTreeWalk
 
             case PdfStream stream:
                 InvalidKids.Add(new ProbeFinding(
-                    Location(id.Number > 0 ? id : frame.Id),
+                    Location(reference is not null ? id : frame.Id),
                     Invariant($"{Kid(frame, index)} names object {id.Number}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")));
                 Enter(stream.Dictionary, id, frame);
                 return;
 
             case PdfDictionary dictionary:
-                if (id.Number <= 0)
+                if (reference is null)
                 {
                     InvalidKids.Add(new ProbeFinding(
                         Location(frame.Id),
@@ -246,7 +249,7 @@ internal sealed class PageTreeWalk
                 InvalidSlot(
                     frame,
                     index,
-                    id.Number > 0
+                    reference is not null
                         ? Invariant($"names object {id.Number}, which is {RuleText.Kind(other)}, neither a page nor a node")
                         : $"is {RuleText.Kind(other)}, neither a page nor a node");
                 return;

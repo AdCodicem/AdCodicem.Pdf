@@ -809,6 +809,7 @@ public class StreamLengthTests
         { "/Length -5", null, "The stream's /Length is -5, a length no stream can have; its data ends after 5 bytes.", nameof(StreamLengthForm.OutOfRange), null },
         { "/Length 3000000000", null, "The stream's /Length is 3000000000, more than the reader can take as a length; its data ends after 5 bytes.", nameof(StreamLengthForm.OutOfRange), null },
         { "/Length 9 0 R", null, "The stream's /Length names object 9 0, which the file lacks; its data ends after 5 bytes.", nameof(StreamLengthForm.ObjectMissing), null },
+        { "/Length 0 0 R", null, "The stream's /Length names object 0 0, which the file lacks; its data ends after 5 bytes.", nameof(StreamLengthForm.ObjectMissing), null },
         { "/Length 5 0 R", null, "The stream's /Length names object 5 0, which could not be read; its data ends after 5 bytes.", nameof(StreamLengthForm.ObjectUnreadable), null },
         { "/Length 6 0 R", "5.5", "The stream's /Length names object 6 0, which holds a real number, 5.5, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a real number, 5.5" },
         { "/Length 6 0 R", "<< /N 5 >>", "The stream's /Length names object 6 0, which holds a dictionary, not a non-negative integer; its data ends after 5 bytes.", nameof(StreamLengthForm.NotAnInteger), "a dictionary" },

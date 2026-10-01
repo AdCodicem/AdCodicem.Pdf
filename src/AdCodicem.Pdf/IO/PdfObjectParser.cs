@@ -243,13 +243,15 @@ internal ref struct PdfObjectParser
 
     private PdfObject ParseIntegerOrReference(PdfToken token)
     {
-        // "12 0 R" is only distinguishable from "12" by looking two tokens ahead.
+        // "12 0 R" is only distinguishable from "12" by looking two tokens ahead. "0 0 R" is a reference too: object 0
+        // heads the free list and is never in use (ISO 32000-1, 7.5.4), so it reads as null, as a reference to any
+        // object the file lacks does (7.3.10), and keeps its place in its array or dictionary.
         var saved = _lexer.Position;
         var second = _lexer.Read();
         var third = second.Kind == PdfTokenKind.Integer ? _lexer.Read() : second;
 
         if (second.Kind == PdfTokenKind.Integer && third.IsKeyword("R"u8) &&
-            token.Integer is > 0 and <= int.MaxValue &&
+            token.Integer is >= 0 and <= int.MaxValue &&
             second.Integer is >= 0 and <= ushort.MaxValue)
         {
             return new PdfReference(new PdfObjectId((int)token.Integer, (int)second.Integer), _source);
