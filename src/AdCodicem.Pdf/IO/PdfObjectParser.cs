@@ -107,7 +107,7 @@ internal ref struct PdfObjectParser
         ReadOnlyMemory<byte> data, int streamNumber, long dataStart, int objectNumber, IPdfObjectSource source, PdfDiagnostics diagnostics)
     {
         var parser = new PdfObjectParser(data, 0, source, diagnostics);
-        parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber);
+        parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber, diagnostics);
         return parser;
     }
 
@@ -661,7 +661,7 @@ internal ref struct PdfObjectParser
 
         if (_member is { } member)
         {
-            member.Report(_diagnostics, code, message, fault.DataStart);
+            member.Report(code, message, fault.DataStart);
         }
         else if (_streamData?.IsLengthFaultReported(fault.DataStart) != true)
         {
@@ -817,7 +817,7 @@ internal ref struct PdfObjectParser
     {
         if (_member is { } member)
         {
-            member.Report(_diagnostics, code, message, position);
+            member.Report(code, message, position);
             return;
         }
 
@@ -828,7 +828,8 @@ internal ref struct PdfObjectParser
     /// <param name="StreamNumber">The object stream's number.</param>
     /// <param name="DataStart">Where the object stream's data starts in the file.</param>
     /// <param name="ObjectNumber">The member's number.</param>
-    private readonly record struct ObjectStreamMember(int StreamNumber, long DataStart, int ObjectNumber)
+    /// <param name="Diagnostics">Receives what the parser meets in the member.</param>
+    private readonly record struct ObjectStreamMember(int StreamNumber, long DataStart, int ObjectNumber, PdfDiagnostics Diagnostics)
     {
         /// <summary>
         /// Reports, where the object stream's data starts, what was met at byte <paramref name="position"/> of its
@@ -836,22 +837,15 @@ internal ref struct PdfObjectParser
         /// being full, is counted with its message as it stands: hostile data can meet a fault at every token, and none
         /// of those is formatted for nothing.
         /// </summary>
-        public void Report(PdfDiagnostics? diagnostics, string code, string message, long position)
-        {
-            if (diagnostics is null)
-            {
-                return;
-            }
-
-            diagnostics.Warn(
+        public void Report(string code, string message, long position) =>
+            Diagnostics.Warn(
                 code,
-                diagnostics.IsFull
+                Diagnostics.IsFull
                     ? message
                     : string.Create(
                         CultureInfo.InvariantCulture,
                         $"{message} It was met in object {ObjectNumber}, at byte {position} of object stream {StreamNumber}'s decoded data."),
                 DataStart);
-        }
     }
 
     /// <summary>A stream's <c>/Length</c>, as <see cref="ReadLength"/> read it.</summary>
