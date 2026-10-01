@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -218,6 +219,51 @@ public class CorpusReadingTests
         {
             pages.Should().Be(expectedPages, $"{entry.Name}: page count");
         }
+    }
+
+    [Theory]
+    [MemberData(nameof(AllDocuments))]
+    public void Every_message_a_document_earns_is_printable_ascii_on_one_line_whatever_the_culture(string file)
+    {
+        // Persian writes a minus sign, a decimal and a group separator of its own, outside ASCII (#159): a message a
+        // host prints or a log keeps reads the same under every culture, and quotes what the file wrote without
+        // carrying a byte a terminal takes for a command.
+        var entry = Corpus.Get(file);
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(Every_message_a_document_earns_is_printable_ascii_on_one_line_whatever_the_culture)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
+        var culture = CultureInfo.CurrentCulture;
+        var texts = new List<string>();
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fa-IR");
+            using var document = PdfDocument.Open(Corpus.PathOf(entry.File), OptionsFor(entry) with { ThrowOnEncrypted = false });
+            ReadEverything(document);
+            var report = new PdfValidator().Validate(document);
+
+            foreach (var diagnostic in document.Diagnostics)
+            {
+                texts.Add(diagnostic.Message);
+                texts.Add(diagnostic.ToString());
+            }
+
+            foreach (var finding in report.Findings)
+            {
+                texts.Add(finding.Message);
+                texts.Add(finding.Remedy ?? string.Empty);
+                texts.Add(finding.ToString());
+            }
+
+            texts.Add(report.ToString());
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+
+        texts.Where(text => text.Any(character => character is < ' ' or > '~')).Should().BeEmpty(
+            $"{entry.Name}'s messages are printable ASCII on one line");
     }
 
     [Theory]
