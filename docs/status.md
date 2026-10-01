@@ -173,24 +173,44 @@ One pull request per batch, each design question put to the maintainer after mea
    decoded is kept, and a wrong checksum over whole data reported as `filter.checksum-mismatch`. The `Remote corpus`
    run [#134] asks for on the branch, run 17, was green; it closed with the merge.
 4. The reader and validation debts, in thirty-two batches settled with the maintainer on 2026-10-01 (journal of
-   2026-10-01). The twelve agreed on 2026-09-29 keep their order; the twenty-five the threat model filed under M02 and
-   the nine of M01's review join them where they share code or where their dependencies let them, the denial-of-service
-   debts brought forward. A batch is one pull request; its design questions are put to the maintainer when it starts,
-   after measuring; one that can move what a remote document gives runs `Remote corpus` on its branch before it merges;
-   [#158]'s tests are written in the batch that changes their code, and it closes last.
-   1. [#117] — done on `ccr-6d6c0ee6-dqm4lm` (journal of 2026-10-01).
+   2026-10-01). The ten agreed on 2026-09-29, with [#141] and [#144] placed on 2026-09-30, keep their order; the
+   twenty-five the threat model filed under M02 and the nine of M01's review join them where they share code or where
+   their dependencies let them, the denial-of-service debts brought forward. A batch is one pull request; its design
+   questions are put to the maintainer when it starts, after measuring; one that can move what a remote document gives
+   runs `Remote corpus` on its branch before it merges; [#158]'s tests are written in the batch that changes their
+   code, and it closes last.
+   1. [#117] — done on `ccr-6d6c0ee6-dqm4lm`, `Remote corpus` run 19 on the branch (journal of 2026-10-01).
    2. [#187], the reader's codes and positions, so that the batches after it report under their final codes.
    3. [#159], what a message quotes of the file, bounded and escaped, before any batch adds a message that quotes it.
    4. [#193], the memory and time budgets the index changes are measured against.
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
    6. [#182], a cross-reference stream's dictionary read as written.
-   7. [#118]. 8. [#119] and [#172]. 9. [#125] and [#126]. 10. [#190].
-   11. [#164] and [#183], the index's size, the first new guard. 12. [#165] and [#166], filter chains, with [#199].
-   13. [#128]. 14. [#129] and [#175]. 15. [#160] and [#161], object-stream members, with [#200] and [#202]. 16. [#174] and [#170], stream data.
-   17. [#155]. 18. [#167] and [#168], with [#201]. 19. [#188], [#197] and [#156]. 20. [#189]. 21. [#154] and [#171]. 22. [#132].
-   23. [#141]. 24. [#144] and [#169]. 25. [#181]. 26. [#162]. 27. [#163], `MaxDepth` and `MaxNestedLoads` made guards,
-   as the maintainer decided. 28. [#185]. 29. [#173]. 30. [#192]. 31. [#107] and [#111], each a new public rule whose
-   name and severity the maintainer gives. 32. What remains of [#158].
+   7. [#118].
+   8. [#119] and [#172].
+   9. [#125] and [#126].
+   10. [#190].
+   11. [#164] and [#183], the index's size, the first new guard.
+   12. [#165] and [#166], filter chains, with [#199].
+   13. [#128].
+   14. [#129] and [#175].
+   15. [#160] and [#161], object-stream members, with [#200] and [#202].
+   16. [#174] and [#170], stream data.
+   17. [#155].
+   18. [#167] and [#168], with [#201].
+   19. [#188], [#197] and [#156].
+   20. [#189].
+   21. [#154] and [#171].
+   22. [#132].
+   23. [#141].
+   24. [#144] and [#169].
+   25. [#181].
+   26. [#162].
+   27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided.
+   28. [#185].
+   29. [#173].
+   30. [#192].
+   31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
+   32. What remains of [#158].
 
    Slice 4 waits on [#141] and [#144]. The four defects the planning found outside every issue, [#199] to [#202], are
    filed under M02 and paid in the batches above (journal of 2026-10-01).
