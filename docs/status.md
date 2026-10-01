@@ -11,43 +11,41 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Current milestone**: M02 — Document validation (`docs/milestones/M02.md`), in progress. Slices 1 to 3 are done:
   the engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object,
   page tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two
-  batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first of which, [#117],
-  merged with [#203] that day, and the second, [#187], is in [#211]; then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7
-  ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from the reader's own work, the
-  threat model's first version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136],
-  `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]) and its second batch ([#207] to [#210]); [#123]
-  moved to M20.
+  batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first two of which, [#117]
+  and [#187], merged with [#203] and [#211] that day; then slices 4 to 6 ([#60] to [#62]); then the milestone's
+  adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
+  the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
+  fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]) and its second batch ([#207] to
+  [#210]); [#123] moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,504 unit on `main` since [#203], 2,553 on [#211]'s branch (3 skipped: 2 by design, and the theory over the remote corpus's
+- **Tests**: 2,553 unit on `main` since [#211] (3 skipped: 2 by design, and the theory over the remote corpus's
   streams whose length is wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23
   for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the remote documents fetched, on
-  [#203]'s branch: 4,176 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
+  [#211]'s branch: 4,225 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
   unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
   lacks —; 3,266 integration against qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a
-  damaged document's pages; and, with all 242, `Remote corpus` run 19's 4,224 acceptance tests and 3,329 referee
-  checks. On [#211]'s branch: 4,225 unit with the 233 remote documents, 3 skipped, and the same 3,266 integration
-  tests, 3,260 passed and 6 skipped.
+  damaged document's pages; and, with all 242, `Remote corpus` run 20's 4,273 acceptance tests and 3,329 referee
+  checks.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.6 % of `src/` — 4,889 of 4,907 lines on `main` since [#203], all 21 of its patch
+  Arlington tables left out), 99.6 % of `src/` — 5,036 of 5,054 lines on `main` since [#211], all 186 of its patch
   among them. The 18 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private,
   or of a private type, which no input reaches — nine lines of `ArlingtonWalk` (193, 849, 956, 966, 967, 987, 989,
   1061, 1077) and three of a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it
   is read and a switch's default arm (`CrossReferenceProbe` 86 and 225, `PageTreePageOrphanedRule` 51,
-  `RootInvalidRule` 86 and 95), and a line the compiler puts after a call that never returns (`PdfFileReader` 1094).
-  On [#211]'s branch: 5,036 of 5,054, the same 18 left, and all 186 of its patch.
+  `RootInvalidRule` 86 and 95), and a line the compiler puts after a call that never returns (`PdfFileReader` 1098).
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `a27e07d` (CI run 399), [#203]'s merge. `Remote corpus` passed on every document in the
-  nightly run 18, on `main` at `8c54490`, and in run 19, on [#203]'s branch, rerun once after web.archive.org refused
-  a document ([#204]).
+- **CI**: green on `main` at `c40d90c` (CI run 410), [#211]'s merge. `Remote corpus` passed on every document in the
+  nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
+  after web.archive.org refused a document ([#204]).
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 19 on 2026-10-01. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in run 20 on 2026-10-01. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.49`, previews from `main` through trusted publishing, 1,141 downloads on 2026-10-01. The
   `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified.
@@ -162,8 +160,8 @@ One pull request per batch, each design question put to the maintainer after mea
    code, and it closes last.
    1. [#117] — done, merged with [#203] on 2026-10-01, `Remote corpus` run 19 green on its branch (journal of
       2026-10-01).
-   2. [#187], the reader's codes and positions, so that the batches after it report under their final codes — in
-      [#211], `Remote corpus` run 20 on its branch (journal of 2026-10-01).
+   2. [#187], the reader's codes and positions — done, merged with [#211] on 2026-10-01, `Remote corpus` run 20 green
+      on its branch (journal of 2026-10-01).
    3. [#159], what a message quotes of the file, bounded and escaped, before any batch adds a message that quotes it.
    4. [#193], the memory and time budgets the index changes are measured against.
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
@@ -265,11 +263,13 @@ not a fault of the file: the rules on it report at most, as information, that it
   reader report left outside the file), [#157] (`/N` and `/First` are now checked as `long`; member numbers are not),
   [#171] (the straddling header the overlap fix stops). M02's checklist ticks M01's review, merged with [#198].
 - **Checked**: the solution builds with no warning, and `dotnet format` finds nothing; 2,553 unit tests, 3 skipped,
-  4,225 with the remote corpus; the integration suite against qpdf, with the remote corpus, on the branch at `86ad974` and again at `a6c90c8`, after
-  the review's fixes, 3,266 tests each time, 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's
-  pages; the patch's
-  186 measurable lines of `src/` covered, every branch taken, on the committed corpus alone, and the project at 5,036
-  of 5,054, the same 18 lines left; the site builds, 196 pages. `Remote corpus` run 20, on the branch at `a6c90c8`: running.
+  4,225 with the remote corpus; the integration suite against qpdf, with the remote corpus, on the branch at `86ad974`
+  and again at `a6c90c8`, after the review's fixes, 3,266 tests each time, 3,260 passed and 6 skipped where qpdf cannot
+  walk a damaged document's pages; the patch's 186 measurable lines of `src/` covered, every branch taken, on the
+  committed corpus alone, and the project at 5,036 of 5,054, the same 18 lines left; the site builds, 196 pages.
+  `Remote corpus` run 20, on the branch at `a6c90c8`: its first attempt fetched 241 of the 242 remote documents —
+  web.archive.org refused the CFIA form — and passed every test over them; the one rerun fetched all 242 and passed,
+  4,273 acceptance tests with 3 skipped and 3,329 referee checks with 6 skipped. Merged with [#211].
 - **Next**: batch 3, [#159], what a message quotes of the file, its questions put when it starts.
 
 ### 2026-10-01 — Step 4's order, and its first batch: a reference to object 0 ([#117])
