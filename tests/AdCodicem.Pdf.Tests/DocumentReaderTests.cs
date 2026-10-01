@@ -148,6 +148,28 @@ public class DocumentReaderTests
             $"the /Prev of the section at offset {section} names offset {section}, which the chain has already read."));
     }
 
+    [Theory]
+    [InlineData("0000099999")]
+    [InlineData("-000000001")]
+    public void Reports_an_entry_outside_the_file_with_no_position_and_its_offset_in_the_message(string offset)
+    {
+        // No position in the file names an entry the index keeps without where it was read (#187).
+        var template = PdfTemplate.Sound
+            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Outlines 4 0 R", StringComparison.Ordinal)
+            .Replace("0 4\n", "0 5\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n" + offset + " 00000 n \n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 5", StringComparison.Ordinal);
+
+        using var document = PdfDocument.Open(PdfTemplate.Build(template));
+        document.GetObject(new PdfObjectId(4));
+
+        var report = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefEntryOutOfRange).Which;
+        report.Position.Should().Be(-1);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The entry of object 4 places it at offset {long.Parse(offset, CultureInfo.InvariantCulture)}, outside the file."));
+    }
+
     [Fact]
     public void Reads_a_file_that_starts_with_junk_before_the_header()
     {

@@ -66,15 +66,48 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
-    public void Reports_a_section_that_prev_names_past_the_end_of_the_file()
+    public void Reports_a_section_that_prev_names_past_the_end_of_the_file_once_at_the_section_naming_it()
     {
         var (file, _) = Updated(prevAt: Offset.PastTheEnd);
+        var naming = Encoding.Latin1.GetString(file).LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
 
         using var document = PdfDocument.Open(file);
 
-        document.Diagnostics.Select(d => d.Code).Should().Equal(
-            PdfDiagnosticCodes.XRefEntryOutOfRange, PdfDiagnosticCodes.XRefSectionMissing);
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionMissing);
+        report.Position.Should().Be(naming, "the offset named lies outside the file (#187)");
+        report.Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference section /Prev names at offset 99999999 lies outside the file, which is {file.Length:N0} bytes long"));
         ReadsWhole(document);
+    }
+
+    [Fact]
+    public void Reports_an_xrefstm_named_past_the_end_of_the_file_once_at_the_section_naming_it()
+    {
+        var (file, _) = Updated();
+        var original = Encoding.Latin1.GetString(file);
+        var trailerEnd = original.LastIndexOf(" >>\nstartxref", StringComparison.Ordinal);
+        var text = original.Insert(trailerEnd, " /XRefStm 99999999");
+        var naming = text.LastIndexOf("\nxref", StringComparison.Ordinal) + 1;
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.XRefSectionMissing);
+        report.Position.Should().Be(naming);
+        ReadsWhole(document);
+    }
+
+    [Fact]
+    public void Reports_a_startxref_past_the_end_of_the_file_as_the_rebuild_alone()
+    {
+        var file = PdfTemplate.Build(PdfTemplate.Sound.Replace("{xref:1}", "99999999", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        document.Catalog.Should().NotBeNull();
     }
 
     [Fact]
