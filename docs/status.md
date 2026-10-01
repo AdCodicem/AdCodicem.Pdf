@@ -46,7 +46,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   added — (3 skipped: 2 by design, and the theory over the remote corpus's streams whose length is
   wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23 for the remote corpus's
   fetcher + 43 for the roadmap's mirror on GitHub, the last three counted on [#147]'s branch. With the 233 remote
-  documents fetched here: 4,144 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
+  documents fetched on that branch: 4,144 unit, 3 skipped — the laziness test on the two documents recorded as unsupported
   until [#47], which every other test now holds to their expectations, and the private manifest this container
   lacks —, and 3,266 integration. The integration suite ran here for the first time, against qpdf 11.9.1 in its
   container as in CI (journal of 2026-09-30): 3,260 passed, 6 skipped where qpdf cannot walk a damaged document's
@@ -204,8 +204,8 @@ not a fault of the file: the rules on it report at most, as information, that it
   [`docs/reviews/M01.md`](reviews/M01.md), indexed in `docs/reviews/README.md`.
 - **Counts.** Pass 1, blind, gave 107 candidates. Pass 2 dropped 37 as justified or already filed, most of them by the
   threat model's debts of the day before, and merged the rest into 20 findings. Refutation refuted none and narrowed
-  13, and two findings were split so each part has one outcome, giving 22. A twenty-third surfaced after the triage,
-  while an issue was checked. Of the 23: 9 fixed here, 11 filed under M02 in nine issues, 2 under later milestones,
+  13 of the 20, and two findings were split so each part has one outcome, giving 22, 14 of them narrowed. A
+  twenty-third surfaced after the triage, while an issue was checked. Of the 23: 9 fixed here, 11 filed under M02 in nine issues, 2 under later milestones,
   1 under none, none put to the maintainer.
 - **Fixed in the review's pull request**:
   - each public type of the object model and the diagnostics in its own file (R-08);
