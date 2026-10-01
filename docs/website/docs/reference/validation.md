@@ -86,7 +86,7 @@ What one rule found.
 | `RuleId` | The rule's identifier, such as `file.eof-missing` — stable, and what you filter on; `PdfValidationRuleIds` holds each as a constant |
 | `Severity` | A `PdfValidationSeverity`, always the same for a given rule |
 | `Location` | Where it applies: a `PdfValidationLocation`, below |
-| `Message` | What is wrong, for a person to read |
+| `Message` | What is wrong, for a person to read, quoting the file as [Diagnostics](diagnostics.md#how-a-message-quotes-the-file) says |
 | `Remedy` | What would put it right, as a hint, or null — so that a report reads as a plan |
 | `ToString()` | `Severity RuleId at Location: Message` |
 

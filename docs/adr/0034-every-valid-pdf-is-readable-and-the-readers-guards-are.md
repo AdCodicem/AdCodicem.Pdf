@@ -19,6 +19,14 @@ Implemented by `PdfReaderLimits`, `PdfReaderOptions.Limits` and `PdfReaderOption
 Amended on 2026-09-27, by the maintainer, while M08 was specified: one record bounds every hostile read, the
 font programs a caller registers included (*One record for every hostile read*, below); M08 implements it.
 
+Amended on 2026-10-01, by the maintainer, while [#159](https://github.com/AdCodicem/AdCodicem.Pdf/issues/159) was
+fixed: a bound on what the library repeats of a value it read, rather than on what it reads, changes nothing a file
+can make it read, and is an internal constant even where a valid file reaches it. A message quotes at most 127 bytes
+of a name (`FileQuote.MaxBytes`), though PDF 2.0 allows a longer one, and at most the first and last four steps of a
+key path (`RuleText.PathEnds`); the whole value stays in the document. Such a constant's declaration says so, as
+`No guard (ADR 34): it bounds what a message repeats, not what is read`, in place of the reason no valid file
+reaches it. `PdfObjectParser.EndObjLookahead`, which bounds what the reader sees of an object's end, was the first.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a

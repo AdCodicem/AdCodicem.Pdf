@@ -27,6 +27,32 @@ Repair xref.rebuilt: The cross-reference index was rebuilt by scanning the file.
 Warning stream.length-invalid at 5501: The stream declared 19954 bytes but ended after 19952.
 ```
 
+## How a message quotes the file
+
+A message, of a diagnostic or of a [validation finding](validation.md#pdfvalidationfinding), is written for a person and
+read where a host prints it — a console, a log, a web page. What the file wrote reaches it under these rules:
+
+- **Printable ASCII, on one line.** Every character of a message lies between U+0020 and U+007E, and numbers are written
+  in the invariant culture, whatever `CultureInfo.CurrentCulture` is: `-7 bytes`, `1,048,576 bytes`, never a culture's
+  own minus sign or separators. The same holds for `ToString()`.
+- **A name or a keyword is quoted as a PDF writer writes a name** (ISO 32000-1, 7.3.5): a byte of printable ASCII as
+  itself, except the number sign and the delimiters `( ) < > [ ] { } / %`; every other byte, white space and control
+  characters included, as `#` and two uppercase hexadecimal digits. A name keeps its solidus: `/Pa#0Age#1B` is the name
+  the file wrote as the bytes `Pa`, a line feed, `ge`, an escape. In a keyword, which has no solidus, `#xx` stands for a
+  byte all the same: `tra#1Biler`.
+- **Past 127 bytes, a quote is cut**, and says how long the whole is: a name of a megabyte of `A` is quoted as a solidus,
+  its first 127 `A`, and ` (the first 127 of 1,048,576 bytes)`. 127 bytes is the longest name PDF/A allows, so a name
+  such a file holds is quoted whole. The cut never splits a `#xx`, and
+  the space before the note is one no quote holds. The whole name stays in the document: `PdfName.Value` keeps every
+  byte.
+- **A path of keys** — `/Resources/Font/F1` in a finding — writes each key as a name. Past eight steps it keeps its
+  first four and its last four, and says how many lie between: `/A/B/C/D (3 steps) /H/I/J/K`.
+- **A string is never quoted.** A string is the document's content, not its syntax: a message says where it lies, not
+  what it holds.
+
+These rules are the library's own messages'. A name a caller builds can hold characters past U+00FF, which no file can:
+a quote writes their UTF-8 bytes as `#xx`.
+
 ## `PdfDiagnostics`
 
 The list `PdfDocument.Diagnostics` holds, in the order the entries were recorded. It is an
