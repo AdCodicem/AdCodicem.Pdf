@@ -12,23 +12,25 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   the engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object,
   page tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two
   batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first of which, [#117],
-  merged with [#203] that day; then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7
+  merged with [#203] that day, and the second, [#187], is in [#211]; then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7
   ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from the reader's own work, the
   threat model's first version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136],
-  `docs/reviews/M01.md`) and the planning of step 4 ([#199] to [#202]); [#123] moved to M20.
+  `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]) and its second batch ([#207] to [#210]); [#123]
+  moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,504 unit on `main` since [#203] (3 skipped: 2 by design, and the theory over the remote corpus's
+- **Tests**: 2,504 unit on `main` since [#203], 2,553 on [#211]'s branch (3 skipped: 2 by design, and the theory over the remote corpus's
   streams whose length is wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23
   for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the remote documents fetched, on
   [#203]'s branch: 4,176 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
   unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
   lacks —; 3,266 integration against qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and, with all 242, `Remote corpus` run 19's 4,224 acceptance tests and 3,329 referee
-  checks.
+  checks. On [#211]'s branch: 4,225 unit with the 233 remote documents, 3 skipped, and the same 3,266 integration
+  tests, 3,260 passed and 6 skipped.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
   Arlington tables left out), 99.6 % of `src/` — 4,889 of 4,907 lines on `main` since [#203], all 21 of its patch
   among them. The 18 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private,
@@ -36,6 +38,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   1061, 1077) and three of a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it
   is read and a switch's default arm (`CrossReferenceProbe` 86 and 225, `PageTreePageOrphanedRule` 51,
   `RootInvalidRule` 86 and 95), and a line the compiler puts after a call that never returns (`PdfFileReader` 1094).
+  On [#211]'s branch: 5,036 of 5,054, the same 18 left, and all 186 of its patch.
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `a27e07d` (CI run 399), [#203]'s merge. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in run 19, on [#203]'s branch, rerun once after web.archive.org refused
@@ -159,7 +162,8 @@ One pull request per batch, each design question put to the maintainer after mea
    code, and it closes last.
    1. [#117] — done, merged with [#203] on 2026-10-01, `Remote corpus` run 19 green on its branch (journal of
       2026-10-01).
-   2. [#187], the reader's codes and positions, so that the batches after it report under their final codes.
+   2. [#187], the reader's codes and positions, so that the batches after it report under their final codes — in
+      [#211], `Remote corpus` run 20 on its branch (journal of 2026-10-01).
    3. [#159], what a message quotes of the file, bounded and escaped, before any batch adds a message that quotes it.
    4. [#193], the memory and time budgets the index changes are measured against.
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
@@ -169,14 +173,14 @@ One pull request per batch, each design question put to the maintainer after mea
    9. [#125] and [#126].
    10. [#190].
    11. [#164] and [#183], the index's size, the first new guard.
-   12. [#165] and [#166], filter chains, with [#199].
+   12. [#165] and [#166], filter chains, with [#199] and [#209].
    13. [#128].
    14. [#129] and [#175].
    15. [#160] and [#161], object-stream members, with [#200] and [#202].
    16. [#174] and [#170], stream data.
    17. [#155].
    18. [#167] and [#168], with [#201].
-   19. [#188], [#197] and [#156].
+   19. [#188], [#197] and [#156], with [#207], [#208] and [#210].
    20. [#189].
    21. [#154] and [#171].
    22. [#132].
@@ -191,8 +195,8 @@ One pull request per batch, each design question put to the maintainer after mea
    31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
    32. What remains of [#158].
 
-   Slice 4 waits on [#141] and [#144]. The four defects the planning found outside every issue, [#199] to [#202], are
-   filed under M02 and paid in the batches above (journal of 2026-10-01).
+   Slice 4 waits on [#141] and [#144]. The four defects the planning found outside every issue, [#199] to [#202], and
+   the four batch 2 found, [#207] to [#210], are filed under M02 and paid in the batches above (journal of 2026-10-01).
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -213,6 +217,59 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-01 — Batch 2: the reader's codes and positions ([#187])
+- **The question.** [#187], from M01's review: five situations raised under codes whose meaning does not cover them, a
+  documented code nothing raised, and positions that are no offset in the file. The corpus was measured first, over
+  the 401 documents this container holds, and eight questions followed.
+- **Settled with the maintainer**, each as recommended:
+  - a file with no `%PDF-` in its first 4,096 bytes is the new `header.missing`, a Repair at its first byte (-1 for an
+    empty source), no longer `xref.rebuilt`;
+  - a section `/Prev` or `/XRefStm` names outside the file is one `xref.section-missing`; a `startxref` outside it is
+    the rebuild alone; `xref.entry-out-of-range` is an object's entry only, with no position;
+  - an offset outside the file is placed at what named it, the offset in the message; `xref.chain-cycle` adds the
+    header's offset;
+  - a section that is there and cannot be read is the new `xref.section-unreadable`, a Warning at the section, its
+    fault in the message; relocation is left to [#188];
+  - a family for object streams, `object-stream.member-moved` (Repair) and `object-stream.unreadable` (Warning), placed
+    where the stream's data starts, as is a fault met inside a member, the stream, the object and the byte of decoded
+    data in the message;
+  - each reported once: a misplaced member per stream and number, a stream's own fault per stream;
+  - `object.redefined` raised once per rebuild, as Information with no position.
+- **Done**, in [#211]. The parser has a mode for an object stream member, whose reports go where the stream's data
+  starts. `/N` and `/First` are read as `long` and checked before any narrowing, and an explicit `/N 0` is an empty
+  stream. A section a guard cut, and what the parser met where a guard cut a stream's data, are the guard's to report
+  (ADR 34). The rebuild counts what it redefines in a fixed-size record — a `long` and the first ten numbers —, and its
+  scan reads each header once: a window after the first starts where the one before could no longer hold a whole
+  `obj`. The codes' XML, the reference's table and a section on object streams with real lines, `PdfDiagnostic.Position`,
+  `lazy-reading.md`, `architecture.md`, the threat model's rows and the schema's enum follow.
+- **Measured.** `header.missing` on iPRES's four T01 files, which keep `xref.rebuilt` where they rebuild;
+  `object-stream.member-moved` on cairo, 6 reports where `xref.offset-adjusted` gave 23; `object-stream.unreadable` on
+  pdfbox3947 and pdfbox3949; `object.redefined` on nine documents, groff-distiller405 the committed one — exactly the
+  ones the measurement named. No corpus document has a section that is there and cannot be read past the first.
+- **Reviewed.** An adversarial review over four lenses — correctness, the public contract, the tests, the invariants —
+  gave 31 findings, each put to a refuter: 26 kept, 5 refuted. Kept and fixed: a cross-reference stream whose
+  dictionary a guard cut, blamed on the file; a redefinition in the scan's overlap counted three times; the numbers
+  listed under the current culture, and counted in an `int` a hostile rebuild can wrap; a parser fault at a guard's
+  cut reported as the file's; a located message built for every fault of a member past the thousand kept, about
+  280 MB for a million; `xref.chain-cycle` saying "already read" of an offset outside the file; eight documentation
+  sentences; and eight missing tests. Refuted, and filed or commented where they stand as defects: a table whose last
+  row is no row, read in silence ([#210]); member numbers wrapped by the cast ([#157]'s); a header straddling a
+  window's start (fixed with the overlap, what is left commented on [#171]).
+- **Tests**: 49 new, 2,504 to 2,553. Each test of a guard, a once-only report, the scan's overlap, the culture and the
+  allocation bound fails when the defense it names is removed.
+- **Tracking.** Filed under M02, each reproduced twice: [#207] (a table the end of the file cuts before its trailer,
+  read in silence, and an object only older sections index read as null), [#208] (the chain stops at an unreadable
+  cross-reference stream whose `/Prev` is known), [#209] (`filter.unsupported` with no position), [#210] (a section read
+  only in part, reported nowhere). [#137] waits on them. Commented: [#125] (`limit.xref-section-count` is the one
+  reader report left outside the file), [#157] (`/N` and `/First` are now checked as `long`; member numbers are not),
+  [#171] (the straddling header the overlap fix stops). M02's checklist ticks M01's review, merged with [#198].
+- **Checked**: the solution builds with no warning, and `dotnet format` finds nothing; 2,553 unit tests, 3 skipped,
+  4,225 with the remote corpus; the integration suite against qpdf, with the remote corpus, on the branch at `86ad974`, before the review's fixes, 3,266
+  tests, 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages, its rerun at `a6c90c8` running; the patch's
+  186 measurable lines of `src/` covered, every branch taken, on the committed corpus alone, and the project at 5,036
+  of 5,054, the same 18 lines left; the site's build running. `Remote corpus` run 20, on the branch at `a6c90c8`: running.
+- **Next**: batch 3, [#159], what a message quotes of the file, its questions put when it starts.
 
 ### 2026-10-01 — Step 4's order, and its first batch: a reference to object 0 ([#117])
 - **The question.** The maintainer asked for the next step to begin and for every ambiguity to be put to them. Seven
@@ -679,6 +736,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#195]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/195
 [#196]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/196
 [#197]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/197
+[#198]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/198
 [#199]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/199
 [#200]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/200
 [#201]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/201
@@ -686,3 +744,8 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#203]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/203
 [#204]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/204
 [#205]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/205
+[#207]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/207
+[#208]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/208
+[#209]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/209
+[#210]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/210
+[#211]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/211
