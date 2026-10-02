@@ -401,9 +401,13 @@ Known gaps:
 - **Hand-written hostile tests**, on every commit: `HostileInputTests`, `ReaderLimitsTests`, `ReaderTimingTests`
   (a ratio, not a wall-clock budget), `WindowEdgeTests`, `StreamLengthTests`, `FilterTests`, `FilterDamageTests`,
   `DiagnosticsTests`, and the validation rule tests. They hold the bounds a mutation of a small file cannot reach.
-- **Budgets on real documents.** `CorpusReadingTests` holds what indexing a 1,000-page document and walking its
-  page tree allocate. `CorpusValidationTests.Validating_the_largest_document_stays_within_its_budget` holds validation to
-  6 MB. Throughput is not held in CI yet ([#38]).
+- **Budgets on real documents, and on a generated index.** `CorpusReadingTests` holds what indexing a 1,000-page document and walking its
+  page tree allocate, and each operation on every corpus document — opening it, reading every object, walking its
+  pages, validating a damaged one — to 20 s. `CorpusValidationTests.Validating_the_largest_document_stays_within_its_budget`
+  holds validation to 6 MB. `DocumentReaderTests.Opening_an_index_of_three_hundred_thousand_objects_stays_within_its_memory_budget`
+  holds opening a valid index of 300,000 objects to 5 % over its figure, through a classic table and a cross-reference
+  stream ([#193]). Every job that runs the tests on a change, and the documentation's deployment, stops after fifteen
+  minutes. Throughput is not held in CI yet ([#38]).
 - **The mutation campaign** (`FuzzingTests`, `FuzzingSeeds`, `.github/workflows/fuzz.yml`). It has three
   targets:
   - open a mutated document, resolve every indexed object and decode every stream without an image filter;
@@ -433,8 +437,6 @@ Known gaps:
   past 120 KB, and cannot see a read past the end.
 - [#38] Throughput is not held in CI.
 - [#194] The nightly campaign starts its seeds at 0 every night, so it runs the same mutants of a document each time.
-- [#193] No test holds a valid index of several hundred thousand objects to a memory budget, nor a corpus document's
-  full read to a time budget, and the CI jobs set no timeout.
 
 ## The package and its supply chain
 

@@ -293,6 +293,7 @@ The milestone is closed, so nothing here blocks: these widen what the reader is 
 |---|---|---|---|---|
 | A copier's file untouched since the copier wrote it | Every committed scan has been through another tool since, and copiers write index shapes of their own | vendor/us-federal/xerox-workcentre-treasury-imf-report-scan.pdf, xerox-workcentre-5335-ocr-hud-fonsi-linearized.pdf, xerox-workcentre-5755-ocr-hud-fonsi-mrc.pdf (re-saved since); remote/ecan/konica-bizhub-c554e-letter-scan.pdf | Contribution | 3 |
 | A supplier's or a bank's invoice or statement from a Java stack, committed | The real ones are in the remote corpus only, so the main CI job never reads them | remote/pdfminer/sap-netweaver-invoice-issue1062.pdf, remote/pdfminer/afp-batch-processor-bank-statement-2b.pdf; vendor/jasper-modular/openpdf-jasperreports-financial-statement.pdf (fictitious data) | Contribution | 3 |
+| A real document of 300,000 objects or more, sound | The memory budget on opening such an index (#193) holds a generated file; the largest corpus document has 65,564 objects, damaged, and the largest sound one 43,487 | remote/pdfjs/cairo-firefox-objstm-index-overflow-bug1978317.pdf (damaged); remote/opf-format-corpus/jhove-hul-110-pdfmaker101-word-transit-coordination-report.pdf | Public source | 3 |
 
 ### M02
 

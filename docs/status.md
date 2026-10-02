@@ -85,6 +85,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Indexing | synthetic, 1000 pages, ~4 MB | 229 µs | 393 KB |
 | Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
 | Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 3.2 MB |
+| Indexing a classic table (xUnit, after a first reading) | generated, 300,000 objects | — | 32.6 MB |
+| Indexing a cross-reference stream whose rows Flate stores (xUnit, after a first reading) | generated, 300,000 objects | — | 45.2 MB |
 | Validating under the structural profile, the document already open and read | synthetic, 1000 pages | 2.5 ms | 588 KB |
 | Typing and checking the objects the trailer reaches against the Arlington model, alone | synthetic, 1000 pages | 1.7 ms | 280 KB |
 | Opening and validating under the structural profile | synthetic, 1000 pages | 6.2 ms | 2.6 MB |
@@ -104,9 +106,11 @@ tallies. The second is that walk alone, which the four rules generated from the 
 caller validating a file it has not read pays: every object parsed for the first time, about 2.7 KB a page, no
 stream's data read. Slice 3's first thirty-four rules took 716 µs and 308 KB on the first row, slice 2's twenty-one
 214 µs and 8.9 KB, slice 1's one rule 86 ns and 232 B; the rows grow with each slice of M02.
-Indexing costs roughly 200 bytes per object, whatever the objects weigh. The third row is asserted as a
-budget in CI (`CorpusReadingTests`), so an allocation regression fails the build; it was 2.4 MB when M01 closed, and
-M01's review measured 3.2 MB on 2026-10-01, under the 4 MB budget. A stream that ran out is
+Indexing costs 100 to 210 bytes per object, whatever the objects weigh, by where the count falls against the map's
+growth steps; a cross-reference stream adds 18 to 42, the more the less its rows compress. The third row is asserted as a budget in CI
+(`CorpusReadingTests`), so an allocation regression fails the build; it was 2.4 MB when M01 closed, and M01's review
+measured 3.2 MB on 2026-10-01, under the 4 MB budget. The two generated rows are held to 34.2 MB and 47.4 MB, 5 % over
+their figures (`DocumentReaderTests`, [#193]). A stream that ran out is
 read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams only; the
 second reading keeps nothing. A stream whose checksum is wrong, or that turns corrupt, is read again after the fault
 ([#56]): its body as raw deflate, then, when that faults too, once more a byte at a time through the 8 KB piece of
