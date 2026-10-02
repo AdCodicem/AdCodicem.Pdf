@@ -75,46 +75,34 @@ internal static class PdfNumberParser
         var unsigned = index;
         ulong mantissa = 0;
         var fits = true;
-        var digits = 0;
-        var fractionDigits = 0;
-        var period = false;
 
-        for (; index < text.Length; index++)
+        // The whole part, then the fraction, each in a loop of its own: the digits are counted from where each starts,
+        // and nothing is decided per digit but whether it still fits.
+        while (index < text.Length && PdfCharacters.IsDigit(text[index]))
         {
-            var current = text[index];
-
-            if (PdfCharacters.IsDigit(current))
-            {
-                var digit = (ulong)(current - '0');
-
-                if (fits && (mantissa < LastSafeTenth || (mantissa == LastSafeTenth && digit <= LastSafeDigit)))
-                {
-                    mantissa = (mantissa * 10) + digit;
-                }
-                else
-                {
-                    fits = false;
-                }
-
-                digits++;
-
-                if (period)
-                {
-                    fractionDigits++;
-                }
-            }
-            else if (current == (byte)'.' && !period)
-            {
-                period = true;
-            }
-            else
-            {
-                // Anything else means this was never a number: "12abc" is a keyword, not twelve.
-                return false;
-            }
+            Accumulate(ref mantissa, ref fits, text[index]);
+            index++;
         }
 
-        if (digits == 0)
+        var wholeDigits = index - unsigned;
+        var fractionDigits = 0;
+        var period = index < text.Length && text[index] == (byte)'.';
+
+        if (period)
+        {
+            var fractionStart = ++index;
+
+            while (index < text.Length && PdfCharacters.IsDigit(text[index]))
+            {
+                Accumulate(ref mantissa, ref fits, text[index]);
+                index++;
+            }
+
+            fractionDigits = index - fractionStart;
+        }
+
+        // Anything else means this was never a number: "12abc" is a keyword, not twelve, and "1.2.3" is no number.
+        if (index != text.Length || wholeDigits + fractionDigits == 0)
         {
             return false;
         }
@@ -144,5 +132,20 @@ internal static class PdfNumberParser
         isReal = true;
         real = negative ? -magnitude : magnitude;
         return true;
+    }
+
+    /// <summary>Adds a digit to the mantissa while it still fits a <see cref="ulong"/>; past that, only says it no longer does.</summary>
+    private static void Accumulate(ref ulong mantissa, ref bool fits, byte character)
+    {
+        var digit = (ulong)(character - '0');
+
+        if (fits && (mantissa < LastSafeTenth || (mantissa == LastSafeTenth && digit <= LastSafeDigit)))
+        {
+            mantissa = (mantissa * 10) + digit;
+        }
+        else
+        {
+            fits = false;
+        }
     }
 }
