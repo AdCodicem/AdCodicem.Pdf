@@ -279,6 +279,26 @@ public class ParserTests
     }
 
     [Fact]
+    public void Reads_a_number_past_the_largest_real_as_null_with_no_diagnostics_to_report_to()
+    {
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("1" + new string('0', 400)));
+
+        parser.ParseObject().Should().BeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void Counts_a_number_past_the_largest_real_once_the_diagnostics_are_full()
+    {
+        var diagnostics = new PdfDiagnostics { Capacity = 0 };
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("1" + new string('0', 400)), diagnostics: diagnostics);
+
+        parser.ParseObject().Should().BeSameAs(PdfNull.Instance);
+
+        diagnostics.Should().BeEmpty();
+        diagnostics.SuppressedCount.Should().Be(1);
+    }
+
+    [Fact]
     public void Keeps_no_entry_for_a_number_past_the_largest_real_as_for_any_null()
     {
         var diagnostics = new PdfDiagnostics();
