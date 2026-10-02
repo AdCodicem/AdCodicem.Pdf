@@ -14,7 +14,10 @@ Opening a document builds an index, finds the catalog, and stops there.
 2. Follows the chain of cross-reference sections, each of which may be a classic table, a cross-reference
    stream, or a hybrid of both, and may point at object streams.
 3. Builds a map from object number to a location: either a byte offset, or a position inside an object
-   stream.
+   stream. Nothing is loaded meanwhile: a value a section refers to — a cross-reference stream's `/W` or
+   `/Length` written as a reference, a `/Prev` — is read only where a section already read places it, so that
+   the map the chain gives is the file's own. A `/Length` no section read before places is read once the chain
+   is, and checked against the data the chain took up to its `endstream`.
 4. Resolves the trailer's `/Root`, which reads the document catalog, and decodes the object stream that holds
    it when one does. When `/Root` leads to no catalog, it loads the objects the map holds, one after the
    other, until one is a catalog (`trailer.root-recovered`), and rebuilds the map when none is.
@@ -36,16 +39,18 @@ reader relocates an object or rebuilds the map once the chain is read, it keeps 
 as well, so that validation still judges the file's own.
 
 An object the map does not hold is one the file does not define, and a reference to it reads as null, as the
-specification says. The map is rebuilt by scanning the whole file, once at most:
+specification says. The map is rebuilt by scanning the whole file, once at most, and never while the chain is read:
 
 - at opening, when `startxref` cannot be found or read, when the section it names cannot be read, when the
   chain indexes nothing, or when `/Root` leads to no catalog and no object of the map is one;
 - when an object the map lacks is asked for, by opening or after it, while the map may have lost entries: a
-  cross-reference section the chain names cannot be found, or a `/Prev` or `/XRefStm` is not an offset
-  (`xref.section-missing`); one is found and cannot be read (`xref.section-unreadable`); the chain loops back on itself (`xref.chain-cycle`); a limit stopped the chain or a
+  cross-reference section the chain names cannot be found, or a `/Prev` or `/XRefStm` is not an offset — one
+  written as a reference no section read before it places included — (`xref.section-missing`); one is found and
+  cannot be read (`xref.section-unreadable`), a value its rows need written as such a reference among the causes; the chain loops back on itself (`xref.chain-cycle`); a limit stopped the chain or a
   table before its end; a row of a classic table cannot be read, which ends its subsection; a row gives an object
   in use what no entry can hold — a generation past 65,535, an offset of 2⁶³ or more, an object stream that is no
-  object number, an index past 2,147,483,647 —, which refuses that row alone, no older section's row standing for
+  object number, an index past 2,147,483,647, a field wider than 8 bytes whose leading bytes are not all zero —,
+  which refuses that row alone, no older section's row standing for
   the object; or a cross-reference stream holds fewer rows than it declares;
 - when an object is asked for, by opening or after it, that is neither where the map says nor within 512 bytes
   of it.
