@@ -28,8 +28,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   remote documents fetched, 4,706 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
   unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
   lacks —; 3,266 integration against qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a
-  damaged document's pages; and, with all 242, `Remote corpus` run 21's 4,761 acceptance tests and 3,329 referee
-  checks, on [#213]'s branch.
+  damaged document's pages; and, with all 242, `Remote corpus` run 22's 4,763 acceptance tests and 3,329 referee
+  checks, on [#214]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
   Arlington tables left out), 99.6 % of `src/` — 5,145 of 5,165 lines on `main` since [#213], 149 of its patch's 151
   measurable lines among them. The 20 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members
@@ -41,12 +41,13 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   `PdfObjectParser` 647, a concatenation's null check). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `cf39b4c` (CI run 420), [#213]'s merge. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
-  after web.archive.org refused a document ([#204]), and in run 21, on [#213]'s branch, at its first attempt.
+  after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run
+  22, on [#214]'s branch, rerun once for the same refusal. [#214]'s CI is green at `e550485`.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 21 on 2026-10-01. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in run 22 on 2026-10-02. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.53`, previews from `main` through trusted publishing, 1,141 downloads on 2026-10-02. The
   `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified.
@@ -171,7 +172,7 @@ One pull request per batch, each design question put to the maintainer after mea
    3. [#159], what a message quotes of the file, bounded and escaped — done, merged with [#213] on 2026-10-02,
       `Remote corpus` run 21 green on its branch (journal of 2026-10-01).
    4. [#193], the memory and time budgets the index changes are measured against — done, in review in [#214],
-      `Remote corpus` run 22 on its branch (journal of 2026-10-02).
+      `Remote corpus` run 22 green on its branch (journal of 2026-10-02).
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
    6. [#182], a cross-reference stream's dictionary read as written.
    7. [#118].
@@ -294,7 +295,13 @@ not a fault of the file: the rules on it report at most, as information, that it
   - 2,801 unit tests, 3 skipped, and 4,706 with the remote corpus;
   - the CTRF report is written where the workflow uploads it;
   - the site builds, 196 pages;
-  - the integration suite is left to CI: nothing here changes what the reader returns.
+  - the integration suite is left to CI: nothing here changes what the reader returns;
+  - `Remote corpus` run 22, on the branch at `e6e41ef`: its first attempt fetched 241 of the 242 remote documents —
+    web.archive.org refused the IRCC form — and passed every test over them; the one rerun fetched all 242 and passed,
+    4,763 acceptance tests with 3 skipped and 3,329 referee checks with 6 skipped;
+  - its CTRF reports give the first durations measured on GitHub's runners: over the two attempts, the slowest whole
+    test of a corpus document took 1.2 to 2.8 s, the slowest of a damaged one 1.8 to 3.3 s, both cairo's, and the
+    large index's slower row 1.8 to 2.2 s — each operation at least six times under its 20 s.
 - **Next**: batch 5, [#157] and [#186], numbers read from the file, its questions put when it starts.
 
 ### 2026-10-01 — Batch 3: what a message quotes of the file ([#159])
