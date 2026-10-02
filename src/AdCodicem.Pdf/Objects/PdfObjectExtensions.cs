@@ -36,11 +36,16 @@ public static class PdfObjectExtensions
     /// <summary>Returns the value as a string object, resolving references.</summary>
     public static PdfString? AsString(this PdfObject? value) => value?.Resolve() as PdfString;
 
-    /// <summary>Returns the value as an integer, resolving references. Reals with no fractional part qualify.</summary>
+    /// <summary>
+    /// Returns the value as an integer, resolving references. Reals with no fractional part, within the range of a
+    /// <see cref="long"/>, qualify.
+    /// </summary>
     public static long? AsInteger(this PdfObject? value) => value?.Resolve() switch
     {
         PdfInteger integer => integer.Value,
-        PdfReal real when double.IsInteger(real.Value) && real.Value is >= long.MinValue and <= long.MaxValue =>
+
+        // 2^63 is the first double past long.MaxValue, which no double holds exactly; -2^63 is long.MinValue itself.
+        PdfReal real when double.IsInteger(real.Value) && real.Value is >= -9223372036854775808.0 and < 9223372036854775808.0 =>
             (long)real.Value,
         _ => null,
     };

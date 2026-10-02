@@ -128,8 +128,14 @@ public class ObjectModelTests
     [InlineData(4.0, 4L)]
     [InlineData(4.5, null)]
     [InlineData(1e300, null)]
+    [InlineData(9223372036854775808.0, null)]
+    [InlineData(-9223372036854775808.0, long.MinValue)]
+    [InlineData(9223372036854774784.0, 9223372036854774784L)]
+    [InlineData(double.PositiveInfinity, null)]
+    [InlineData(double.NaN, null)]
     public void A_real_is_an_integer_only_when_it_has_no_fractional_part_and_fits(double value, long? expected)
     {
+        // 2^63, the first double past long.MaxValue, once read as long.MaxValue; 9223372036854774784 is the last below it.
         new PdfReal(value).AsInteger().Should().Be(expected);
     }
 
