@@ -997,8 +997,9 @@ public class DocumentReaderTests
         reader.ObjectCount.Should().Be(0);
         reader.WasRepaired.Should().BeTrue();
         reader.Structure.ChainRead.Should().BeFalse();
-        diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefRebuilt).Should().ContainSingle()
-            .Which.Message.Should().Be("The cross-reference index was rebuilt by scanning the file.");
+        reader.Structure.Sections[1].Fault.Should().Be("its /Index holds the reference 9 0 R, which no section read before it places where it can be read");
+        diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt);
+        diagnostics[1].Message.Should().Be("The cross-reference index was rebuilt by scanning the file.");
     }
 
     [Fact]
@@ -1016,17 +1017,50 @@ public class DocumentReaderTests
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
-    [Fact]
-    public void Reports_a_deferred_length_its_data_does_not_confirm_once_the_chain_is_read()
+    [Theory]
+    [InlineData(4, "The stream declared 46 bytes but ended after 42.")]
+    [InlineData(-4, "The stream declared 38 bytes but ended after 42.")]
+    [InlineData(1, null)]
+    public void Checks_a_deferred_length_against_the_data_once_the_chain_is_read(int lengthOff, string? message)
     {
-        // Object 4 gives 46 bytes where the data holds 42: the stream is parsed again once the chain is read, as any object
-        // is, and the length reported as any stream's is.
-        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(lengthOff: 4));
+        // Object 4 gives 46 or 38 bytes where the data holds 42: the length is reported once the chain is read, as any
+        // stream's is. One that counts the end-of-line before endstream is confirmed by it, as the parser takes any
+        // stream's, and says nothing. (The data's last bytes are zeros, which PDF counts as white space: a length that
+        // leaves them out is confirmed as well.)
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(lengthOff));
+
+        document.WasRepaired.Should().BeFalse();
+
+        if (message is null)
+        {
+            document.Diagnostics.Should().BeEmpty();
+            return;
+        }
 
         var report = document.Diagnostics.Should().ContainSingle().Which;
         report.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
-        report.Message.Should().Be("The stream declared 46 bytes but ended after 42.");
+        report.Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData(false, true, "\n")]
+    [InlineData(false, true, "\r\n")]
+    [InlineData(false, false, "\r\n")]
+    [InlineData(true, false, "\r\n")]
+    public void Reads_every_row_of_a_cross_reference_stream_whose_data_a_deferred_length_leaves_to_its_end_of_line(
+        bool compressed, bool endingInCarriageReturn, string endOfLine)
+    {
+        // The data's last byte is a carriage return — object 6's row, free with generation 13 —, or the end-of-line before
+        // endstream is one. Taken as part of that end-of-line, the last byte was once lost with the last row, and the
+        // length said to disagree with the data. The chain keeps the carriage return; the length, read once the chain is,
+        // says how much of it is data, and an end-of-line it leaves out of the data is no fault.
+        var file = ChainFiles.AloneWithIndirectLength(compressed: compressed, endingInCarriageReturn: endingInCarriageReturn, endOfLine: endOfLine);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
         document.WasRepaired.Should().BeFalse();
+        document.Reader.Index.TryGet(6, out var six).Should().Be(endingInCarriageReturn);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
     [Fact]
@@ -1082,6 +1116,79 @@ public class DocumentReaderTests
         document.Reader.Structure.Sections.Should().OnlyContain(section => !section.CutByLimit);
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject)
             .Which.Position.Should().Be(PdfTemplate.OffsetOf(file, "\n5 0 obj") + 1);
+    }
+
+    [Fact]
+    public void A_guard_a_deferred_length_reaches_throws_once_the_chain_is_read_when_asked_to()
+    {
+        // The guard left the length unread as the chain was read; read once the chain is, it is reached as any load
+        // reaches it, and thrown when the caller asked for it.
+        var file = ChainFiles.UnderAnUpdate("Length", placed: true, padding: 3000);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 }, ThrowOnLimit = true };
+
+        var opening = () => PdfDocument.Open(file, options);
+
+        opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_cross_reference_stream_whose_dictionary_the_trailer_guard_cuts_before_it_declares_itself_reaches_the_guard(bool throwOnLimit)
+    {
+        // Where the chain names a section, a dictionary the guard cuts is the guard's to report, whatever the cut part
+        // holds — not yet /Type, nor /W. Only a place the section may have been moved to is a guess, left in silence.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Producer (" + new string('x', 400) + ") /Type /XRef /Size 8 /W [1 4 2] /Length {length}", "0", compressed: false, predicted: false, placed: true);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 }, ThrowOnLimit = throwOnLimit };
+
+        if (throwOnLimit)
+        {
+            var opening = () => PdfDocument.Open(file, options);
+            opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxTrailerLength));
+            return;
+        }
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer)
+            .Which.Position.Should().Be(PdfTemplate.OffsetOf(file, "\n7 0 obj") + 1);
+    }
+
+    [Theory]
+    [InlineData("<< /A 1 /B >>", 64 * 1024)]
+    [InlineData("<< /Producer (an object longer than the trailer guard allows, which a place the section was moved to is only a guess at; it is read as itself when it is asked for, under the guard that bounds objects) >>", 128)]
+    public void A_place_a_section_may_have_moved_to_that_holds_another_object_leaves_nothing_of_its_reading(string six, int maxTrailerLength)
+    {
+        // /Prev names a place 2 bytes into object 6, just before the older stream: object 6, nearer, is tried first, and is
+        // no section — a dictionary with a key short of a value, or one the trailer guard cuts. Neither its syntax fault
+        // nor the guard is reported: it was read as a section, and is read as itself when asked for.
+        var built = ChainFiles.UnderAnUpdate("/Type /XRef /Size 8 /W [1 4 2] /Length {length}", "0", compressed: false, predicted: false, placed: true, six: six);
+        var stream = PdfTemplate.OffsetOf(built, "\n7 0 obj") + 1;
+        var named = PdfTemplate.OffsetOf(built, "\n6 0 obj") + 3;
+        var prev = string.Create(CultureInfo.InvariantCulture, $"/Prev {named}");
+        prev.Length.Should().Be(string.Create(CultureInfo.InvariantCulture, $"/Prev {stream}").Length, "no offset moves");
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(built).Replace(
+            string.Create(CultureInfo.InvariantCulture, $"/Prev {stream}"), prev, StringComparison.Ordinal));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = maxTrailerLength } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.GetObject(new PdfObjectId(6)).Should().NotBeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void Reads_a_value_the_chain_refers_to_past_the_window_it_starts_with()
+    {
+        // Object 5, the older stream's /Index, runs past the 8 KB the reading starts with, padded with white space: the
+        // window grows, as a load's does, up to MaxObjectLength.
+        using var document = PdfDocument.Open(ChainFiles.UnderAnUpdate("Index", placed: true, padding: 3 * PdfFileReader.InitialObjectWindow));
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
     [Fact]

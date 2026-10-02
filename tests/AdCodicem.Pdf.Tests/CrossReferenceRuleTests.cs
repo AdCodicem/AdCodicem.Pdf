@@ -199,6 +199,11 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4 2] /Filter /FlateDecode /DecodeParms 1 0 R", "its /DecodeParms is the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 1 0 R >>", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Filter [/FlateDecode] /DecodeParms [<< /Predictor 12 /Columns 1 0 R >>]", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Filter /FlateDecode /DecodeParms << /Predictor 1 0 R >>", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Filter /LZWDecode /DecodeParms << /EarlyChange 1 0 R >>", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Filter [1 0 R]", "its /Filter holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Filter [/FlateDecode] /DecodeParms [1 0 R]", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 1 0 R /W [1 4 2] /Index null", "its /Size is the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 1]", "its /Index gives a subsection of 1 row from object -5, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [2147482000 5000]", "its /Index gives a subsection of 5,000 rows from object 2147482000, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 6]", "its /Index gives a subsection of 6 rows from object -5, outside object numbers 0 to 2147483647.")]
@@ -672,12 +677,14 @@ public class CrossReferenceRuleTests
     [Theory]
     [InlineData(new[] { 1, 8, 2 }, 4, 1UL, 9223372036854775808UL, 0UL, "the row for object 4 gives it offset 9223372036854775808, past any a file can have")]
     [InlineData(new[] { 1, 8, 2 }, 4, 1UL, ulong.MaxValue, 0UL, "the row for object 4 gives it offset 18446744073709551615, past any a file can have")]
+    [InlineData(new[] { 1, 9, 2 }, 4, 1UL, ulong.MaxValue, 0UL, "the row for object 4 gives it offset 18446744073709551615, past any a file can have")]
     [InlineData(new[] { 1, 4, 4 }, 4, 1UL, null, 65536UL, "the row for object 4 gives it generation 65536, outside 0 to 65535")]
     [InlineData(new[] { 1, 4, 8 }, 4, 1UL, null, 4294967296UL, "the row for object 4 gives it generation 4294967296, outside 0 to 65535")]
     [InlineData(new[] { 1, 4, 2 }, 3, 2UL, 0UL, 1UL, "the row for object 3 places it in object stream 0, which is no object number")]
     [InlineData(new[] { 1, 4, 2 }, 3, 2UL, 2147483648UL, 1UL, "the row for object 3 places it in object stream 2147483648, which is no object number")]
     [InlineData(new[] { 1, 8, 2 }, 3, 2UL, 4294967300UL, 1UL, "the row for object 3 places it in object stream 4294967300, which is no object number")]
     [InlineData(new[] { 1, 4, 8 }, 3, 2UL, 4UL, 2147483648UL, "the row for object 3 places it at index 2147483648 of object stream 4, past any an object stream can hold")]
+    [InlineData(new[] { 1, 4, 9 }, 3, 2UL, 4UL, ulong.MaxValue, "the row for object 3 places it at index 18446744073709551615 of object stream 4, past any an object stream can hold")]
     public void A_cross_reference_stream_row_whose_fields_no_entry_can_hold_is_refused_alone(
         int[] widths, int number, ulong type, ulong? second, ulong third, string fault)
     {
@@ -934,6 +941,91 @@ public class CrossReferenceRuleTests
         }
     }
 
+    [Fact]
+    public void A_trailer_followed_by_stream_whose_length_the_chain_cannot_read_leaves_the_index_as_the_file_wrote_it()
+    {
+        // #182: the parser takes the trailer for a stream's dictionary, whose /Length, object 5, the table places outside
+        // the file. Loading it as the chain was read rebuilt the index, and the entry went unjudged. The chain reads nothing
+        // it cannot read where the index places it: the data is taken up to its endstream, and the entry judged as written.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("{row:3}\n", "{row:3}\n5 1\n0000099999 00000 n \n", StringComparison.Ordinal)
+            .Replace("<< /Size 4 /Root 1 0 R >>", "<< /Size 6 /Root 1 0 R /Length 5 0 R >>\nstream\nabcd\nendstream", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        Single(report, PdfValidationRuleIds.XRefEntryBroken).Message.Should().Be("The entry of object 5 gives offset 99999, outside the file.");
+        report.Contains(PdfValidationRuleIds.FileTrailerMalformed).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("deep", "its /DecodeParms holds the reference 6 0 R, which no section read before it places where it can be read.")]
+    [InlineData("chained", "its /Index holds the reference 6 0 R, which no section read before it places where it can be read.")]
+    [InlineData("looping", "its /Index leads from reference to reference without reaching a value.")]
+    [InlineData("a stream", "its /Index is the reference 5 0 R, which no section read before it places where it can be read.")]
+    public void A_value_the_rows_need_that_the_chain_cannot_follow_to_its_end_makes_the_section_malformed(string shape, string fault)
+    {
+        // Object 6, which only the stream indexes, cannot be read while the chain is. Each value was once followed three
+        // references deep, or not into what a reference leads to, and read as null or decoded with defaults past them:
+        // the /Columns of a /DecodeParms element written as a reference, an /Index whose object holds a reference, two
+        // objects naming each other. Object 5 the newer table places, but a stream is no value the chain reads, nor one
+        // whose /Length needs itself.
+        var file = shape switch
+        {
+            "deep" => ChainFiles.UnderAnUpdate(
+                "/Type /XRef /Size 8 /W [1 4 2] /Filter [/FlateDecode] /DecodeParms [5 0 R] /Length {length}",
+                "<< /Predictor 12 /Columns 6 0 R >>",
+                compressed: true,
+                predicted: true,
+                placed: true,
+                six: "7"),
+            "chained" => ChainFiles.UnderAnUpdate(
+                "/Type /XRef /Size 8 /W [1 4 2] /Index 5 0 R /Length {length}", "6 0 R", compressed: false, predicted: false, placed: true, six: "[0 8]"),
+            "looping" => ChainFiles.UnderAnUpdate(
+                "/Type /XRef /Size 8 /W [1 4 2] /Index 5 0 R /Length {length}",
+                "10 0 R",
+                compressed: false,
+                predicted: false,
+                placed: true,
+                placedToo: new Dictionary<int, string> { [10] = "5 0 R" }),
+            _ => ChainFiles.UnderAnUpdate(
+                "/Type /XRef /Size 8 /W [1 4 2] /Index 5 0 R /Length {length}",
+                "<< /Length 5 0 R >>\nstream\n[0 8]\nendstream",
+                compressed: false,
+                predicted: false,
+                placed: true),
+        };
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith("cannot be read: " + fault);
+    }
+
+    [Theory]
+    [InlineData("/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 7 /Foo 6 0 R >>", true, true)]
+    [InlineData("/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 7 /EarlyChange 6 0 R >>", true, true)]
+    [InlineData("/Filter /FlateDecode /DecodeParms << /Columns 6 0 R >>", true, false)]
+    [InlineData("/Filter [/DCTDecode /FlateDecode] /DecodeParms [null << /Predictor 6 0 R >>]", false, false)]
+    [InlineData("/DecodeParms 6 0 R", false, false)]
+    [InlineData("/Size 6 0 R /Index [0 8]", false, false)]
+    public void A_value_the_rows_are_read_without_leaves_the_section_readable_though_the_chain_cannot_read_it(string entries, bool compressed, bool predicted)
+    {
+        // Object 6, which only the stream indexes, cannot be read while the chain is; the rows are read without it: an
+        // entry no filter reads, an /EarlyChange Flate does not read, the /Columns of no predictor, the parameters of a step
+        // past an image filter, where decoding stops, those of data not encoded, a /Size beside an /Index. Each once made
+        // the section malformed, and the index rebuilt.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef " + (entries.Contains("/Size", StringComparison.Ordinal) ? string.Empty : "/Size 8 ") + "/W [1 4 2] " + entries + " /Length {length}",
+            "0",
+            compressed,
+            predicted,
+            placed: true,
+            six: "8");
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
     [Theory]
     [MemberData(nameof(ChainFiles.Keys), MemberType = typeof(ChainFiles))]
     public void A_cross_reference_stream_value_written_as_a_reference_is_read_where_a_newer_section_places_it_and_reported(string key)
@@ -988,6 +1080,51 @@ public class CrossReferenceRuleTests
             $"writes {where} as the reference 5 0 R, where ISO 32000-2 makes it direct (7.5.8.2)");
     }
 
+    [Theory]
+    [InlineData("1.5", false)]
+    [InlineData("2.0", true)]
+    public void An_element_of_a_cross_reference_stream_s_decoding_arrays_written_as_a_reference_is_reported_in_a_file_that_declares_pdf_2_0(
+        string version, bool reported)
+    {
+        // An erratum of ISO 32000-2 (pdf-issues #246) makes the elements of the /Filter and /DecodeParms arrays direct; a
+        // PDF 1.x file may write them as references.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Filter [5 0 R] /DecodeParms [10 0 R] /Length {length}",
+            "/FlateDecode",
+            compressed: true,
+            predicted: true,
+            placed: true,
+            placedToo: new Dictionary<int, string> { [10] = "<< /Predictor 12 /Columns 7 >>" },
+            version: version);
+        var stream = PdfTemplate.OffsetOf(file, "\n7 0 obj") + 1;
+
+        Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.FileTrailerValueWrong).Select(finding => finding.Message)
+            .Should().Equal(reported
+                ? [
+                    string.Create(CultureInfo.InvariantCulture, $"The cross-reference stream at offset {stream} writes element 0 of its /Filter as the reference 5 0 R, where ISO 32000-2 makes it direct (7.5.8.2)."),
+                    string.Create(CultureInfo.InvariantCulture, $"The cross-reference stream at offset {stream} writes element 0 of its /DecodeParms as the reference 10 0 R, where ISO 32000-2 makes it direct (7.5.8.2)."),
+                ]
+                : []);
+    }
+
+    [Fact]
+    public void A_predictor_written_as_a_real_in_an_array_of_parameters_is_reported()
+    {
+        // #215: read as the integer it equals, and reported as Table 8 asks, whether the parameters stand alone or in an
+        // array.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Filter [/FlateDecode] /DecodeParms [<< /Predictor 12.0 /Columns 7 >>] /Length {length}",
+            "0",
+            compressed: true,
+            predicted: true,
+            placed: true);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeFalse();
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().EndWith(
+            "gives /Predictor of element 0 of its /DecodeParms as a real number, where Table 8 of ISO 32000-1 asks for an integer.");
+    }
+
     [Fact]
     public void The_entry_a_deferred_length_found_off_its_object_is_judged_as_the_file_wrote_it()
     {
@@ -1003,19 +1140,29 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_hybrid_file_whose_xrefstm_is_a_reference_is_read_whole(bool indirect)
+    [InlineData("{offset}", null)]
+    [InlineData("6 0 R", null)]
+    [InlineData("{offset}.0", "gives its /XRefStm as a real number, where Table 19 of ISO 32000-1 asks for an integer.")]
+    public void A_hybrid_file_whose_xrefstm_is_a_reference_or_a_real_is_read_whole(string xrefStm, string? finding)
     {
         // ISO 32000-1 asks no /XRefStm to be direct (Table 19): one written as a reference, read where the table places
         // its object, names the stream, as qpdf, MuPDF, PDFBox and pdf.js read it. It was once no offset, the stream lost
-        // and the index rebuilt.
-        using var document = PdfDocument.Open(ChainFiles.HybridNamingItsStream(indirect));
+        // and the index rebuilt. A real with no fractional part is read as the integer it equals, and reported (#215).
+        using var document = PdfDocument.Open(ChainFiles.HybridNamingItsStream(xrefStm));
+        var report = new PdfValidator().Validate(document);
 
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Should().BeEmpty();
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue("only the stream indexes the page");
-        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+
+        if (finding is null)
+        {
+            report.Findings.Should().BeEmpty();
+        }
+        else
+        {
+            Single(report, PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().EndWith(finding);
+        }
     }
 
     [Theory]
@@ -1075,13 +1222,22 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData("/N 2 /First", "/N 2./First", "/N", 16)]
-    [InlineData("/First 9 /Length", "/First 9./Length", "/First", 16)]
-    public void An_object_stream_integer_written_as_a_real_is_read_as_the_integer_and_reported(string written, string real, string key, int table)
+    [InlineData("/N", 16)]
+    [InlineData("/First", 16)]
+    [InlineData("/Length", 5)]
+    public void An_object_stream_integer_written_as_a_real_is_read_as_the_integer_and_reported(string key, int table)
     {
-        // #215: both members are read, as MuPDF, PDFBox and pdf.js read them; qpdf and poppler lose them.
-        var file = Replace(XRefStreamFile(), written, real);
-        using var document = PdfDocument.Open(file);
+        // #215: each is read, as MuPDF, PDFBox and pdf.js read /N and /First; qpdf and poppler lose them. The space after
+        // the integer becomes its decimal point, so that no offset moves.
+        var content = Encoding.Latin1.GetString(XRefStreamFile());
+        var point = content.IndexOf(key + " ", content.IndexOf("/ObjStm", StringComparison.Ordinal), StringComparison.Ordinal) + key.Length + 1;
+
+        while (char.IsAsciiDigit(content[point]))
+        {
+            point++;
+        }
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(content[..point] + "." + content[(point + 1)..]));
 
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
         document.WasRepaired.Should().BeFalse();

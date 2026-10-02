@@ -333,6 +333,36 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Opening_a_chain_whose_value_leads_through_lengths_longer_than_the_stack_is_deep_reads_a_bounded_amount()
+    {
+        // The older stream's /Index is object 5, a stream whose /Length is the next stream's, 50,000 times over, each
+        // placed by the newer table. A stream is no value the chain reads, but each is parsed to be known as one, its
+        // /Length read first: the reads nest as loads do, within MaxNestedLoads and the stack, and the section is
+        // malformed.
+        const int Chain = 50_000;
+        var placed = new Dictionary<int, string>();
+
+        for (var number = 10; number < 10 + Chain; number++)
+        {
+            var length = number + 1 < 10 + Chain ? $"{number + 1} 0 R" : "1";
+            placed[number] = $"<< /Length {length} >>\nstream\nx\nendstream";
+        }
+
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Index 5 0 R /Length {length}",
+            "<< /Length 10 0 R >>\nstream\nx\nendstream",
+            compressed: false,
+            predicted: false,
+            placed: true,
+            placedToo: placed);
+
+        using var document = Measure(() => PdfDocument.Open(file));
+
+        document.Reader.Structure.Sections[1].Fault.Should().Be(
+            "its /Index is the reference 5 0 R, which no section read before it places where it can be read");
+    }
+
+    [Fact]
     public void Survives_a_document_whose_pages_form_a_cycle()
     {
         var bytes = new TestPdfBuilder()
