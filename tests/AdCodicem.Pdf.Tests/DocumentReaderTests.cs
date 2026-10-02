@@ -955,15 +955,23 @@ public class DocumentReaderTests
     [Fact]
     public void An_index_a_rebuild_left_empty_while_the_chain_was_read_is_not_rebuilt_again()
     {
-        // The only section is a cross-reference stream whose header a comment splits, which a rebuild's scan does not
-        // take for an object header. Its first range declares rows its data lacks, leaving the index incomplete; its
-        // second starts at object 9, which the index lacks: resolving it rebuilds the index, and the scan finds
-        // nothing. The chain then leaves an empty index, which asks for a rebuild once more — and the one done stands.
-        var file = Encoding.ASCII.GetBytes("""
+        // Two cross-reference streams, each header split by a comment, which a rebuild's scan does not take for an object
+        // header. The newer declares rows its data lacks, leaving the index incomplete; the older, which its /Prev names,
+        // numbers its rows from object 9, which the index lacks: resolving it, before any of its rows is read, rebuilds
+        // the index, and the scan finds nothing. The chain then leaves an empty index, which asks for a rebuild once
+        // more — and the one done stands.
+        const string Template = """
             %PDF-1.5
             7 0 % a comment between the generation and the keyword
             obj
-            << /Type /XRef /W [1 2 0] /Index [0 2 9 0 R 1] /Length 0 >>
+            << /Type /XRef /W [1 2 0] /Index [0 2] /Prev 00000 /Length 0 >>
+            stream
+
+            endstream
+            endobj
+            8 0 % another
+            obj
+            << /Type /XRef /W [1 2 0] /Index [9 0 R 1] /Length 0 >>
             stream
 
             endstream
@@ -972,7 +980,10 @@ public class DocumentReaderTests
             9
             %%EOF
 
-            """);
+            """;
+        var text = Template.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var older = text.IndexOf("8 0 %", StringComparison.Ordinal);
+        var file = Encoding.ASCII.GetBytes(text.Replace("/Prev 00000", string.Create(CultureInfo.InvariantCulture, $"/Prev {older:D5}"), StringComparison.Ordinal));
         var diagnostics = new PdfDiagnostics();
 
         using var reader = new PdfFileReader(
