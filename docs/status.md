@@ -11,9 +11,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Current milestone**: M02 — Document validation (`docs/milestones/M02.md`), in progress. Slices 1 to 3 are done:
   the engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object,
   page tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two
-  batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first three of which,
-  [#117], [#187] and [#159], merged with [#203] and [#211] that day and [#213] on 2026-10-02, and the fourth,
-  [#193], is in review in [#214]; then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
+  batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which,
+  [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02;
+  then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every
+  other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
   fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
   [#210]) and its third ([#212]); [#123] moved to M20.
@@ -22,27 +23,27 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,799 unit on `main` since [#213] (3 skipped: 2 by design, and the theory over the remote corpus's
+- **Tests**: 2,801 unit on `main` since [#214] (3 skipped: 2 by design, and the theory over the remote corpus's
   streams whose length is wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23
-  for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. On [#214]'s branch, 2,801 unit; with the
-  remote documents fetched, 4,706 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
+  for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the remote documents fetched, on
+  [#214]'s branch: 4,706 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
   unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
   lacks —; 3,266 integration against qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and, with all 242, `Remote corpus` run 22's 4,763 acceptance tests and 3,329 referee
   checks, on [#214]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
   Arlington tables left out), 99.6 % of `src/` — 5,145 of 5,165 lines on `main` since [#213], 149 of its patch's 151
-  measurable lines among them. The 20 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members
+  measurable lines among them; [#214]'s patch held none to measure. The 20 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members
   that are private, or of a private type, which no input reaches — nine lines of `ArlingtonWalk` (193, 849, 956, 966,
   967, 987, 989, 1061, 1077) and three of a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never
   null where it is read and a switch's default arm (`CrossReferenceProbe` 86 and 225, `PageTreePageOrphanedRule` 51,
   `RootInvalidRule` 87 and 96), a line the compiler puts after a call that never returns (`PdfFileReader` 1100), and
   two branches the compiler adds that no input takes (`FileQuote` 138, an interpolation's buffer too small;
   `PdfObjectParser` 647, a concatenation's null check). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `cf39b4c` (CI run 420), [#213]'s merge. `Remote corpus` passed on every document in the
+- **CI**: green on `main` at `ed1e9ed` (CI run 428), [#214]'s merge. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
   after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run
-  22, on [#214]'s branch, rerun once for the same refusal. [#214]'s CI is green at `e550485`.
+  22, on [#214]'s branch, rerun once for the same refusal.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
@@ -171,8 +172,8 @@ One pull request per batch, each design question put to the maintainer after mea
       on its branch (journal of 2026-10-01).
    3. [#159], what a message quotes of the file, bounded and escaped — done, merged with [#213] on 2026-10-02,
       `Remote corpus` run 21 green on its branch (journal of 2026-10-01).
-   4. [#193], the memory and time budgets the index changes are measured against — done, in review in [#214],
-      `Remote corpus` run 22 green on its branch (journal of 2026-10-02).
+   4. [#193], the memory and time budgets the index changes are measured against — done, merged with [#214] on
+      2026-10-02, `Remote corpus` run 22 green on its branch (journal of 2026-10-02).
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
    6. [#182], a cross-reference stream's dictionary read as written.
    7. [#118].
@@ -302,6 +303,8 @@ not a fault of the file: the rules on it report at most, as information, that it
   - its CTRF reports give the first durations measured on GitHub's runners: over the two attempts, the slowest whole
     test of a corpus document took 1.2 to 2.8 s, the slowest of a damaged one 1.8 to 3.3 s, both cairo's, and the
     large index's slower row 1.8 to 2.2 s — each operation at least six times under its 20 s.
+  
+  Merged with [#214] on 2026-10-02; CI run 428 green on `main` at `ed1e9ed`.
 - **Next**: batch 5, [#157] and [#186], numbers read from the file, its questions put when it starts.
 
 ### 2026-10-01 — Batch 3: what a message quotes of the file ([#159])
