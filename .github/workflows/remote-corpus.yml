@@ -40,8 +40,20 @@ jobs:
 
       # The suite merges the remote entries whose file is present, so the acceptance conditions run over
       # every document fetched - and their derived variants, if any, are made here and discarded with the job.
+      # Each test's duration is kept as a CTRF report: the margin under the corpus's time budget, 20 s for each operation
+      # on a document (#193), measured on GitHub's runners rather than inferred from a sandbox's.
       - name: Acceptance tests
-        run: dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
+        run: |
+          dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release \
+            -- --report-xunit-ctrf --report-xunit-ctrf-filename acceptance.ctrf.json --results-directory TestResults
+
+      - name: Keep the acceptance tests' durations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: acceptance-durations
+          path: TestResults/acceptance.ctrf.json
+          if-no-files-found: warn
 
       - name: Referee checks
         run: dotnet test --project tests/AdCodicem.Pdf.IntegrationTests/AdCodicem.Pdf.IntegrationTests.csproj -c Release

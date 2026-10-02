@@ -34,6 +34,9 @@ jobs:
   deploy:
     name: Build and deploy to GitHub Pages
     runs-on: ubuntu-latest
+    # Its longest run took two minutes: fifteen stop a build that hangs (#193). A job that calls this workflow cannot set
+    # a timeout of its own.
+    timeout-minutes: 15
     # One deployment at a time. A pending one is replaced by a newer one, which builds a newer commit.
     concurrency:
       group: pages
