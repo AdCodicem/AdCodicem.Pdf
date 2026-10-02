@@ -95,6 +95,16 @@ internal sealed class SizeWrongRule : IValidationRule
                         $"{subject} gives /Size {size.Value}, where the highest object number it and the sections it updates use, {expected - 1}, makes it {expected}.");
                     break;
 
+                case PdfReference reference:
+                    message = string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"{subject} writes its /Size as the reference {reference.Id.Number} {reference.Id.Generation} R, where the count of objects is written directly.");
+                    break;
+
+                case PdfReal real when real.AsInteger() is not null:
+                    message = $"{subject} gives its /Size as a real number, where the count of objects is an integer.";
+                    break;
+
                 default:
                     message = $"{subject} gives a /Size that is not a count of objects.";
                     break;

@@ -71,6 +71,13 @@ public static class PdfValidationRuleIds
     public const string FileSizeWrong = "file.size-wrong";
 
     /// <summary>
+    /// A value a section's trailer — a classic table's, or a cross-reference stream's dictionary — gives the reader to read
+    /// the chain is written as the specification does not allow, and read all the same: a reference where it must be
+    /// direct, a real with no fractional part where it must be an integer. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string FileTrailerValueWrong = "file.trailer-value-wrong";
+
+    /// <summary>
     /// A cross-reference section the chain names is there and cannot be read, holds fewer rows than it declares, or
     /// has a row that gives an object in use what no entry can hold. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
@@ -124,6 +131,12 @@ public static class PdfValidationRuleIds
     /// <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefObjectStreamBroken = "xref.object-stream-broken";
+
+    /// <summary>
+    /// An object stream gives its <c>/N</c>, <c>/First</c> or <c>/Length</c> as a real number with no fractional part,
+    /// where the specification asks for an integer, and is read all the same. <see cref="PdfValidationSeverity.Warning"/>.
+    /// </summary>
+    public const string XRefObjectStreamValueWrong = "xref.object-stream-value-wrong";
 
     /// <summary>
     /// Offsets of the file name the white space before what they designate rather than its first byte — reported

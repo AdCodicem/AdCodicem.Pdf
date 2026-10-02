@@ -20,13 +20,17 @@ namespace AdCodicem.Pdf.Validation;
 /// circular.
 /// </para>
 /// <para>
-/// It resolves each stream's dictionary and the few objects its keys name, and decodes nothing.
+/// It resolves each stream's dictionary and the few objects its keys name, and decodes nothing. As it holds each
+/// dictionary, it also notes the integers of its header written as reals.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
 {
     /// <summary>The keys of an object stream whose values must be known before its data can be read.</summary>
     private static readonly PdfName[] DecodingKeys = [PdfName.Length, PdfName.Filter, PdfName.DecodeParms, PdfName.N, PdfName.First];
+
+    /// <summary>The keys of an object stream that ISO 32000-1 makes integers (Tables 5 and 16).</summary>
+    private static readonly PdfName[] IntegerKeys = [PdfName.N, PdfName.First, PdfName.Length];
 
     private ObjectStreamDependencies()
     {
@@ -37,6 +41,13 @@ internal sealed class ObjectStreamDependencies
 
     /// <summary>Gets the numbers of the circular object streams.</summary>
     public HashSet<int> CircularStreams { get; } = [];
+
+    /// <summary>
+    /// Gets the object streams whose <c>/N</c>, <c>/First</c> or <c>/Length</c> is a real number with no fractional part,
+    /// where ISO 32000-1 asks for an integer (Tables 5 and 16): one finding per stream and key, in the order of their
+    /// numbers. The reader reads each as the integer it equals (#215).
+    /// </summary>
+    public List<ProbeFinding> IntegersWrittenAsReals { get; } = [];
 
     /// <summary>Works out which object streams of <paramref name="document"/> are circular.</summary>
     public static ObjectStreamDependencies Run(PdfDocument document)
@@ -68,6 +79,16 @@ internal sealed class ObjectStreamDependencies
                 document.GetObject(new PdfObjectId(stream, entry.Generation)) is PdfStream objectStream)
             {
                 needs[stream] = Needs(document, index, objectStream.Dictionary);
+
+                foreach (var key in IntegerKeys)
+                {
+                    if (objectStream.Dictionary.GetRaw(key)?.Resolve() is PdfReal real && real.AsInteger() is not null)
+                    {
+                        result.IntegersWrittenAsReals.Add(new ProbeFinding(
+                            Location(reader, index, stream),
+                            Invariant($"Object stream {stream} gives its {FileQuote.Name(key)} as a real number, where Table {(key == PdfName.Length ? 5 : 16)} of ISO 32000-1 asks for an integer; the reader read it as the integer it equals.")));
+                    }
+                }
             }
         }
 
