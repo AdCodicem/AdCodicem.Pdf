@@ -1946,14 +1946,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     {
         subsections = [];
 
-        if (index is null)
+        // The /Index is resolved from what was written: either is null only when the dictionary has none to read.
+        if (written is null || index is null)
         {
             return size is null or < 0 ? "it has no /Index, and its /Size gives no count of objects" : null;
         }
 
         if (index is not PdfArray ranges)
         {
-            return $"its /Index is {DescribeValue(written ?? index)}, not an array";
+            return $"its /Index is {DescribeValue(written)}, not an array";
         }
 
         if (ranges.Count == 0 || ranges.Count % 2 != 0)
@@ -2121,6 +2122,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         var digits = point < 0 ? mantissa : mantissa.Remove(point, 1);
         var whole = (point < 0 ? mantissa.Length : point) + exponent;
 
+        // "R" writes an exponent only below 10^-4, where the whole part is none, and from 10^17, where it is longer than
+        // the 17 digits a double needs at most: the last arm stands for a runtime that writes one sooner.
         return sign + (whole <= 0
             ? "0." + new string('0', -whole) + digits
             : whole >= digits.Length ? digits + new string('0', whole - digits.Length) : digits[..whole] + "." + digits[whole..]);
