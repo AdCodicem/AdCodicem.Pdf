@@ -236,6 +236,16 @@ internal ref struct PdfObjectParser
             case PdfTokenKind.Integer:
                 return ParseIntegerOrReference(token);
 
+            case PdfTokenKind.Real when !double.IsFinite(token.Real):
+                // A real is a double. One past it reads as null, not as an infinity the file did not write: no valid
+                // file writes one — ISO 32000-1's Annex C advises reals within 3.403 × 10^38 — and no non-finite real
+                // reaches the document.
+                Report(
+                    PdfDiagnosticCodes.SyntaxNumberOutOfRange,
+                    $"The number {FileQuote.Keyword(_memory.Span[token.Start..token.End])} is past the largest a real can hold; it was read as null.",
+                    token.Start);
+                return PdfNull.Instance;
+
             case PdfTokenKind.Real:
                 return new PdfReal(token.Real);
 

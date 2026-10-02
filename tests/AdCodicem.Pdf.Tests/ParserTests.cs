@@ -253,6 +253,48 @@ public class ParserTests
         dictionary.ContainsKey(PdfName.Get("B")).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("-")]
+    public void Reads_a_number_past_the_largest_real_as_null_and_reports_it(string sign)
+    {
+        var number = sign + "1" + new string('0', 309);
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("[1 " + number + " 2]"), diagnostics: diagnostics);
+
+        var array = parser.ParseObject().Should().BeOfType<PdfArray>().Subject;
+
+        array.Count.Should().Be(3);
+        array[1].Should().BeSameAs(PdfNull.Instance);
+        var report = diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxNumberOutOfRange);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(3);
+        report.Message.Should().Be(
+            $"The number {number[..127]} (the first 127 of {number.Length} bytes) is past the largest a real can hold; it was read as null.");
+    }
+
+    [Fact]
+    public void Keeps_no_entry_for_a_number_past_the_largest_real_as_for_any_null()
+    {
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("<< /A 1" + new string('0', 400) + " /B 2 >>"), diagnostics: diagnostics);
+
+        var dictionary = parser.ParseObject().Should().BeOfType<PdfDictionary>().Subject;
+
+        dictionary.ContainsKey(PdfName.Get("A")).Should().BeFalse();
+        dictionary.GetInteger(PdfName.Get("B")).Should().Be(2);
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.SyntaxNumberOutOfRange);
+    }
+
+    [Fact]
+    public void Reads_the_largest_real_a_double_holds()
+    {
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("179769313486231570" + new string('0', 291) + ".0"));
+
+        parser.ParseObject().Should().BeOfType<PdfReal>().Which.Value.Should().Be(double.MaxValue);
+    }
+
     [Fact]
     public void Terminates_on_a_dictionary_that_is_never_closed()
     {

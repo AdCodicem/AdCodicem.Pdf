@@ -106,6 +106,13 @@ public static class PdfDiagnosticCodes
     public const string SyntaxDepthExceeded = "syntax.depth-exceeded";
 
     /// <summary>
+    /// A number is past the largest a real can hold, about 1.8 × 10^308: it was read as null, so a dictionary holds no
+    /// entry for its key. The report quotes the number, and is placed where it starts. An integer past the range of a
+    /// <see langword="long"/> is no fault of its own: it reads as a real, the one nearest to it.
+    /// </summary>
+    public const string SyntaxNumberOutOfRange = "syntax.number-out-of-range";
+
+    /// <summary>
     /// Rebuilding the index met more than one definition of an object number: the file was updated, or copies an
     /// object. It is reported once for each rebuild, as information with no position: how many definitions met a number
     /// already found, the first ten of those numbers, and which definition was kept — the last written directly in the

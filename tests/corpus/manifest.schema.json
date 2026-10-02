@@ -262,6 +262,7 @@
               "syntax.unexpected-token",
               "syntax.truncated-object",
               "syntax.depth-exceeded",
+              "syntax.number-out-of-range",
               "object.redefined",
               "trailer.root-recovered",
               "filter.failed",
