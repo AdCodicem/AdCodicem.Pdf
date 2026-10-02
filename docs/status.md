@@ -12,8 +12,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   the engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object,
   page tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two
   batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first three of which,
-  [#117], [#187] and [#159], merged with [#203] and [#211] that day and [#213] on 2026-10-02; then slices 4 to 6 ([#60] to [#62]); then the milestone's
-  adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
+  [#117], [#187] and [#159], merged with [#203] and [#211] that day and [#213] on 2026-10-02, and the fourth,
+  [#193], is in review in [#214]; then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
   fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
   [#210]) and its third ([#212]); [#123] moved to M20.
@@ -24,8 +24,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
 - **Tests**: 2,799 unit on `main` since [#213] (3 skipped: 2 by design, and the theory over the remote corpus's
   streams whose length is wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23
-  for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the remote documents fetched, on
-  [#213]'s branch: 4,704 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
+  for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. On [#214]'s branch, 2,801 unit; with the
+  remote documents fetched, 4,706 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
   unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
   lacks —; 3,266 integration against qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a
   damaged document's pages; and, with all 242, `Remote corpus` run 21's 4,761 acceptance tests and 3,329 referee
@@ -170,13 +170,14 @@ One pull request per batch, each design question put to the maintainer after mea
       on its branch (journal of 2026-10-01).
    3. [#159], what a message quotes of the file, bounded and escaped — done, merged with [#213] on 2026-10-02,
       `Remote corpus` run 21 green on its branch (journal of 2026-10-01).
-   4. [#193], the memory and time budgets the index changes are measured against.
+   4. [#193], the memory and time budgets the index changes are measured against — done, in review in [#214],
+      `Remote corpus` run 22 on its branch (journal of 2026-10-02).
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
    6. [#182], a cross-reference stream's dictionary read as written.
    7. [#118].
    8. [#119] and [#172].
    9. [#125] and [#126].
-   10. [#190].
+   10. [#190] and [#212], the reader's public surface.
    11. [#164] and [#183], the index's size, the first new guard.
    12. [#165] and [#166], filter chains, with [#199] and [#209].
    13. [#128].
@@ -202,7 +203,7 @@ One pull request per batch, each design question put to the maintainer after mea
 
    Slice 4 waits on [#141] and [#144]. The four defects the planning found outside every issue, [#199] to [#202], and
    the four batch 2 found, [#207] to [#210], are filed under M02 and paid in the batches above (journal of 2026-10-01).
-   [#212], which batch 3 filed, is proposed for batch 10, with [#190]; its place is the maintainer's.
+   [#212], which batch 3 filed, is paid in batch 10, with [#190], as the maintainer placed it on 2026-10-02.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -223,6 +224,78 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-02 — Batch 4: the budgets the index changes are measured against ([#193])
+- **The question.** [#193], from M01's review: M01 asks for a file of several hundred thousand objects opened within a
+  stated budget, and for every corpus document read within its time budget. No test held either, no budget was
+  stated, and no CI job set a timeout. Measured first: opening indexes of 100,000 to 1,000,000 objects in ten shapes,
+  each operation on the 401 corpus documents this container holds on a quiet machine, and thirty runs of each CI job.
+  Eleven questions followed.
+- **Settled with the maintainer**, each as recommended:
+  - 300,000 objects, through a classic table and a cross-reference stream, written by `TestPdfBuilder` with one page;
+  - the stream's rows stored by Flate, not compressed: compressed, they allocate 0.65 % more under Microsoft's
+    zlib-ng, which CI runs, than under Ubuntu's zlib 1.3, which sessions run;
+  - `Open` from a `byte[]`, after a first opening, measured per thread;
+  - the measured figure plus 5 %;
+  - in `DocumentReaderTests`, each measured `Open` also held to 10 s;
+  - 20 s for each operation on a corpus document;
+  - 15 minutes on `ci.yml`'s jobs, `release.yml`'s two test jobs and the documentation's deployment;
+  - a CTRF report of the remote corpus's acceptance tests, kept as an artifact;
+  - the journal's budget measured after a first reading, and M23's account of it corrected;
+  - the documentation's bytes per object rewritten as measured;
+  - [#212] placed in batch 10, with [#190].
+- **Done**, in [#214]:
+  - the large-index theory, with `TestPdfBuilder.BuildWithXRefStream` taking a Flate level;
+  - one helper in `CorpusReadingTests` holding each operation to 20 s: opening, reading every object, walking the
+    pages, validating a damaged document, refusing an encrypted one;
+  - the file read outside every stopwatch;
+  - the timeouts and the report in four workflows.
+  
+  Docs: M01.md's *Tests required*, acceptance conditions and checklist; M23.md; `lazy-reading.md`'s per-object
+  figures and *Measured* table; `architecture.md`; `PdfXRefTable`'s remarks; the threat model's budgets, with the
+  gap removed; a wanted document in `corpus-contributions.md`.
+- **Measured.**
+  - Opening allocates a step function of the index map's capacity. The map holds 52 bytes a slot and grows through
+    156,437, 324,449 and 672,827 slots, so a count costs 100.4 bytes an object at a growth step and 208.2 just past it.
+  - The figure is the same to the byte in a console, alone in xUnit, under `--coverage` and in the parallel suite.
+    An open document keeps 52 to 108 bytes an object.
+  - At 300,000 objects: 32,571,368 bytes through the table and 45,174,464 through the stored stream. A copy of the
+    index would add 52 %, and an entry 8 bytes wider 15 %.
+  - The journal measures 3,347,320 bytes after a first reading.
+  - The slowest full read is us-topo's, 1.6 to 1.9 s alone and 2.8 s in the suite. Cairo's validation takes 1.4 s.
+    No committed document takes over 96 ms for any operation.
+  - CI's longest runs: build 2:43, integration 2:14, documentation 1:43, preview 2:48, deployment 1:59.
+- **Reviewed.** An adversarial review over four lenses — the large-index test, the corpus's timing, the workflows,
+  the documentation — put each finding to a refuter.
+  - Kept and fixed:
+    - a commit subject of 106 characters, which commitlint's 100 would have refused; the branch's history was
+      rewritten before its pull request opened;
+    - the journal's first assertion inside its measured span: 3,561,744 bytes alone and 3,348,152 in its class, now
+      3,347,320 either way;
+    - "18 to 42 bytes" for a stream's rows, when unencoded rows add 7;
+    - "whatever the objects weigh", untrue when the catalog sits in a large object stream;
+    - MB in two units;
+    - "mid-way" for 85 % of the way to the next growth step;
+    - the index copy's size, the journal row's date, and the last preview, 53.
+  - Refuted:
+    - the corpus operations the settled set leaves untimed;
+    - a CTRF upload that an artifact-service failure could turn red before the referee checks.
+- **Tests**: 2 new, 2,799 to 2,801; the corpus theories now time five operations. Each budget fails when its defense
+  goes: 24 more bytes an index entry fails both rows, and a one-tick budget fails every timed operation, each one
+  reached — 510 openings, 510 reads, 380 page walks, 129 validations, 20 refusals.
+- **Tracking.** Commented, with the measurements:
+  - [#180]: a valid table of a million objects opened from a path leaves 55.9 MB pooled;
+  - [#181]: cairo's validation is mostly the object cache letting objects go;
+  - [#164]: the map grows with no capacity hint;
+  - [#62]: the validation budget is measured cold;
+  - [#37]: a name table per document would move both budgets.
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - 2,801 unit tests, 3 skipped, and 4,706 with the remote corpus;
+  - the CTRF report is written where the workflow uploads it;
+  - the site builds, 196 pages;
+  - the integration suite is left to CI: nothing here changes what the reader returns.
+- **Next**: batch 5, [#157] and [#186], numbers read from the file, its questions put when it starts.
 
 ### 2026-10-01 — Batch 3: what a message quotes of the file ([#159])
 - **The question.** [#159], from the threat model: messages quoted the file's names and keywords whole and unescaped,
@@ -822,3 +895,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#211]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/211
 [#212]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/212
 [#213]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/213
+[#214]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/214
