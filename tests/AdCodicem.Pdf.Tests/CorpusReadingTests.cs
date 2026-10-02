@@ -308,13 +308,17 @@ public class CorpusReadingTests
 
         // Per-thread, not process-wide: the suite runs in parallel and a process-wide counter would
         // measure whatever else happens to be running.
+        int pages;
         var before = GC.GetAllocatedBytesForCurrentThread();
         using (var document = PdfDocument.Open(bytes, OptionsFor(entry)))
         {
-            CountPages(document).Should().Be(entry.Expect.Pages!.Value);
+            pages = CountPages(document);
         }
 
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        // Asserted outside the measured span: the first assertion of a process pays for itself, and would be counted.
+        pages.Should().Be(entry.Expect.Pages!.Value);
 
         // Indexing a thousand-page document and walking its whole page tree measured 2.4 MB when M01 closed, and
         // 3.2 MB on 2026-10-01, roughly 3.3 KB per page: proportional to the number of objects, not to the weight
