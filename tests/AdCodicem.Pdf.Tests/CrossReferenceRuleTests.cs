@@ -934,6 +934,60 @@ public class CrossReferenceRuleTests
         }
     }
 
+    [Theory]
+    [MemberData(nameof(ChainFiles.Keys), MemberType = typeof(ChainFiles))]
+    public void A_cross_reference_stream_value_written_as_a_reference_is_read_where_a_newer_section_places_it_and_reported(string key)
+    {
+        // As qpdf, MuPDF, PDFBox and pdf.js read it. ISO 32000-1 makes the value direct (7.5.8.2) — but the /Length, and,
+        // before PDF 2.0, what a /DecodeParms holds —, and a /Size is file.size-wrong's.
+        using var document = PdfDocument.Open(ChainFiles.UnderAnUpdate(key, placed: true));
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+        report.Findings.Select(finding => finding.RuleId).Should().Equal(key switch
+        {
+            "Length" or "Columns" => [],
+            "Size" => [PdfValidationRuleIds.FileSizeWrong],
+            _ => new[] { PdfValidationRuleIds.FileTrailerValueWrong },
+        });
+    }
+
+    [Theory]
+    [InlineData("W", "its /W")]
+    [InlineData("W element", "element 1 of its /W")]
+    [InlineData("Index", "its /Index")]
+    [InlineData("Index element", "element 1 of its /Index")]
+    [InlineData("Type", "its /Type")]
+    [InlineData("Filter", "its /Filter")]
+    [InlineData("DecodeParms", "its /DecodeParms")]
+    public void A_value_a_cross_reference_stream_writes_as_a_reference_is_named_where_it_is_written(string key, string where)
+    {
+        var file = ChainFiles.UnderAnUpdate(key, placed: true);
+        var stream = PdfTemplate.OffsetOf(file, "\n7 0 obj") + 1;
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.FileTrailerValueWrong);
+
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        finding.Location.Position.Should().Be(stream);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The cross-reference stream at offset {stream} writes {where} as the reference 5 0 R, where ISO 32000-1 makes it direct (7.5.8.2); the reader read it where a section read before it places the object."));
+    }
+
+    [Theory]
+    [InlineData("Length", "its /Length")]
+    [InlineData("Columns", "/Columns of its /DecodeParms")]
+    public void A_cross_reference_stream_value_written_as_a_reference_is_reported_in_a_file_that_declares_pdf_2_0(string key, string where)
+    {
+        // An erratum of ISO 32000-2 (pdf-issues #246) makes the values of Table 5 direct in a cross-reference stream, and
+        // their own elements and entries: a PDF 1.x file may write them as references.
+        var file = ChainFiles.UnderAnUpdate(key, placed: true, version: "2.0");
+
+        Single(Validate(file), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().Contain(
+            $"writes {where} as the reference 5 0 R, where ISO 32000-2 makes it direct (7.5.8.2)");
+    }
+
     [Fact]
     public void The_entry_a_deferred_length_found_off_its_object_is_judged_as_the_file_wrote_it()
     {
@@ -962,6 +1016,81 @@ public class CrossReferenceRuleTests
         document.Diagnostics.Should().BeEmpty();
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue("only the stream indexes the page");
         new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("9 0 R", "its /Prev as the reference 9 0 R, where ISO 32000-1 makes it direct (Table 15)")]
+    [InlineData("{offset}.0", "its /Prev as a real number, where Table 15 of ISO 32000-1 asks for an integer")]
+    public void A_prev_written_as_a_reference_or_a_real_is_followed_and_reported(string prev, string what)
+    {
+        // A reference a section already read places, and a real with no fractional part, as PDFBox and pdf.js read them
+        // (#182, #215); the chain goes on, and the form is reported.
+        var file = ChainFiles.UpdateNamingItsPrevious(prev);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().Contain(what);
+    }
+
+    [Theory]
+    [InlineData("/Size 6 /W [1 4.0 2]", "element 1 of its /W")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0.0 6]", "element 0 of its /Index")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 6.]", "element 1 of its /Index")]
+    public void A_cross_reference_stream_integer_written_as_a_real_is_read_as_the_integer_and_reported(string layout, string what)
+    {
+        // #215: the reader reads it as the integer it equals, as MuPDF, PDFBox and pdf.js do; qpdf refuses the section.
+        var file = Replace(XRefStreamFile(), "/Size 6 /W [1 4 2]", layout);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeFalse();
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().Contain(
+            $"gives {what} as a real number, where Table 17 of ISO 32000-1 asks for an integer; the reader read it as the integer it equals.");
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_length_and_predictor_written_as_reals_are_read_and_reported()
+    {
+        // #215: a /Length, a /Predictor and /Columns written with a fractional part of zero: read as written, each
+        // reported once, beside the /DecodeParms the stream writes as a reference.
+        using var document = PdfDocument.Open(ChainFiles.UnderAnUpdate("DecodeParms", placed: true, reals: true));
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.FileTrailerValueWrong).Select(finding => finding.Message)
+            .Should().HaveCount(4).And.ContainMatch("*its /DecodeParms as the reference 5 0 R*")
+            .And.ContainMatch("*gives its /Length as a real number, where Table 5*")
+            .And.ContainMatch("*gives /Predictor of its /DecodeParms as a real number, where Table 8*")
+            .And.ContainMatch("*gives /Columns of its /DecodeParms as a real number, where Table 8*");
+    }
+
+    [Theory]
+    [InlineData("/Size 6.0 /W [1 4 2] /Index [0 6]", "gives its /Size as a real number, where the count of objects is an integer.")]
+    [InlineData("/Size 1 0 R /W [1 4 2] /Index [0 6]", "writes its /Size as the reference 1 0 R, where the count of objects is written directly.")]
+    public void A_size_written_as_a_real_or_a_reference_is_said_to_be(string layout, string message)
+    {
+        // Read all the same: /Index numbers the rows. The rule once said such a /Size was no count of objects.
+        Single(Validate(Replace(XRefStreamFile(), "/Size 6 /W [1 4 2]", layout)), PdfValidationRuleIds.FileSizeWrong).Message
+            .Should().EndWith(message);
+    }
+
+    [Theory]
+    [InlineData("/N 2 /First", "/N 2./First", "/N", 16)]
+    [InlineData("/First 9 /Length", "/First 9./Length", "/First", 16)]
+    public void An_object_stream_integer_written_as_a_real_is_read_as_the_integer_and_reported(string written, string real, string key, int table)
+    {
+        // #215: both members are read, as MuPDF, PDFBox and pdf.js read them; qpdf and poppler lose them.
+        var file = Replace(XRefStreamFile(), written, real);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamValueWrong);
+        finding.Severity.Should().Be(PdfValidationSeverity.Warning);
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Object stream 4 gives its {key} as a real number, where Table {table} of ISO 32000-1 asks for an integer; the reader read it as the integer it equals."));
     }
 
     [Fact]
