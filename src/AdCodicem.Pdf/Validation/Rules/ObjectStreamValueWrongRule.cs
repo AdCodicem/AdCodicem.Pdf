@@ -7,9 +7,11 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <remarks>
 /// ISO 32000-1 makes them integers (Tables 5 and 16). One written as a real with no fractional part is read as the
 /// integer it equals, as MuPDF, PDFBox and pdf.js read it — qpdf and poppler lose the stream's objects —: a warning
-/// (ADR 45). One with a fractional part leaves the stream unreadable, which
-/// <see cref="PdfValidationRuleIds.XRefObjectStreamBroken"/> reports. Each object stream the index places an object in
-/// is judged, as it is for <see cref="PdfValidationRuleIds.XRefObjectStreamCircular"/>.
+/// (ADR 45). One with a fractional part is another fault: a <c>/N</c> or a <c>/First</c> leaves the stream unreadable,
+/// which <see cref="PdfValidationRuleIds.XRefObjectStreamBroken"/> reports, and a <c>/Length</c> is recovered through the
+/// stream's <c>endstream</c>, which the reader reports and the stream rules of M02's fourth slice are to judge. Each
+/// object stream the index places an object in is judged, as it is for
+/// <see cref="PdfValidationRuleIds.XRefObjectStreamCircular"/>.
 /// </remarks>
 internal sealed class ObjectStreamValueWrongRule : IValidationRule
 {

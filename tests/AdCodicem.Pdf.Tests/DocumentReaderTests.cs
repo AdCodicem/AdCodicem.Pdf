@@ -1042,7 +1042,7 @@ public class DocumentReaderTests
         report.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
         report.Position.Should().Be(PdfTemplate.OffsetOf(file, "stream\n", 1) + "stream\n".Length);
         report.Message.Should().Be(
-            "The /Length of cross-reference stream 5 gives 56 bytes, but the chain was read before it could be: its rows were read from the 42 before an endstream its data holds, and none past them.");
+            "The /Length of cross-reference stream 5 gives 56 bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream 42 bytes in, and read no row past it.");
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
     }
 

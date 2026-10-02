@@ -124,8 +124,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </summary>
     private const int MaxNestedLoads = 64;
 
-    /// <summary>The keys of a cross-reference stream's dictionary that its rows cannot be read without.</summary>
-    private static readonly PdfName[] RowKeys = [PdfName.W, PdfName.Index, PdfName.Size, PdfName.Filter, PdfName.DecodeParms];
+    /// <summary>
+    /// How many references <see cref="Follow"/> follows from a value, as <see cref="PdfReference.Resolve"/> does: a value
+    /// still a reference past them reads as null there, and cannot be read here.
+    /// </summary>
+    private const int MaxReferenceLinks = 32;
 
     private static ReadOnlySpan<byte> ObjKeyword => "obj"u8;
     private static ReadOnlySpan<byte> TrailerKeyword => "trailer"u8;
@@ -172,11 +175,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private Dictionary<PdfObjectId, PdfObject?>? _readWhileChainIsRead;
 
     /// <summary>
-    /// The cross-reference streams whose indirect <c>/Length</c> the chain could not read, by where each starts, with how
-    /// many bytes of data the search for its <c>endstream</c> took: each <c>/Length</c> is read once the chain is read,
-    /// and checked against them.
+    /// The cross-reference streams the chain read whose indirect <c>/Length</c> it could not read, by where their data
+    /// starts: each <c>/Length</c> is read once the chain is read, and checked against the data the chain took.
     /// </summary>
-    private List<(long Offset, int Taken)>? _deferredLengths;
+    private Dictionary<long, DeferredLength>? _deferredLengths;
 
     /// <summary>How many times a guard was reached, reported or not: a read that reached one was cut by it.</summary>
     private int _guardsReached;
@@ -1190,14 +1192,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     }
 
     /// <summary>
-    /// Reads, once the chain is read, the <c>/Length</c> of each cross-reference stream the chain could not read it for,
-    /// and reports one whose data the chain took otherwise than its <c>/Length</c> gives (#182).
+    /// Reads, once the chain is read, the <c>/Length</c> of each cross-reference stream the chain read without it, and
+    /// reports one that is no length, one the data does not confirm, and one that gives data past the <c>endstream</c> the
+    /// chain took the data up to (#182).
     /// </summary>
     /// <remarks>
-    /// Each stream is parsed again as any object is, its <c>/Length</c> loaded now: what that load finds or changes comes
-    /// after the chain's index is copied (<see cref="PreserveChainIndex"/>), and the parser reports a length the data
-    /// does not confirm, as it does for any stream. A length the data confirms beyond the first <c>endstream</c> the data
-    /// holds, which ended the data the chain read, is reported here: the rows past it were not read.
+    /// The <c>/Length</c> is loaded as any object is: what that load finds or changes comes after the chain's index is
+    /// copied (<see cref="PreserveChainIndex"/>). A length the <c>endstream</c> the chain stopped at confirms — the white
+    /// space before it counted, or not all of it — is the stream's own, as the parser takes it for any stream, and says
+    /// nothing. One confirmed by an <c>endstream</c> past it gives data the chain did not read, rows included: they are not
+    /// read again, and the report says so. The stream is not parsed again, and each is reported once.
     /// </remarks>
     private void CheckDeferredLengths()
     {
@@ -1206,20 +1210,68 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return;
         }
 
-        foreach (var (offset, taken) in _deferredLengths)
+        foreach (var (dataStart, deferred) in _deferredLengths)
         {
-            if (TryParseNumberedAt(offset, AnyObject, PdfLimit.Trailer, out var value, out var number, XRefWindow) &&
-                value is PdfStream { Data: var data } && data.Length != taken && !_lengthFaultsReported.Contains(data.Position))
+            var reentries = _reentries;
+            var value = GetObject(deferred.Length);
+            var (number, generation) = (deferred.Length.Number, deferred.Length.Generation);
+            string? message = null;
+
+            if (value.AsInteger() is not { } length || length is < 0 or > int.MaxValue)
             {
-                _diagnostics.Warn(
-                    PdfDiagnosticCodes.StreamLengthInvalid,
-                    string.Create(
+                var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(number);
+                var held = presence switch
+                {
+                    ObjectPresence.Missing => "which the file lacks",
+                    ObjectPresence.Unproduced => "which could not be read",
+                    _ => "which holds " + DescribeValue(value) + ", not a length",
+                };
+                message = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The /Length of cross-reference stream {deferred.Stream} names object {number} {generation}, {held}; the chain took its data up to its endstream, after {deferred.Taken} bytes.");
+            }
+            else if (length != deferred.Taken)
+            {
+                var stopped = EndStreamAfter(dataStart + deferred.Taken);
+
+                if (!((IPdfStreamDataProvider)this).IsEndStreamAt(dataStart + length))
+                {
+                    message = string.Create(CultureInfo.InvariantCulture, $"The stream declared {length} bytes but ended after {deferred.Taken}.");
+                }
+                else if (dataStart + length > stopped)
+                {
+                    message = string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The /Length of cross-reference stream {number} gives {data.Length} bytes, but the chain was read before it could be: its rows were read from the {taken} before an endstream its data holds, and none past them."),
-                    data.Position);
+                        $"The /Length of cross-reference stream {deferred.Stream} gives {length} bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream {deferred.Taken} bytes in, and read no row past it.");
+                }
+            }
+
+            if (message is not null && _lengthFaultsReported.Add(dataStart))
+            {
+                _diagnostics.Warn(PdfDiagnosticCodes.StreamLengthInvalid, message, dataStart);
             }
         }
     }
+
+    /// <summary>
+    /// Gives where the <c>endstream</c> keyword starts that the end-of-line or white space at <paramref name="position"/>
+    /// leads to, or <paramref name="position"/> itself when none follows within the gap the parser allows.
+    /// </summary>
+    private long EndStreamAfter(long position)
+    {
+        Span<byte> tail = stackalloc byte[PdfObjectParser.EndStreamLookahead];
+        var read = position < 0 || position >= _source.Length
+            ? 0
+            : _source.Read(position, tail[..(int)Math.Min(tail.Length, _source.Length - position)]);
+        var keyword = tail[..read].IndexOf("endstream"u8);
+        return keyword < 0 ? position : position + keyword;
+    }
+
+    /// <summary>
+    /// A cross-reference stream's <c>/Length</c> the chain could not read: the object it names, how many bytes of data the
+    /// chain took, and the stream's own number.
+    /// </summary>
+    private readonly record struct DeferredLength(PdfObjectId Length, int Taken, int Stream);
 
     /// <summary>
     /// Looks for the catalog among the objects the chain indexed, the trailer's <c>/Root</c> leading to none, and
@@ -1529,7 +1581,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
 
-            if (TryReadXRefSection(candidate - _headerOffset, attempt, out previous, out hybrid) == XRefSectionState.Read)
+            if (TryReadXRefSection(candidate - _headerOffset, attempt, out previous, out hybrid, candidate: true) == XRefSectionState.Read)
             {
                 section.RelocateTo(attempt);
                 _diagnostics.Repair(
@@ -1601,7 +1653,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <paramref name="section"/>: <see cref="XRefSectionState.Read"/>, <see cref="XRefSectionState.NotFound"/> when
     /// nothing there is a section, or <see cref="XRefSectionState.Malformed"/> when one is and cannot be read.
     /// </summary>
-    private XRefSectionState TryReadXRefSection(long offset, XRefSectionRecord section, out long previous, out long hybrid)
+    /// <param name="offset">Where the section is named, counted from the header.</param>
+    /// <param name="section">Receives what became of the section.</param>
+    /// <param name="previous">The offset its <c>/Prev</c> gives, or -1.</param>
+    /// <param name="hybrid">The offset its <c>/XRefStm</c> gives, or -1.</param>
+    /// <param name="candidate">
+    /// Whether the offset is a place the section may have been moved to rather than one the chain names: an object there
+    /// that is no cross-reference stream leaves nothing of its reading.
+    /// </param>
+    private XRefSectionState TryReadXRefSection(
+        long offset, XRefSectionRecord section, out long previous, out long hybrid, bool candidate = false)
     {
         previous = -1;
         hybrid = -1;
@@ -1631,7 +1692,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             }
         }
 
-        section.State = TryReadXRefStream(absolute, section, out previous);
+        section.State = TryReadXRefStream(absolute, section, out previous, candidate);
         return section.State;
     }
 
@@ -1929,8 +1990,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <remarks>
     /// <para>
     /// An object that declares itself a cross-reference stream — <c>/Type /XRef</c>, or a <c>/W</c> — and cannot be
-    /// read is a malformed section; any other object there, or none, is no section at all, and nothing its reading met
-    /// is kept: it was read as a section, through a section's window, and is read as itself when something asks for it.
+    /// read is a malformed section; any other object there, or none, is no section at all. At a place the section may have
+    /// been moved to (<paramref name="candidate"/>), nothing such an object's reading met is reported or recorded — its
+    /// search for an <c>endstream</c> aside, which is kept as every search is —: it was read as a section, through a
+    /// section's window, and is read as itself when something asks for it.
     /// </para>
     /// <para>
     /// ISO 32000-1 (7.5.8.2) makes the values of this dictionary direct, the elements of <c>/W</c> and <c>/Index</c>
@@ -1941,7 +2004,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// so far places is read once the chain is read (<see cref="CheckDeferredLengths"/>).
     /// </para>
     /// </remarks>
-    private XRefSectionState TryReadXRefStream(long absolute, XRefSectionRecord section, out long previous)
+    private XRefSectionState TryReadXRefStream(long absolute, XRefSectionRecord section, out long previous, bool candidate)
     {
         previous = -1;
 
@@ -1951,8 +2014,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         var before = _diagnostics.GetMark();
         var guards = _guardsReached;
 
+        // A place the section may have been moved to is a guess: what is there and is no section leaves nothing of its
+        // reading, not even a guard its dictionary reached. Where the chain names a section, the guard is reported.
         if (!TryParseNumberedAt(
-            absolute, AnyObject, PdfLimit.Trailer, out var value, out var number, XRefWindow, DeclaresCrossReferenceStream))
+                absolute, AnyObject, PdfLimit.Trailer, out var value, out var number, XRefWindow, candidate ? DeclaresCrossReferenceStream : null) ||
+            !DeclaresCrossReferenceStream(value))
         {
             section.Fault = number == 0
                 ? "holds neither the xref keyword nor an object"
@@ -1979,13 +2045,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             section.TrailerFault = XRefTrailerFault.Malformed;
         }
 
-        if (dictionary.GetRaw(PdfName.Length) is PdfReference length && ReadWithoutLoading(length.Id) is null &&
-            !section.CutByLimit && !xrefStream.Data.CutByGuard)
-        {
-            // The data was taken up to the first endstream it holds: the /Length is read, and checked, once the chain is.
-            // Data a guard cut is the guard's, which says so (ADR 34), and is not checked against a length.
-            (_deferredLengths ??= []).Add((absolute, xrefStream.Data.Length));
-        }
+        // A /Length no section read so far places: the data was taken up to the first endstream it holds, and the /Length is
+        // read, and checked, once the chain is, if the section is read. Data a guard cut is the guard's, which says so
+        // (ADR 34), and is not checked against a length.
+        var deferred = dictionary.GetRaw(PdfName.Length) is PdfReference length && ReadWithoutLoading(length.Id) is null &&
+            !section.CutByLimit && !xrefStream.Data.CutByGuard
+            ? new DeferredLength(length.Id, xrefStream.Data.Length, number)
+            : (DeferredLength?)null;
 
         if (UnreadValue(dictionary) is { } unread)
         {
@@ -2032,7 +2098,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return XRefSectionState.Malformed;
         }
 
-        // An /Index that is null, or names an object the file lacks, is one the dictionary does not have (7.3.7, 7.3.10).
+        // An /Index that is null, or names an object that holds null, is one the dictionary does not have (7.3.7, 7.3.10):
+        // one that names an object no section read so far places is UnreadValue's fault.
         var written = dictionary.GetRaw(PdfName.Index);
         var index = written?.Resolve() is { } given and not PdfNull ? given : null;
         var size = dictionary.GetInteger(PdfName.Size);
@@ -2106,6 +2173,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             }
         }
 
+        if (deferred is { } check)
+        {
+            (_deferredLengths ??= [])[xrefStream.Data.Position] = check;
+        }
+
         _xref.MergeTrailer(dictionary);
         previous = SectionOffset(dictionary, PdfName.Prev, absolute);
         return XRefSectionState.Read;
@@ -2120,29 +2192,105 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         (dictionary.IsOfType(PdfName.XRef) || dictionary.ContainsKey(PdfName.W));
 
     /// <summary>
-    /// Says which value a cross-reference stream's dictionary refers to, among those its rows cannot be read without, that
-    /// no section read so far places where it can be read; null when every one can be.
+    /// Says which value a cross-reference stream's dictionary refers to, among those its rows are read with, that no section
+    /// read so far places where it can be read; null when every one can be.
     /// </summary>
     /// <remarks>
-    /// <c>/W</c>, <c>/Index</c>, <c>/Filter</c> and <c>/DecodeParms</c> are followed into their elements and entries, and
-    /// <c>/Size</c> when there is no <c>/Index</c>, which it then numbers the rows for. <c>/Type</c> is not, nor
-    /// <c>/Size</c> beside an <c>/Index</c>: the rows are read without them, and the validator reports how they are
-    /// written.
+    /// What is followed is what reading the rows reads, as it reads it: <c>/W</c> and the widths of its three fields;
+    /// <c>/Index</c> and its elements, or <c>/Size</c> when there is no <c>/Index</c>; <c>/Filter</c> and its elements; and,
+    /// when the data is encoded, <c>/DecodeParms</c>, its elements, and in the parameters of each Flate or LZW step,
+    /// <c>/Predictor</c>, LZW's <c>/EarlyChange</c>, and <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> when
+    /// the predictor is past 1 — each through as many references as <see cref="PdfReference.Resolve"/> follows. A value the
+    /// rows are read without — <c>/Type</c>, <c>/Size</c> beside an <c>/Index</c>, an entry no filter reads — leaves the
+    /// section readable; the validator reports how it is written.
     /// </remarks>
     private string? UnreadValue(PdfDictionary dictionary)
     {
-        foreach (var key in RowKeys)
+        if (Unread(dictionary, PdfName.W, out var widths) is { } fault)
         {
-            if (dictionary.GetRaw(key) is not { } value || (key == PdfName.Size && dictionary.ContainsKey(PdfName.Index)))
+            return fault;
+        }
+
+        for (var i = 0; widths is PdfArray w && i < Math.Min(3, w.Count); i++)
+        {
+            if (Follow(w[i], out _) is { } reference)
             {
-                continue;
+                return UnreadFault(PdfName.W, reference, written: false);
+            }
+        }
+
+        if (Unread(dictionary, PdfName.Index, out var index) is { } indexFault)
+        {
+            return indexFault;
+        }
+
+        if (index is PdfArray ranges)
+        {
+            foreach (var element in ranges)
+            {
+                if (Follow(element, out _) is { } reference)
+                {
+                    return UnreadFault(PdfName.Index, reference, written: false);
+                }
+            }
+        }
+        else if ((index is null or PdfNull) && Unread(dictionary, PdfName.Size, out _) is { } sizeFault)
+        {
+            return sizeFault;
+        }
+
+        if (Unread(dictionary, PdfName.Filter, out var filters) is { } filterFault)
+        {
+            return filterFault;
+        }
+
+        // Data that is not encoded is read without its parameters.
+        if (filters is null or PdfNull)
+        {
+            return null;
+        }
+
+        if (Unread(dictionary, PdfName.DecodeParms, out var parameters) is { } parametersFault)
+        {
+            return parametersFault;
+        }
+
+        if (filters is PdfName single)
+        {
+            return UnreadParameter(single, parameters as PdfDictionary);
+        }
+
+        for (var i = 0; filters is PdfArray chain && i < chain.Count; i++)
+        {
+            if (Follow(chain[i], out var step) is { } reference)
+            {
+                return UnreadFault(PdfName.Filter, reference, written: false);
             }
 
-            if (UnreadReference(value, depth: 3) is { } reference)
+            var stepParameters = parameters;
+
+            if (parameters is PdfArray parameterArray)
             {
-                return string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"its {FileQuote.Name(key)} {(ReferenceEquals(value, reference) ? "is" : "holds")} the reference {reference.Id.Number} {reference.Id.Generation} R, which no section read before it places where it can be read");
+                stepParameters = null;
+
+                if (i < parameterArray.Count && Follow(parameterArray[i], out stepParameters) is { } parameterReference)
+                {
+                    return UnreadFault(PdfName.DecodeParms, parameterReference, written: false);
+                }
+            }
+
+            if (step is PdfName name)
+            {
+                // Decoding stops at an image filter, and reads no parameter past it.
+                if (Filters.PdfFilterPipeline.IsImageFilter(name))
+                {
+                    return null;
+                }
+
+                if (UnreadParameter(name, stepParameters as PdfDictionary) is { } stepFault)
+                {
+                    return stepFault;
+                }
             }
         }
 
@@ -2150,43 +2298,80 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     }
 
     /// <summary>
-    /// Gives the first reference in <paramref name="value"/>, followed <paramref name="depth"/> levels deep through what
-    /// references, arrays and dictionaries hold, that <see cref="ReadWithoutLoading"/> cannot read; null when there is none.
+    /// Says which value the parameters of a Flate or LZW step refer to, among those decoding reads, that no section read so
+    /// far places where it can be read; null when every one can be, or the step reads none.
     /// </summary>
-    private PdfReference? UnreadReference(PdfObject value, int depth)
+    private string? UnreadParameter(PdfName filter, PdfDictionary? parameters)
     {
-        switch (value)
+        if (parameters is null || (filter != PdfName.FlateDecode && filter != PdfName.LZWDecode))
         {
-            case PdfReference reference:
-                return ReadWithoutLoading(reference.Id) is not { } read ? reference
-                    : depth > 1 ? UnreadReference(read, depth - 1)
-                    : null;
-
-            case PdfArray array when depth > 1:
-                foreach (var element in array)
-                {
-                    if (UnreadReference(element, depth - 1) is { } found)
-                    {
-                        return found;
-                    }
-                }
-
-                return null;
-
-            case PdfDictionary nested when depth > 1:
-                foreach (var (_, element) in nested)
-                {
-                    if (UnreadReference(element, depth - 1) is { } found)
-                    {
-                        return found;
-                    }
-                }
-
-                return null;
-
-            default:
-                return null;
+            return null;
         }
+
+        if (filter == PdfName.LZWDecode && Follow(parameters.GetRaw(PdfName.EarlyChange), out _) is { } earlyChange)
+        {
+            return UnreadFault(PdfName.DecodeParms, earlyChange, written: false);
+        }
+
+        if (Follow(parameters.GetRaw(PdfName.Predictor), out var predictor) is { } reference)
+        {
+            return UnreadFault(PdfName.DecodeParms, reference, written: false);
+        }
+
+        if (predictor?.AsInteger() is not > 1)
+        {
+            return null;
+        }
+
+        foreach (var key in (ReadOnlySpan<PdfName>)[PdfName.Colors, PdfName.BitsPerComponent, PdfName.Columns])
+        {
+            if (Follow(parameters.GetRaw(key), out _) is { } unread)
+            {
+                return UnreadFault(PdfName.DecodeParms, unread, written: false);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Follows the value <paramref name="key"/> gives in <paramref name="dictionary"/>, and says so when a reference it is,
+    /// or leads to, cannot be read.
+    /// </summary>
+    private string? Unread(PdfDictionary dictionary, PdfName key, out PdfObject? value)
+    {
+        var written = dictionary.GetRaw(key);
+        return Follow(written, out value) is { } reference
+            ? UnreadFault(key, reference, written: ReferenceEquals(written, reference))
+            : null;
+    }
+
+    private static string UnreadFault(PdfName key, PdfReference reference, bool written) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"its {FileQuote.Name(key)} {(written ? "is" : "holds")} the reference {reference.Id.Number} {reference.Id.Generation} R, which no section read before it places where it can be read");
+
+    /// <summary>
+    /// Follows <paramref name="written"/> through as many references as <see cref="PdfReference.Resolve"/> does, each read
+    /// with <see cref="ReadWithoutLoading"/>, and gives the reference that could not be read, or null when none.
+    /// </summary>
+    /// <param name="written">The value as the file wrote it.</param>
+    /// <param name="value">The value it leads to, or null when a reference could not be read.</param>
+    private PdfReference? Follow(PdfObject? written, out PdfObject? value)
+    {
+        value = written;
+
+        for (var link = 0; value is PdfReference reference; link++)
+        {
+            if (link == MaxReferenceLinks || ReadWithoutLoading(reference.Id) is not { } read)
+            {
+                value = null;
+                return reference;
+            }
+
+            value = read;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -2358,7 +2543,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 case 1 or 2:
                     // The rows after it are still in step: only this one is refused, and its object is the index's to find.
                     Refuse(number);
-                    section.RefusedRow ??= RowFault(number, type, second, third, widths);
+                    section.RefusedRow ??= RowFault(number, type, second, third, row, widths);
                     break;
 
                 default:
@@ -2422,12 +2607,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <summary>Says why a cross-reference stream's row of type 1 or 2 was refused.</summary>
     /// <remarks>
     /// A field wider than 8 bytes whose leading bytes are not all zero holds more than 64 bits, read as the largest value
-    /// (<see cref="ReadField"/>), and is said to.
+    /// (<see cref="ReadField"/>), and is said to; one whose leading bytes are zero holds the value its last 8 give.
     /// </remarks>
-    private static string RowFault(int number, ulong type, ulong second, ulong third, ReadOnlySpan<int> widths)
+    private static string RowFault(int number, ulong type, ulong second, ulong third, ReadOnlySpan<byte> row, ReadOnlySpan<int> widths)
     {
-        var wideSecond = IsPast64Bits(second, widths[1]);
-        var wideThird = IsPast64Bits(third, widths[2]);
+        var wideSecond = IsPast64Bits(row, widths[0], widths[1]);
+        var wideThird = IsPast64Bits(row, widths[0] + widths[1], widths[2]);
 
         return type == 1
             ? second > long.MaxValue
@@ -2445,7 +2630,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     ? Invariant($"the row for object {number} places it at an index of more than 64 bits in object stream {second}, past any an object stream can hold")
                     : Invariant($"the row for object {number} places it at index {third} of object stream {second}, past any an object stream can hold");
 
-        static bool IsPast64Bits(ulong value, int width) => width > sizeof(ulong) && value == ulong.MaxValue;
+        static bool IsPast64Bits(ReadOnlySpan<byte> row, int start, int width) =>
+            width > sizeof(ulong) && row.Slice(start, width - sizeof(ulong)).ContainsAnyExcept((byte)0);
 
         static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
     }
@@ -2624,8 +2810,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <param name="foundNumber">The number of the object found, even when <paramref name="keep"/> refuses it.</param>
     /// <param name="initialWindow">The window the first attempt reads through.</param>
     /// <param name="keep">
-    /// Whether what was read is what was looked for: when it says no, nothing the reading met is reported or recorded,
-    /// and the method returns false.
+    /// Whether what was read is what was looked for: when it says no, nothing the reading met is reported or recorded —
+    /// a search for a stream's <c>endstream</c> aside, which is kept as every search is (<see cref="IPdfStreamDataProvider.FindEndStream"/>)
+    /// —, a guard its window reached included, and the method returns false.
     /// </param>
     private bool TryParseNumberedAt(
         long offset,

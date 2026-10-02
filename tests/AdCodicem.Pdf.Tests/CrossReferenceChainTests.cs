@@ -361,8 +361,9 @@ public class CrossReferenceChainTests
     [Fact]
     public void Reports_a_prev_that_is_not_an_offset_and_finds_what_it_named_when_asked()
     {
-        // tiff2pdf writes /Prev 576066 0 R. A reference names an object, not a section: it is not resolved, which
-        // would load an object while the index is still being read, and the section is looked for on demand.
+        // tiff2pdf writes /Prev 576066 0 R. A reference is read where a section already read places its object, without
+        // loading it while the index is still being read (#182); this one names an object no section places, so it names
+        // no section, and the section is looked for on demand.
         var (file, _) = Updated(prevAt: Offset.AsReference);
         var update = StartXRef(file);
 

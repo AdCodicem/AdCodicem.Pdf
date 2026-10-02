@@ -196,9 +196,9 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 1 0 R 2]", "its /W holds the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 1 0 R /W [1 4 2]", "its /Size is the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Filter 1 0 R", "its /Filter is the reference 1 0 R, which no section read before it places where it can be read.")]
-    [InlineData("/Size 6 /W [1 4 2] /DecodeParms 1 0 R", "its /DecodeParms is the reference 1 0 R, which no section read before it places where it can be read.")]
-    [InlineData("/Size 6 /W [1 4 2] /DecodeParms << /Columns 1 0 R >>", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
-    [InlineData("/Size 6 /W [1 4 2] /DecodeParms [<< /Columns 1 0 R >>]", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Filter /FlateDecode /DecodeParms 1 0 R", "its /DecodeParms is the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 1 0 R >>", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Filter [/FlateDecode] /DecodeParms [<< /Predictor 12 /Columns 1 0 R >>]", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 1]", "its /Index gives a subsection of 1 row from object -5, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [2147482000 5000]", "its /Index gives a subsection of 5,000 rows from object 2147482000, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 6]", "its /Index gives a subsection of 6 rows from object -5, outside object numbers 0 to 2147483647.")]
@@ -764,7 +764,7 @@ public class CrossReferenceRuleTests
     [Fact]
     public void A_cross_reference_stream_row_whose_wide_type_field_holds_more_than_64_bits_is_ignored()
     {
-        // A type past 2, however it is written: the row is ignored, as ISO 32000-1 (7.5.8.3) asks, not refused.
+        // A type past 2, however it is written: the row is skipped, as one written in 8 bytes is (#221), not refused.
         using var document = PdfDocument.Open(WithRows([9, 4, 2], number: 3, type: 2, second: 4, third: 1, leading: 0));
 
         document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
@@ -972,7 +972,7 @@ public class CrossReferenceRuleTests
         finding.Location.Position.Should().Be(stream);
         finding.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference stream at offset {stream} writes {where} as the reference 5 0 R, where ISO 32000-1 makes it direct (7.5.8.2); the reader read it where a section read before it places the object."));
+            $"The cross-reference stream at offset {stream} writes {where} as the reference 5 0 R, where ISO 32000-1 makes it direct (7.5.8.2)."));
     }
 
     [Theory]
@@ -1045,7 +1045,7 @@ public class CrossReferenceRuleTests
 
         document.WasRepaired.Should().BeFalse();
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().Contain(
-            $"gives {what} as a real number, where Table 17 of ISO 32000-1 asks for an integer; the reader read it as the integer it equals.");
+            $"gives {what} as a real number, where Table 17 of ISO 32000-1 asks for an integer.");
     }
 
     [Fact]
