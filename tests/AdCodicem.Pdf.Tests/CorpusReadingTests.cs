@@ -19,7 +19,12 @@ namespace AdCodicem.Pdf.Tests;
 /// </remarks>
 public class CorpusReadingTests
 {
-    private static readonly TimeSpan OpenBudget = TimeSpan.FromSeconds(20);
+    /// <summary>
+    /// The longest any one operation on a corpus document may take — opening it, reading every object, walking its pages,
+    /// validating it, refusing it encrypted (#193). Not a throughput, which is #38's: the slowest document, a 63 MB map,
+    /// reads in under 2 s alone and 3 s beside the rest of the suite, so one that takes this is pathological.
+    /// </summary>
+    private static readonly TimeSpan OperationBudget = TimeSpan.FromSeconds(20);
 
     /// <summary>How the corpus model reads the manifest: the key <c>readerLimits</c> is its <c>ReaderLimits</c>.</summary>
     private static readonly JsonSerializerOptions ManifestOptions = new() { PropertyNameCaseInsensitive = true };
@@ -176,18 +181,16 @@ public class CorpusReadingTests
             entry.Expect.IsUnsupportedIn(nameof(Every_corpus_document_opens_as_its_manifest_describes)),
             $"{entry.Name}: {entry.Expect.Unsupported}");
 
+        var bytes = Corpus.Read(file);
+
         if (entry.Expect.Encrypted)
         {
             // Decryption arrives in M16; until then the refusal must be typed and immediate.
-            FluentThrow<PdfEncryptedException>(() => PdfDocument.Open(Corpus.Read(file), OptionsFor(entry)));
+            Timed(entry, "refusing", () => FluentThrow<PdfEncryptedException>(() => PdfDocument.Open(bytes, OptionsFor(entry))));
             return;
         }
 
-        var stopwatch = Stopwatch.StartNew();
-        using var document = PdfDocument.Open(Corpus.Read(file), OptionsFor(entry));
-        stopwatch.Stop();
-
-        stopwatch.Elapsed.Should().BeLessThan(OpenBudget, $"opening {entry.Name} must not take unbounded time");
+        using var document = Timed(entry, "opening", () => PdfDocument.Open(bytes, OptionsFor(entry)));
 
         ExpectCatalog(document, entry, $"{entry.Name} has no document catalog");
         document.WasRepaired.Should().Be(entry.Expect.IndexRebuilt, $"{entry.Name}: unexpected rebuild state");
@@ -196,8 +199,8 @@ public class CorpusReadingTests
         // the stream it describes is actually decoded, which is the lazy reader behaving as designed. The
         // page tree is walked too, each page's contents and resources resolved: a reference to an object the
         // file lacks is only followed there.
-        ReadEverything(document);
-        var pages = entry.Expect.CatalogRecoverable ? CountPages(document) : 0;
+        Timed(entry, "reading every object of", () => ReadEverything(document));
+        var pages = entry.Expect.CatalogRecoverable ? Timed(entry, "walking the pages of", () => CountPages(document)) : 0;
 
         foreach (var code in entry.Expect.RequiredDiagnostics)
         {
@@ -296,6 +299,13 @@ public class CorpusReadingTests
         var entry = Corpus.Documents.First(document => document.Features.Contains("many-pages"));
         var bytes = Corpus.Read(entry.File);
 
+        // A first reading pays what any first call does once, the reader's statics and the names it interns, as much
+        // as another test did not pay it first: measured after it, the figure is the document's alone (#193).
+        using (var first = PdfDocument.Open(bytes, OptionsFor(entry)))
+        {
+            CountPages(first);
+        }
+
         // Per-thread, not process-wide: the suite runs in parallel and a process-wide counter would
         // measure whatever else happens to be running.
         var before = GC.GetAllocatedBytesForCurrentThread();
@@ -308,7 +318,8 @@ public class CorpusReadingTests
 
         // Indexing a thousand-page document and walking its whole page tree measured 2.4 MB when M01 closed, and
         // 3.2 MB on 2026-10-01, roughly 3.3 KB per page: proportional to the number of objects, not to the weight
-        // of the content. The budget leaves headroom for producer variation and fails loudly on a regression.
+        // of the content. Measured after a first reading on 2026-10-02, 3,347,320 bytes against 3,393,544 before it.
+        // The budget leaves headroom for producer variation and fails loudly on a regression.
         allocated.Should().BeLessThan(
             4 * 1024 * 1024,
             $"indexing {entry.Name} allocated {allocated / 1024} KB");
@@ -323,19 +334,20 @@ public class CorpusReadingTests
             entry.Expect.IsUnsupportedIn(nameof(Damaged_documents_are_recovered_as_far_as_an_independent_tool_recovers_them)),
             $"{entry.Name}: {entry.Expect.Unsupported}");
 
-        using var document = PdfDocument.Open(Corpus.Read(file), OptionsFor(entry));
+        var bytes = Corpus.Read(file);
+        using var document = Timed(entry, "opening", () => PdfDocument.Open(bytes, OptionsFor(entry)));
 
         ExpectCatalog(document, entry, $"{entry.Name}: qpdf recovers a catalog here, so must we");
-        ReadEverything(document);
+        Timed(entry, "reading every object of", () => ReadEverything(document));
 
         // Damage is never silent: the reader says what it worked around, and what it reads without a word — a
         // generation its entry gets wrong, a trailer without /Size — the validator reports (M02).
-        var findings = new PdfValidator().Validate(document).Findings.Count;
+        var findings = Timed(entry, "validating", () => new PdfValidator().Validate(document)).Findings.Count;
         (document.Diagnostics.Count + findings).Should().BeGreaterThan(0, $"{entry.Name}: damage must never be silent");
 
         if (entry.Expect.Pages is { } expectedPages && entry.Expect.CatalogRecoverable)
         {
-            CountPages(document).Should().Be(expectedPages, $"{entry.Name}: recovered page count");
+            Timed(entry, "walking the pages of", () => CountPages(document)).Should().Be(expectedPages, $"{entry.Name}: recovered page count");
         }
     }
 
@@ -513,6 +525,28 @@ public class CorpusReadingTests
 
         return data;
     }
+
+    /// <summary>
+    /// Runs one operation on a corpus document and holds it to <see cref="OperationBudget"/>; the file is read before,
+    /// outside the time it is held to.
+    /// </summary>
+    private static T Timed<T>(CorpusDocument entry, string operation, Func<T> action)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var result = action();
+        stopwatch.Stop();
+
+        stopwatch.Elapsed.Should().BeLessThan(OperationBudget, $"{operation} {entry.Name} must not take unbounded time");
+        return result;
+    }
+
+    /// <inheritdoc cref="Timed{T}(CorpusDocument, string, Func{T})"/>
+    private static void Timed(CorpusDocument entry, string operation, Action action) =>
+        Timed(entry, operation, () =>
+        {
+            action();
+            return 0;
+        });
 
     /// <summary>
     /// Resolves every object and decodes every stream, so that anything wrong with the file has had the
