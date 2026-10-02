@@ -53,6 +53,8 @@ jobs:
     # `inputs` is empty on a push, so the second test only ever decides a manual run.
     if: github.event_name == 'push' || inputs.what == 'preview'
     runs-on: ubuntu-latest
+    # The tests run here again, with the right to publish: as in ci.yml, a test that never ends stops the job (#193).
+    timeout-minutes: 15
     environment: nuget
     permissions:
       contents: read
@@ -161,6 +163,7 @@ jobs:
     name: Stable release
     if: github.event_name == 'workflow_dispatch' && inputs.what == 'stable'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: nuget
     permissions:
       contents: write
