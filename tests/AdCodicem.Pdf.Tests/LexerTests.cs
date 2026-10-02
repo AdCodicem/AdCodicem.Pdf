@@ -50,7 +50,12 @@ public class LexerTests
     [InlineData("42", 42L)]
     [InlineData("-17", -17L)]
     [InlineData("+17", 17L)]
+    [InlineData("--17", -17L)]
+    [InlineData("+-17", 17L)]
     [InlineData("0000000016", 16L)]
+    [InlineData("9223372036854775807", long.MaxValue)]
+    [InlineData("-9223372036854775807", -long.MaxValue)]
+    [InlineData("-9223372036854775808", long.MinValue)]
     public void Reads_integers(string text, long expected)
     {
         var lexer = new PdfLexer(Encoding.ASCII.GetBytes(text));
@@ -66,31 +71,114 @@ public class LexerTests
     [InlineData("4.", 4.0)]
     [InlineData("-.002", -0.002)]
     [InlineData(".5", 0.5)]
-    public void Reads_reals_including_the_forms_the_framework_rejects(string text, double expected)
+    [InlineData("-0.0", -0.0)]
+    [InlineData("0.3", 0.3)]
+    [InlineData("0.0123457", 0.0123457)]
+    [InlineData("--0.7071", -0.7071)]
+    [InlineData("+-841.920044", 841.920044)]
+    [InlineData("0.9007199254740992", 0.9007199254740992)]
+    [InlineData("0.9007199254740993", 0.9007199254740993)]
+    [InlineData("9007199254740993.0", 9007199254740992.0)]
+    [InlineData("0.0000000000000000000001", 1e-22)]
+    [InlineData("0.00000000000000000000001", 1e-23)]
+    public void Reads_a_real_as_the_double_nearest_to_its_decimal(string text, double expected)
     {
+        // Either side of 2^53 and of 22 decimals, where the parser's exact division gives way to the framework's parse.
+        // Equal bit for bit: -0.0 is not 0.0.
         var lexer = new PdfLexer(Encoding.ASCII.GetBytes(text));
         var token = lexer.Read();
 
         token.Kind.Should().Be(PdfTokenKind.Real);
-        token.Real.Should().BeApproximately(expected, 1e-9);
+        BitConverter.DoubleToInt64Bits(token.Real).Should().Be(BitConverter.DoubleToInt64Bits(expected));
     }
 
     [Theory]
+    [InlineData("9223372036854775808", 9223372036854775808d)]
+    [InlineData("-9223372036854775809", -9223372036854775809d)]
+    [InlineData("92233720368547758085", 92233720368547758085d)]
+    [InlineData("18446744073709551616", 18446744073709551616d)]
     [InlineData("123456789012345678901234", 1.23456789012345678901234e23)]
     [InlineData("-99999999999999999999.5", -99999999999999999999.5)]
     public void Reads_an_integer_too_large_for_a_long_as_a_real(string text, double expected)
     {
+        // Never wrapped: 92233720368547758085 once read as 5, and named object 5 in "92233720368547758085 0 R".
         var lexer = new PdfLexer(Encoding.ASCII.GetBytes(text));
         var token = lexer.Read();
 
         token.Kind.Should().Be(PdfTokenKind.Real);
-        token.Real.Should().BeApproximately(expected, Math.Abs(expected) * 1e-15);
+        token.Real.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("", double.PositiveInfinity)]
+    [InlineData("-", double.NegativeInfinity)]
+    public void Reads_a_number_past_the_largest_double_as_an_infinity_its_reader_can_tell(string sign, double expected)
+    {
+        var lexer = new PdfLexer(Encoding.ASCII.GetBytes(sign + "1" + new string('0', 309)));
+        var token = lexer.Read();
+
+        token.Kind.Should().Be(PdfTokenKind.Real);
+        token.Real.Should().Be(expected);
+    }
+
+    [Fact]
+    public void Reads_a_real_below_the_smallest_double_as_zero()
+    {
+        var lexer = new PdfLexer(Encoding.ASCII.GetBytes("0." + new string('0', 400) + "5"));
+        var token = lexer.Read();
+
+        token.Kind.Should().Be(PdfTokenKind.Real);
+        BitConverter.DoubleToInt64Bits(token.Real).Should().Be(0);
     }
 
     [Fact]
     public void Reads_no_number_in_nothing()
     {
         PdfNumberParser.TryParse([], out _, out _, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(".")]
+    [InlineData("-")]
+    [InlineData("+-")]
+    [InlineData("-.")]
+    [InlineData("1.2.3")]
+    [InlineData("1..2")]
+    [InlineData("5-")]
+    [InlineData("1e5")]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    public void Reads_no_number_in_a_run_that_is_not_digits_around_at_most_one_period(string text)
+    {
+        // The framework would read NaN and Infinity, whatever its style: the parser checks the shape before asking it.
+        PdfNumberParser.TryParse(Encoding.ASCII.GetBytes(text), out _, out _, out var isReal).Should().BeFalse();
+        isReal.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Parsing_a_number_allocates_nothing_however_long_it_is()
+    {
+        // A million digits, read once as an integer past a long and once as a real, both through the framework's parse.
+        // The least of a few runs, after a first one: the framework's first parse in a process allocates once, 1,344
+        // bytes, as the runtime can on this thread outside the parse.
+        var integer = Encoding.ASCII.GetBytes(new string('7', 1_000_000));
+        var real = Encoding.ASCII.GetBytes("0." + new string('7', 1_000_000));
+        var least = long.MaxValue;
+
+        for (var run = 0; run < 5 && least > 0; run++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var parsed = PdfNumberParser.TryParse(integer, out _, out var large, out _) &
+                PdfNumberParser.TryParse(real, out _, out var small, out _);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            parsed.Should().BeTrue();
+            large.Should().Be(double.PositiveInfinity);
+            small.Should().Be(0.7777777777777778);
+            least = Math.Min(least, allocated);
+        }
+
+        least.Should().Be(0);
     }
 
     [Fact]
