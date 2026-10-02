@@ -62,10 +62,15 @@ internal readonly ref struct PdfToken
     /// </summary>
     public ReadOnlySpan<byte> Text { get; }
 
-    /// <summary>Gets the value of an integer token.</summary>
+    /// <summary>Gets the value of an integer token, which is always within a <see cref="long"/>: past one, a number is a real.</summary>
     public long Integer { get; }
 
-    /// <summary>Gets the value of a real token.</summary>
+    /// <summary>Gets the value of a real token: the double nearest to the decimal written.</summary>
+    /// <remarks>
+    /// It is an infinity when the number is past the largest a double holds. A reader of real tokens reports it under
+    /// <see cref="Diagnostics.PdfDiagnosticCodes.SyntaxNumberOutOfRange"/> and reads null, as the object parser does; the
+    /// content stream readers of M07 and M08 do the same.
+    /// </remarks>
     public double Real { get; }
 
     /// <summary>Determines whether this is the given keyword.</summary>

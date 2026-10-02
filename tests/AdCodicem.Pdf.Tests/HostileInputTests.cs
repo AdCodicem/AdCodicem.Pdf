@@ -231,6 +231,33 @@ public class HostileInputTests
         document.Catalog.Required();
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("0.")]
+    public void Reads_a_number_fifteen_million_digits_long_in_time(string lead)
+    {
+        // Within MaxObjectLength, 16 MiB, so that the parser meets the digits rather than the object's limit. As an
+        // integer, it is past the largest a real can hold, and reads as null; as a real below 1, it reads 7/9.
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "[" + lead + new string('7', 15_000_000) + "]")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(bytes);
+
+        var value = Measure(() => document.GetObject(new PdfObjectId(3)).AsArray().Required()[0]);
+
+        if (lead.Length == 0)
+        {
+            value.Should().BeSameAs(PdfNull.Instance);
+            document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxNumberOutOfRange);
+        }
+        else
+        {
+            value.Should().BeOfType<PdfReal>().Which.Value.Should().Be(0.7777777777777778);
+        }
+    }
+
     [Fact]
     public void Survives_an_object_whose_length_refers_to_itself()
     {

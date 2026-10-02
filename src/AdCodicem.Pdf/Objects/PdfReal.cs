@@ -5,7 +5,9 @@ namespace AdCodicem.Pdf.Objects;
 /// <summary>Represents a PDF real number.</summary>
 /// <remarks>
 /// PDF reals admit no exponent notation, which is why formatting for output never goes through the
-/// default <see cref="double"/> conversion.
+/// default <see cref="double"/> conversion. A real read from a file is the double nearest to the decimal it wrote, and
+/// is finite: a number past the largest a double holds reads as null, reported as
+/// <see cref="Diagnostics.PdfDiagnosticCodes.SyntaxNumberOutOfRange"/>.
 /// </remarks>
 public sealed class PdfReal : PdfObject
 {
