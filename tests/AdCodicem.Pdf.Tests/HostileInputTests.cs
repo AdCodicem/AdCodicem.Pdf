@@ -217,18 +217,47 @@ public class HostileInputTests
         allocated.Should().BeLessThan(64 * 1024 * 1024, "a message is built only for an entry the diagnostics keep");
     }
 
-    [Fact]
-    public void Survives_a_cross_reference_stream_with_impossible_field_widths()
+    [Theory]
+    [InlineData("/W [99 99 99]")]
+    [InlineData("/W [1 2147483647 2147483647]")]
+    [InlineData("/W [1 4294967300 2]")]
+    public void Survives_a_cross_reference_stream_with_impossible_field_widths(string widths)
     {
-        var bytes = new TestPdfBuilder()
+        // The stream startxref names, so that its widths are read. Believed, [1 2147483647 2147483647] makes a row
+        // length that wraps to -1, and slicing a row throws; narrowed to an int, 4294967300 is 4, and the rows read as
+        // [1 4 2] in silence. Refused, the index is rebuilt.
+        var sound = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .WithObject(3, "<< /Type /XRef /Size 3 /W [99 99 99] /Root 1 0 R /Length 4 >>\nstream\nAAAA\nendstream")
-            .BuildClassic(rootNumber: 1);
+            .BuildWithXRefStream(rootNumber: 1);
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(sound).Replace("/W [1 4 2]", widths, StringComparison.Ordinal));
 
         using var document = Measure(() => PdfDocument.Open(bytes));
 
         document.Catalog.Required();
+        document.WasRepaired.Should().BeTrue();
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed)
+            .Which.Message.Should().EndWith("cannot be read: its /W gives a field a width outside 0 to 8 bytes.");
+    }
+
+    [Fact]
+    public void Serves_no_object_under_a_number_past_a_long_that_once_wrapped_to_its_number()
+    {
+        // #157: 92233720368547758082 wrapped at its 19th digit to 2, so /Pages led to object 2, and the header written
+        // with that number, where the index places object 2, was taken for object 2's, with nothing reported. It is a
+        // real: /Pages reads as one, the "0 R" after it is reported, and no object 2 is there.
+        var template = PdfTemplate.Sound
+            .Replace("/Pages 2 0 R", "/Pages 92233720368547758082 0 R", StringComparison.Ordinal)
+            .Replace("\n2 0 obj\n", "\n2 00000000000000000000 obj\n", StringComparison.Ordinal);
+        var bytes = Encoding.Latin1.GetBytes(
+            Encoding.Latin1.GetString(PdfTemplate.Build(template))
+                .Replace("2 00000000000000000000 obj", "92233720368547758082 0 obj", StringComparison.Ordinal));
+
+        using var document = Measure(() => PdfDocument.Open(bytes));
+
+        document.Catalog.GetRaw(PdfName.Pages).Should().BeOfType<PdfReal>().Which.Value.Should().Be(92233720368547758082d);
+        document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken);
     }
 
     [Theory]

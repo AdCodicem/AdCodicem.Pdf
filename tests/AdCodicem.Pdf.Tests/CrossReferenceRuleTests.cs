@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO.XRef;
@@ -66,16 +67,118 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData("/W [1 9 2]", "cannot be read: its /W gives a field a width outside 0 to 8 bytes.")]
-    [InlineData("/W [1 4]", "cannot be read: its /W does not give the widths of three fields.")]
-    [InlineData("/W [0 0 0]", "cannot be read: its /W gives rows of no bytes.")]
-    [InlineData("/W [1 4 2] /Index [0 -1]", "is malformed: its /Index gives a subsection a count of rows out of range.")]
+    [InlineData("2147483647 2", true)]
+    [InlineData("2147483646 2", false)]
+    public void A_subsection_numbering_rows_past_the_largest_object_number_makes_the_table_malformed(string header, bool malformed)
+    {
+        // A second subsection of rows placing the page again: its last number, first + count - 1, once wrapped past
+        // int.MaxValue to a negative object number.
+        var file = PdfTemplate.SoundWith("{row:3}\n", "{row:3}\n" + header + "\n{row:3}\n{row:3}\n");
+
+        var findings = Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed).ToList();
+
+        if (malformed)
+        {
+            findings.Should().ContainSingle().Which.Message.Should().EndWith(
+                $"cannot be read: the subsection header at offset {PdfTemplate.OffsetOf(file, header)} numbers its rows past object 2147483647.");
+        }
+        else
+        {
+            findings.Should().BeEmpty();
+        }
+    }
+
+    [Theory]
+    [InlineData("65536")]
+    [InlineData("4294967296")]
+    [InlineData("-1")]
+    public void A_row_giving_an_object_in_use_a_generation_no_object_can_have_is_refused_alone(string generation)
+    {
+        // 4294967296 once narrowed to 0, and served the page as generation 0 in silence. Only the row is refused: the
+        // rows after it are read, and the page is found again by rebuilding the index. The row keeps its twenty bytes.
+        var sound = PdfTemplate.Build(PdfTemplate.Sound);
+        var page = PdfTemplate.OffsetOf(sound, "\n3 0 obj") + 1;
+        var row = string.Create(CultureInfo.InvariantCulture, $"{page:D10} 00000 n ");
+        var written = string.Create(CultureInfo.InvariantCulture, $"{page} {generation} n").PadRight(row.Length);
+        var file = Replace(sound, row, written);
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
+            $"is malformed: the row for object 3, at offset {PdfTemplate.OffsetOf(file, written)}, gives it generation {generation}, outside 0 to 65535.");
+    }
+
+    [Theory]
+    [InlineData("3 65536 obj", "3 65536 obj")]
+    [InlineData("3 92233720368547758080 obj", "3 92233720368547758080 obj")]
+    [InlineData("3 0000000000 obj", "4294967299 0 obj")]
+    public void An_entry_at_a_header_the_parser_refuses_is_broken(string written, string header)
+    {
+        // Where the entry places it, the page's header gives a number or a generation the parser refuses, so no read can
+        // serve the object there. Once, the probe took 65536 for a mismatched generation; a search near the entry found
+        // the header past a long "0 bytes after it", and called the entry shifted; and the probe named the header of
+        // object 4294967299, which narrowed to an int is 3. The header written first keeps the offsets right.
+        var file = Replace(PdfTemplate.SoundWith("3 0 obj", written), written, header);
+
+        Single(Validate(file), PdfValidationRuleIds.XRefEntryBroken).Message.Should().Be(
+            $"The entry of object 3 gives offset {PdfTemplate.OffsetOf(file, "\n" + header) + 1}, where there is no object header, and the object is not within 512 bytes of it.");
+    }
+
+    [Fact]
+    public void A_free_row_whose_generation_is_past_65535_is_read_in_silence()
+    {
+        // Producers give the head of the free list 65536; nothing is ever served under a free row's generation.
+        Validate(PdfTemplate.SoundWith("{free}", "0000000000 65536 f ")).Findings.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/Size 6 /W [1 9 2]", "its /W gives a field a width outside 0 to 8 bytes.")]
+    [InlineData("/Size 6 /W [1 4294967300 2]", "its /W gives a field a width outside 0 to 8 bytes.")]
+    [InlineData("/Size 6 /W [1 -4 2]", "its /W gives a field a width outside 0 to 8 bytes.")]
+    [InlineData("/Size 6 /W [1 4.5 2]", "its /W gives a field a width that is not an integer.")]
+    [InlineData("/Size 6 /W [1 null 2]", "its /W gives a field a width that is not an integer.")]
+    [InlineData("/Size 6 /W [1 4]", "its /W does not give the widths of three fields.")]
+    [InlineData("/Size 6 /W [0 0 0]", "its /W gives rows of no bytes.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 -1]", "its /Index gives a subsection a count of rows out of range.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 4294967302]", "its /Index gives a subsection a count of rows out of range.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index []", "its /Index holds 0 values, not pairs of a first object number and a count of rows.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0]", "its /Index holds 1 value, not pairs of a first object number and a count of rows.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 6 7]", "its /Index holds 3 values, not pairs of a first object number and a count of rows.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 (six)]", "its /Index holds a value of type string where an integer belongs.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [/Zero 6]", "its /Index holds the name /Zero where an integer belongs.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 null]", "its /Index holds null where an integer belongs.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [92233720368547758080 6]", "its /Index holds the real number 9.223372036854776E+19 where an integer belongs.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [-5 6]", "its /Index gives a subsection of 6 rows from object -5, outside object numbers 0 to 2147483647.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [4294967296 6]", "its /Index gives a subsection of 6 rows from object 4294967296, outside object numbers 0 to 2147483647.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [2147483647 6]", "its /Index gives a subsection of 6 rows from object 2147483647, outside object numbers 0 to 2147483647.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2147483648 0]", "its /Index gives a subsection of 0 rows from object 2147483648, outside object numbers 0 to 2147483647.")]
+    [InlineData("/W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
+    [InlineData("/Size -6 /W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
+    [InlineData("/Size 6.5 /W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
+    [InlineData("/Size 92233720368547758086 /W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
     public void A_cross_reference_stream_whose_widths_or_ranges_cannot_be_read_is_malformed(string layout, string fault)
     {
-        var file = Replace(XRefStreamFile(), "/W [1 4 2]", layout);
+        // Each was once read on: a width or a start narrowed to an int, an element that is not a number read as 0, an odd
+        // element dropped, a negative or absent /Size reading no row. The section is malformed, as a classic table whose
+        // subsection header cannot be believed, and the index startxref leads to is rebuilt.
+        var file = Replace(XRefStreamFile(), "/Size 6 /W [1 4 2]", layout);
 
         Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message
-            .Should().StartWith("The cross-reference stream at offset ").And.EndWith(fault);
+            .Should().StartWith("The cross-reference stream at offset ").And.EndWith("cannot be read: " + fault);
+    }
+
+    [Theory]
+    [InlineData("2147483648")]
+    [InlineData("9223372036854775807")]
+    [InlineData("2635249153387078803")]
+    public void A_cross_reference_stream_whose_size_declares_more_rows_than_it_holds_is_malformed(string size)
+    {
+        // Narrowed to an int, 2147483648 was negative and read no row, which left the index to a rebuild with no word of
+        // why. The rows the data holds are read, and the shortfall is the section's fault, found by division: the last
+        // size times the row's 7 bytes wraps past 2^64 to 5, fewer than the data holds.
+        var file = Replace(XRefStreamFile(), "/Size 6 /W [1 4 2]", "/Size " + size + " /W [1 4 2]");
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
+            string.Create(
+                CultureInfo.InvariantCulture, $"is malformed: it holds 6 rows where its /Index and /Size declare {long.Parse(size, CultureInfo.InvariantCulture):N0}."));
     }
 
     [Theory]
@@ -154,7 +257,8 @@ public class CrossReferenceRuleTests
     [InlineData("-1", "The /Prev of the cross-reference section at offset {update} is the integer -1, not an offset.")]
     [InlineData("/Offset", "The /Prev of the cross-reference section at offset {update} is the name /Offset, not an offset.")]
     [InlineData("/Na#0Ame#1B", "The /Prev of the cross-reference section at offset {update} is the name /Na#0Ame#1B, not an offset.")]
-    [InlineData("1.5", "The /Prev of the cross-reference section at offset {update} is a value of type real, not an offset.")]
+    [InlineData("1.5", "The /Prev of the cross-reference section at offset {update} is the real number 1.5, not an offset.")]
+    [InlineData("9223372036854775808", "The /Prev of the cross-reference section at offset {update} is the real number 9.223372036854776E+18, not an offset.")]
     public void A_section_prev_names_where_none_is_is_not_found(string prev, string message)
     {
         var file = PdfTemplate.Build(Updated.Replace("/Prev {xref:1}", "/Prev " + prev, StringComparison.Ordinal));
@@ -421,9 +525,15 @@ public class CrossReferenceRuleTests
     [InlineData("2 x ")]
     [InlineData("0 0 ")]
     [InlineData("2147483648 0 ")]
+    [InlineData("4294967298 0 ")]
+    [InlineData("92233720368547758082 0 ")]
+    [InlineData("-2 0 ")]
+    [InlineData("2 -5 ")]
+    [InlineData("2 2147483648 ")]
     public void An_object_stream_whose_header_lists_something_other_than_objects_cannot_be_read(string start)
     {
-        // The header starts "2 0 ", object 2 at offset 0; the objects keep their offsets from /First.
+        // The header starts "2 0 ", object 2 at offset 0; the objects keep their offsets from /First. A number no object
+        // can have, or an offset no member can start at, ends the header as a stray token does, as the reader ends it.
         var file = XRefStreamBuilder().BuildWithXRefStream(
             rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: header => start + header[4..]);
 
@@ -460,49 +570,50 @@ public class CrossReferenceRuleTests
         finding.Location.Object.Should().Be(new PdfObjectId(5));
     }
 
-    [Theory]
-    [InlineData(0x1_0000_0000UL, "4294967296")]
-    [InlineData(ulong.MaxValue, "-1")]
-    public void An_object_stream_whose_entry_lies_outside_the_file_is_that_entry_s_finding_alone(ulong offset, string given)
+    [Fact]
+    public void An_object_stream_whose_entry_lies_outside_the_file_is_that_entry_s_finding_alone()
     {
-        // The index written again with offsets of eight bytes, object stream 4's past the end of the file, or reading
-        // as negative: its header is looked for where no byte of the file is.
-        var sound = XRefStreamFile();
-        var xref = (int)PdfTemplate.OffsetOf(sound, "\n5 0 obj") + 1;
-        var rows = new List<byte>();
-
-        void AddRow(byte type, ulong field2, ushort field3)
-        {
-            rows.Add(type);
-
-            for (var shift = 56; shift >= 0; shift -= 8)
-            {
-                rows.Add((byte)(field2 >> shift));
-            }
-
-            rows.Add((byte)(field3 >> 8));
-            rows.Add((byte)field3);
-        }
-
-        AddRow(0, 0, 65535);
-        AddRow(1, (ulong)PdfTemplate.OffsetOf(sound, "\n1 0 obj") + 1, 0);
-        AddRow(2, 4, 0);
-        AddRow(2, 4, 1);
-        AddRow(1, offset, 0);
-        AddRow(1, (ulong)xref, 0);
-        byte[] file =
-        [
-            .. sound.AsSpan(0, xref),
-            .. Encoding.Latin1.GetBytes($"5 0 obj\n<< /Type /XRef /Size 6 /W [1 8 2] /Root 1 0 R /Length {rows.Count} >>\nstream\n"),
-            .. rows,
-            .. Encoding.Latin1.GetBytes($"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n"),
-        ];
+        // The index written again with offsets of eight bytes, object stream 4's past the end of the file: its header is
+        // looked for where no byte of the file is.
+        var file = WithRows([1, 8, 2], number: 4, type: 1, second: 0x1_0000_0000UL, third: 0);
 
         var finding = Validate(file).Findings.Should().ContainSingle().Which;
 
         finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
         finding.Location.Object.Should().Be(new PdfObjectId(4));
-        finding.Message.Should().Be($"The entry of object 4 gives offset {given}, outside the file.");
+        finding.Message.Should().Be("The entry of object 4 gives offset 4294967296, outside the file.");
+    }
+
+    [Theory]
+    [InlineData(new[] { 1, 8, 2 }, 4, 1UL, 9223372036854775808UL, 0UL, "the row for object 4 gives it offset 9223372036854775808, past any a file can have")]
+    [InlineData(new[] { 1, 8, 2 }, 4, 1UL, ulong.MaxValue, 0UL, "the row for object 4 gives it offset 18446744073709551615, past any a file can have")]
+    [InlineData(new[] { 1, 4, 4 }, 4, 1UL, null, 65536UL, "the row for object 4 gives it generation 65536, outside 0 to 65535")]
+    [InlineData(new[] { 1, 4, 8 }, 4, 1UL, null, 4294967296UL, "the row for object 4 gives it generation 4294967296, outside 0 to 65535")]
+    [InlineData(new[] { 1, 4, 2 }, 3, 2UL, 0UL, 1UL, "the row for object 3 places it in object stream 0, which is no object number")]
+    [InlineData(new[] { 1, 4, 2 }, 3, 2UL, 2147483648UL, 1UL, "the row for object 3 places it in object stream 2147483648, which is no object number")]
+    [InlineData(new[] { 1, 8, 2 }, 3, 2UL, 4294967300UL, 1UL, "the row for object 3 places it in object stream 4294967300, which is no object number")]
+    [InlineData(new[] { 1, 4, 8 }, 3, 2UL, 4UL, 2147483648UL, "the row for object 3 places it at index 2147483648 of object stream 4, past any an object stream can hold")]
+    public void A_cross_reference_stream_row_whose_fields_no_entry_can_hold_is_refused_alone(
+        int[] widths, int number, ulong type, ulong? second, ulong third, string fault)
+    {
+        // Each once narrowed in silence: an offset of 2^63 or more to a negative one, a generation or a stream number to
+        // an int that could name another, 4294967300 to object stream 4. The row is refused and the next ones read.
+        var file = WithRows(widths, number, type, second, third);
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith("is malformed: " + fault + ".");
+    }
+
+    [Theory]
+    [InlineData(0x1_0000_0002UL)]
+    [InlineData(3UL)]
+    public void A_cross_reference_stream_row_of_a_type_past_2_is_ignored_however_wide_its_type_field(ulong type)
+    {
+        // Object 3's row keeps its fields, object stream 4 and index 1. Narrowed to an int, 2^32 + 2 was type 2 and
+        // served the page; past 2, ISO 32000-1, Table 18, has the row ignored, as a reference to a null object.
+        using var document = PdfDocument.Open(WithRows([8, 4, 2], number: 3, type, second: 4, third: 1));
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
     }
 
     [Fact]
@@ -687,6 +798,54 @@ public class CrossReferenceRuleTests
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
             .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+
+    /// <summary>
+    /// <see cref="XRefStreamFile"/> with its index written again as object 5, in rows of <paramref name="widths"/> bytes:
+    /// object 0 free, the catalog and object stream 4 at their offsets, objects 2 and 3 in object stream 4, and the index
+    /// at its own — but for the row of object <paramref name="number"/>, written with the fields given, a
+    /// <paramref name="second"/> left out keeping its own.
+    /// </summary>
+    private static byte[] WithRows(int[] widths, int number, ulong type, ulong? second, ulong third)
+    {
+        var sound = XRefStreamFile();
+        var xref = (int)PdfTemplate.OffsetOf(sound, "\n5 0 obj") + 1;
+        (ulong Type, ulong Second, ulong Third)[] rows =
+        [
+            (0, 0, 65535),
+            (1, (ulong)PdfTemplate.OffsetOf(sound, "\n1 0 obj") + 1, 0),
+            (2, 4, 0),
+            (2, 4, 1),
+            (1, (ulong)PdfTemplate.OffsetOf(sound, "\n4 0 obj") + 1, 0),
+            (1, (ulong)xref, 0),
+        ];
+        rows[number] = (type, second ?? rows[number].Second, third);
+        var data = new List<byte>();
+
+        foreach (var (first, middle, last) in rows)
+        {
+            Field(first, widths[0]);
+            Field(middle, widths[1]);
+            Field(last, widths[2]);
+        }
+
+        return
+        [
+            .. sound.AsSpan(0, xref),
+            .. Encoding.Latin1.GetBytes(string.Create(
+                CultureInfo.InvariantCulture,
+                $"5 0 obj\n<< /Type /XRef /Size 6 /W [{widths[0]} {widths[1]} {widths[2]}] /Root 1 0 R /Length {data.Count} >>\nstream\n")),
+            .. data,
+            .. Encoding.Latin1.GetBytes(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n")),
+        ];
+
+        void Field(ulong value, int width)
+        {
+            for (var shift = (width - 1) * 8; shift >= 0; shift -= 8)
+            {
+                data.Add((byte)(value >> shift));
+            }
+        }
+    }
 
     /// <summary>A cross-reference stream's row, as <see cref="TestPdfBuilder"/> writes it: an object at <paramref name="offset"/>.</summary>
     private static string Row(long offset) =>

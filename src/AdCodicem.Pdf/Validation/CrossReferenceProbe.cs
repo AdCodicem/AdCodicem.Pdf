@@ -180,6 +180,10 @@ internal sealed class CrossReferenceProbe
     /// Reads the object header at <paramref name="offset"/>, after any white space or comment: its number — 0 when
     /// there is none —, its generation, and how far into the bytes read it starts.
     /// </summary>
+    /// <remarks>
+    /// A header the reader's parser refuses — a number or a generation no object can have — is none: no read can serve an
+    /// object there.
+    /// </remarks>
     private static (long Number, long Generation, int Start) ReadHeader(PdfFileSource source, long offset, Span<byte> buffer)
     {
         var read = source.Read(offset, buffer);
@@ -188,7 +192,8 @@ internal sealed class CrossReferenceProbe
         var generation = lexer.Read();
         var keyword = lexer.Read();
 
-        return number.Kind == PdfTokenKind.Integer && generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword("obj"u8)
+        return number.Kind == PdfTokenKind.Integer && generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword("obj"u8) &&
+            number.Integer is > 0 and <= PdfObjectId.MaxNumber && generation.Integer is >= 0 and <= PdfObjectId.MaxGeneration
             ? (number.Integer, generation.Integer, number.Start)
             : (0, -1, 0);
     }

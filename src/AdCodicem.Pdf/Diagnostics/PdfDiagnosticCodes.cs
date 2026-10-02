@@ -33,8 +33,9 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// A cross-reference section the chain names, through <c>/Prev</c> or <c>/XRefStm</c>, is where it is named but
-    /// cannot be read — a stray token among a table's rows or in place of its trailer, a cross-reference stream whose
-    /// <c>/W</c> or data cannot give rows —, and nothing near it can be read in its place. The rows read before the
+    /// cannot be read — a stray token among a table's rows or in place of its trailer, a subsection numbering objects
+    /// past 2,147,483,647, a cross-reference stream whose <c>/W</c>, <c>/Index</c>, <c>/Size</c> or data cannot give
+    /// rows —, and nothing near it can be read in its place. The rows read before the
     /// fault, if any, were kept; the objects only the rest indexes are missing from the index, which is rebuilt by
     /// scanning the file when one of them is asked for. The report is placed at the section, the fault in its message.
     /// </summary>
@@ -86,8 +87,9 @@ public static class PdfDiagnosticCodes
     /// What an object stream — a stream an entry of the index names as one — says of itself cannot be believed: its
     /// <c>/N</c> or its <c>/First</c> is absent or no non-negative integer, its <c>/N</c> declares more objects than
     /// its header can list, its <c>/First</c> lies past its decoded data, or its header ends or breaks before listing as
-    /// many objects as its <c>/N</c> declares. The objects listed
-    /// before the fault, if any, are read; the others cannot be read from it. The report is placed where the object
+    /// many objects as its <c>/N</c> declares — a pair that is not two integers, or that gives a number no object can
+    /// have or an offset no member can start at. The objects listed before the fault, if any, are read; the others cannot
+    /// be read from it. The report is placed where the object
     /// stream's data starts, and names the object stream and its fault.
     /// </summary>
     public const string ObjectStreamUnreadable = "object-stream.unreadable";

@@ -385,6 +385,53 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken);
     }
 
+    [Theory]
+    [InlineData("4294967298")]
+    [InlineData("92233720368547758082")]
+    [InlineData("2147483648")]
+    [InlineData("0")]
+    [InlineData("-2")]
+    public void Reads_no_member_an_object_stream_header_numbers_as_no_object_can_be(string number)
+    {
+        // The header lists object 2 under a number no object has: narrowed to an int, 4294967298 was 2, and
+        // 92233720368547758082 wrapped to it (#157). A number past a long is a real, which ends the header as any token
+        // other than an integer does.
+        var file = Packed(header => number + header[1..]);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which;
+        report.Position.Should().Be(ObjectStreamDataStart(file));
+        report.Message.Should().Be(number.Length > 19
+            ? "Object stream 4 has a header that holds something other than an object number and an offset after 0 of the 2 objects its /N declares; none of its objects can be read from it."
+            : $"Object stream 4 has a header that lists object {number} at offset 0, which no member can be, after 0 of the 2 objects its /N declares; none of its objects can be read from it.");
+    }
+
+    [Theory]
+    [InlineData(-5L, false)]
+    [InlineData(2147483648L, false)]
+    [InlineData(4294967296L, true)]
+    public void Reads_no_member_an_object_stream_header_places_where_no_member_can_start(long offset, bool fromItsOwn)
+    {
+        // Object 3's offset, negative, past an int, or its own plus 2^32, which narrowed to an int was its own again.
+        var written = 0L;
+        var file = Packed(header =>
+        {
+            var own = long.Parse(header.AsSpan(6, header.Length - 7), CultureInfo.InvariantCulture);
+            written = fromItsOwn ? own + offset : offset;
+            return string.Create(CultureInfo.InvariantCulture, $"{header[..6]}{written} ");
+        });
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which.Message.Should().Be(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Object stream 4 has a header that lists object 3 at offset {written}, which no member can be, after 1 of the 2 objects its /N declares; only the first 1 of its 2 objects can be read from it."));
+    }
+
     [Fact]
     public void Reads_an_object_where_its_stream_s_header_lists_it_rather_than_where_the_index_says()
     {
@@ -772,12 +819,14 @@ public class DocumentReaderTests
     [Fact]
     public void Writes_the_numbers_a_rebuild_finds_redefined_whatever_the_culture()
     {
-        // Two object streams list -5, a number no object can have (#157): Swedish writes its minus sign as U+2212.
+        // One object stream lists object 6 a thousand and two times: the 1,001 definitions past the first are counted
+        // with the invariant culture's comma, not with the non-breaking space Swedish groups digits with.
+        var header = string.Concat(Enumerable.Repeat("6 0 ", 1002));
+        var data = header + "(one)";
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .WithObject(5, "<< /Type /ObjStm /N 1 /First 5 /Length 10 >>\nstream\n-5 0 (one)\nendstream")
-            .WithObject(7, "<< /Type /ObjStm /N 1 /First 5 /Length 10 >>\nstream\n-5 0 (two)\nendstream")
+            .WithObject(5, $"<< /Type /ObjStm /N 1002 /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream")
             .BuildClassic(rootNumber: 1, includeXRef: false);
         var culture = CultureInfo.CurrentCulture;
 
@@ -787,12 +836,33 @@ public class DocumentReaderTests
             using var document = PdfDocument.Open(file);
 
             document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined)
-                .Which.Message.Should().Be("Rebuilding the index met a second definition of object -5." + KeptRule);
+                .Which.Message.Should().Be("Rebuilding the index met 1,001 definitions of object numbers it had already found, of object 6." + KeptRule);
         }
         finally
         {
             CultureInfo.CurrentCulture = culture;
         }
+    }
+
+    [Fact]
+    public void Indexes_no_member_a_rebuild_finds_listed_under_a_number_no_object_can_have()
+    {
+        // Two object streams list -5: the rebuild once indexed it, and met it twice (#157).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Type /ObjStm /N 1 /First 5 /Length 10 >>\nstream\n-5 0 (one)\nendstream")
+            .WithObject(7, "<< /Type /ObjStm /N 1 /First 5 /Length 10 >>\nstream\n-5 0 (two)\nendstream")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file);
+
+        document.ObjectNumbers.Should().OnlyContain(number => number > 0);
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectRedefined);
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Select(entry => entry.Message)
+            .Should().Equal(
+                "Object stream 5 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 objects its /N declares; none of its objects can be read from it.",
+                "Object stream 7 has a header that lists object -5 at offset 0, which no member can be, after 0 of the 1 objects its /N declares; none of its objects can be read from it.");
     }
 
     [Fact]
