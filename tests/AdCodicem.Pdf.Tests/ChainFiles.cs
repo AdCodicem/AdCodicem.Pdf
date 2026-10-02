@@ -53,24 +53,65 @@ internal static class ChainFiles
             five = five.Replace("/Predictor 12 /Columns 7", "/Predictor 12.0 /Columns 7.0", StringComparison.Ordinal);
         }
 
+        return UnderAnUpdate(entries, five + new string(' ', padding), rows != Rows.Raw, rows == Rows.PngFlate, placed, version: version);
+    }
+
+    /// <summary>
+    /// A file as the other <see cref="UnderAnUpdate(string, bool, string, int, bool)"/> writes it: stream 7's dictionary
+    /// holds <paramref name="entries"/>, <c>{length}</c> standing for its data's length, and object 5 holds
+    /// <paramref name="five"/>. Object 6, when <paramref name="six"/> gives it, is indexed by stream 7 alone; the objects
+    /// of <paramref name="placedToo"/> by the newer table alone.
+    /// </summary>
+    public static byte[] UnderAnUpdate(
+        string entries,
+        string five,
+        bool compressed,
+        bool predicted,
+        bool placed,
+        string? six = null,
+        IReadOnlyDictionary<int, string>? placedToo = null,
+        string version = "1.5")
+    {
         using var file = new Writer(version);
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
-        file.Object(5, five + new string(' ', padding));
+        file.Object(5, five);
+
+        if (six is not null)
+        {
+            file.Object(6, six);
+        }
+
+        foreach (var (number, body) in placedToo ?? new Dictionary<int, string>())
+        {
+            file.Object(number, body);
+        }
+
         var stream = file.Position;
         var data = Encode(
             [
                 (0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (0, 0, 0),
-                (1, file.OffsetOf(5), 0), (0, 0, 0), (1, stream, 0),
+                (1, file.OffsetOf(5), 0), six is null ? (0, 0, 0) : (1, file.OffsetOf(6), 0), (1, stream, 0),
             ],
-            rows);
+            predicted ? Rows.PngFlate : compressed ? Rows.Flate : Rows.Raw);
         file.Stream(7, entries.Replace("{length}", data.Length.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) + " /Root 1 0 R", data);
         file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
+        var rows = new StringBuilder(string.Create(
+            CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{(placed ? file.OffsetOf(5) : 99999):D10} 00000 n\r\n"));
+        var size = 8;
+
+        foreach (var number in (placedToo ?? new Dictionary<int, string>()).Keys)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"{number} 1\n{file.OffsetOf(number):D10} 00000 n\r\n");
+            size = Math.Max(size, number + 1);
+        }
+
+        file.Text(rows.ToString());
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
-            $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{(placed ? file.OffsetOf(5) : 99999):D10} 00000 n\r\ntrailer\n<< /Size 8 /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n"));
+            $"trailer\n<< /Size {size} /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n"));
         return file.ToArray();
     }
 

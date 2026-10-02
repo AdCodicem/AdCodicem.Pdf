@@ -452,7 +452,9 @@ internal ref struct PdfObjectParser
 
         if (length < 0 || beyondBuffer || !ConfirmsLength(span, dataStart + length))
         {
-            var recovered = FindEndStream(span, dataStart);
+            // A length read once the cross-reference chain is keeps a carriage return before the line feed as data, which it
+            // may be: rows can end in 0x0D, and the length, once read, is checked against what was taken (#182).
+            var recovered = FindEndStream(span, dataStart, keepCarriageReturn: declared.Form == StreamLengthForm.Deferred);
 
             if (recovered < 0)
             {
@@ -796,7 +798,7 @@ internal ref struct PdfObjectParser
     /// <summary>
     /// Finds where a stream really ends when its declared length is wrong, and returns its true length.
     /// </summary>
-    private static int FindEndStream(ReadOnlySpan<byte> span, int dataStart)
+    private static int FindEndStream(ReadOnlySpan<byte> span, int dataStart, bool keepCarriageReturn = false)
     {
         var index = span[dataStart..].IndexOf(EndStreamKeyword);
         if (index < 0)
@@ -812,7 +814,7 @@ internal ref struct PdfObjectParser
             end--;
         }
 
-        if (end > dataStart && span[end - 1] == (byte)'\r')
+        if (!keepCarriageReturn && end > dataStart && span[end - 1] == (byte)'\r')
         {
             end--;
         }
