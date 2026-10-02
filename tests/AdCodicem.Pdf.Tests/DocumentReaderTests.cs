@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -919,6 +921,63 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeTrue();
         document.ObjectCount.Should().Be(sound.ObjectCount);
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(LargeIndex.ClassicTable, 300_000, 34_200_000)]
+    [InlineData(LargeIndex.CrossReferenceStream, 300_002, 47_430_000)]
+    public void Opening_an_index_of_three_hundred_thousand_objects_stays_within_its_memory_budget(
+        string shape, int entries, long budget)
+    {
+        // M01's file of several hundred thousand objects (#193). Opening allocates the reader's map of the index, which
+        // grows by doubling to 324,449 slots of 52 bytes here, and a cross-reference stream's rows decoded besides. Measured
+        // on 2026-10-02, after a warm-up: 32,571,368 bytes for the table, 45,174,464 for the stream, whose rows Flate
+        // stores uncompressed so that no runtime's zlib moves the figure. The budget is 5 % over each. 300,000 objects
+        // lie mid-way between two of the map's growth steps, so a change to the file does not move the figure either.
+        var file = LargeIndexFile(shape);
+        using (PdfDocument.Open(file))
+        {
+            // The first opening pays what any first call does once: what the reader's statics and names cost.
+        }
+
+        var elapsed = Stopwatch.StartNew();
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        using var document = PdfDocument.Open(file);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        elapsed.Stop();
+
+        document.ObjectCount.Should().Be(entries, "the file holds what its index says, and the reader read it whole");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+        allocated.Should().BeLessThan(budget, $"opening {shape} of {entries:N0} entries holds the map of them and little else");
+
+        // A bound, not a throughput: what a regression that allocates nothing, such as a quadratic search, would pass.
+        elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>The ways <see cref="LargeIndexFile"/> indexes its objects.</summary>
+    private static class LargeIndex
+    {
+        public const string ClassicTable = "a classic table";
+        public const string CrossReferenceStream = "a cross-reference stream";
+    }
+
+    /// <summary>A catalog, a page tree of one page, and nulls up to object 299,999, indexed the way the shape says.</summary>
+    private static byte[] LargeIndexFile(string shape)
+    {
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>");
+
+        for (var number = 4; number < 300_000; number++)
+        {
+            builder.WithObject(number, "null");
+        }
+
+        return shape == LargeIndex.ClassicTable
+            ? builder.BuildClassic(rootNumber: 1)
+            : builder.BuildWithXRefStream(rootNumber: 1, compressXRefStream: true, compressionLevel: CompressionLevel.NoCompression);
     }
 
     /// <summary>Where the data of the file's object stream starts.</summary>
