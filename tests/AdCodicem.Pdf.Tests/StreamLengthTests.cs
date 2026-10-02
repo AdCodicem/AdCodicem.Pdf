@@ -1293,34 +1293,37 @@ public class StreamLengthTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void The_next_object_a_search_stops_at_is_the_same_before_and_after_the_index_is_copied_though_the_chain_corrected_an_entry(bool copiedFirst)
+    public void The_next_object_a_search_stops_at_is_where_the_index_as_written_places_it_though_a_deferred_length_corrected_an_entry(bool copiedFirst)
     {
         // The newest section is a cross-reference stream past the first window whose length is 7 bytes long: searching it
         // sorts the offsets of an index still empty. The older one's /Length names object 10, whose entry lies 2 bytes
-        // before its header, in the endobj of object 5: reading it finds object 10 there, and corrects the entry while the
-        // chain is read, the offset it replaced kept among those sorted. Object 5 lost its endstream; its search stops at
-        // object 10's header, where the index places it, whether the reader has copied the index since — object 6's entry
-        // points one byte into its header, and reading object 6 corrects it — or not.
+        // before its header, in the endobj of object 5: the chain does not read it there, and takes the stream's data up to
+        // its endstream (#182). Once the chain is read, the /Length is read and checked: object 10 is found near its entry,
+        // which is corrected behind a copy of the index as the file wrote it. Object 5 lost its endstream; its search stops
+        // where that index places the next object, 2 bytes before object 10's header, whether reading object 6 — whose entry
+        // points one byte into its header — corrected the index the reader reads with since, or not.
         var data = Data(3 * Window);
-        var file = CorrectedWhileTheChainIsRead(data, out var tenAt);
+        var file = LengthObjectOffItsEntry(data, out var tenAt);
 
         using var document = PdfDocument.Open(file);
         document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && d.Position == tenAt);
+        document.Reader.ChainIndex.Should().NotBeSameAs(document.Reader.Index, "correcting object 10's entry copied the index first");
+        document.Reader.ChainIndex!.TryGet(10, out var written).Should().BeTrue();
+        written.Offset.Should().Be(tenAt - 2, "the index as the file wrote it keeps the entry it gave");
 
         if (copiedFirst)
         {
             document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>();
-            document.Reader.ChainIndex.Should().NotBeSameAs(document.Reader.Index, "correcting object 6's entry copied the index first");
         }
 
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
         stream.Data.Length.Should().Be(data.Length + 100);
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
-        fault.NextObject.Should().Be(tenAt);
+        fault.NextObject.Should().Be(tenAt - 2);
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid && d.Position == DataStartOf(file, StreamNumber))
             .Which.Message.Should().Be(
-                Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {tenAt}; the declared length is kept."));
+                Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {tenAt - 2}; the declared length is kept."));
     }
 
     [Theory]
@@ -1737,11 +1740,16 @@ public class StreamLengthTests
     }
 
     /// <summary>
+    /// <see cref="LengthObjectOffItsEntry(string, out long)"/> with object 5's data three windows long.
+    /// </summary>
+    internal static byte[] LengthObjectOffItsEntry(out long tenAt) => LengthObjectOffItsEntry(Data(3 * Window), out tenAt);
+
+    /// <summary>
     /// A file of two cross-reference streams: the newest, past the first window, 7 bytes shorter than its /Length says; the
     /// older, whose /Length names object 10, which the newest places 2 bytes before its header. Object 5 is a stream whose
     /// endstream is lost, object 10 follows it, then object 6, whose entry points one byte into its header.
     /// </summary>
-    private static byte[] CorrectedWhileTheChainIsRead(string data, out long tenAt)
+    private static byte[] LengthObjectOffItsEntry(string data, out long tenAt)
     {
         using var output = new MemoryStream();
         var offsets = new Dictionary<int, long>();

@@ -588,7 +588,12 @@ internal ref struct PdfObjectParser
             if (presence != ObjectPresence.Defined)
             {
                 return new DeclaredLength(
-                    presence == ObjectPresence.Missing ? StreamLengthForm.ObjectMissing : StreamLengthForm.ObjectUnreadable,
+                    presence switch
+                    {
+                        ObjectPresence.Missing => StreamLengthForm.ObjectMissing,
+                        ObjectPresence.Deferred => StreamLengthForm.Deferred,
+                        _ => StreamLengthForm.ObjectUnreadable,
+                    },
                     Reference: reference);
             }
         }
@@ -684,6 +689,12 @@ internal ref struct PdfObjectParser
     /// </summary>
     private void ReportLengthFault(string code, string message, StreamLengthFault fault)
     {
+        // A /Length read once the cross-reference chain is: whether the data ends where it should is known then (#182).
+        if (fault.Form == StreamLengthForm.Deferred)
+        {
+            return;
+        }
+
         _lengthFault = fault;
 
         if (_member is { } member)
