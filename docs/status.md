@@ -178,8 +178,8 @@ One pull request per batch, each design question put to the maintainer after mea
       `Remote corpus` run 21 green on its branch (journal of 2026-10-01).
    4. [#193], the memory and time budgets the index changes are measured against — done, merged with [#214] on
       2026-10-02, `Remote corpus` run 22 green on its branch (journal of 2026-10-02).
-   5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1 — done in [#217], awaiting its merge
-      (journal of 2026-10-02).
+   5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1 — done, merged with [#217] on
+      2026-10-02, `Remote corpus` run 24 green on its branch (journal of 2026-10-02).
    6. [#182], a cross-reference stream's dictionary read as written, with [#215] and [#216], which batch 5 filed.
    7. [#118].
    8. [#119] and [#172].
