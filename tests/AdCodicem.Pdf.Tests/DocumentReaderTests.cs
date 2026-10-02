@@ -409,6 +409,19 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData("2147483647 0 ")]
+    [InlineData("2 2147483647 ")]
+    public void Reads_an_object_stream_header_at_the_edge_of_what_a_member_can_be(string start)
+    {
+        // The largest number a member may have, and the largest offset: the header is read, whatever the entries then
+        // find in it.
+        using var document = PdfDocument.Open(Packed(header => start + header[4..]));
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable);
+    }
+
+    [Theory]
     [InlineData(-5L, false)]
     [InlineData(2147483648L, false)]
     [InlineData(4294967296L, true)]
@@ -844,6 +857,29 @@ public class DocumentReaderTests
         }
     }
 
+    [Theory]
+    [InlineData(" 65536 n ")]
+    [InlineData(" -0001 n ")]
+    public void Serves_no_older_revision_of_an_object_whose_newest_row_is_refused(string row)
+    {
+        // The update's row for object 3 gives a generation no object in use can have. Refused, it must not let the row
+        // of the section the update's /Prev names stand for the object's current revision: the object is the index's to
+        // find, and the rebuild finds the last definition written.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "(first)")
+            .BuildClassic(rootNumber: 1);
+        var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, [(3, "(second)")]));
+        var second = text.LastIndexOf("3 0 obj", StringComparison.Ordinal);
+        var written = string.Create(CultureInfo.InvariantCulture, $"{second:D10} 00000 n ");
+        var file = Encoding.Latin1.GetBytes(text.Replace(written, string.Create(CultureInfo.InvariantCulture, $"{second:D10}") + row, StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("second");
+    }
+
     [Fact]
     public void Indexes_no_member_a_rebuild_finds_listed_under_a_number_no_object_can_have()
     {
@@ -960,6 +996,48 @@ public class DocumentReaderTests
 
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
         document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_rebuild_finds_a_header_with_the_largest_generation_an_object_in_use_may_have()
+    {
+        const string Objects = """
+            1 0 obj
+            << /Type /Catalog /Pages 2 65535 R >>
+            endobj
+            2 65535 obj
+            << /Type /Pages /Kids [] /Count 0 >>
+            endobj
+            %%EOF
+
+            """;
+
+        using var document = PdfDocument.Open(Encoding.ASCII.GetBytes("%PDF-1.7\n" + Objects));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_rebuild_finds_a_header_whose_number_and_generation_zeros_lead()
+    {
+        // Eleven digits each, which the parser reads as 2 and 0: the rebuild's scan judges each run by its value, as the
+        // parser does, not by how many digits it has.
+        const string Objects = """
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            00000000002 00000000000 obj
+            << /Type /Pages /Kids [] /Count 0 >>
+            endobj
+            %%EOF
+
+            """;
+
+        using var document = PdfDocument.Open(Encoding.ASCII.GetBytes("%PDF-1.7\n" + Objects));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
     }
 
     [Fact]

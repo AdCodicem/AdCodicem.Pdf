@@ -43,8 +43,10 @@ specification says. The map is rebuilt by scanning the whole file, once at most:
 - when an object the map lacks is asked for, by opening or after it, while the map may have lost entries: a
   cross-reference section the chain names cannot be found, or a `/Prev` or `/XRefStm` is not an offset
   (`xref.section-missing`); one is found and cannot be read (`xref.section-unreadable`); the chain loops back on itself (`xref.chain-cycle`); a limit stopped the chain or a
-  table before its end; a row of a classic table cannot be read, which ends its subsection; or a
-  cross-reference stream holds fewer rows than it declares, or gives a subsection a count of rows out of range;
+  table before its end; a row of a classic table cannot be read, which ends its subsection; a row gives an object
+  in use what no entry can hold — a generation past 65,535, an offset of 2⁶³ or more, an object stream that is no
+  object number, an index past 2,147,483,647 —, which refuses that row alone, no older section's row standing for
+  the object; or a cross-reference stream holds fewer rows than it declares;
 - when an object is asked for, by opening or after it, that is neither where the map says nor within 512 bytes
   of it.
 
