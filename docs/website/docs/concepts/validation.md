@@ -96,7 +96,7 @@ joins `document.Diagnostics`.
 The cross-reference rules read a few dozen bytes where each entry of the file's index places its object —
 its header, never its body — and each object stream once, without keeping it. They judge the index as the
 file wrote it, not as the reader corrected it: reading objects between two validations does not change the
-report.
+report, and nothing the reader does while it reads the chain changes the index either.
 
 The object and page tree rules walk what the trailer reaches, once: the page tree through its `/Kids`, and every
 object a reference leads to, each resolved a single time and read through the document's cache — stream
