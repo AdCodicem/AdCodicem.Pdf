@@ -120,20 +120,27 @@ internal static class ChainFiles
     /// indexes: valid, since ISO 32000-1 lets a stream's <c>/Length</c> be indirect, and 7.5.8.2 does not except a
     /// cross-reference stream's. Object 4 gives the data's length, plus <paramref name="lengthOff"/>; with
     /// <paramref name="spellingEndStream"/>, the rows of objects 6 and 7, of reserved types, spell <c>endstream</c> after
-    /// an end-of-line.
+    /// an end-of-line. With <paramref name="endingInCarriageReturn"/>, a last row gives object 6 free with generation 13, so
+    /// that the data's last byte is a carriage return. The rows are compressed when <paramref name="compressed"/>, and the
+    /// data ends with <paramref name="endOfLine"/> before its <c>endstream</c>.
     /// </summary>
-    public static byte[] AloneWithIndirectLength(int lengthOff = 0, bool spellingEndStream = false)
+    public static byte[] AloneWithIndirectLength(
+        int lengthOff = 0, bool spellingEndStream = false, bool compressed = false, bool endingInCarriageReturn = false, string endOfLine = "\n")
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
-        var size = spellingEndStream ? 8 : 6;
-        file.Object(4, (size * 7 + lengthOff).ToString(CultureInfo.InvariantCulture));
+        var size = 6 + (spellingEndStream ? 2 : 0) + (endingInCarriageReturn ? 1 : 0);
+        var encoding = compressed ? Rows.Flate : Rows.Raw;
+
+        // Uncompressed rows, or stored in a block of their own, take as many bytes whatever they hold.
+        var length = Encode(new (int, long, int)[size - (spellingEndStream ? 2 : 0)], encoding).Length + (spellingEndStream ? 14 : 0);
+        file.Object(4, (length + lengthOff).ToString(CultureInfo.InvariantCulture));
         var stream = file.Position;
-        var data = new List<byte>(Encode(
-            [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, file.OffsetOf(4), 0), (1, stream, 0)],
-            Rows.Raw));
+        (int Type, long Second, int Third)[] rows =
+            [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, file.OffsetOf(4), 0), (1, stream, 0)];
+        var data = new List<byte>(Encode(endingInCarriageReturn ? [.. rows, (0, 0, 13)] : rows, encoding));
 
         if (spellingEndStream)
         {
@@ -141,17 +148,18 @@ internal static class ChainFiles
             data.AddRange("\nendstream\0\0\0\0"u8.ToArray());
         }
 
-        file.Stream(5, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {size} /W [1 4 2] /Root 1 0 R /Length 4 0 R"), [.. data]);
+        var filter = compressed ? " /Filter /FlateDecode" : string.Empty;
+        file.Stream(5, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {size} /W [1 4 2]{filter} /Root 1 0 R /Length 4 0 R"), [.. data], endOfLine);
         file.StartXRef(stream);
         return file.ToArray();
     }
 
     /// <summary>
     /// A hybrid file: a classic table indexes the catalog, the page tree and object 6, which holds the offset of
-    /// cross-reference stream 7; its trailer's <c>/XRefStm</c> is <c>6 0 R</c> when <paramref name="indirect"/>, the offset
-    /// itself otherwise. Only the stream indexes the page, object 3.
+    /// cross-reference stream 7; its trailer's <c>/XRefStm</c> is <paramref name="xrefStm"/>, in which <c>{offset}</c>
+    /// stands for that offset. Only the stream indexes the page, object 3.
     /// </summary>
-    public static byte[] HybridNamingItsStream(bool indirect)
+    public static byte[] HybridNamingItsStream(string xrefStm)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -166,10 +174,10 @@ internal static class ChainFiles
         var data = Encode([(1, file.OffsetOf(3), 0)], Rows.Raw);
         file.Stream(7, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 7 /W [1 4 2] /Index [3 1] /Length {data.Length}"), data);
         var xref = file.Position;
-        var xrefStm = indirect ? "6 0 R" : stream.ToString(CultureInfo.InvariantCulture);
+        var named = xrefStm.Replace("{offset}", stream.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
-            $"xref\n0 3\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n6 1\n{six:D10} 00000 n\r\ntrailer\n<< /Size 7 /Root 1 0 R /XRefStm {xrefStm} >>\nstartxref\n{xref}\n%%EOF\n"));
+            $"xref\n0 3\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n6 1\n{six:D10} 00000 n\r\ntrailer\n<< /Size 7 /Root 1 0 R /XRefStm {named} >>\nstartxref\n{xref}\n%%EOF\n"));
         return file.ToArray();
     }
 
@@ -254,12 +262,12 @@ internal static class ChainFiles
             Text(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
         }
 
-        public void Stream(int number, string entries, byte[] data)
+        public void Stream(int number, string entries, byte[] data, string endOfLine = "\n")
         {
             _offsets[number] = Position;
             Text(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< {entries} >>\nstream\n"));
             _output.Write(data);
-            Text("\nendstream\nendobj\n");
+            Text(endOfLine + "endstream\nendobj\n");
         }
 
         public void StartXRef(long offset) => Text(string.Create(CultureInfo.InvariantCulture, $"startxref\n{offset}\n%%EOF\n"));

@@ -125,10 +125,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private const int MaxNestedLoads = 64;
 
     /// <summary>
-    /// How many references <see cref="Follow"/> follows from a value, as <see cref="PdfReference.Resolve"/> does: a value
-    /// still a reference past them reads as null there, and cannot be read here.
+    /// How many references <see cref="Follow"/> follows from a value, as <see cref="PdfReference.Resolve"/> does — it fetches
+    /// one more, and reads null whatever that one holds (#173) —: a value still a reference past them reads as null there,
+    /// and cannot be read here. No valid file reaches it: a valid file never chains references.
     /// </summary>
-    private const int MaxReferenceLinks = 32;
+    private const int MaxReferenceLinks = 31;
 
     private static ReadOnlySpan<byte> ObjKeyword => "obj"u8;
     private static ReadOnlySpan<byte> TrailerKeyword => "trailer"u8;
@@ -2213,9 +2214,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         for (var i = 0; widths is PdfArray w && i < Math.Min(3, w.Count); i++)
         {
-            if (Follow(w[i], out _) is { } reference)
+            if (Follow(PdfName.W, w[i], entry: false, out _) is { } elementFault)
             {
-                return UnreadFault(PdfName.W, reference, written: false);
+                return elementFault;
             }
         }
 
@@ -2228,9 +2229,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         {
             foreach (var element in ranges)
             {
-                if (Follow(element, out _) is { } reference)
+                if (Follow(PdfName.Index, element, entry: false, out _) is { } elementFault)
                 {
-                    return UnreadFault(PdfName.Index, reference, written: false);
+                    return elementFault;
                 }
             }
         }
@@ -2262,9 +2263,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         for (var i = 0; filters is PdfArray chain && i < chain.Count; i++)
         {
-            if (Follow(chain[i], out var step) is { } reference)
+            if (Follow(PdfName.Filter, chain[i], entry: false, out var step) is { } stepFilterFault)
             {
-                return UnreadFault(PdfName.Filter, reference, written: false);
+                return stepFilterFault;
             }
 
             var stepParameters = parameters;
@@ -2273,9 +2274,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             {
                 stepParameters = null;
 
-                if (i < parameterArray.Count && Follow(parameterArray[i], out stepParameters) is { } parameterReference)
+                if (i < parameterArray.Count && Follow(PdfName.DecodeParms, parameterArray[i], entry: false, out stepParameters) is { } stepParametersFault)
                 {
-                    return UnreadFault(PdfName.DecodeParms, parameterReference, written: false);
+                    return stepParametersFault;
                 }
             }
 
@@ -2308,14 +2309,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return null;
         }
 
-        if (filter == PdfName.LZWDecode && Follow(parameters.GetRaw(PdfName.EarlyChange), out _) is { } earlyChange)
+        if (filter == PdfName.LZWDecode && Follow(PdfName.DecodeParms, parameters.GetRaw(PdfName.EarlyChange), entry: false, out _) is { } earlyChange)
         {
-            return UnreadFault(PdfName.DecodeParms, earlyChange, written: false);
+            return earlyChange;
         }
 
-        if (Follow(parameters.GetRaw(PdfName.Predictor), out var predictor) is { } reference)
+        if (Follow(PdfName.DecodeParms, parameters.GetRaw(PdfName.Predictor), entry: false, out var predictor) is { } predictorFault)
         {
-            return UnreadFault(PdfName.DecodeParms, reference, written: false);
+            return predictorFault;
         }
 
         if (predictor?.AsInteger() is not > 1)
@@ -2325,9 +2326,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         foreach (var key in (ReadOnlySpan<PdfName>)[PdfName.Colors, PdfName.BitsPerComponent, PdfName.Columns])
         {
-            if (Follow(parameters.GetRaw(key), out _) is { } unread)
+            if (Follow(PdfName.DecodeParms, parameters.GetRaw(key), entry: false, out _) is { } unread)
             {
-                return UnreadFault(PdfName.DecodeParms, unread, written: false);
+                return unread;
             }
         }
 
@@ -2338,34 +2339,36 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// Follows the value <paramref name="key"/> gives in <paramref name="dictionary"/>, and says so when a reference it is,
     /// or leads to, cannot be read.
     /// </summary>
-    private string? Unread(PdfDictionary dictionary, PdfName key, out PdfObject? value)
-    {
-        var written = dictionary.GetRaw(key);
-        return Follow(written, out value) is { } reference
-            ? UnreadFault(key, reference, written: ReferenceEquals(written, reference))
-            : null;
-    }
-
-    private static string UnreadFault(PdfName key, PdfReference reference, bool written) => string.Create(
-        CultureInfo.InvariantCulture,
-        $"its {FileQuote.Name(key)} {(written ? "is" : "holds")} the reference {reference.Id.Number} {reference.Id.Generation} R, which no section read before it places where it can be read");
+    private string? Unread(PdfDictionary dictionary, PdfName key, out PdfObject? value) =>
+        Follow(key, dictionary.GetRaw(key), entry: true, out value);
 
     /// <summary>
     /// Follows <paramref name="written"/> through as many references as <see cref="PdfReference.Resolve"/> does, each read
-    /// with <see cref="ReadWithoutLoading"/>, and gives the reference that could not be read, or null when none.
+    /// with <see cref="ReadWithoutLoading"/>, and says, as the fault of <paramref name="key"/>, which could not be read, or
+    /// that the value is still a reference past them; null when the value is reached.
     /// </summary>
+    /// <param name="key">The entry of the dictionary that holds the value, which the fault names.</param>
     /// <param name="written">The value as the file wrote it.</param>
-    /// <param name="value">The value it leads to, or null when a reference could not be read.</param>
-    private PdfReference? Follow(PdfObject? written, out PdfObject? value)
+    /// <param name="entry">Whether <paramref name="written"/> is the entry's own value, rather than an element of it.</param>
+    /// <param name="value">The value it leads to, or null when it leads to none.</param>
+    private string? Follow(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
     {
         value = written;
 
         for (var link = 0; value is PdfReference reference; link++)
         {
-            if (link == MaxReferenceLinks || ReadWithoutLoading(reference.Id) is not { } read)
+            if (link == MaxReferenceLinks)
             {
                 value = null;
-                return reference;
+                return $"its {FileQuote.Name(key)} leads from reference to reference without reaching a value";
+            }
+
+            if (ReadWithoutLoading(reference.Id) is not { } read)
+            {
+                value = null;
+                return string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"its {FileQuote.Name(key)} {(entry && link == 0 ? "is" : "holds")} the reference {reference.Id.Number} {reference.Id.Generation} R, which no section read before it places where it can be read");
             }
 
             value = read;
