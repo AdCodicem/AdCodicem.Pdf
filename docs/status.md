@@ -44,8 +44,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **CI**: green on `main` at `ed1e9ed` (CI run 428), [#214]'s merge. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
   after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run
-  22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because ECan's
-  host refused its scan's download (`Connection refused`, [#204]'s shape): every test over the 241 it fetched passed.
+  22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
+  web.archive.org refused the download of ECan's scan (`Connection refused`, [#204]): every test over the 241 it
+  fetched passed.
   Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one rerun.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
@@ -315,8 +316,8 @@ not a fault of the file: the rules on it report at most, as information, that it
   - the integration suite against qpdf in its container, with the remote corpus, 3,266 tests: 3,260 passed and 6
     skipped where qpdf cannot walk a damaged document's pages, in 13 minutes; CI green on the pull request;
   - the site builds, 196 pages;
-  - `Remote corpus` run 24, on the branch at `3ab20e7`: its first attempt could not fetch ECan's scan, whose host's
-    TLS handshake timed out, as the nightly run 23 had found it refusing connections that morning ([#204]), and
+  - `Remote corpus` run 24, on the branch at `3ab20e7`: its first attempt could not fetch ECan's scan, web.archive.org's
+    TLS handshake timing out, as the nightly run 23 had found it refusing connections that morning ([#204]), and
     passed every test over the 241 others; the one rerun fetched all 242 and passed, 4,903 acceptance tests with 3
     skipped and 3,329 referee checks with 6 skipped.
 - **Next**: batch 6, [#182], a cross-reference stream's dictionary read as written, with [#215] and [#216].
