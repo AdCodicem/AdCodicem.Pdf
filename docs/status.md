@@ -12,7 +12,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   the engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object,
   page tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two
   batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which,
-  [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02;
+  [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
+  fifth, [#157] and [#186], in [#217];
   then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every
   other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
@@ -43,12 +44,14 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **CI**: green on `main` at `ed1e9ed` (CI run 428), [#214]'s merge. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
   after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run
-  22, on [#214]'s branch, rerun once for the same refusal.
+  22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because ECan's
+  host refused its scan's download (`Connection refused`, [#204]'s shape): every test over the 241 it fetched passed.
+  Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one rerun.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 22 on 2026-10-02. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in run 24 on 2026-10-02. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.53`, previews from `main` through trusted publishing, 1,141 downloads on 2026-10-02. The
   `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified.
@@ -174,8 +177,9 @@ One pull request per batch, each design question put to the maintainer after mea
       `Remote corpus` run 21 green on its branch (journal of 2026-10-01).
    4. [#193], the memory and time budgets the index changes are measured against — done, merged with [#214] on
       2026-10-02, `Remote corpus` run 22 green on its branch (journal of 2026-10-02).
-   5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1.
-   6. [#182], a cross-reference stream's dictionary read as written.
+   5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1 — done in [#217], awaiting its merge
+      (journal of 2026-10-02).
+   6. [#182], a cross-reference stream's dictionary read as written, with [#215] and [#216], which batch 5 filed.
    7. [#118].
    8. [#119] and [#172].
    9. [#125] and [#126].
@@ -226,6 +230,96 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-02 — Batch 5: the numbers read from the file ([#157], [#186])
+- **The question.** [#157], from the threat model: a 19-digit integer wrapped to a value the file chose —
+  `92233720368547758082 0 R` led to object 2, and the header written with that number was taken for object 2's, with
+  nothing reported —, a 309-digit real read as an infinity, and the index's and object streams' numbers were narrowed
+  to `int` before their checks. [#186], from M01's review: six in ten reals below 1 read an ulp or more off, which M03's
+  slice 1, whose rewrite must not move a value it read, cannot accept. Measured first: two parse routes prototyped and
+  held against the framework over three million cases and the corpus's 24 million reals, their cost, 135 hostile
+  shapes through our reader and four referees, and every narrowing site. Twelve questions followed.
+- **Settled with the maintainer**, each as recommended:
+  - the exact fast path, `mantissa / 10^k` when both are exact doubles, the framework's parse for the rest;
+  - an integer past a `long` reads as the nearest real, with no report of its own; `-9223372036854775808` stays the
+    integer `long.MinValue`;
+  - a number beyond what a double holds reads as null, reported as `syntax.number-out-of-range`, a Warning; an
+    underflow is not reported;
+  - object numbers 1 to 2,147,483,647 and generations 0 to 65,535 are internal constants (ADR 34); `/W`'s bound of
+    8 becomes a debt;
+  - a fault in a cross-reference stream's numbering makes the section malformed; one in a row refuses that row and
+    reads on, the reader's report left to [#210]; free rows are exempt;
+  - an object stream's header ends at a pair no member can have;
+  - `AsInteger`'s bound corrected, integral reals still admitted;
+  - the properties and `/W`'s hostile test paid from [#158]; the benchmark committed before the change;
+  - [#212] commented, `DescribeValue` corrected here, the integral reals filed.
+- **Done**, in [#217]:
+  - `PdfNumberParser` checks the shape, reads a `long` exactly, divides when both operands are exact, and hands the
+    rest to `double.TryParse` on the span; an infinity is read as null by `PdfObjectParser`, the number quoted only in
+    a report the diagnostics keep;
+  - `PdfObjectId.MaxNumber` and `MaxGeneration`, with their reasons, wherever a header, a reference, a row or a
+    member is read; a classic subsection past the last number malformed; a cross-reference stream's numbering
+    checked, `/Index` resolved once, before any row is read; rows read as unsigned fields and refused alone, no older
+    section's row then standing for the object; an object stream's header ended at a pair no member can have, in the
+    reader, the rebuild and the validator; headers judged by value in the rebuild's backward scan and the probe;
+  - `AsInteger` below 2⁶³; `DescribeValue` with a real expanded and a null;
+  - the commit that adds the code is a `feat:`, as every earlier code's was.
+
+  Docs: M03, M07 and M08; the threat model's rows, the gap removed; `diagnostics.md`, `validation-rules.md`,
+  `reader-limits.md` (three bounds that cannot be lifted) and `lazy-reading.md`; the XML documentation of the code, of
+  `PdfToken`, `PdfReal`, `PdfObjectId`, `AsInteger` and `xref.section-malformed`.
+- **Measured.**
+  - `LexerBenchmarks`, the parser before [#186] then this one, one after the other, 0 B allocated in every case: the
+    Word invoice page's 2,888 numbers alone 33.9 to 45.2 µs, the page lexed 141.3 to 153.8 µs (×1.09); a million
+    synthetic numbers 8.26 to 10.00 ms, lexed in 26.3 ms either way.
+  - A first version, one loop over a number's whole part and fraction, cost ×1.61 on the page's numbers in one process
+    against ×1.33 for the prototype; two loops, as the prototype had, ×1.21. The `perf:` commit says so.
+  - The corpus: no manifest entry moves. 4,580 object reals in 124 documents, 62 of them remote, now read 1 to 3 ulp
+    from where they did, none across a threshold a rule judges; five documents give the free list's head 65,536, read
+    as before.
+- **Reviewed.** An adversarial review over four lenses — the parser, the narrowing sites, the reports and documents,
+  the tests — and a completeness critic gave 34 findings, each put to a refuter: 31 kept and fixed, 3 refuted.
+  - Kept and fixed, among them:
+    - a refused row let the row of an older section stand for its object, which served a superseded revision in
+      silence — a regression of this batch, where the narrowed row had served the current one;
+    - `/Index` checked on one resolution and read on a second, which a rebuild between them could change;
+    - the backward scan refusing a generation of more than ten digits, zeros leading, which the parser reads;
+    - an `/Index` that is not an array read as absent;
+    - a refused row's fault naming itself for a section unreadable for another reason;
+    - every number beyond a real quoted, about 1.1 KB each, even once the diagnostics are full: 24 to 31 MB for twenty
+      thousand, now 4 to 8 MB;
+    - the new code under `fix:`;
+    - messages: an exponent in a real, a reference said "null", "1 rows", the sign of a number beyond a real;
+    - the documents: lazy reading's list of rebuilds, a test the threat model named under an old name, M08's
+      inline images split by a new sentence;
+    - tests: the accepted side of every bound, the rows read after a refused one, the object then rebuilt, integral
+      reals admitted, a trailer holding a number beyond a real.
+  - Refuted: the benchmark's figures missing before they could be measured; a lower bound in `reader-limits.md`,
+    rewritten anyway; a trailer test said missing, added anyway.
+  - One more, found while measuring the coverage: `An_index_a_rebuild_left_empty_while_the_chain_was_read_is_not_rebuilt_again`
+    still passed, but no longer rebuilt anything while the chain was read, `/Index` being checked first; it now reaches
+    the second rebuild it is named for again.
+- **Tests**: 140 new, 2,801 to 2,941; 4,846 with the remote corpus. Every defense was mutated and each mutant fails a
+  test — 31 of the reader's checks, 12 off-by-one ones the review named, the parser's bounds, the two review fixes —,
+  but one the parser's `fits &&` makes equivalent.
+- **Tracking.** Filed under M02, each reproduced twice, both paid with [#182] in batch 6: [#215] (integral reals read
+  in silence where an integer is required) and [#216] (`/W`'s bound of 8, unclassified under ADR 34). [#137] waits on
+  them. Commented: [#158] (the number properties and `/W`'s hostile test paid), [#202] (its negative start paid),
+  [#210] (its `/Index` count paid, the refused rows added), [#212] (`PdfReal.ToString` quoted more often now). The
+  false `file.root-invalid` the measurement saw on three shapes no longer reproduces: those sections are now malformed.
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - each of the batch's commits builds and passes alone;
+  - 2,941 unit tests, 3 skipped, and 4,846 with the remote corpus;
+  - the patch's 183 measurable lines of `src/` covered, every branch taken, on the committed corpus alone;
+  - the integration suite against qpdf in its container, with the remote corpus, 3,266 tests: 3,260 passed and 6
+    skipped where qpdf cannot walk a damaged document's pages, in 13 minutes; CI green on the pull request;
+  - the site builds, 196 pages;
+  - `Remote corpus` run 24, on the branch at `3ab20e7`: its first attempt could not fetch ECan's scan, whose host's
+    TLS handshake timed out, as the nightly run 23 had found it refusing connections that morning ([#204]), and
+    passed every test over the 241 others; the one rerun fetched all 242 and passed, 4,903 acceptance tests with 3
+    skipped and 3,329 referee checks with 6 skipped.
+- **Next**: batch 6, [#182], a cross-reference stream's dictionary read as written, with [#215] and [#216].
 
 ### 2026-10-02 — Batch 4: the budgets the index changes are measured against ([#193])
 - **The question.** [#193], from M01's review: M01 asks for a file of several hundred thousand objects opened within a
@@ -906,3 +1000,6 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#212]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/212
 [#213]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/213
 [#214]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/214
+[#215]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/215
+[#216]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/216
+[#217]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/217
