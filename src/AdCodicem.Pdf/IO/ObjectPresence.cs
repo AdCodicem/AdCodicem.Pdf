@@ -17,4 +17,11 @@ internal enum ObjectPresence : byte
     /// an object stream that cannot serve it, or one an encryption the library cannot undo yet hides.
     /// </summary>
     Unproduced,
+
+    /// <summary>
+    /// The cross-reference chain is being read, and no section read so far places the object where it can be read
+    /// without loading it: whether the file holds it is known once the chain is read (#182). Only a stream's
+    /// <c>/Length</c> asks then.
+    /// </summary>
+    Deferred,
 }

@@ -242,14 +242,19 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData("/W [99 99 99]")]
-    [InlineData("/W [1 2147483647 2147483647]")]
-    [InlineData("/W [1 4294967300 2]")]
-    public void Survives_a_cross_reference_stream_with_impossible_field_widths(string widths)
+    [InlineData("/W [99 99 99]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
+    [InlineData("/W [1 2147483647 2147483647]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
+    [InlineData("/W [1 4294967300 2]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
+    [InlineData("/W [9223372036854775807 9223372036854775807 9223372036854775807]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
+    [InlineData("/W [1 -4294967300 2]", "cannot be read: its /W gives a field a negative width.")]
+    [InlineData("/W [-9223372036854775808 4 2]", "cannot be read: its /W gives a field a negative width.")]
+    public void Survives_a_cross_reference_stream_with_impossible_field_widths(string widths, string fault)
     {
-        // The stream startxref names, so that its widths are read. Believed, [1 2147483647 2147483647] makes a row
-        // length that wraps to -1, and slicing a row throws; narrowed to an int, 4294967300 is 4, and the rows read as
-        // [1 4 2] in silence. Refused, the index is rebuilt.
+        // The stream startxref names, so that its widths are read. Believed, [1 2147483647 2147483647] made a row length
+        // that wrapped to -1, and slicing a row threw; narrowed to an int, 4294967300 was 4, and the rows read as [1 4 2] in
+        // silence; summed in a long, three widths of 2^63 - 1 wrap. Each width is narrowed only once it is known to be
+        // within the decoded data, and a row longer than the data is one the data does not hold: the section holds none of
+        // the rows it declares, and the index is rebuilt. A negative width is no width (#158, #216).
         var sound = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -261,7 +266,7 @@ public class HostileInputTests
         document.Catalog.Required();
         document.WasRepaired.Should().BeTrue();
         new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed)
-            .Which.Message.Should().EndWith("cannot be read: its /W gives a field a width outside 0 to 8 bytes.");
+            .Which.Message.Should().EndWith(fault);
     }
 
     [Fact]

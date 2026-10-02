@@ -23,4 +23,11 @@ internal enum StreamLengthForm : byte
     /// could not be read from where the <c>/Length</c> was — the stream itself, an object stream being decoded.
     /// </summary>
     ObjectUnreadable,
+
+    /// <summary>
+    /// A reference read while the cross-reference chain is read, to an object no section read so far places where it can
+    /// be read without loading it: the data is taken up to its <c>endstream</c>, nothing is reported, and the length is
+    /// read and checked once the chain is read (#182).
+    /// </summary>
+    Deferred,
 }

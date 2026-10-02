@@ -953,13 +953,14 @@ public class DocumentReaderTests
     }
 
     [Fact]
-    public void An_index_a_rebuild_left_empty_while_the_chain_was_read_is_not_rebuilt_again()
+    public void A_reference_the_chain_cannot_read_rebuilds_nothing_while_the_chain_is_read()
     {
         // Two cross-reference streams, each header split by a comment, which a rebuild's scan does not take for an object
         // header. The newer declares rows its data lacks, leaving the index incomplete; the older, which its /Prev names,
-        // numbers its rows from object 9, which the index lacks: resolving it, before any of its rows is read, rebuilds
-        // the index, and the scan finds nothing. The chain then leaves an empty index, which asks for a rebuild once
-        // more — and the one done stands.
+        // numbers its rows from object 9, which the index lacks. Resolving it once rebuilt the index before any of its rows
+        // was read, and the chain's empty index asked for a rebuild once more (#182). Nothing is loaded while the chain is
+        // read: the reference names nothing the chain can read, the older stream is malformed, and the empty index the
+        // chain leaves is rebuilt once.
         const string Template = """
             %PDF-1.5
             7 0 % a comment between the generation and the keyword
@@ -998,6 +999,89 @@ public class DocumentReaderTests
         reader.Structure.ChainRead.Should().BeFalse();
         diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefRebuilt).Should().ContainSingle()
             .Which.Message.Should().Be("The cross-reference index was rebuilt by scanning the file.");
+    }
+
+    [Fact]
+    public void Reads_a_cross_reference_stream_whose_length_only_it_indexes_as_its_direct_twin()
+    {
+        // ISO 32000-1 lets a stream's /Length be indirect, a cross-reference stream's too. Object 4, which only the stream
+        // indexes, cannot be read while the chain is: the data is taken up to its endstream, and the length read and checked
+        // once the chain is read. Nothing is reported, and object 4 reads what it holds — it was once kept as null, with a
+        // /Length said to name an object the file lacks (#182).
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength());
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(4)).AsInteger().Should().Be(42);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Reports_a_deferred_length_its_data_does_not_confirm_once_the_chain_is_read()
+    {
+        // Object 4 gives 46 bytes where the data holds 42: the stream is parsed again once the chain is read, as any object
+        // is, and the length reported as any stream's is.
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(lengthOff: 4));
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+        report.Message.Should().Be("The stream declared 46 bytes but ended after 42.");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Reports_the_rows_a_deferred_length_shows_the_chain_did_not_read()
+    {
+        // The rows of objects 6 and 7, of reserved types, spell an endstream after an end-of-line: the chain, which could
+        // not read the /Length, took the data up to it. The length, read once the chain is, gives 14 bytes more, which the
+        // endstream after them confirms: what the chain left unread is reported. The rows are not read again.
+        var file = ChainFiles.AloneWithIndirectLength(spellingEndStream: true);
+        using var document = PdfDocument.Open(file);
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+        report.Position.Should().Be(PdfTemplate.OffsetOf(file, "stream\n", 1) + "stream\n".Length);
+        report.Message.Should().Be(
+            "The /Length of cross-reference stream 5 gives 56 bytes, but the chain was read before it could be: its rows were read from the 42 before an endstream its data holds, and none past them.");
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [MemberData(nameof(ChainFiles.Keys), MemberType = typeof(ChainFiles))]
+    public void Changes_nothing_of_the_index_while_the_chain_is_read(string key)
+    {
+        // #182: a value the older stream refers to, object 5, which the newer table places outside the file. Loading it as
+        // the chain was read rebuilt the index, and the rebuilt one was served as the chain's. Whatever reads object 5 now
+        // does so once the chain is read — the catalog looked for, the /Length checked —, behind a copy of the index as the
+        // file wrote it; a /Type the rows are read without needs nothing read.
+        using var document = PdfDocument.Open(ChainFiles.UnderAnUpdate(key, placed: false));
+
+        document.WasRepaired.Should().Be(key != "Type");
+        document.Reader.Structure.ChainRead.Should().BeTrue();
+        document.Reader.ChainIndex!.TryGet(5, out var written).Should().BeTrue();
+        written.Offset.Should().Be(99999);
+
+        if (document.WasRepaired)
+        {
+            document.Reader.ChainIndex.Should().NotBeSameAs(document.Reader.Index);
+        }
+    }
+
+    [Fact]
+    public void A_value_the_chain_reads_that_a_guard_cuts_leaves_the_section_whole()
+    {
+        // #182: object 5, the older stream's /Length, runs past MaxObjectLength, padded with white space. Its load, as the
+        // chain was read, reached the guard and marked the section cut, which silenced what the rules found of it. The
+        // chain leaves it unread; the stream's data is taken up to its endstream, and the guard reached, and reported at
+        // object 5, when the length is read once the chain is.
+        var file = ChainFiles.UnderAnUpdate("Length", placed: true, padding: 3000);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Reader.Structure.Sections.Should().OnlyContain(section => !section.CutByLimit);
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject)
+            .Which.Position.Should().Be(PdfTemplate.OffsetOf(file, "\n5 0 obj") + 1);
     }
 
     [Fact]

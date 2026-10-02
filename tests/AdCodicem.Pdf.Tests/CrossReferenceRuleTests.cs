@@ -173,9 +173,8 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData("/Size 6 /W [1 9 2]", "its /W gives a field a width outside 0 to 8 bytes.")]
-    [InlineData("/Size 6 /W [1 4294967300 2]", "its /W gives a field a width outside 0 to 8 bytes.")]
-    [InlineData("/Size 6 /W [1 -4 2]", "its /W gives a field a width outside 0 to 8 bytes.")]
+    [InlineData("/Size 6 /W [1 -4 2]", "its /W gives a field a negative width.")]
+    [InlineData("/Size 6 /W [1 -4294967300 2]", "its /W gives a field a negative width.")]
     [InlineData("/Size 6 /W [1 4.5 2]", "its /W gives a field a width that is not an integer.")]
     [InlineData("/Size 6 /W [1 null 2]", "its /W gives a field a width that is not an integer.")]
     [InlineData("/Size 6 /W [1 4]", "its /W does not give the widths of three fields.")]
@@ -191,7 +190,15 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4 2] /Index [/Zero 6]", "its /Index holds the name /Zero where an integer belongs.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 null]", "its /Index holds null where an integer belongs.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [92233720368547758080 6]", "its /Index holds the real number 92233720368547760000 where an integer belongs.")]
-    [InlineData("/Size 6 /W [1 4 2] /Index [0 1 0 R]", "its /Index holds the reference 1 0 R where an integer belongs.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 1 0 R]", "its /Index holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index 1 0 R", "its /Index is the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W 1 0 R", "its /W is the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 1 0 R 2]", "its /W holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 1 0 R /W [1 4 2]", "its /Size is the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /Filter 1 0 R", "its /Filter is the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /DecodeParms 1 0 R", "its /DecodeParms is the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /DecodeParms << /Columns 1 0 R >>", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
+    [InlineData("/Size 6 /W [1 4 2] /DecodeParms [<< /Columns 1 0 R >>]", "its /DecodeParms holds the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 1]", "its /Index gives a subsection of 1 row from object -5, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [2147482000 5000]", "its /Index gives a subsection of 5,000 rows from object 2147482000, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 6]", "its /Index gives a subsection of 6 rows from object -5, outside object numbers 0 to 2147483647.")]
@@ -220,8 +227,9 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4 2] /Index [2147483642 6]", true)]
     public void A_cross_reference_stream_whose_numbering_holds_is_not_malformed(string layout, bool repaired)
     {
-        // Integral reals count as integers, as everywhere the reader asks for one; a subsection may end at the largest
-        // object number. Rows numbered from 2147483642 index no catalog, which a rebuild then finds.
+        // Integral reals are read as the integers they equal, as everywhere the reader reads a value, and reported as the
+        // file's fault elsewhere (file.trailer-value-wrong); a subsection may end at the largest object number. Rows
+        // numbered from 2147483642 index no catalog, which a rebuild then finds.
         using var document = PdfDocument.Open(Replace(XRefStreamFile(), "/Size 6 /W [1 4 2]", layout));
 
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
@@ -316,7 +324,7 @@ public class CrossReferenceRuleTests
 
     [Theory]
     [InlineData("99999", "The cross-reference section /Prev names at offset 99999 is not there, nor within 512 bytes of it: the offset lies outside the file.")]
-    [InlineData("12 0 R", "The /Prev of the cross-reference section at offset {update} is the reference 12 0 R, not an offset.")]
+    [InlineData("12 0 R", "The /Prev of the cross-reference section at offset {update} is the reference 12 0 R, which no section read before it places where it can be read.")]
     [InlineData("-1", "The /Prev of the cross-reference section at offset {update} is the integer -1, not an offset.")]
     [InlineData("/Offset", "The /Prev of the cross-reference section at offset {update} is the name /Offset, not an offset.")]
     [InlineData("/Na#0Ame#1B", "The /Prev of the cross-reference section at offset {update} is the name /Na#0Ame#1B, not an offset.")]
@@ -720,6 +728,67 @@ public class CrossReferenceRuleTests
         document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(new[] { 1, 9, 2 })]
+    [InlineData(new[] { 1, 16, 2 })]
+    [InlineData(new[] { 9, 4, 2 })]
+    [InlineData(new[] { 1, 4, 9 })]
+    public void A_cross_reference_stream_whose_fields_are_wider_than_8_bytes_is_read_when_their_leading_bytes_are_zero(int[] widths)
+    {
+        // ISO 32000-1 bounds no width (Table 17), and every value an entry holds fits in 8 bytes: a ninth byte, and every
+        // one after it, is a leading zero. Each was once a section malformed, and the index rebuilt (#216).
+        var file = WithRows(widths, number: 1, type: 1, second: null, third: 0);
+        using var document = PdfDocument.Open(file);
+
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(new[] { 1, 9, 2 }, 4, 1UL, null, 0UL, 1, "the row for object 4 gives it an offset of more than 64 bits, past any a file can have")]
+    [InlineData(new[] { 1, 4, 9 }, 4, 1UL, null, 0UL, 2, "the row for object 4 gives it a generation of more than 64 bits, outside 0 to 65535")]
+    [InlineData(new[] { 1, 9, 2 }, 3, 2UL, 4UL, 1UL, 1, "the row for object 3 places it in an object stream whose number takes more than 64 bits, which is no object number")]
+    [InlineData(new[] { 1, 4, 9 }, 3, 2UL, 4UL, 1UL, 2, "the row for object 3 places it at an index of more than 64 bits in object stream 4, past any an object stream can hold")]
+    public void A_cross_reference_stream_row_whose_wide_field_holds_more_than_64_bits_is_refused_alone(
+        int[] widths, int number, ulong type, ulong? second, ulong third, int leading, string fault)
+    {
+        // A leading byte that is not zero makes a value past any an entry holds: the row is refused, as one past it in 8
+        // bytes is, and the rows after it read.
+        using var document = PdfDocument.Open(WithRows(widths, number, type, second, third, leading));
+
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith("is malformed: " + fault + ".");
+        document.GetObject(new PdfObjectId(number)).Should().NotBeSameAs(PdfNull.Instance, "the rebuild finds the object");
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_row_whose_wide_type_field_holds_more_than_64_bits_is_ignored()
+    {
+        // A type past 2, however it is written: the row is ignored, as ISO 32000-1 (7.5.8.3) asks, not refused.
+        using var document = PdfDocument.Open(WithRows([9, 4, 2], number: 3, type: 2, second: 4, third: 1, leading: 0));
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("/Size 6 /W [1 9 2]", 3)]
+    [InlineData("/Size 6 /W [1 2147483647 2]", 0)]
+    [InlineData("/Size 6 /W [1 4294967300 2]", 0)]
+    [InlineData("/Size 6 /W [1 9223372036854775807 2]", 0)]
+    [InlineData("/Size 6 /W [9223372036854775807 9223372036854775807 9223372036854775807]", 0)]
+    public void A_cross_reference_stream_whose_rows_are_wider_than_its_data_holds_fewer_rows_than_it_declares(string layout, int held)
+    {
+        // The rows were written 7 bytes wide, 42 bytes in all. Rows of 12 bytes read 3 of them, misaligned; a row longer
+        // than the data is one the data does not hold, whatever its width, which is narrowed only once it is known to be
+        // within the data, and the widths' sum is then within a long.
+        var file = Replace(XRefStreamFile(), "/Size 6 /W [1 4 2]", layout);
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
+            string.Create(CultureInfo.InvariantCulture, $"is malformed: it holds {held} {(held == 1 ? "row" : "rows")} where its /Index and /Size declare 6."));
+    }
+
     [Fact]
     public void An_object_stream_a_few_bytes_from_its_entry_serves_its_objects()
     {
@@ -842,6 +911,59 @@ public class CrossReferenceRuleTests
             "The index places 1 object in object stream 3, which it places in object stream 4 in turn: an object stream cannot be stored in another.");
     }
 
+    [Theory]
+    [MemberData(nameof(ChainFiles.Keys), MemberType = typeof(ChainFiles))]
+    public void A_cross_reference_stream_value_the_chain_cannot_read_leaves_the_index_as_the_file_wrote_it(string key)
+    {
+        // #182: the newer table places object 5 outside the file. Loading it while the chain was read rebuilt the index,
+        // which the rules then judged as the file's own, finding nothing. Nothing is loaded while the chain is read: the
+        // entry is judged as written, and the stream, whose rows cannot be read without a value it cannot read, is malformed;
+        // its /Type it can be read without, and its /Length is read once the chain is.
+        var report = Validate(ChainFiles.UnderAnUpdate(key, placed: false));
+
+        Single(report, PdfValidationRuleIds.XRefEntryBroken).Message.Should().Be("The entry of object 5 gives offset 99999, outside the file.");
+
+        if (key is "Type" or "Length")
+        {
+            report.Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+        }
+        else
+        {
+            Single(report, PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
+                "the reference 5 0 R, which no section read before it places where it can be read.");
+        }
+    }
+
+    [Fact]
+    public void The_entry_a_deferred_length_found_off_its_object_is_judged_as_the_file_wrote_it()
+    {
+        // #182: the older stream's /Length names object 10, whose entry lies 2 bytes before its header. The chain once
+        // corrected that entry as it read the stream, and the probe judged the corrected one. The /Length is read once the
+        // chain is, behind a copy of the index as the file wrote it.
+        var file = StreamLengthTests.LengthObjectOffItsEntry(out var tenAt);
+
+        var finding = Validate(file).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryShifted
+            && finding.Location.Object == new PdfObjectId(10)).Which;
+
+        finding.Message.Should().Contain(string.Create(CultureInfo.InvariantCulture, $"offset {tenAt - 2}"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_hybrid_file_whose_xrefstm_is_a_reference_is_read_whole(bool indirect)
+    {
+        // ISO 32000-1 asks no /XRefStm to be direct (Table 19): one written as a reference, read where the table places
+        // its object, names the stream, as qpdf, MuPDF, PDFBox and pdf.js read it. It was once no offset, the stream lost
+        // and the index rebuilt.
+        using var document = PdfDocument.Open(ChainFiles.HybridNamingItsStream(indirect));
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue("only the stream indexes the page");
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
     [Fact]
     public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked()
     {
@@ -907,9 +1029,10 @@ public class CrossReferenceRuleTests
     /// <see cref="XRefStreamFile"/> with its index written again as object 5, in rows of <paramref name="widths"/> bytes:
     /// object 0 free, the catalog and object stream 4 at their offsets, objects 2 and 3 in object stream 4, and the index
     /// at its own — but for the row of object <paramref name="number"/>, written with the fields given, a
-    /// <paramref name="second"/> left out keeping its own.
+    /// <paramref name="second"/> left out keeping its own, and the first byte of its field <paramref name="leading"/>, one
+    /// wider than 8 bytes, set to 1.
     /// </summary>
-    private static byte[] WithRows(int[] widths, int number, ulong type, ulong? second, ulong third)
+    private static byte[] WithRows(int[] widths, int number, ulong type, ulong? second, ulong third, int leading = -1)
     {
         var sound = XRefStreamFile();
         var xref = (int)PdfTemplate.OffsetOf(sound, "\n5 0 obj") + 1;
@@ -925,11 +1048,12 @@ public class CrossReferenceRuleTests
         rows[number] = (type, second ?? rows[number].Second, third);
         var data = new List<byte>();
 
-        foreach (var (first, middle, last) in rows)
+        for (var row = 0; row < rows.Length; row++)
         {
-            Field(first, widths[0]);
-            Field(middle, widths[1]);
-            Field(last, widths[2]);
+            var (first, middle, last) = rows[row];
+            Field(first, widths[0], row == number && leading == 0);
+            Field(middle, widths[1], row == number && leading == 1);
+            Field(last, widths[2], row == number && leading == 2);
         }
 
         return
@@ -942,11 +1066,12 @@ public class CrossReferenceRuleTests
             .. Encoding.Latin1.GetBytes(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n")),
         ];
 
-        void Field(ulong value, int width)
+        void Field(ulong value, int width, bool leadingOne)
         {
+            // Bytes past the eight a value holds are its leading zeros, unless the first is asked for as 1.
             for (var shift = (width - 1) * 8; shift >= 0; shift -= 8)
             {
-                data.Add((byte)(value >> shift));
+                data.Add(shift >= 64 ? (byte)(leadingOne && shift == (width - 1) * 8 ? 1 : 0) : (byte)(value >> shift));
             }
         }
     }

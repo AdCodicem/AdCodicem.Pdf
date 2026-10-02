@@ -303,7 +303,7 @@ public class CrossReferenceChainTests
         var text = Encoding.Latin1.GetString(file);
         var widths = text.IndexOf("/W [1 4 2]", StringComparison.Ordinal);
         widths.Should().BeGreaterThan((int)original, "the original's stream comes first");
-        file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, widths), "/W [1 9 2]", text.AsSpan(widths + 10)));
+        file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, widths), "/W[1 -4 2]", text.AsSpan(widths + 10)));
 
         using var document = PdfDocument.Open(file);
 
@@ -312,7 +312,7 @@ public class CrossReferenceChainTests
         report.Position.Should().Be(original);
         report.Message.Should().StartWith(string.Create(
             CultureInfo.InvariantCulture,
-            $"The cross-reference stream /Prev names at offset {original} is there but cannot be read: its /W gives a field a width outside 0 to 8 bytes."));
+            $"The cross-reference stream /Prev names at offset {original} is there but cannot be read: its /W gives a field a negative width."));
 
         document.WasRepaired.Should().BeFalse("nothing asked yet for what the stream indexed");
         ReadsWhole(document);
