@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -55,6 +56,9 @@ public class PropertyTests
 
     /// <summary>Arbitrary byte buffers — the shape every byte that reaches this library arrives in.</summary>
     private static Arbitrary<byte[]> Buffers => ArbMap.Default.ArbFor<byte[]>().Filter(bytes => bytes is not null);
+
+    /// <summary>What a number may start with: no sign, one, or the two some generators write, the first of which decides.</summary>
+    private static Gen<string> Signs => Gen.Elements(string.Empty, "-", "+", "--", "+-", "-+");
 
     [Fact]
     public void The_lexer_terminates_on_any_bytes_and_stays_inside_the_buffer()
@@ -149,34 +153,67 @@ public class PropertyTests
     }
 
     [Fact]
-    public void The_hand_written_integer_parser_agrees_with_the_framework()
+    public void The_integer_parser_reads_every_long_and_never_wraps_past_one()
     {
-        // The range is the one PDF actually admits for an integer, which is also the range the hot-path
-        // parser is allowed to accumulate without falling back to floating point.
-        Check.One(Settings, Prop.ForAll<int>(value =>
-        {
-            var text = value.ToString(CultureInfo.InvariantCulture);
+        // Runs of 1 to 25 digits and of 300 to 320, around where a long and a double end, leading zeros included; every
+        // value 64 bits hold; and long.MaxValue and long.MinValue, give or take 20. Within a long, the integer written;
+        // past one, a real: the double nearest to it, an infinity past double.MaxValue. The signs are the doubled ones
+        // some generators emit, the first of which decides.
+        var runs = Gen.OneOf(Gen.Choose(1, 25), Gen.Choose(300, 320))
+            .SelectMany(length => Gen.ArrayOf(Gen.Choose(0, 9), length))
+            .Select(digits => string.Concat(digits));
+        var bits = Gen.Zip(Gen.Choose(int.MinValue, int.MaxValue), Gen.Choose(int.MinValue, int.MaxValue))
+            .Select(halves => BigInteger.Abs(((long)halves.Item1 << 32) | (uint)halves.Item2).ToString(CultureInfo.InvariantCulture));
+        var edges = Gen.Choose(-20, 20)
+            .Select(offset => (new BigInteger(long.MaxValue) + offset).ToString(CultureInfo.InvariantCulture));
+        var cases = Gen.Zip(Signs, Gen.OneOf(runs, bits, edges));
 
-            return PdfNumberParser.TryParse(Encoding.ASCII.GetBytes(text), out var integer, out _, out var isReal)
-                && !isReal
-                && integer == value;
+        Check.One(Settings, Prop.ForAll(cases.ToArbitrary(), written =>
+        {
+            var (sign, magnitude) = written;
+            var negative = sign.StartsWith('-');
+            var value = BigInteger.Parse(magnitude, CultureInfo.InvariantCulture) * (negative ? -1 : 1);
+            var parsed = PdfNumberParser.TryParse(Encoding.ASCII.GetBytes(sign + magnitude), out var integer, out var real, out var isReal);
+
+            if (value >= long.MinValue && value <= long.MaxValue)
+            {
+                return parsed && !isReal && integer == (long)value;
+            }
+
+            var nearest = double.Parse(magnitude, NumberStyles.None, CultureInfo.InvariantCulture);
+            return parsed && isReal && SameBits(real, negative ? -nearest : nearest);
         }));
     }
 
     [Fact]
-    public void The_hand_written_real_parser_agrees_with_the_framework()
+    public void The_real_parser_reads_the_double_nearest_to_the_decimal()
     {
-        // The domain is what PDF can write: a plain decimal, never exponent notation. Parsing is
-        // hand-written because it must accept forms the framework rejects and must not allocate; this
-        // pins it against the framework everywhere both are willing to answer.
-        Check.One(Settings, Prop.ForAll<int, ushort>((units, fraction) =>
-        {
-            var text = string.Create(CultureInfo.InvariantCulture, $"{units}.{fraction % 10000:0000}");
-            var expected = double.Parse(text, CultureInfo.InvariantCulture);
+        // Doubles from 1e-10 to 1e30, written as M03 writes a real it computes — their shortest decimal, expanded, with
+        // a period; the decimals below 1 that matrices, colors and opacities are made of, with 1 to 17 significant digits
+        // and up to 9 zeros after the period; and mantissas either side of 2^53, or of a few digits, with 0 to 25
+        // decimals, either side of where the parser's exact division gives way to the framework's parse. Equal bit for
+        // bit, -0.0 included, to the framework's parse of the same decimal with one sign.
+        var drawn = Gen.Choose(0, int.MaxValue).Select(step => Expanded(Math.Pow(10, -10 + (40d * step / int.MaxValue))));
+        var belowOne =
+            from lead in Gen.Elements("0", string.Empty)
+            from zeros in Gen.Choose(0, 9)
+            from significant in Gen.Choose(1, 17)
+            from digits in Gen.ArrayOf(Gen.Choose(0, 9), significant)
+            select lead + "." + new string('0', zeros) + string.Concat(digits);
+        var boundary =
+            from mantissa in Gen.OneOf(Gen.Choose(-20, 20).Select(offset => (1L << 53) + offset), Gen.Choose(0, 999).Select(small => (long)small))
+            from decimals in Gen.Choose(0, 25)
+            select WithDecimals(mantissa.ToString(CultureInfo.InvariantCulture), decimals);
+        var cases = Gen.Zip(Signs, Gen.OneOf(drawn, belowOne, boundary));
 
-            return PdfNumberParser.TryParse(Encoding.ASCII.GetBytes(text), out _, out var real, out var isReal)
+        Check.One(Settings, Prop.ForAll(cases.ToArbitrary(), written =>
+        {
+            var (sign, magnitude) = written;
+            var nearest = double.Parse(magnitude, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+
+            return PdfNumberParser.TryParse(Encoding.ASCII.GetBytes(sign + magnitude), out _, out var real, out var isReal)
                 && isReal
-                && Math.Abs(real - expected) <= 1e-9 * Math.Max(1, Math.Abs(expected));
+                && SameBits(real, sign.StartsWith('-') ? -nearest : nearest);
         }));
     }
 
@@ -371,6 +408,37 @@ public class PropertyTests
 
         return text.ToString();
     }
+
+    private static bool SameBits(double actual, double expected) =>
+        BitConverter.DoubleToInt64Bits(actual) == BitConverter.DoubleToInt64Bits(expected);
+
+    /// <summary>Writes a double as its shortest round-trip decimal, without an exponent, always with a period.</summary>
+    private static string Expanded(double value)
+    {
+        var roundTrip = value.ToString("R", CultureInfo.InvariantCulture);
+        var e = roundTrip.IndexOf('E', StringComparison.Ordinal);
+
+        if (e < 0)
+        {
+            return roundTrip.Contains('.', StringComparison.Ordinal) ? roundTrip : roundTrip + ".0";
+        }
+
+        var exponent = int.Parse(roundTrip.AsSpan(e + 1), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        var mantissa = roundTrip[..e];
+        var point = mantissa.IndexOf('.', StringComparison.Ordinal);
+        var digits = point < 0 ? mantissa : mantissa.Remove(point, 1);
+        var whole = (point < 0 ? mantissa.Length : point) + exponent;
+
+        return whole <= 0 ? "0." + new string('0', -whole) + digits
+            : whole >= digits.Length ? digits + new string('0', whole - digits.Length) + ".0"
+            : digits[..whole] + "." + digits[whole..];
+    }
+
+    /// <summary>Writes <paramref name="digits"/> with a period before the last <paramref name="decimals"/> of them, zeros added in front as needed.</summary>
+    private static string WithDecimals(string digits, int decimals) =>
+        decimals < digits.Length
+            ? digits[..^decimals] + "." + digits[^decimals..]
+            : "0." + new string('0', decimals - digits.Length) + digits;
 
     private static bool IsWellFormedUtf16(string value)
     {
