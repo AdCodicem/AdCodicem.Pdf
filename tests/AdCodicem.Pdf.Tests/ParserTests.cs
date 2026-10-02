@@ -96,6 +96,8 @@ public class ParserTests
     [InlineData("[-4294967291 0 R]", "a negative object number that would wrap to 5 if narrowed to an int")]
     [InlineData("[5 -1 R]", "a negative generation")]
     [InlineData("[5 65536 R]", "a generation past 65535")]
+    [InlineData("[92233720368547758085 0 R]", "an object number past a long, which once wrapped to 5")]
+    [InlineData("[5 92233720368547758080 R]", "a generation past a long, which once wrapped to 0")]
     public void Makes_no_reference_of_numbers_an_object_identifier_cannot_hold(string text, string because)
     {
         var target = new PdfDictionary();
@@ -134,6 +136,8 @@ public class ParserTests
     [InlineData("7 -1 obj\nnull\nendobj\n")]
     [InlineData("7 65536 obj\nnull\nendobj\n")]
     [InlineData("7 0.5 obj\nnull\nendobj\n")]
+    [InlineData("92233720368547758082 0 obj\nnull\nendobj\n")]
+    [InlineData("4 92233720368547758080 obj\nnull\nendobj\n")]
     public void Refuses_an_object_header_whose_number_or_generation_is_out_of_range(string text)
     {
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));

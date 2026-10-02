@@ -153,8 +153,8 @@ internal ref struct PdfObjectParser
         if (number.Kind != PdfTokenKind.Integer ||
             generation.Kind != PdfTokenKind.Integer ||
             !keyword.IsKeyword("obj"u8) ||
-            number.Integer is <= 0 or > int.MaxValue ||
-            generation.Integer is < 0 or > ushort.MaxValue)
+            number.Integer is <= 0 or > PdfObjectId.MaxNumber ||
+            generation.Integer is < 0 or > PdfObjectId.MaxGeneration)
         {
             // A header the end of the buffer reached — white space up to it, "5 0 o" — may be whole in a
             // larger one.
@@ -289,8 +289,8 @@ internal ref struct PdfObjectParser
         var third = second.Kind == PdfTokenKind.Integer ? _lexer.Read() : second;
 
         if (second.Kind == PdfTokenKind.Integer && third.IsKeyword("R"u8) &&
-            token.Integer is >= 0 and <= int.MaxValue &&
-            second.Integer is >= 0 and <= ushort.MaxValue)
+            token.Integer is >= 0 and <= PdfObjectId.MaxNumber &&
+            second.Integer is >= 0 and <= PdfObjectId.MaxGeneration)
         {
             return new PdfReference(new PdfObjectId((int)token.Integer, (int)second.Integer), _source);
         }
