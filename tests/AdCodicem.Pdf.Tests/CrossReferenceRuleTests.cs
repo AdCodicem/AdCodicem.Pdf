@@ -101,9 +101,38 @@ public class CrossReferenceRuleTests
         var row = string.Create(CultureInfo.InvariantCulture, $"{page:D10} 00000 n ");
         var written = string.Create(CultureInfo.InvariantCulture, $"{page} {generation} n").PadRight(row.Length);
         var file = Replace(sound, row, written);
+        using var document = PdfDocument.Open(file);
 
-        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
             $"is malformed: the row for object 3, at offset {PdfTemplate.OffsetOf(file, written)}, gives it generation {generation}, outside 0 to 65535.");
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue("the rebuild finds the page");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_refused_row_of_a_table_leaves_the_rows_after_it_read()
+    {
+        // The page's row is refused; the long string's, object 4, follows it and is read, so asking for object 4 needs no
+        // rebuild.
+        var sound = PdfTemplate.Build(PdfTemplate.Spread);
+        var page = PdfTemplate.OffsetOf(sound, "\n3 0 obj") + 1;
+        var row = string.Create(CultureInfo.InvariantCulture, $"{page:D10} 00000 n ");
+        using var document = PdfDocument.Open(Replace(sound, row, string.Create(CultureInfo.InvariantCulture, $"{page:D10} 65536 n ")));
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("{row:3:65535}", "3 65535 obj")]
+    [InlineData("0000000000 65536 f ", "3 0 obj")]
+    public void A_row_at_the_edge_of_what_an_entry_can_hold_is_read(string row, string header)
+    {
+        // Generation 65,535 is the last an object in use may have; a free row may give more.
+        var template = PdfTemplate.Sound.Replace("3 0 obj", header, StringComparison.Ordinal);
+        var file = PdfTemplate.Build(row.EndsWith('f') ? template.Replace("{free}", row, StringComparison.Ordinal) : template.Replace("{row:3}", row, StringComparison.Ordinal));
+
+        Validate(file).Findings.Where(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal)).Should().BeEmpty();
     }
 
     [Theory]
@@ -123,6 +152,20 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
+    public void A_table_unreadable_past_a_refused_row_is_said_unreadable_for_what_stopped_it()
+    {
+        // The page's row is refused for its generation, and the rows after it read; the trailer keyword, misspelled, is what
+        // makes the table unreadable, and the finding names it, not the row.
+        var sound = PdfTemplate.Build(PdfTemplate.Sound);
+        var page = PdfTemplate.OffsetOf(sound, "\n3 0 obj") + 1;
+        var row = string.Create(CultureInfo.InvariantCulture, $"{page:D10} 00000 n ");
+        var file = Replace(Replace(sound, row, string.Create(CultureInfo.InvariantCulture, $"{page:D10} 65536 n ")), "trailer", "trailor");
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
+            $"cannot be read: it holds the keyword trailor at offset {PdfTemplate.OffsetOf(file, "trailor")}, where a subsection or the trailer should start.");
+    }
+
+    [Fact]
     public void A_free_row_whose_generation_is_past_65535_is_read_in_silence()
     {
         // Producers give the head of the free list 65536; nothing is ever served under a free row's generation.
@@ -139,13 +182,18 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [0 0 0]", "its /W gives rows of no bytes.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 -1]", "its /Index gives a subsection a count of rows out of range.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 4294967302]", "its /Index gives a subsection a count of rows out of range.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index 6", "its /Index is the integer 6, not an array.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index /All", "its /Index is the name /All, not an array.")]
     [InlineData("/Size 6 /W [1 4 2] /Index []", "its /Index holds 0 values, not pairs of a first object number and a count of rows.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0]", "its /Index holds 1 value, not pairs of a first object number and a count of rows.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 6 7]", "its /Index holds 3 values, not pairs of a first object number and a count of rows.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 (six)]", "its /Index holds a value of type string where an integer belongs.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [/Zero 6]", "its /Index holds the name /Zero where an integer belongs.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 null]", "its /Index holds null where an integer belongs.")]
-    [InlineData("/Size 6 /W [1 4 2] /Index [92233720368547758080 6]", "its /Index holds the real number 9.223372036854776E+19 where an integer belongs.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [92233720368547758080 6]", "its /Index holds the real number 92233720368547760000 where an integer belongs.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 1 0 R]", "its /Index holds the reference 1 0 R where an integer belongs.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [-5 1]", "its /Index gives a subsection of 1 row from object -5, outside object numbers 0 to 2147483647.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [2147482000 5000]", "its /Index gives a subsection of 5,000 rows from object 2147482000, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [-5 6]", "its /Index gives a subsection of 6 rows from object -5, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [4294967296 6]", "its /Index gives a subsection of 6 rows from object 4294967296, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [2147483647 6]", "its /Index gives a subsection of 6 rows from object 2147483647, outside object numbers 0 to 2147483647.")]
@@ -163,6 +211,21 @@ public class CrossReferenceRuleTests
 
         Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message
             .Should().StartWith("The cross-reference stream at offset ").And.EndWith("cannot be read: " + fault);
+    }
+
+    [Theory]
+    [InlineData("/Size 6 /W [1.0 4.0 2.0] /Index [0.0 6.0]", false)]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2147483647 0]", false)]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2147483642 0]", false)]
+    [InlineData("/Size 6 /W [1 4 2] /Index [2147483642 6]", true)]
+    public void A_cross_reference_stream_whose_numbering_holds_is_not_malformed(string layout, bool repaired)
+    {
+        // Integral reals count as integers, as everywhere the reader asks for one; a subsection may end at the largest
+        // object number. Rows numbered from 2147483642 index no catalog, which a rebuild then finds.
+        using var document = PdfDocument.Open(Replace(XRefStreamFile(), "/Size 6 /W [1 4 2]", layout));
+
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+        document.WasRepaired.Should().Be(repaired);
     }
 
     [Theory]
@@ -258,7 +321,9 @@ public class CrossReferenceRuleTests
     [InlineData("/Offset", "The /Prev of the cross-reference section at offset {update} is the name /Offset, not an offset.")]
     [InlineData("/Na#0Ame#1B", "The /Prev of the cross-reference section at offset {update} is the name /Na#0Ame#1B, not an offset.")]
     [InlineData("1.5", "The /Prev of the cross-reference section at offset {update} is the real number 1.5, not an offset.")]
-    [InlineData("9223372036854775808", "The /Prev of the cross-reference section at offset {update} is the real number 9.223372036854776E+18, not an offset.")]
+    [InlineData("9223372036854775808", "The /Prev of the cross-reference section at offset {update} is the real number 9223372036854776000, not an offset.")]
+    [InlineData("0.0000001", "The /Prev of the cross-reference section at offset {update} is the real number 0.0000001, not an offset.")]
+    [InlineData("-0.000000000000000000000012", "The /Prev of the cross-reference section at offset {update} is the real number -0.000000000000000000000012, not an offset.")]
     public void A_section_prev_names_where_none_is_is_not_found(string prev, string message)
     {
         var file = PdfTemplate.Build(Updated.Replace("/Prev {xref:1}", "/Prev " + prev, StringComparison.Ordinal));
@@ -521,24 +586,36 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData("x 0 ")]
-    [InlineData("2 x ")]
-    [InlineData("0 0 ")]
-    [InlineData("2147483648 0 ")]
-    [InlineData("4294967298 0 ")]
-    [InlineData("92233720368547758082 0 ")]
-    [InlineData("-2 0 ")]
-    [InlineData("2 -5 ")]
-    [InlineData("2 2147483648 ")]
-    public void An_object_stream_whose_header_lists_something_other_than_objects_cannot_be_read(string start)
+    [InlineData("x 0 ", "then something else")]
+    [InlineData("2 x ", "then something else")]
+    [InlineData("92233720368547758082 0 ", "then something else")]
+    [InlineData("0 0 ", "then object 0 at offset 0, which no member can be")]
+    [InlineData("2147483648 0 ", "then object 2147483648 at offset 0, which no member can be")]
+    [InlineData("4294967298 0 ", "then object 4294967298 at offset 0, which no member can be")]
+    [InlineData("-2 0 ", "then object -2 at offset 0, which no member can be")]
+    [InlineData("2 -5 ", "then object 2 at offset -5, which no member can be")]
+    [InlineData("2 2147483648 ", "then object 2 at offset 2147483648, which no member can be")]
+    [InlineData("2147483647 0 ", null)]
+    [InlineData("2 2147483647 ", null)]
+    public void An_object_stream_whose_header_lists_something_other_than_objects_cannot_be_read(string start, string? then)
     {
         // The header starts "2 0 ", object 2 at offset 0; the objects keep their offsets from /First. A number no object
-        // can have, or an offset no member can start at, ends the header as a stray token does, as the reader ends it.
+        // can have, or an offset no member can start at, ends the header as a stray token does, as the reader ends it; a
+        // number past a long is a real, which is a stray token.
         var file = XRefStreamBuilder().BuildWithXRefStream(
             rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: header => start + header[4..]);
 
-        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().Be(
-            "Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, then something else.");
+        var report = Validate(file);
+
+        if (then is null)
+        {
+            // The largest number and offset a member may have: the header is read, whatever else the entries then get wrong.
+            report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse();
+            return;
+        }
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().Be(
+            "Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, " + then + ".");
     }
 
     [Fact]
@@ -599,8 +676,35 @@ public class CrossReferenceRuleTests
         // Each once narrowed in silence: an offset of 2^63 or more to a negative one, a generation or a stream number to
         // an int that could name another, 4294967300 to object stream 4. The row is refused and the next ones read.
         var file = WithRows(widths, number, type, second, third);
+        using var document = PdfDocument.Open(file);
 
-        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith("is malformed: " + fault + ".");
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith("is malformed: " + fault + ".");
+        document.GetObject(new PdfObjectId(number)).Should().NotBeSameAs(PdfNull.Instance, "the rebuild finds the object");
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_refused_row_of_a_cross_reference_stream_leaves_the_rows_after_it_read()
+    {
+        // Object 3's row is refused; object stream 4's follows it and is read, so object 2, which it holds, is served with
+        // no rebuild.
+        using var document = PdfDocument.Open(WithRows([1, 4, 2], number: 3, type: 2, second: 0, third: 1));
+
+        document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(new[] { 1, 4, 4 }, 4, 1UL, null, 65535UL)]
+    [InlineData(new[] { 1, 8, 2 }, 4, 1UL, 9223372036854775807UL, 0UL)]
+    [InlineData(new[] { 1, 4, 2 }, 3, 2UL, 2147483647UL, 1UL)]
+    [InlineData(new[] { 1, 4, 8 }, 3, 2UL, 4UL, 2147483647UL)]
+    public void A_cross_reference_stream_row_at_the_edge_of_what_an_entry_can_hold_is_read(
+        int[] widths, int number, ulong type, ulong? second, ulong third)
+    {
+        // The largest generation, offset, object stream number and index an entry holds: each row is read, whatever else
+        // the entry then gets wrong.
+        Validate(WithRows(widths, number, type, second, third)).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
     }
 
     [Theory]

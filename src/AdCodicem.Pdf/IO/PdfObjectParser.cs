@@ -240,9 +240,12 @@ internal ref struct PdfObjectParser
                 // A real is a double. One past it reads as null, not as an infinity the file did not write: no valid
                 // file writes one — ISO 32000-1's Annex C advises reals within 3.403 × 10^38 — and no non-finite real
                 // reaches the document.
+                // Hostile data can hold one at every token: the number is quoted only for a report that is kept.
                 Report(
                     PdfDiagnosticCodes.SyntaxNumberOutOfRange,
-                    $"The number {FileQuote.Keyword(_memory.Span[token.Start..token.End])} is past the largest a real can hold; it was read as null.",
+                    KeepsReports
+                        ? $"The number {FileQuote.Keyword(_memory.Span[token.Start..token.End])} is beyond what a real can hold; it was read as null."
+                        : "A number is beyond what a real can hold; it was read as null.",
                     token.Start);
                 return PdfNull.Instance;
 
@@ -836,6 +839,9 @@ internal ref struct PdfObjectParser
             }
         }
     }
+
+    /// <summary>Gets a value indicating whether a report made now is kept, rather than counted and dropped.</summary>
+    private readonly bool KeepsReports => _member is { } member ? !member.Diagnostics.IsFull : _diagnostics is { IsFull: false };
 
     private readonly void Report(string code, string message, long position)
     {

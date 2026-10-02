@@ -71,8 +71,8 @@ public static class PdfValidationRuleIds
     public const string FileSizeWrong = "file.size-wrong";
 
     /// <summary>
-    /// A cross-reference section the chain names is there and cannot be read, or holds fewer rows than it
-    /// declares. <see cref="PdfValidationSeverity.Error"/>.
+    /// A cross-reference section the chain names is there and cannot be read, holds fewer rows than it declares, or
+    /// has a row that gives an object in use what no entry can hold. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefSectionMalformed = "xref.section-malformed";
 

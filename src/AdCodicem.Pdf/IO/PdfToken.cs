@@ -67,9 +67,9 @@ internal readonly ref struct PdfToken
 
     /// <summary>Gets the value of a real token: the double nearest to the decimal written.</summary>
     /// <remarks>
-    /// It is an infinity when the number is past the largest a double holds. A reader of real tokens reports it under
+    /// It is an infinity when the number is too large for a double: when it rounds past <see cref="double.MaxValue"/>. A reader of real tokens reports it under
     /// <see cref="Diagnostics.PdfDiagnosticCodes.SyntaxNumberOutOfRange"/> and reads null, as the object parser does; the
-    /// content stream readers of M07 and M08 do the same.
+    /// content stream readers M07 and M08 plan are to do the same.
     /// </remarks>
     public double Real { get; }
 

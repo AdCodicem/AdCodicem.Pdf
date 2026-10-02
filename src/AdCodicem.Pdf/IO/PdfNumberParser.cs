@@ -14,8 +14,9 @@ namespace AdCodicem.Pdf.IO;
 /// framework. Nothing allocates.
 /// </para>
 /// <para>
-/// An integer past a <see cref="long"/> reads as a real, never wrapped; a value past a <see cref="double"/> reads
-/// as an infinity, which the caller reports (<see cref="PdfToken.Real"/>).
+/// An integer past a <see cref="long"/> reads as a real, never wrapped; a value too large for a <see cref="double"/> —
+/// one that rounds past <see cref="double.MaxValue"/> — reads as an infinity, which the caller reports
+/// (<see cref="PdfToken.Real"/>).
 /// </para>
 /// </remarks>
 internal static class PdfNumberParser
@@ -46,8 +47,8 @@ internal static class PdfNumberParser
     /// <param name="text">The number's bytes, and nothing else.</param>
     /// <param name="integer">The value of an integer within a <see cref="long"/>; otherwise 0.</param>
     /// <param name="real">
-    /// The value as a double: the integer itself, or the double nearest to the decimal written — an infinity past
-    /// <see cref="double.MaxValue"/>.
+    /// The value as a double: the integer itself, or the double nearest to the decimal written — an infinity when the
+    /// decimal rounds past <see cref="double.MaxValue"/>.
     /// </param>
     /// <param name="isReal">Whether the number is a real: written with a period, or an integer past a <see cref="long"/>.</param>
     /// <returns>Whether the text is a number.</returns>

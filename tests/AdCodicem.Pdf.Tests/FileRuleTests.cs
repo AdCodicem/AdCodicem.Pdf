@@ -258,6 +258,32 @@ public class FileRuleTests
             $"The trailer at offset {PdfTemplate.OffsetOf(file, "trailer")} is not a well-formed dictionary: the reader read it despite syntax errors.");
     }
 
+    [Theory]
+    [InlineData(400, true)]
+    [InlineData(300, false)]
+    public void A_trailer_holding_a_number_beyond_what_a_real_can_hold_is_malformed(int zeros, bool malformed)
+    {
+        // A one and 400 zeros reads as null, a syntax fault that loses the entry; a one and 300 zeros, an integer past a
+        // long, reads as the real nearest to it, which is no fault.
+        var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "<< /Size 4 /Root 1 0 R /Big 1" + new string('0', zeros) + " >>");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxNumberOutOfRange).Select(entry => entry.Position)
+            .Should().Equal(malformed ? [PdfTemplate.OffsetOf(file, "/Big 1") + 5] : Array.Empty<long>());
+
+        if (malformed)
+        {
+            Single(report, PdfValidationRuleIds.FileTrailerMalformed).Message.Should().Be(
+                $"The trailer at offset {PdfTemplate.OffsetOf(file, "trailer")} is not a well-formed dictionary: the reader read it despite syntax errors.");
+        }
+        else
+        {
+            report.Findings.Should().BeEmpty();
+        }
+    }
+
     [Fact]
     public void A_trailer_whose_syntax_errors_overflow_the_diagnostics_is_still_malformed()
     {

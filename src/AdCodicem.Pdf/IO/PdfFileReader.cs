@@ -250,11 +250,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>
     /// Whether the index may lack objects the file defines: a section the chain names could not be found, a
-    /// guard stopped the chain or a table before its end, or a cross-reference stream holds fewer rows than it
-    /// declares. Only then is an object the index lacks looked for by rebuilding it; otherwise a reference to it
+    /// guard stopped the chain or a table before its end, a cross-reference stream holds fewer rows than it
+    /// declares, or a row was refused. Only then is an object the index lacks looked for by rebuilding it; otherwise a reference to it
     /// is null, as the specification says.
     /// </summary>
     private bool _indexIncomplete;
+
+    /// <summary>
+    /// The object numbers whose row a section of the chain refused, or null while none was: the sections the chain reads
+    /// after it describe older revisions, whose rows must not stand for the current one.
+    /// </summary>
+    private HashSet<int>? _refusedNumbers;
 
     public PdfFileReader(
         PdfFileSource source, PdfDiagnostics diagnostics, PdfLimitGuard guard, int cacheCapacity, bool ownsSource)
@@ -1760,17 +1766,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             if (kindToken.IsKeyword("f"u8))
             {
                 // A free row's generation serves no object: some producers give the head of the free list 65,536.
-                _xref.TryAdd(number, XRefEntry.Free);
+                AddFromChain(number, XRefEntry.Free);
             }
             else if (generationToken.Integer is >= 0 and <= PdfObjectId.MaxGeneration)
             {
-                _xref.TryAdd(number, XRefEntry.Regular(offsetToken.Integer, (int)generationToken.Integer));
+                AddFromChain(number, XRefEntry.Regular(offsetToken.Integer, (int)generationToken.Integer));
             }
             else
             {
                 // The rows after it are still in step: only this one is refused, and its object is the index's to find.
-                _indexIncomplete = true;
-                section.Fault ??= string.Create(
+                Refuse(number);
+                section.RefusedRow ??= string.Create(
                     CultureInfo.InvariantCulture,
                     $"the row for object {number}, at offset {absolute + offsetToken.Start}, gives it generation {generationToken.Integer}, outside 0 to {PdfObjectId.MaxGeneration}");
             }
@@ -1872,11 +1878,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return XRefSectionState.Malformed;
         }
 
-        var ranges = dictionary.GetArray(PdfName.Index);
+        // An /Index that is null, or names an object the file lacks, is one the dictionary does not have (7.3.7, 7.3.10).
+        var written = dictionary.GetRaw(PdfName.Index);
+        var index = written?.Resolve() is { } given and not PdfNull ? given : null;
         var size = dictionary.GetInteger(PdfName.Size);
 
         // The numbering is checked before any row is read: a section that numbers its rows wrongly gives none to believe.
-        if (NumberingFault(ranges, size) is { } numbering)
+        // Each value is resolved once, so that what is read is what was checked.
+        if (NumberingFault(written, index, size, out var subsections) is { } numbering)
         {
             section.Fault = numbering;
             return XRefSectionState.Malformed;
@@ -1890,7 +1899,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         var position = 0;
         long declared = 0;
 
-        if (ranges is null)
+        if (index is null)
         {
             // Rows past the data are not read, so a /Size past an int numbers no row past one: the data holds fewer.
             declared = size.GetValueOrDefault();
@@ -1898,13 +1907,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
         else
         {
-            for (var i = 0; i < ranges.Count; i += 2)
+            for (var i = 0; i < subsections.Length; i += 2)
             {
-                // Checked above: both are integers, and every number they give is an object number.
-                var start = (int)ranges.Resolved(i).AsInteger().GetValueOrDefault();
-                var count = (int)ranges.Resolved(i + 1).AsInteger().GetValueOrDefault();
-                declared += count;
-                ReadXRefStreamRows(data, ref position, fieldWidths, rowLength, start, count, section);
+                declared += subsections[i + 1];
+                ReadXRefStreamRows(data, ref position, fieldWidths, rowLength, subsections[i], subsections[i + 1], section);
             }
         }
 
@@ -1925,17 +1931,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>
     /// Says what is wrong with how a cross-reference stream numbers its rows — through its <c>/Index</c>, or through its
-    /// <c>/Size</c> when it has no <c>/Index</c> —, or gives null when nothing is.
+    /// <c>/Size</c> when it has no <c>/Index</c> —, or gives null when nothing is, with the first number and the count of
+    /// each subsection its <c>/Index</c> gives, which then all fit an <see cref="int"/>.
     /// </summary>
     /// <remarks>
     /// An integral real counts as an integer, as everywhere the reader asks for one. A <c>/Size</c> larger than the data's
     /// rows is no fault of numbering: the rows the data does not hold are reported as missing once it is decoded.
     /// </remarks>
-    private static string? NumberingFault(PdfArray? ranges, long? size)
+    /// <param name="written">The <c>/Index</c> as the file wrote it, which a fault describes.</param>
+    /// <param name="index">The <c>/Index</c>, resolved, or null when there is none.</param>
+    /// <param name="size">The <c>/Size</c>, when it is an integer.</param>
+    /// <param name="subsections">Each subsection's first number then its count, empty without an <c>/Index</c> or with a fault.</param>
+    private static string? NumberingFault(PdfObject? written, PdfObject? index, long? size, out int[] subsections)
     {
-        if (ranges is null)
+        subsections = [];
+
+        if (index is null)
         {
             return size is null or < 0 ? "it has no /Index, and its /Size gives no count of objects" : null;
+        }
+
+        if (index is not PdfArray ranges)
+        {
+            return $"its /Index is {DescribeValue(written ?? index)}, not an array";
         }
 
         if (ranges.Count == 0 || ranges.Count % 2 != 0)
@@ -1945,16 +1963,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 $"its /Index holds {ranges.Count} {(ranges.Count == 1 ? "value" : "values")}, not pairs of a first object number and a count of rows");
         }
 
+        var checkedSubsections = new int[ranges.Count];
+
         for (var i = 0; i < ranges.Count; i += 2)
         {
-            var startValue = ranges.Resolved(i);
-            var countValue = ranges.Resolved(i + 1);
-            var start = startValue.AsInteger();
-            var count = countValue.AsInteger();
+            var start = ranges.Resolved(i).AsInteger();
+            var count = ranges.Resolved(i + 1).AsInteger();
 
             if (start is null || count is null)
             {
-                return $"its /Index holds {DescribeValue(start is null ? startValue : countValue)} where an integer belongs";
+                return $"its /Index holds {DescribeValue(ranges[start is null ? i : i + 1])} where an integer belongs";
             }
 
             if (count is < 0 or > MaxSubsectionEntries)
@@ -1966,10 +1984,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             {
                 return string.Create(
                     CultureInfo.InvariantCulture,
-                    $"its /Index gives a subsection of {count} rows from object {start}, outside object numbers 0 to {PdfObjectId.MaxNumber}");
+                    $"its /Index gives a subsection of {count:N0} {(count == 1 ? "row" : "rows")} from object {start}, outside object numbers 0 to {PdfObjectId.MaxNumber}");
             }
+
+            checkedSubsections[i] = (int)start.Value;
+            checkedSubsections[i + 1] = (int)count.Value;
         }
 
+        subsections = checkedSubsections;
         return null;
     }
 
@@ -2011,13 +2033,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         return -1;
     }
 
-    /// <summary>Says what a value written where an offset belongs is, as the file wrote it.</summary>
+    /// <summary>Says what a value written where an offset or an integer belongs is, a real as PDF writes one.</summary>
     private static string DescribeValue(PdfObject value) => value switch
     {
         PdfReference reference => string.Create(
             CultureInfo.InvariantCulture, $"the reference {reference.Id.Number} {reference.Id.Generation} R"),
         PdfInteger integer => string.Create(CultureInfo.InvariantCulture, $"the integer {integer.Value}"),
-        PdfReal real => string.Create(CultureInfo.InvariantCulture, $"the real number {real.Value:R}"),
+        PdfReal real => "the real number " + Expanded(real.Value),
         PdfName name => "the name " + FileQuote.Name(name),
         PdfNull => "null",
         _ => $"a value of type {value.GetType().Name.Replace("Pdf", string.Empty, StringComparison.Ordinal).ToLowerInvariant()}",
@@ -2054,21 +2076,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             switch (type)
             {
                 case 0:
-                    _xref.TryAdd(number, XRefEntry.Free);
+                    AddFromChain(number, XRefEntry.Free);
                     break;
 
                 case 1 when second <= long.MaxValue && third <= PdfObjectId.MaxGeneration:
-                    _xref.TryAdd(number, XRefEntry.Regular((long)second, (int)third));
+                    AddFromChain(number, XRefEntry.Regular((long)second, (int)third));
                     break;
 
                 case 2 when second is >= 1 and <= PdfObjectId.MaxNumber && third <= int.MaxValue:
-                    _xref.TryAdd(number, XRefEntry.Compressed((int)second, (int)third));
+                    AddFromChain(number, XRefEntry.Compressed((int)second, (int)third));
                     break;
 
                 case 1 or 2:
                     // The rows after it are still in step: only this one is refused, and its object is the index's to find.
-                    _indexIncomplete = true;
-                    section.Fault ??= RowFault(number, type, second, third);
+                    Refuse(number);
+                    section.RefusedRow ??= RowFault(number, type, second, third);
                     break;
 
                 default:
@@ -2076,6 +2098,54 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Writes a real read from a file as the shortest decimal that reads back to it, with no exponent, as PDF writes
+    /// reals: 1E-07 is written 0.0000001.
+    /// </summary>
+    private static string Expanded(double value)
+    {
+        var shortest = value.ToString("R", CultureInfo.InvariantCulture);
+        var e = shortest.IndexOf('E', StringComparison.Ordinal);
+
+        if (e < 0)
+        {
+            return shortest;
+        }
+
+        var exponent = int.Parse(shortest.AsSpan(e + 1), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        var sign = shortest[0] == '-' ? "-" : string.Empty;
+        var mantissa = shortest[sign.Length..e];
+        var point = mantissa.IndexOf('.', StringComparison.Ordinal);
+        var digits = point < 0 ? mantissa : mantissa.Remove(point, 1);
+        var whole = (point < 0 ? mantissa.Length : point) + exponent;
+
+        return sign + (whole <= 0
+            ? "0." + new string('0', -whole) + digits
+            : whole >= digits.Length ? digits + new string('0', whole - digits.Length) : digits[..whole] + "." + digits[whole..]);
+    }
+
+    /// <summary>
+    /// Indexes what a row of the chain says of object <paramref name="number"/>, unless a newer section said it already or
+    /// refused its row.
+    /// </summary>
+    private void AddFromChain(int number, XRefEntry entry)
+    {
+        if (_refusedNumbers is null || !_refusedNumbers.Contains(number))
+        {
+            _xref.TryAdd(number, entry);
+        }
+    }
+
+    /// <summary>
+    /// Refuses a row of the chain for object <paramref name="number"/>: the object is left for a rebuild to find, and no
+    /// older section's row stands for it.
+    /// </summary>
+    private void Refuse(int number)
+    {
+        _indexIncomplete = true;
+        (_refusedNumbers ??= []).Add(number);
     }
 
     /// <summary>Says why a cross-reference stream's row of type 1 or 2 was refused.</summary>
@@ -2537,11 +2607,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var numberToken = lexer.Read();
             var offsetToken = lexer.Read();
 
-            if (numberToken.Kind != PdfTokenKind.Integer || offsetToken.Kind != PdfTokenKind.Integer ||
-                numberToken.Integer is <= 0 or > PdfObjectId.MaxNumber || offsetToken.Integer is < 0 or > int.MaxValue)
+            if (numberToken.Kind != PdfTokenKind.Integer || offsetToken.Kind != PdfTokenKind.Integer)
             {
                 fault = string.Create(
                     CultureInfo.InvariantCulture, $"its header lists {i} of the {count} objects its /N declares, then something else");
+                return ObjectStreamHeaderResult.Unreadable;
+            }
+
+            if (numberToken.Integer is <= 0 or > PdfObjectId.MaxNumber || offsetToken.Integer is < 0 or > int.MaxValue)
+            {
+                fault = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"its header lists {i} of the {count} objects its /N declares, then object {numberToken.Integer} at offset {offsetToken.Integer}, which no member can be");
                 return ObjectStreamHeaderResult.Unreadable;
             }
 
@@ -2602,27 +2679,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
 
         var numberStart = index + 1;
-        if (numberStart == numberEnd || numberEnd - numberStart > 10)
+        if (numberStart == numberEnd)
         {
             return false;
         }
 
-        if (!PdfNumberParser.TryParse(span[numberStart..numberEnd], out var parsed, out _, out var isReal) ||
-            isReal || parsed is <= 0 or > PdfObjectId.MaxNumber)
-        {
-            return false;
-        }
+        // Each run is judged by its value, however many zeros lead it, as the parser judges it: a header the parser would
+        // refuse, found here, would be an object no read can serve. A run of digits always parses, as an integer within a
+        // long or as a real past one.
+        _ = PdfNumberParser.TryParse(span[numberStart..numberEnd], out var parsed, out _, out var numberPastLong);
+        _ = PdfNumberParser.TryParse(span[generationStart..generationEnd], out var generation, out _, out var generationPastLong);
 
-        // A generation the parser refuses makes no header: found here, it would be an object no read can serve. A run
-        // of at most ten digits always parses, as an integer.
-        if (generationEnd - generationStart > 10)
-        {
-            return false;
-        }
-
-        _ = PdfNumberParser.TryParse(span[generationStart..generationEnd], out var generation, out _, out _);
-
-        if (generation > PdfObjectId.MaxGeneration)
+        if (numberPastLong || parsed is <= 0 or > PdfObjectId.MaxNumber || generationPastLong || generation > PdfObjectId.MaxGeneration)
         {
             return false;
         }

@@ -44,6 +44,12 @@ internal sealed class XRefSectionRecord
     /// <summary>Gets what made the section unreadable, or incomplete, in words; null when nothing did.</summary>
     public string? Fault { get; set; }
 
+    /// <summary>
+    /// Gets the first row the section refused, in words — one that gives an object in use what no entry can hold —; null
+    /// when it refused none. The rows after it were read: it is no cause of the section's being unreadable.
+    /// </summary>
+    public string? RefusedRow { get; set; }
+
     /// <summary>Gets a value indicating whether a cross-reference stream holds fewer rows than it declares.</summary>
     public bool Incomplete { get; set; }
 
@@ -90,6 +96,7 @@ internal sealed class XRefSectionRecord
         State = XRefSectionState.Relocated;
         Kind = attempt.Kind;
         Fault = attempt.Fault;
+        RefusedRow = attempt.RefusedRow;
         Incomplete = attempt.Incomplete;
         CutByLimit = attempt.CutByLimit;
         Trailer = attempt.Trailer;

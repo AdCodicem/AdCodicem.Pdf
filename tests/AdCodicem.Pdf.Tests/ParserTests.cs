@@ -275,7 +275,7 @@ public class ParserTests
         report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
         report.Position.Should().Be(3);
         report.Message.Should().Be(
-            $"The number {number[..127]} (the first 127 of {number.Length} bytes) is past the largest a real can hold; it was read as null.");
+            $"The number {number[..127]} (the first 127 of {number.Length} bytes) is beyond what a real can hold; it was read as null.");
     }
 
     [Fact]
@@ -297,6 +297,22 @@ public class ParserTests
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("179769313486231570" + new string('0', 291) + ".0"));
 
         parser.ParseObject().Should().BeOfType<PdfReal>().Which.Value.Should().Be(double.MaxValue);
+    }
+
+    [Fact]
+    public void Reports_no_number_its_double_holds_however_it_rounds()
+    {
+        // An integer past a long reads as the real nearest to it; a decimal below the smallest double rounds to 0, and
+        // one just past double.MaxValue, short of the halfway point to the next power, rounds back to it. None is a fault.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(
+            Encoding.ASCII.GetBytes("[92233720368547758085 0." + new string('0', 400) + "5 179769313486231580" + new string('0', 291) + "]"),
+            diagnostics: diagnostics);
+
+        var array = parser.ParseObject().Should().BeOfType<PdfArray>().Subject;
+
+        array.Select(value => value.Should().BeOfType<PdfReal>().Subject.Value).Should().Equal(92233720368547758085d, 0d, double.MaxValue);
+        diagnostics.Should().BeEmpty();
     }
 
     [Fact]

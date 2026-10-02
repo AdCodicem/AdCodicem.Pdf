@@ -5,7 +5,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 
 /// <summary>
 /// <see cref="PdfValidationRuleIds.XRefSectionMalformed"/>: each cross-reference section the chain names can be read
-/// whole — its subsection headers and rows, or its stream's <c>/W</c> and rows.
+/// whole — its subsection headers and rows, or its stream's <c>/W</c>, <c>/Index</c>, <c>/Size</c> and rows —, and no row
+/// of it gives an object in use what no entry can hold.
 /// </summary>
 /// <remarks>
 /// A section that is there and cannot be read, or that holds fewer rows than it declares, leaves objects out of the
@@ -33,7 +34,10 @@ internal sealed class SectionMalformedRule : IValidationRule
             }
 
             var unreadable = section.State == XRefSectionState.Malformed && section.TrailerFault == XRefTrailerFault.None;
-            var faulty = section.State is XRefSectionState.Read or XRefSectionState.Relocated && section.Fault is not null;
+            // A section read whole is faulty for what it lacks, or else for the first row it refused; one that cannot be read
+            // is so for what stopped it, which a refused row never is.
+            var readFault = section.Fault ?? section.RefusedRow;
+            var faulty = section.State is XRefSectionState.Read or XRefSectionState.Relocated && readFault is not null;
 
             if (!unreadable && !faulty)
             {
@@ -41,7 +45,8 @@ internal sealed class SectionMalformedRule : IValidationRule
             }
 
             var kind = section.Kind == XRefSectionKind.Stream ? "stream" : "table";
-            var fault = section.Fault is null ? string.Empty : ": " + section.Fault;
+            var said = unreadable ? section.Fault : readFault;
+            var fault = said is null ? string.Empty : ": " + said;
 
             context.Report(
                 this,

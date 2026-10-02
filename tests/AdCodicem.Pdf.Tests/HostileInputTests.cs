@@ -218,6 +218,30 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Quotes_no_number_beyond_what_a_real_can_hold_once_the_diagnostics_are_full(bool packed)
+    {
+        // Twenty thousand numbers of 310 digits, each read as null and reported. Past the thousand entries kept, each is
+        // counted and dropped, and the quote of its first 127 bytes is not built for nothing: quoted, they allocated 24 and
+        // 31 MB, against 4 and 8 MB once only the kept ones are.
+        var numbers = "[" + string.Concat(Enumerable.Repeat("1" + new string('0', 309) + " ", 20_000)) + "]";
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, numbers);
+        using var document = PdfDocument.Open(packed ? builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [3]) : builder.BuildClassic(rootNumber: 1));
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var array = Measure(() => document.GetObject(new PdfObjectId(3)).AsArray().Required());
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        array.Count.Should().Be(20_000);
+        document.Diagnostics.SuppressedCount.Should().BeGreaterThan(18_000);
+        allocated.Should().BeLessThan(16 * 1024 * 1024, "a number is quoted only for an entry the diagnostics keep");
+    }
+
+    [Theory]
     [InlineData("/W [99 99 99]")]
     [InlineData("/W [1 2147483647 2147483647]")]
     [InlineData("/W [1 4294967300 2]")]
@@ -257,7 +281,9 @@ public class HostileInputTests
 
         document.Catalog.GetRaw(PdfName.Pages).Should().BeOfType<PdfReal>().Which.Value.Should().Be(92233720368547758082d);
         document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
-        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken);
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken).Select(entry => entry.Position)
+            .Should().Contain(PdfTemplate.OffsetOf(bytes, "/Pages 92233720368547758082 0 R") + "/Pages 92233720368547758082 ".Length);
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxNumberOutOfRange);
     }
 
     [Theory]
