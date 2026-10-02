@@ -300,7 +300,7 @@ not a fault of the file: the rules on it report at most, as information, that it
   - One more, found while measuring the coverage: `An_index_a_rebuild_left_empty_while_the_chain_was_read_is_not_rebuilt_again`
     still passed, but no longer rebuilt anything while the chain was read, `/Index` being checked first; it now reaches
     the second rebuild it is named for again.
-- **Tests**: 140 new, 2,801 to 2,941; 4,846 with the remote corpus. Every defense was mutated and each mutant fails a
+- **Tests**: 142 new, 2,801 to 2,943; 4,848 with the remote corpus. Every defense was mutated and each mutant fails a
   test — 31 of the reader's checks, 12 off-by-one ones the review named, the parser's bounds, the two review fixes —,
   but one the parser's `fits &&` makes equivalent.
 - **Tracking.** Filed under M02, each reproduced twice, both paid with [#182] in batch 6: [#215] (integral reals read
@@ -311,8 +311,11 @@ not a fault of the file: the rules on it report at most, as information, that it
 - **Checked**:
   - the solution builds with no warning, and `dotnet format` finds nothing;
   - each of the batch's commits builds and passes alone;
-  - 2,941 unit tests, 3 skipped, and 4,846 with the remote corpus;
-  - the patch's 183 measurable lines of `src/` covered, every branch taken, on the committed corpus alone;
+  - 2,943 unit tests, 3 skipped, and 4,848 with the remote corpus;
+  - the patch's 183 measurable lines of `src/` covered on the committed corpus alone, 181 with every branch taken.
+    Codecov found four lines partial, which a local script blind to branches had counted whole: a dead fallback was
+    dropped and two tests were added; two stay partial, as `CLAUDE.md` allows — the `HasValue` checks the compiler
+    adds to arithmetic on a `long?` known to hold a value, and a defensive arm of `Expanded` no runtime takes today;
   - the integration suite against qpdf in its container, with the remote corpus, 3,266 tests: 3,260 passed and 6
     skipped where qpdf cannot walk a damaged document's pages, in 13 minutes; CI green on the pull request;
   - the site builds, 196 pages;
