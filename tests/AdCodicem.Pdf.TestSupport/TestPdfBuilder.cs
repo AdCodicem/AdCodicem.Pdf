@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 
 namespace AdCodicem.Pdf.TestSupport;
@@ -54,13 +55,18 @@ public sealed class TestPdfBuilder
     /// <param name="compressObjectStream">Writes the object stream's data Flate-compressed.</param>
     /// <param name="compressXRefStream">Writes the cross-reference stream's rows Flate-compressed.</param>
     /// <param name="objectStreamEntries">Entries added to the object stream's dictionary, such as <c>/DecodeParms 5 0 R</c>.</param>
+    /// <param name="compressionLevel">
+    /// How hard Flate compresses either stream. <see cref="CompressionLevel.NoCompression"/> writes stored blocks, the same
+    /// bytes whatever zlib the runtime carries; the others depend on it.
+    /// </param>
     public byte[] BuildWithXRefStream(
         int rootNumber,
         int[]? compressedObjects = null,
         Func<string, string>? objectStreamHeader = null,
         bool compressObjectStream = false,
         bool compressXRefStream = false,
-        string? objectStreamEntries = null)
+        string? objectStreamEntries = null,
+        CompressionLevel compressionLevel = CompressionLevel.Optimal)
     {
         using var writer = new Writer();
         writer.WriteHeader("1.5");
@@ -97,7 +103,7 @@ public sealed class TestPdfBuilder
             offsets[objectStreamNumber] = writer.Position;
             writer.WriteObject(
                 objectStreamNumber,
-                StreamBody($"/Type /ObjStm /N {packed.Count} /First {headerText.Length} {objectStreamEntries}".TrimEnd(), data, compressObjectStream));
+                StreamBody($"/Type /ObjStm /N {packed.Count} /First {headerText.Length} {objectStreamEntries}".TrimEnd(), data, compressObjectStream, compressionLevel));
         }
 
         var size = xrefNumber + 1;
@@ -130,17 +136,17 @@ public sealed class TestPdfBuilder
 
         writer.WriteObject(
             xrefNumber,
-            StreamBody($"/Type /XRef /Size {size} /W [1 4 2] /Root {rootNumber} 0 R", [.. rows], compressXRefStream));
+            StreamBody($"/Type /XRef /Size {size} /W [1 4 2] /Root {rootNumber} 0 R", [.. rows], compressXRefStream, compressionLevel));
 
         writer.WriteStartXRef(xrefOffset);
         return writer.ToArray();
 
-        static byte[] StreamBody(string entries, byte[] data, bool compress)
+        static byte[] StreamBody(string entries, byte[] data, bool compress, CompressionLevel level)
         {
             if (compress)
             {
                 using var compressed = new MemoryStream();
-                using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.Optimal))
+                using (var zlib = new ZLibStream(compressed, level))
                 {
                     zlib.Write(data);
                 }
