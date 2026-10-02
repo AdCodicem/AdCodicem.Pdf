@@ -84,7 +84,7 @@ separate types, separate severity scales, and vocabularies that never share a co
 
 1. **Indexing** — read the tail of the file (`startxref`), follow the `/Prev` chain, and build a map from
    object number to either a byte offset or a position inside an object stream. Only that map lives in
-   memory: a few dozen bytes per object, whatever the objects weigh. Indexing also records what the file's
+   memory: 52 to 108 bytes per object, whatever the objects weigh. Indexing also records what the file's
    own structure looked like — its header, what `startxref` gave, each section and its trailer as written —,
    a record per section and nothing per object, for the validation rules to judge the file as written.
 2. **Repair** — if `startxref` is wrong, the table missing, or an offset does not point at the object it

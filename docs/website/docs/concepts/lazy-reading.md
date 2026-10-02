@@ -23,9 +23,11 @@ On a file whose index and `/Root` are sound, that is all: no page is read, and n
 cross-reference streams and of the object stream holding the catalog. The search for a lost catalog parses
 objects, and a rebuild scans the whole file, but neither decodes a page's content, an image or a font.
 
-Opening allocates roughly 200 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
-costs the same to index as an empty one. An open document keeps about half of that: on the corpus's
-thousand-page journal, about 107 bytes per object, of which the map takes about 48 bytes an entry. When the
+Opening allocates 100 to 210 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
+costs the same to index as an empty one. Where in that range depends on the count: the map doubles as it grows,
+52 bytes a slot, so a count just below one of its growth steps costs 100 bytes an object and one just past it 208.
+A cross-reference stream adds the decoding of its rows, 18 to 42 bytes an object, the more the less they compress. An open document keeps the map,
+52 to 108 bytes an object: on the corpus's thousand-page journal, about 107, nearly all of it the map's. When the
 reader relocates an object or rebuilds the map once the chain is read, it keeps a copy of the map the chain gave
 as well, so that validation still judges the file's own.
 
@@ -82,6 +84,10 @@ hold.
 | Indexing | 1000 pages, ~4 MB | 229 µs | 393 KB |
 | Indexing, then reading every page | 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
 | Indexing and walking the page tree | real 1000-page file | — | 3.2 MB |
+| Indexing a classic table | generated, 300,000 objects | — | 32.6 MB |
+| Indexing a cross-reference stream whose rows Flate stores | generated, 300,000 objects | — | 45.2 MB |
 
-The last row was measured on 2026-10-01, in Release, and is enforced as a budget of 4 MB in CI: an allocation
-regression past it fails the build.
+The first two rows are BenchmarkDotNet's. The last three are measured in the test suite, in Release, after a first
+reading, and enforced as budgets in CI, so that an allocation regression past one fails the build: 4 MB for the
+journal, measured on 2026-10-01; 34.2 MB and 47.4 MB for the generated index, 5 % over what it measured on
+2026-10-02. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.
