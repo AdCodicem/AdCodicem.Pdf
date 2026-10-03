@@ -48,5 +48,21 @@ workflow here is pinned to a commit hash, NuGet dependency versions are set in o
 is analyzed by CodeQL. Lock files for the restore are not committed yet
 ([#43](https://github.com/AdCodicem/AdCodicem.Pdf/issues/43)).
 
+### Checking where a package came from
+
+Every package published from `0.2.0-preview` on, and every assembly inside it, carries a signed SLSA build
+provenance attestation, made by the workflow run that built it ([ADR 49](https://github.com/AdCodicem/AdCodicem.Pdf/blob/main/docs/adr/0049-previews-weekly-when-a-package-input-changed.md)).
+nuget.org re-signs every `.nupkg` it accepts, which changes the file's digest, but leaves the assemblies inside
+as they were built, and NuGet restores them unchanged. So a package restored from nuget.org is checked through
+its assembly, with the [GitHub CLI](https://cli.github.com/):
+
+```sh
+gh attestation verify ~/.nuget/packages/adcodicem.pdf/<version>/lib/net10.0/AdCodicem.Pdf.dll \
+  --repo AdCodicem/AdCodicem.Pdf \
+  --signer-workflow AdCodicem/AdCodicem.Pdf/.github/workflows/preview.yml
+```
+
+For a preview the signer is `preview.yml`. Earlier previews, `0.1.1-preview.*`, carry no attestation.
+
 What the library defends against, where each defense lives, and the defenses still missing are written down in
 the [threat model](https://github.com/AdCodicem/AdCodicem.Pdf/blob/main/docs/threat-model.md).

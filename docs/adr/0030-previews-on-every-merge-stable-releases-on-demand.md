@@ -6,7 +6,11 @@ Date: 2026-09-15
 
 Accepted. What it says about the documentation site — deployed with the stable release only — is
 superseded by [31](0031-versioned-documentation-stable-lines-and-the-preview.md): every preview now
-deploys its documentation beside the stable versions.
+deploys its documentation beside the stable versions. Its preview track — a preview on every merge,
+numbered by the run, from the same workflow file as the stable release — is superseded by
+[49](0049-previews-weekly-when-a-package-input-changed.md): previews are published weekly by `preview.yml`,
+when a package input changed, at the next release's version. Its stable track stands, and so does what it
+says a preview promises. The body below is kept as the record of the decision as it was taken.
 
 ## Context
 

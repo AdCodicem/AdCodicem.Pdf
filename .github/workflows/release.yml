@@ -1,30 +1,13 @@
 name: Release
 
-# Two ways out of this repository, in one workflow file because a nuget.org trusted-publishing policy is
-# tied to the file name - one policy covers both:
-#
-#   - every push to main publishes a **preview** package, so what is on main is always installable, and
-#     redeploys the site with that preview's documentation beside the stable versions (ADR 31);
-#   - a **stable release** cuts the version, changelog, tag, GitHub Release and packages, freezes the
-#     documentation of its line, and is never automatic: someone asks for it.
-#
-# Nothing is tagged or released by merging. That is deliberate: a merge should be cheap.
-#
-# A manual run does either, and defaults to the harmless one. Publishing a preview needed a merge before,
-# which is a poor reason to merge; the stable release is the choice that has to be made deliberately,
-# because it tags, writes to main and can never be taken back off nuget.org.
+# Cutting a stable release is a deliberate act, not a consequence of merging. Previews go out weekly when a
+# package input changed (preview.yml, ADR 49); this workflow is the moment a human decides those changes are a
+# release. Pushing to nuget.org cannot be undone: a package can be unlisted, never withdrawn.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
-      what:
-        description: "What to publish"
-        type: choice
-        options: [preview, stable]
-        default: preview
       dry_run:
-        description: "Stable only - work out the version and the notes, then stop; publish and tag nothing"
+        description: "Work out the version and the notes, then stop; publish and tag nothing"
         type: boolean
         default: false
 
@@ -42,121 +25,14 @@ env:
   # secret nobody can see is missing.
   NUGET_ACCOUNT: AdCodicem
 
-# A preview and a stable release must never pack the same commit at the same time.
+# One release at a time.
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  preview:
-    name: Preview package
-    # `inputs` is empty on a push, so the second test only ever decides a manual run.
-    if: github.event_name == 'push' || inputs.what == 'preview'
-    runs-on: ubuntu-latest
-    # The tests run here again, with the right to publish: as in ci.yml, a test that never ends stops the job (#193).
-    timeout-minutes: 15
-    environment: nuget
-    permissions:
-      contents: read
-      # Lets the job exchange a GitHub OIDC token for a short-lived NuGet key; nothing long-lived is
-      # stored anywhere. See docs/releasing.md.
-      id-token: write
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The whole history, because the preview version is read from the last tag.
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: Build and test
-        run: |
-          dotnet build AdCodicem.Pdf.slnx -c Release
-          dotnet test --solution AdCodicem.Pdf.slnx -c Release --no-build
-
-      # A preview says where it sits, not what it will be called: one patch above the last release, plus
-      # the run number so previews stay ordered. The stable release decides the real number - a feat takes
-      # it to the next minor instead - and a preview sorts between the two either way.
-      - name: Work out the preview version
-        id: version
-        run: |
-          set -eu
-          last="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
-          last="${last#v}"
-
-          if [ -z "$last" ]; then
-            # Nothing released yet: there is no baseline to compare the API against either.
-            echo "No release tag yet; the preview starts from 0.0.0."
-            echo "version=0.0.1-preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-            echo "last=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          major="${last%%.*}"
-          rest="${last#*.}"
-          minor="${rest%%.*}"
-          patch="${rest#*.}"
-          patch="${patch%%[-+]*}"
-
-          echo "Last release $last; preview one patch above it."
-          echo "version=$major.$minor.$((patch + 1))-preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          echo "last=$last" >> "$GITHUB_OUTPUT"
-
-      # Packed rather than repacked: --no-build would keep the assembly version of the build above, and
-      # the package would then disagree with what is inside it.
-      - name: Pack
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          LAST_RELEASE: ${{ steps.version.outputs.last }}
-        run: .github/scripts/release-pack.sh "$VERSION" patch "$LAST_RELEASE"
-
-      # The key lasts an hour and is single-use to obtain, so it is requested immediately before the push.
-      - name: Exchange the OIDC token for a short-lived NuGet key
-        id: nuget-login
-        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
-        with:
-          user: ${{ env.NUGET_ACCOUNT }}
-
-      - name: Push the preview
-        run: >
-          dotnet nuget push 'artifacts/packages/*.nupkg'
-          --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
-
-      - name: Say what was published
-        run: |
-          echo "### Preview \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Packed from \`${{ github.ref_name }}\` at \`${{ github.sha }}\`." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Published to nuget.org. It is a prerelease, so it reaches only the people who ask for" >> "$GITHUB_STEP_SUMMARY"
-          echo "prereleases. Cut the stable release from **Run workflow**, choosing \`stable\`." >> "$GITHUB_STEP_SUMMARY"
-
-  # Every preview published from main puts its documentation online, under /preview beside the stable
-  # versions. A preview packed from another branch is for trying out, not for documenting, and the Pages
-  # environment deploys from main alone.
-  preview-documentation:
-    name: Preview documentation
-    needs: preview
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/docs.yml
-    with:
-      preview_version: ${{ needs.preview.outputs.version }}
-
   stable:
     name: Stable release
-    if: github.event_name == 'workflow_dispatch' && inputs.what == 'stable'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: nuget
@@ -166,7 +42,8 @@ jobs:
       pull-requests: write
       id-token: write
     outputs:
-      commit: ${{ steps.release.outputs.commit }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -215,7 +92,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
-          set -eu
+          set -euo pipefail
           arguments=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             arguments="--dry-run"
@@ -223,18 +100,28 @@ jobs:
 
           npx --no-install semantic-release $arguments
 
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # semantic-release commits the changelog and the frozen documentation, then tags that commit: when
+          # HEAD has moved off the dispatched commit, the stable tag at HEAD is the release to document.
+          tag=""
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+            tag="$(git tag --points-at HEAD --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          fi
+          echo "Released tag: ${tag:-none}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
-  # With no preview newer than the release, the redeployed site has no preview section until the next
-  # merge publishes one.
+  # The new snapshot only exists in the release commit, and the workflow was dispatched from the commit before
+  # it, so the build is pointed at the tag: without it the site would be rebuilt without the version just
+  # released, and without a preview section, which a stable label hides.
   documentation:
     name: Documentation
     needs: stable
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.what == 'stable' && !inputs.dry_run }}
+    if: ${{ !inputs.dry_run && needs.stable.outputs.tag != '' }}
     permissions:
       contents: read
       pages: write
       id-token: write
     uses: ./.github/workflows/docs.yml
     with:
-      ref: ${{ needs.stable.outputs.commit }}
+      ref: ${{ needs.stable.outputs.tag }}
+      preview-version: ${{ needs.stable.outputs.version }}
