@@ -28,17 +28,18 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     public int SuppressedCount => _suppressed;
 
     /// <summary>
-    /// Gets the diagnostics what this instance holds is moved into once kept, whose entries count against what this one can
-    /// keep; null when it is kept as it is.
+    /// Gets the diagnostics what this instance holds is moved into once kept, which can be full before this one is; null
+    /// when it is kept as it is.
     /// </summary>
     internal PdfDiagnostics? KeptIn { get; init; }
 
     /// <summary>
-    /// Gets a value indicating whether <see cref="Capacity"/> is reached — by this instance's entries and, when it is kept
-    /// in another, by that one's —: what is added now is counted and dropped, here or once kept, so a message built only
-    /// for it need not be.
+    /// Gets a value indicating whether <see cref="Capacity"/> is reached, by this instance's entries or, when it is kept in
+    /// another, by that one's: what is added now is counted and dropped, here or once kept, so a message built only for it
+    /// need not be. The two are not summed: what is held here may be dropped on its way, as a report already kept is, and a
+    /// report must read the same whenever it is made, for a repeat of it to be known.
     /// </summary>
-    internal bool IsFull => _entries.Count + (KeptIn?.Count ?? 0) >= Capacity;
+    internal bool IsFull => _entries.Count >= Capacity || KeptIn is { IsFull: true };
 
     /// <inheritdoc/>
     public PdfDiagnostic this[int index] => _entries[index];
