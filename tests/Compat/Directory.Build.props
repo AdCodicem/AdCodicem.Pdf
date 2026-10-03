@@ -1,0 +1,37 @@
+<Project>
+
+  <!--
+    The compatibility island (ADR 48): the packages as nuget.org would serve them, installed into an application on the
+    next .NET major. Deliberately no import of the repository's Directory.Build.props, whose settings describe the code
+    that is packed (net10.0, the package metadata, the version), not an application that consumes it. This folder has
+    its own global.json, nuget.config and Directory.Packages.props for the same reason, and is in no solution: the root
+    build, `dotnet format` and the suites never see it.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+    <!--
+      Published trimmed, with the AOT analyzer on and every trim warning reported on its own: the next SDK's ILLink
+      analyzes the package as an application that trims would. A warning fails the publish.
+    -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!--
+    The version of the packages under test, read by the caller off the file names of the packages it just packed and
+    passed as -p:AdCodicemVersion=<version>. Never a floating range: Directory.Packages.props asks for exactly this
+    version, so a stale or missing package fails the restore instead of being replaced by another.
+  -->
+  <Target Name="_RequireAdCodicemVersion" BeforeTargets="_GenerateRestoreProjectSpec;CollectPackageReferences" Condition="'$(AdCodicemVersion)' == '' and '$(CompatSdkMissing)' != 'true'">
+    <Error Text="AdCodicemVersion is not set. Pass the version of the packages in artifacts/packages, read off their file names: -p:AdCodicemVersion=&lt;version&gt;." />
+  </Target>
+
+</Project>

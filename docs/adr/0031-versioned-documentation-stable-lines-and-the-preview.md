@@ -5,6 +5,9 @@ Date: 2026-09-22
 ## Status
 
 Accepted. Supersedes the documentation-site part of [30](0030-previews-on-every-merge-stable-releases-on-demand.md).
+Amended by [49](0049-previews-weekly-when-a-package-input-changed.md): the site is redeployed by every preview,
+weekly, and by a push to `main` that changed nothing a package is built from, no longer by every merge; and the
+preview's label is the version on nuget.org that describes the commit built.
 
 ## Context
 

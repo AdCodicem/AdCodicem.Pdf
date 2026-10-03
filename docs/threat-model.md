@@ -442,18 +442,32 @@ Known gaps:
 
 ## The package and its supply chain
 
-- **The core has no dependency** (invariant 1): its project references no package and no other project. Review
-  alone keeps it so ([#179]). The AOT and trimming analyzers run, and warnings fail the build. Unsafe code is off.
+- **The core has no dependency** (invariant 1): its project references no package and no other project. `ci.yml`
+  fails a pull request whose packed core declares a dependency in its nuspec; a native one, through `[DllImport]`,
+  is kept out by review alone ([#179]). The AOT and trimming analyzers run, and warnings fail the build. Unsafe code is off.
 - **Workflows** declare read-only permissions at their top — `contents: read`, with `pull-requests: read` added
   in `commits.yml`, and `read-all` in `scorecards.yml`, whose one job replaces it with the four permissions it
-  needs — and raise a permission per job where one is needed, except `docs.yml`, which grants `pages: write` and
-  `id-token: write` to the whole workflow ([#177]). Every action is pinned to a commit SHA. CI and the commit
+  needs — and raise a permission per job where one is needed. Every action is pinned to a commit SHA. CI and the commit
   checks run on `pull_request`, so a fork's pull request gets no secret and no write token. The one
-  `pull_request_target` workflow, Dependabot's auto-merge, checks out no code.
+  `pull_request_target` workflow, Dependabot's auto-merge, checks out no code, and queues only an update
+  `fetch-metadata` classifies as a patch or a minor. Every Dependabot entry waits a week before proposing a version.
 - **Publishing** uses trusted publishing ([ADR 25](adr/0025-trusted-publishing-rather-than-an-api-key.md)): a
   key valid one hour, exchanged for the job's OIDC token just before the push, and no NuGet secret stored. The
   `AdCodicem.*` prefix is reserved on nuget.org. Builds are deterministic and carry their sources' location and
   symbols.
+- **A preview is built where nothing can publish** ([ADR 49](adr/0049-previews-weekly-when-a-package-input-changed.md)).
+  `preview.yml` tests in one job and packs in another, neither holding a credential; the pack restores only the
+  packable projects under `src/` (one package, against 71 for the solution). The publish job, the only one in the
+  `nuget` environment, runs no project code: it checks the artifact against the digests the pack job output, checks
+  the set and that the plan is still current, attests every package and assembly, and pushes. The release tooling's
+  npm packages run in a job of their own, whose only outputs are a version and a release type, which the plan
+  computes again. Previews are attested; an assembly restored from nuget.org verifies with `gh attestation verify`.
+- **A stable release is built where nothing can publish, and approved before anything does.** `release.yml`
+  tests and packs in jobs with no credential, the documentation snapshot included. Its release job, in the
+  `nuget-stable` environment, waits for the reviewer, builds nothing, checks the pack job's files against their
+  digests, and runs semantic-release from the committed lock, without install scripts, beside the NuGet key and
+  the release App's token; its own `GITHUB_TOKEN` only reads. The packages and their assemblies are attested, and
+  the bundle is attached to the GitHub Release before it is published.
 - **Test data is pinned**: remote corpus documents by size and SHA-256, the Arlington model by a lock file that a
   test checks.
 - **Measured, not asserted**: OpenSSF Scorecard runs weekly and on every push to `main`. CodeQL runs as GitHub's
@@ -461,16 +475,17 @@ Known gaps:
 
 Known gaps:
 
-- [#177] The release jobs restore, build and test while holding the right to publish, and the stable one runs an
-  unlocked npm tree beside the NuGet key.
+- [#177] The benchmarks' `filter` input still reaches `run:` by template expansion, and the qpdf referee's image
+  and the commitlint action's image are pinned by tag, not by digest.
 - [#178] A branch can publish a package without review: nothing ties the `nuget` environment to `main`.
-- [#179] Nothing but review checks that the core has no dependency.
+- [#179] Only the packed nuspec is checked for a dependency of the core: not the assembly's references, a
+  `FrameworkReference` or a `[DllImport]`.
 - [#43] The NuGet restore is not locked.
-- [#41] The stable release cannot push through the ruleset, and the ruleset requires no CI check by name.
-- [#45] The release packages carry no attestation.
+- [#41] The release App on the ruleset's bypass list, and the CI checks required by name, are settings the
+  maintainer has yet to make; until then the stable release stops at its first step.
 - [#44] The project has no OpenSSF Best Practices badge.
-- [#196] Dependabot's auto-merge refuses only what it recognizes as a major bump, and nothing requires CI before the
-  merge it queues.
+- [#196] Dependabot's auto-merge queues only patches and minors, but nothing requires CI before the merge it queues
+  until the checks are required by name (#41).
 - [#195] The corpus build's Python producers are pinned by version, without hashes, and the packages they pull in are
   not pinned.
 
@@ -579,7 +594,6 @@ The last column also names the questions they leave open, which that milestone s
 [#41]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/41
 [#43]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/43
 [#44]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/44
-[#45]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/45
 [#47]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/47
 [#48]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/48
 [#49]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/49

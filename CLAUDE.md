@@ -24,6 +24,10 @@ why most other libraries' corpora could not be used; `docs/releasing.md` covers 
 `docs/threat-model.md` is required reading before opening or widening a surface a hostile input reaches —
 a parser, a decoder, a resource loader —, and is completed in the same change (#135 writes its first version).
 
+**Questions to the maintainer go through the `AskUserQuestion` tool**, never as prose at the end of a message: each
+question with its options, the recommended one first and marked so, and what each implies. Up to four questions a
+call; more take several calls.
+
 At the end of every session: update `docs/status.md` (actual state, not intentions), tick the milestone
 checklist, open an issue labeled `debt` for anything found and left, commit, push, and name in the pull
 request the issues it closes (`Closes #58`).
@@ -98,10 +102,13 @@ third-party PDFs, table of contents, bookmarks, continuous pagination).
 
 ## Development environment
 
-Claude Code web sessions: the .NET SDK is not preinstalled and Microsoft's distribution hosts are blocked
-by the network policy. The `SessionStart` hook (`.claude/scripts/setup-dotnet.sh`) installs
+Claude Code web sessions: the .NET SDK is not preinstalled, and Microsoft's distribution hosts have been blocked by
+the network policy (they answered on 2026-10-03; see below). The `SessionStart` hook (`.claude/scripts/setup-dotnet.sh`) installs
 `dotnet-sdk-10.0` from the Ubuntu archive. nuget.org is reachable and `dotnet restore` works.
 If `dotnet` is missing: `apt-get install -y --no-install-recommends dotnet-sdk-10.0`.
+The .NET 11 SDK the compatibility island needs (`tests/Compat/global.json`) is not in the Ubuntu archive; on
+2026-10-03 `builds.dotnet.microsoft.com` answered, and its `linux-x64` tarball, unpacked into a folder of its own, ran
+the island (`docs/releasing.md`, *The .NET compatibility island*).
 
 ```bash
 dotnet build AdCodicem.Pdf.slnx -c Release
@@ -162,9 +169,10 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   `guides/` (how-to), `reference/` (with the generated API under `reference/api`), `concepts/` (explanation). A page
   that mixes modes is split, and the parts link to each other. A tutorial's code is a sample under `samples/`, and a
   test holds the tutorial's code blocks and outputs to it. A milestone names its pages by section.
-- Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`) — **these
-  decide the version**: semantic-release reads them on every merge to `main`, so a malformed message
-  produces no release rather than an untidy log. CI rejects one on a pull request.
+- Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`, `ci:`) — **these
+  decide the version**: semantic-release reads them for every stable release, and the weekly preview for its
+  number (ADR 48, ADR 49), so a malformed message produces no release rather than an untidy log. CI rejects
+  one on a pull request.
 - Branches: one per session, merged into `main` through a pull request; `main` is protected by a ruleset.
 - **Tracking lives on GitHub; the roadmap stays the reference.** `docs/roadmap.md` says what the milestones
   are and where each stands, and the `Tracking` workflow mirrors it as GitHub milestones. A milestone's

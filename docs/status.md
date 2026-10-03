@@ -57,21 +57,26 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
   corpus`, last green in run 26 on 2026-10-03. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
-  `0.1.1-preview.53`, previews from `main` through trusted publishing, 1,141 downloads on 2026-10-02. The
-  `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified.
+  `0.1.1-preview.57`, one per push to `main` until [#227], through trusted publishing, 1,141 downloads on 2026-10-02.
+  The `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified. With [#227] merged, previews come
+  from `preview.yml`, weekly and on dispatch, only when a package input changed, numbered after the next release:
+  the first will be `0.2.0-preview.<N>` (ADR 49).
 - **A preview carries no guarantee** (ADR 30, 2026-09-26): an API no stable release has shipped may change or
-  go with the next merge.
+  go with the next preview.
 - **No stable release yet.** `v0.1.0` is a tag with no package behind it, by design, and the stable path has
-  never run. When it does, it will fail at its push of the `chore(release)` commit to `main` until the
-  ruleset lets GitHub Actions bypass it (T15); nothing is published when it fails.
-- **The site**, <https://adcodicem.github.io/AdCodicem.Pdf/>, is versioned (ADR 31) and redeployed by every
-  preview; before the first stable release the preview is the whole site.
+  never run. With [#227] it packs and tests without credentials, publishes from `nuget-stable` behind a reviewer,
+  pushes through a release App and attests; it waits on settings only the maintainer can make (journal of 2026-10-03,
+  *Left to the maintainer*), and stops at its first step until they are made.
+- **The site**, <https://adcodicem.github.io/AdCodicem.Pdf/>, is versioned (ADR 31). With [#227] it is redeployed by
+  every preview run, and by a push to `main` that changed no package input since the version on nuget.org (ADR 49);
+  before the first stable release the preview is the whole site.
 - **Supply chain**: OpenSSF Scorecard **7.6** on `74ce382`. What Scorecard still marks down is settings and
   people: Code-Review 0 (nothing has ever been approved by a second person), Branch-Protection 5 (T15), Maintained 0
   (the repository is younger than 90 days), Contributors 3, CII-Best-Practices 0 (T18), Signed-Releases
   unscored until a release exists (T19). What it does not measure, the threat model found in code: the release jobs
-  build and test with the right to publish ([#177]), nothing ties publishing to `main` ([#178]), and nothing but
-  review keeps the core free of dependencies ([#179]).
+  built and tested with the right to publish ([#177]), which [#227] moves into jobs without credentials; nothing ties
+  publishing to `main` but a setting of the environments ([#178]); and only the packed nuspec is checked for a
+  dependency of the core since [#227], not the assembly's references ([#179]).
 - **Codecov**: uploaded without a token; the Codecov GitHub App is installed since 2026-09-27, and reports on each
   pull request as `codecov[bot]` (#40, formerly T14).
 - **Repository settings**: the "Default" ruleset on `main` asks for a pull request with one code-owner
@@ -237,6 +242,51 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-03 — Weekly previews and versioning, outside any milestone ([#227])
+- **The question.** Apply AdCodicem.ValueObjects' preview and versioning pattern (its ADR-0009 and ADR-0010), each
+  part justified by a measurement on this repository, not copied.
+- **Measured.** 48 previews in 15 days, one per push; 20 of the 47 after the first had the same package inputs as the
+  one before, and their assemblies differ only in their version strings and module identifier (`preview.14` and
+  `.15`, 154 bytes). `0.1.1-preview.57` while the commits make the next release `0.2.0`; the number was the run's. No
+  attestation. The publishing job restored 71 packages, 610 MB, while holding `id-token: write`; `src/` restores one,
+  2.7 MB. The stable path, never run, would have pushed to `main` with `GITHUB_TOKEN`, which the ruleset refuses, and
+  with no preset the commit analyzer answers `null` on `feat!:`. On .NET 11 RC1, the unit suite rolled forward passes
+  3,100 of 3,103 with the same three skipped, and a trimmed `net11.0` application of the packed package reads the 168
+  committed documents exactly as their manifest says.
+- **Settled with the maintainer**, each as recommended: `preview.yml` (`nuget`) and `release.yml` (`nuget-stable`,
+  with a reviewer); weekly previews, and a push redeploying the site when nothing that ships changed; a breaking
+  change releases a minor while the major is 0; a release App past the ruleset; scripts for several packages from
+  now on; a compatibility island of a consumer application and the rolled-forward suite; `Build and unit tests`,
+  `Integration tests`, `Conventional commits` and `workflows` as required checks; this issue to track it.
+- **Done**: ADR 48 (one version, independent of .NET, `conventionalcommits`, the 0.x rule, Dependabot's lines, the
+  island) and ADR 49 (weekly gated previews, publish/repair/none, the pack without credentials, attestation, the
+  site), which supersedes ADR 30's preview track and amends ADR 31. Release tooling pinned in a root `package.json`.
+  Pack of `src/` only, the set checked before every push, pushes in dependency order with symbols on their own, and
+  attestation of every package and assembly. `docs.yml` called only, checking the commit it builds. actionlint and
+  shellcheck on every pull request. Dependabot: a week of cooldown, auto-merge by allow-list, and its subjects let
+  through commitlint (#196). `CLAUDE.md`: questions to the maintainer go through `AskUserQuestion`.
+- **Checked**: `next-version.mjs` against semantic-release's core, in dry run on a local remote, over the 292 commits
+  since `v0.1.0` and a made-up history of 14 — every one agrees; `preview-gate.sh` replayed over the 47 previews
+  after the first against a fake flat container — 27 *publish*, 20 *none*, as the inputs changed —, and 34 scenarios
+  over a synthetic repository of two packages (repair, recheck, report, a release, `Directory.Packages.props`, a
+  lookup that fails); `push-packages.sh` against a fake feed answering 409, 500 and listing late — 11 scenarios,
+  the trap it avoids among them: a `.nupkg` answered 409 under `--skip-duplicate` never sends its `.snupkg`; and
+  `dotnet nuget push` tries a 5xx three times. Both sets now run on every pull request (`release scripts`, in
+  `ci.yml`). actionlint and shellcheck on every commit (the first two keep the two style findings `main` already
+  had, in code the third removes); CodeQL 2.27.1's `actions-code-scanning` suite, 0 results; build, format, the unit
+  suite (3,103, 3 skipped), the integration suite skipped without Docker, the pack, the island and the site.
+- **Reviewed.** An adversarial review of the diff by a fresh agent found no defect that would fail CI, publish a
+  wrong version or leak a credential. Fixed from it: `docs.yml`'s jobs carry a status function of their own, since
+  the implicit `success()` may look past the caller to the jobs `preview.yml` skips on purpose; `release.yml`'s
+  uploads overwrite on a re-run; the pack steps compute their outputs before writing them; the gate restores and reads
+  the projects of the solution filter rather than every project under `src/`; the threat model's entry for [#179];
+  the local command of the island, which a package folder of its own keeps from testing a stale `0.1.0-alpha`; the
+  harnesses, committed rather than run once; two stale comments.
+- **Left to the maintainer**, before or right after the merge: the `preview.yml` Trusted Publishing policy (before),
+  the `nuget-stable` environment and its reviewer, both environments limited to `main` ([#178]), the release App and
+  its bypass ([#41]), the required checks ([#41], [#196]); then dispatch `preview.yml` once, check the first preview's
+  attestation, and delete the old `release.yml` policy.
 
 ### 2026-10-03 — Batch 7: the generation a rebuilt or relocated entry records ([#118])
 - **The question.** [#118]: the rebuild's scan read a header's generation to know it from the `obj` of an `endobj`,
@@ -1183,3 +1233,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#224]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/224
 [#225]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/225
 [#226]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/226
+[#227]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/227

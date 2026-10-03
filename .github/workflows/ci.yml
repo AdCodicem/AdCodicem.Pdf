@@ -66,15 +66,103 @@ jobs:
           files: TestResults/coverage.cobertura.xml
           fail_ci_if_error: false
 
+      # The packable projects under src/ only, through the solution filter preview.yml and release.yml pack
+      # with, at the version a build nobody handed one to gets (0.1.0-alpha).
       - name: Pack
-        run: dotnet pack AdCodicem.Pdf.slnx -c Release --no-build -o artifacts
+        run: dotnet pack src/AdCodicem.Pdf.Packages.slnf -c Release --no-build -o artifacts/packages
+
+      # A solution filter cannot glob: a project added under src/ and left out of it would be missing from
+      # every preview and release. Caught here, on the pull request that adds it.
+      - name: Every packable project is packed
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          core=(artifacts/packages/AdCodicem.Pdf.[0-9]*.nupkg)
+          (( ${#core[@]} == 1 )) || { echo "::error::Expected one AdCodicem.Pdf package, found ${#core[@]}." >&2; exit 1; }
+          version="$(basename "${core[0]}" .nupkg)"
+          version="${version#AdCodicem.Pdf.}"
+          ALLOW_ANY_VERSION=true .github/scripts/verify-packages.sh artifacts/packages "$version" "$(.github/scripts/package-ids.sh)"
+
+      # Invariant 1: the core has no dependency, NuGet or native. A PackageReference added under
+      # src/AdCodicem.Pdf would show here as a <dependency> of its nuspec.
+      - name: The core declares no dependency
+        run: |
+          set -euo pipefail
+          dependencies="$(unzip -p artifacts/packages/AdCodicem.Pdf.[0-9]*.nupkg '*.nuspec' | { grep -oP '<dependency\b[^>]*\bid="\K[^"]+' || true; })"
+          if [[ -n "$dependencies" ]]; then
+            echo "::error::AdCodicem.Pdf declares dependencies, which invariant 1 forbids: $(paste -sd ' ' <<<"$dependencies")" >&2
+            exit 1
+          fi
+          echo "AdCodicem.Pdf declares no dependency."
 
       - name: Upload packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nupkg
-          path: artifacts/*.nupkg
+          name: packages
+          path: artifacts/packages/*.*nupkg
           if-no-files-found: error
+
+  # The next .NET major, against what this commit packed (ADR 48). The unit suite, built for net10.0 as a consumer's
+  # dependency is, runs on the next runtime; and tests/Compat, an application on the next SDK with its own global.json,
+  # installs the package from the build job's artifact alone, publishes trimmed with the AOT analyzer and warnings as
+  # errors, and opens and validates every committed corpus document as the manifest describes it. Not a required check
+  # until .NET 11 ships (docs/releasing.md), and deliberately not continue-on-error: a break shows red.
+  compat:
+    name: compat (.NET 11)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Where tests/Compat/nuget.config looks for it, the one source it takes the package from.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: packages
+          path: artifacts/packages
+
+      # Both: the current SDK builds the unit suite as the repository's global.json asks, and the island's global.json
+      # names the next one, which setup-dotnet installs exactly while it is a prerelease.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+          global-json-file: tests/Compat/global.json
+
+      - name: Build the unit suite
+        run: dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
+
+      # With both runtimes installed, Major stays on .NET 10 and LatestMajor refuses a release candidate unless told
+      # otherwise; so the runtime the run reports is checked rather than assumed. Once .NET 11 ships, the prerelease
+      # variable goes.
+      - name: Unit tests on the next runtime
+        env:
+          DOTNET_ROLL_FORWARD: LatestMajor
+          DOTNET_ROLL_FORWARD_TO_PRERELEASE: "1"
+        run: |
+          set -euo pipefail
+          suite=tests/AdCodicem.Pdf.Tests/bin/Release/net10.0/AdCodicem.Pdf.Tests.dll
+          # Captured first, then read: a reader that stops at its first match would cut the pipe under pipefail.
+          info="$(dotnet "$suite" --info)"
+          runtime="$(awk -F ' - ' '/Runtime information:/ { print $NF; exit }' <<<"$info")"
+          echo "The unit suite runs on $runtime."
+          [[ "$runtime" == ".NET 11."* ]] || { echo "::error::The unit suite would run on '$runtime', not .NET 11." >&2; exit 1; }
+          dotnet "$suite"
+
+      # From the island's folder, so that its global.json selects the SDK. The version is the one the build job packed,
+      # read off its file name, never floated: the island restores exactly that version, from artifacts/packages only.
+      - name: The package in a trimmed application on the next SDK
+        working-directory: tests/Compat
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          core=(../../artifacts/packages/AdCodicem.Pdf.[0-9]*.nupkg)
+          (( ${#core[@]} == 1 )) || { echo "::error::Expected one AdCodicem.Pdf package, found ${#core[@]}." >&2; exit 1; }
+          version="$(basename "${core[0]}" .nupkg)"
+          version="${version#AdCodicem.Pdf.}"
+          dotnet publish -c Release -p:AdCodicemVersion="$version" -o "$RUNNER_TEMP/compat"
+          "$RUNNER_TEMP/compat/AdCodicem.Pdf.Compat" ../corpus
 
   integration:
     name: Integration tests
@@ -99,28 +187,67 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The steps docs.yml deploys with, without a label: nothing deploys this build. The site publishes the
+      # project's own documents, so a document that does not build is caught here rather than after it reaches
+      # the default branch.
+      - name: Build the site
+        uses: ./.github/actions/build-site
+
+  # preview.yml and release.yml never run on a pull request, and docs.yml only through them, so a broken edit
+  # to any of them would otherwise merge green and fail on the next Monday or at release time. actionlint
+  # checks every workflow, and shellcheck (on the runner image) every run: block in them; shellcheck then
+  # checks the scripts they call. actionlint is a downloaded binary, not an action, checked against the digest
+  # its release publishes.
+  workflows:
+    name: workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ACTIONLINT_VERSION: 1.7.12
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$archive"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
+
+      # .github/actionlint.yaml silences the one documented key actionlint does not know.
+      - name: Lint the workflows
+        run: '"$RUNNER_TEMP/actionlint" -color'
+
+      - name: Check the scripts
+        run: shellcheck .github/scripts/*.sh .github/scripts/tests/*.sh .claude/scripts/*.sh
+
+  # preview-gate.sh and push-packages.sh decide what reaches nuget.org, for good, and preview.yml runs them weekly,
+  # never on a pull request. Their scenarios run here instead, against a synthetic repository of two packages and a
+  # fake feed (ADR 49): publish, repair, none, the recheck and the report; the push's dependency order, retries,
+  # symbols and listing wait. Not a required check.
+  release-scripts:
+    name: release scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: docs/website/package-lock.json
+      - name: Preview gate scenarios
+        run: .github/scripts/tests/gate-scenarios.sh
 
-      - name: Install
-        working-directory: docs/website
-        run: npm ci
-
-      # The rules deciding which versions the site lists, and when the preview is shown.
-      - name: Test the versioning rules
-        working-directory: docs/website
-        run: npm test
-
-      # The site publishes the project's own documents, so a documentation change that does not build is
-      # caught here rather than after it reaches the default branch.
-      - name: Build
-        working-directory: docs/website
-        run: npm run build
+      - name: Push scenarios
+        run: .github/scripts/tests/push-scenarios.sh

@@ -1,0 +1,15 @@
+<Project>
+
+  <!-- Stops the lookup of the repository's Directory.Packages.props, whose pins describe the solution's projects. The
+       package under test is asked for at exactly the version just packed. No transitive pinning: a consumer has none. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!-- Only with a version: an SDK that cannot target the next major restores this folder without one (see the
+       project file), and an empty range is not a version. -->
+  <ItemGroup Condition="'$(AdCodicemVersion)' != ''">
+    <PackageVersion Include="AdCodicem.Pdf" Version="[$(AdCodicemVersion)]" />
+  </ItemGroup>
+
+</Project>

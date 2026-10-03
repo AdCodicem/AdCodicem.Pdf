@@ -1,15 +1,37 @@
 version: 2
 
+# Every entry proposes a version only once it has been public for seven days (cooldown), so that a broken or
+# compromised release has time to be pulled first; security updates ignore the cooldown and open at once.
+# github-actions takes default-days only. No framework major is ignored: the core ships no dependency, and a
+# satellite that ships one decides how it follows that framework's majors (ADR 48).
 updates:
   - package-ecosystem: nuget
     directory: "/"
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       # Minor and patch bumps arrive as one pull request, so the queue stays readable and a major bump
       # stands out as the one that needs a human.
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build"
+      include: scope
+
+  # The release tooling: semantic-release and the plugins .releaserc.json names (ADR 48).
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
     commit-message:
@@ -21,6 +43,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 3
     groups:
       minor-and-patch:
@@ -29,11 +53,17 @@ updates:
       prefix: "build"
       include: scope
 
+  # "/" covers .github/workflows; the composite action the workflows share (.github/actions/build-site) is
+  # pinned the same way and listed apart.
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]

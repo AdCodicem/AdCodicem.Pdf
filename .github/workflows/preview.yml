@@ -1,0 +1,345 @@
+name: preview
+
+# Publishes a preview of every package to nuget.org, every week and on dispatch, but only when something a
+# package is built from changed since the version nuget.org has from the nearest commit: all the packages at
+# one version, or none. The version is the one semantic-release would give the next stable release, suffixed
+# -preview.<commits since the last stable tag>. A push to main publishes nothing: it redeploys the site when
+# no package input changed since that version, so that the project documents stay current and the preview
+# documentation keeps describing a package someone can install. Stable releases are cut by hand
+# (release.yml). docs/adr/0049-previews-weekly-when-a-package-input-changed.md has the reasoning.
+on:
+  schedule:
+    # Monday 07:15 in Paris all year round: GitHub evaluates the expression in that time zone, so summer
+    # time does not move it. Not on the hour, when scheduled runs are most often delayed.
+    - cron: "15 7 * * 1"
+      timezone: Europe/Paris
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One run at a time, never cut short: a push stopped halfway is exactly the partial set the next run has to
+# complete. Runs that arrive meanwhile wait their turn (queue: max) instead of replacing one another: by
+# default a later run would cancel the one pending, a push the Monday run. A stale run is stopped by the
+# plan's ancestry check or by the publish job's recheck.
+concurrency:
+  group: preview
+  cancel-in-progress: false
+  queue: max
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # The npm packages semantic-release's commit analyzer needs run in a job of their own, whose only outputs
+  # are two strings: no third-party JavaScript shares a machine with the decision of which commit gets
+  # tested, packed and published. The plan job takes the release type from them, and checks the version
+  # against it. A push publishes nothing, and needs no version.
+  version:
+    name: compute the version
+    # The nuget environment deploys from main only. A dispatch from another branch stops here, rather than
+    # after the tests.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      preview-version: ${{ steps.next.outputs.preview_version }}
+      release-type: ${{ steps.next.outputs.release_type }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tags and every commit since the last stable one.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # The commit analyzer semantic-release itself loads, at the version package-lock.json pins. Nothing it
+      # installs runs a script.
+      - name: Install release tooling
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Next version
+        id: next
+        run: |
+          set -euo pipefail
+          node .github/scripts/next-version.mjs | tee -a "$GITHUB_OUTPUT"
+
+  plan:
+    name: decide what to publish
+    needs: version
+    # On a push the version job is skipped on purpose; anywhere else it must have succeeded.
+    if: >-
+      ${{ !cancelled() && github.ref == 'refs/heads/main' &&
+      (needs.version.result == 'success' || (github.event_name == 'push' && needs.version.result == 'skipped')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      mode: ${{ steps.gate.outputs.mode }}
+      ref: ${{ steps.gate.outputs.ref }}
+      version: ${{ steps.gate.outputs.version }}
+      base-version: ${{ steps.gate.outputs.base-version }}
+      docs-ref: ${{ steps.gate.outputs.docs-ref }}
+      docs-version: ${{ steps.gate.outputs.docs-version }}
+      release-type: ${{ steps.pack-args.outputs.release-type }}
+      last-release: ${{ steps.pack-args.outputs.last-release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tags, and the commit each nuspec names, which the gate diffs against HEAD.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      # For a publish, the gate takes RELEASE_TYPE only as major, minor or patch, and computes the version
+      # again from the tags and the commits since the last stable one: NEXT_VERSION must be that version. On
+      # a push it only says whether the site may be redeployed.
+      - name: Did a package input change?
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          NEXT_VERSION: ${{ needs.version.outputs.preview-version }}
+          RELEASE_TYPE: ${{ needs.version.outputs.release-type }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == push ]]; then
+            .github/scripts/preview-gate.sh --site
+          else
+            .github/scripts/preview-gate.sh
+          fi
+
+      # A repair completes a version nuget.org already partly has: it was held to its baseline when it was
+      # first packed. Computed in a step, since an expression cannot yield an empty string from
+      # `cond && '' || x`.
+      - name: Pack arguments
+        id: pack-args
+        env:
+          MODE: ${{ steps.gate.outputs.mode }}
+          # Checked by the gate, for a publish, the one mode that uses it.
+          RELEASE_TYPE: ${{ needs.version.outputs.release-type }}
+          LAST_RELEASE: ${{ steps.gate.outputs.last-stable }}
+        run: |
+          set -euo pipefail
+          if [[ "$MODE" == repair ]]; then
+            echo "release-type=repair" >> "$GITHUB_OUTPUT"
+            echo "last-release=" >> "$GITHUB_OUTPUT"
+          else
+            # No commit that releases anything: the version is the next patch, and so is the API check.
+            echo "release-type=${RELEASE_TYPE:-patch}" >> "$GITHUB_OUTPUT"
+            echo "last-release=$LAST_RELEASE" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: build and test
+    needs: plan
+    if: github.event_name != 'push' && needs.plan.outputs.mode != 'none'
+    runs-on: ubuntu-latest
+    # The unit and integration suites one after the other: ci.yml gives each fifteen minutes (#193).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.ref }}
+          # The history down to the commit the run started on, for the check below.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The plan's ref is HEAD, or for a repair one of its ancestors; never anything else, whatever the plan
+      # job printed.
+      - name: The commit is on main
+        env:
+          REF: ${{ needs.plan.outputs.ref }}
+        run: git merge-base --is-ancestor "$REF" "$GITHUB_SHA"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build
+        run: dotnet build AdCodicem.Pdf.slnx -c Release
+
+      - name: Unit tests
+        run: dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release --no-build
+
+      # The independent referees run in containers, on the runner's Docker daemon.
+      - name: Integration tests
+        run: dotnet test --project tests/AdCodicem.Pdf.IntegrationTests/AdCodicem.Pdf.IntegrationTests.csproj -c Release --no-build
+
+  # Restores, builds and packs the packable projects under src/ and nothing else (src/AdCodicem.Pdf.Packages.slnf):
+  # no test project, no Testcontainers, no comparison library in the job whose output is published.
+  pack:
+    name: pack
+    needs: plan
+    if: github.event_name != 'push' && needs.plan.outputs.mode != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      ids: ${{ steps.pack.outputs.ids }}
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.ref }}
+          # The history down to the commit the run started on, for the check below.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: The commit is on main
+        env:
+          REF: ${{ needs.plan.outputs.ref }}
+        run: git merge-base --is-ancestor "$REF" "$GITHUB_SHA"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Pack
+        id: pack
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          RELEASE_TYPE: ${{ needs.plan.outputs.release-type }}
+          LAST_RELEASE: ${{ needs.plan.outputs.last-release }}
+        run: |
+          set -euo pipefail
+          .github/scripts/release-pack.sh "$VERSION" "$RELEASE_TYPE" "$LAST_RELEASE"
+          # Computed before they are written: a failure inside "$( )" in an echo would not stop the step.
+          ids="$(.github/scripts/package-ids.sh | paste -sd ' ' -)"
+          # The digests travel as a job output, which only this job writes: the publish job checks the
+          # artifact against them before attesting it.
+          sha256="$(cd artifacts/packages && sha256sum -- *.*nupkg | base64 -w0)"
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      # Named after the version, so that the files of a run can be found again. The publish job downloads it
+      # by the id this step returns, not by name: any job of the run can delete an artifact by name and
+      # upload another, and the test job runs third-party code beside this one. overwrite, for "Re-run all
+      # jobs", which uploads the same name again in the same run.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload
+        with:
+          name: packages-${{ needs.plan.outputs.version }}
+          path: artifacts/packages/*.*nupkg
+          if-no-files-found: error
+          overwrite: true
+
+  publish:
+    name: publish to nuget.org
+    needs: [plan, test, pack]
+    # No status function, so success() is implied: plan, test and pack must all have succeeded.
+    if: github.event_name != 'push' && needs.plan.outputs.mode != 'none'
+    runs-on: ubuntu-latest
+    # The push, then up to 30 minutes for nuget.org to list it.
+    timeout-minutes: 60
+    environment: nuget
+    permissions:
+      contents: read
+      # Trusted Publishing, and the Sigstore certificate of the attestation.
+      id-token: write
+      attestations: write
+    steps:
+      # The scripts at the commit the run was started on, the same the plan ran, rather than at the packed
+      # commit; the whole history, for the recheck below.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.pack.outputs.artifact-id }}
+          path: packages
+
+      # nuget.org takes no package back, so the whole set is checked once more, as it is about to be pushed:
+      # the bytes the pack job produced, one version of the X.Y.Z-preview.N shape, every packable project with
+      # its symbols and nothing else.
+      - name: Check the set
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          IDS: ${{ needs.pack.outputs.ids }}
+          SHA256: ${{ needs.pack.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]] ||
+            { echo "::error::'$VERSION' is not a preview version." >&2; exit 1; }
+          base64 -d <<<"$SHA256" | (cd packages && sha256sum --check --strict)
+          .github/scripts/verify-packages.sh packages "$VERSION" "$IDS"
+
+      # "Re-run failed jobs" on an old run reuses its plan. If nuget.org has moved on since -- a later run
+      # published a newer commit -- pushing this one would add a stale version, so the run stops here instead.
+      - name: Is the plan still current?
+        env:
+          GATE_REF: ${{ needs.plan.outputs.ref }}
+          PACKAGE_IDS: ${{ needs.pack.outputs.ids }}
+          EXPECT_BASE: ${{ needs.plan.outputs.base-version }}
+          EXPECT_VERSION: ${{ needs.plan.outputs.version }}
+        run: .github/scripts/preview-gate.sh --recheck
+
+      - name: Extract the assemblies
+        run: .github/scripts/package-assemblies.sh packages assemblies
+
+      # Before the push, so that nothing reaches nuget.org unattested. The assemblies are subjects too:
+      # nuget.org re-signs a .nupkg, which changes its digest, but leaves the files inside as they were packed.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            packages/*.nupkg
+            packages/*.snupkg
+            assemblies/**/*.dll
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      # Last before the push: the key expires an hour after it is issued. `user` is the nuget.org account
+      # that owns the Trusted Publishing policy (docs/releasing.md); it is public, not a secret.
+      - name: NuGet login (OIDC -> temporary API key)
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        id: login
+        with:
+          user: AdCodicem
+
+      # nuget.org has no transaction: a push that stops midway leaves the version on some packages only. The
+      # script pushes dependencies first, retries, and pushes only what nuget.org lacks, so "Re-run failed
+      # jobs" or the next run (preview-gate.sh, repair) completes the set at the same version. It then waits
+      # until nuget.org lists every package and serves every symbol package, so that the next run, the
+      # documentation label and release.yml's check all read a nuget.org that has caught up.
+      - name: Push
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+          NUGET_LIST_TIMEOUT: 1800
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: .github/scripts/push-packages.sh packages "$VERSION"
+
+  # Redeploys the site, labeled with the version on nuget.org that describes the commit it builds. On the
+  # schedule and on dispatch, after every run that decided, published or not; on a push, only when nothing
+  # a package is built from changed since that version, so that /preview/ never describes a main nobody can
+  # install. Never after a failed or cancelled job.
+  docs:
+    name: publish documentation
+    needs: [plan, test, pack, publish]
+    if: >-
+      ${{ !cancelled() && needs.plan.result == 'success' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      (github.event_name != 'push' || needs.plan.outputs.mode == 'none') }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
+    with:
+      ref: ${{ needs.plan.outputs.docs-ref }}
+      preview-version: ${{ needs.plan.outputs.docs-version }}

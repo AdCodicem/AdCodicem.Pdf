@@ -76,8 +76,8 @@ validator. Everything else is planned, in the order `docs/roadmap.md` gives.
 | `AdCodicem.Pdf.Signing` | PAdES signing, long-term signatures, signature validation | Planned, M26 |
 | `AdCodicem.Pdf.Docx` | DOCX to HTML | Planned, M31 |
 
-Every merge into `main` publishes a preview to nuget.org, so the current state of the library is always
-installable:
+A preview of `main` is published to nuget.org every week when something that ships has changed, so the
+current state of the library is always installable:
 
 ```bash
 dotnet add package AdCodicem.Pdf --prerelease
@@ -86,6 +86,16 @@ dotnet add package AdCodicem.Pdf --prerelease
 **A preview carries no guarantee.** Its API, its behavior and any of its features may change or disappear
 in the next preview, without notice. Compatibility promises hold between stable releases only; if you
 depend on a preview, pin its exact version.
+
+### Supported frameworks
+
+Every package carries one version, which follows its own API and never the major of .NET
+([ADR 48](docs/adr/0048-one-version-for-every-package-independent-of-dotnet.md)). A package targets `net10.0`, so it
+installs on .NET 10 and on any later version.
+
+| Package | Built for | Tested on | Next major |
+|---|---|---|---|
+| `AdCodicem.Pdf` | `net10.0` | .NET 10 | .NET 11 release candidate: the unit suite on its runtime, and the package in a trimmed `net11.0` application, on every change |
 
 ## Building
 

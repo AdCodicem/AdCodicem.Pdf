@@ -52,9 +52,10 @@ Versions and releases are generated from commit history, so commit messages must
 [optional footer(s)]
 ```
 
-Common types: `feat` (bumps minor), `fix` (bumps patch), `docs`, `perf`, `refactor`, `test`, `build`,
-`chore` (no release). A breaking change is marked with `!` after the type, or a `BREAKING CHANGE:`
-footer, and bumps the major version.
+Common types: `feat` (bumps minor), `fix` and `perf` (bump patch), `docs`, `refactor`, `test`, `build`,
+`ci`, `chore` (no release). A breaking change is marked with `!` after the type, or a `BREAKING CHANGE:`
+footer, and bumps the minor while the version is `0.x`, the major after
+([ADR 48](docs/adr/0048-one-version-for-every-package-independent-of-dotnet.md)).
 
 ```
 feat(reader): resolve object streams lazily
@@ -68,9 +69,10 @@ would silently produce no release.
 An issue a commit advances is named in its footer, `Refs #58`, not in its subject; the pull request says
 `Closes #58` for each issue it completes, so that the merge closes it.
 
-Merging does not release. A merge into `main` publishes a **preview** package, so a change is installable
-as soon as it lands; a stable release is a deliberate, manual run of the `Release` workflow, and that is
-what writes the changelog and the tag. [`docs/releasing.md`](docs/releasing.md) has the detail.
+Merging does not release. A **preview** package is published every week when something that ships has
+changed since the last one, and on demand, so a change is installable within days of landing; a stable
+release is a deliberate, manual run of the `Release` workflow, and that is what writes the changelog and the
+tag. [`docs/releasing.md`](docs/releasing.md) has the detail.
 
 A preview carries no guarantee: an API that no stable release has shipped may be reshaped or withdrawn by
 the next merge, and a preview already on nuget.org is not a reason to keep it.

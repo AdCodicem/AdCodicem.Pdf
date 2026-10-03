@@ -42,10 +42,17 @@
     <!-- Fails the build on an accidental breaking API change. The baseline is supplied by the release
          pipeline as the version last actually published, so it is a no-op until there is one. -->
     <EnablePackageValidation>true</EnablePackageValidation>
-    <!-- A build nobody handed a version to is not a release build. Both release paths pass -p:Version
-         explicitly - a preview as 0.1.1-preview.42, a stable release as the number semantic-release
-         worked out - and an explicit Version overrides prefix and suffix alike. -->
+    <!-- A build nobody handed a version to is not a release build. release-pack.sh passes -p:Version
+         explicitly - a preview as 0.2.0-preview.292, a stable release as the number semantic-release
+         works out - and an explicit Version overrides prefix and suffix alike. -->
     <VersionSuffix Condition="'$(Version)' == ''">alpha</VersionSuffix>
+  </PropertyGroup>
+
+  <!-- release-pack.sh holds each package to the API of the last release, except one nuget.org does not have at
+       that version - a package added since -, whose baseline would fail to restore. It passes the version, and
+       the projects to leave out by project name, which is known at this point; PackageId is defaulted later. -->
+  <PropertyGroup Condition="'$(ReleaseBaselineVersion)' != '' and !$([System.String]::Copy(' $(ProjectsWithoutBaseline) ').Contains(' $(MSBuildProjectName) '))">
+    <PackageValidationBaselineVersion>$(ReleaseBaselineVersion)</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(IsPackable)' == 'true'">
