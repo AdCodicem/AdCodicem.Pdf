@@ -66,14 +66,40 @@ jobs:
           files: TestResults/coverage.cobertura.xml
           fail_ci_if_error: false
 
+      # The packable projects under src/ only, through the solution filter preview.yml and release.yml pack
+      # with, at the version a build nobody handed one to gets (0.1.0-alpha).
       - name: Pack
-        run: dotnet pack AdCodicem.Pdf.slnx -c Release --no-build -o artifacts
+        run: dotnet pack src/AdCodicem.Pdf.Packages.slnf -c Release --no-build -o artifacts/packages
+
+      # A solution filter cannot glob: a project added under src/ and left out of it would be missing from
+      # every preview and release. Caught here, on the pull request that adds it.
+      - name: Every packable project is packed
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          core=(artifacts/packages/AdCodicem.Pdf.[0-9]*.nupkg)
+          (( ${#core[@]} == 1 )) || { echo "::error::Expected one AdCodicem.Pdf package, found ${#core[@]}." >&2; exit 1; }
+          version="$(basename "${core[0]}" .nupkg)"
+          version="${version#AdCodicem.Pdf.}"
+          ALLOW_ANY_VERSION=true .github/scripts/verify-packages.sh artifacts/packages "$version" "$(.github/scripts/package-ids.sh)"
+
+      # Invariant 1: the core has no dependency, NuGet or native. A PackageReference added under
+      # src/AdCodicem.Pdf would show here as a <dependency> of its nuspec.
+      - name: The core declares no dependency
+        run: |
+          set -euo pipefail
+          dependencies="$(unzip -p artifacts/packages/AdCodicem.Pdf.[0-9]*.nupkg '*.nuspec' | { grep -oP '<dependency\b[^>]*\bid="\K[^"]+' || true; })"
+          if [[ -n "$dependencies" ]]; then
+            echo "::error::AdCodicem.Pdf declares dependencies, which invariant 1 forbids: $(paste -sd ' ' <<<"$dependencies")" >&2
+            exit 1
+          fi
+          echo "AdCodicem.Pdf declares no dependency."
 
       - name: Upload packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nupkg
-          path: artifacts/*.nupkg
+          name: packages
+          path: artifacts/packages/*.*nupkg
           if-no-files-found: error
 
   integration:

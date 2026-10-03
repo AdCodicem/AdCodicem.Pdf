@@ -98,15 +98,33 @@ the analyzer's `{ "breaking": true, "release": "minor" }` rule with `{ "breaking
 
 That tag has **no package behind it**: nothing was ever published as `0.1.0`. It matters because package
 validation compares the public API with the last release, downloads that baseline from nuget.org, and fails
-the build with `NU1101` when nuget.org does not have it. Both release paths therefore ask
-`.github/scripts/published-baseline.sh` for the baseline instead of trusting the tag: it returns the last
-release's version only if nuget.org has a package for it, returns nothing when nothing has been published
-yet, and fails the run when nuget.org cannot be asked — a compatibility check that quietly switches itself
-off on a network error is not a check.
+the build with `NU1101` when nuget.org does not have it. Package validation holds a patch, and a minor from
+1.0 on, to the last release; a major breaks on purpose, and so does a minor below 1.0, so neither is held to
+it. When it applies, `.github/scripts/release-pack.sh` asks nuget.org, package by package, whether the last
+release exists, and packs the ones it lacks — the tag above, or a package added since — without a baseline,
+through `ReleaseBaselineVersion` and `ProjectsWithoutBaseline` in `Directory.Build.props`. It fails the run
+when nuget.org cannot be asked: a compatibility check that quietly switches itself off on a network error is
+not a check.
+
+### What is packed
+
+Only the packable projects under `src/`, through the solution filter `src/AdCodicem.Pdf.Packages.slnf`: no
+test, benchmark, sample or tool project is restored in the job whose output is published. Packing `src/`
+restores one package, 2.7 MB (`Microsoft.NET.ILLink.Tasks`, which the SDK adds for trimming); the whole
+solution restored 71, 610 MB, iText, PDFsharp, Testcontainers and BenchmarkDotNet among them. A solution
+filter cannot glob, so `ci.yml` checks on every pull request that every packable project under `src/` is
+packed (`.github/scripts/package-ids.sh`, `verify-packages.sh`), and that the core's nuspec declares no
+dependency (invariant 1).
+
+`release-pack.sh` packs every release, preview or stable, and `verify-packages.sh` checks the set before
+anything is pushed: one package per packable project, all at the version asked for, in the file name and in
+the nuspec, each with its `.snupkg`, and nothing else.
 
 `VersionPrefix` in `Directory.Build.props` only matters for a build nobody handed a version to — a local
 `dotnet pack` gives `0.1.0-alpha`, and the `-alpha` is there to make an accidentally published local build
-obvious. Both release paths pass `-p:Version` explicitly, which overrides prefix and suffix alike.
+obvious. `release-pack.sh` passes `-p:Version` explicitly, which overrides prefix and suffix alike. A version
+lost on the way would therefore not fail the pack, it would pack `0.1.0-alpha`: that is what the check of the
+set catches.
 
 ## Publishing: trusted publishing, not API keys
 

@@ -94,7 +94,7 @@ jobs:
             # Nothing released yet: there is no baseline to compare the API against either.
             echo "No release tag yet; the preview starts from 0.0.0."
             echo "version=0.0.1-preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-            echo "baseline=" >> "$GITHUB_OUTPUT"
+            echo "last=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -104,22 +104,17 @@ jobs:
           patch="${rest#*.}"
           patch="${patch%%[-+]*}"
 
-          # The API is compared with the last release only if a package exists for it: a tag alone is
-          # not one, and package validation fails the build on a baseline nuget.org does not have.
-          baseline="$(sh .github/scripts/published-baseline.sh "$last")"
-
           echo "Last release $last; preview one patch above it."
           echo "version=$major.$minor.$((patch + 1))-preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
+          echo "last=$last" >> "$GITHUB_OUTPUT"
 
       # Packed rather than repacked: --no-build would keep the assembly version of the build above, and
       # the package would then disagree with what is inside it.
       - name: Pack
-        run: >
-          dotnet pack AdCodicem.Pdf.slnx -c Release
-          -p:Version=${{ steps.version.outputs.version }}
-          -p:PackageValidationBaselineVersion=${{ steps.version.outputs.baseline }}
-          -o artifacts
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          LAST_RELEASE: ${{ steps.version.outputs.last }}
+        run: .github/scripts/release-pack.sh "$VERSION" patch "$LAST_RELEASE"
 
       # The key lasts an hour and is single-use to obtain, so it is requested immediately before the push.
       - name: Exchange the OIDC token for a short-lived NuGet key
@@ -130,7 +125,7 @@ jobs:
 
       - name: Push the preview
         run: >
-          dotnet nuget push 'artifacts/*.nupkg'
+          dotnet nuget push 'artifacts/packages/*.nupkg'
           --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate

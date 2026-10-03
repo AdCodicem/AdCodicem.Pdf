@@ -1,0 +1,8 @@
+{
+  "solution": {
+    "path": "../AdCodicem.Pdf.slnx",
+    "projects": [
+      "src/AdCodicem.Pdf/AdCodicem.Pdf.csproj"
+    ]
+  }
+}
