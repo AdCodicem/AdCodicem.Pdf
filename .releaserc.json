@@ -20,8 +20,8 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "baseline=\"$(sh .github/scripts/published-baseline.sh ${lastRelease.version || ''})\" && dotnet pack AdCodicem.Pdf.slnx -c Release -p:Version=${nextRelease.version} -p:PackageValidationBaselineVersion=\"$baseline\" -o artifacts && npm --prefix docs/website ci && npm --prefix docs/website run snapshot -- ${nextRelease.version}",
-        "publishCmd": "dotnet nuget push 'artifacts/*.nupkg' --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate"
+        "prepareCmd": ".github/scripts/release-pack.sh ${nextRelease.version} ${nextRelease.type} ${lastRelease.version || ''} && npm --prefix docs/website ci && npm --prefix docs/website run snapshot -- ${nextRelease.version}",
+        "publishCmd": "dotnet nuget push 'artifacts/packages/*.nupkg' --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate"
       }
     ],
     [
@@ -40,7 +40,7 @@
     [
       "@semantic-release/github",
       {
-        "assets": [{ "path": "artifacts/*.nupkg", "label": "NuGet packages" }]
+        "assets": [{ "path": "artifacts/packages/*.nupkg", "label": "NuGet packages" }]
       }
     ]
   ]
