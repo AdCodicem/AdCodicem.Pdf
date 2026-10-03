@@ -157,6 +157,36 @@ public class PropertyTests
     }
 
     [Fact]
+    public void What_a_window_reports_of_its_syntax_the_whole_data_reports_first_in_the_same_order()
+    {
+        // ADR 34: a window that is not the end of the data reports nothing of the token its edge cuts, nor of what follows
+        // once the parse met the edge; what it met before the edge is the data's, and the whole data reports it too, first.
+        // The syntax is drawn from fragments of PDF's, so that containers, strings, names, references and endobj meet the
+        // edge at every byte.
+        var fragments = Gen.Elements(
+            "[", "]", "<<", ">>", "(", ")", "<", ">", "/A", "/B#2", "#", "1", "0", " ", "R", "endobj", "true", "\\", "%x\n", "\n", "41", "x", "stream\n");
+        var cases =
+            from count in Gen.Choose(1, 16)
+            from parts in Gen.ArrayOf(fragments, count)
+            let text = string.Concat(parts)
+            from cut in Gen.Choose(0, text.Length)
+            select (text, cut);
+
+        // Each case parses a few dozen bytes twice: ten times the cases of a property cost less than one of the others.
+        Check.One(Settings.WithMaxTest(10 * Cases), Prop.ForAll(cases.ToArbitrary(), drawn =>
+        {
+            var bytes = Encoding.ASCII.GetBytes(drawn.text);
+            var whole = new PdfDiagnostics();
+            var window = new PdfDiagnostics();
+            _ = new PdfObjectParser(bytes, diagnostics: whole).ParseObject();
+            _ = new PdfObjectParser(bytes.AsMemory(0, drawn.cut), diagnostics: window, endsData: false).ParseObject();
+
+            var kept = window.Where(entry => entry.Code.StartsWith("syntax.", StringComparison.Ordinal)).ToList();
+            return whole.Where(entry => entry.Code.StartsWith("syntax.", StringComparison.Ordinal)).Take(kept.Count).SequenceEqual(kept);
+        }));
+    }
+
+    [Fact]
     public void A_text_string_survives_being_written_and_read_back()
     {
         // An unpaired surrogate is not text — no encoding round-trips one — so it sits outside this

@@ -280,6 +280,10 @@ internal ref struct PdfObjectParser
             case PdfTokenKind.Integer:
                 return ParseIntegerOrReference(token);
 
+            // A token a window's edge cut is the guard's, or the next window's, to judge: nothing is reported of it.
+            case PdfTokenKind.Real when !double.IsFinite(token.Real) && AtWindowEdge(token):
+                return PdfNull.Instance;
+
             case PdfTokenKind.Real when !double.IsFinite(token.Real):
                 // A real is a double. One past it reads as null, not as an infinity the file did not write: no valid
                 // file writes one — ISO 32000-1's Annex C advises reals within 3.403 × 10^38 — and no non-finite real
@@ -323,7 +327,11 @@ internal ref struct PdfObjectParser
                 return PdfNull.Instance;
 
             default:
-                Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A token was found where a value was expected.", token.Start);
+                if (!AtWindowEdge(token))
+                {
+                    Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A token was found where a value was expected.", token.Start);
+                }
+
                 return PdfNull.Instance;
         }
     }
@@ -384,7 +392,11 @@ internal ref struct PdfObjectParser
                 // A dictionary end inside an array means the file is confused; stopping here keeps the
                 // damage local instead of swallowing the rest of the document into this array.
                 case PdfTokenKind.DictionaryEnd:
-                    Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "An array was closed by a dictionary end.", token.Start);
+                    if (!AtWindowEdge(token))
+                    {
+                        Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "An array was closed by a dictionary end.", token.Start);
+                    }
+
                     return array;
 
                 // An endobj where an element should be ends the object, the array with it, as PDFBox and pdfium read it:
@@ -443,7 +455,11 @@ internal ref struct PdfObjectParser
 
             if (keyToken.Kind != PdfTokenKind.Name)
             {
-                Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key was not a name.", keyToken.Start);
+                if (!AtWindowEdge(keyToken))
+                {
+                    Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key was not a name.", keyToken.Start);
+                }
+
                 continue;
             }
 
@@ -453,7 +469,11 @@ internal ref struct PdfObjectParser
             if (valueToken.Kind is PdfTokenKind.DictionaryEnd)
             {
                 // A key with no value: the specification says an absent value is null.
-                Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key had no value.", valueToken.Start);
+                if (!AtWindowEdge(valueToken))
+                {
+                    Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key had no value.", valueToken.Start);
+                }
+
                 break;
             }
 
@@ -1002,11 +1022,17 @@ internal ref struct PdfObjectParser
     }
 
     /// <summary>
+    /// Determines whether <paramref name="token"/> reaches the edge of a window that is not the end of the data, which may
+    /// have cut it, or comes after the parse met that edge — a look-ahead the edge cut reads the tokens before it again,
+    /// for what they are not —: what it seems to be is no fault of the file's.
+    /// </summary>
+    private readonly bool AtWindowEdge(PdfToken token) => !_endsData && (_truncated || token.End >= _memory.Length);
+
+    /// <summary>
     /// Determines whether <paramref name="token"/> is <c>endobj</c>, and whole: one that reaches the end of a buffer that is
     /// a window's edge may be the start of a longer keyword.
     /// </summary>
-    private readonly bool IsEndObj(PdfToken token) =>
-        token.IsKeyword("endobj"u8) && (_endsData || token.End < _memory.Length);
+    private readonly bool IsEndObj(PdfToken token) => token.IsKeyword("endobj"u8) && !AtWindowEdge(token);
 
     /// <summary>Gets a value indicating whether a report made now is kept, rather than counted and dropped.</summary>
     private readonly bool KeepsReports => _member is { } member ? !member.Diagnostics.IsFull : _diagnostics is { IsFull: false };
