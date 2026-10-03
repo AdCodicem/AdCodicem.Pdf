@@ -301,7 +301,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         _source = source;
         _diagnostics = diagnostics;
         _guard = guard;
-        _pending = new PdfDiagnostics { Capacity = diagnostics.Capacity };
+        _pending = new PdfDiagnostics { Capacity = diagnostics.Capacity, KeptIn = diagnostics };
         _cacheCapacity = Math.Max(64, cacheCapacity);
         _ownsSource = ownsSource;
 
