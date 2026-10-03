@@ -16,6 +16,20 @@ updates:
       prefix: "build"
       include: scope
 
+  # The release tooling: semantic-release and the plugins .releaserc.json names (ADR 48).
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build"
+      include: scope
+
   - package-ecosystem: npm
     directory: "/docs/website"
     schedule:

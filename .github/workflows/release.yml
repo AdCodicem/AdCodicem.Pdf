@@ -188,7 +188,14 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: docs/website/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            docs/website/package-lock.json
+
+      # semantic-release and its plugins at the versions package-lock.json pins. Nothing it installs
+      # declares an install script, and none runs in the job that holds the publishing key.
+      - name: Install release tooling
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Build and test
         run: |
@@ -219,12 +226,7 @@ jobs:
             arguments="--dry-run"
           fi
 
-          npx --yes \
-            semantic-release@24 \
-            @semantic-release/changelog@6 \
-            @semantic-release/exec@6 \
-            @semantic-release/git@10 \
-            $arguments
+          npx --no-install semantic-release $arguments
 
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 

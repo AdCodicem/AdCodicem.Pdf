@@ -52,9 +52,10 @@ Versions and releases are generated from commit history, so commit messages must
 [optional footer(s)]
 ```
 
-Common types: `feat` (bumps minor), `fix` (bumps patch), `docs`, `perf`, `refactor`, `test`, `build`,
-`chore` (no release). A breaking change is marked with `!` after the type, or a `BREAKING CHANGE:`
-footer, and bumps the major version.
+Common types: `feat` (bumps minor), `fix` and `perf` (bump patch), `docs`, `refactor`, `test`, `build`,
+`ci`, `chore` (no release). A breaking change is marked with `!` after the type, or a `BREAKING CHANGE:`
+footer, and bumps the minor while the version is `0.x`, the major after
+([ADR 48](docs/adr/0048-one-version-for-every-package-independent-of-dotnet.md)).
 
 ```
 feat(reader): resolve object streams lazily
