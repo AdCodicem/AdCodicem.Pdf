@@ -301,7 +301,7 @@ internal ref struct PdfObjectParser
                 return new PdfReal(token.Real);
 
             case PdfTokenKind.Name:
-                return PdfName.Get(PdfStringDecoder.DecodeName(token.Text));
+                return ReadName(token);
 
             case PdfTokenKind.LiteralString:
                 ReportIfUnterminated(token, "a literal string", depth);
@@ -309,7 +309,7 @@ internal ref struct PdfObjectParser
 
             case PdfTokenKind.HexString:
                 ReportIfUnterminated(token, "a hexadecimal string", depth);
-                return new PdfString(PdfStringDecoder.DecodeHex(token.Text), hexadecimal: true);
+                return ReadHexString(token);
 
             case PdfTokenKind.ArrayStart:
                 return ParseArray(depth, token.Start);
@@ -463,7 +463,7 @@ internal ref struct PdfObjectParser
                 continue;
             }
 
-            var key = PdfName.Get(PdfStringDecoder.DecodeName(keyToken.Text));
+            var key = ReadName(keyToken);
             var valueToken = _lexer.Read();
 
             if (valueToken.Kind is PdfTokenKind.DictionaryEnd)
@@ -963,6 +963,46 @@ internal ref struct PdfObjectParser
                     break;
             }
         }
+    }
+
+    /// <summary>Reads a name token, and reports a number sign in it that two hexadecimal digits do not follow.</summary>
+    private readonly PdfName ReadName(PdfToken token)
+    {
+        var name = PdfName.Get(PdfStringDecoder.DecodeName(token.Text, out var badEscape));
+
+        if (badEscape >= 0 && !AtWindowEdge(token))
+        {
+            Report(
+                PdfDiagnosticCodes.SyntaxNameEscapeInvalid,
+                KeepsReports
+                    ? $"A name holds a number sign that two hexadecimal digits do not follow, kept as the byte it is: the name reads as {FileQuote.Name(name)}."
+                    : "A name holds a number sign that two hexadecimal digits do not follow, kept as the byte it is.",
+                token.Start + 1 + badEscape);
+        }
+
+        return name;
+    }
+
+    /// <summary>Reads a hexadecimal string token, and reports the bytes in it that are neither hexadecimal digits nor white space.</summary>
+    private readonly PdfString ReadHexString(PdfToken token)
+    {
+        var bytes = PdfStringDecoder.DecodeHex(token.Text, out var firstStray, out var strays);
+
+        if (strays > 0 && !AtWindowEdge(token))
+        {
+            Report(
+                PdfDiagnosticCodes.SyntaxHexStringInvalid,
+                strays == 1
+                    ? "A hexadecimal string holds a byte that is neither a hexadecimal digit nor white space; it was skipped."
+                    : KeepsReports
+                        ? string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"A hexadecimal string holds {strays:N0} bytes that are neither hexadecimal digits nor white space, the first here; they were skipped.")
+                        : "A hexadecimal string holds bytes that are neither hexadecimal digits nor white space; they were skipped.",
+                token.Start + 1 + firstStray);
+        }
+
+        return new PdfString(bytes, hexadecimal: true);
     }
 
     /// <summary>

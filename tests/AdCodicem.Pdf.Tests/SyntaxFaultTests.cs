@@ -132,6 +132,38 @@ public class SyntaxFaultTests
         new PdfValidator().Validate(document).Findings.Should().BeEmpty();
     }
 
+    [Fact]
+    public void A_hexadecimal_string_that_lost_its_closing_bracket_is_reported_for_what_it_takes_of_the_next_member()
+    {
+        // The string runs on to the first > it meets, the next member's: what it takes that is no digit is reported, and the
+        // next member is still read from where the header places it.
+        var file = Packed("<414243", last: false);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).AsString().Required().Bytes.ToArray().Should().Equal((byte)0x41, 0x42, 0x43, 0x50);
+        document.GetObject(new PdfObjectId(5)).AsDictionary().Required().GetInteger(PdfName.Get("X")).Should().Be(5);
+
+        var report = document.Diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxHexStringInvalid);
+        report.Message.Should().StartWith("A hexadecimal string holds 4 bytes that are neither hexadecimal digits nor white space");
+    }
+
+    [Theory]
+    [InlineData("/ID [<41zz42> <4142>]", PdfDiagnosticCodes.SyntaxHexStringInvalid)]
+    [InlineData("/Info#zz 3 0 R", PdfDiagnosticCodes.SyntaxNameEscapeInvalid)]
+    public void A_trailer_holding_a_malformed_string_or_name_is_malformed(string entry, string code)
+    {
+        // A trailer read despite a fault of its syntax may hold another value than its writer meant: the trailer is malformed,
+        // whichever fault it is.
+        var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", $"<< /Size 4 /Root 1 0 R {entry} >>");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(code);
+        report.Findings.Should().ContainSingle().Which.RuleId.Should().Be(PdfValidationRuleIds.FileTrailerMalformed);
+    }
+
     /// <summary>
     /// The catalog and the page tree written directly, and objects 5, 6 and 4 — 4 holding <paramref name="value"/> — packed
     /// in object stream 7, 4 last or first.
