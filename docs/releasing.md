@@ -61,17 +61,26 @@ paragraph for it.
 ## Versioning — computed from the commits
 
 Versions are not chosen; they are derived. The *moment* of a release is chosen — see **Releasing** below.
-semantic-release reads the commits since the last tag and decides: `fix:` bumps the patch, `feat:` the
-minor, a `!` or a `BREAKING CHANGE:` footer the major. Nothing releasable in the commits means no release
-at all, which is the correct outcome for a run over documentation changes.
+semantic-release reads the commits since the last tag and decides: `fix:` and `perf:` bump the patch,
+`feat:` the minor, and a `!` or a `BREAKING CHANGE:` footer the minor while the major is 0, the major
+after (ADR 48). Nothing releasable in the commits means no release at all, which is the correct outcome for
+a run over documentation changes.
+
+The commit analyzer reads the commits with the `conventionalcommits` preset. Without a preset it used
+`angular`, which does not know `!`: a `feat!:` released nothing. The tooling is pinned: the root
+`package.json` lists semantic-release and its plugins, `package-lock.json` pins them, and every job installs
+them with `npm ci --ignore-scripts`. `.github/scripts/next-version.mjs` computes the version semantic-release
+would give the next release without a token or a push right, with the same analyzer at the same version; it
+agrees with semantic-release over every commit since `v0.1.0`.
 
 This is why the conventional-commit check on pull requests is not a style rule. A malformed message does
 not look untidy — it produces no release, silently.
 
-**All seven packages share one version** and are published together, even when only one changed. They
+**Every package shares one version** and is published with the others, even when only one changed. They
 are tightly coupled — the satellites exist to extend the core — and one number keeps the API-compatibility
-baseline unambiguous. Independent versioning would need `multi-semantic-release` and a different workflow
-shape.
+baseline unambiguous. That version follows our own API, never the major of .NET or of a framework a
+satellite builds on, and no package identifier names a framework major
+([ADR 48](adr/0048-one-version-for-every-package-independent-of-dotnet.md)).
 
 ### Staying below 1.0
 
@@ -82,8 +91,10 @@ the starting point is tagged once, by hand — **done on 2026-09-15**, `v0.1.0` 
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-From then on it continues from that tag — `fix:` gives `0.1.1`, `feat:` gives `0.2.0` — and the move to
-`1.0.0` happens when a breaking change says so, which is the right moment for it.
+From then on it continues from that tag — `fix:` gives `0.1.1`, `feat:` gives `0.2.0`, and so does a
+breaking change while the major is 0. `1.0.0` is a decision of its own: the change that makes it replaces
+the analyzer's `{ "breaking": true, "release": "minor" }` rule with `{ "breaking": true, "release": "major" }`
+(ADR 48).
 
 That tag has **no package behind it**: nothing was ever published as `0.1.0`. It matters because package
 validation compares the public API with the last release, downloads that baseline from nuget.org, and fails
