@@ -346,6 +346,30 @@ Without them the release job stops at its first step, before anything is publish
 | Required status checks **`Build and unit tests`**, **`Integration tests`**, **`Conventional commits`** and **`workflows`** | Settings → Rules → Rulesets, the ruleset on `main` | Auto-merge cannot merge a red build (#41). The checks are job names: renaming one leaves every pull request waiting for a check that never reports |
 | Discussions, Sponsors | Settings → Features, and the GitHub account | The discussion template and `FUNDING.yml` |
 
+## The .NET compatibility island
+
+`tests/Compat` installs the package each commit packs into a trimmed `net11.0` application on the .NET 11 release
+candidate, and `ci.yml`'s `compat (.NET 11)` job runs it, with the unit suite rolled forward onto the .NET 11
+runtime, on every pull request and push ([ADR 48](adr/0048-one-version-for-every-package-independent-of-dotnet.md)).
+To run it locally, with the .NET 11 SDK installed, after `dotnet pack src/AdCodicem.Pdf.Packages.slnf -c Release -o
+artifacts/packages`:
+
+```bash
+cd tests/Compat
+dotnet publish -c Release -p:AdCodicemVersion=0.1.0-alpha -o out && out/AdCodicem.Pdf.Compat ../corpus
+```
+
+Nothing bumps it but a person:
+
+- **At each release candidate of .NET 11**, one pull request moves `tests/Compat/global.json` to the new SDK version.
+- **When .NET 11 ships** (expected around 2026-11-10, not confirmed):
+  - `global.json` becomes `"version": "11.0.100"`, `"rollForward": "latestFeature"`, `"allowPrerelease": false`;
+  - `DOTNET_ROLL_FORWARD_TO_PRERELEASE` leaves the job;
+  - `compat (.NET 11)` joins the required status checks of the ruleset on `main`, and the comment in `ci.yml` that
+    says it is not one goes.
+- **When .NET 12 previews arrive**, moving the island to the next major, or adding a second one, is a decision of its
+  own. Renaming the job changes the required check.
+
 ## The documentation site
 
 `docs/website` is a Docusaurus site publishing both the user-facing documentation and the project documents in

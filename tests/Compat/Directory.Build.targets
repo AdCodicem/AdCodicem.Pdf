@@ -1,0 +1,6 @@
+<Project>
+
+  <!-- Stops the lookup here, as Directory.Build.props does: a Directory.Build.targets added at the repository root
+       would describe the code that is packed, not an application that consumes it. -->
+
+</Project>

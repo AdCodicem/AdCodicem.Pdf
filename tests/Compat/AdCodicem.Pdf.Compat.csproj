@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AdCodicem.Pdf.Compat</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    An SDK that cannot target the next major gets here only from outside this folder, where the repository's global.json
+    selects the current SDK. GitHub's automatic dependency submission does exactly that: it restores every project file
+    it finds, from the repository root, and fails on the first restore that fails. On such an SDK the project is left
+    empty, so that its restore succeeds and submits nothing, and a build stops with the reason instead of compiling code
+    the SDK cannot target.
+  -->
+  <PropertyGroup Condition="$([MSBuild]::VersionLessThan('$(NETCoreAppMaximumVersion)', '$([MSBuild]::GetTargetFrameworkVersion('$(TargetFramework)'))'))">
+    <CompatSdkMissing>true</CompatSdkMissing>
+    <TargetFramework>net$(NETCoreAppMaximumVersion)</TargetFramework>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <Target Name="_RequireCompatSdk" BeforeTargets="BeforeBuild" Condition="'$(CompatSdkMissing)' == 'true'">
+    <Error Text="The compatibility island targets the next .NET major, which SDK $(NETCoreSdkVersion) cannot. Run it from tests/Compat, whose global.json selects the SDK it needs." />
+  </Target>
+
+  <!-- As a consumer installs it. -->
+  <ItemGroup Condition="'$(CompatSdkMissing)' != 'true'">
+    <PackageReference Include="AdCodicem.Pdf" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(CompatSdkMissing)' == 'true'">
+    <Compile Remove="**/*.cs" />
+  </ItemGroup>
+
+</Project>
