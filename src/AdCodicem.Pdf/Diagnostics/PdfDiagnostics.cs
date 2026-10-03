@@ -91,6 +91,27 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         RollBack(mark);
     }
 
+    /// <summary>
+    /// Moves the entries recorded since <paramref name="mark"/> whose code starts with <paramref name="codePrefix"/> into
+    /// <paramref name="target"/>, which applies its own capacity, counts there those this instance dropped, and drops the
+    /// rest.
+    /// </summary>
+    internal void MoveTo(PdfDiagnostics target, PdfDiagnosticsMark mark, string codePrefix)
+    {
+        for (var i = mark.Count; i < _entries.Count; i++)
+        {
+            var entry = _entries[i];
+
+            if (entry.Code.StartsWith(codePrefix, StringComparison.Ordinal))
+            {
+                target.Add(entry.Severity, entry.Code, entry.Message, entry.Position);
+            }
+        }
+
+        target._suppressed += _suppressed - mark.Suppressed;
+        RollBack(mark);
+    }
+
     /// <summary>Determines whether any entry carries the given code.</summary>
     public bool Contains(string code)
     {

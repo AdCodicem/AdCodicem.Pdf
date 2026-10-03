@@ -29,6 +29,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     internal const int InitialObjectWindow = 8 * 1024;
     internal const int XRefWindow = 64 * 1024;
 
+    /// <summary>What the codes of the faults of the object syntax start with.</summary>
+    private const string SyntaxCodePrefix = "syntax.";
+
     /// <summary>How much of a section is read to tell a classic table from a cross-reference stream.</summary>
     internal const int XRefProbeLength = 32;
 
@@ -1903,7 +1906,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         for (var i = mark.Count; i < diagnostics.Count; i++)
         {
-            if (diagnostics[i].Code.StartsWith("syntax.", StringComparison.Ordinal))
+            if (diagnostics[i].Code.StartsWith(SyntaxCodePrefix, StringComparison.Ordinal))
             {
                 return true;
             }
@@ -2896,10 +2899,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (parser.IsTruncated && cut)
                 {
-                    _pending.RollBack(mark);
-
                     if (windowSize < maxWindow)
                     {
+                        _pending.RollBack(mark);
                         windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
                         continue;
                     }
@@ -2909,6 +2911,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                         return false;
                     }
 
+                    // What the parser met before the cut is the file's, and is kept; it reported nothing of the token the
+                    // window's edge cut, which is the guard's (ADR 34), and what it found of a stream is dropped with the cut.
+                    _pending.MoveTo(_diagnostics, mark, SyntaxCodePrefix);
                     ReachLimit(limit, LimitSubject(number, maxWindow), offset);
                     MarkCutByGuard(parsed, offset + window.Length);
 
@@ -3324,9 +3329,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             if (cut)
             {
                 // A member that runs into the end of data a guard cut is kept as far as it was read, like a regular
-                // object cut at MaxObjectLength; what the parser met at the cut is the guard's, not the file's, and is
-                // dropped with it (ADR 34).
+                // object cut at MaxObjectLength; what the parser met at the cut is the guard's, not the file's, and was
+                // not reported, while what it met before the cut is the file's (ADR 34).
                 _cutAtLimit.Add(id.Number);
+                _pending.MoveTo(_diagnostics, mark, SyntaxCodePrefix);
             }
             else
             {
