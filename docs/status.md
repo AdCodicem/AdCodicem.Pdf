@@ -13,7 +13,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   page tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two
   batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which,
   [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
-  fifth, [#157] and [#186], in [#217], the sixth, [#182] with [#215] and [#216], in [#225];
+  fifth, [#157] and [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on
+  2026-10-03;
   then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every
   other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
@@ -24,7 +25,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,943 unit on `main` since [#217], 3,072 on [#225]'s branch (3 skipped: 2 by design, and the theory
+- **Tests**: 3,072 unit on `main` since [#225] (3 skipped: 2 by design, and the theory
   over the remote corpus's streams whose length is wrong, which has no document without it) + 1,306 integration
   (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the
   remote documents fetched, on [#225]'s branch: 4,977 unit with the 233 this container holds, 3 skipped — the laziness
@@ -41,7 +42,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   `RootInvalidRule` 87 and 96), a line the compiler puts after a call that never returns (`PdfFileReader` 1100), and
   two branches the compiler adds that no input takes (`FileQuote` 138, an interpolation's buffer too small;
   `PdfObjectParser` 647, a concatenation's null check). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `95a21b4` (CI run 439), [#217]'s last commit. `Remote corpus` passed on every document in the
+- **CI**: green on `main` at `7ba5a00` (CI run 450), [#225]'s last commit. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
   after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run
   22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
@@ -182,7 +183,7 @@ One pull request per batch, each design question put to the maintainer after mea
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1 — done, merged with [#217] on
       2026-10-02, `Remote corpus` run 24 green on its branch (journal of 2026-10-02).
    6. [#182], a cross-reference stream's dictionary read as written, with [#215] and [#216], which batch 5 filed —
-      done in [#225], `Remote corpus` run 25 green on its branch (journal of 2026-10-03).
+      done, merged with [#225] on 2026-10-03, `Remote corpus` run 25 green on its branch (journal of 2026-10-03).
    7. [#118].
    8. [#119] and [#172].
    9. [#125] and [#126].
@@ -322,7 +323,7 @@ not a fault of the file: the rules on it report at most, as information, that it
   - the site builds, on the pull request;
   - `Remote corpus` run 25, on the branch at `2de24cd`, fetched all 242 documents at its first attempt and passed:
     5,027 acceptance tests with 3 skipped and 3,329 referee checks with 6 skipped.
-- **Next**: batch 7, [#118].
+- **Next**: batch 7, [#118], a rebuilt index's generations, its questions put when it starts.
 
 ### 2026-10-02 — Batch 5: the numbers read from the file ([#157], [#186])
 - **The question.** [#157], from the threat model: a 19-digit integer wrapped to a value the file chose —
