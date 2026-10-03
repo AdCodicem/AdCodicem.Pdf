@@ -341,6 +341,28 @@ public class FileRuleTests
     }
 
     [Fact]
+    public void A_trailer_its_bound_cuts_after_a_syntax_fault_is_malformed()
+    {
+        // The trailer runs past its table's window and is read through one of its own, which MaxTrailerLength cuts after a
+        // stray token: the token is the file's, kept beside the guard, and the trailer was read despite it.
+        var table = new StringBuilder("xref\n0 3000\n{free}\n{row:1}\n{row:2}\n{row:3}\n");
+        for (var row = 4; row < 3000; row++)
+        {
+            table.Append("0000000000 65535 f \n");
+        }
+
+        var file = PdfTemplate.Build(
+            PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + table +
+            "trailer\n<< /Size 3000 /Root 1 0 R ) /Pad (" + new string('x', 10_000) + ") >>\nstartxref\n{xref:1}\n%%EOF\n");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.SyntaxUnexpectedToken);
+        report.Findings.Select(finding => finding.RuleId).Should().Contain(PdfValidationRuleIds.FileTrailerMalformed);
+    }
+
+    [Fact]
     public void A_trailer_whose_syntax_errors_overflow_the_diagnostics_is_still_malformed()
     {
         // Two stray values, and room for one diagnostic: the second error is dropped, and still counts.

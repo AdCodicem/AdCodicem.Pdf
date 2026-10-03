@@ -332,8 +332,61 @@ public class ReaderLimitsTests
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetInteger(PdfName.Get("B")).Should().Be(2);
 
         document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
-            (PdfDiagnosticCodes.SyntaxUnexpectedToken, (long)OffsetOf(file, ") /B")),
-            (PdfDiagnosticCodes.LimitObject, (long)OffsetOf(file, "3 0 obj")));
+            (PdfDiagnosticCodes.LimitObject, (long)OffsetOf(file, "3 0 obj")),
+            (PdfDiagnosticCodes.SyntaxUnexpectedToken, (long)OffsetOf(file, ") /B")));
+    }
+
+    [Fact]
+    public void An_object_its_bound_cuts_after_more_faults_than_the_diagnostics_hold_still_reports_the_bound()
+    {
+        // The guard is the one report that names the property to raise: the faults before the cut fill what is left.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "<< " + string.Concat(Enumerable.Repeat(") ", 20)) + "/Pad (" + new string('x', 3000) + ") >>")
+            .BuildClassic(rootNumber: 1);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 }, DiagnosticCapacity = 5 };
+        using var document = PdfDocument.Open(file, options);
+
+        _ = document.GetObject(new PdfObjectId(3));
+
+        document.Diagnostics[0].Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Should().HaveCount(5);
+        document.Diagnostics.SuppressedCount.Should().Be(16);
+    }
+
+    [Fact]
+    public void A_key_given_again_before_its_bound_s_cut_is_reported_and_keeps_what_it_held_when_the_cut_leaves_a_keyword_short()
+    {
+        // The repeat lies at the key, before the cut: it is reported. Its value, a keyword the cut leaves short, reads as a
+        // null of the guard's making, which removes nothing.
+        const string Body = "<< /Pad (xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx) /A 1 /A true >>";
+        var file = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, Body).BuildClassic(rootNumber: 1);
+        var bound = OffsetOf(file, "/A true") - OffsetOf(file, "3 0 obj") + "/A tr".Length;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } });
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetInteger(PdfName.Get("A")).Should().Be(1);
+
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+            (PdfDiagnosticCodes.LimitObject, (long)OffsetOf(file, "3 0 obj")),
+            (PdfDiagnosticCodes.SyntaxKeyRepeated, (long)OffsetOf(file, "/A true")));
+    }
+
+    [Fact]
+    public void A_number_its_bound_cuts_is_no_number_out_of_range()
+    {
+        // Four hundred digits are past what a real holds; the bound leaves 350 of them, which say nothing of the number.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "[1 " + new string('9', 400) + "]")
+            .BuildClassic(rootNumber: 1);
+        var bound = OffsetOf(file, "[1 ") - OffsetOf(file, "3 0 obj") + "[1 ".Length + 350;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } });
+
+        _ = document.GetObject(new PdfObjectId(3));
+
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
     }
 
     [Fact]
