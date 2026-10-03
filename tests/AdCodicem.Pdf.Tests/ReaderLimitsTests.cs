@@ -337,6 +337,26 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_fault_after_a_stream_whose_length_the_file_cannot_hold_is_still_reported_beside_the_bound()
+    {
+        // The file cannot hold the inner stream's /Length, so only a window reaching its end could settle the length, and
+        // the bound stops the reader short of it (#174). The search finds the endstream all the same: what follows it is
+        // read whole, and a key given again there is the file's fault, met before the cut.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "<< /S << /Length 99999999 >> stream\nabc\nendstream /A 1 /A 2 >>")
+            .WithObject(4, "(" + new string('x', 3000) + ")")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetInteger(PdfName.Get("A")).Should().Be(2);
+
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxKeyRepeated).Select(entry => entry.Position)
+            .Should().Equal((long)OffsetOf(file, "/A 2"));
+    }
+
+    [Fact]
     public void An_object_its_bound_cuts_after_more_faults_than_the_diagnostics_hold_still_reports_the_bound()
     {
         // The guard is the one report that names the property to raise: the faults before the cut fill what is left.
