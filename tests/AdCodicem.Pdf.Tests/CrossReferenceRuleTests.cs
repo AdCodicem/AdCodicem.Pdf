@@ -1139,6 +1139,18 @@ public class CrossReferenceRuleTests
                 : []);
     }
 
+    [Theory]
+    [InlineData("2.0", "writes its /Length as the reference 5 0 R, to a real number: ISO 32000-2 makes it direct (7.5.8.2), and Table 5 of ISO 32000-1 an integer.")]
+    [InlineData("1.5", "gives its /Length as a real number, where Table 5 of ISO 32000-1 asks for an integer.")]
+    public void A_reference_that_leads_to_a_real_is_one_finding_that_says_both(string version, string message)
+    {
+        // ADR 45: one fault, one finding. A PDF 1.x file may write the /Length as a reference: only the real is its fault.
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "56.0", compressed: false, predicted: false, placed: true, version: version);
+
+        Single(Validate(file), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().EndWith(message);
+    }
+
     [Fact]
     public void A_predictor_written_as_a_real_in_an_array_of_parameters_is_reported()
     {

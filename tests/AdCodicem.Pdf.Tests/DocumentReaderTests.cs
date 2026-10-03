@@ -1043,6 +1043,26 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData("4 0 obj\n42\n", "4 0 obj\n/F\n", "The /Length of cross-reference stream 5 names object 4 0, which holds the name /F, not a length; the chain took its data up to its endstream, after 42 bytes.")]
+    [InlineData("4 0 obj\n42\n", "4 0 obj\n-1\n", "The /Length of cross-reference stream 5 names object 4 0, which holds the integer -1, not a length; the chain took its data up to its endstream, after 42 bytes.")]
+    [InlineData("/Length 4 0 R", "/Length 9 0 R", "The /Length of cross-reference stream 5 names object 9 0, which the file lacks; the chain took its data up to its endstream, after 42 bytes.")]
+    [InlineData("4 0 obj\n42\n", "4 0 xbj\n42\n", "The stream's /Length names object 4 0, which could not be read; its data ends after 42 bytes.")]
+    public void Reports_a_deferred_length_that_gives_no_length_once_the_chain_is_read(string written, string replacement, string message)
+    {
+        // Object 4 holds a name, or a negative integer; the /Length names an object no section indexes; object 4's header
+        // is misspelled, which no search near its entry nor any rebuild then finds — the rebuild its load sets off parses
+        // the stream again, and the parser reports the length first: the stream is reported once. Each replacement keeps
+        // every offset.
+        var file = Encoding.Latin1.GetBytes(
+            Encoding.Latin1.GetString(ChainFiles.AloneWithIndirectLength()).Replace(written, replacement, StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Be(message);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData(false, true, "\n")]
     [InlineData(false, true, "\r\n")]
     [InlineData(false, false, "\r\n")]
