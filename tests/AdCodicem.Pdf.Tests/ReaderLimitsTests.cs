@@ -4,6 +4,7 @@ using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -374,6 +375,113 @@ public class ReaderLimitsTests
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
+    [Fact]
+    public void An_object_as_long_as_its_bound_that_ends_the_file_is_read_whole()
+    {
+        // The window that holds the object ends where the file does: it cut nothing, however long it is. The object, which
+        // lacks its endobj, is the file's to report, not the guard's. Its padding makes it the longest of the file.
+        var file = PdfTemplate.Build(EndingTheFile(PaddedArray));
+        var length = file.Length - OffsetOf(file, "4 0 obj");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = length } });
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().HaveCount(3);
+
+        document.Diagnostics.Should().BeEmpty();
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle()
+            .Which.RuleId.Should().Be(PdfValidationRuleIds.ObjectEndObjMissing);
+    }
+
+    [Fact]
+    public void An_object_one_byte_longer_than_its_bound_that_ends_the_file_is_cut_by_the_bound()
+    {
+        var file = PdfTemplate.Build(EndingTheFile(PaddedArray));
+        var length = file.Length - OffsetOf(file, "4 0 obj");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = length - 1 } });
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().HaveCount(3);
+
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+        new PdfValidator().Validate(document).Findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.ObjectEndObjMissing);
+    }
+
+    [Fact]
+    public void A_value_the_chain_reads_as_long_as_the_object_bound_that_ends_the_file_is_read()
+    {
+        // An update names its previous section through a reference to an object the file ends with, as long as
+        // MaxObjectLength allows: the window that holds it ends where the file does, and the chain goes on.
+        var file = PdfTemplate.Build("""
+            %PDF-1.4
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>
+            endobj
+            xref
+            0 4
+            {free}
+            {row:1}
+            {row:2}
+            {row:3}
+            trailer
+            << /Size 4 /Root 1 0 R >>
+            startxref
+            {xref:1}
+            %%EOF
+            xref
+            9 1
+            {row:9}
+            trailer
+            << /Size 10 /Root 1 0 R /Prev 9 0 R >>
+            startxref
+            {xref:2}
+            %%EOF
+            9 0 obj
+            """ + new string(' ', 200) + "{xref:1}");
+        var length = file.Length - OffsetOf(file, "9 0 obj");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = length } });
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_table_as_long_as_its_bound_that_ends_the_file_is_no_table_the_bound_cut()
+    {
+        // The table's window ends where the file does: the file ends after the rows, before any trailer, and the reader
+        // says so rather than blaming the bound.
+        var file = PdfTemplate.Build("""
+            %PDF-1.7
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+            endobj
+            startxref
+            {xref:1}
+            %%EOF
+            xref
+            0 4
+            {free}
+            {row:1}
+            {row:2}
+            {row:3}
+            """);
+        var length = file.Length - OffsetOf(file, "xref\n0 4");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = length } });
+
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        new PdfValidator().Validate(document).Findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.FileTrailerMissing);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -397,6 +505,9 @@ public class ReaderLimitsTests
         source.Disposed.Should().BeTrue();
     }
 
+    /// <summary>Object 4, an array of three numbers without its endobj, padded to be longer than the sound document's objects.</summary>
+    private static string PaddedArray { get; } = "4 0 obj\n[1 2 3" + new string(' ', 200) + "]";
+
     private static string LongArray { get; } = "[" + string.Join(' ', Enumerable.Range(0, 2000)) + "]";
 
     private static PdfReaderLimits With(PdfReaderLimits limits, string limit, int value) => limit switch
@@ -418,6 +529,14 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxTrailerLength) => limits.MaxTrailerLength,
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
+
+    /// <summary>The sound document, its catalog naming object 4, which <paramref name="definition"/> writes after the last <c>%%EOF</c>, ending the file.</summary>
+    private static string EndingTheFile(string definition) =>
+        PdfTemplate.Sound
+            .Replace("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Catalog /Pages 2 0 R /Test 4 0 R >>", StringComparison.Ordinal)
+            .Replace("0 4\n", "0 5\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 5", StringComparison.Ordinal) + definition;
 
     private static string Hex(string text) => Convert.ToHexString(Encoding.ASCII.GetBytes(text)) + ">";
 
