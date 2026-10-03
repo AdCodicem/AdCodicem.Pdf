@@ -427,11 +427,7 @@ internal ref struct PdfObjectParser
         }
 
         var dictionary = new PdfDictionary();
-
-        // The keys given null so far, which make no entry: one given again is a repeat all the same. Made the first time a
-        // null is given, which files seldom do; a set rather than a list, so that a dictionary of a million nulls costs as
-        // much again as it reads, not its square.
-        HashSet<PdfName>? nullKeys = null;
+        var nullKeys = default(NullKeys);
 
         while (true)
         {
@@ -469,16 +465,18 @@ internal ref struct PdfObjectParser
             }
 
             var key = ReadName(keyToken);
+            var keyAtEdge = AtWindowEdge(keyToken);
             var valueToken = _lexer.Read();
 
             if (valueToken.Kind is PdfTokenKind.DictionaryEnd)
             {
-                // A key with no value: the specification says an absent value is null.
+                // A key with no value: the specification says an absent value is null, which removes what the key held.
                 if (!PastWindowEdge)
                 {
                     Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key had no value.", valueToken.Start);
                 }
 
+                Give(dictionary, ref nullKeys, keyToken, key, PdfNull.Instance, keyAtEdge, valueCut: false);
                 break;
             }
 
@@ -493,34 +491,15 @@ internal ref struct PdfObjectParser
             {
                 _lexer.Position = valueToken.Start;
                 ReportCut("a dictionary", openedAt, depth, valueMissing: true, atEndObj: true);
+                Give(dictionary, ref nullKeys, keyToken, key, PdfNull.Instance, keyAtEdge, valueCut: false);
                 return dictionary;
             }
 
             var value = ParseValue(valueToken, depth + 1);
-            var isNull = ReferenceEquals(value, PdfNull.Instance);
-            bool repeated;
 
-            // The specification says an entry whose value is null is the same as no entry at all, so the parser does not
-            // create one: every later stage is spared a null it would have to ignore. A key given again keeps its last value,
-            // as qpdf, pdf.js, PDFBox, MuPDF and pdfium read it, a null given last removing it (#172).
-            if (isNull)
-            {
-                repeated = dictionary.Remove(key) | !(nullKeys ??= []).Add(key);
-            }
-            else if (dictionary.TryAdd(key, value))
-            {
-                repeated = nullKeys?.Remove(key) == true;
-            }
-            else
-            {
-                dictionary.Set(key, value);
-                repeated = true;
-            }
-
-            if (repeated && !AtWindowEdge(keyToken))
-            {
-                ReportRepeatedKey(keyToken, key, isNull);
-            }
+            // A value the parse met a window's edge in may be what the edge made of it — a keyword cut short reads as null —:
+            // it is kept as far as it was read, but removes nothing.
+            Give(dictionary, ref nullKeys, keyToken, key, value, keyAtEdge, valueCut: PastWindowEdge);
         }
 
         var afterDictionary = _lexer.Position;
@@ -987,11 +966,62 @@ internal ref struct PdfObjectParser
         }
     }
 
+    /// <summary>
+    /// Gives <paramref name="dictionary"/> the value read for <paramref name="key"/>, and reports a key given again.
+    /// </summary>
+    /// <remarks>
+    /// The specification says an entry whose value is null is the same as no entry at all, so the parser does not create
+    /// one: every later stage is spared a null it would have to ignore. A key given again keeps its last value, as qpdf,
+    /// pdf.js, PDFBox, MuPDF and pdfium read it, a null given last removing it (#172) — but for a null a window's edge
+    /// made, which is no value of the file's. The repeat lies at the key, and is reported unless the edge reaches the key.
+    /// </remarks>
+    /// <param name="dictionary">The dictionary being read.</param>
+    /// <param name="nullKeys">The keys it gave null so far.</param>
+    /// <param name="keyToken">The key, as the file wrote it.</param>
+    /// <param name="key">The key, as it reads.</param>
+    /// <param name="value">The value read for it, null when it has none.</param>
+    /// <param name="keyAtEdge">Whether the key reaches a window's edge, or comes after the parse met one.</param>
+    /// <param name="valueCut">Whether the parse met a window's edge reading the value.</param>
+    private readonly void Give(
+        PdfDictionary dictionary, ref NullKeys nullKeys, PdfToken keyToken, PdfName key, PdfObject value, bool keyAtEdge, bool valueCut)
+    {
+        var isNull = ReferenceEquals(value, PdfNull.Instance);
+        bool repeated;
+        RepeatOutcome outcome;
+
+        if (isNull && valueCut)
+        {
+            repeated = dictionary.ContainsKey(key) || nullKeys.Contains(key);
+            outcome = RepeatOutcome.EarlierKept;
+        }
+        else if (isNull)
+        {
+            repeated = dictionary.Remove(key) | nullKeys.Add(key);
+            outcome = RepeatOutcome.LeftOut;
+        }
+        else if (dictionary.TryAdd(key, value))
+        {
+            repeated = nullKeys.Remove(key);
+            outcome = RepeatOutcome.LastKept;
+        }
+        else
+        {
+            dictionary.Set(key, value);
+            repeated = true;
+            outcome = RepeatOutcome.LastKept;
+        }
+
+        if (repeated && !keyAtEdge)
+        {
+            ReportRepeatedKey(keyToken, key, outcome);
+        }
+    }
+
     /// <summary>Reports a key the dictionary gives again, at <paramref name="token"/>.</summary>
     /// <param name="token">The key given again, as the file wrote it.</param>
     /// <param name="key">The key as it reads.</param>
-    /// <param name="isNull">Whether the value given with it is null, which removes the key.</param>
-    private readonly void ReportRepeatedKey(PdfToken token, PdfName key, bool isNull)
+    /// <param name="outcome">What became of the key.</param>
+    private readonly void ReportRepeatedKey(PdfToken token, PdfName key, RepeatOutcome outcome)
     {
         if (!KeepsReports)
         {
@@ -999,8 +1029,14 @@ internal ref struct PdfObjectParser
             return;
         }
 
-        var written = token.Text.IndexOf((byte)'#') >= 0 ? ", written here with #xx escapes" : string.Empty;
-        var kept = isNull ? "given null last, the key is left out" : "the last value given is kept";
+        // A #xx escape makes the key shorter than the token that writes it; a number sign that is no escape does not.
+        var written = token.Text.Length != key.Value.Length ? ", written here with #xx escapes" : string.Empty;
+        var kept = outcome switch
+        {
+            RepeatOutcome.LeftOut => "given null last, the key is left out",
+            RepeatOutcome.EarlierKept => "its last value runs past what was read, and the value given before is kept",
+            _ => "the last value given is kept",
+        };
 
         Report(PdfDiagnosticCodes.SyntaxKeyRepeated, $"The dictionary gives the key {FileQuote.Name(key)} more than once{written}; {kept}.", token.Start);
     }
@@ -1133,6 +1169,66 @@ internal ref struct PdfObjectParser
         }
 
         _diagnostics?.Warn(code, message, _baseOffset + position);
+    }
+
+    /// <summary>What became of a key a dictionary gives again, as its report says.</summary>
+    private enum RepeatOutcome
+    {
+        /// <summary>The value given last is the key's.</summary>
+        LastKept,
+
+        /// <summary>A null given last removed the key.</summary>
+        LeftOut,
+
+        /// <summary>The value given last runs past what was read, and the value given before is kept.</summary>
+        EarlierKept,
+    }
+
+    /// <summary>
+    /// The keys a dictionary gave null so far, which make no entry: one given again is a repeat all the same. The first is
+    /// held alone, so that a dictionary's one null costs nothing, and a set is made for the others, which files seldom
+    /// give: a set rather than a list, so that a dictionary of a million nulls costs as much again as it reads, not its
+    /// square.
+    /// </summary>
+    private struct NullKeys
+    {
+        private PdfName? _first;
+        private HashSet<PdfName>? _others;
+
+        /// <summary>Remembers <paramref name="key"/>, and says whether it was given null before.</summary>
+        public bool Add(PdfName key)
+        {
+            if (Contains(key))
+            {
+                return true;
+            }
+
+            if (_first is null)
+            {
+                _first = key;
+            }
+            else
+            {
+                (_others ??= []).Add(key);
+            }
+
+            return false;
+        }
+
+        /// <summary>Forgets <paramref name="key"/>, and says whether it was given null before.</summary>
+        public bool Remove(PdfName key)
+        {
+            if (_first is not null && _first.Equals(key))
+            {
+                _first = null;
+                return true;
+            }
+
+            return _others?.Remove(key) == true;
+        }
+
+        /// <summary>Determines whether <paramref name="key"/> was given null.</summary>
+        public readonly bool Contains(PdfName key) => (_first is not null && _first.Equals(key)) || _others?.Contains(key) == true;
     }
 
     /// <summary>The object stream member a parser reads, and where what it meets is placed.</summary>
