@@ -112,7 +112,10 @@ The first preview under this decision, `0.2.0-preview.<N>`, sorts above every `0
 ### All or nothing
 
 One package ships today; the second, `AdCodicem.Pdf.Tool`, comes with M06. The scripts are written for several from
-now on, and held to it by a test harness of fake packages:
+now on, and held to it on every pull request by the **release scripts** job of `ci.yml`: `.github/scripts/tests`
+runs `preview-gate.sh` over a synthetic repository of two packages against a fake flat container (34 scenarios), and
+`push-packages.sh` over three packed packages against a fake feed that answers 409, 500 and lists late
+(`fake_feed.py`, 11 scenarios).
 
 - **Checked twice before the first push**, by `verify-packages.sh` in the pack job and again in the publish job: one
   version of the `X.Y.Z-preview.N` shape in every file name and every nuspec, every packable project under `src/` and

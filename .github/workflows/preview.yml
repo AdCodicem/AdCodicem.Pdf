@@ -214,10 +214,13 @@ jobs:
         run: |
           set -euo pipefail
           .github/scripts/release-pack.sh "$VERSION" "$RELEASE_TYPE" "$LAST_RELEASE"
-          echo "ids=$(.github/scripts/package-ids.sh | paste -sd ' ' -)" >> "$GITHUB_OUTPUT"
+          # Computed before they are written: a failure inside "$( )" in an echo would not stop the step.
+          ids="$(.github/scripts/package-ids.sh | paste -sd ' ' -)"
           # The digests travel as a job output, which only this job writes: the publish job checks the
           # artifact against them before attesting it.
-          echo "sha256=$(cd artifacts/packages && sha256sum -- *.*nupkg | base64 -w0)" >> "$GITHUB_OUTPUT"
+          sha256="$(cd artifacts/packages && sha256sum -- *.*nupkg | base64 -w0)"
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
 
       # Named after the version, so that the files of a run can be found again. The publish job downloads it
       # by the id this step returns, not by name: any job of the run can delete an artifact by name and

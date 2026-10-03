@@ -182,12 +182,17 @@ load_shipped() {
   [[ -z "$shipped" ]] || return 0
   dotnet restore src/AdCodicem.Pdf.Packages.slnf --verbosity quiet >&2 ||
     fail "Could not restore the packable projects."
-  local assets=() project
-  for project in src/*/*.csproj; do
+  # The projects the solution filter restores, not every project under src/: one the filter leaves out, an
+  # analyzer that ships nothing say, has no restore graph here.
+  local assets=() project projects
+  projects="$(jq -r '.solution.projects[]' src/AdCodicem.Pdf.Packages.slnf)" || fail "Could not read the solution filter."
+  while read -r project; do
+    [[ -n "$project" ]] || continue
     project="$(dirname "$project")/obj/project.assets.json"
     [[ -f "$project" ]] || fail "No restore graph at $project."
     assets+=("$project")
-  done
+  done <<<"$projects"
+  (( ${#assets[@]} > 0 )) || fail "The solution filter lists no project."
   shipped="$(jq -r '.libraries | to_entries[] | select(.value.type == "package")
     | .key | split("/")[0] | ascii_downcase' "${assets[@]}" | LC_ALL=C sort -u)"
 }

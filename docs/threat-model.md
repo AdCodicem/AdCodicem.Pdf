@@ -442,8 +442,9 @@ Known gaps:
 
 ## The package and its supply chain
 
-- **The core has no dependency** (invariant 1): its project references no package and no other project. Review
-  alone keeps it so ([#179]). The AOT and trimming analyzers run, and warnings fail the build. Unsafe code is off.
+- **The core has no dependency** (invariant 1): its project references no package and no other project. `ci.yml`
+  fails a pull request whose packed core declares a dependency in its nuspec; a native one, through `[DllImport]`,
+  is kept out by review alone ([#179]). The AOT and trimming analyzers run, and warnings fail the build. Unsafe code is off.
 - **Workflows** declare read-only permissions at their top — `contents: read`, with `pull-requests: read` added
   in `commits.yml`, and `read-all` in `scorecards.yml`, whose one job replaces it with the four permissions it
   needs — and raise a permission per job where one is needed. Every action is pinned to a commit SHA. CI and the commit
@@ -477,7 +478,8 @@ Known gaps:
 - [#177] The benchmarks' `filter` input still reaches `run:` by template expansion, and the qpdf referee's image
   and the commitlint action's image are pinned by tag, not by digest.
 - [#178] A branch can publish a package without review: nothing ties the `nuget` environment to `main`.
-- [#179] Nothing but review checks that the core has no dependency.
+- [#179] Only the packed nuspec is checked for a dependency of the core: not the assembly's references, a
+  `FrameworkReference` or a `[DllImport]`.
 - [#43] The NuGet restore is not locked.
 - [#41] The release App on the ruleset's bypass list, and the CI checks required by name, are settings the
   maintainer has yet to make; until then the stable release stops at its first step.

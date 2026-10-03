@@ -119,9 +119,12 @@ jobs:
           set -euo pipefail
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$VERSION' is not a stable version." >&2; exit 1; }
           .github/scripts/release-pack.sh "$VERSION" "$RELEASE_TYPE" "$LAST_RELEASE"
-          echo "ids=$(.github/scripts/package-ids.sh | paste -sd ' ' -)" >> "$GITHUB_OUTPUT"
+          # Computed before they are written: a failure inside "$( )" in an echo would not stop the step.
+          ids="$(.github/scripts/package-ids.sh | paste -sd ' ' -)"
           # The digests travel as job outputs, which only this job writes.
-          echo "sha256=$(cd artifacts/packages && sha256sum -- *.*nupkg | base64 -w0)" >> "$GITHUB_OUTPUT"
+          sha256="$(cd artifacts/packages && sha256sum -- *.*nupkg | base64 -w0)"
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
 
       # Freezes docs/website/docs as this release's documentation, generated API reference included (ADR 31),
       # and hands over every file @semantic-release/git commits for it as one archive, so that the release job
@@ -148,6 +151,8 @@ jobs:
           name: release-packages
           path: artifacts/packages/*.*nupkg
           if-no-files-found: error
+          # "Re-run all jobs" uploads the same name again in the same run.
+          overwrite: true
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         id: upload-documentation
@@ -156,6 +161,7 @@ jobs:
           name: release-documentation
           path: ${{ runner.temp }}/documentation.tar
           if-no-files-found: error
+          overwrite: true
 
   # Warns, without blocking, when this release ships package inputs that no preview carried: inputs that
   # changed since the version on nuget.org built from the nearest commit. Before the release job, so that the

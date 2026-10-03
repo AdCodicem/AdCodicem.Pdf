@@ -30,6 +30,9 @@ permissions:
 jobs:
   build:
     name: build
+    # A status function of its own: the implicit success() looks past this workflow's caller to every job
+    # upstream of it, and preview.yml calls this after jobs it skipped on purpose (a push, or nothing to publish).
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     # Its longest run took two minutes: fifteen stop a build that hangs (#193).
     timeout-minutes: 15
@@ -120,6 +123,7 @@ jobs:
   deploy:
     name: deploy
     needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

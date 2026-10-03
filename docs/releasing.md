@@ -234,6 +234,11 @@ and NuGet keeps offering the higher one as the latest prerelease until a higher 
 - **The plan failed because the version "is already on nuget.org (…), packed from another commit".** A
   preview left above a later, lower stable release, after a revert, holds the number this one computed. The
   next commit on `main` moves the number.
+- **The plan failed because a version "was packed from …, which is not an ancestor of …".** A version on
+  nuget.org, from the last stable tag on, was packed from a commit `main` does not have: a preview pushed from a
+  branch, which the `nuget` environment limited to `main` prevents (#178), or a rewritten history. Every run
+  fails until a stable release raises the floor above it, or the version is accounted for by hand; unlisting it
+  does not help, since the gate reads unlisted versions too.
 - **The pack failed on the API baseline (`CP0001` and the like).** The commits since the last release are
   typed as fixes, so the preview is held to that release's API. A breaking change typed `fix` is the usual
   cause: it needs a `!`.
@@ -356,7 +361,10 @@ artifacts/packages`:
 
 ```bash
 cd tests/Compat
-dotnet publish -c Release -p:AdCodicemVersion=0.1.0-alpha -o out && out/AdCodicem.Pdf.Compat ../corpus
+# A package folder of its own: every local pack is 0.1.0-alpha, and a restore would otherwise take whichever
+# 0.1.0-alpha ~/.nuget/packages kept from an earlier pack.
+NUGET_PACKAGES="$(mktemp -d)" dotnet publish -c Release -p:AdCodicemVersion=0.1.0-alpha -o out \
+  && out/AdCodicem.Pdf.Compat ../corpus
 ```
 
 Nothing bumps it but a person:
