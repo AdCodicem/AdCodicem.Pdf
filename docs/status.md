@@ -13,25 +13,25 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   page tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two
   batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which,
   [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
-  fifth, [#157] and [#186], in [#217];
+  fifth, [#157] and [#186], in [#217], the sixth, [#182] with [#215] and [#216], in [#225];
   then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every
   other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
   fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
-  [#210]) and its third ([#212]); [#123] moved to M20.
+  [#210]), its third ([#212]), its fifth ([#215], [#216]) and its sixth ([#218] to [#224]); [#123] moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 2,801 unit on `main` since [#214] (3 skipped: 2 by design, and the theory over the remote corpus's
-  streams whose length is wrong, which has no document without it) + 1,306 integration (skipped without Docker) + 23
-  for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the remote documents fetched, on
-  [#214]'s branch: 4,706 unit with 233 of them, 3 skipped — the laziness test on the two documents recorded as
-  unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
-  lacks —; 3,266 integration against qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a
-  damaged document's pages; and, with all 242, `Remote corpus` run 22's 4,763 acceptance tests and 3,329 referee
-  checks, on [#214]'s branch.
+- **Tests**: 2,943 unit on `main` since [#217], 3,072 on [#225]'s branch (3 skipped: 2 by design, and the theory
+  over the remote corpus's streams whose length is wrong, which has no document without it) + 1,306 integration
+  (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the
+  remote documents fetched, on [#225]'s branch: 4,977 unit with the 233 this container holds, 3 skipped — the laziness
+  test on the two documents recorded as unsupported until [#47], which every other test holds to their expectations,
+  and the private manifest this container lacks —; 3,266 integration against qpdf in its container, 3,260 passed and
+  6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 25's 5,027
+  acceptance tests and 3,329 referee checks.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
   Arlington tables left out), 99.6 % of `src/` — 5,145 of 5,165 lines on `main` since [#213], 149 of its patch's 151
   measurable lines among them; [#214]'s patch held none to measure. The 20 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members
@@ -41,18 +41,19 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   `RootInvalidRule` 87 and 96), a line the compiler puts after a call that never returns (`PdfFileReader` 1100), and
   two branches the compiler adds that no input takes (`FileQuote` 138, an interpolation's buffer too small;
   `PdfObjectParser` 647, a concatenation's null check). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `ed1e9ed` (CI run 428), [#214]'s merge. `Remote corpus` passed on every document in the
+- **CI**: green on `main` at `95a21b4` (CI run 439), [#217]'s last commit. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
   after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run
   22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
   web.archive.org refused the download of ECan's scan (`Connection refused`, [#204]): every test over the 241 it
   fetched passed.
-  Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one rerun.
+  Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one rerun; run 25,
+  on [#225]'s branch, passed whole at its first attempt.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 24 on 2026-10-02. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in run 25 on 2026-10-03. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.53`, previews from `main` through trusted publishing, 1,141 downloads on 2026-10-02. The
   `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified.
@@ -180,23 +181,24 @@ One pull request per batch, each design question put to the maintainer after mea
       2026-10-02, `Remote corpus` run 22 green on its branch (journal of 2026-10-02).
    5. [#157] and [#186], numbers read from the file; [#186] blocks M03's slice 1 — done, merged with [#217] on
       2026-10-02, `Remote corpus` run 24 green on its branch (journal of 2026-10-02).
-   6. [#182], a cross-reference stream's dictionary read as written, with [#215] and [#216], which batch 5 filed.
+   6. [#182], a cross-reference stream's dictionary read as written, with [#215] and [#216], which batch 5 filed —
+      done in [#225], `Remote corpus` run 25 green on its branch (journal of 2026-10-03).
    7. [#118].
    8. [#119] and [#172].
    9. [#125] and [#126].
    10. [#190] and [#212], the reader's public surface.
    11. [#164] and [#183], the index's size, the first new guard.
-   12. [#165] and [#166], filter chains, with [#199] and [#209].
+   12. [#165] and [#166], filter chains, with [#199], [#209] and [#219].
    13. [#128].
    14. [#129] and [#175].
    15. [#160] and [#161], object-stream members, with [#200] and [#202].
-   16. [#174] and [#170], stream data.
+   16. [#174] and [#170], stream data, with [#220] and [#224].
    17. [#155].
    18. [#167] and [#168], with [#201].
-   19. [#188], [#197] and [#156], with [#207], [#208] and [#210].
+   19. [#188], [#197] and [#156], with [#207], [#208], [#210], [#221] and [#222].
    20. [#189].
    21. [#154] and [#171].
-   22. [#132].
+   22. [#132], with [#218].
    23. [#141].
    24. [#144] and [#169].
    25. [#181].
@@ -206,11 +208,13 @@ One pull request per batch, each design question put to the maintainer after mea
    29. [#173].
    30. [#192].
    31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
-   32. What remains of [#158].
+   32. What remains of [#158], with [#223].
 
    Slice 4 waits on [#141] and [#144]. The four defects the planning found outside every issue, [#199] to [#202], and
    the four batch 2 found, [#207] to [#210], are filed under M02 and paid in the batches above (journal of 2026-10-01).
-   [#212], which batch 3 filed, is paid in batch 10, with [#190], as the maintainer placed it on 2026-10-02.
+   [#212], which batch 3 filed, is paid in batch 10, with [#190], as the maintainer placed it on 2026-10-02. The
+   seven batch 6 filed are placed above: [#218] with [#132], as the maintainer placed it on 2026-10-02, the others
+   with the batch whose code they share.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -231,6 +235,94 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-03 — Batch 6: what the chain refers to while it is read ([#182], [#215], [#216])
+- **The question.** [#182], from the threat model: a cross-reference stream's `/W`, `/Size`, `/Index`, `/Filter`,
+  `/DecodeParms` and `/Length` were resolved while the chain was read, and a rebuild, a corrected entry or a cached
+  null that load caused was then served, and judged, as the index the file wrote. With it [#215], integral reals read
+  in silence where an integer is required, and [#216], `/W`'s bound of 8, both filed by batch 5. Measured first: 60
+  shapes through our reader and five referees (qpdf 11.9.1, libqpdf 12, pypdf, MuPDF, PDFBox), and all 401 corpus
+  documents — 233 cross-reference streams in 95, none with an indirect value but `/Root`, `/Info` and `/Encrypt`, no
+  integral real where the reader reads an integer, no field wider than 4 bytes: no option moves a manifest entry.
+  Eleven questions followed.
+- **Settled with the maintainer**, each as recommended:
+  - while the chain is read, nothing loads: a lookup with no side effect reads an object where a section already read
+    places it — its type-1 row, the exact offset, the same number and generation, within `MaxObjectLength`, not a
+    stream —, and nothing is corrected, rebuilt, cached, recorded or reported;
+  - a value the rows need written as a reference is read through it and reported, a Warning; one it cannot read makes
+    the section malformed, the fault naming the reference; `/Prev` and `/XRefStm` alike;
+  - a `/Length` it cannot read: the data up to its `endstream`, the length read and checked once the chain is, the
+    rows not read again;
+  - `file.trailer-value-wrong`, a new Warning, judges each section's trailer as written; `/Size` stays
+    `file.size-wrong`'s;
+  - [#215]: read as written and reported; `AsInteger` unchanged; `xref.object-stream-value-wrong`, a new Warning, for
+    an object stream's `/N` and `/First`, its `/Length` left to `object.value-type-wrong`; the `/DecodeParms` of
+    ordinary streams a debt;
+  - [#216]: fields wider than 8 bytes read when their excess is zero; a nonzero excess refuses the row alone, and in
+    the type field gives a reserved type;
+  - a lookup a guard cuts is unresolved, reports nothing and marks nothing;
+  - the empty chain the measurement found (E1) a debt, placed in batch 22 with [#132]; [#208] stays in batch 19.
+- **Done**, in [#225]:
+  - `PdfFileReader.ReadWithoutLoading`, which `GetObject` answers through while the chain is read, with a memo scoped
+    to the chain; `UnreadValue`, which follows the values the rows are read with, each through as many references as
+    `PdfReference.Resolve` follows; `/Prev` and `/XRefStm` through the same lookup;
+  - a deferred `/Length` (`ObjectPresence.Deferred`, `StreamLengthForm.Deferred`): the data up to its `endstream`, a
+    carriage return ending it kept, then `CheckDeferredLengths` once the chain is read, behind the copy of the index;
+  - relocation candidates that are no section dropped whole, their guard included; at a named offset the guard reached;
+  - `/W` widths as `long`, narrowed against the data; rows read field by field past 8 bytes;
+  - the two rules, `file.size-wrong`'s message, the profile and the manifest's schema.
+    `xref.object-stream-value-wrong` takes an object stream's `/Length` as well: the Arlington walk that
+    `object.value-type-wrong` reports from never reaches an object stream, so the decision would have left it
+    unreported — one finding, under one rule, either way;
+  - the commit that adds the rules is a `feat:`.
+
+  Docs: `validation-rules.md` (the two rules, `xref.section-malformed`, `file.size-wrong`), `diagnostics.md`
+  (`xref.section-unreadable`, `stream.length-invalid`), `lazy-reading.md`, `concepts/validation.md`, and the threat
+  model's *Indexing* rows, its gaps replaced by the debts below.
+- **Reviewed.** An adversarial review over five lenses — the reader, the rows, the rules, hostile inputs, the tests —
+  and a completeness critic gave 33 findings, each put to a refuter: 26 kept and fixed, 7 refuted.
+  - Kept and fixed, among them:
+    - the chain refused a section over a `/DecodeParms` entry its rows never read, a regression on valid 1.x files,
+      and followed a reference three levels deep, past which a value its rows needed read as null;
+    - the candidate's keep test ran before the guard at a named offset too, silencing `limit.trailer` and
+      `ThrowOnLimit`;
+    - the deferred length reparsed its stream, reporting its syntax faults twice, was checked for streams the chain
+      never read as sections, reported a length its `endstream` confirms, with a false message when it gave fewer
+      bytes, and lost a last byte that is a carriage return;
+    - `file.trailer-value-wrong` gave two findings for one value, said "the reader read it" of values it could not
+      read, and cited Table 17 where 7.5.8.2 applies; `RowFault` said "more than 64 bits" of 2⁶⁴ − 1;
+    - the documents: a fractional `/Length` of an object stream, a reserved type "ignored as ISO asks" ([#221]), two
+      stale comments; tests: a renamed test that passed on `main`, the lookup's bounds held by no test, the
+      validator's arrays, a real `/XRefStm` and an object stream's real `/Length`.
+  - Refuted: one already fixed in the tree; `ReadField`'s inlining, which tiered compilation restores; three not this
+    change's — [#188]'s duplicate records among them —; two within the decisions.
+  - Found after it: a reference bound of 3 left every test green (a boundary test now holds 31), and patch coverage
+    left a deferred length that gives no length, and a reference leading to a real, unreached.
+- **Tests**: 129 new, 2,943 to 3,072; 4,977 with the remote corpus. Eight mutants of the defenses the review named —
+  the keep test, the window's growth, the trailer guard, the deferred check's confirmation, the carriage return kept,
+  the filters followed, the reference bound, the widths' clamp — each fail a test.
+- **Tracking.** Filed under M02, each reproduced twice: [#218] (a chain read whole that gives no row, rebuilt with no
+  finding, batch 22), [#219] (an ordinary stream's `/DecodeParms` never typed, batch 12), [#220] (a self-indexed
+  `/Length` past 64 KB, and rows that spell `endstream`, batch 16), [#221] (a reserved row type skipped where ISO reads
+  null, batch 19), [#222] (a classic section with no subsection, batch 19), [#223] (five manifest entries describing a
+  structure their files lack, batch 32) and [#224] (a guard-cut `/Length` said to hold null, batch 16). Commented:
+  [#132] (`file.root-invalid`'s false message on one free row), [#169] (the diagnostics' capacity making a trailer
+  malformed), [#61] (an indirect `/ID` beside `/Encrypt`), [#210] ("1 row" paid), [#188] (the relocation window near
+  the file's start, which made the test files' spacer 1,200 bytes), [#158] (`/W`'s hostile test re-aimed, its mutant
+  shown), [#220] and [#224] (their shapes rechecked after the review).
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - 3,072 unit tests, 3 skipped, and 4,977 with the remote corpus;
+  - the patch's 338 measurable lines of `src/` covered on the committed corpus alone, 336 with every branch taken: the
+    two left are `EndStreamAfter`'s defensive arms, a position outside the file and no `endstream` within reach, which
+    the chain's own search rules out; one `??=` no input reached the other side of became an assignment;
+  - each of the batch's commits builds with no warning and passes alone;
+  - the integration suite against qpdf in its container, with the remote documents this container holds, 3,266
+    tests: 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages, in 12 minutes;
+  - the site builds, on the pull request;
+  - `Remote corpus` run 25, on the branch at `2de24cd`, fetched all 242 documents at its first attempt and passed:
+    5,027 acceptance tests with 3 skipped and 3,329 referee checks with 6 skipped.
+- **Next**: batch 7, [#118].
 
 ### 2026-10-02 — Batch 5: the numbers read from the file ([#157], [#186])
 - **The question.** [#157], from the threat model: a 19-digit integer wrapped to a value the file chose —
@@ -1007,3 +1099,11 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#215]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/215
 [#216]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/216
 [#217]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/217
+[#218]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/218
+[#219]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/219
+[#220]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/220
+[#221]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/221
+[#222]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/222
+[#223]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/223
+[#224]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/224
+[#225]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/225
