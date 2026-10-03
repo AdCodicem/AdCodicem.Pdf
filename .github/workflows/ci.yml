@@ -102,6 +102,68 @@ jobs:
           path: artifacts/packages/*.*nupkg
           if-no-files-found: error
 
+  # The next .NET major, against what this commit packed (ADR 48). The unit suite, built for net10.0 as a consumer's
+  # dependency is, runs on the next runtime; and tests/Compat, an application on the next SDK with its own global.json,
+  # installs the package from the build job's artifact alone, publishes trimmed with the AOT analyzer and warnings as
+  # errors, and opens and validates every committed corpus document as the manifest describes it. Not a required check
+  # until .NET 11 ships (docs/releasing.md), and deliberately not continue-on-error: a break shows red.
+  compat:
+    name: compat (.NET 11)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Where tests/Compat/nuget.config looks for it, the one source it takes the package from.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: packages
+          path: artifacts/packages
+
+      # Both: the current SDK builds the unit suite as the repository's global.json asks, and the island's global.json
+      # names the next one, which setup-dotnet installs exactly while it is a prerelease.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+          global-json-file: tests/Compat/global.json
+
+      - name: Build the unit suite
+        run: dotnet build tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
+
+      # With both runtimes installed, Major stays on .NET 10 and LatestMajor refuses a release candidate unless told
+      # otherwise; so the runtime the run reports is checked rather than assumed. Once .NET 11 ships, the prerelease
+      # variable goes.
+      - name: Unit tests on the next runtime
+        env:
+          DOTNET_ROLL_FORWARD: LatestMajor
+          DOTNET_ROLL_FORWARD_TO_PRERELEASE: "1"
+        run: |
+          set -euo pipefail
+          suite=tests/AdCodicem.Pdf.Tests/bin/Release/net10.0/AdCodicem.Pdf.Tests.dll
+          # Captured first, then read: a reader that stops at its first match would cut the pipe under pipefail.
+          info="$(dotnet "$suite" --info)"
+          runtime="$(awk -F ' - ' '/Runtime information:/ { print $NF; exit }' <<<"$info")"
+          echo "The unit suite runs on $runtime."
+          [[ "$runtime" == ".NET 11."* ]] || { echo "::error::The unit suite would run on '$runtime', not .NET 11." >&2; exit 1; }
+          dotnet "$suite"
+
+      # From the island's folder, so that its global.json selects the SDK. The version is the one the build job packed,
+      # read off its file name, never floated: the island restores exactly that version, from artifacts/packages only.
+      - name: The package in a trimmed application on the next SDK
+        working-directory: tests/Compat
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          core=(../../artifacts/packages/AdCodicem.Pdf.[0-9]*.nupkg)
+          (( ${#core[@]} == 1 )) || { echo "::error::Expected one AdCodicem.Pdf package, found ${#core[@]}." >&2; exit 1; }
+          version="$(basename "${core[0]}" .nupkg)"
+          version="${version#AdCodicem.Pdf.}"
+          dotnet publish -c Release -p:AdCodicemVersion="$version" -o "$RUNNER_TEMP/compat"
+          "$RUNNER_TEMP/compat/AdCodicem.Pdf.Compat" ../corpus
+
   integration:
     name: Integration tests
     runs-on: ubuntu-latest

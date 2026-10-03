@@ -87,6 +87,16 @@ dotnet add package AdCodicem.Pdf --prerelease
 in the next preview, without notice. Compatibility promises hold between stable releases only; if you
 depend on a preview, pin its exact version.
 
+### Supported frameworks
+
+Every package carries one version, which follows its own API and never the major of .NET
+([ADR 48](docs/adr/0048-one-version-for-every-package-independent-of-dotnet.md)). A package targets `net10.0`, so it
+installs on .NET 10 and on any later version.
+
+| Package | Built for | Tested on | Next major |
+|---|---|---|---|
+| `AdCodicem.Pdf` | `net10.0` | .NET 10 | .NET 11 release candidate: the unit suite on its runtime, and the package in a trimmed `net11.0` application, on every change |
+
 ## Building
 
 Requires the .NET 10 SDK.

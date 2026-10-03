@@ -72,6 +72,30 @@ the major of .NET or of any framework, and support a framework's next major in t
   a prerelease tag and a `v1.0.0`, it agrees with semantic-release's own core run in dry run against a local remote:
   release type and version, every commit.
 
+### The compatibility island
+
+`tests/Compat` holds the next .NET major's application: its own `global.json`, naming the release candidate's SDK,
+which CI installs exactly; its own `Directory.Build.props`, `Directory.Build.targets` and `Directory.Packages.props`,
+which stop the repository's from applying; and a `nuget.config` that takes `AdCodicem.Pdf*` from
+`artifacts/packages` alone, at exactly the version just packed. It is in no solution. The `compat (.NET 11)` job of
+`ci.yml` runs on every pull request and push, against the packages the build job packed:
+
+- the unit suite, built for `net10.0` as a consumer's dependency is, rolled forward onto the next runtime. With both
+  runtimes installed, `DOTNET_ROLL_FORWARD=Major` stays on .NET 10 and `LatestMajor` refuses a release candidate
+  unless `DOTNET_ROLL_FORWARD_TO_PRERELEASE=1` (measured), so the job reads the runtime the suite reports and fails
+  on any other;
+- the island's application, published trimmed with the AOT analyzer and warnings as errors, which opens and
+  validates every committed corpus document, decodes every stream, and holds each to its manifest entry: the
+  rebuild, the catalog, the findings, the required diagnostics, cleanliness, and the refusal of an encrypted one.
+  It fails on a difference, which a deliberately wrong manifest showed.
+
+It informs and blocks nothing until .NET 11 ships, then becomes a required check. An SDK that cannot target the next
+major — the one GitHub's automatic dependency submission restores every project file with — sees an empty project
+whose restore succeeds; a build on it stops with the reason.
+
+No second target framework is added ahead of need, for the reason ADR 10 gives and because the measurements above
+found nothing that differs.
+
 ### Dependabot follows the same lines
 
 - **A week of cooldown.** Every entry proposes a version only once it has been public for seven days, so that a
@@ -118,6 +142,12 @@ price of one number.
 
 `next-version.mjs` reads `semantic-release`'s internals (where it loads its plugins, how it merges their options):
 a major of semantic-release, which Dependabot proposes and auto-merge leaves for a human, is checked against it again.
+
+The island is maintained by hand (`docs/releasing.md`): each release candidate moves its `global.json`, and the
+release of .NET 11 moves it to `11.0.100`, drops the prerelease roll-forward and makes the job required. When .NET 12
+previews arrive, moving the island to the next major, or adding a second one, is a decision of its own; renaming the
+job changes the required check. CodeQL's default setup downloads every SDK a `global.json` names, the island's
+release candidate included.
 
 At 1.0, `.releaserc.json` has to be edited in the same change that decides 1.0: left alone, a breaking change after
 1.0 would release a minor.
