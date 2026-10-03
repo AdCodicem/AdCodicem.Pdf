@@ -1,0 +1,57 @@
+# The documentation site as docs.yml deploys it and as ci.yml checks it on every pull request: one set of
+# steps, so that what a pull request builds is what a deployment builds.
+#
+# The caller checks the repository out first. The actions below are pinned like those of the workflows, and
+# the github-actions entry of .github/dependabot.yml lists this directory so that Dependabot keeps them
+# current.
+name: build the documentation site
+description: >-
+  Generates the API reference from the XML documentation under src/ with DocFX, copies the project documents,
+  tests the versioning rules, then builds the Docusaurus site into docs/website/build and checks its pages.
+
+inputs:
+  preview-version:
+    description: >-
+      Label of /preview/: the version on nuget.org that describes the commit. Empty for a build nothing deploys,
+      which is labeled "local build", as on a developer's machine.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      with:
+        dotnet-version: "10.0.x"
+
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: docs/website/package-lock.json
+
+    # Without install scripts: the site builds without them, and the two packages of the lock that declare one,
+    # core-js (a banner) and fsevents (macOS only), need none on Linux. The deploying job holds pages: write.
+    - name: Install
+      shell: bash
+      working-directory: docs/website
+      run: npm ci --ignore-scripts --no-audit --no-fund
+
+    # The rules deciding which versions the site lists, and when the preview is shown.
+    - name: Test the versioning rules
+      shell: bash
+      working-directory: docs/website
+      run: npm test
+
+    # The site publishes the project's own documents, so a document that does not build fails here. The build
+    # generates the API reference first, and ends by reading its own pages (scripts/check-site.mjs). The label
+    # is set only when there is one: an empty DOCS_PREVIEW_VERSION is not the same as none to the site.
+    - name: Build
+      shell: bash
+      working-directory: docs/website
+      env:
+        PREVIEW_VERSION: ${{ inputs.preview-version }}
+      run: |
+        set -euo pipefail
+        if [[ -n "$PREVIEW_VERSION" ]]; then export DOCS_PREVIEW_VERSION="$PREVIEW_VERSION"; fi
+        npm run build

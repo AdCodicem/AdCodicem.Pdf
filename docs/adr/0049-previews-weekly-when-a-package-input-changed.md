@@ -159,6 +159,11 @@ strings, so the assembly is what the commit builds.
   fallback that would look the label up on nuget.org (`scripts/preview-version.mjs` is gone). It checks the commit it
   is given before checking it out, and a deployment older than the live site stands down.
 - A stable version as the label shows no preview section, as right after a release (ADR 31).
+- Pull requests lose no check in the move. The **workflows** job of `ci.yml` runs actionlint, with shellcheck,
+  over every workflow, `preview.yml`, `release.yml` and `docs.yml` included, which never run on a pull request,
+  and shellcheck over the scripts they call. The **Documentation site** job builds the site through
+  `.github/actions/build-site`, the composite action `docs.yml` deploys with, so that a pull request builds what a
+  deployment builds; both install the site's npm packages without install scripts, which it builds without.
 
 ### Rejected
 

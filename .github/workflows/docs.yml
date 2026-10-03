@@ -73,8 +73,6 @@ jobs:
           fi
           git checkout --quiet --detach "$commit"
 
-      # Checked as a whole string before it reaches GITHUB_ENV, where a newline would set a variable of its own
-      # — which is why this is bash's =~ and not grep, which matches line by line.
       - name: Preview version
         id: version
         env:
@@ -86,32 +84,20 @@ jobs:
             exit 1
           fi
           echo "The preview section documents $PREVIEW_VERSION, if it is newer than the latest stable release."
-          echo "DOCS_PREVIEW_VERSION=$PREVIEW_VERSION" >> "$GITHUB_ENV"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      # The steps ci.yml also runs on every pull request, with the label.
+      - name: Build the site
+        uses: ./.github/actions/build-site
         with:
-          dotnet-version: "10.0.x"
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: docs/website/package-lock.json
-
-      - name: Install
-        working-directory: docs/website
-        run: npm ci
-
-      - name: Build
-        working-directory: docs/website
-        run: npm run build
+          preview-version: ${{ inputs.preview-version }}
 
       # Read back by the next deployment's freshness check.
       - name: Record the deployed commit
         env:
           COMMIT: ${{ steps.version.outputs.commit }}
-        run: printf '{"commit":"%s","preview":"%s"}\n' "$COMMIT" "$DOCS_PREVIEW_VERSION" > docs/website/build/deployment.json
+          PREVIEW_VERSION: ${{ inputs.preview-version }}
+        run: printf '{"commit":"%s","preview":"%s"}\n' "$COMMIT" "$PREVIEW_VERSION" > docs/website/build/deployment.json
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
@@ -119,13 +105,15 @@ jobs:
 
       - name: Say what was built
         working-directory: docs/website
+        env:
+          PREVIEW_VERSION: ${{ inputs.preview-version }}
         run: |
           stable="$(tr -d '\n ' < releases.json 2>/dev/null || true)"
           {
             echo "### Documentation built"
             echo ""
             echo "- **Stable lines**: \`${stable:-none yet}\`"
-            echo "- **Preview label**: \`$DOCS_PREVIEW_VERSION\` (shown only when newer than the latest stable release)"
+            echo "- **Preview label**: \`$PREVIEW_VERSION\` (shown only when newer than the latest stable release)"
             echo "- Built from \`$(git rev-parse --short HEAD)\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
