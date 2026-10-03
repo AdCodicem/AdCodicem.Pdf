@@ -281,6 +281,69 @@ public class ParserTests
             outcomes.Split('|').Select(outcome => $"The dictionary gives the key /B more than once; {outcome}."));
     }
 
+    [Theory]
+    [InlineData("<< /B 3 /B >>", "A dictionary key had no value.")]
+    [InlineData("<< /B 3 /B endobj", "An endobj ended the object inside a dictionary, which was never closed, before the value of its last key.")]
+    public void Takes_a_key_given_again_with_no_value_for_one_given_null(string text, string fault)
+    {
+        // An absent value is null: given last, it removes what the key held, and the key given again is reported too.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        parser.ParseObject().Should().BeOfType<PdfDictionary>().Which.Should().BeEmpty();
+
+        diagnostics.Select(entry => entry.Message).Should().Equal(
+            fault, "The dictionary gives the key /B more than once; given null last, the key is left out.");
+    }
+
+    [Theory]
+    [InlineData("<< /A null /B null /A 1 /B 2 >>", "1 2", 2)]
+    [InlineData("<< /A null /B null /C null /B 1 /C null >>", "1", 2)]
+    [InlineData("<< /A null /A null /A 3 >>", "3", 2)]
+    [InlineData("<< /A null /B 1 /C null /D null >>", "1", 0)]
+    public void Knows_a_key_given_null_again_however_many_were(string text, string values, int repeats)
+    {
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        var dictionary = parser.ParseObject().Should().BeOfType<PdfDictionary>().Subject;
+
+        string.Join(' ', dictionary.Select(entry => entry.Value.ToString())).Should().Be(values);
+        diagnostics.Should().HaveCount(repeats).And.OnlyContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxKeyRepeated);
+    }
+
+    [Theory]
+    [InlineData("<< /A 1 /A tr", "1", "its last value runs past what was read, and the value given before is kept")]
+    [InlineData("<< /A 1 /A 12", "12", "the last value given is kept")]
+    public void Reports_a_key_given_again_whose_value_a_window_s_edge_cuts(string text, string kept, string outcome)
+    {
+        // The repeat lies at the key, before the edge: it is the file's, and reported. The value the edge cut is kept as far
+        // as it was read, but a null the edge made of a keyword cut short removes nothing.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics, endsData: false);
+
+        var dictionary = parser.ParseObject().Should().BeOfType<PdfDictionary>().Subject;
+
+        parser.IsTruncated.Should().BeTrue();
+        dictionary[PdfName.Get("A")]!.ToString().Should().Be(kept);
+        var report = diagnostics.Should().ContainSingle().Subject;
+        report.Position.Should().Be(8);
+        report.Message.Should().Be($"The dictionary gives the key /A more than once; {outcome}.");
+    }
+
+    [Fact]
+    public void Says_a_key_given_again_is_written_with_escapes_only_when_it_holds_one()
+    {
+        // A number sign that is no escape keeps the key as long as the token: the key is written as it reads.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("<< /A#zz 1 /A#zz 2 >>"), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxKeyRepeated).Should().ContainSingle()
+            .Which.Message.Should().Be("The dictionary gives the key /A#23zz more than once; the last value given is kept.");
+    }
+
     [Fact]
     public void Takes_a_key_written_with_escapes_for_the_key_it_reads_as()
     {
