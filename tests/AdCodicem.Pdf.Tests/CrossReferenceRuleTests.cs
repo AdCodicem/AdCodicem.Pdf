@@ -781,15 +781,16 @@ public class CrossReferenceRuleTests
 
     [Theory]
     [InlineData("/Size 6 /W [1 9 2]", 3)]
+    [InlineData("/Size 6 /W [1 20 20]", 1)]
     [InlineData("/Size 6 /W [1 2147483647 2]", 0)]
     [InlineData("/Size 6 /W [1 4294967300 2]", 0)]
     [InlineData("/Size 6 /W [1 9223372036854775807 2]", 0)]
     [InlineData("/Size 6 /W [9223372036854775807 9223372036854775807 9223372036854775807]", 0)]
     public void A_cross_reference_stream_whose_rows_are_wider_than_its_data_holds_fewer_rows_than_it_declares(string layout, int held)
     {
-        // The rows were written 7 bytes wide, 42 bytes in all. Rows of 12 bytes read 3 of them, misaligned; a row longer
-        // than the data is one the data does not hold, whatever its width, which is narrowed only once it is known to be
-        // within the data, and the widths' sum is then within a long.
+        // The rows were written 7 bytes wide, 42 bytes in all. Rows of 12 bytes read 3 of them, misaligned, and rows of 41
+        // one; a row longer than the data is one the data does not hold, whatever its width, which is narrowed only once
+        // it is known to be within the data, and the widths' sum is then within a long.
         var file = Replace(XRefStreamFile(), "/Size 6 /W [1 4 2]", layout);
 
         Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
