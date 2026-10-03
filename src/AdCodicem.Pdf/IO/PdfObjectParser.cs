@@ -392,7 +392,7 @@ internal ref struct PdfObjectParser
                 // A dictionary end inside an array means the file is confused; stopping here keeps the
                 // damage local instead of swallowing the rest of the document into this array.
                 case PdfTokenKind.DictionaryEnd:
-                    if (!AtWindowEdge(token))
+                    if (!PastWindowEdge)
                     {
                         Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "An array was closed by a dictionary end.", token.Start);
                     }
@@ -474,7 +474,7 @@ internal ref struct PdfObjectParser
             if (valueToken.Kind is PdfTokenKind.DictionaryEnd)
             {
                 // A key with no value: the specification says an absent value is null.
-                if (!AtWindowEdge(valueToken))
+                if (!PastWindowEdge)
                 {
                     Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key had no value.", valueToken.Start);
                 }
@@ -1106,7 +1106,14 @@ internal ref struct PdfObjectParser
     /// have cut it, or comes after the parse met that edge — a look-ahead the edge cut reads the tokens before it again,
     /// for what they are not —: what it seems to be is no fault of the file's.
     /// </summary>
-    private readonly bool AtWindowEdge(PdfToken token) => !_endsData && (_truncated || token.End >= _memory.Length);
+    private readonly bool AtWindowEdge(PdfToken token) => PastWindowEdge || (!_endsData && token.End >= _memory.Length);
+
+    /// <summary>
+    /// Gets a value indicating whether the parse met the edge of a window that is not the end of the data: what it reads
+    /// from then on may be what a look-ahead the edge cut reads again. A <c>&gt;&gt;</c> or a <c>]</c> read before is whole
+    /// wherever it lies, the lexer telling it from its own bytes, and what it says is the file's.
+    /// </summary>
+    private readonly bool PastWindowEdge => !_endsData && _truncated;
 
     /// <summary>
     /// Determines whether <paramref name="token"/> is <c>endobj</c>, and whole: one that reaches the end of a buffer that is

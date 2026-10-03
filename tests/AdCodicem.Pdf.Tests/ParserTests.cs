@@ -470,6 +470,22 @@ public class ParserTests
         diagnostics.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("<< /A >>", "A dictionary key had no value.")]
+    [InlineData("[1 2 >>", "An array was closed by a dictionary end.")]
+    public void Reports_what_a_whole_dictionary_end_at_a_window_s_edge_says(string text, string message)
+    {
+        // A ">>" is whole wherever it lies: the lexer tells it from its own two bytes. What it says of the syntax is the
+        // file's, even at the edge of a window, which nothing will read again when the object ends with it.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics, endsData: false);
+
+        _ = parser.ParseObject();
+
+        parser.IsTruncated.Should().BeFalse();
+        diagnostics.Should().ContainSingle().Which.Message.Should().Be(message);
+    }
+
     [Fact]
     public void Keeps_what_the_end_of_the_data_cut_short_as_far_as_it_was_read()
     {
