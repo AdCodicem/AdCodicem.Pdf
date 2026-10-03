@@ -263,9 +263,9 @@ Some faults the structural profile does not report, each for a reason:
 - **A page-like object reachable only through a destination or an annotation, with neither `/Parent` nor
   `/Contents`** — pikepdf's `handwritten-cyclic-toc.pdf` holds one —: not a page of the tree, and too bare to be told
   from a stray dictionary typed `/Page`.
-- **An array or dictionary still open at the end of the data** — the reader takes it as it stands, and only
-  `object.endobj-missing` reports an object that runs to the end of the file; a finding of its own waits on the
-  reader ([#119]).
+- **An array, a dictionary or a string still open at the end of the data** — the reader takes it as it stands and
+  reports it as `syntax.truncated-object`, in the document's diagnostics ([#119]); `object.endobj-missing` reports the
+  object that runs to the end of the file, as it reports any other object without its `endobj`.
 
 The object-shape rules read part of the Arlington PDF Model, and leave the rest silent until a rule of its own is
 worth its noise:

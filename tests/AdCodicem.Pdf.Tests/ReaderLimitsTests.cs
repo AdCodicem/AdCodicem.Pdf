@@ -380,7 +380,7 @@ public class ReaderLimitsTests
     {
         // The window that holds the object ends where the file does: it cut nothing, however long it is. The object, which
         // lacks its endobj, is the file's to report, not the guard's. Its padding makes it the longest of the file.
-        var file = PdfTemplate.Build(EndingTheFile(PaddedArray));
+        var file = PdfTemplate.Build(PdfTemplate.SoundEndingWith(PaddedArray));
         var length = file.Length - OffsetOf(file, "4 0 obj");
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = length } });
 
@@ -394,7 +394,7 @@ public class ReaderLimitsTests
     [Fact]
     public void An_object_one_byte_longer_than_its_bound_that_ends_the_file_is_cut_by_the_bound()
     {
-        var file = PdfTemplate.Build(EndingTheFile(PaddedArray));
+        var file = PdfTemplate.Build(PdfTemplate.SoundEndingWith(PaddedArray));
         var length = file.Length - OffsetOf(file, "4 0 obj");
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = length - 1 } });
 
@@ -529,14 +529,6 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxTrailerLength) => limits.MaxTrailerLength,
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
-
-    /// <summary>The sound document, its catalog naming object 4, which <paramref name="definition"/> writes after the last <c>%%EOF</c>, ending the file.</summary>
-    private static string EndingTheFile(string definition) =>
-        PdfTemplate.Sound
-            .Replace("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Catalog /Pages 2 0 R /Test 4 0 R >>", StringComparison.Ordinal)
-            .Replace("0 4\n", "0 5\n", StringComparison.Ordinal)
-            .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
-            .Replace("/Size 4", "/Size 5", StringComparison.Ordinal) + definition;
 
     private static string Hex(string text) => Convert.ToHexString(Encoding.ASCII.GetBytes(text)) + ">";
 

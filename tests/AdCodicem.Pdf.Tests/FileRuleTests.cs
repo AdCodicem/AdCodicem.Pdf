@@ -284,6 +284,33 @@ public class FileRuleTests
         }
     }
 
+    [Theory]
+    [InlineData(4)]
+    [InlineData(3000)]
+    public void A_trailer_the_file_ends_inside_is_malformed_whichever_window_reads_it(int rows)
+    {
+        // The trailer's /ID opens a string the file never closes. Behind four rows, the table's window holds the end of the
+        // file; behind three thousand, the trailer runs past that window and is read again through a window of its own,
+        // which reaches the end of the file: either way the string is reported, and the trailer judged malformed.
+        var table = new StringBuilder($"xref\n0 {rows}\n{{free}}\n{{row:1}}\n{{row:2}}\n{{row:3}}\n");
+        for (var row = 4; row < rows; row++)
+        {
+            table.Append("0000000000 65535 f \n");
+        }
+
+        var file = PdfTemplate.Build(
+            PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + table +
+            $"trailer\n<< /Size {rows} /Root 1 0 R /ID [(abc" + new string('x', 10_000) + "\nstartxref\n{xref:1}\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        var report = Validate(file);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
+            .Which.Position.Should().Be(PdfTemplate.OffsetOf(file, "(abc"));
+        Single(report, PdfValidationRuleIds.FileTrailerMalformed).Message.Should().Be(
+            $"The trailer at offset {PdfTemplate.OffsetOf(file, "trailer")} is not a well-formed dictionary: the reader read it despite syntax errors.");
+    }
+
     [Fact]
     public void A_trailer_whose_syntax_errors_overflow_the_diagnostics_is_still_malformed()
     {
