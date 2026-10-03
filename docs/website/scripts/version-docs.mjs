@@ -1,6 +1,6 @@
 // Freezes the user documentation for a stable release, as the entry its line has in the version selector.
 //
-// Called by the stable release (see .releaserc.json) with the version it is about to publish, after the
+// Called by the stable release (the pack job of .github/workflows/release.yml) with the version it is about to publish, after the
 // API reference has been generated, so the frozen copy documents exactly the API being released. The
 // release commit then carries the copy, and every later build of the site serves it unchanged.
 //

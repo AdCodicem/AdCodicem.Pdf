@@ -268,14 +268,21 @@ not a fault of the file: the rules on it report at most, as information, that it
   through commitlint (#196). `CLAUDE.md`: questions to the maintainer go through `AskUserQuestion`.
 - **Checked**: `next-version.mjs` against semantic-release's core, in dry run on a local remote, over the 292 commits
   since `v0.1.0` and a made-up history of 14 — every one agrees; `preview-gate.sh` replayed over the 47 previews
-  after the first against a fake flat container — 27 *publish*, 20 *none*, as the inputs changed —, and 32 scenarios
-  over a synthetic repository of two packages (repair, recheck, report, a release, a lookup that fails);
-  `push-packages.sh` against a fake feed answering 409, 500 and serving symbols late — 13 scenarios, and the trap it
-  avoids measured: a `.nupkg` answered 409 under `--skip-duplicate` never sends its `.snupkg`; `dotnet nuget push`
-  tries a 5xx three times. actionlint and shellcheck on every commit (the first two keep the two style findings
-  `main` already had, in code the third removes); CodeQL 2.27.1's `actions-code-scanning` suite, 0 results; build,
-  format, the unit suite (3,103, 3 skipped), the integration suite skipped without Docker, the pack, the island and
-  the site.
+  after the first against a fake flat container — 27 *publish*, 20 *none*, as the inputs changed —, and 34 scenarios
+  over a synthetic repository of two packages (repair, recheck, report, a release, `Directory.Packages.props`, a
+  lookup that fails); `push-packages.sh` against a fake feed answering 409, 500 and listing late — 11 scenarios,
+  the trap it avoids among them: a `.nupkg` answered 409 under `--skip-duplicate` never sends its `.snupkg`; and
+  `dotnet nuget push` tries a 5xx three times. Both sets now run on every pull request (`release scripts`, in
+  `ci.yml`). actionlint and shellcheck on every commit (the first two keep the two style findings `main` already
+  had, in code the third removes); CodeQL 2.27.1's `actions-code-scanning` suite, 0 results; build, format, the unit
+  suite (3,103, 3 skipped), the integration suite skipped without Docker, the pack, the island and the site.
+- **Reviewed.** An adversarial review of the diff by a fresh agent found no defect that would fail CI, publish a
+  wrong version or leak a credential. Fixed from it: `docs.yml`'s jobs carry a status function of their own, since
+  the implicit `success()` may look past the caller to the jobs `preview.yml` skips on purpose; `release.yml`'s
+  uploads overwrite on a re-run; the pack steps compute their outputs before writing them; the gate restores and reads
+  the projects of the solution filter rather than every project under `src/`; the threat model's entry for [#179];
+  the local command of the island, which a package folder of its own keeps from testing a stale `0.1.0-alpha`; the
+  harnesses, committed rather than run once; two stale comments.
 - **Left to the maintainer**, before or right after the merge: the `preview.yml` Trusted Publishing policy (before),
   the `nuget-stable` environment and its reviewer, both environments limited to `main` ([#178]), the release App and
   its bypass ([#41]), the required checks ([#41], [#196]); then dispatch `preview.yml` once, check the first preview's

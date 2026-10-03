@@ -1,4 +1,4 @@
-# actionlint configuration, read by the workflows job of lint.yml and by a local `actionlint`.
+# actionlint configuration, read by the workflows job of ci.yml and by a local `actionlint`.
 paths:
   .github/workflows/docs.yml:
     ignore:
