@@ -1857,7 +1857,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         try
         {
-            var parser = new PdfObjectParser(window, absolute, this, _pending, this, endsData: absolute + window.Length >= _source.Length);
+            // The table's window ends the data unless it is full and the file goes on, as the table's reading took it.
+            var parser = new PdfObjectParser(window, absolute, this, _pending, this, endsData: !windowFull);
             parser.Position = position;
             var parsed = parser.ParseObject();
 
@@ -3626,14 +3627,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         for (var i = positions.Count - 1; i >= 0; i--)
         {
             // A trailer longer than the window is cut at its edge, which is not the file's end (#49): what the edge cuts
-            // short is not reported. One the chain read already is not reported again.
+            // short is not reported. A window shorter than asked holds the end of the data, as every window does. One the
+            // chain read already is not reported again.
             using var window = _source.GetWindow(positions[i], XRefWindow);
+            var cut = window.Length == XRefWindow && positions[i] + window.Length < _source.Length;
             var mark = _pending.GetMark();
 
             try
             {
-                var parser = new PdfObjectParser(
-                    window.Memory, positions[i], this, _pending, this, endsData: positions[i] + window.Length >= _source.Length);
+                var parser = new PdfObjectParser(window.Memory, positions[i], this, _pending, this, endsData: !cut);
 
                 if (parser.ParseObject().AsDictionary() is { } trailer)
                 {
