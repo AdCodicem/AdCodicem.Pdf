@@ -302,6 +302,27 @@ public class SyntaxFaultTests
         report.Findings.Select(finding => finding.RuleId).Should().Contain(PdfValidationRuleIds.FileTrailerMalformed);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_trailer_a_source_cut_short_ends_inside_is_reported_as_the_end_of_the_data(bool chained)
+    {
+        // A source whose reads stop before the length it gives, as a file another process truncates: a window shorter than
+        // asked holds the end of the data, whether the chain's table or the rebuild's scan reads it, as it does for objects.
+        var tail = "trailer\n<< /Size 4 /Root 1 0 R";
+        var file = chained
+            ? PdfTemplate.Build(PdfTemplate.Sound.Replace("xref\n0 4\n", "startxref\n{xref:1}\n%%EOF\nxref\n0 4\n", StringComparison.Ordinal)
+                .Replace("trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n%%EOF\n", tail + " >>\n" + new string(' ', 200), StringComparison.Ordinal))
+            : Rebuilt(tail + " >>\n" + new string(' ', 200));
+        using var source = new CutShortSource(file);
+        source.CutAt((int)PdfTemplate.OffsetOf(file, tail) + tail.Length);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.WasRepaired.Should().Be(!chained);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
+            .Which.Position.Should().Be(PdfTemplate.OffsetOf(file, "<< /Size 4 /Root"));
+    }
+
     /// <summary>
     /// The catalog and the page tree written directly, and objects 5, 6 and 4 — 4 holding <paramref name="value"/> — packed
     /// in object stream 7, 4 last or first.
