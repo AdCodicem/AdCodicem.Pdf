@@ -144,6 +144,15 @@ public static class PdfDiagnosticCodes
     public const string SyntaxNameEscapeInvalid = "syntax.name-escape-invalid";
 
     /// <summary>
+    /// A dictionary gives a key more than once, which ISO 32000-1 (7.3.7) forbids: keys compare as they read, so a key written
+    /// with <c>#xx</c> escapes repeats the one written without. The last value given is kept, and a null given last removes
+    /// the key, as qpdf, pdf.js, PDFBox, MuPDF and pdfium read it. Reported for each key given again, where it is given, the
+    /// key quoted in the message; inside an object an object stream holds, where the stream's data starts, the member and the
+    /// byte in the message.
+    /// </summary>
+    public const string SyntaxKeyRepeated = "syntax.key-repeated";
+
+    /// <summary>
     /// Rebuilding the index met more than one definition of an object number: the file was updated, or copies an
     /// object. It is reported once for each rebuild, as information with no position: how many definitions met a number
     /// already found, the first ten of those numbers, and which definition was kept — the last written directly in the

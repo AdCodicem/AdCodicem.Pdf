@@ -428,6 +428,11 @@ internal ref struct PdfObjectParser
 
         var dictionary = new PdfDictionary();
 
+        // The keys given null so far, which make no entry: one given again is a repeat all the same. Made the first time a
+        // null is given, which files seldom do; a set rather than a list, so that a dictionary of a million nulls costs as
+        // much again as it reads, not its square.
+        HashSet<PdfName>? nullKeys = null;
+
         while (true)
         {
             var keyToken = _lexer.Read();
@@ -492,12 +497,29 @@ internal ref struct PdfObjectParser
             }
 
             var value = ParseValue(valueToken, depth + 1);
+            var isNull = ReferenceEquals(value, PdfNull.Instance);
+            bool repeated;
 
-            // The specification says an entry whose value is null is the same as no entry at all, so the
-            // parser does not create one: every later stage is spared a null it would have to ignore.
-            if (!ReferenceEquals(value, PdfNull.Instance))
+            // The specification says an entry whose value is null is the same as no entry at all, so the parser does not
+            // create one: every later stage is spared a null it would have to ignore. A key given again keeps its last value,
+            // as qpdf, pdf.js, PDFBox, MuPDF and pdfium read it, a null given last removing it (#172).
+            if (isNull)
+            {
+                repeated = dictionary.Remove(key) | !(nullKeys ??= []).Add(key);
+            }
+            else if (dictionary.TryAdd(key, value))
+            {
+                repeated = nullKeys?.Remove(key) == true;
+            }
+            else
             {
                 dictionary.Set(key, value);
+                repeated = true;
+            }
+
+            if (repeated && !AtWindowEdge(keyToken))
+            {
+                ReportRepeatedKey(keyToken, key, isNull);
             }
         }
 
@@ -963,6 +985,24 @@ internal ref struct PdfObjectParser
                     break;
             }
         }
+    }
+
+    /// <summary>Reports a key the dictionary gives again, at <paramref name="token"/>.</summary>
+    /// <param name="token">The key given again, as the file wrote it.</param>
+    /// <param name="key">The key as it reads.</param>
+    /// <param name="isNull">Whether the value given with it is null, which removes the key.</param>
+    private readonly void ReportRepeatedKey(PdfToken token, PdfName key, bool isNull)
+    {
+        if (!KeepsReports)
+        {
+            Report(PdfDiagnosticCodes.SyntaxKeyRepeated, "A dictionary gives a key more than once.", token.Start);
+            return;
+        }
+
+        var written = token.Text.IndexOf((byte)'#') >= 0 ? ", written here with #xx escapes" : string.Empty;
+        var kept = isNull ? "given null last, the key is left out" : "the last value given is kept";
+
+        Report(PdfDiagnosticCodes.SyntaxKeyRepeated, $"The dictionary gives the key {FileQuote.Name(key)} more than once{written}; {kept}.", token.Start);
     }
 
     /// <summary>Reads a name token, and reports a number sign in it that two hexadecimal digits do not follow.</summary>

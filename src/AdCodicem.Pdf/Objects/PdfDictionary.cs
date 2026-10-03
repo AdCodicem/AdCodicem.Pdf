@@ -62,6 +62,12 @@ public sealed class PdfDictionary : PdfObject, IEnumerable<KeyValuePair<PdfName,
     /// <summary>Removes an entry.</summary>
     public bool Remove(PdfName key) => _entries.Remove(key);
 
+    /// <summary>
+    /// Adds an entry unless the dictionary has one for <paramref name="key"/> already, and says whether it did: one lookup,
+    /// where asking first and setting after takes two.
+    /// </summary>
+    internal bool TryAdd(PdfName key, PdfObject value) => _entries.TryAdd(key, value);
+
     /// <summary>Returns a non-allocating enumerator over the entries.</summary>
     public Dictionary<PdfName, PdfObject>.Enumerator GetEnumerator() => _entries.GetEnumerator();
 
