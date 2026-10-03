@@ -73,9 +73,11 @@ A settled decision is not reopened without new evidence — that is what writing
 - A key a dictionary gives more than once keeps the **last** value given, and a null given last removes it, as an
   absent entry (since 2026-10-03, [#172](https://github.com/AdCodicem/AdCodicem.Pdf/issues/172)): ISO 32000-1
   (7.3.7) forbids the repeat and says nothing of which value counts. qpdf, pdf.js, PDFBox, MuPDF, pdfium, poppler and
-  veraPDF's parser read it so, pypdf and Ghostscript keep the first; `<< /B 3 /B null >>` reads as `<< /B 3 >>` before
-  then, which no other reader did, and as `/B 5 0 R` with object 5 null never could. Keys compare as they read, so
-  `/F#69lter` repeats `/Filter`. Each repeat is reported, `syntax.key-repeated`, a null on either side included.
+  veraPDF's parser read it so, pypdf and Ghostscript keep the first. Before then, `<< /B 3 /B null >>` read as
+  `<< /B 3 >>`: so do pypdf and Ghostscript, keeping the first value, while every reader that keeps the last reads B
+  absent; and `/B 5 0 R`, object 5 null, never read as 3. Keys compare as they read, so `/F#69lter` repeats `/Filter`.
+  A key given with no value, before `>>` or `endobj`, is one given null; a value a guard's cut leaves short removes
+  nothing. Each repeat is reported, `syntax.key-repeated`, a null on either side included.
 - CodeQL runs as GitHub's **default setup**, on every pull request and every push to `main`, with the query
   suite chosen in the repository's settings; the repository keeps no CodeQL workflow or configuration of its
   own (since 2026-09-26, T35). Until then a workflow ran the security *and* quality suites with four queries

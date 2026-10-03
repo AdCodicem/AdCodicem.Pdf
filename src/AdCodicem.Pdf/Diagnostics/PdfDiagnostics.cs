@@ -24,7 +24,10 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// <inheritdoc/>
     public int Count => _entries.Count;
 
-    /// <summary>Gets the number of entries dropped because <see cref="Capacity"/> was reached.</summary>
+    /// <summary>
+    /// Gets the number of entries dropped because <see cref="Capacity"/> was reached. A fault the reader meets again, as it
+    /// parses an object again, is counted again once the capacity is reached, whether or not it was kept before.
+    /// </summary>
     public int SuppressedCount => _suppressed;
 
     /// <summary>
