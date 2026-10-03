@@ -31,9 +31,12 @@ public class HostileInputTests
             .BuildClassic(rootNumber: 1);
         using var document = PdfDocument.Open(bytes);
 
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
         var value = Measure(() => document.GetObject(new PdfObjectId(3)).AsDictionary().Required());
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
         value.Should().HaveCount(entry.Contains("null", StringComparison.Ordinal) ? 0 : 1);
+        allocated.Should().BeLessThan(150L * 1024 * 1024, "a repeat past the capacity is counted, its message not built");
         document.Diagnostics.Should().HaveCount(document.Diagnostics.Capacity)
             .And.OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxKeyRepeated);
         document.Diagnostics.SuppressedCount.Should().Be(999_999 - document.Diagnostics.Capacity);
@@ -329,15 +332,31 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Quotes_nothing_once_the_document_s_diagnostics_are_full_however_many_objects_hold_the_faults(bool packed)
+    [InlineData(false, "number")]
+    [InlineData(true, "number")]
+    [InlineData(false, "repeated key")]
+    [InlineData(true, "repeated key")]
+    [InlineData(false, "name")]
+    [InlineData(true, "name")]
+    [InlineData(false, "hexadecimal string")]
+    [InlineData(true, "hexadecimal string")]
+    [InlineData(false, "endobj")]
+    public void Quotes_nothing_once_the_document_s_diagnostics_are_full_however_many_objects_hold_the_faults(bool packed, string fault)
     {
-        // Twenty thousand objects, each holding a number of 310 digits, read as null and reported. Past the thousand entries
-        // the document keeps, each report is counted and dropped, and neither its quote nor its message is built, whichever
-        // object makes it: built for each object, they allocated about 16 MB more than objects as long without the fault.
-        var extra = AllocatedReadingEveryObject(ManyObjects(packed, "[1" + new string('0', 309) + "]")) -
-            AllocatedReadingEveryObject(ManyObjects(packed, "[1" + new string(' ', 309) + "]"));
+        // Twenty thousand objects, each holding a fault whose report quotes or counts something: a number of 310 digits, a
+        // key given again, a name whose number sign is no escape, a hexadecimal string with stray bytes, an array an endobj
+        // ends. Past the thousand entries the document keeps, each report is counted and dropped, and neither its quote nor
+        // its message is built, whichever object makes it: built for each object, the numbers' allocated about 16 MB more than
+        // objects as long without the fault. Each fault is set against the same object written soundly.
+        var (faulty, sound) = fault switch
+        {
+            "number" => ("[1" + new string('0', 309) + "]", "[1" + new string(' ', 309) + "]"),
+            "repeated key" => ("<< /LongerKeyName 1 /LongerKeyName 2 >>", "<< /LongerKeyName 1 /LongerKeyNamf 2 >>"),
+            "name" => ("[/LongerName#zzWithASign]", "[/LongerName#20WithASign]"),
+            "hexadecimal string" => ("[<41x42y43z44>]", "[<41 42 43 44>]"),
+            _ => ("[1 2 3 ", "[1 2 3]"),
+        };
+        var extra = AllocatedReadingEveryObject(ManyObjects(packed, faulty)) - AllocatedReadingEveryObject(ManyObjects(packed, sound));
 
         extra.Should().BeLessThan(4 * 1024 * 1024, "a report the document's diagnostics drop is formatted for no object");
     }
