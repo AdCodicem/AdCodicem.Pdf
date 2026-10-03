@@ -164,6 +164,35 @@ public class SyntaxFaultTests
         report.Findings.Should().ContainSingle().Which.RuleId.Should().Be(PdfValidationRuleIds.FileTrailerMalformed);
     }
 
+    [Theory]
+    [InlineData("/Filter /FlateDecode /F#69lter /ASCIIHexDecode", "Hello")]
+    [InlineData("/F#69lter /FlateDecode /Filter /ASCIIHexDecode", "Hello")]
+    public void A_stream_whose_filter_is_given_twice_decodes_with_the_last_and_says_so(string filters, string decoded)
+    {
+        // The data is ASCII hexadecimal: the filter given last decodes it, as every reader but pypdf decodes it.
+        var file = PdfTemplate.Build(PdfTemplate.SoundEndingWith($"4 0 obj\n<< {filters} /Length 11 >>\nstream\n48656C6C6F>\nendstream\nendobj\n"));
+        using var document = PdfDocument.Open(file);
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        Encoding.ASCII.GetString(stream.Decode(document.Diagnostics).Span).Should().Be(decoded);
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.SyntaxKeyRepeated);
+    }
+
+    [Fact]
+    public void A_trailer_that_gives_a_key_twice_is_malformed_even_when_both_values_agree()
+    {
+        // A writer that gives a key twice may have meant either value; one that agrees with itself is still read despite a
+        // fault of its syntax.
+        var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "<< /Size 4 /Root 1 0 R /Root 1 0 R >>");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.SyntaxKeyRepeated);
+        report.Findings.Should().ContainSingle().Which.RuleId.Should().Be(PdfValidationRuleIds.FileTrailerMalformed);
+    }
+
     /// <summary>
     /// The catalog and the page tree written directly, and objects 5, 6 and 4 — 4 holding <paramref name="value"/> — packed
     /// in object stream 7, 4 last or first.
