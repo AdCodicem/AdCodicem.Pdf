@@ -329,6 +329,20 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Quotes_nothing_once_the_document_s_diagnostics_are_full_however_many_objects_hold_the_faults(bool packed)
+    {
+        // Twenty thousand objects, each holding a number of 310 digits, read as null and reported. Past the thousand entries
+        // the document keeps, each report is counted and dropped, and neither its quote nor its message is built, whichever
+        // object makes it: built for each object, they allocated about 16 MB more than objects as long without the fault.
+        var extra = AllocatedReadingEveryObject(ManyObjects(packed, "[1" + new string('0', 309) + "]")) -
+            AllocatedReadingEveryObject(ManyObjects(packed, "[1" + new string(' ', 309) + "]"));
+
+        extra.Should().BeLessThan(4 * 1024 * 1024, "a report the document's diagnostics drop is formatted for no object");
+    }
+
+    [Theory]
     [InlineData("/W [99 99 99]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
     [InlineData("/W [1 2147483647 2147483647]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
     [InlineData("/W [1 4294967300 2]", "is malformed: it holds 0 rows where its /Index and /Size declare 5.")]
@@ -1260,6 +1274,37 @@ public class HostileInputTests
         output.Write(compressedRows.ToArray());
         Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
         return output.ToArray();
+    }
+
+    /// <summary>The catalog and an empty page tree, then objects 3 to 20,002, each <paramref name="body"/>, packed or written directly.</summary>
+    private static byte[] ManyObjects(bool packed, string body)
+    {
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 3; number < 20_003; number++)
+        {
+            builder.WithObject(number, body);
+        }
+
+        return packed
+            ? builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [.. Enumerable.Range(3, 20_000)])
+            : builder.BuildClassic(rootNumber: 1);
+    }
+
+    /// <summary>Opens <paramref name="file"/> and reads its objects 3 to 20,002, and gives what reading them allocated.</summary>
+    private static long AllocatedReadingEveryObject(byte[] file)
+    {
+        using var document = PdfDocument.Open(file);
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var number = 3; number < 20_003; number++)
+        {
+            _ = document.GetObject(new PdfObjectId(number));
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - allocated;
     }
 
     private static T Measure<T>(Func<T> action)

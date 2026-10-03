@@ -28,10 +28,17 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     public int SuppressedCount => _suppressed;
 
     /// <summary>
-    /// Gets a value indicating whether <see cref="Capacity"/> is reached: what is added now is counted and dropped, so a
-    /// message built only for it need not be.
+    /// Gets the diagnostics what this instance holds is moved into once kept, whose entries count against what this one can
+    /// keep; null when it is kept as it is.
     /// </summary>
-    internal bool IsFull => _entries.Count >= Capacity;
+    internal PdfDiagnostics? KeptIn { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether <see cref="Capacity"/> is reached — by this instance's entries and, when it is kept
+    /// in another, by that one's —: what is added now is counted and dropped, here or once kept, so a message built only
+    /// for it need not be.
+    /// </summary>
+    internal bool IsFull => _entries.Count + (KeptIn?.Count ?? 0) >= Capacity;
 
     /// <inheritdoc/>
     public PdfDiagnostic this[int index] => _entries[index];
