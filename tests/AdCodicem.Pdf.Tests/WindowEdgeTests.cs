@@ -161,7 +161,8 @@ public class WindowEdgeTests
     public void An_object_the_file_really_cuts_short_is_still_reported_once()
     {
         // The window was never the problem here: the file ends inside the object. The last attempt, the
-        // one that reaches the end of the file, reports it; the attempts before it do not.
+        // one that reaches the end of the file, reports it, where the dictionary the file ends inside opens; the
+        // attempts before it do not.
         var marker = "/Cut 1 >>";
         var complete = Document("<< /Pad (" + new string('x', 3 * Window) + ") " + marker);
         var end = Encoding.Latin1.GetString(complete).IndexOf(marker, StringComparison.Ordinal) + "/Cut ".Length;
@@ -172,7 +173,7 @@ public class WindowEdgeTests
         value[PdfName.Get("Pad")].Should().BeOfType<PdfString>().Which.Length.Should().Be(3 * Window);
         document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
             .Should().ContainSingle()
-            .Which.Position.Should().Be(end);
+            .Which.Position.Should().Be(Encoding.Latin1.GetString(complete).IndexOf("<< /Pad", StringComparison.Ordinal));
         document.Diagnostics.Where(d => d.Code.StartsWith("syntax.", StringComparison.Ordinal) ||
                                         d.Code.StartsWith("stream.", StringComparison.Ordinal))
             .Should().ContainSingle();

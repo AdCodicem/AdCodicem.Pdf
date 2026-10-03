@@ -1848,7 +1848,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         try
         {
-            var parser = new PdfObjectParser(window, absolute, this, _pending, this);
+            var parser = new PdfObjectParser(window, absolute, this, _pending, this, endsData: absolute + window.Length >= _source.Length);
             parser.Position = position;
             var parsed = parser.ParseObject();
 
@@ -2853,10 +2853,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             while (true)
             {
                 using var window = _source.GetWindow(offset, windowSize);
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this);
 
                 // A window that ends where the file does cut nothing, however long it is: what it holds is all there is.
                 var cut = window.Length == windowSize && offset + window.Length < _source.Length;
+                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this, endsData: !cut);
                 PdfObject parsed;
 
                 if (number == DirectObject)
@@ -2964,10 +2964,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             while (true)
             {
                 using var window = _source.GetWindow(offset, windowSize);
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending);
+                var cut = window.Length == windowSize && offset + window.Length < _source.Length;
+                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
-                if (parser.IsTruncated && window.Length == windowSize && offset + window.Length < _source.Length)
+                if (parser.IsTruncated && cut)
                 {
                     if (windowSize >= maxWindow)
                     {
@@ -3573,8 +3574,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         // The newest trailer is the last one in the file, and its keys must win.
         for (var i = positions.Count - 1; i >= 0; i--)
         {
+            // A trailer longer than the window is cut at its edge, which is not the file's end (#49): what the edge cuts
+            // short is not reported.
             using var window = _source.GetWindow(positions[i], XRefWindow);
-            var parser = new PdfObjectParser(window.Memory, positions[i], this, _diagnostics, this);
+            var parser = new PdfObjectParser(
+                window.Memory, positions[i], this, _diagnostics, this, endsData: positions[i] + window.Length >= _source.Length);
 
             if (parser.ParseObject().AsDictionary() is { } trailer)
             {
@@ -4049,7 +4053,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return null;
             }
 
-            var parser = PdfObjectParser.ForObjectStreamMember(_data, _number, _position, expectedNumber, source, parsing);
+            var parser = PdfObjectParser.ForObjectStreamMember(_data, _number, _position, expectedNumber, source, parsing, endsData: !_cutByGuard);
             parser.Position = (int)start;
             var value = parser.ParseObject();
             cut = _cutByGuard && parser.IsTruncated;

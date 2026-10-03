@@ -55,6 +55,17 @@ internal static partial class PdfTemplate
         .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
         .Replace("/Size 4", "/Size 5", StringComparison.Ordinal);
 
+    /// <summary>
+    /// The sound document, its catalog naming object 4 under <c>/Test</c>, with <paramref name="definition"/> — object 4's
+    /// header and what follows it — written after its <c>%%EOF</c>, so that object 4 ends the file.
+    /// </summary>
+    public static string SoundEndingWith(string definition) =>
+        Sound
+            .Replace("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Catalog /Pages 2 0 R /Test 4 0 R >>", StringComparison.Ordinal)
+            .Replace("0 4\n", "0 5\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 5", StringComparison.Ordinal) + definition;
+
     /// <summary>Writes the template, its placeholders replaced.</summary>
     public static byte[] Build(string template)
     {
