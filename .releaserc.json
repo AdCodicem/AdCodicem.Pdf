@@ -20,8 +20,8 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": ".github/scripts/release-pack.sh ${nextRelease.version} ${nextRelease.type} ${lastRelease.version || ''} && npm --prefix docs/website ci && npm --prefix docs/website run snapshot -- ${nextRelease.version}",
-        "publishCmd": "dotnet nuget push 'artifacts/packages/*.nupkg' --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate"
+        "prepareCmd": "test \"$PACKED_VERSION\" = '${nextRelease.version}' || { echo \"::error::semantic-release computed ${nextRelease.version}, but the pack job packed '$PACKED_VERSION'.\" >&2; exit 1; }",
+        "publishCmd": ".github/scripts/push-packages.sh artifacts/packages '${nextRelease.version}'"
       }
     ],
     [
@@ -40,7 +40,9 @@
     [
       "@semantic-release/github",
       {
-        "assets": [{ "path": "artifacts/packages/*.nupkg", "label": "NuGet packages" }]
+        "releaseBodyTemplate": "<%= nextRelease.notes %>\n<% const packageIds = (env.RELEASE_PACKAGE_IDS || \"\").split(/\\s+/).filter(Boolean); if (packageIds.length) { %>\n### NuGet packages\n\n| Package | Version |\n| --- | --- |\n<% packageIds.forEach(function (id) { %>| `<%= id %>` | [<%= nextRelease.version %>](https://www.nuget.org/packages/<%= id %>/<%= nextRelease.version %>) |\n<% }); %>\nThe `.nupkg` and `.snupkg` files attached to this release, and every assembly inside them, carry a signed build provenance attestation (`AdCodicem.Pdf.<%= nextRelease.version %>.sigstore.json`). nuget.org re-signs each `.nupkg`, which changes its digest, but leaves the assemblies as they were packed, so a package restored from nuget.org is checked through one of them:\n\n```sh\ngh attestation verify ~/.nuget/packages/adcodicem.pdf/<%= nextRelease.version %>/lib/net10.0/AdCodicem.Pdf.dll --repo AdCodicem/AdCodicem.Pdf --signer-workflow AdCodicem/AdCodicem.Pdf/.github/workflows/release.yml\n```\n<% } %>",
+        "assets": [{ "path": "artifacts/packages/*.nupkg" }, { "path": "artifacts/packages/*.snupkg" }],
+        "draftRelease": true
       }
     ]
   ]

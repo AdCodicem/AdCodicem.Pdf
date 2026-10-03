@@ -264,38 +264,86 @@ already on nuget.org is never a reason to keep one.
 
 ### The stable release is a decision, and it is taken by hand
 
-**Actions → Release → Run workflow**. The stable path tags, writes to `main` and cannot be taken back, so
-it has a workflow of its own, behind an approval. That run, and only that run:
+**Actions → Release → Run workflow**, from `main`. The stable path tags, writes to `main` and cannot be taken
+back, so it has a workflow of its own, behind the `nuget-stable` reviewer's approval.
 
-1. works the version out from the commits since the last tag;
-2. freezes the user documentation for the release's line into `docs/website/versioned_docs` (see
-   [the documentation site](#the-documentation-site) below);
-3. writes `CHANGELOG.md`, commits it with the frozen documentation, and tags `vX.Y.Z`;
-4. packs and pushes the stable packages to nuget.org;
-5. opens the GitHub Release with the generated notes;
-6. redeploys the site from the release commit, so its root is the version just released.
+Before releasing, make sure what ships has been previewed: if package inputs changed since the last preview,
+dispatch **preview** and wait until it is green. Its publish job ends only once nuget.org lists every
+package, so a release started earlier would compare against a nuget.org that has not caught up. Then run
+**Release** with **dry run** ticked and read the version it computes before running it for real.
 
-Tick **dry run** to see the version and the notes it would produce and stop there: nothing is published,
-tagged, or deployed, and no publishing key is even requested.
+The run has five jobs:
 
-If the run reports no release, read the commits: `docs:`, `chore:`, `test:`, `refactor:` and `build:`
+1. **build and test** runs both suites on the dispatched commit, without any credential.
+2. **pack**, without any credential either, computes the version with `next-version.mjs`, packs the packable
+   projects under `src/` through `release-pack.sh`, freezes the user documentation for the release's line
+   (`npm run snapshot`, [the documentation site](#the-documentation-site) below), and uploads both, with
+   their SHA-256 digests as job outputs. It packs on every run, the dry run included.
+3. **was it previewed** warns on the run page, without ever blocking, when the release ships package inputs
+   that no version on nuget.org carries, or when the version it compares with reached only some packages.
+   It runs before the release job, so that its warning is there when the reviewer approves.
+4. **publish** (or **dry run**), in `nuget-stable`, waits for the approval, then builds nothing: it checks
+   the pack job's files against their digests and the set, puts the frozen documentation in place, and runs
+   semantic-release. semantic-release checks that the version it computes is the one packed, writes
+   `CHANGELOG.md`, commits it with the frozen documentation, tags `vX.Y.Z`, pushes the packages through
+   `push-packages.sh` — dependencies first, waiting until nuget.org lists them — and drafts the GitHub
+   Release with the packages attached and a table linking each to nuget.org. Every write goes through the
+   release App's token; the job's own token only reads.
+5. **attest provenance** attests every package and the assemblies inside them, attaches the bundle
+   (`AdCodicem.Pdf.<version>.sigstore.json`) to the draft, and publishes it; then **publish documentation**
+   redeploys the site from the release's tag, so its root is the version just released.
+
+**dry run** stops after semantic-release has worked out the version and the notes: nothing is published,
+tagged or deployed, and no publishing key is requested.
+
+If the run reports no release, read the commits: `docs:`, `chore:`, `test:`, `refactor:`, `build:` and `ci:`
 deliberately release nothing. If the push fails with an authorization error, the mismatch is almost always
 between the policy and the workflow: the file name, the environment, or the account name `user` gives
 `NuGet/login`.
 
-Two things the stable run needs on `main`: permission to push the changelog commit and the tag. If branch
-protection is turned on, either allow the `github-actions` actor to bypass it, or accept that the release
-cannot record itself.
+#### When a release run is red
 
-The first publish has happened; reserving the ID prefix is what is left, and it is tracked as T20.
+- **The tests or the pack failed.** Nothing was published, tagged or committed: correct it and dispatch
+  again.
+- **The attest provenance or publish documentation job failed.** Use **Re-run failed jobs**: dispatching
+  the release again would find nothing to release and skip both. Do not publish the draft by hand, or the
+  release goes public without its bundle.
+- **semantic-release failed in its publish step, after tagging.** Nothing completes the release by itself.
+  What reached nuget.org is a prefix of the set, in dependency order; the rest is in the run's
+  `release-packages` artifact. Push the missing packages by hand, in the order the log prints ("Push
+  order: …"), then create the GitHub Release from the tag, with that artifact's files as its assets, and say
+  in its notes that it carries no attestation: only a run of `release.yml` can sign as `release.yml`. Until
+  it is complete, `preview.yml` refuses to publish ("complete it by hand").
+
+#### The release App
+
+The ruleset on `main` takes only pull requests, and its bypass list takes repository roles, teams, GitHub
+Apps and deploy keys, never the `GITHUB_TOKEN` a workflow runs with (#41). semantic-release therefore pushes
+the release commit and the tag as a dedicated GitHub App:
+
+1. Create a GitHub App (Settings → Developer settings → GitHub Apps → New), with no webhook, repository
+   permissions **Contents**, **Issues** and **Pull requests** set to *Read and write*, installable on this
+   account only. Generate a private key.
+2. Install it on this repository only.
+3. Add the App to the bypass list of the ruleset on `main` (Settings → Rules → Rulesets), mode *Always
+   allow*.
+4. On the `nuget-stable` environment, add the variable `RELEASE_APP_CLIENT_ID` (the App's Client ID) and the
+   secret `RELEASE_APP_PRIVATE_KEY` (the whole `.pem`). On the environment rather than the repository, the
+   key is readable only once the reviewer has approved the run.
+
+Without them the release job stops at its first step, before anything is published.
 
 ## Also configured by hand, once
 
 | What | Where | Needed for |
 |---|---|---|
 | Codecov | The repository is linked on codecov.io, and the Codecov **GitHub App** is installed — **done** since 2026-09-27: it reports on each pull request as `codecov[bot]` | Coverage upload in CI. A public repository uploads without a token; the `CODECOV_TOKEN` secret is read if one exists, and becomes necessary only if the repository goes private or Codecov stops accepting tokenless uploads |
+| Trusted Publishing policies | nuget.org, see [above](#one-time-setup-on-nugetorg) | `preview.yml` and `release.yml` |
+| Environments `nuget` and `nuget-stable` | Settings → Environments, see [above](#one-time-setup-on-github) | The two publishing jobs, and the approval of a stable release |
+| The release App | See [above](#the-release-app) | The stable release's commit and tag |
 | "Allow auto-merge" | Settings → General | Dependabot auto-merge |
-| Branch protection on `main` with CI as a required check | Settings → Branches | Auto-merge cannot merge a red build |
+| Squash merging allowed, with the pull request title as its default commit message | Settings → General → Pull Requests | Dependabot pull requests land as their title says |
+| Required status checks **`Build and unit tests`**, **`Integration tests`**, **`Conventional commits`** and **`workflows`** | Settings → Rules → Rulesets, the ruleset on `main` | Auto-merge cannot merge a red build (#41). The checks are job names: renaming one leaves every pull request waiting for a check that never reports |
 | Discussions, Sponsors | Settings → Features, and the GitHub account | The discussion template and `FUNDING.yml` |
 
 ## The documentation site

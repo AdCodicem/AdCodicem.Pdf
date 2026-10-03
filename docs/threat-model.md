@@ -460,6 +460,12 @@ Known gaps:
   the set and that the plan is still current, attests every package and assembly, and pushes. The release tooling's
   npm packages run in a job of their own, whose only outputs are a version and a release type, which the plan
   computes again. Previews are attested; an assembly restored from nuget.org verifies with `gh attestation verify`.
+- **A stable release is built where nothing can publish, and approved before anything does.** `release.yml`
+  tests and packs in jobs with no credential, the documentation snapshot included. Its release job, in the
+  `nuget-stable` environment, waits for the reviewer, builds nothing, checks the pack job's files against their
+  digests, and runs semantic-release from the committed lock, without install scripts, beside the NuGet key and
+  the release App's token; its own `GITHUB_TOKEN` only reads. The packages and their assemblies are attested, and
+  the bundle is attached to the GitHub Release before it is published.
 - **Test data is pinned**: remote corpus documents by size and SHA-256, the Arlington model by a lock file that a
   test checks.
 - **Measured, not asserted**: OpenSSF Scorecard runs weekly and on every push to `main`. CodeQL runs as GitHub's
@@ -467,12 +473,13 @@ Known gaps:
 
 Known gaps:
 
-- [#177] The stable release job restores, builds and tests while holding the right to publish.
+- [#177] The benchmarks' `filter` input still reaches `run:` by template expansion, and the qpdf referee's image
+  and the commitlint action's image are pinned by tag, not by digest.
 - [#178] A branch can publish a package without review: nothing ties the `nuget` environment to `main`.
 - [#179] Nothing but review checks that the core has no dependency.
 - [#43] The NuGet restore is not locked.
-- [#41] The stable release cannot push through the ruleset, and the ruleset requires no CI check by name.
-- [#45] The stable release packages carry no attestation; previews do.
+- [#41] The release App on the ruleset's bypass list, and the CI checks required by name, are settings the
+  maintainer has yet to make; until then the stable release stops at its first step.
 - [#44] The project has no OpenSSF Best Practices badge.
 - [#196] Dependabot's auto-merge refuses only what it recognizes as a major bump, and nothing requires CI before the
   merge it queues.
@@ -584,7 +591,6 @@ The last column also names the questions they leave open, which that milestone s
 [#41]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/41
 [#43]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/43
 [#44]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/44
-[#45]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/45
 [#47]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/47
 [#48]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/48
 [#49]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/49
