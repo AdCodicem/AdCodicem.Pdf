@@ -157,10 +157,11 @@ public class PropertyTests
     }
 
     [Fact]
-    public void What_a_window_reports_of_its_syntax_the_whole_data_reports_first_in_the_same_order()
+    public void What_a_window_reports_of_its_syntax_the_whole_data_reports_too_in_the_same_order()
     {
         // ADR 34: a window that is not the end of the data reports nothing of the token its edge cuts, nor of what follows
-        // once the parse met the edge; what it met before the edge is the data's, and the whole data reports it too, first.
+        // once the parse met the edge; what it met before the edge is the data's, and the whole data reports it too, at the
+        // same place and in the same order — a key given again among them, whose value the edge cut, which its message says.
         // The syntax is drawn from fragments of PDF's, so that containers, strings, names, references and endobj meet the
         // edge at every byte.
         var fragments = Gen.Elements(
@@ -181,8 +182,20 @@ public class PropertyTests
             _ = new PdfObjectParser(bytes, diagnostics: whole).ParseObject();
             _ = new PdfObjectParser(bytes.AsMemory(0, drawn.cut), diagnostics: window, endsData: false).ParseObject();
 
-            var kept = window.Where(entry => entry.Code.StartsWith("syntax.", StringComparison.Ordinal)).ToList();
-            return whole.Where(entry => entry.Code.StartsWith("syntax.", StringComparison.Ordinal)).Take(kept.Count).SequenceEqual(kept);
+            var made = whole.Where(entry => entry.Code.StartsWith("syntax.", StringComparison.Ordinal)).Select(entry => (entry.Code, entry.Position)).ToList();
+            var next = 0;
+
+            foreach (var entry in window.Where(entry => entry.Code.StartsWith("syntax.", StringComparison.Ordinal)))
+            {
+                next = made.IndexOf((entry.Code, entry.Position), next) + 1;
+
+                if (next == 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }));
     }
 
