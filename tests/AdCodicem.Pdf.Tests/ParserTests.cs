@@ -564,6 +564,102 @@ public class ParserTests
             "An endobj ended the object inside an array, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
     }
 
+    [Theory]
+    [InlineData("<FFxyz00GG1>", 3, "A hexadecimal string holds 5 bytes that are neither hexadecimal digits nor white space, the first here; they were skipped.")]
+    [InlineData("[1 <41%42>]", 6, "A hexadecimal string holds a byte that is neither a hexadecimal digit nor white space; it was skipped.")]
+    public void Reports_once_the_bytes_of_a_hexadecimal_string_that_are_neither_digits_nor_white_space(string text, int position, string message)
+    {
+        // #172: the bytes are skipped, as pdf.js and pdfium skip them, and the string is reported once, where the first lies.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        var report = diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxHexStringInvalid);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(position);
+        report.Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("/A#zzB#4", 2, "/A#23zzB#234")]
+    [InlineData("<< /F#zz 1 >>", 5, "/F#23zz")]
+    [InlineData("[/Ok /A#4]", 7, "/A#234")]
+    public void Reports_once_a_name_whose_number_sign_two_hexadecimal_digits_do_not_follow(string text, int position, string quoted)
+    {
+        // #172: the number sign is kept as the byte it is, as PDF 1.1 read it and most readers still do; the name is reported
+        // once, where that number sign lies, and quoted as it reads, the kept sign written #23 as a writer writes it.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        var report = diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxNameEscapeInvalid);
+        report.Position.Should().Be(position);
+        report.Message.Should().Be(
+            $"A name holds a number sign that two hexadecimal digits do not follow, kept as the byte it is: the name reads as {quoted}.");
+    }
+
+    [Theory]
+    [InlineData("/A#00B")]
+    [InlineData("<41 42\n43\t\f>")]
+    [InlineData("/A#20B")]
+    public void Reports_nothing_of_a_name_or_a_hexadecimal_string_that_breaks_no_rule_of_the_syntax(string text)
+    {
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("[/A#4")]
+    [InlineData("[<41zz")]
+    public void Reports_nothing_of_a_name_or_a_hexadecimal_string_a_window_s_edge_cuts(string text)
+    {
+        // At the edge of a window, "#4" may be the start of "#41", and the string may close past the edge.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics, endsData: false);
+
+        _ = parser.ParseObject();
+
+        parser.IsTruncated.Should().BeTrue();
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Counts_without_quoting_a_name_whose_report_the_diagnostics_drop()
+    {
+        var diagnostics = new PdfDiagnostics { Capacity = 0 };
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("[/A#zz <41zz42zz>]"), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Should().BeEmpty();
+        diagnostics.SuppressedCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void Says_in_which_member_a_malformed_name_and_hexadecimal_string_lie()
+    {
+        var diagnostics = new PdfDiagnostics();
+        var data = Encoding.ASCII.GetBytes("5 0 [/A#zz <4G>]");
+        var parser = PdfObjectParser.ForObjectStreamMember(data, 9, 1000, 5, ObjectSourceReturning(new PdfObjectId(1), PdfNull.Instance), diagnostics);
+        parser.Position = 4;
+
+        _ = parser.ParseObject();
+
+        diagnostics.Select(entry => (entry.Code, entry.Position, entry.Message)).Should().Equal(
+            (PdfDiagnosticCodes.SyntaxNameEscapeInvalid, 1000L,
+                "A name holds a number sign that two hexadecimal digits do not follow, kept as the byte it is: the name reads as /A#23zz. It was met in object 5, at byte 7 of object stream 9's decoded data."),
+            (PdfDiagnosticCodes.SyntaxHexStringInvalid, 1000L,
+                "A hexadecimal string holds a byte that is neither a hexadecimal digit nor white space; it was skipped. It was met in object 5, at byte 13 of object stream 9's decoded data."));
+    }
+
     private static PdfObject Parse(string text)
     {
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));

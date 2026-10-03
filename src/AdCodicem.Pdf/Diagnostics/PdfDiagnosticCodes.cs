@@ -126,6 +126,24 @@ public static class PdfDiagnosticCodes
     public const string SyntaxNumberOutOfRange = "syntax.number-out-of-range";
 
     /// <summary>
+    /// A hexadecimal string holds bytes that are neither hexadecimal digits nor white space, the only bytes ISO 32000-1
+    /// (7.3.4.3) lets it hold — a <c>%</c> among them, which is no comment there —: they were skipped, as pdf.js and pdfium
+    /// skip them, where other readers stop at the first or read the string as null. Reported once for each string, where
+    /// its first such byte lies, how many there are in the message; inside an object an object stream holds, where the
+    /// stream's data starts, the member and the byte in the message.
+    /// </summary>
+    public const string SyntaxHexStringInvalid = "syntax.hex-string-invalid";
+
+    /// <summary>
+    /// A name holds a number sign that two hexadecimal digits do not follow: it was kept as the byte it is, as PDF 1.1 read
+    /// it and most readers still do, where ISO 32000-1 (7.3.5) has a writer write <c>#23</c>. Reported once for each name,
+    /// where its first such number sign lies, the name read quoted in the message; inside an object an object stream holds,
+    /// where the stream's data starts, the member and the byte in the message. A <c>#00</c> is no such fault: it is an
+    /// escape, of a byte no name may hold, which the validator reports.
+    /// </summary>
+    public const string SyntaxNameEscapeInvalid = "syntax.name-escape-invalid";
+
+    /// <summary>
     /// Rebuilding the index met more than one definition of an object number: the file was updated, or copies an
     /// object. It is reported once for each rebuild, as information with no position: how many definitions met a number
     /// already found, the first ten of those numbers, and which definition was kept — the last written directly in the
