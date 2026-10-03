@@ -2951,10 +2951,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                         return false;
                     }
 
-                    // What the parser met before the cut is the file's, and is kept; it reported nothing of the token the
-                    // window's edge cut, which is the guard's (ADR 34), and what it found of a stream is dropped with the cut.
+                    // The guard is reported first, so that what the parse met before the cut cannot crowd it out of full
+                    // diagnostics: it is the one report that names the property to raise. What the parser met before the cut
+                    // is the file's, and is kept after it; it reported nothing of the token the window's edge cut, which is
+                    // the guard's (ADR 34), and what it found of a stream is dropped with the cut.
                     syntaxFault = SyntaxFaultSince(_pending, mark);
-                    KeepPending(mark, syntaxOnly: true);
                     ReachLimit(limit, LimitSubject(number, maxWindow), offset);
                     MarkCutByGuard(parsed, offset + window.Length);
 
@@ -2962,6 +2963,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     {
                         _cutAtLimit.Add(foundNumber);
                     }
+
+                    KeepPending(mark, syntaxOnly: true);
 
                     // A stream the guard cut ran into the window's edge, not the file's end: what the parser found of it
                     // is the limit's, and was dropped with what it reported.
