@@ -1716,9 +1716,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var span = window.Memory.Span;
             var lexer = new PdfLexer(span);
 
-            // A window shorter than asked holds the end of the file: what it holds is all there is. A full one
-            // may have cut the table, and is grown until the guard allows no more.
-            var windowFull = window.Length == windowSize;
+            // A window shorter than asked holds the end of the file: what it holds is all there is, as it is for a full one
+            // that ends where the file does. Any other full one may have cut the table, and is grown until the guard allows
+            // no more.
+            var windowFull = window.Length == windowSize && absolute + window.Length < _source.Length;
             var canGrow = windowFull && windowSize < maxWindow;
             var keyword = lexer.Read();
             var truncated = windowFull && keyword.End >= span.Length;
@@ -2853,7 +2854,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             {
                 using var window = _source.GetWindow(offset, windowSize);
                 var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this);
-                var cut = window.Length == windowSize;
+
+                // A window that ends where the file does cut nothing, however long it is: what it holds is all there is.
+                var cut = window.Length == windowSize && offset + window.Length < _source.Length;
                 PdfObject parsed;
 
                 if (number == DirectObject)
@@ -2964,7 +2967,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 var parser = new PdfObjectParser(window.Memory, offset, this, _pending);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
-                if (parser.IsTruncated && window.Length == windowSize)
+                if (parser.IsTruncated && window.Length == windowSize && offset + window.Length < _source.Length)
                 {
                     if (windowSize >= maxWindow)
                     {
