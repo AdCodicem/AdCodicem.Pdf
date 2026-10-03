@@ -400,7 +400,7 @@ internal ref struct PdfObjectParser
                     return array;
 
                 // An endobj where an element should be ends the object, the array with it, as PDFBox and pdfium read it:
-                // the array does not take the objects after it.
+                // the array takes nothing past it, though it is the next object's when this one lost its own (#230).
                 case PdfTokenKind.Keyword when IsEndObj(token):
                     _lexer.Position = token.Start;
                     ReportCut("an array", openedAt, depth, atEndObj: true);
@@ -445,8 +445,8 @@ internal ref struct PdfObjectParser
                 return dictionary;
             }
 
-            // An endobj where a key should be ends the object, the dictionary with it: it does not take the entries of the
-            // object after it.
+            // An endobj where a key should be ends the object, the dictionary with it: the dictionary takes nothing past it,
+            // though it is the next object's when this one lost its own (#230).
             if (IsEndObj(keyToken))
             {
                 _lexer.Position = keyToken.Start;
