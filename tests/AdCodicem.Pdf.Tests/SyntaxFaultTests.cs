@@ -323,6 +323,60 @@ public class SyntaxFaultTests
             .Which.Position.Should().Be(PdfTemplate.OffsetOf(file, "<< /Size 4 /Root"));
     }
 
+    [Theory]
+    [InlineData("[1 2 3", PdfDiagnosticCodes.SyntaxTruncatedObject, "An endobj ended the object inside an array, which was never closed.")]
+    [InlineData("<< /A 1", PdfDiagnosticCodes.SyntaxTruncatedObject, "An endobj ended the object inside a dictionary, which was never closed.")]
+    [InlineData("<< /A", PdfDiagnosticCodes.SyntaxTruncatedObject, "An endobj ended the object inside a dictionary, which was never closed, before the value of its last key.")]
+    [InlineData("[1 2 >>", PdfDiagnosticCodes.SyntaxUnexpectedToken, "An array was closed by a dictionary end.")]
+    [InlineData("<< /A >>", PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key had no value.")]
+    public void A_fault_of_an_object_read_through_a_window_the_file_goes_on_past_is_reported(string value, string code, string message)
+    {
+        // Ten kilobytes follow the object, so the window it is read through does not end the data: what the parse meets
+        // inside the window, whole, is reported all the same.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, value)
+            .WithObject(4, "(" + new string('x', 10_000) + ")")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file);
+
+        _ = document.GetObject(new PdfObjectId(3));
+
+        var report = document.Diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(code);
+        report.Message.Should().Be(message);
+    }
+
+    [Fact]
+    public void A_fault_of_a_member_is_reported_once_however_often_the_member_is_parsed_again()
+    {
+        // The cache lets the member go and its object stream serves it again: the fault, named by its member and byte, is
+        // reported once.
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< /A 1 /A 2 >>");
+        for (var number = 4; number < 80; number++)
+        {
+            builder.WithObject(number, "null");
+        }
+
+        var file = builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [.. Enumerable.Range(3, 77)]);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = 64 });
+
+        for (var pass = 0; pass < 3; pass++)
+        {
+            for (var number = 3; number < 80; number++)
+            {
+                _ = document.GetObject(new PdfObjectId(number));
+            }
+        }
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().StartWith(
+            "The dictionary gives the key /A more than once; the last value given is kept. It was met in object 3, at byte ");
+    }
+
     /// <summary>
     /// The catalog and the page tree written directly, and objects 5, 6 and 4 — 4 holding <paramref name="value"/> — packed
     /// in object stream 7, 4 last or first.
