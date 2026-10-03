@@ -119,7 +119,8 @@ versions_of() {
   code="$(curl --silent --show-error --location --retry 3 --output "$work/index.json" \
     --write-out '%{http_code}' "$feed/${1,,}/index.json")" || fail "nuget.org did not answer for $1."
   case "$code" in
-    200) jq -r '.versions[] | ascii_downcase' "$work/index.json" ;;
+    200) jq -r '.versions[] | ascii_downcase' "$work/index.json" 2>/dev/null ||
+      fail "nuget.org answered for $1 with something that is not a list of versions." ;;
     404) ;;
     *) fail "nuget.org answered HTTP $code for $1." ;;
   esac

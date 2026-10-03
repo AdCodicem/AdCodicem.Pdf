@@ -20,8 +20,10 @@ preview count ever becomes a nuisance". Measured on 2026-10-03, over the 57 runs
   that keeps every one of them for good.
 - **Most changed nothing.** Compared with the version before it, by what the package is built from (the list
   below), 20 of the 47 were the same package under a new number. Their assemblies agree: those of `preview.14` and
-  `.15` are the same size and differ in 154 bytes, the version strings and the module identifier. Replayed over the
-  same pushes, a gate on those inputs publishes 27; a weekly preview behind the same gate, 2.
+  `.15` are the same size and differ in 154 bytes, the version strings and the module identifier. Replayed after the
+  first preview, `preview-gate.sh` against a fake feed holding only what was published before each one answers
+  *publish* 27 times and *none* 20 times, exactly as the inputs changed. A weekly preview behind the same gate would
+  have published once: on Monday 2026-09-21 nothing that ships had changed since `preview.10`, on 2026-09-28 it had.
 - **The numbers misled.** The latest preview was `0.1.1-preview.57` while the 13 `feat` commits since `v0.1.0` make
   the next release `0.2.0`. And the number named a run, not a commit: `preview.49` came from a dispatch, and a
   dispatch of the same commit would have published another.
@@ -119,7 +121,9 @@ now on, and held to it by a test harness of fake packages:
 - **Pushed in dependency order** by `push-packages.sh`, which stops a pass at its first failure, so that whatever a
   stopped push leaves on nuget.org can be restored: no package is published before one it depends on. Each `.nupkg`
   is pushed with `--no-symbols`, then its `.snupkg` on its own: `--skip-duplicate` never sends the symbols of a
-  package it skips. Each pass pushes only what nuget.org lacks; three passes, a minute and two apart.
+  package it skips, which a fake feed answering 409 showed. That 409 is not rare: `dotnet nuget push` itself tries a
+  5xx three times (measured), so a request that reached nuget.org before its answer failed meets 409 on its retry.
+  Each pass pushes only what nuget.org lacks; three passes, a minute and two apart.
 - **Completed at the same version**, by those passes, by **Re-run failed jobs**, which pushes the same bytes, or by the
   next run, in repair mode.
 - **Listed before the job ends.** The job waits up to 30 minutes until nuget.org lists every package and serves every
@@ -167,7 +171,7 @@ strings, so the assembly is what the commit builds.
 
 ### Rejected
 
-- **A preview per push, gated on the same inputs.** 27 previews in 15 days instead of 48; each is permanent, and a
+- **A preview per push, gated on the same inputs.** 28 previews in 15 days instead of 48; each is permanent, and a
   change landing over several pull requests would publish every intermediate state. A dispatch gives a preview at
   once when one is wanted.
 - **A weekly site only.** The project documents would lag by up to a week.
