@@ -268,6 +268,49 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_rebuilt_object_is_located_under_the_generation_its_header_gives()
+    {
+        // #118: the rebuilt index recorded every object at generation 0, so the findings on page 3 1 and on object 4 2 named
+        // objects 3 0 and 4 0, which the file does not write — while the page tree's findings, from the references, said 3 1.
+        const string Objects = """
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 1 R] /Count 1 >>
+            endobj
+            3 1 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Annots [9 0 R] /PieceInfo 4 2 R >>
+            endobj
+            4 2 obj
+            << /Bad#00Name 1 >>
+            endobj
+            %%EOF
+
+            """;
+        var report = Validate(Encoding.ASCII.GetBytes("%PDF-1.7\n" + Objects.Replace("\r\n", "\n", StringComparison.Ordinal)));
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Location.Object.Should().Be(new PdfObjectId(3, 1));
+        Single(report, PdfValidationRuleIds.ObjectNameNullCharacter).Location.Object.Should().Be(new PdfObjectId(4, 2));
+    }
+
+    [Fact]
+    public void A_catalog_found_by_its_type_is_named_one_way_throughout_a_report()
+    {
+        // #118: /Root names nothing, and the reader finds the catalog, written 1 1 obj, among the indexed objects. The graph
+        // named it from its entry, 1 1, and the Arlington walk from the reference the reader put in the trailer, 1 0.
+        var template = PdfTemplate.Sound
+            .Replace("1 0 obj", "1 1 obj", StringComparison.Ordinal)
+            .Replace("{row:1}", "{row:1:1}", StringComparison.Ordinal)
+            .Replace("/Root 1 0 R", "/Root 9 0 R", StringComparison.Ordinal)
+            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Outlines 8 0 R /PageMode 5", StringComparison.Ordinal);
+        var report = Validate(PdfTemplate.Build(template));
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Location.Object.Should().Be(new PdfObjectId(1, 1));
+        Single(report, PdfValidationRuleIds.ObjectValueTypeWrong).Location.Object.Should().Be(new PdfObjectId(1, 1));
+    }
+
+    [Fact]
     public void Several_names_with_a_null_character_in_one_object_are_one_finding()
     {
         var report = Validate(PdfTemplate.SoundWith("/Type /Catalog", "/Type /Catalog /A#00 /B#00 /C [/D#00]"));

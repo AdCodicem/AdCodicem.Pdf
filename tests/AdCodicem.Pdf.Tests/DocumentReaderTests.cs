@@ -1238,6 +1238,90 @@ public class DocumentReaderTests
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(2)).AsDictionary().IsOfType(PdfName.Pages).Should().BeTrue();
+        document.Reader.Index.TryGet(2, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(65535, "the rebuilt entry records the generation its header gives (#118)");
+    }
+
+    [Theory]
+    [InlineData("3 1 obj", "3 1 R", 1)]
+    [InlineData("3 0001 obj", "3 1 R", 1)]
+    [InlineData("3\t\r\n2\0\f obj", "3 2 R", 2)]
+    [InlineData("3 00000000000000000000002 obj", "3 2 R", 2)]
+    public void A_rebuilt_entry_records_the_generation_its_header_gives(string header, string reference, int generation)
+    {
+        // #118: the scan read the generation's digits to know a header from the obj of an endobj, and recorded every object
+        // at generation 0 all the same. It records the generation as the parser reads it, white space and zeros aside.
+        var objects = string.Create(
+            CultureInfo.InvariantCulture,
+            $"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [{reference}] /Count 1 >>\nendobj\n{header}\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\n%%EOF\n");
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes("%PDF-1.7\n" + objects));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(3, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(generation);
+        document.GetObject(new PdfObjectId(3, generation)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("4 0 obj", "4 1 obj", 1)]
+    [InlineData("4 2 obj", "4 1 obj", 1)]
+    public void A_rebuild_keeps_the_last_definition_of_a_number_under_the_generation_its_header_gives(string first, string last, int generation)
+    {
+        // An update that wrote object 4 again under a new generation, or a later definition under a lower one: the last
+        // definition wins, as it did — which one a rebuild keeps is #189's —, and its entry records its own generation.
+        var objects = string.Create(
+            CultureInfo.InvariantCulture,
+            $"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n{first}\n(older)\nendobj\n{last}\n(newer)\nendobj\n%%EOF\n");
+        var file = Encoding.ASCII.GetBytes("%PDF-1.7\n" + objects);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Index.TryGet(4, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(generation);
+        entry.Offset.Should().Be(PdfTemplate.OffsetOf(file, last));
+        document.GetObject(new PdfObjectId(4, generation)).AsText().Should().Be("newer");
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(1, 0)]
+    [InlineData(1, 7)]
+    [InlineData(0, 0)]
+    [InlineData(0, 1)]
+    public void A_relocated_entry_records_the_generation_its_header_gives_whatever_reference_found_it(int row, int asked)
+    {
+        // #118: object 3's row lies 4 bytes past its header, written 3 1 obj. The relocation recorded the generation of the
+        // reference that asked first, so the index depended on the order objects were asked for, and a finding could name a
+        // generation that neither the row nor the header gives. The chain's index keeps the row's, which the rules judge.
+        var template = PdfTemplate.Sound
+            .Replace("3 0 obj", "3 1 obj", StringComparison.Ordinal)
+            .Replace("/Kids [3 0 R]", "/Kids [3 1 R]", StringComparison.Ordinal)
+            .Replace("{row:3}", string.Create(CultureInfo.InvariantCulture, $"{{row:3:{row}:4}}"), StringComparison.Ordinal);
+        using var document = PdfDocument.Open(PdfTemplate.Build(template));
+
+        document.GetObject(new PdfObjectId(3, asked)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Reader.Index.TryGet(3, out var entry).Should().BeTrue();
+        entry.Generation.Should().Be(1);
+        document.Reader.ChainIndex!.TryGet(3, out var written).Should().BeTrue();
+        written.Generation.Should().Be(row);
+    }
+
+    [Fact]
+    public void A_catalog_found_by_its_type_is_named_as_its_entry_names_it()
+    {
+        // #118: the trailer's /Root names nothing, and the reader finds the catalog, written 1 1 obj, among the objects the
+        // index holds. It once put 1 0 R in the trailer, so that a report named the catalog both 1 1 and 1 0.
+        var template = PdfTemplate.Sound
+            .Replace("1 0 obj", "1 1 obj", StringComparison.Ordinal)
+            .Replace("{row:1}", "{row:1:1}", StringComparison.Ordinal)
+            .Replace("/Root 1 0 R", "/Root 9 0 R", StringComparison.Ordinal);
+        using var document = PdfDocument.Open(PdfTemplate.Build(template));
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1, 1));
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
     [Fact]

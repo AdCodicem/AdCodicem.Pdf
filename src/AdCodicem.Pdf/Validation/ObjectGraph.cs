@@ -342,7 +342,10 @@ internal sealed class ObjectGraph
     private PdfObject ValueOf(int owner) =>
         owner == 0 ? _document.Trailer : _reader.GetObject(IdOf(owner));
 
-    /// <summary>Names object <paramref name="number"/> with the generation the reader's index gives it.</summary>
+    /// <summary>
+    /// Names object <paramref name="number"/> with the generation the reader's index gives it: its row's, or, once a
+    /// rebuild or a relocation has placed it, its header's (#118).
+    /// </summary>
     private PdfObjectId IdOf(int number) =>
         new(number, _reader.Index.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0);
 

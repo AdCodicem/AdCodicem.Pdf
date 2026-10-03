@@ -150,7 +150,7 @@ internal sealed class CrossReferenceProbe
 
         var found = header.Number > 0 ? Invariant($"the header of object {header.Number}") : "no object header";
 
-        if (PdfFileReader.TryFindObjectHeader(source, number, offset, out var actual))
+        if (PdfFileReader.TryFindObjectHeader(source, number, offset, out var actual, out _))
         {
             Shifted.Add(new ProbeFinding(
                 PdfValidationLocation.OfObject(id, offset),
