@@ -51,8 +51,30 @@ internal ref struct PdfObjectParser
     private readonly PdfDiagnostics? _diagnostics;
     private readonly IPdfStreamDataProvider? _streamData;
     private readonly long _baseOffset;
+
+    /// <summary>
+    /// Whether the buffer ends where the data does — the file, or an object stream's decoded data —, rather than at the
+    /// edge of a window the reader may grow: only then is what the end of the buffer cuts short the data's fault.
+    /// </summary>
+    private readonly bool _endsData;
+
     private PdfLexer _lexer;
+
+    /// <summary>Whether the parse met the end of its buffer, where it may have cut an object short.</summary>
     private bool _truncated;
+
+    /// <summary>
+    /// Whether a stream's <c>/Length</c> runs past what the file holds, which only a window reaching the end of the file
+    /// can settle: a larger buffer is asked for, though the parse met no edge, and what it reads after the stream is whole.
+    /// </summary>
+    private bool _lengthUnsettled;
+
+    /// <summary>
+    /// Whether the end of the data was reported already: a cut leaves every construct around it open, and is reported
+    /// once, for the innermost.
+    /// </summary>
+    private bool _cutReported;
+
     private bool _endStreamMissing;
     private EndObjState _endObj;
 
@@ -77,12 +99,23 @@ internal ref struct PdfObjectParser
     /// </summary>
     private ObjectStreamMember? _member;
 
+    /// <summary>Creates a parser over <paramref name="memory"/>.</summary>
+    /// <param name="memory">The bytes to parse.</param>
+    /// <param name="baseOffset">Where the bytes start in the file.</param>
+    /// <param name="source">Resolves what the objects read refer to.</param>
+    /// <param name="diagnostics">Receives what parsing met.</param>
+    /// <param name="streamData">Serves the data of a stream from the file, past the bytes given.</param>
+    /// <param name="endsData">
+    /// Whether the bytes end where the file does; when they end at a window's edge instead, what that edge cuts short is
+    /// not reported, and <see cref="IsTruncated"/> asks for a larger window.
+    /// </param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
         long baseOffset = 0,
         IPdfObjectSource? source = null,
         PdfDiagnostics? diagnostics = null,
-        IPdfStreamDataProvider? streamData = null)
+        IPdfStreamDataProvider? streamData = null,
+        bool endsData = true)
     {
         _memory = memory;
         _lexer = new PdfLexer(memory.Span);
@@ -90,6 +123,7 @@ internal ref struct PdfObjectParser
         _source = source;
         _diagnostics = diagnostics;
         _streamData = streamData;
+        _endsData = endsData;
     }
 
     /// <summary>
@@ -103,10 +137,20 @@ internal ref struct PdfObjectParser
     /// <param name="objectNumber">The member being read.</param>
     /// <param name="source">Resolves what the member refers to.</param>
     /// <param name="diagnostics">Receives what parsing met.</param>
+    /// <param name="endsData">
+    /// Whether <paramref name="data"/> is the whole of the decoded data, rather than what a guard cut it to: only then is
+    /// what its end cuts short the data's fault.
+    /// </param>
     public static PdfObjectParser ForObjectStreamMember(
-        ReadOnlyMemory<byte> data, int streamNumber, long dataStart, int objectNumber, IPdfObjectSource source, PdfDiagnostics diagnostics)
+        ReadOnlyMemory<byte> data,
+        int streamNumber,
+        long dataStart,
+        int objectNumber,
+        IPdfObjectSource source,
+        PdfDiagnostics diagnostics,
+        bool endsData = true)
     {
-        var parser = new PdfObjectParser(data, 0, source, diagnostics);
+        var parser = new PdfObjectParser(data, 0, source, diagnostics, endsData: endsData);
         parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber, diagnostics);
         return parser;
     }
@@ -116,7 +160,7 @@ internal ref struct PdfObjectParser
     /// buffer could read differently. A caller that can offer one should; a caller whose buffer is the
     /// whole input keeps what was read.
     /// </summary>
-    public readonly bool IsTruncated => _truncated;
+    public readonly bool IsTruncated => _truncated || _lengthUnsettled;
 
     /// <summary>Gets what followed the value of the last indirect object <see cref="TryReadIndirectObject"/> read.</summary>
     public readonly EndObjState EndObj => _endObj;
@@ -226,15 +270,27 @@ internal ref struct PdfObjectParser
         switch (token.Kind)
         {
             case PdfTokenKind.EndOfInput:
+                // Inside an array or a dictionary, the end of the data is the container's to report; here, no construct is
+                // open, and the value is missing.
                 _truncated = true;
-                Report(
-                    PdfDiagnosticCodes.SyntaxTruncatedObject,
-                    _member is null ? "The file ended in the middle of an object." : "The object stream's decoded data ended in the middle of an object.",
-                    token.Start);
+
+                if (_endsData && !_cutReported)
+                {
+                    _cutReported = true;
+                    Report(
+                        PdfDiagnosticCodes.SyntaxTruncatedObject,
+                        _member is null ? "The file ended in the middle of an object." : "The object stream's decoded data ended in the middle of an object.",
+                        token.Start);
+                }
+
                 return PdfNull.Instance;
 
             case PdfTokenKind.Integer:
                 return ParseIntegerOrReference(token);
+
+            // A token a window's edge cut is the guard's, or the next window's, to judge: nothing is reported of it.
+            case PdfTokenKind.Real when !double.IsFinite(token.Real) && AtWindowEdge(token):
+                return PdfNull.Instance;
 
             case PdfTokenKind.Real when !double.IsFinite(token.Real):
                 // A real is a double. One past it reads as null, not as an infinity the file did not write: no valid
@@ -253,19 +309,21 @@ internal ref struct PdfObjectParser
                 return new PdfReal(token.Real);
 
             case PdfTokenKind.Name:
-                return PdfName.Get(PdfStringDecoder.DecodeName(token.Text));
+                return ReadName(token);
 
             case PdfTokenKind.LiteralString:
+                ReportIfUnterminated(token, "a literal string", depth);
                 return new PdfString(PdfStringDecoder.DecodeLiteral(token.Text));
 
             case PdfTokenKind.HexString:
-                return new PdfString(PdfStringDecoder.DecodeHex(token.Text), hexadecimal: true);
+                ReportIfUnterminated(token, "a hexadecimal string", depth);
+                return ReadHexString(token);
 
             case PdfTokenKind.ArrayStart:
-                return ParseArray(depth);
+                return ParseArray(depth, token.Start);
 
             case PdfTokenKind.DictionaryStart:
-                return ParseDictionaryOrStream(depth);
+                return ParseDictionaryOrStream(depth, token.Start);
 
             case PdfTokenKind.Keyword when token.Text.SequenceEqual("true"u8):
                 return PdfBoolean.True;
@@ -277,7 +335,11 @@ internal ref struct PdfObjectParser
                 return PdfNull.Instance;
 
             default:
-                Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A token was found where a value was expected.", token.Start);
+                if (!AtWindowEdge(token))
+                {
+                    Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A token was found where a value was expected.", token.Start);
+                }
+
                 return PdfNull.Instance;
         }
     }
@@ -309,12 +371,13 @@ internal ref struct PdfObjectParser
         return PdfInteger.Create(token.Integer);
     }
 
-    private PdfObject ParseArray(int depth)
+    /// <summary>Parses an array whose <c>[</c> starts at <paramref name="openedAt"/>, inside <paramref name="depth"/> containers.</summary>
+    private PdfObject ParseArray(int depth, int openedAt)
     {
         if (depth >= MaxDepth || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
             Report(PdfDiagnosticCodes.SyntaxDepthExceeded, "Nesting is deeper than the reader will follow.", _lexer.Position);
-            SkipContainer(PdfTokenKind.ArrayEnd);
+            SkipContainer(PdfTokenKind.ArrayEnd, openedAt, depth);
             return PdfNull.Instance;
         }
 
@@ -331,12 +394,24 @@ internal ref struct PdfObjectParser
 
                 case PdfTokenKind.EndOfInput:
                     _truncated = true;
+                    ReportCut("an array", openedAt, depth);
                     return array;
 
                 // A dictionary end inside an array means the file is confused; stopping here keeps the
                 // damage local instead of swallowing the rest of the document into this array.
                 case PdfTokenKind.DictionaryEnd:
-                    Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "An array was closed by a dictionary end.", token.Start);
+                    if (!PastWindowEdge)
+                    {
+                        Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "An array was closed by a dictionary end.", token.Start);
+                    }
+
+                    return array;
+
+                // An endobj where an element should be ends the object, the array with it, as PDFBox and pdfium read it:
+                // the array takes nothing past it, though it is the next object's when this one lost its own (#230).
+                case PdfTokenKind.Keyword when IsEndObj(token):
+                    _lexer.Position = token.Start;
+                    ReportCut("an array", openedAt, depth, atEndObj: true);
                     return array;
 
                 default:
@@ -346,16 +421,21 @@ internal ref struct PdfObjectParser
         }
     }
 
-    private PdfObject ParseDictionaryOrStream(int depth)
+    /// <summary>
+    /// Parses a dictionary whose <c>&lt;&lt;</c> starts at <paramref name="openedAt"/>, inside <paramref name="depth"/>
+    /// containers, and the stream it introduces if <c>stream</c> follows it.
+    /// </summary>
+    private PdfObject ParseDictionaryOrStream(int depth, int openedAt)
     {
         if (depth >= MaxDepth || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
             Report(PdfDiagnosticCodes.SyntaxDepthExceeded, "Nesting is deeper than the reader will follow.", _lexer.Position);
-            SkipContainer(PdfTokenKind.DictionaryEnd);
+            SkipContainer(PdfTokenKind.DictionaryEnd, openedAt, depth);
             return PdfNull.Instance;
         }
 
         var dictionary = new PdfDictionary();
+        var nullKeys = default(NullKeys);
 
         while (true)
         {
@@ -369,33 +449,76 @@ internal ref struct PdfObjectParser
             if (keyToken.Kind is PdfTokenKind.EndOfInput)
             {
                 _truncated = true;
+                ReportCut("a dictionary", openedAt, depth);
+                return dictionary;
+            }
+
+            // An endobj where a key should be ends the object, the dictionary with it: the dictionary takes nothing past it,
+            // though it is the next object's when this one lost its own (#230).
+            if (IsEndObj(keyToken))
+            {
+                _lexer.Position = keyToken.Start;
+                ReportCut("a dictionary", openedAt, depth, atEndObj: true);
                 return dictionary;
             }
 
             if (keyToken.Kind != PdfTokenKind.Name)
             {
-                Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key was not a name.", keyToken.Start);
+                // A string where a key should be is a string all the same, which the end of the data can leave open inside
+                // the dictionary: it is the innermost construct then.
+                if (keyToken.Kind is PdfTokenKind.LiteralString)
+                {
+                    ReportIfUnterminated(keyToken, "a literal string", depth + 1);
+                }
+                else if (keyToken.Kind is PdfTokenKind.HexString)
+                {
+                    ReportIfUnterminated(keyToken, "a hexadecimal string", depth + 1);
+                }
+
+                if (!AtWindowEdge(keyToken))
+                {
+                    Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key was not a name.", keyToken.Start);
+                }
+
                 continue;
             }
 
-            var key = PdfName.Get(PdfStringDecoder.DecodeName(keyToken.Text));
+            var key = ReadName(keyToken);
+            var keyAtEdge = AtWindowEdge(keyToken);
             var valueToken = _lexer.Read();
 
             if (valueToken.Kind is PdfTokenKind.DictionaryEnd)
             {
-                // A key with no value: the specification says an absent value is null.
-                Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key had no value.", valueToken.Start);
+                // A key with no value: the specification says an absent value is null, which removes what the key held.
+                if (!PastWindowEdge)
+                {
+                    Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key had no value.", valueToken.Start);
+                }
+
+                Give(dictionary, ref nullKeys, keyToken, key, PdfNull.Instance, keyAtEdge, valueCut: false);
                 break;
+            }
+
+            if (valueToken.Kind is PdfTokenKind.EndOfInput)
+            {
+                _truncated = true;
+                ReportCut("a dictionary", openedAt, depth, valueMissing: true);
+                return dictionary;
+            }
+
+            if (IsEndObj(valueToken))
+            {
+                _lexer.Position = valueToken.Start;
+                ReportCut("a dictionary", openedAt, depth, valueMissing: true, atEndObj: true);
+                Give(dictionary, ref nullKeys, keyToken, key, PdfNull.Instance, keyAtEdge, valueCut: false);
+                return dictionary;
             }
 
             var value = ParseValue(valueToken, depth + 1);
 
-            // The specification says an entry whose value is null is the same as no entry at all, so the
-            // parser does not create one: every later stage is spared a null it would have to ignore.
-            if (!ReferenceEquals(value, PdfNull.Instance))
-            {
-                dictionary.Set(key, value);
-            }
+            // A value the parse met a window's edge in may be what the edge made of it — a keyword cut short reads as null —:
+            // it is kept as far as it was read, but removes nothing.
+            Give(dictionary, ref nullKeys, keyToken, key, value, keyAtEdge, valueCut: PastWindowEdge);
         }
 
         var afterDictionary = _lexer.Position;
@@ -439,15 +562,16 @@ internal ref struct PdfObjectParser
             // too short to say where the data starts, asks nothing.
             if (_baseOffset + dataStart + (long)length <= _streamData.SourceLength)
             {
-                return _truncated
+                return IsTruncated
                     ? Finish(dictionary, dataStart, length, span.Length)
                     : ReadPastBuffer(_streamData, dictionary, declared, dataStart, length);
             }
 
             // Unless the file cannot hold it. Then only a window that reaches the end of the file can say
             // whether the data stops at an "endstream" — the length is wrong — or at the end of the file —
-            // the stream is cut —, and the search below says which once the reader has offered one.
-            _truncated = true;
+            // the stream is cut —, and the search below says which once the reader has offered one. The parse
+            // met no edge for that: what it reads after an endstream the search finds is whole.
+            _lengthUnsettled = true;
         }
 
         if (length < 0 || beyondBuffer || !ConfirmsLength(span, dataStart + length))
@@ -822,8 +946,11 @@ internal ref struct PdfObjectParser
         return end - dataStart;
     }
 
-    /// <summary>Consumes a container whose contents are being discarded, keeping nesting balanced.</summary>
-    private void SkipContainer(PdfTokenKind endKind)
+    /// <summary>
+    /// Consumes a container whose contents are being discarded, keeping nesting balanced: the one that opens at
+    /// <paramref name="openedAt"/>, inside <paramref name="enclosing"/> containers.
+    /// </summary>
+    private void SkipContainer(PdfTokenKind endKind, int openedAt, int enclosing)
     {
         var depth = 1;
 
@@ -835,6 +962,12 @@ internal ref struct PdfObjectParser
             {
                 case PdfTokenKind.EndOfInput:
                     _truncated = true;
+                    ReportCut(endKind == PdfTokenKind.ArrayEnd ? "an array" : "a dictionary", openedAt, enclosing);
+                    return;
+
+                case PdfTokenKind.Keyword when IsEndObj(token):
+                    _lexer.Position = token.Start;
+                    ReportCut(endKind == PdfTokenKind.ArrayEnd ? "an array" : "a dictionary", openedAt, enclosing, atEndObj: true);
                     return;
 
                 case PdfTokenKind.ArrayStart when endKind == PdfTokenKind.ArrayEnd:
@@ -853,6 +986,197 @@ internal ref struct PdfObjectParser
         }
     }
 
+    /// <summary>
+    /// Gives <paramref name="dictionary"/> the value read for <paramref name="key"/>, and reports a key given again.
+    /// </summary>
+    /// <remarks>
+    /// The specification says an entry whose value is null is the same as no entry at all, so the parser does not create
+    /// one: every later stage is spared a null it would have to ignore. A key given again keeps its last value, as qpdf,
+    /// pdf.js, PDFBox, MuPDF and pdfium read it, a null given last removing it (#172) — but for a null a window's edge
+    /// made, which is no value of the file's. The repeat lies at the key, and is reported unless the edge reaches the key.
+    /// </remarks>
+    /// <param name="dictionary">The dictionary being read.</param>
+    /// <param name="nullKeys">The keys it gave null so far.</param>
+    /// <param name="keyToken">The key, as the file wrote it.</param>
+    /// <param name="key">The key, as it reads.</param>
+    /// <param name="value">The value read for it, null when it has none.</param>
+    /// <param name="keyAtEdge">Whether the key reaches a window's edge, or comes after the parse met one.</param>
+    /// <param name="valueCut">Whether the parse met a window's edge reading the value.</param>
+    private readonly void Give(
+        PdfDictionary dictionary, ref NullKeys nullKeys, PdfToken keyToken, PdfName key, PdfObject value, bool keyAtEdge, bool valueCut)
+    {
+        var isNull = ReferenceEquals(value, PdfNull.Instance);
+        bool repeated;
+        RepeatOutcome outcome;
+
+        if (isNull && valueCut)
+        {
+            repeated = dictionary.ContainsKey(key) || nullKeys.Contains(key);
+            outcome = RepeatOutcome.EarlierKept;
+        }
+        else if (isNull)
+        {
+            repeated = dictionary.Remove(key) | nullKeys.Add(key);
+            outcome = RepeatOutcome.LeftOut;
+        }
+        else if (dictionary.TryAdd(key, value))
+        {
+            repeated = nullKeys.Remove(key);
+            outcome = RepeatOutcome.LastKept;
+        }
+        else
+        {
+            dictionary.Set(key, value);
+            repeated = true;
+            outcome = RepeatOutcome.LastKept;
+        }
+
+        if (repeated && !keyAtEdge)
+        {
+            ReportRepeatedKey(keyToken, key, outcome);
+        }
+    }
+
+    /// <summary>Reports a key the dictionary gives again, at <paramref name="token"/>.</summary>
+    /// <param name="token">The key given again, as the file wrote it.</param>
+    /// <param name="key">The key as it reads.</param>
+    /// <param name="outcome">What became of the key.</param>
+    private readonly void ReportRepeatedKey(PdfToken token, PdfName key, RepeatOutcome outcome)
+    {
+        if (!KeepsReports)
+        {
+            Report(PdfDiagnosticCodes.SyntaxKeyRepeated, "A dictionary gives a key more than once.", token.Start);
+            return;
+        }
+
+        // A #xx escape makes the key shorter than the token that writes it; a number sign that is no escape does not.
+        var written = token.Text.Length != key.Value.Length ? ", written here with #xx escapes" : string.Empty;
+        var kept = outcome switch
+        {
+            RepeatOutcome.LeftOut => "given null last, the key is left out",
+            RepeatOutcome.EarlierKept => "its last value runs past what was read, and the value given before is kept",
+            _ => "the last value given is kept",
+        };
+
+        Report(PdfDiagnosticCodes.SyntaxKeyRepeated, $"The dictionary gives the key {FileQuote.Name(key)} more than once{written}; {kept}.", token.Start);
+    }
+
+    /// <summary>Reads a name token, and reports a number sign in it that two hexadecimal digits do not follow.</summary>
+    private readonly PdfName ReadName(PdfToken token)
+    {
+        var name = PdfName.Get(PdfStringDecoder.DecodeName(token.Text, out var badEscape));
+
+        if (badEscape >= 0 && !AtWindowEdge(token))
+        {
+            Report(
+                PdfDiagnosticCodes.SyntaxNameEscapeInvalid,
+                KeepsReports
+                    ? $"A name holds a number sign that two hexadecimal digits do not follow, kept as the byte it is: the name reads as {FileQuote.Name(name)}."
+                    : "A name holds a number sign that two hexadecimal digits do not follow, kept as the byte it is.",
+                token.Start + 1 + badEscape);
+        }
+
+        return name;
+    }
+
+    /// <summary>Reads a hexadecimal string token, and reports the bytes in it that are neither hexadecimal digits nor white space.</summary>
+    private readonly PdfString ReadHexString(PdfToken token)
+    {
+        var bytes = PdfStringDecoder.DecodeHex(token.Text, out var firstStray, out var strays);
+
+        if (strays > 0 && !AtWindowEdge(token))
+        {
+            Report(
+                PdfDiagnosticCodes.SyntaxHexStringInvalid,
+                strays == 1
+                    ? "A hexadecimal string holds a byte that is neither a hexadecimal digit nor white space; it was skipped."
+                    : KeepsReports
+                        ? string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"A hexadecimal string holds {strays:N0} bytes that are neither hexadecimal digits nor white space, the first here; they were skipped.")
+                        : "A hexadecimal string holds bytes that are neither hexadecimal digits nor white space; they were skipped.",
+                token.Start + 1 + firstStray);
+        }
+
+        return new PdfString(bytes, hexadecimal: true);
+    }
+
+    /// <summary>
+    /// Reports a string the end of the data left open — the lexer took it to that end — unless the end was a window's edge,
+    /// or reported already.
+    /// </summary>
+    /// <param name="token">The string, whose closing delimiter, when present, is the token's last byte.</param>
+    /// <param name="what">The kind of string, as the message names it.</param>
+    /// <param name="depth">How many arrays and dictionaries enclose it.</param>
+    private void ReportIfUnterminated(PdfToken token, string what, int depth)
+    {
+        // A closed string's token holds both delimiters around its text; one the data ended inside holds its opening only.
+        if (token.End >= _memory.Length && token.End - token.Start - token.Text.Length == 1)
+        {
+            ReportCut(what, token.Start, depth, token.End - token.Start);
+        }
+    }
+
+    /// <summary>
+    /// Reports, once for the innermost, the construct the end of the data, or an <c>endobj</c>, cut short — at
+    /// <paramref name="openedAt"/>, where it opens —, unless the end of the buffer is a window's edge rather than the end of
+    /// the data.
+    /// </summary>
+    /// <param name="what">The construct, as the message names it.</param>
+    /// <param name="openedAt">Where the construct opens, in the buffer.</param>
+    /// <param name="enclosing">How many arrays and dictionaries enclose it, each left open with it.</param>
+    /// <param name="swallowed">The bytes a string took to the end of the data, or 0 for an array or a dictionary.</param>
+    /// <param name="valueMissing">Whether the cut came after a dictionary's key, before its value.</param>
+    /// <param name="atEndObj">Whether an <c>endobj</c> made the cut, rather than the end of the data.</param>
+    private void ReportCut(string what, int openedAt, int enclosing, int swallowed = 0, bool valueMissing = false, bool atEndObj = false)
+    {
+        if ((!_endsData && !atEndObj) || _cutReported)
+        {
+            return;
+        }
+
+        _cutReported = true;
+
+        if (!KeepsReports)
+        {
+            Report(PdfDiagnosticCodes.SyntaxTruncatedObject, "The object ended inside a construct it left open.", openedAt);
+            return;
+        }
+
+        var data = atEndObj ? "An endobj ended the object" : _member is null ? "The file ended" : "The object stream's decoded data ended";
+        var content = swallowed > 0
+            ? string.Create(CultureInfo.InvariantCulture, $", which takes the {swallowed:N0} {(swallowed == 1 ? "byte" : "bytes")} from where it opens to that end")
+            : valueMissing ? ", which was never closed, before the value of its last key" : ", which was never closed";
+        var around = enclosing switch
+        {
+            0 => string.Empty,
+            1 => "; the array or dictionary around it was never closed either",
+            _ => string.Create(CultureInfo.InvariantCulture, $"; the {enclosing} arrays or dictionaries around it were never closed either"),
+        };
+
+        Report(PdfDiagnosticCodes.SyntaxTruncatedObject, $"{data} inside {what}{content}{around}.", openedAt);
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="token"/> reaches the edge of a window that is not the end of the data, which may
+    /// have cut it, or comes after the parse met that edge — a look-ahead the edge cut reads the tokens before it again,
+    /// for what they are not —: what it seems to be is no fault of the file's.
+    /// </summary>
+    private readonly bool AtWindowEdge(PdfToken token) => PastWindowEdge || (!_endsData && token.End >= _memory.Length);
+
+    /// <summary>
+    /// Gets a value indicating whether the parse met the edge of a window that is not the end of the data: what it reads
+    /// from then on may be what a look-ahead the edge cut reads again. A <c>&gt;&gt;</c> or a <c>]</c> read before is whole
+    /// wherever it lies, the lexer telling it from its own bytes, and what it says is the file's.
+    /// </summary>
+    private readonly bool PastWindowEdge => !_endsData && _truncated;
+
+    /// <summary>
+    /// Determines whether <paramref name="token"/> is <c>endobj</c>, and whole: one that reaches the end of a buffer that is
+    /// a window's edge may be the start of a longer keyword.
+    /// </summary>
+    private readonly bool IsEndObj(PdfToken token) => token.IsKeyword("endobj"u8) && !AtWindowEdge(token);
+
     /// <summary>Gets a value indicating whether a report made now is kept, rather than counted and dropped.</summary>
     private readonly bool KeepsReports => _member is { } member ? !member.Diagnostics.IsFull : _diagnostics is { IsFull: false };
 
@@ -865,6 +1189,66 @@ internal ref struct PdfObjectParser
         }
 
         _diagnostics?.Warn(code, message, _baseOffset + position);
+    }
+
+    /// <summary>What became of a key a dictionary gives again, as its report says.</summary>
+    private enum RepeatOutcome
+    {
+        /// <summary>The value given last is the key's.</summary>
+        LastKept,
+
+        /// <summary>A null given last removed the key.</summary>
+        LeftOut,
+
+        /// <summary>The value given last runs past what was read, and the value given before is kept.</summary>
+        EarlierKept,
+    }
+
+    /// <summary>
+    /// The keys a dictionary gave null so far, which make no entry: one given again is a repeat all the same. The first is
+    /// held alone, so that a dictionary's one null costs nothing, and a set is made for the others, which files seldom
+    /// give: a set rather than a list, so that a dictionary of a million nulls costs as much again as it reads, not its
+    /// square.
+    /// </summary>
+    private struct NullKeys
+    {
+        private PdfName? _first;
+        private HashSet<PdfName>? _others;
+
+        /// <summary>Remembers <paramref name="key"/>, and says whether it was given null before.</summary>
+        public bool Add(PdfName key)
+        {
+            if (Contains(key))
+            {
+                return true;
+            }
+
+            if (_first is null)
+            {
+                _first = key;
+            }
+            else
+            {
+                (_others ??= []).Add(key);
+            }
+
+            return false;
+        }
+
+        /// <summary>Forgets <paramref name="key"/>, and says whether it was given null before.</summary>
+        public bool Remove(PdfName key)
+        {
+            if (_first is not null && _first.Equals(key))
+            {
+                _first = null;
+                return true;
+            }
+
+            return _others?.Remove(key) == true;
+        }
+
+        /// <summary>Determines whether <paramref name="key"/> was given null.</summary>
+        public readonly bool Contains(PdfName key) => (_first is not null && _first.Equals(key)) || _others?.Contains(key) == true;
     }
 
     /// <summary>The object stream member a parser reads, and where what it meets is placed.</summary>

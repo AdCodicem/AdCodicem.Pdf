@@ -24,14 +24,25 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// <inheritdoc/>
     public int Count => _entries.Count;
 
-    /// <summary>Gets the number of entries dropped because <see cref="Capacity"/> was reached.</summary>
+    /// <summary>
+    /// Gets the number of entries dropped because <see cref="Capacity"/> was reached. A fault the reader meets again, as it
+    /// parses an object again, is counted again once the capacity is reached, whether or not it was kept before.
+    /// </summary>
     public int SuppressedCount => _suppressed;
 
     /// <summary>
-    /// Gets a value indicating whether <see cref="Capacity"/> is reached: what is added now is counted and dropped, so a
-    /// message built only for it need not be.
+    /// Gets the diagnostics what this instance holds is moved into once kept, which can be full before this one is; null
+    /// when it is kept as it is.
     /// </summary>
-    internal bool IsFull => _entries.Count >= Capacity;
+    internal PdfDiagnostics? KeptIn { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether <see cref="Capacity"/> is reached, by this instance's entries or, when it is kept in
+    /// another, by that one's: what is added now is counted and dropped, here or once kept, so a message built only for it
+    /// need not be. The two are not summed: what is held here may be dropped on its way, as a report already kept is, and a
+    /// report must read the same whenever it is made, for a repeat of it to be known.
+    /// </summary>
+    internal bool IsFull => _entries.Count >= Capacity || KeptIn is { IsFull: true };
 
     /// <inheritdoc/>
     public PdfDiagnostic this[int index] => _entries[index];
@@ -85,6 +96,31 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         {
             var entry = _entries[i];
             target.Add(entry.Severity, entry.Code, entry.Message, entry.Position);
+        }
+
+        target._suppressed += _suppressed - mark.Suppressed;
+        RollBack(mark);
+    }
+
+    /// <summary>
+    /// Moves the entries recorded since <paramref name="mark"/> that <paramref name="keep"/> keeps into
+    /// <paramref name="target"/>, which applies its own capacity, counts there those this instance dropped, and drops the
+    /// rest.
+    /// </summary>
+    /// <param name="target">The diagnostics the entries kept go to.</param>
+    /// <param name="mark">Where the entries to move start.</param>
+    /// <param name="state">What <paramref name="keep"/> needs besides the entry, so that it captures nothing.</param>
+    /// <param name="keep">Whether an entry is kept.</param>
+    internal void MoveTo<TState>(PdfDiagnostics target, PdfDiagnosticsMark mark, TState state, Func<PdfDiagnostic, TState, bool> keep)
+    {
+        for (var i = mark.Count; i < _entries.Count; i++)
+        {
+            var entry = _entries[i];
+
+            if (keep(entry, state))
+            {
+                target.Add(entry.Severity, entry.Code, entry.Message, entry.Position);
+            }
         }
 
         target._suppressed += _suppressed - mark.Suppressed;

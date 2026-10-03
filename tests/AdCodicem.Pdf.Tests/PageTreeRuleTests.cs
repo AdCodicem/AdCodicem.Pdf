@@ -266,6 +266,18 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_root_given_a_stream_body_is_walked_through_its_dictionary()
+    {
+        var file = TreeWith("/Resources << >> >>\nendobj", "/Resources << >> /Length 0 >>\nstream\n\nendstream\nendobj");
+
+        using var document = PdfDocument.Open(file);
+        var report = new PdfValidator().Validate(document);
+
+        PageTreeWalk.Run(document).PageCount.Should().Be(3);
+        report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse("the root's kids are walked: " + string.Join("; ", report.Findings));
+    }
+
+    [Fact]
     public void A_page_given_a_stream_body_in_the_array_is_reported_at_the_node_listing_it()
     {
         // The message names such a kid oddly (#129): only its start and its end are checked.

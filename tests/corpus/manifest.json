@@ -5361,7 +5361,9 @@
         "pages": 1,
         "clean": false,
         "indexRebuilt": false,
-        "requiredDiagnostics": [],
+        "requiredDiagnostics": [
+          "syntax.truncated-object"
+        ],
         "findings": [
           "object.reference-missing",
           "object.endobj-missing",
@@ -17421,6 +17423,7 @@
         "clean": false,
         "indexRebuilt": false,
         "requiredDiagnostics": [
+          "syntax.truncated-object",
           "syntax.unexpected-token"
         ],
         "findings": [

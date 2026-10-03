@@ -29,6 +29,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     internal const int InitialObjectWindow = 8 * 1024;
     internal const int XRefWindow = 64 * 1024;
 
+    /// <summary>What the codes of the faults of the object syntax start with.</summary>
+    private const string SyntaxCodePrefix = "syntax.";
+
     /// <summary>How much of a section is read to tell a classic table from a cross-reference stream.</summary>
     internal const int XRefProbeLength = 32;
 
@@ -142,6 +145,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>The guards already reported, and where: an object read again is not reported again.</summary>
     private readonly HashSet<(PdfLimit Limit, long Position)> _limitsReached = [];
+
+    /// <summary>
+    /// The faults of the syntax the document's diagnostics keep: an object parsed again — after the cache let it go, the
+    /// index was rebuilt, or the validator read it — is not reported again. As many as the diagnostics keep, at most.
+    /// </summary>
+    private readonly HashSet<PdfDiagnostic> _syntaxReported = [];
 
     /// <summary>
     /// What parses through a window report until the window is known to have been large enough. Shared by
@@ -298,7 +307,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         _source = source;
         _diagnostics = diagnostics;
         _guard = guard;
-        _pending = new PdfDiagnostics { Capacity = diagnostics.Capacity };
+        _pending = new PdfDiagnostics { Capacity = diagnostics.Capacity, KeptIn = diagnostics };
         _cacheCapacity = Math.Max(64, cacheCapacity);
         _ownsSource = ownsSource;
 
@@ -1716,9 +1725,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var span = window.Memory.Span;
             var lexer = new PdfLexer(span);
 
-            // A window shorter than asked holds the end of the file: what it holds is all there is. A full one
-            // may have cut the table, and is grown until the guard allows no more.
-            var windowFull = window.Length == windowSize;
+            // A window shorter than asked holds the end of the file: what it holds is all there is, as it is for a full one
+            // that ends where the file does. Any other full one may have cut the table, and is grown until the guard allows
+            // no more.
+            var windowFull = window.Length == windowSize && absolute + window.Length < _source.Length;
             var canGrow = windowFull && windowSize < maxWindow;
             var keyword = lexer.Read();
             var truncated = windowFull && keyword.End >= span.Length;
@@ -1847,7 +1857,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         try
         {
-            var parser = new PdfObjectParser(window, absolute, this, _pending, this);
+            // The table's window ends the data unless it is full and the file goes on, as the table's reading took it.
+            var parser = new PdfObjectParser(window, absolute, this, _pending, this, endsData: !windowFull);
             parser.Position = position;
             var parsed = parser.ParseObject();
 
@@ -1855,7 +1866,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             {
                 // Cut short where the window holds the end of the file, the dictionary runs to it unclosed.
                 var malformed = parser.IsTruncated || SyntaxFaultSince(_pending, mark);
-                _pending.MoveTo(_diagnostics, mark);
+                KeepPending(mark);
                 return JudgeTrailer(parsed, malformed, section);
             }
         }
@@ -1866,11 +1877,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         // The trailer starts inside the window, so inside the file as long as the source's length holds;
         // where nothing can be parsed the value is null, and anything that is not a dictionary is no trailer.
-        var before = _diagnostics.GetMark();
         var guards = _guardsReached;
-        _ = TryParseAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value);
+        _ = TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out var syntaxFault);
         section.CutByLimit |= _guardsReached != guards;
-        return JudgeTrailer(value, SyntaxFaultSince(_diagnostics, before), section);
+        return JudgeTrailer(value, syntaxFault, section);
     }
 
     /// <summary>Records a section's trailer, or what is wrong with it, and returns it when it is a dictionary.</summary>
@@ -1892,6 +1902,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         return dictionary;
     }
 
+    /// <summary>
+    /// Keeps what an attempt recorded since <paramref name="mark"/>: moves it into the document's diagnostics, but for a
+    /// fault of the syntax they keep already, met again as its object is parsed again.
+    /// </summary>
+    /// <param name="mark">Where the attempt's entries start in the pending diagnostics.</param>
+    /// <param name="syntaxOnly">Whether only the faults of the syntax are kept, the rest dropped with a guard's cut.</param>
+    private void KeepPending(PdfDiagnosticsMark mark, bool syntaxOnly = false) =>
+        _pending.MoveTo(_diagnostics, mark, (this, syntaxOnly), static (entry, state) => state.Item1.IsKept(entry, state.syntaxOnly));
+
+    /// <summary>Determines whether <paramref name="entry"/> goes into the document's diagnostics.</summary>
+    private bool IsKept(PdfDiagnostic entry, bool syntaxOnly)
+    {
+        if (!entry.Code.StartsWith(SyntaxCodePrefix, StringComparison.Ordinal))
+        {
+            return !syntaxOnly;
+        }
+
+        // Once the diagnostics are full, what is added is counted and dropped, each time it is met, and need not be
+        // remembered: the set holds no more than the diagnostics do. A report met again then reads as one the diagnostics
+        // drop — its message not built — and is counted again, kept before or not.
+        return _diagnostics.IsFull || _syntaxReported.Add(entry);
+    }
+
     /// <summary>Determines whether a syntax error was recorded since <paramref name="mark"/>, or may have been, the capacity reached.</summary>
     private static bool SyntaxFaultSince(PdfDiagnostics diagnostics, PdfDiagnosticsMark mark)
     {
@@ -1902,7 +1935,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         for (var i = mark.Count; i < diagnostics.Count; i++)
         {
-            if (diagnostics[i].Code.StartsWith("syntax.", StringComparison.Ordinal))
+            if (diagnostics[i].Code.StartsWith(SyntaxCodePrefix, StringComparison.Ordinal))
             {
                 return true;
             }
@@ -2018,13 +2051,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         // The first window, of 64 KB, holds the data of all but the largest cross-reference streams, so the
         // parser checks their /Length against the data rather than only at the end the /Length gives. The
         // dictionary is the trailer, and grows its window no further than a trailer may.
-        var before = _diagnostics.GetMark();
         var guards = _guardsReached;
 
         // A place the section may have been moved to is a guess: what is there and is no section leaves nothing of its
         // reading, not even a guard its dictionary reached. Where the chain names a section, the guard is reported.
         if (!TryParseNumberedAt(
-                absolute, AnyObject, PdfLimit.Trailer, out var value, out var number, XRefWindow, candidate ? DeclaresCrossReferenceStream : null) ||
+                absolute,
+                AnyObject,
+                PdfLimit.Trailer,
+                out var value,
+                out var number,
+                out var syntaxFault,
+                XRefWindow,
+                candidate ? DeclaresCrossReferenceStream : null) ||
             !DeclaresCrossReferenceStream(value))
         {
             section.Fault = number == 0
@@ -2047,7 +2086,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         section.Trailer = dictionary;
 
-        if (SyntaxFaultSince(_diagnostics, before))
+        if (syntaxFault)
         {
             section.TrailerFault = XRefTrailerFault.Malformed;
         }
@@ -2809,7 +2848,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// the guard is reported in place of what the cut made the parser notice.
     /// </remarks>
     private bool TryParseAt(long offset, int number, PdfLimit limit, out PdfObject value, int initialWindow = InitialObjectWindow) =>
-        TryParseNumberedAt(offset, number, limit, out value, out _, initialWindow);
+        TryParseNumberedAt(offset, number, limit, out value, out _, out _, initialWindow);
 
     /// <summary>
     /// Parses what starts at an exact offset, as <see cref="TryParseAt"/> does, and gives the number of the object
@@ -2820,6 +2859,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// <param name="limit">The guard that bounds the window.</param>
     /// <param name="value">The object read.</param>
     /// <param name="foundNumber">The number of the object found, even when <paramref name="keep"/> refuses it.</param>
+    /// <param name="syntaxFault">
+    /// Whether the reading kept met a fault of the syntax, or may have, the pending diagnostics full: reported now or
+    /// already, by an earlier reading of the same bytes.
+    /// </param>
     /// <param name="initialWindow">The window the first attempt reads through.</param>
     /// <param name="keep">
     /// Whether what was read is what was looked for: when it says no, nothing the reading met is reported or recorded —
@@ -2832,11 +2875,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         PdfLimit limit,
         out PdfObject value,
         out int foundNumber,
+        out bool syntaxFault,
         int initialWindow = InitialObjectWindow,
         Func<PdfObject, bool>? keep = null)
     {
         value = PdfNull.Instance;
         foundNumber = 0;
+        syntaxFault = false;
 
         if (offset < 0 || offset >= _source.Length)
         {
@@ -2852,8 +2897,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             while (true)
             {
                 using var window = _source.GetWindow(offset, windowSize);
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this);
-                var cut = window.Length == windowSize;
+
+                // A window that ends where the file does cut nothing, however long it is: what it holds is all there is.
+                var cut = window.Length == windowSize && offset + window.Length < _source.Length;
+                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, this, endsData: !cut);
                 PdfObject parsed;
 
                 if (number == DirectObject)
@@ -2893,10 +2940,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 if (parser.IsTruncated && cut)
                 {
-                    _pending.RollBack(mark);
-
                     if (windowSize < maxWindow)
                     {
+                        _pending.RollBack(mark);
                         windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
                         continue;
                     }
@@ -2906,6 +2952,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                         return false;
                     }
 
+                    // The guard is reported first, so that what the parse met before the cut cannot crowd it out of full
+                    // diagnostics: it is the one report that names the property to raise. What the parser met before the cut
+                    // is the file's, and is kept after it; it reported nothing of the token the window's edge cut, which is
+                    // the guard's (ADR 34), and what it found of a stream is dropped with the cut.
+                    syntaxFault = SyntaxFaultSince(_pending, mark);
                     ReachLimit(limit, LimitSubject(number, maxWindow), offset);
                     MarkCutByGuard(parsed, offset + window.Length);
 
@@ -2913,6 +2964,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     {
                         _cutAtLimit.Add(foundNumber);
                     }
+
+                    KeepPending(mark, syntaxOnly: true);
 
                     // A stream the guard cut ran into the window's edge, not the file's end: what the parser found of it
                     // is the limit's, and was dropped with what it reported.
@@ -2923,7 +2976,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     return false;
                 }
 
-                _pending.MoveTo(_diagnostics, mark);
+                syntaxFault |= SyntaxFaultSince(_pending, mark);
+                KeepPending(mark);
                 RecordEndObj(number, foundNumber, parser.EndObj, cut, offset);
                 RecordStreamLength(number, foundNumber, parsed, lengthFault);
                 value = parsed;
@@ -2961,10 +3015,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             while (true)
             {
                 using var window = _source.GetWindow(offset, windowSize);
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending);
+                var cut = window.Length == windowSize && offset + window.Length < _source.Length;
+                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
-                if (parser.IsTruncated && window.Length == windowSize)
+                if (parser.IsTruncated && cut)
                 {
                     if (windowSize >= maxWindow)
                     {
@@ -3320,13 +3375,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             if (cut)
             {
                 // A member that runs into the end of data a guard cut is kept as far as it was read, like a regular
-                // object cut at MaxObjectLength; what the parser met at the cut is the guard's, not the file's, and is
-                // dropped with it (ADR 34).
+                // object cut at MaxObjectLength; what the parser met at the cut is the guard's, not the file's, and was
+                // not reported, while what it met before the cut is the file's (ADR 34).
                 _cutAtLimit.Add(id.Number);
+                KeepPending(mark, syntaxOnly: true);
             }
             else
             {
-                _pending.MoveTo(_diagnostics, mark);
+                KeepPending(mark);
             }
 
             return value;
@@ -3570,12 +3626,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         // The newest trailer is the last one in the file, and its keys must win.
         for (var i = positions.Count - 1; i >= 0; i--)
         {
+            // A trailer longer than the window is cut at its edge, which is not the file's end (#49): what the edge cuts
+            // short is not reported. A window shorter than asked holds the end of the data, as every window does. One the
+            // chain read already is not reported again.
             using var window = _source.GetWindow(positions[i], XRefWindow);
-            var parser = new PdfObjectParser(window.Memory, positions[i], this, _diagnostics, this);
+            var cut = window.Length == XRefWindow && positions[i] + window.Length < _source.Length;
+            var mark = _pending.GetMark();
 
-            if (parser.ParseObject().AsDictionary() is { } trailer)
+            try
             {
-                _xref.MergeTrailer(trailer);
+                var parser = new PdfObjectParser(window.Memory, positions[i], this, _pending, this, endsData: !cut);
+
+                if (parser.ParseObject().AsDictionary() is { } trailer)
+                {
+                    _xref.MergeTrailer(trailer);
+                }
+
+                KeepPending(mark);
+            }
+            finally
+            {
+                _pending.RollBack(mark);
             }
         }
     }
@@ -4046,7 +4117,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return null;
             }
 
-            var parser = PdfObjectParser.ForObjectStreamMember(_data, _number, _position, expectedNumber, source, parsing);
+            var parser = PdfObjectParser.ForObjectStreamMember(_data, _number, _position, expectedNumber, source, parsing, endsData: !_cutByGuard);
             parser.Position = (int)start;
             var value = parser.ParseObject();
             cut = _cutByGuard && parser.IsTruncated;

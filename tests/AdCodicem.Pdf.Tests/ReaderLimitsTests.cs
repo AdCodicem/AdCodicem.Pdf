@@ -4,6 +4,7 @@ using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -317,6 +318,153 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void What_an_object_its_bound_cuts_met_before_the_cut_is_still_reported()
+    {
+        // ADR 34: what the parser met at the cut is the guard's; a stray parenthesis well before it is the file's, and is
+        // reported beside the guard.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "<< /A 1 ) /B 2 /Pad (" + new string('x', 3000) + ") >>")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetInteger(PdfName.Get("B")).Should().Be(2);
+
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+            (PdfDiagnosticCodes.LimitObject, (long)OffsetOf(file, "3 0 obj")),
+            (PdfDiagnosticCodes.SyntaxUnexpectedToken, (long)OffsetOf(file, ") /B")));
+    }
+
+    [Fact]
+    public void A_fault_after_a_stream_whose_length_the_file_cannot_hold_is_still_reported_beside_the_bound()
+    {
+        // The file cannot hold the inner stream's /Length, so only a window reaching its end could settle the length, and
+        // the bound stops the reader short of it (#174). The search finds the endstream all the same: what follows it is
+        // read whole, and a key given again there is the file's fault, met before the cut.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "<< /S << /Length 99999999 >> stream\nabc\nendstream /A 1 /A 2 >>")
+            .WithObject(4, "(" + new string('x', 3000) + ")")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetInteger(PdfName.Get("A")).Should().Be(2);
+
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxKeyRepeated).Select(entry => entry.Position)
+            .Should().Equal((long)OffsetOf(file, "/A 2"));
+    }
+
+    [Fact]
+    public void An_object_its_bound_cuts_after_more_faults_than_the_diagnostics_hold_still_reports_the_bound()
+    {
+        // The guard is the one report that names the property to raise: the faults before the cut fill what is left.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "<< " + string.Concat(Enumerable.Repeat(") ", 20)) + "/Pad (" + new string('x', 3000) + ") >>")
+            .BuildClassic(rootNumber: 1);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 }, DiagnosticCapacity = 5 };
+        using var document = PdfDocument.Open(file, options);
+
+        _ = document.GetObject(new PdfObjectId(3));
+
+        document.Diagnostics[0].Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Should().HaveCount(5);
+        document.Diagnostics.SuppressedCount.Should().Be(16);
+    }
+
+    [Fact]
+    public void A_key_given_again_before_its_bound_s_cut_is_reported_and_keeps_what_it_held_when_the_cut_leaves_a_keyword_short()
+    {
+        // The repeat lies at the key, before the cut: it is reported. Its value, a keyword the cut leaves short, reads as a
+        // null of the guard's making, which removes nothing.
+        const string Body = "<< /Pad (xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx) /A 1 /A true >>";
+        var file = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).WithObject(3, Body).BuildClassic(rootNumber: 1);
+        var bound = OffsetOf(file, "/A true") - OffsetOf(file, "3 0 obj") + "/A tr".Length;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } });
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetInteger(PdfName.Get("A")).Should().Be(1);
+
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+            (PdfDiagnosticCodes.LimitObject, (long)OffsetOf(file, "3 0 obj")),
+            (PdfDiagnosticCodes.SyntaxKeyRepeated, (long)OffsetOf(file, "/A true")));
+    }
+
+    [Fact]
+    public void A_number_its_bound_cuts_is_no_number_out_of_range()
+    {
+        // Four hundred digits are past what a real holds; the bound leaves 350 of them, which say nothing of the number.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "[1 " + new string('9', 400) + "]")
+            .BuildClassic(rootNumber: 1);
+        var bound = OffsetOf(file, "[1 ") - OffsetOf(file, "3 0 obj") + "[1 ".Length + 350;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } });
+
+        _ = document.GetObject(new PdfObjectId(3));
+
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void An_object_its_bound_cuts_anywhere_in_its_last_tokens_reports_the_bound_alone()
+    {
+        // Wherever the bound falls in the last tokens — inside a keyword, a reference, a name and its escape, a string, a
+        // number, between the angle brackets that end the dictionary —, the token it cuts is no fault of the file's, nor is
+        // what that token leaves open: only the guard is reported.
+        const string Tail = "/K true /L 12 0 R /M [1 2] /N (s) /O <41> /P 1.5 /Q /R#20S /T >>";
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "<< /Pad (" + new string('x', 200) + ") " + Tail)
+            .BuildClassic(rootNumber: 1);
+        var start = OffsetOf(file, "3 0 obj");
+        var tail = OffsetOf(file, Tail) - start;
+        var failures = new List<string>();
+
+        for (var bound = tail; bound < tail + Tail.Length; bound++)
+        {
+            using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } });
+            _ = document.GetObject(new PdfObjectId(3));
+            var codes = string.Join(", ", document.Diagnostics.Select(entry => entry.Code));
+
+            if (codes != PdfDiagnosticCodes.LimitObject)
+            {
+                failures.Add($"cut after '{Tail[..(bound - tail)]}': {codes}");
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("<< /A 1 ) /B 2 /Pad (", PdfDiagnosticCodes.SyntaxUnexpectedToken)]
+    [InlineData("<< /A 1 /B tr", null)]
+    [InlineData("<< /A 1 /B [1 (s", null)]
+    public void What_a_member_its_object_stream_s_decoding_bound_cuts_met_before_the_cut_is_still_reported(string cutAfter, string? reported)
+    {
+        // The object stream decodes to more than the bound allows, and its member is cut where the decoded data stops: what
+        // the member met before the cut is reported, what the cut leaves open or makes of a token is not.
+        var body = cutAfter + "ue) /Pad (" + new string('x', 300) + ") >>";
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(4, body)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [4], compressObjectStream: true);
+        var bound = "4 0 ".Length + cutAfter.Length;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = bound } });
+
+        _ = document.GetObject(new PdfObjectId(4));
+
+        document.Reader.IsCutAtLimit(4).Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            reported is null ? [PdfDiagnosticCodes.LimitDecodedStream] : [PdfDiagnosticCodes.LimitDecodedStream, reported]);
+    }
+
+    [Fact]
     public void An_object_is_read_no_further_than_its_bound()
     {
         var file = Case.For("object").File;
@@ -374,6 +522,113 @@ public class ReaderLimitsTests
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
+    [Fact]
+    public void An_object_as_long_as_its_bound_that_ends_the_file_is_read_whole()
+    {
+        // The window that holds the object ends where the file does: it cut nothing, however long it is. The object, which
+        // lacks its endobj, is the file's to report, not the guard's. Its padding makes it the longest of the file.
+        var file = PdfTemplate.Build(PdfTemplate.SoundEndingWith(PaddedArray));
+        var length = file.Length - OffsetOf(file, "4 0 obj");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = length } });
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().HaveCount(3);
+
+        document.Diagnostics.Should().BeEmpty();
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle()
+            .Which.RuleId.Should().Be(PdfValidationRuleIds.ObjectEndObjMissing);
+    }
+
+    [Fact]
+    public void An_object_one_byte_longer_than_its_bound_that_ends_the_file_is_cut_by_the_bound()
+    {
+        var file = PdfTemplate.Build(PdfTemplate.SoundEndingWith(PaddedArray));
+        var length = file.Length - OffsetOf(file, "4 0 obj");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = length - 1 } });
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().HaveCount(3);
+
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+        new PdfValidator().Validate(document).Findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.ObjectEndObjMissing);
+    }
+
+    [Fact]
+    public void A_value_the_chain_reads_as_long_as_the_object_bound_that_ends_the_file_is_read()
+    {
+        // An update names its previous section through a reference to an object the file ends with, as long as
+        // MaxObjectLength allows: the window that holds it ends where the file does, and the chain goes on.
+        var file = PdfTemplate.Build("""
+            %PDF-1.4
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>
+            endobj
+            xref
+            0 4
+            {free}
+            {row:1}
+            {row:2}
+            {row:3}
+            trailer
+            << /Size 4 /Root 1 0 R >>
+            startxref
+            {xref:1}
+            %%EOF
+            xref
+            9 1
+            {row:9}
+            trailer
+            << /Size 10 /Root 1 0 R /Prev 9 0 R >>
+            startxref
+            {xref:2}
+            %%EOF
+            9 0 obj
+            """ + new string(' ', 200) + "{xref:1}");
+        var length = file.Length - OffsetOf(file, "9 0 obj");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = length } });
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_table_as_long_as_its_bound_that_ends_the_file_is_no_table_the_bound_cut()
+    {
+        // The table's window ends where the file does: the file ends after the rows, before any trailer, and the reader
+        // says so rather than blaming the bound.
+        var file = PdfTemplate.Build("""
+            %PDF-1.7
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+            endobj
+            startxref
+            {xref:1}
+            %%EOF
+            xref
+            0 4
+            {free}
+            {row:1}
+            {row:2}
+            {row:3}
+            """);
+        var length = file.Length - OffsetOf(file, "xref\n0 4");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = length } });
+
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        new PdfValidator().Validate(document).Findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.FileTrailerMissing);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -396,6 +651,9 @@ public class ReaderLimitsTests
         opening.Should().Throw<PdfFormatException>();
         source.Disposed.Should().BeTrue();
     }
+
+    /// <summary>Object 4, an array of three numbers without its endobj, padded to be longer than the sound document's objects.</summary>
+    private static string PaddedArray { get; } = "4 0 obj\n[1 2 3" + new string(' ', 200) + "]";
 
     private static string LongArray { get; } = "[" + string.Join(' ', Enumerable.Range(0, 2000)) + "]";
 

@@ -101,7 +101,18 @@ public static class PdfDiagnosticCodes
     /// </summary>
     public const string SyntaxUnexpectedToken = "syntax.unexpected-token";
 
-    /// <summary>The file, or an object stream's decoded data, ended in the middle of an object.</summary>
+    /// <summary>
+    /// An object ended before it was whole: the file, or an object stream's decoded data, ended in the middle of it — a value
+    /// missing, or an array, a dictionary or a string it opened never closed —, or an <c>endobj</c> stood where a value or a
+    /// key should be, inside an array or a dictionary it opened. What was read is kept: a string takes the bytes to the end of
+    /// the data, and an <c>endobj</c> ends every container it finds open: the object's own, or, when the object lost it too, the
+    /// next object's, the container then taking that object.
+    /// Reported once, for the innermost construct left open, where it opens — where the value would start, when none is open;
+    /// past the depth the reader follows, the container it skipped, which holds what it did not follow —, the constructs
+    /// around it counted in the message; inside an object an object stream holds, where the stream's data
+    /// starts, the member and the byte in the message. The edge of a window the reader grows is no end of the data, and a cut
+    /// a guard made is the guard's.
+    /// </summary>
     public const string SyntaxTruncatedObject = "syntax.truncated-object";
 
     /// <summary>Nesting exceeded the depth the reader is willing to follow.</summary>
@@ -115,6 +126,36 @@ public static class PdfDiagnosticCodes
     /// it reads as a real, the one nearest to it.
     /// </summary>
     public const string SyntaxNumberOutOfRange = "syntax.number-out-of-range";
+
+    /// <summary>
+    /// A hexadecimal string holds bytes that are neither hexadecimal digits nor white space, the only bytes ISO 32000-1
+    /// (7.3.4.3) lets it hold — a <c>%</c> among them, which is no comment there —: they were skipped, as pdf.js and pdfium
+    /// skip them, where PDFBox stops at the first, MuPDF and poppler read each as the digit 0, and qpdf and pypdf lose the
+    /// string. Reported once for each string, where
+    /// its first such byte lies, how many there are in the message; inside an object an object stream holds, where the
+    /// stream's data starts, the member and the byte in the message.
+    /// </summary>
+    public const string SyntaxHexStringInvalid = "syntax.hex-string-invalid";
+
+    /// <summary>
+    /// A name holds a number sign that two hexadecimal digits do not follow: it was kept as the byte it is, as PDF 1.1 read
+    /// it and most readers still do, where ISO 32000-1 (7.3.5) has a writer write <c>#23</c>. Reported once for each name,
+    /// where its first such number sign lies, the name read quoted in the message; inside an object an object stream holds,
+    /// where the stream's data starts, the member and the byte in the message. A <c>#00</c> is no such fault: it is an
+    /// escape, of a byte no name may hold, which the validator reports.
+    /// </summary>
+    public const string SyntaxNameEscapeInvalid = "syntax.name-escape-invalid";
+
+    /// <summary>
+    /// A dictionary gives a key more than once, which ISO 32000-1 (7.3.7) forbids: keys compare as they read, so a key written
+    /// with <c>#xx</c> escapes repeats the one written without. The last value given is kept, and a null given last removes
+    /// the key, as qpdf, pdf.js, PDFBox, MuPDF and pdfium read it; a key given with no value, before <c>&gt;&gt;</c> or
+    /// <c>endobj</c>, is one given null, and a value a guard's cut leaves short removes nothing. Reported for each key given
+    /// again, where it is given, unless a window's edge reaches the key itself, the
+    /// key quoted in the message; inside an object an object stream holds, where the stream's data starts, the member and the
+    /// byte in the message.
+    /// </summary>
+    public const string SyntaxKeyRepeated = "syntax.key-repeated";
 
     /// <summary>
     /// Rebuilding the index met more than one definition of an object number: the file was updated, or copies an

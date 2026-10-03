@@ -18,6 +18,96 @@ public class HostileInputTests
 {
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(10);
 
+    [Theory]
+    [InlineData("/A 1 ")]
+    [InlineData("/A null ")]
+    public void A_dictionary_that_gives_one_key_a_million_times_reads_in_time_and_keeps_a_bounded_report(string entry)
+    {
+        // Each repeat is a report: the first thousand are kept, the rest counted, and none past the capacity is formatted.
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< " + string.Concat(Enumerable.Repeat(entry, 1_000_000)) + ">>")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(bytes);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var value = Measure(() => document.GetObject(new PdfObjectId(3)).AsDictionary().Required());
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        value.Should().HaveCount(entry.Contains("null", StringComparison.Ordinal) ? 0 : 1);
+        allocated.Should().BeLessThan(150L * 1024 * 1024, "a repeat past the capacity is counted, its message not built");
+        document.Diagnostics.Should().HaveCount(document.Diagnostics.Capacity)
+            .And.OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxKeyRepeated);
+        document.Diagnostics.SuppressedCount.Should().Be(999_999 - document.Diagnostics.Capacity);
+    }
+
+    [Fact]
+    public void A_dictionary_of_distinct_keys_each_given_null_reads_in_time()
+    {
+        // A key given null makes no entry, and is remembered in case it is given again: two hundred thousand of them read in
+        // a time that grows with their number, not with its square.
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< " + string.Concat(Enumerable.Range(0, 200_000).Select(i => $"/K{i} null ")) + ">>")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(bytes);
+
+        Measure(() => document.GetObject(new PdfObjectId(3)).AsDictionary().Required()).Should().BeEmpty();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_string_that_never_closes_takes_the_end_of_the_file_and_is_reported_once_where_it_opens()
+    {
+        // #172's file: object 4's string opens a parenthesis it never closes, and takes endobj, object 5, the table and the
+        // trailer with it, to the end of the file. Its value is kept as read, object 5 is still read where the table places
+        // it, and the string is reported where it opens.
+        var file = PdfTemplate.Build("""
+            %PDF-1.7
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R /Test 4 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+            endobj
+            4 0 obj (abc(def) endobj
+            5 0 obj null endobj
+            xref
+            0 6
+            {free}
+            {row:1}
+            {row:2}
+            {row:3}
+            {row:4}
+            {row:5}
+            trailer
+            << /Size 6 /Root 1 0 R >>
+            startxref
+            {xref:1}
+            %%EOF
+
+            """);
+        var opens = PdfTemplate.OffsetOf(file, "(abc(def)");
+        using var document = PdfDocument.Open(file);
+
+        var swallowed = document.GetObject(new PdfObjectId(4)).AsString().Required();
+
+        swallowed.Length.Should().Be(file.Length - (int)opens - 1);
+        swallowed.ToText().Should().StartWith("abc(def) endobj\n5 0 obj null endobj\nxref").And.EndWith("%%EOF\n");
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+        var report = document.Diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        report.Position.Should().Be(opens);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The file ended inside a literal string, which takes the {file.Length - opens:N0} bytes from where it opens to that end."));
+    }
+
     [Fact]
     public void Refuses_an_input_that_contains_no_objects()
     {
@@ -239,6 +329,36 @@ public class HostileInputTests
         array.Count.Should().Be(20_000);
         document.Diagnostics.SuppressedCount.Should().BeGreaterThan(18_000);
         allocated.Should().BeLessThan(16 * 1024 * 1024, "a number is quoted only for an entry the diagnostics keep");
+    }
+
+    [Theory]
+    [InlineData(false, "number")]
+    [InlineData(true, "number")]
+    [InlineData(false, "repeated key")]
+    [InlineData(true, "repeated key")]
+    [InlineData(false, "name")]
+    [InlineData(true, "name")]
+    [InlineData(false, "hexadecimal string")]
+    [InlineData(true, "hexadecimal string")]
+    [InlineData(false, "endobj")]
+    public void Quotes_nothing_once_the_document_s_diagnostics_are_full_however_many_objects_hold_the_faults(bool packed, string fault)
+    {
+        // Twenty thousand objects, each holding a fault whose report quotes or counts something: a number of 310 digits, a
+        // key given again, a name whose number sign is no escape, a hexadecimal string with stray bytes, an array an endobj
+        // ends. Past the thousand entries the document keeps, each report is counted and dropped, and neither its quote nor
+        // its message is built, whichever object makes it: built for each object, the numbers' allocated about 16 MB more than
+        // objects as long without the fault. Each fault is set against the same object written soundly.
+        var (faulty, sound) = fault switch
+        {
+            "number" => ("[1" + new string('0', 309) + "]", "[1" + new string(' ', 309) + "]"),
+            "repeated key" => ("<< /LongerKeyName 1 /LongerKeyName 2 >>", "<< /LongerKeyName 1 /LongerKeyNamf 2 >>"),
+            "name" => ("[/LongerName#zzWithASign]", "[/LongerName#20WithASign]"),
+            "hexadecimal string" => ("[<41x42y43z44>]", "[<41 42 43 44>]"),
+            _ => ("[1 2 3 ", "[1 2 3]"),
+        };
+        var extra = AllocatedReadingEveryObject(ManyObjects(packed, faulty)) - AllocatedReadingEveryObject(ManyObjects(packed, sound));
+
+        extra.Should().BeLessThan(4 * 1024 * 1024, "a report the document's diagnostics drop is formatted for no object");
     }
 
     [Theory]
@@ -1173,6 +1293,37 @@ public class HostileInputTests
         output.Write(compressedRows.ToArray());
         Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
         return output.ToArray();
+    }
+
+    /// <summary>The catalog and an empty page tree, then objects 3 to 20,002, each <paramref name="body"/>, packed or written directly.</summary>
+    private static byte[] ManyObjects(bool packed, string body)
+    {
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 3; number < 20_003; number++)
+        {
+            builder.WithObject(number, body);
+        }
+
+        return packed
+            ? builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [.. Enumerable.Range(3, 20_000)])
+            : builder.BuildClassic(rootNumber: 1);
+    }
+
+    /// <summary>Opens <paramref name="file"/> and reads its objects 3 to 20,002, and gives what reading them allocated.</summary>
+    private static long AllocatedReadingEveryObject(byte[] file)
+    {
+        using var document = PdfDocument.Open(file);
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var number = 3; number < 20_003; number++)
+        {
+            _ = document.GetObject(new PdfObjectId(number));
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - allocated;
     }
 
     private static T Measure<T>(Func<T> action)

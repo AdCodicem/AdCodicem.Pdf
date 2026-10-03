@@ -8,8 +8,10 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// </summary>
 /// <remarks>
 /// A trailer the <c>trailer</c> keyword does not introduce a dictionary to, or one read despite syntax errors — a
-/// key that is not a name, a dictionary left unclosed —, is salvaged as far as it goes: an entry may be lost with the
-/// syntax, and the reader cannot vouch that it read the trailer as written: an error (ADR 45). qpdf rejects such an
+/// key that is not a name, a dictionary or a string left unclosed, a hexadecimal string holding bytes that are neither
+/// digits nor white space,
+/// a name whose number sign is no escape, a key given twice —, is salvaged as far as it goes: an entry may be lost with the syntax, or read
+/// otherwise than its writer meant, and the reader cannot vouch that it read the trailer as written: an error (ADR 45). qpdf rejects such an
 /// index outright. A cross-reference stream's dictionary is its trailer, and is held to the same.
 /// </remarks>
 internal sealed class TrailerMalformedRule : IValidationRule

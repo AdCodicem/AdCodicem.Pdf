@@ -197,7 +197,7 @@ public class LexerTests
         var token = lexer.Read();
 
         token.Kind.Should().Be(PdfTokenKind.Name);
-        PdfStringDecoder.DecodeName(token.Text).Should().Be("Name With Spaces");
+        PdfStringDecoder.DecodeName(token.Text, out _).Should().Be("Name With Spaces");
     }
 
     [Fact]
@@ -247,7 +247,42 @@ public class LexerTests
         var token = lexer.Read();
 
         token.Kind.Should().Be(PdfTokenKind.HexString);
-        PdfStringDecoder.DecodeHex(token.Text).Should().Equal((byte)0x90, 0x1F, 0xA0);
+        PdfStringDecoder.DecodeHex(token.Text, out _, out _).Should().Equal((byte)0x90, 0x1F, 0xA0);
+    }
+
+    [Theory]
+    [InlineData("FFxyz00GG1", "FF0010", 2, 5)]
+    [InlineData("4142-43", "414243", 4, 1)]
+    [InlineData("41%42", "4142", 2, 1)]
+    [InlineData("41 42\n43\r\t\f\0", "414243", -1, 0)]
+    [InlineData("414", "4140", -1, 0)]
+    [InlineData("", "", -1, 0)]
+    public void Skips_and_counts_the_bytes_of_a_hexadecimal_string_that_are_neither_digits_nor_white_space(
+        string raw, string decoded, int firstStray, int strays)
+    {
+        // ISO 32000-1 (7.3.4.3) lets a hexadecimal string hold white space besides its digits — NUL and form feed among it
+        // — and nothing else, a percent sign included: what else it holds is skipped, and counted for the parser to report.
+        var bytes = PdfStringDecoder.DecodeHex(Encoding.ASCII.GetBytes(raw), out var first, out var count);
+
+        Convert.ToHexString(bytes).Should().Be(decoded);
+        first.Should().Be(firstStray);
+        count.Should().Be(strays);
+    }
+
+    [Theory]
+    [InlineData("A#zzB#4", "A#zzB#4", 1)]
+    [InlineData("A#4", "A#4", 1)]
+    [InlineData("A#", "A#", 1)]
+    [InlineData("A#2", "A#2", 1)]
+    [InlineData("#41#zz", "A#zz", 3)]
+    [InlineData("A#20B", "A B", -1)]
+    [InlineData("A#2f#2F", "A//", -1)]
+    [InlineData("A#00B", "A\0B", -1)]
+    public void Keeps_a_number_sign_two_hexadecimal_digits_do_not_follow_and_says_where_the_first_lies(string raw, string name, int badEscape)
+    {
+        // A #00 is an escape, of a byte no name may hold, which the validator reports; it is no escape gone wrong.
+        PdfStringDecoder.DecodeName(Encoding.ASCII.GetBytes(raw), out var first).Should().Be(name);
+        first.Should().Be(badEscape);
     }
 
     [Fact]
@@ -256,7 +291,7 @@ public class LexerTests
         var lexer = new PdfLexer("<48 65\n6C>"u8.ToArray());
         var token = lexer.Read();
 
-        PdfStringDecoder.DecodeHex(token.Text).Should().Equal((byte)0x48, 0x65, 0x6C);
+        PdfStringDecoder.DecodeHex(token.Text, out _, out _).Should().Equal((byte)0x48, 0x65, 0x6C);
     }
 
     [Fact]

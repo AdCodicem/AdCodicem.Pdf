@@ -284,6 +284,84 @@ public class FileRuleTests
         }
     }
 
+    [Theory]
+    [InlineData(4)]
+    [InlineData(3000)]
+    public void A_trailer_the_file_ends_inside_is_malformed_whichever_window_reads_it(int rows)
+    {
+        // The trailer's /ID opens a string the file never closes. Behind four rows, the table's window holds the end of the
+        // file; behind three thousand, the trailer runs past that window and is read again through a window of its own,
+        // which reaches the end of the file: either way the string is reported, and the trailer judged malformed.
+        var table = new StringBuilder($"xref\n0 {rows}\n{{free}}\n{{row:1}}\n{{row:2}}\n{{row:3}}\n");
+        for (var row = 4; row < rows; row++)
+        {
+            table.Append("0000000000 65535 f \n");
+        }
+
+        var file = PdfTemplate.Build(
+            PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + table +
+            $"trailer\n<< /Size {rows} /Root 1 0 R /ID [(abc" + new string('x', 10_000) + "\nstartxref\n{xref:1}\n%%EOF\n");
+        using var document = PdfDocument.Open(file);
+
+        var report = Validate(file);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
+            .Which.Position.Should().Be(PdfTemplate.OffsetOf(file, "(abc"));
+        Single(report, PdfValidationRuleIds.FileTrailerMalformed).Message.Should().Be(
+            $"The trailer at offset {PdfTemplate.OffsetOf(file, "trailer")} is not a well-formed dictionary: the reader read it despite syntax errors.");
+    }
+
+    [Fact]
+    public void A_trailer_whose_closing_brackets_end_its_table_s_window_is_judged_by_what_they_close()
+    {
+        // The trailer's last key has no value, and the ">>" after it ends exactly where the table's 64 KB window does. The
+        // brackets are whole there, so the trailer is read through that window alone, and their fault is still reported.
+        var file = TrailerEndingTheTableWindow(0);
+        var padding = PdfTemplate.OffsetOf(file, "xref\n0 3000") + (64 * 1024) - (PdfTemplate.OffsetOf(file, "/K >>") + "/K >>".Length);
+        file = TrailerEndingTheTableWindow((int)padding);
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be("A dictionary key had no value.");
+        Single(report, PdfValidationRuleIds.FileTrailerMalformed);
+
+        static byte[] TrailerEndingTheTableWindow(int padding)
+        {
+            var table = new StringBuilder("xref\n0 3000\n{free}\n{row:1}\n{row:2}\n{row:3}\n");
+            for (var row = 4; row < 3000; row++)
+            {
+                table.Append("0000000000 65535 f \n");
+            }
+
+            return PdfTemplate.Build(
+                PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + table +
+                "trailer\n<< /Size 3000 /Root 1 0 R /Pad (" + new string('x', padding) + ") /K >>\nstartxref\n{xref:1}\n%%EOF\n");
+        }
+    }
+
+    [Fact]
+    public void A_trailer_its_bound_cuts_after_a_syntax_fault_is_malformed()
+    {
+        // The trailer runs past its table's window and is read through one of its own, which MaxTrailerLength cuts after a
+        // stray token: the token is the file's, kept beside the guard, and the trailer was read despite it.
+        var table = new StringBuilder("xref\n0 3000\n{free}\n{row:1}\n{row:2}\n{row:3}\n");
+        for (var row = 4; row < 3000; row++)
+        {
+            table.Append("0000000000 65535 f \n");
+        }
+
+        var file = PdfTemplate.Build(
+            PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + table +
+            "trailer\n<< /Size 3000 /Root 1 0 R ) /Pad (" + new string('x', 10_000) + ") >>\nstartxref\n{xref:1}\n%%EOF\n");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.SyntaxUnexpectedToken);
+        report.Findings.Select(finding => finding.RuleId).Should().Contain(PdfValidationRuleIds.FileTrailerMalformed);
+    }
+
     [Fact]
     public void A_trailer_whose_syntax_errors_overflow_the_diagnostics_is_still_malformed()
     {
