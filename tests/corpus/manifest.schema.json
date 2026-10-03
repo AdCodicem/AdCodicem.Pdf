@@ -263,6 +263,8 @@
               "syntax.truncated-object",
               "syntax.depth-exceeded",
               "syntax.number-out-of-range",
+              "syntax.hex-string-invalid",
+              "syntax.name-escape-invalid",
               "object.redefined",
               "trailer.root-recovered",
               "filter.failed",

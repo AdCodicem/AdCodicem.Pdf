@@ -121,7 +121,7 @@ public class PropertyTests
             var token = lexer.Read();
 
             return token.Kind == PdfTokenKind.Name && token.End == quote.Length &&
-                PdfStringDecoder.DecodeName(token.Text) == value;
+                PdfStringDecoder.DecodeName(token.Text, out _) == value;
         }));
     }
 
