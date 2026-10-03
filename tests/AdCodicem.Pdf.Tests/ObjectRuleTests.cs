@@ -552,16 +552,19 @@ public class ObjectRuleTests
     public void Object_streams_a_rebuild_during_the_walk_no_longer_places_are_still_reported_circular()
     {
         // Reading object stream 30, which is not where its entry says, rebuilds the index once 7 and 8 were read: the
-        // rebuild cannot find 7, whose header has a comment in it, and places 8 in object stream 20. Only because the
-        // walk reads the index a rebuild changes under it (#128) are 7 and 8 located this way: once it reads the index
-        // the file gave, this case goes, and the arms of Location it covers can no longer be reached.
-        using var document = PdfDocument.Open(RebuiltAfterTwoObjectStreams());
+        // rebuild cannot find 7, whose header has a comment in it, and places 8 in object stream 20. The walk's lookups
+        // still read the index the rebuild changed under it (#128), but a finding is located where the chain's index,
+        // read again, places the stream (#118): 7 and 8 keep the positions their rows give, which they once lost.
+        var file = RebuiltAfterTwoObjectStreams();
+        using var document = PdfDocument.Open(file);
 
         var dependencies = ObjectStreamDependencies.Run(document);
 
         document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefRebuilt);
         dependencies.CircularStreams.Should().BeEquivalentTo([7, 8]);
         dependencies.Circular.Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(7), new PdfObjectId(8));
+        dependencies.Circular.Select(finding => finding.Location.Position)
+            .Should().Equal(PdfTemplate.OffsetOf(file, "7 0 %x"), PdfTemplate.OffsetOf(file, "8 0 %x"));
         dependencies.Circular.Select(finding => finding.Message).Should().Equal(
             "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.",
             "Object stream 8 needs object 15, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
