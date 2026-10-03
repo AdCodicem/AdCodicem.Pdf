@@ -57,6 +57,17 @@ public class ArlingtonMessageTests
     }
 
     [Fact]
+    public void Objects_that_give_a_type_a_value_the_model_does_not_list_are_counted()
+    {
+        var page = PageWith("/ExtGState << /GS0 << /Type /Font >> >>");
+
+        var report = Validate(Document(Catalog, TwoPages, page, page));
+
+        Single(report, PdfValidationRuleIds.ObjectTypeValueWrong).Message.Should().Be(
+            "A GraphicsStateParameter has /Type /Font, where the Arlington model wants /ExtGState; 2 objects give /Type a value it does not list, the first the dictionary under /Resources/ExtGState/GS0 of object 3 0.");
+    }
+
+    [Fact]
     public void Objects_that_use_a_deprecated_key_are_counted_with_the_version_the_file_declares()
     {
         // The catalog declares PDF 2.0, which deprecates /ProcSet and the names its array lists.
