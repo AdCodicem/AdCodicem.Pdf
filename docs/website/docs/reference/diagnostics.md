@@ -131,6 +131,22 @@ Codes are stable: they are part of the public contract, because callers filter o
 The five `limit.*` codes report the reader's own limits, not faults of the file; each message names the property of
 `PdfReaderLimits` that lifts it. They are listed with their defaults in [Reader limits](reader-limits.md).
 
+### Faults of the syntax
+
+A `syntax.*` entry says where the file breaks PDF's syntax, and what the reader read in its place. Each is reported
+once, however often its object is parsed again — after the cache let it go, the index was rebuilt, or the validator
+read it, a trailer the chain read and a rebuild read again included —, as long as the diagnostics have room for it;
+once they are full, each reading counts it among the suppressed. A fault inside an object an object stream holds names
+that object and the byte of the stream's decoded data, so two objects that share a fault are each reported.
+
+```text
+Warning syntax.truncated-object at 328: The file ended inside a literal string, which takes the 6,575 bytes from where it opens to that end; the 2 arrays or dictionaries around it were never closed either.
+Warning syntax.truncated-object at 381: An endobj ended the object inside an array, which was never closed.
+Warning syntax.hex-string-invalid at 1204: A hexadecimal string holds 5 bytes that are neither hexadecimal digits nor white space, the first here; they were skipped.
+Warning syntax.name-escape-invalid at 96: A name holds a number sign that two hexadecimal digits do not follow, kept as the byte it is: the name reads as /A#23zz.
+Warning syntax.key-repeated at 412: The dictionary gives the key /Filter more than once, written here with #xx escapes; the last value given is kept.
+```
+
 ### Streams whose length is wrong
 
 A stream whose declared length the file cannot hold is reported as `stream.truncated` when the file ends inside its

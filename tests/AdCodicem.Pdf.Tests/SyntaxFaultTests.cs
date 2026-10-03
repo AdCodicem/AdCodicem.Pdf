@@ -193,6 +193,82 @@ public class SyntaxFaultTests
         report.Findings.Should().ContainSingle().Which.RuleId.Should().Be(PdfValidationRuleIds.FileTrailerMalformed);
     }
 
+    [Fact]
+    public void A_fault_is_reported_once_however_often_the_cache_lets_its_object_go()
+    {
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< /A 1 ) /B 2 >>");
+        for (var number = 4; number < 80; number++)
+        {
+            builder.WithObject(number, "null");
+        }
+
+        using var document = PdfDocument.Open(builder.BuildClassic(rootNumber: 1), new PdfReaderOptions { ObjectCacheCapacity = 64 });
+
+        for (var pass = 0; pass < 3; pass++)
+        {
+            for (var number = 3; number < 80; number++)
+            {
+                _ = document.GetObject(new PdfObjectId(number));
+            }
+        }
+
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.SyntaxUnexpectedToken);
+    }
+
+    [Fact]
+    public void A_fault_of_an_object_stream_s_dictionary_is_reported_once_though_the_validator_reads_it_again()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(4, "<< /X 4 >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [4], objectStreamEntries: "/Junk )");
+        using var document = PdfDocument.Open(file);
+
+        _ = document.GetObject(new PdfObjectId(4));
+        _ = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code.StartsWith("syntax.", StringComparison.Ordinal))
+            .Which.Code.Should().Be(PdfDiagnosticCodes.SyntaxUnexpectedToken);
+    }
+
+    [Fact]
+    public void A_fault_of_an_object_read_before_and_after_a_rebuild_is_reported_once()
+    {
+        // /Root names object 4, which is no catalog; the catalog's row places it 1,500 bytes off, past where the reader looks
+        // for it, so looking for it rebuilds the index, and object 4 is read again.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("xref\n0 4\n", "4 0 obj\n<< /Foo 1 ) >>\nendobj\n%" + new string('x', 2000) + "\nxref\n0 5\n", StringComparison.Ordinal)
+            .Replace("{row:1}\n", "{row:1:0:1500}\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
+            .Replace("<< /Size 4 /Root 1 0 R >>", "<< /Size 5 /Root 4 0 R >>", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code.StartsWith("syntax.", StringComparison.Ordinal))
+            .Which.Position.Should().Be(PdfTemplate.OffsetOf(file, ") >>"));
+    }
+
+    [Fact]
+    public void A_fault_of_a_trailer_the_chain_and_the_rebuild_both_read_is_reported_once_and_makes_it_malformed()
+    {
+        // The catalog's row places it outside the file: the index is rebuilt, and the rebuild reads the trailer again.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("{row:1}\n", "{row:1:0:999999}\n", StringComparison.Ordinal)
+            .Replace("<< /Size 4 /Root 1 0 R >>", "<< /Size 4 /Root 1 0 R ) >>", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code.StartsWith("syntax.", StringComparison.Ordinal))
+            .Which.Position.Should().Be(PdfTemplate.OffsetOf(file, ") >>"));
+        report.Findings.Select(finding => finding.RuleId).Should().Contain(PdfValidationRuleIds.FileTrailerMalformed);
+    }
+
     /// <summary>
     /// The catalog and the page tree written directly, and objects 5, 6 and 4 — 4 holding <paramref name="value"/> — packed
     /// in object stream 7, 4 last or first.
