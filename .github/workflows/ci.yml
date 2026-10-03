@@ -125,28 +125,44 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      # The steps docs.yml deploys with, without a label: nothing deploys this build. The site publishes the
+      # project's own documents, so a document that does not build is caught here rather than after it reaches
+      # the default branch.
+      - name: Build the site
+        uses: ./.github/actions/build-site
+
+  # preview.yml and release.yml never run on a pull request, and docs.yml only through them, so a broken edit
+  # to any of them would otherwise merge green and fail on the next Monday or at release time. actionlint
+  # checks every workflow, and shellcheck (on the runner image) every run: block in them; shellcheck then
+  # checks the scripts they call. actionlint is a downloaded binary, not an action, checked against the digest
+  # its release publishes.
+  workflows:
+    name: workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ACTIONLINT_VERSION: 1.7.12
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: docs/website/package-lock.json
+          persist-credentials: false
 
-      - name: Install
-        working-directory: docs/website
-        run: npm ci
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$archive"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
 
-      # The rules deciding which versions the site lists, and when the preview is shown.
-      - name: Test the versioning rules
-        working-directory: docs/website
-        run: npm test
+      # .github/actionlint.yaml silences the one documented key actionlint does not know.
+      - name: Lint the workflows
+        run: '"$RUNNER_TEMP/actionlint" -color'
 
-      # The site publishes the project's own documents, so a documentation change that does not build is
-      # caught here rather than after it reaches the default branch.
-      - name: Build
-        working-directory: docs/website
-        run: npm run build
+      - name: Check the scripts
+        run: shellcheck .github/scripts/*.sh .claude/scripts/*.sh

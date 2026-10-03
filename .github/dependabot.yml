@@ -43,8 +43,12 @@ updates:
       prefix: "build"
       include: scope
 
+  # "/" covers .github/workflows; the composite action the workflows share (.github/actions/build-site) is
+  # pinned the same way and listed apart.
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: weekly
       day: monday
