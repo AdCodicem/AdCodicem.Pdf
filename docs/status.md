@@ -31,8 +31,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   remote documents fetched, on [#226]'s branch: 5,008 unit with the 233 this container holds, 3 skipped — the laziness
   test on the two documents recorded as unsupported until [#47], which every other test holds to their expectations,
   and the private manifest this container lacks —; 3,266 integration against qpdf in its container, 3,260 passed and
-  6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 25's 5,027
-  acceptance tests and 3,329 referee checks.
+  6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 26's 5,065
+  acceptance tests and 3,329 referee checks, on [#226]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
   Arlington tables left out), 99.6 % of `src/` — 5,145 of 5,165 lines on `main` since [#213], 149 of its patch's 151
   measurable lines among them; [#214]'s patch held none to measure. The 20 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members
@@ -49,12 +49,13 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   web.archive.org refused the download of ECan's scan (`Connection refused`, [#204]): every test over the 241 it
   fetched passed.
   Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one rerun; run 25,
-  on [#225]'s branch, passed whole at its first attempt.
+  on [#225]'s branch, passed whole at its first attempt; run 26, on [#226]'s branch, lost ECan's scan again at its
+  first attempt and passed whole at its one rerun.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 25 on 2026-10-03. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in run 26 on 2026-10-03. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.53`, previews from `main` through trusted publishing, 1,141 downloads on 2026-10-02. The
   `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified.
@@ -184,7 +185,7 @@ One pull request per batch, each design question put to the maintainer after mea
       2026-10-02, `Remote corpus` run 24 green on its branch (journal of 2026-10-02).
    6. [#182], a cross-reference stream's dictionary read as written, with [#215] and [#216], which batch 5 filed —
       done, merged with [#225] on 2026-10-03, `Remote corpus` run 25 green on its branch (journal of 2026-10-03).
-   7. [#118], a rebuilt index's generations — done in [#226], `Remote corpus` run 26 on its branch (journal of 2026-10-03).
+   7. [#118], a rebuilt index's generations — done in [#226], `Remote corpus` run 26 green on its branch (journal of 2026-10-03).
    8. [#119] and [#172].
    9. [#125] and [#126].
    10. [#190] and [#212], the reader's public surface.
@@ -306,7 +307,8 @@ not a fault of the file: the rules on it report at most, as information, that it
     tests: 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages, in 13 minutes;
   - `Remote corpus` run 26, on the branch at `79de092`: its first attempt could not fetch ECan's scan, web.archive.org
     refusing the connection ([#204]), and passed every test over the 241 others, 5,059 acceptance tests with 3 skipped
-    and 3,321 referee checks with 6 skipped; its one rerun is under way.
+    and 3,321 referee checks with 6 skipped; the one rerun fetched all 242 and passed, 5,065 acceptance tests with 3
+    skipped and 3,329 referee checks with 6 skipped.
 - **Next**: batch 8, [#119] and [#172], what the parser reads in silence, its questions put when it starts.
 
 ### 2026-10-03 — Batch 6: what the chain refers to while it is read ([#182], [#215], [#216])
