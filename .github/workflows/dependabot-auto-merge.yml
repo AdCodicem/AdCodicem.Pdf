@@ -1,5 +1,7 @@
 name: Dependabot auto-merge
 
+# Runs with a token that can write to the repository, so nothing a pull request changed may run here: it
+# checks out no code at all.
 on: pull_request_target
 
 permissions:
@@ -7,8 +9,15 @@ permissions:
 
 jobs:
   auto-merge:
-    if: github.actor == 'dependabot[bot]'
+    name: auto-merge patch and minor bumps
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Dependabot's own pull requests, from a branch of this repository. fetch-metadata then refuses a pull
+    # request carrying a commit Dependabot did not sign.
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: write
       pull-requests: write
@@ -19,11 +28,24 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Minor and patch bumps merge themselves once the required checks pass; a major bump always waits
-      # for someone to look at it.
-      - name: Enable auto-merge for minor and patch updates
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+      # An allow-list (#196): only an update fetch-metadata classifies as a patch or a minor is queued. An empty
+      # or unknown classification, which it gives when it cannot read the versions, is left to a person, like a
+      # major. Auto-merge is a queue, not a merge: GitHub waits for the code owner's approval and for the checks
+      # the ruleset on main requires (docs/releasing.md), and squashes under the pull request's title.
+      - name: Enable auto-merge for patch and minor updates
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Say why it was left to a person
+        if: >-
+          steps.metadata.outputs.update-type != 'version-update:semver-patch' &&
+          steps.metadata.outputs.update-type != 'version-update:semver-minor'
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+        run: |
+          echo "Not queued for auto-merge: update type '${UPDATE_TYPE:-none}' is neither a patch nor a minor."

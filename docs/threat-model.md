@@ -448,7 +448,8 @@ Known gaps:
   in `commits.yml`, and `read-all` in `scorecards.yml`, whose one job replaces it with the four permissions it
   needs — and raise a permission per job where one is needed. Every action is pinned to a commit SHA. CI and the commit
   checks run on `pull_request`, so a fork's pull request gets no secret and no write token. The one
-  `pull_request_target` workflow, Dependabot's auto-merge, checks out no code.
+  `pull_request_target` workflow, Dependabot's auto-merge, checks out no code, and queues only an update
+  `fetch-metadata` classifies as a patch or a minor. Every Dependabot entry waits a week before proposing a version.
 - **Publishing** uses trusted publishing ([ADR 25](adr/0025-trusted-publishing-rather-than-an-api-key.md)): a
   key valid one hour, exchanged for the job's OIDC token just before the push, and no NuGet secret stored. The
   `AdCodicem.*` prefix is reserved on nuget.org. Builds are deterministic and carry their sources' location and
@@ -481,8 +482,8 @@ Known gaps:
 - [#41] The release App on the ruleset's bypass list, and the CI checks required by name, are settings the
   maintainer has yet to make; until then the stable release stops at its first step.
 - [#44] The project has no OpenSSF Best Practices badge.
-- [#196] Dependabot's auto-merge refuses only what it recognizes as a major bump, and nothing requires CI before the
-  merge it queues.
+- [#196] Dependabot's auto-merge queues only patches and minors, but nothing requires CI before the merge it queues
+  until the checks are required by name (#41).
 - [#195] The corpus build's Python producers are pinned by version, without hashes, and the packages they pull in are
   not pinned.
 
