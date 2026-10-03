@@ -258,6 +258,57 @@ public class ParserTests
     }
 
     [Theory]
+    [InlineData("<< /B 3 /B 4 >>", "4", "8", "the last value given is kept")]
+    [InlineData("<< /B 3 /B null >>", null, "8", "given null last, the key is left out")]
+    [InlineData("<< /B null /B 3 >>", "3", "11", "the last value given is kept")]
+    [InlineData("<< /B null /B null >>", null, "11", "given null last, the key is left out")]
+    [InlineData("<< /B 1 /B null /B 2 >>", "2", "8 16", "given null last, the key is left out|the last value given is kept")]
+    public void Keeps_the_last_value_of_a_key_given_again_and_reports_each_repeat(string text, string? kept, string positions, string outcomes)
+    {
+        // #172: ISO 32000-1 (7.3.7) forbids a repeat and says nothing of which value counts. The last does, as qpdf, pdf.js,
+        // PDFBox, MuPDF and pdfium read it; a null given last removes the key, as an absent entry, and a null given first is a
+        // repeat all the same.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        var dictionary = parser.ParseObject().Should().BeOfType<PdfDictionary>().Subject;
+
+        dictionary[PdfName.Get("B")]?.ToString().Should().Be(kept);
+        dictionary.Count.Should().Be(kept is null ? 0 : 1);
+        diagnostics.Select(entry => entry.Code).Should().AllBe(PdfDiagnosticCodes.SyntaxKeyRepeated);
+        diagnostics.Select(entry => entry.Position.ToString(System.Globalization.CultureInfo.InvariantCulture)).Should().Equal(positions.Split(' '));
+        diagnostics.Select(entry => entry.Message).Should().Equal(
+            outcomes.Split('|').Select(outcome => $"The dictionary gives the key /B more than once; {outcome}."));
+    }
+
+    [Fact]
+    public void Takes_a_key_written_with_escapes_for_the_key_it_reads_as()
+    {
+        // Keys compare as they read: /F#69lter is /Filter given again, and its value is the one kept (erratum 438 of ISO
+        // 32000-2 says as much).
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("<< /Filter /FlateDecode /F#69lter /ASCIIHexDecode >>"), diagnostics: diagnostics);
+
+        var dictionary = parser.ParseObject().Should().BeOfType<PdfDictionary>().Subject;
+
+        dictionary.GetName(PdfName.Filter).Should().Be(PdfName.Get("ASCIIHexDecode"));
+        var report = diagnostics.Should().ContainSingle().Subject;
+        report.Position.Should().Be(24);
+        report.Message.Should().Be("The dictionary gives the key /Filter more than once, written here with #xx escapes; the last value given is kept.");
+    }
+
+    [Fact]
+    public void Counts_without_quoting_a_repeated_key_whose_report_the_diagnostics_drop()
+    {
+        var diagnostics = new PdfDiagnostics { Capacity = 0 };
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("<< /A 1 /A 2 /A null >>"), diagnostics: diagnostics);
+
+        parser.ParseObject().Should().BeOfType<PdfDictionary>().Which.Should().BeEmpty();
+
+        diagnostics.SuppressedCount.Should().Be(2);
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("-")]
     public void Reads_a_number_past_the_largest_real_as_null_and_reports_it(string sign)

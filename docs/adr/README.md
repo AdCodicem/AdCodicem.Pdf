@@ -68,6 +68,12 @@ A settled decision is not reopened without new evidence — that is what writing
 - A stream copied between documents travels **encoded**, with no decompress/recompress cycle.
 - A dictionary entry whose value is null is dropped on parse: the specification says it is equivalent to an
   absent entry, and every later stage is spared a null it would have to ignore.
+- A key a dictionary gives more than once keeps the **last** value given, and a null given last removes it, as an
+  absent entry (since 2026-10-03, [#172](https://github.com/AdCodicem/AdCodicem.Pdf/issues/172)): ISO 32000-1
+  (7.3.7) forbids the repeat and says nothing of which value counts. qpdf, pdf.js, PDFBox, MuPDF, pdfium, poppler and
+  veraPDF's parser read it so, pypdf and Ghostscript keep the first; `<< /B 3 /B null >>` reads as `<< /B 3 >>` before
+  then, which no other reader did, and as `/B 5 0 R` with object 5 null never could. Keys compare as they read, so
+  `/F#69lter` repeats `/Filter`. Each repeat is reported, `syntax.key-repeated`, a null on either side included.
 - CodeQL runs as GitHub's **default setup**, on every pull request and every push to `main`, with the query
   suite chosen in the repository's settings; the repository keeps no CodeQL workflow or configuration of its
   own (since 2026-09-26, T35). Until then a workflow ran the security *and* quality suites with four queries

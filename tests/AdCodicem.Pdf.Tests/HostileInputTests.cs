@@ -18,6 +18,43 @@ public class HostileInputTests
 {
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(10);
 
+    [Theory]
+    [InlineData("/A 1 ")]
+    [InlineData("/A null ")]
+    public void A_dictionary_that_gives_one_key_a_million_times_reads_in_time_and_keeps_a_bounded_report(string entry)
+    {
+        // Each repeat is a report: the first thousand are kept, the rest counted, and none past the capacity is formatted.
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< " + string.Concat(Enumerable.Repeat(entry, 1_000_000)) + ">>")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(bytes);
+
+        var value = Measure(() => document.GetObject(new PdfObjectId(3)).AsDictionary().Required());
+
+        value.Should().HaveCount(entry.Contains("null", StringComparison.Ordinal) ? 0 : 1);
+        document.Diagnostics.Should().HaveCount(document.Diagnostics.Capacity)
+            .And.OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxKeyRepeated);
+        document.Diagnostics.SuppressedCount.Should().Be(999_999 - document.Diagnostics.Capacity);
+    }
+
+    [Fact]
+    public void A_dictionary_of_distinct_keys_each_given_null_reads_in_time()
+    {
+        // A key given null makes no entry, and is remembered in case it is given again: two hundred thousand of them read in
+        // a time that grows with their number, not with its square.
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< " + string.Concat(Enumerable.Range(0, 200_000).Select(i => $"/K{i} null ")) + ">>")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(bytes);
+
+        Measure(() => document.GetObject(new PdfObjectId(3)).AsDictionary().Required()).Should().BeEmpty();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
     [Fact]
     public void A_string_that_never_closes_takes_the_end_of_the_file_and_is_reported_once_where_it_opens()
     {
