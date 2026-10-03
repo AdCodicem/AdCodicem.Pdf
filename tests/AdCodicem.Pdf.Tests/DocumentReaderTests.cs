@@ -507,16 +507,17 @@ public class DocumentReaderTests
             .WithObject(3, "<< /Type /Page /Rotate")
             .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
         var dataStart = ObjectStreamDataStart(file);
-        var dataEnd = Encoding.Latin1.GetString(file).IndexOf("\nendstream", (int)dataStart, StringComparison.Ordinal) - dataStart;
+        var opens = Encoding.Latin1.GetString(file).IndexOf("<< /Type /Page /Rotate", (int)dataStart, StringComparison.Ordinal) - dataStart;
 
         using var document = PdfDocument.Open(file);
         _ = document.GetObject(new PdfObjectId(3));
 
+        // The member is a dictionary the data ends inside, after a key: it is placed where the dictionary opens (#119).
         var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject).Which;
         report.Position.Should().Be(dataStart);
         report.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The object stream's decoded data ended in the middle of an object. It was met in object 3, at byte {dataEnd} of object stream 4's decoded data."));
+            $"The object stream's decoded data ended inside a dictionary, which was never closed, before the value of its last key. It was met in object 3, at byte {opens} of object stream 4's decoded data."));
     }
 
     [Fact]

@@ -353,6 +353,137 @@ public class ParserTests
         reference.Resolve().Should().BeSameAs(PdfNull.Instance);
     }
 
+    [Theory]
+    [InlineData("[1 2 3", 0, "The file ended inside an array, which was never closed.")]
+    [InlineData("<< /A 1 /B 2", 0, "The file ended inside a dictionary, which was never closed.")]
+    [InlineData("<< /A", 0, "The file ended inside a dictionary, which was never closed, before the value of its last key.")]
+    [InlineData("(abc", 0, "The file ended inside a literal string, which takes the 4 bytes from where it opens to that end.")]
+    [InlineData("(abc\\", 0, "The file ended inside a literal string, which takes the 5 bytes from where it opens to that end.")]
+    [InlineData("(a(b)c", 0, "The file ended inside a literal string, which takes the 6 bytes from where it opens to that end.")]
+    [InlineData("<414243", 0, "The file ended inside a hexadecimal string, which takes the 7 bytes from where it opens to that end.")]
+    [InlineData("<", 0, "The file ended inside a hexadecimal string, which takes the 1 bytes from where it opens to that end.")]
+    [InlineData("[ << /A 1", 2, "The file ended inside a dictionary, which was never closed; the array or dictionary around it was never closed either.")]
+    [InlineData("<< /A [1 2 (abc", 11, "The file ended inside a literal string, which takes the 4 bytes from where it opens to that end; the 2 arrays or dictionaries around it were never closed either.")]
+    public void Reports_once_where_it_opens_the_innermost_construct_the_end_of_the_data_leaves_open(string text, int opens, string message)
+    {
+        // #119 and #172: whatever the end of the data cuts short is kept as read and reported once, for the innermost
+        // construct, where it opens; the containers around it are counted in the message, not reported again.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), 100, diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        parser.IsTruncated.Should().BeTrue();
+        var report = diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Position.Should().Be(100 + opens);
+        report.Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("[1 2 3")]
+    [InlineData("<< /A 1 /B 2")]
+    [InlineData("<< /A")]
+    [InlineData("(abc")]
+    [InlineData("<414243")]
+    [InlineData("<< /A [1 2 (abc")]
+    [InlineData("")]
+    public void Reports_nothing_a_window_s_edge_cuts_short(string text)
+    {
+        // A buffer that ends at a window's edge rather than where the data does says nothing of what lies past it: the
+        // reader reads the object again through a larger window, or the guard is reported in its place.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics, endsData: false);
+
+        _ = parser.ParseObject();
+
+        parser.IsTruncated.Should().BeTrue();
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("[1 2 3]")]
+    [InlineData("<< /A 1 >>")]
+    [InlineData("(abc)")]
+    [InlineData("(a\\\\)")]
+    [InlineData("<414243>")]
+    [InlineData("<>")]
+    public void Reports_nothing_of_a_construct_closed_at_the_end_of_the_data(string text)
+    {
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Keeps_what_the_end_of_the_data_cut_short_as_far_as_it_was_read()
+    {
+        var array = Parse("[1 2 3").Should().BeOfType<PdfArray>().Subject;
+        var dictionary = Parse("<< /A 1 /B [2").Should().BeOfType<PdfDictionary>().Subject;
+        var literal = Parse("(abc\\").Should().BeOfType<PdfString>().Subject;
+        var hexadecimal = Parse("<41424").Should().BeOfType<PdfString>().Subject;
+
+        array.Select(item => item.AsInteger()).Should().Equal(1, 2, 3);
+        dictionary.GetInteger(PdfName.Get("A")).Should().Be(1);
+        dictionary.GetArray(PdfName.Get("B")).Required().Should().ContainSingle();
+        literal.ToText().Should().Be("abc");
+        hexadecimal.Bytes.ToArray().Should().Equal((byte)0x41, 0x42, 0x40);
+    }
+
+    [Fact]
+    public void Says_an_object_stream_s_data_rather_than_the_file_ended_inside_a_member_s_construct()
+    {
+        var diagnostics = new PdfDiagnostics();
+        var data = Encoding.ASCII.GetBytes("5 0 [1 2 (abc");
+        var parser = PdfObjectParser.ForObjectStreamMember(data, 9, 1000, 5, ObjectSourceReturning(new PdfObjectId(1), PdfNull.Instance), diagnostics);
+        parser.Position = 4;
+
+        _ = parser.ParseObject();
+
+        var report = diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        report.Position.Should().Be(1000);
+        report.Message.Should().Be(
+            "The object stream's decoded data ended inside a literal string, which takes the 4 bytes from where it opens to that end; " +
+            "the array or dictionary around it was never closed either. It was met in object 5, at byte 9 of object stream 9's decoded data.");
+    }
+
+    [Fact]
+    public void Reports_nothing_a_guard_cut_short_in_an_object_stream_s_data()
+    {
+        var diagnostics = new PdfDiagnostics();
+        var data = Encoding.ASCII.GetBytes("5 0 [1 2 (abc");
+        var parser = PdfObjectParser.ForObjectStreamMember(
+            data, 9, 1000, 5, ObjectSourceReturning(new PdfObjectId(1), PdfNull.Instance), diagnostics, endsData: false);
+        parser.Position = 4;
+
+        _ = parser.ParseObject();
+
+        parser.IsTruncated.Should().BeTrue();
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Reports_the_end_of_a_container_skipped_for_its_depth_once_besides_the_depth()
+    {
+        // Past the depth the parser follows, the container is skipped by counting brackets; the end of the data inside it is
+        // still reported, once, where the skipped container opens.
+        var text = new string('[', 130) + "1 2";
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        diagnostics[1].Position.Should().Be(128);
+        diagnostics[1].Message.Should().Be(
+            "The file ended inside an array, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
+    }
+
     private static PdfObject Parse(string text)
     {
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));

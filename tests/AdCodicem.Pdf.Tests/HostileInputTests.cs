@@ -19,6 +19,56 @@ public class HostileInputTests
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(10);
 
     [Fact]
+    public void A_string_that_never_closes_takes_the_end_of_the_file_and_is_reported_once_where_it_opens()
+    {
+        // #172's file: object 4's string opens a parenthesis it never closes, and takes endobj, object 5, the table and the
+        // trailer with it, to the end of the file. Its value is kept as read, object 5 is still read where the table places
+        // it, and the string is reported where it opens.
+        var file = PdfTemplate.Build("""
+            %PDF-1.7
+            1 0 obj
+            << /Type /Catalog /Pages 2 0 R /Test 4 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+            endobj
+            4 0 obj (abc(def) endobj
+            5 0 obj null endobj
+            xref
+            0 6
+            {free}
+            {row:1}
+            {row:2}
+            {row:3}
+            {row:4}
+            {row:5}
+            trailer
+            << /Size 6 /Root 1 0 R >>
+            startxref
+            {xref:1}
+            %%EOF
+
+            """);
+        var opens = PdfTemplate.OffsetOf(file, "(abc(def)");
+        using var document = PdfDocument.Open(file);
+
+        var swallowed = document.GetObject(new PdfObjectId(4)).AsString().Required();
+
+        swallowed.Length.Should().Be(file.Length - (int)opens - 1);
+        swallowed.ToText().Should().StartWith("abc(def) endobj\n5 0 obj null endobj\nxref").And.EndWith("%%EOF\n");
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+        var report = document.Diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        report.Position.Should().Be(opens);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The file ended inside a literal string, which takes the {file.Length - opens:N0} bytes from where it opens to that end."));
+    }
+
+    [Fact]
     public void Refuses_an_input_that_contains_no_objects()
     {
         var noise = Encoding.ASCII.GetBytes("%PDF-1.7\n" + new string('x', 5000));

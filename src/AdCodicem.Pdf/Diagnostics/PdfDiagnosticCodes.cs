@@ -101,7 +101,14 @@ public static class PdfDiagnosticCodes
     /// </summary>
     public const string SyntaxUnexpectedToken = "syntax.unexpected-token";
 
-    /// <summary>The file, or an object stream's decoded data, ended in the middle of an object.</summary>
+    /// <summary>
+    /// The file, or an object stream's decoded data, ended in the middle of an object: a value is missing, or an array, a
+    /// dictionary or a string the object opened was never closed. What was read is kept, a string taking the bytes to the end
+    /// of the data. Reported once, for the innermost construct left open, where it opens — where the value would start, when
+    /// none is open —, the constructs around it counted in the message; inside an object an object stream holds, where the
+    /// stream's data starts, the member and the byte in the message. The edge of a window the reader grows is no end of the
+    /// data, and a cut a guard made is the guard's.
+    /// </summary>
     public const string SyntaxTruncatedObject = "syntax.truncated-object";
 
     /// <summary>Nesting exceeded the depth the reader is willing to follow.</summary>

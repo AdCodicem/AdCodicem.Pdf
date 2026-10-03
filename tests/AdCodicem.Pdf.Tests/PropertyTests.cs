@@ -142,6 +142,21 @@ public class PropertyTests
     }
 
     [Fact]
+    public void A_buffer_that_ends_at_a_window_s_edge_reports_nothing_of_the_end_of_the_data()
+    {
+        Check.One(Settings, Prop.ForAll(Buffers, bytes =>
+        {
+            // Whatever the bytes are, a parser told they end at a window's edge, rather than where the data does, reports no
+            // construct left open: the reader reads them again through a larger window, or reports the guard instead.
+            var diagnostics = new PdfDiagnostics();
+            var parser = new PdfObjectParser(bytes, diagnostics: diagnostics, endsData: false);
+            _ = parser.ParseObject();
+
+            return !diagnostics.Contains(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        }));
+    }
+
+    [Fact]
     public void A_text_string_survives_being_written_and_read_back()
     {
         // An unpaired surrogate is not text — no encoding round-trips one — so it sits outside this
