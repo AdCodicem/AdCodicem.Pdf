@@ -55,6 +55,7 @@ A settled decision is not reopened without new evidence — that is what writing
 | [46](0046-every-milestone-ends-with-an-adversarial-review.md) | Every milestone ends with an adversarial review by a fresh session | — |
 | [47](0047-the-user-documentation-follows-diataxis.md) | The user documentation follows Diátaxis | — |
 | [48](0048-one-version-for-every-package-independent-of-dotnet.md) | One version for every package, independent of .NET | — |
+| [49](0049-previews-weekly-when-a-package-input-changed.md) | Previews weekly, when a package input changed | — |
 
 ## Decisions too small for a record of their own
 

@@ -162,9 +162,10 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   `guides/` (how-to), `reference/` (with the generated API under `reference/api`), `concepts/` (explanation). A page
   that mixes modes is split, and the parts link to each other. A tutorial's code is a sample under `samples/`, and a
   test holds the tutorial's code blocks and outputs to it. A milestone names its pages by section.
-- Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`) — **these
-  decide the version**: semantic-release reads them on every merge to `main`, so a malformed message
-  produces no release rather than an untidy log. CI rejects one on a pull request.
+- Conventional commits (`feat:`, `fix:`, `perf:`, `docs:`, `test:`, `refactor:`, `build:`, `ci:`) — **these
+  decide the version**: semantic-release reads them for every stable release, and the weekly preview for its
+  number (ADR 48, ADR 49), so a malformed message produces no release rather than an untidy log. CI rejects
+  one on a pull request.
 - Branches: one per session, merged into `main` through a pull request; `main` is protected by a ruleset.
 - **Tracking lives on GitHub; the roadmap stays the reference.** `docs/roadmap.md` says what the milestones
   are and where each stands, and the `Tracking` workflow mirrors it as GitHub milestones. A milestone's

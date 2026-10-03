@@ -1,0 +1,11 @@
+# actionlint configuration, read by the workflows job of lint.yml and by a local `actionlint`.
+paths:
+  .github/workflows/docs.yml:
+    ignore:
+      # `queue: max` is documented by GitHub (changelog of 2026-05-07, "concurrency groups now allow larger
+      # queues") but unknown to actionlint 1.7.12 (ADR 49).
+      - 'unexpected key "queue" for "concurrency" section'
+  .github/workflows/preview.yml:
+    ignore:
+      # The same key, at the workflow level (ADR 49).
+      - 'unexpected key "queue" for "concurrency" section'

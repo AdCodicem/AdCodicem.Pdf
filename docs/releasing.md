@@ -134,16 +134,21 @@ an API key valid for one hour and usable once. No long-lived secret exists to le
 
 ### One-time setup on nuget.org
 
-**Done** (2026-09-15) and **proven** on 2026-09-19, when the first preview was pushed through the OIDC
-exchange. Sign in, then **your username → Trusted Publishing → add a policy**:
+A policy names a workflow file and an environment, and a run of any other file, or of the same file in
+another environment, is refused at the OIDC exchange. There are two, one per publishing workflow (ADR 49).
+Sign in, then **your username → Trusted Publishing → add a policy**, owner `AdCodicem`, repository
+`AdCodicem.Pdf`, scopes *push new packages and new versions*, glob `AdCodicem.Pdf*`:
 
-| Field | Value |
-|---|---|
-| Repository owner | `AdCodicem` |
-| Repository | `AdCodicem.Pdf` |
-| Workflow file | `release.yml` — the file name only, no path |
-| Environment | `nuget` — the workflow declares `environment: nuget`, so the policy must match |
-| Scopes | Push new packages and new versions, glob `AdCodicem.Pdf*` |
+| Workflow file | Environment | Publishes |
+|---|---|---|
+| `preview.yml` | `nuget` | Previews, weekly and on dispatch |
+| `release.yml` | `nuget-stable` | Stable releases |
+
+The first policy, `release.yml` with `nuget`, was **done** on 2026-09-15 and **proven** on 2026-09-19, when the
+first preview was pushed through the OIDC exchange; it published every preview until `preview.yml` took them
+over. Add the `preview.yml` policy before that change merges, and delete the old one once `preview.yml` has
+published its first preview. Renaming either workflow, or moving its publishing job to another environment,
+needs the policy changed on nuget.org first. After adding a policy, check that it reads *active*.
 
 Two things worth knowing:
 
@@ -156,48 +161,95 @@ Two things worth knowing:
 
 ### One-time setup on GitHub
 
-Create the `nuget` environment (Settings → Environments). The workflow declares `environment: nuget`, and
-the policy above names the same environment, so the two must agree — that is all the environment is for.
+Two environments (Settings → Environments), each named by its policy:
 
-**No secret is involved.** `NuGet/login` requires a `user`, because OIDC proves the run is authorized
-without saying which account the short-lived key belongs to, and that account name is `AdCodicem` — the
-owner of this repository, the prefix of every package, and public on every page nuget.org serves for them.
-It is therefore written in `release.yml` as `NUGET_ACCOUNT`, once, at the top. A secret would have hidden
-nothing and added a step that fails months later, in a workflow nobody is watching, with an error about
-publishing when the cause is an empty setting.
+- **`nuget`**, for `preview.yml`'s publish job: deployment branches limited to `main`, a setting no branch
+  can rewrite (#178), and **no required reviewer**, which would hold every weekly preview until someone
+  clicks.
+- **`nuget-stable`**, for `release.yml`: deployment branches limited to `main`, and **a required reviewer**.
+  This is the approval of a stable release: the dispatch starts the workflow, and the job that holds the
+  credentials waits for it.
 
-Consider requiring a reviewer on the `nuget` environment so a release cannot publish unattended.
+**No secret is involved in publishing.** `NuGet/login` requires a `user`, because OIDC proves the run is
+authorized without saying which account the short-lived key belongs to, and that account name is
+`AdCodicem` — the owner of this repository, the prefix of every package, and public on every page nuget.org
+serves for them. It is written in the workflows, not kept as a secret: a secret would have hidden nothing and
+added a step that fails months later, in a workflow nobody is watching, with an error about publishing when
+the cause is an empty setting.
 
 ## Releasing
 
-Two paths out of the repository, both in `release.yml` — one file, because a trusted-publishing policy is
-tied to a workflow file name and one policy is enough for both.
+Two paths out of the repository, each in its workflow ([ADR 49](adr/0049-previews-weekly-when-a-package-input-changed.md)):
+previews in `preview.yml`, stable releases in `release.yml`. Nothing is published by merging.
 
-### Every merge publishes a preview
+### A preview a week, when something that ships changed
 
-A push to `main` builds, runs the whole suite, publishes a **prerelease** package, and redeploys the site
-with that preview's documentation under `/preview`. Nothing is tagged, no changelog is written, no GitHub
-Release is opened. Merging stays cheap, and what is on `main` is always installable — and documented:
+`preview.yml` publishes a preview of every package every Monday at 07:15, Paris time, and whenever it is
+dispatched (**Actions → preview → Run workflow**, from `main`: a dispatch from another branch stops at its
+first job). It publishes only when a package input changed since the version nuget.org has from the nearest
+commit, and then every package at one version, or none.
 
 ```bash
 dotnet add package AdCodicem.Pdf --prerelease
 ```
 
-A preview can also be asked for without merging: **Actions → Release → Run workflow**, leaving **What to
-publish** on `preview`. It packs whichever ref you pick, so a branch can be tried on a real feed before it
-lands — at the price of a version on nuget.org that matches no commit on `main`, permanently. Prefer the
-merge unless there is a reason not to. A preview packed from another branch is not documented on the site:
-its pages would replace `main`'s, and the Pages environment deploys from `main` alone.
+Each run says what it decided. **compute the version** prints the version semantic-release would give the
+next release, and **decide what to publish** writes a summary, *Preview: publish*, *repair* or *none*, with
+the reason and the package inputs that changed:
 
-Do not re-run a past run to get a fresh preview: a re-run keeps its run number, so it republishes the same
-version, which `--skip-duplicate` accepts and ignores. A new run is what produces a new number.
+- **publish**: the tests run on `HEAD`, the pack job packs it at `<next release>-preview.<commits since the
+  last stable tag>`, and the publish job checks, attests and pushes it, then waits until nuget.org lists it.
+- **repair**: a previous push stopped midway, so nuget.org has the base version for some packages only. The
+  run packs that commit again at that version, tests included, and pushes only the missing packages.
+  Whatever `HEAD` changed since waits for the next run: dispatch again once the repair is green.
+- **none**: nothing that ships changed. The tests, the pack and the push are skipped.
 
-A preview is numbered `<last release, patch bumped>-preview.<run number>` — after `v0.1.0`, the previews
-are `0.1.1-preview.12`, `0.1.1-preview.13`, and so on. That number says **where the preview sits**, not
-what the next release will be called: if the commits since the tag contain a `feat:`, the stable release
-will be `0.2.0`, and every `0.1.1-preview.n` still sorts correctly between `0.1.0` and `0.2.0`. The run
-number only ever increases, so previews never collide, and nothing has to be deleted from nuget.org —
-which is just as well, because nothing can be.
+Whatever it decided, a run whose jobs all succeeded redeploys the site, labeled with the version on nuget.org
+that describes the commit it builds. What counts as a package input, and why, is in ADR 49 and at the top of
+`.github/scripts/preview-gate.sh`.
+
+A **push to `main`** publishes nothing. It runs the same decision, and redeploys the site when no package
+input changed since the version on nuget.org, so that the project documents stay current; when one did, the
+site waits for the preview that publishes it, and the run's summary says so.
+
+The version is the next release's, suffixed `-preview.<N>`, where `N` counts the commits since the last
+stable tag: `0.2.0-preview.294` is the 294th commit after `v0.1.0`, leading to `0.2.0`. A commit always gets
+the same number. The previews before ADR 49, `0.1.1-preview.<run number>`, all sort below the first one after
+it. After a feature is reverted the next preview can be lower than one already published; the plan warns,
+and NuGet keeps offering the higher one as the latest prerelease until a higher version ships.
+
+#### When a preview run is red
+
+- **The publish job failed.** Use **Re-run failed jobs** on that run. It pushes the same bytes, already
+  tested and attested, and only what nuget.org still lacks. If a newer run has published since, its recheck
+  refuses ("something was published since"): dispatch `preview.yml` instead, which decides again.
+- **The wait for nuget.org timed out.** The push succeeded, but nuget.org had not listed every package, or
+  served every symbol package, within 30 minutes. Re-run the failed job once nuget.org has caught up; it
+  pushes nothing that is already there.
+- **A symbol package is still missing.** Re-run the failed job, which pushes it. If nuget.org's validation
+  rejected it, and e-mailed the account to say so, a re-run cannot help: upload the `.snupkg` from the run's
+  `packages-<version>` artifact through nuget.org's upload page.
+- **The plan failed right after a stable release** ("v… is tagged, but nuget.org has no version of these
+  packages from … on"). nuget.org has not listed the release yet: wait, and dispatch again.
+- **The plan failed because the version "is already on nuget.org (…), packed from another commit".** A
+  preview left above a later, lower stable release, after a revert, holds the number this one computed. The
+  next commit on `main` moves the number.
+- **The pack failed on the API baseline (`CP0001` and the like).** The commits since the last release are
+  typed as fixes, so the preview is held to that release's API. A breaking change typed `fix` is the usual
+  cause: it needs a `!`.
+
+#### Routines
+
+- **Before a stable release**, dispatch `preview.yml` if package inputs changed since the last preview, and
+  start the release once that run is green.
+- **After 60 days without activity in the repository**, GitHub disables the schedule of a public
+  repository's workflow. Turn it back on with **Actions → preview → Enable workflow**.
+- **Failures of a scheduled run are notified to whoever last changed its cron line**, not to whoever
+  dispatches it. If the run page names an actor other than you, push a commit of your own that touches the
+  cron line, or watch the workflow.
+- **The first time `preview.yml` publishes**, and after any change to its publish job, dispatch it rather
+  than wait for Monday, then check that nuget.org has the version the run printed, that an assembly restored
+  from nuget.org verifies (`SECURITY.md`), and that `/preview/` names that version.
 
 ### What a preview promises: nothing
 
@@ -212,9 +264,8 @@ already on nuget.org is never a reason to keep one.
 
 ### The stable release is a decision, and it is taken by hand
 
-**Actions → Release → Run workflow**, setting **What to publish** to `stable`. The dropdown defaults to
-`preview`, deliberately: the stable path tags, writes to `main` and cannot be taken back, so it is chosen
-rather than reached by clicking through. That run, and only that run:
+**Actions → Release → Run workflow**. The stable path tags, writes to `main` and cannot be taken back, so
+it has a workflow of its own, behind an approval. That run, and only that run:
 
 1. works the version out from the commits since the last tag;
 2. freezes the user documentation for the release's line into `docs/website/versioned_docs` (see
@@ -225,12 +276,12 @@ rather than reached by clicking through. That run, and only that run:
 6. redeploys the site from the release commit, so its root is the version just released.
 
 Tick **dry run** to see the version and the notes it would produce and stop there: nothing is published,
-tagged, or deployed, and no publishing key is even requested. It applies to the stable path only — a
-preview has no version to work out and nothing to undo but the publish itself.
+tagged, or deployed, and no publishing key is even requested.
 
 If the run reports no release, read the commits: `docs:`, `chore:`, `test:`, `refactor:` and `build:`
 deliberately release nothing. If the push fails with an authorization error, the mismatch is almost always
-between the policy and the workflow: the file name, the environment, or the account name in `NUGET_ACCOUNT`.
+between the policy and the workflow: the file name, the environment, or the account name `user` gives
+`NuGet/login`.
 
 Two things the stable run needs on `main`: permission to push the changelog commit and the tag. If branch
 protection is turned on, either allow the `github-actions` actor to bypass it, or accept that the release
@@ -270,23 +321,31 @@ with its latest release. `versions.json` lists the lines, newest first; `release
 latest release. Both are written by the stable release — never by hand, except to prune a line.
 
 The preview section exists only while a preview is newer than the latest stable release. Right after a
-release there is none, and the **Preview** button disappears until the next merge publishes one. Before
+release there is none, and the **Preview** button disappears until the next preview is published. Before
 the first stable release, the preview is the whole site, at the root, under a banner saying so.
 
 ### When it is deployed
 
-`.github/workflows/docs.yml` builds every version at once and deploys to GitHub Pages. `release.yml` calls
-it after every preview published from `main`, handing it the preview's version, and after every stable
-release, handing it the release commit. Its own **Run workflow** button redeploys `main` without a package
-— for a correction to a frozen version, typically; it asks nuget.org which preview to label the preview
-section with, unless it is given one.
+`.github/workflows/docs.yml` builds every version at once and deploys to GitHub Pages. It is called only,
+with the commit to build and the version on nuget.org that describes it, which labels the preview section:
+
+- by `preview.yml`, after every run on its schedule or on dispatch, and after a push to `main` that changed
+  no package input since the version on nuget.org (ADR 49);
+- by `release.yml`, after every stable release, with the release's tag, whose commit carries the frozen
+  documentation.
+
+It has no **Run workflow** button: dispatching `preview.yml` is how the site is redeployed by hand. It checks
+the commit it is given before it builds a line of it, and a deployment older than the live site, which can
+arrive last when two run together, stands down rather than replace it (`deployment.json`, at the site's root,
+names the commit live).
 
 ### Changing the documentation
 
-- **For the next release**: edit `docs/website/docs`. It shows under `/preview` after the merge, and is
-  frozen by the next stable release.
+- **For the next release**: edit `docs/website/docs`. It shows under `/preview` once the site is
+  redeployed — after the merge, or with the next preview —, and is frozen by the next stable release.
 - **For a version already released**: edit its copy in `docs/website/versioned_docs/version-<line>`, then
-  merge, or dispatch `Documentation`. Make the same change in `docs/website/docs` if it still applies: the
+  merge: the push redeploys the site, unless a package input is waiting for its preview, in which case the
+  preview deploys it. Make the same change in `docs/website/docs` if it still applies: the
   next release on that line re-freezes from there, and overwrites the copy.
 - **To see the versioned site locally**, freeze a line without committing it —
   `node scripts/version-docs.mjs 0.2.0` in `docs/website` — then build with

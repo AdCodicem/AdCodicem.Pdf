@@ -1,55 +1,93 @@
 name: Documentation
 
 # Builds the whole site and deploys it to GitHub Pages: every stable line frozen by a release, served
-# unchanged, the newest at the root; and the preview — the working tree — under /preview, whenever a
-# preview package is newer than the latest stable release. Before the first stable release, the preview
-# is the site.
+# unchanged, the newest at the root; and the preview — the working tree — under /preview, whenever the
+# version it documents is a preview newer than the latest stable release. Before the first stable release,
+# the preview is the site (ADR 31).
 #
-# Called by release.yml after every preview package and every stable release (ADR 31). The manual trigger
-# redeploys on its own, for a change that ships no package — a correction to a frozen version, say.
+# Called only, never dispatched: the label of /preview/ has to name the version on nuget.org that describes
+# the commit being built, and only the callers know it (ADR 49). preview.yml calls this after every run on
+# its schedule or on dispatch, and on a push to main that changed nothing a package is built from;
+# dispatching preview.yml is how the site is redeployed by hand. release.yml calls it after a stable
+# release, with the tag whose commit carries the new frozen documentation and the version it released.
 on:
   workflow_call:
     inputs:
       ref:
-        description: "The commit to build. After a stable release it is the release commit, which carries the frozen documentation and is not the commit the run started from."
+        description: >-
+          What to build: the full SHA of the commit the caller's run was started on or of one of its ancestors,
+          or v<preview-version>, the tag of a stable release that descends from that commit.
         type: string
-        default: ""
-      preview_version:
-        description: "The preview package the preview section documents. Empty looks it up on nuget.org."
+        required: true
+      preview-version:
+        description: "The version on nuget.org that describes that commit: a preview, or a stable release, which shows no preview section."
         type: string
-        default: ""
-  workflow_dispatch:
-    inputs:
-      preview_version:
-        description: "The preview package the preview section documents. Leave empty to take the newest from nuget.org."
-        type: string
-        default: ""
+        required: true
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
-  deploy:
-    name: Build and deploy to GitHub Pages
+  build:
+    name: build
     runs-on: ubuntu-latest
-    # Its longest run took two minutes: fifteen stop a build that hangs (#193). A job that calls this workflow cannot set
-    # a timeout of its own.
+    # Its longest run took two minutes: fifteen stop a build that hangs (#193).
     timeout-minutes: 15
-    # One deployment at a time. A pending one is replaced by a newer one, which builds a newer commit.
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
+    outputs:
+      commit: ${{ steps.version.outputs.commit }}
     steps:
+      # The commit the run was started on, not the caller's ref: the next step decides whether that one may
+      # be built. A ref input passed to the checkout is what CodeQL reports as cache poisoning
+      # (actions/cache-poisoning/poisonable-step), whatever checks it first.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          # The whole history and the tags hold every commit the next step accepts.
+          fetch-depth: 0
+          # Nothing here pushes, and the site's npm packages run in this job.
           persist-credentials: false
+
+      # This job runs the code it checks out -- DocFX, npm, Docusaurus -- in the context of main, so whatever
+      # it writes to the Actions cache lands in main's scope, which every branch and workflow restores from.
+      # So it builds only the commits its callers mean, and checks that itself rather than trusting the ref it
+      # is given: the commit the run was started on or one of its ancestors (preview.yml: HEAD, or the commit a
+      # repair completes), or the stable tag of the version being deployed, descending from it (release.yml:
+      # the release commit semantic-release pushed to main). Anything else stops here, before a line of it has
+      # run.
+      - name: Switch to the commit to build
+        env:
+          REF: ${{ inputs.ref }}
+          VERSION: ${{ inputs.preview-version }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF" =~ ^[0-9a-f]{40}$ ]] &&
+            commit="$(git rev-parse --verify --quiet "$REF^{commit}")" &&
+            git merge-base --is-ancestor "$commit" "$GITHUB_SHA"; then
+            echo "Building $commit, which is $GITHUB_SHA or one of its ancestors."
+          elif [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$REF" == "v$VERSION" ]] &&
+            commit="$(git rev-parse --verify --quiet "refs/tags/$REF^{commit}")" &&
+            git merge-base --is-ancestor "$GITHUB_SHA" "$commit"; then
+            echo "Building $REF ($commit), which descends from $GITHUB_SHA."
+          else
+            echo "::error::'$REF' is not $GITHUB_SHA, one of its ancestors, or the tag v$VERSION descending from it." >&2
+            exit 1
+          fi
+          git checkout --quiet --detach "$commit"
+
+      # Checked as a whole string before it reaches GITHUB_ENV, where a newline would set a variable of its own
+      # — which is why this is bash's =~ and not grep, which matches line by line.
+      - name: Preview version
+        id: version
+        env:
+          PREVIEW_VERSION: ${{ inputs.preview-version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PREVIEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
+            echo "::error::'$PREVIEW_VERSION' is not a version this project publishes." >&2
+            exit 1
+          fi
+          echo "The preview section documents $PREVIEW_VERSION, if it is newer than the latest stable release."
+          echo "DOCS_PREVIEW_VERSION=$PREVIEW_VERSION" >> "$GITHUB_ENV"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -65,51 +103,82 @@ jobs:
         working-directory: docs/website
         run: npm ci
 
-      # A run that follows a preview package is told its version: nuget.org can take minutes to list a
-      # package it has just accepted. Any other run asks nuget.org, and gets nothing when the newest preview
-      # is older than the latest stable release — right after one, typically.
-      - name: Work out what the preview section documents
-        working-directory: docs/website
-        env:
-          REQUESTED: ${{ inputs.preview_version }}
-        run: |
-          set -eu
-          preview="$REQUESTED"
-          if [ -z "$preview" ]; then
-            preview="$(node scripts/preview-version.mjs)"
-          fi
-
-          # Checked as a whole string before it reaches GITHUB_ENV, where a newline would set a variable of
-          # its own — which is why this is bash's =~ and not grep, which matches line by line.
-          if [[ -n "$preview" && ! "$preview" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]; then
-            echo "::error::'$preview' is not a preview version."
-            exit 1
-          fi
-
-          echo "DOCS_PREVIEW_VERSION=$preview" >> "$GITHUB_ENV"
-          echo "PREVIEW=${preview:-none newer than the latest stable release}" >> "$GITHUB_ENV"
-
       - name: Build
         working-directory: docs/website
         run: npm run build
 
-      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      # Read back by the next deployment's freshness check.
+      - name: Record the deployed commit
+        env:
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: printf '{"commit":"%s","preview":"%s"}\n' "$COMMIT" "$DOCS_PREVIEW_VERSION" > docs/website/build/deployment.json
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: docs/website/build
 
-      - id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
-
-      - name: Say what was deployed
+      - name: Say what was built
         working-directory: docs/website
         run: |
-          stable="$(cat releases.json 2>/dev/null | tr -d '\n ' || true)"
+          stable="$(tr -d '\n ' < releases.json 2>/dev/null || true)"
           {
-            echo "### Documentation deployed"
+            echo "### Documentation built"
             echo ""
             echo "- **Stable lines**: \`${stable:-none yet}\`"
-            echo "- **Preview**: \`$PREVIEW\`"
+            echo "- **Preview label**: \`$DOCS_PREVIEW_VERSION\` (shown only when newer than the latest stable release)"
             echo "- Built from \`$(git rev-parse --short HEAD)\`."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    # Only publishing is serialized; builds run in parallel. `queue: max` keeps every waiting deployment
+    # instead of the default, which cancels whichever one was pending when another arrives, regardless of
+    # commit, so a release's deployment could otherwise be dropped for an older commit queued later.
+    # Deployments run in arrival order, and the freshness check below stops an older one from replacing a
+    # newer site.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+      queue: max
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        id: pages
+
+      # A release's deployment and a push's can finish out of order, so the older one's arrives last. It would
+      # then replace a newer site with an older one until the next run. So compare against what is live and
+      # stand down when that is already a descendant of this commit. The live commit itself is redeployed,
+      # which is what a preview.yml dispatched to repair the site wants.
+      - name: Skip if the site already shows a newer commit
+        id: freshness
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SITE: ${{ steps.pages.outputs.base_url }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+        run: |
+          set -euo pipefail
+          deployed="$(curl --fail --silent --location "$SITE/deployment.json" | jq -r '.commit // empty' || true)"
+          status=""
+          if [[ -n "$deployed" && "$deployed" != "$COMMIT" ]]; then
+            status="$(gh api "repos/$GITHUB_REPOSITORY/compare/$COMMIT...$deployed" --jq .status || true)"
+          fi
+          if [[ "$status" == "ahead" ]]; then
+            echo "The site already shows $deployed, a descendant of $COMMIT: nothing to deploy."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Deploying $COMMIT (live: ${deployed:-none}, comparison: ${status:-n/a})."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        if: steps.freshness.outputs.skip != 'true'
+        id: deployment

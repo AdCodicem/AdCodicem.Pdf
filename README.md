@@ -76,8 +76,8 @@ validator. Everything else is planned, in the order `docs/roadmap.md` gives.
 | `AdCodicem.Pdf.Signing` | PAdES signing, long-term signatures, signature validation | Planned, M26 |
 | `AdCodicem.Pdf.Docx` | DOCX to HTML | Planned, M31 |
 
-Every merge into `main` publishes a preview to nuget.org, so the current state of the library is always
-installable:
+A preview of `main` is published to nuget.org every week when something that ships has changed, so the
+current state of the library is always installable:
 
 ```bash
 dotnet add package AdCodicem.Pdf --prerelease

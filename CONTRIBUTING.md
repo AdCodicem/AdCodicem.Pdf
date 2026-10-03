@@ -69,9 +69,10 @@ would silently produce no release.
 An issue a commit advances is named in its footer, `Refs #58`, not in its subject; the pull request says
 `Closes #58` for each issue it completes, so that the merge closes it.
 
-Merging does not release. A merge into `main` publishes a **preview** package, so a change is installable
-as soon as it lands; a stable release is a deliberate, manual run of the `Release` workflow, and that is
-what writes the changelog and the tag. [`docs/releasing.md`](docs/releasing.md) has the detail.
+Merging does not release. A **preview** package is published every week when something that ships has
+changed since the last one, and on demand, so a change is installable within days of landing; a stable
+release is a deliberate, manual run of the `Release` workflow, and that is what writes the changelog and the
+tag. [`docs/releasing.md`](docs/releasing.md) has the detail.
 
 A preview carries no guarantee: an API that no stable release has shipped may be reshaped or withdrawn by
 the next merge, and a preview already on nuget.org is not a reason to keep it.
