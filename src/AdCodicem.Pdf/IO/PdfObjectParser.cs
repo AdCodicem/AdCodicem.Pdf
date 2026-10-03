@@ -59,7 +59,15 @@ internal ref struct PdfObjectParser
     private readonly bool _endsData;
 
     private PdfLexer _lexer;
+
+    /// <summary>Whether the parse met the end of its buffer, where it may have cut an object short.</summary>
     private bool _truncated;
+
+    /// <summary>
+    /// Whether a stream's <c>/Length</c> runs past what the file holds, which only a window reaching the end of the file
+    /// can settle: a larger buffer is asked for, though the parse met no edge, and what it reads after the stream is whole.
+    /// </summary>
+    private bool _lengthUnsettled;
 
     /// <summary>
     /// Whether the end of the data was reported already: a cut leaves every construct around it open, and is reported
@@ -152,7 +160,7 @@ internal ref struct PdfObjectParser
     /// buffer could read differently. A caller that can offer one should; a caller whose buffer is the
     /// whole input keeps what was read.
     /// </summary>
-    public readonly bool IsTruncated => _truncated;
+    public readonly bool IsTruncated => _truncated || _lengthUnsettled;
 
     /// <summary>Gets what followed the value of the last indirect object <see cref="TryReadIndirectObject"/> read.</summary>
     public readonly EndObjState EndObj => _endObj;
@@ -554,15 +562,16 @@ internal ref struct PdfObjectParser
             // too short to say where the data starts, asks nothing.
             if (_baseOffset + dataStart + (long)length <= _streamData.SourceLength)
             {
-                return _truncated
+                return IsTruncated
                     ? Finish(dictionary, dataStart, length, span.Length)
                     : ReadPastBuffer(_streamData, dictionary, declared, dataStart, length);
             }
 
             // Unless the file cannot hold it. Then only a window that reaches the end of the file can say
             // whether the data stops at an "endstream" — the length is wrong — or at the end of the file —
-            // the stream is cut —, and the search below says which once the reader has offered one.
-            _truncated = true;
+            // the stream is cut —, and the search below says which once the reader has offered one. The parse
+            // met no edge for that: what it reads after an endstream the search finds is whole.
+            _lengthUnsettled = true;
         }
 
         if (length < 0 || beyondBuffer || !ConfirmsLength(span, dataStart + length))
