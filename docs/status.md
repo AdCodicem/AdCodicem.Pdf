@@ -14,7 +14,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which,
   [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
   fifth, [#157] and [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on
-  2026-10-03;
+  2026-10-03; the seventh, [#118], in [#226];
   then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every
   other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
@@ -25,10 +25,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 3,072 unit on `main` since [#225] (3 skipped: 2 by design, and the theory
+- **Tests**: 3,072 unit on `main` since [#225], 3,103 on [#226]'s branch (3 skipped: 2 by design, and the theory
   over the remote corpus's streams whose length is wrong, which has no document without it) + 1,306 integration
   (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the
-  remote documents fetched, on [#225]'s branch: 4,977 unit with the 233 this container holds, 3 skipped — the laziness
+  remote documents fetched, on [#226]'s branch: 5,008 unit with the 233 this container holds, 3 skipped — the laziness
   test on the two documents recorded as unsupported until [#47], which every other test holds to their expectations,
   and the private manifest this container lacks —; 3,266 integration against qpdf in its container, 3,260 passed and
   6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 25's 5,027
@@ -184,7 +184,7 @@ One pull request per batch, each design question put to the maintainer after mea
       2026-10-02, `Remote corpus` run 24 green on its branch (journal of 2026-10-02).
    6. [#182], a cross-reference stream's dictionary read as written, with [#215] and [#216], which batch 5 filed —
       done, merged with [#225] on 2026-10-03, `Remote corpus` run 25 green on its branch (journal of 2026-10-03).
-   7. [#118].
+   7. [#118], a rebuilt index's generations — done in [#226], `Remote corpus` run 26 on its branch (journal of 2026-10-03).
    8. [#119] and [#172].
    9. [#125] and [#126].
    10. [#190] and [#212], the reader's public surface.
@@ -236,6 +236,78 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-03 — Batch 7: the generation a rebuilt or relocated entry records ([#118])
+- **The question.** [#118]: the rebuild's scan read a header's generation to know it from the `obj` of an `endobj`,
+  and recorded every object at generation 0, so a finding located `5 0` an object the file writes `5 1 obj`. Measured
+  first, each run of our reader twice: 18 shapes against our reader and six referees (qpdf 11.9.1, libqpdf 12, pypdf,
+  PyMuPDF, PDFBox 3.0.5, pdf.js), which all record the header's generation; and all 401 corpus documents, with 11
+  headers of a non-zero generation in 3 of them, 2 rebuilt — groff, committed, and nureg, remote —: 6 entries move, and
+  no finding, diagnostic or manifest expectation. The measurement found two more sites that make a generation up:
+  a relocation recorded the generation of whichever reference asked first, and a catalog found by its type was put in
+  the trailer as `N 0 R`. Seven questions followed.
+- **Settled with the maintainer**, each as recommended:
+  - the scan, the relocation and the recovered `/Root` record the header's generation, or the entry's; [#185]'s
+    relocation bullet is paid here;
+  - the live index gives the entry's: the row's for a chain entry, the header's once rebuilt or relocated; only a row
+    whose header contradicts it at the offset it gives, followed by a rebuild set off elsewhere, names an object two
+    ways, which `xref.generation-mismatch` reports;
+  - the last definition of a number wins, under its own generation; which one a rebuild keeps stays [#189]'s;
+  - an in-use generation of 65,535 is kept;
+  - [#185] stays in batch 28; `object.redefined` unchanged, noted on [#189]; [#158]'s `MaxRepairObjects` test is
+    written with [#183] in batch 11.
+- **Done**, in [#226]:
+  - `TryReadHeaderBackwards` returns the generation it reads; `ScanForObjects`, the relocation in `LoadRegularObject`
+    (through `TryFindObjectHeader`) and `FindCatalog` record it; the `Index` and `ObjectGraph.IdOf` remarks say which
+    generation an entry gives;
+  - the validator's probe judges a relocated header with the generation the search read, and the object stream walk
+    locates a finding through the chain's index, read again — [#128]'s rule for a lookup, not its fix.
+
+  Docs: `lazy-reading.md` (which definition a rebuilt map keeps, and which rules name an object from the map, the row
+  or the reference), `architecture.md`, and the threat model's rows on the rebuild's scan and on an object not where
+  its entry says, its gap for [#118] removed.
+- **Reviewed.** An adversarial review over five lenses — the reader, the validator, the tests, the documents, the
+  neighboring issues — and a completeness critic gave 26 findings, each put to a refuter: 17 kept, some the same
+  defect seen twice, and 9 refuted.
+  - Kept and fixed, among them:
+    - the probe read a relocated header again through its 64 bytes, so a longer one — zeros leading its generation —
+      earned no `xref.generation-mismatch` while the reader recorded its generation;
+    - the object stream walk located a stream through the index it took before loading it, which the load then
+      relocated or rebuilt: the stream was named by its header's generation beside the cross-reference rules' row, and
+      named otherwise once read before validating — a regression of this batch;
+    - the first `lazy-reading.md` paragraph said every finding names an object as its header does, and that a rebuild
+      keeps the last definition of each number; the `Index` remark dropped the decision's "at the offset it gives";
+      `FindCatalog`'s comment named the header where the entry decides;
+    - tests: the catalog found after a rebuild and after a relocation of its own load, the naming after a rebuild that
+      follows a chain read, a row of 2 that contradicts its header, the object stream walk fresh and read first;
+    - the comment on [#185] left its relocation reproduction unmentioned, now false: an addendum says so.
+  - Left as is: the body of the docs commit `9790f09` calls both threat-model rows "Indexing rows", one being under
+    *Resolving objects*; pushed history is not rewritten.
+  - Refuted: the `/Root` recovered from the chain's index and a later rebuild, a reference of another generation
+    naming the object two ways (#185's), the corpus test's qpdf claim, the deferral of #158's test, and five others.
+- **Tests**: 31 new, 3,072 to 3,103; 5,008 with the remote corpus. Each case the fix exists for fails on the code
+  before it, and eight mutants each fail a test: the scan recording 0 again; relocation keeping a non-zero row's
+  generation; `IdOf` reading the chain's index first; the object stream walk naming a stream at generation 0, or
+  locating it through the index it took; `FindCatalog` reading the generation from the chain's index, or before the
+  load; the probe reading a relocated header again through its 64 bytes.
+- **Tracking.** No new debt: what the batch found outside it is covered. Commented: [#189] (a number reused under a new
+  generation, `object.redefined`; a last header whose value reads as null winning over a readable one 48 bytes
+  before it, reproduced twice; `lazy-reading.md` added to its documents), [#185] (its groff sentence, its relocation
+  bullet and its relocation reproduction, now paid or false), [#183] (#158's test placed with it), [#128] (relocations
+  move the walk's index too; `Location` reads the chain's again, its arms without an entry now defensive, its test's
+  positions kept), [#175] (the probe's relocated header now read whole; the exact offset still its own).
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - each of the batch's commits builds with no warning and passes alone;
+  - 3,103 unit tests, 3 skipped, and 5,008 with the remote corpus;
+  - the patch's 21 measurable lines of `src/` covered on the committed corpus alone, 20 with every branch taken: the
+    one left is `ObjectStreamDependencies.Location`'s arm without a Regular entry, defensive since the batch;
+  - the integration suite against qpdf in its container, with the remote documents this container holds, 3,266
+    tests: 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages, in 13 minutes;
+  - `Remote corpus` run 26, on the branch at `79de092`: its first attempt could not fetch ECan's scan, web.archive.org
+    refusing the connection ([#204]), and passed every test over the 241 others, 5,059 acceptance tests with 3 skipped
+    and 3,321 referee checks with 6 skipped; its one rerun is under way.
+- **Next**: batch 8, [#119] and [#172], what the parser reads in silence, its questions put when it starts.
 
 ### 2026-10-03 — Batch 6: what the chain refers to while it is read ([#182], [#215], [#216])
 - **The question.** [#182], from the threat model: a cross-reference stream's `/W`, `/Size`, `/Index`, `/Filter`,
@@ -1108,3 +1180,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#223]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/223
 [#224]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/224
 [#225]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/225
+[#226]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/226
