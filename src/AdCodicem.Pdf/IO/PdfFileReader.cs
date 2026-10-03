@@ -343,6 +343,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// Gets the index the reader reads with now: the chain's, as corrected since, or the one a rebuild made. Read it
     /// again for each lookup, as <see cref="ChainIndex"/>.
     /// </summary>
+    /// <remarks>
+    /// An entry gives the generation of the row that placed it, or, for one a rebuild made or a relocation moved, the
+    /// generation the header found there gives (#118). A row whose generation its header contradicts keeps its own, as
+    /// the chain's index does: <see cref="Validation.PdfValidationRuleIds.XRefGenerationMismatch"/> reports it.
+    /// </remarks>
     public PdfXRefTable Index => _xref;
 
     /// <summary>Gets the bytes of decoded object stream data the reader keeps, which it bounds.</summary>
@@ -1640,7 +1645,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             var position = searchFrom + index;
 
-            if (TryReadHeaderBackwards(span, position, out _, out var headerStart))
+            if (TryReadHeaderBackwards(span, position, out _, out _, out var headerStart))
             {
                 candidates.Add(start + headerStart);
             }
@@ -2751,7 +2756,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         // Offsets are commonly off by a few bytes in files from careless tools, so the neighborhood is
         // searched before the index is given up on entirely.
-        if (TryFindObjectHeader(id.Number, offset, out var nearby) &&
+        if (TryFindObjectHeader(id.Number, offset, out var nearby, out var generation) &&
             TryParseObjectAt(id.Number, nearby, out var relocated))
         {
             _diagnostics.Repair(
@@ -2759,8 +2764,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 string.Create(CultureInfo.InvariantCulture, $"Object {id.Number} was found {nearby - offset} bytes from where the index said."),
                 nearby);
 
+            // The entry records the header found, as a rebuilt one does: not the generation of the reference that asked
+            // first, which would make the index depend on the order objects were asked for (#118).
             PreserveChainIndex();
-            _xref.Set(id.Number, XRefEntry.Regular(nearby - _headerOffset, id.Generation));
+            _xref.Set(id.Number, XRefEntry.Regular(nearby - _headerOffset, generation));
             return relocated;
         }
 
@@ -3069,17 +3076,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
     }
 
-    private bool TryFindObjectHeader(int number, long approximateOffset, out long actualOffset) =>
-        TryFindObjectHeader(_source, number, approximateOffset, out actualOffset);
+    private bool TryFindObjectHeader(int number, long approximateOffset, out long actualOffset, out int generation) =>
+        TryFindObjectHeader(_source, number, approximateOffset, out actualOffset, out generation);
 
     /// <summary>
     /// Looks for the header of object <paramref name="number"/> within <see cref="NearbySearchRadius"/> bytes either
     /// side of <paramref name="approximateOffset"/>, where careless writers leave an object their index misplaced,
-    /// and gives the first found.
+    /// and gives the first found, with the generation it gives.
     /// </summary>
-    internal static bool TryFindObjectHeader(PdfFileSource source, int number, long approximateOffset, out long actualOffset)
+    internal static bool TryFindObjectHeader(
+        PdfFileSource source, int number, long approximateOffset, out long actualOffset, out int generation)
     {
         actualOffset = -1;
+        generation = 0;
 
         var start = Math.Max(0, approximateOffset - NearbySearchRadius);
         var length = (int)Math.Min(NearbySearchRadius * 2, source.Length - start);
@@ -3103,9 +3112,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             var position = searchFrom + index;
 
-            if (TryReadHeaderBackwards(span, position, out var found, out var headerStart) && found == number)
+            if (TryReadHeaderBackwards(span, position, out var found, out var foundGeneration, out var headerStart) && found == number)
             {
                 actualOffset = start + headerStart;
+                generation = foundGeneration;
                 return true;
             }
 
@@ -3131,7 +3141,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         var guards = _guardsReached;
         var found = TryParseObjectAt(number, offset, out var value) ||
-            (TryFindObjectHeader(number, offset, out var nearby) && TryParseObjectAt(number, nearby, out value));
+            (TryFindObjectHeader(number, offset, out var nearby, out _) && TryParseObjectAt(number, nearby, out value));
 
         // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown.
         if (_guardsReached != guards)
@@ -3213,9 +3223,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// Reads the <c>N G</c> that precedes an <c>obj</c> keyword. Walking backwards is what distinguishes a
     /// real object header from the <c>obj</c> inside <c>endobj</c>.
     /// </summary>
-    private static bool TryReadHeaderBackwards(ReadOnlySpan<byte> span, int objPosition, out int number, out int headerStart)
+    /// <param name="span">The bytes the keyword lies in.</param>
+    /// <param name="objPosition">Where the keyword starts in <paramref name="span"/>.</param>
+    /// <param name="number">The object number the header gives.</param>
+    /// <param name="generation">The generation the header gives, as the parser reads it: what an entry recording the
+    /// header records (#118).</param>
+    /// <param name="headerStart">Where the header starts in <paramref name="span"/>.</param>
+    private static bool TryReadHeaderBackwards(
+        ReadOnlySpan<byte> span, int objPosition, out int number, out int generation, out int headerStart)
     {
         number = 0;
+        generation = 0;
         headerStart = 0;
 
         var index = objPosition - 1;
@@ -3268,14 +3286,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         // refuse, found here, would be an object no read can serve. A run of digits always parses, as an integer within a
         // long or as a real past one.
         _ = PdfNumberParser.TryParse(span[numberStart..numberEnd], out var parsed, out _, out var numberPastLong);
-        _ = PdfNumberParser.TryParse(span[generationStart..generationEnd], out var generation, out _, out var generationPastLong);
+        _ = PdfNumberParser.TryParse(span[generationStart..generationEnd], out var parsedGeneration, out _, out var generationPastLong);
 
-        if (numberPastLong || parsed is <= 0 or > PdfObjectId.MaxNumber || generationPastLong || generation > PdfObjectId.MaxGeneration)
+        if (numberPastLong || parsed is <= 0 or > PdfObjectId.MaxNumber || generationPastLong || parsedGeneration > PdfObjectId.MaxGeneration)
         {
             return false;
         }
 
         number = (int)parsed;
+        generation = (int)parsedGeneration;
         headerStart = numberStart;
         return true;
     }
@@ -3417,7 +3436,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>
     /// Rebuilds the index by scanning the whole file for object headers, keeping the last definition of
-    /// each object number, and then looking for a trailer and for anything that can act as one.
+    /// each object number under the generation its header gives, and then looking for a trailer and for anything
+    /// that can act as one.
     /// </summary>
     private void Repair()
     {
@@ -3489,15 +3509,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
                 var objPosition = searchFrom + index;
 
-                if (TryReadHeaderBackwards(span, objPosition, out var number, out var headerStart))
+                if (TryReadHeaderBackwards(span, objPosition, out var number, out var generation, out var headerStart))
                 {
-                    // The last definition wins: that is what an incrementally updated file means.
+                    // The last definition wins: that is what an incrementally updated file means. Its entry records
+                    // the generation its header gives, whatever an earlier definition gave (#118).
                     if (_xref.TryGet(number, out _))
                     {
                         redefinitions.Add(number);
                     }
 
-                    _xref.Set(number, XRefEntry.Regular(position + headerStart - _headerOffset, 0));
+                    _xref.Set(number, XRefEntry.Regular(position + headerStart - _headerOffset, generation));
                     found++;
                 }
 
@@ -3664,7 +3685,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             if (candidate.AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog))
             {
-                Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number), this));
+                // The reference names the catalog as its entry does, now that it is read: a catalog written 1 1 obj is
+                // 1 1 R, not 1 0 R, wherever the reader names it (#118).
+                var generation = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0;
+                Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number, generation), this));
                 _structure.CatalogFoundAs = number;
                 _diagnostics.Repair(
                     PdfDiagnosticCodes.TrailerRootRecovered,

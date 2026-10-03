@@ -355,6 +355,23 @@ public class CorpusReadingTests
         }
     }
 
+    [Fact]
+    public void A_rebuilt_index_records_the_generations_an_update_wrote()
+    {
+        // groff's startxref is wrong, and its index rebuilt. An update rewrote objects 45, 64, 65 and 304 under generation 1,
+        // and references them so: the rebuilt entries record it, where they once said 0 (#118). qpdf's reconstruction
+        // records 45/1, 64/1, 65/1 and 304/1 at the same offsets.
+        using var document = PdfDocument.Open(Corpus.Read("vendor/opf-format-corpus/groff-distiller405-mac-usgs-gps-noise-spectra.pdf"));
+
+        document.WasRepaired.Should().BeTrue();
+
+        foreach (var number in (int[])[45, 64, 65, 304])
+        {
+            document.Reader.Index.TryGet(number, out var entry).Should().BeTrue();
+            entry.Generation.Should().Be(1, $"object {number} is written {number} 1 obj");
+        }
+    }
+
     [Theory]
     [InlineData("vendor/opf-format-corpus/distiller7-pscript5-census-housing-units-2005.pdf", 14, 484, 3879, 1499)]
     [InlineData("vendor/opf-format-corpus/groff-distiller405-mac-usgs-gps-noise-spectra.pdf", 211, 1118, 1310, 3804)]
