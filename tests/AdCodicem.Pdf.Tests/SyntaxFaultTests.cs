@@ -107,6 +107,31 @@ public class SyntaxFaultTests
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("[1 2 3", "an array, which was never closed")]
+    [InlineData("<< /Title (t)", "a dictionary, which was never closed")]
+    public void A_container_an_endobj_ends_takes_nothing_of_the_objects_after_it(string value, string what)
+    {
+        // The object's container is never closed, but its endobj is there: the object ends at it, and object 5 keeps its
+        // entries, rather than lend them to object 4 or be read into it with the table and the trailer (#119).
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Catalog /Pages 2 0 R /Test 4 0 R /Other 5 0 R >>", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", $"4 0 obj\n{value}\nendobj\n5 0 obj\n<< /Foo 7 /Author (a) >>\nendobj\nxref\n0 6\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n{row:5}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 6", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        var read = document.GetObject(new PdfObjectId(4));
+
+        (read is PdfArray { Count: 3 } || read is PdfDictionary { Count: 1 }).Should().BeTrue();
+        document.GetObject(new PdfObjectId(5)).AsDictionary().Required().Should().HaveCount(2);
+        var report = document.Diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        report.Position.Should().Be(PdfTemplate.OffsetOf(file, "4 0 obj\n") + "4 0 obj\n".Length);
+        report.Message.Should().Be($"An endobj ended the object inside {what}.");
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
     /// <summary>
     /// The catalog and the page tree written directly, and objects 5, 6 and 4 — 4 holding <paramref name="value"/> — packed
     /// in object stream 7, 4 last or first.
