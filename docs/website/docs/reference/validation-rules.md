@@ -267,7 +267,7 @@ Some faults the structural profile does not report, each for a reason:
   reports it as `syntax.truncated-object`, in the document's diagnostics ([#119]); `object.endobj-missing` reports the
   object that runs to the end of the file, as it reports any other object without its `endobj` — but for one that lost
   its container's closing too, whose container the next object's `endobj` ends: the reader reads that `endobj` as the
-  object's, and only `syntax.truncated-object` tells.
+  object's, and only `syntax.truncated-object` tells ([#230]).
 
 The object-shape rules read part of the Arlington PDF Model, and leave the rest silent until a rule of its own is
 worth its noise:
@@ -318,3 +318,4 @@ PDF/UA profiles of the `AdCodicem.Pdf.Conformance` package (M20) take families o
 [#182]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/182
 [#215]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/215
 [#221]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/221
+[#230]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/230
