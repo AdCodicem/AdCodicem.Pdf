@@ -312,6 +312,35 @@ public class FileRuleTests
     }
 
     [Fact]
+    public void A_trailer_whose_closing_brackets_end_its_table_s_window_is_judged_by_what_they_close()
+    {
+        // The trailer's last key has no value, and the ">>" after it ends exactly where the table's 64 KB window does. The
+        // brackets are whole there, so the trailer is read through that window alone, and their fault is still reported.
+        var file = TrailerEndingTheTableWindow(0);
+        var padding = PdfTemplate.OffsetOf(file, "xref\n0 3000") + (64 * 1024) - (PdfTemplate.OffsetOf(file, "/K >>") + "/K >>".Length);
+        file = TrailerEndingTheTableWindow((int)padding);
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be("A dictionary key had no value.");
+        Single(report, PdfValidationRuleIds.FileTrailerMalformed);
+
+        static byte[] TrailerEndingTheTableWindow(int padding)
+        {
+            var table = new StringBuilder("xref\n0 3000\n{free}\n{row:1}\n{row:2}\n{row:3}\n");
+            for (var row = 4; row < 3000; row++)
+            {
+                table.Append("0000000000 65535 f \n");
+            }
+
+            return PdfTemplate.Build(
+                PdfTemplate.Sound[..PdfTemplate.Sound.IndexOf("xref\n", StringComparison.Ordinal)] + table +
+                "trailer\n<< /Size 3000 /Root 1 0 R /Pad (" + new string('x', padding) + ") /K >>\nstartxref\n{xref:1}\n%%EOF\n");
+        }
+    }
+
+    [Fact]
     public void A_trailer_whose_syntax_errors_overflow_the_diagnostics_is_still_malformed()
     {
         // Two stray values, and room for one diagnostic: the second error is dropped, and still counts.
