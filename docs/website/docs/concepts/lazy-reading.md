@@ -59,9 +59,13 @@ An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes f
 found nearby (`xref.offset-adjusted`), and the map is not rebuilt for it. The section `startxref` names is not
 looked for nearby: when it is not where `startxref` says, the map is rebuilt.
 
-A rebuilt map keeps the last definition of each number, under the generation its header gives, and an object found
-nearby takes the generation of the header found: a finding names such an object as the file writes it, `5 1` for
-`5 1 obj`. An entry of the chain keeps the generation its row gives.
+A rebuilt map keeps, of each number, the definition `object.redefined` names — the last written directly in the file,
+or, for a number written only inside object streams, the first listed in the object stream read first —, a direct
+definition under the generation its header gives and a member of an object stream under generation 0. An object
+found nearby takes the generation of the header found there, whatever its row gave; an entry of the chain otherwise
+keeps its row's. The rules that name an object from the map — `object.reference-missing`,
+`object.name-null-character`, `object.endobj-missing` — name it so, `5 1` for `5 1 obj`; the cross-reference rules
+name it as the file's row does, and the page tree and object-shape rules as the reference that reached it does.
 
 ## What it deliberately does not do
 

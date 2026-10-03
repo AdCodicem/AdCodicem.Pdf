@@ -85,7 +85,7 @@ internal sealed class ObjectStreamDependencies
                     if (objectStream.Dictionary.GetRaw(key)?.Resolve() is PdfReal real && real.AsInteger() is not null)
                     {
                         result.IntegersWrittenAsReals.Add(new ProbeFinding(
-                            Location(reader, index, stream),
+                            Location(reader, stream),
                             Invariant($"Object stream {stream} gives its {FileQuote.Name(key)} as a real number, where Table {(key == PdfName.Length ? 5 : 16)} of ISO 32000-1 asks for an integer; the reader read it as the integer it equals.")));
                     }
                 }
@@ -98,7 +98,7 @@ internal sealed class ObjectStreamDependencies
             {
                 result.CircularStreams.Add(stream);
                 result.Circular.Add(new ProbeFinding(
-                    Location(reader, index, stream),
+                    Location(reader, stream),
                     need.Stream == stream
                         ? Invariant($"Object stream {stream} needs object {need.Object}, which it holds, to be read: its {need.Key} names it, and the object cannot be read before the stream is.")
                         : Invariant($"Object stream {stream} needs object {need.Object}, which object stream {need.Stream} holds, to be read: its {need.Key} names it, and reading object stream {need.Stream} needs object stream {stream} in turn.")));
@@ -208,8 +208,13 @@ internal sealed class ObjectStreamDependencies
         return false;
     }
 
-    private static PdfValidationLocation Location(IO.PdfFileReader reader, PdfXRefTable index, int stream) =>
-        index.TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular
+    /// <summary>
+    /// Locates object stream <paramref name="stream"/> where the chain's index places it, read again here: loading the
+    /// stream may have relocated it or rebuilt the index since the walk began, and the live entry then gives the header
+    /// found, not the file's row (#118, #128).
+    /// </summary>
+    private static PdfValidationLocation Location(IO.PdfFileReader reader, int stream) =>
+        (reader.ChainIndex ?? reader.Index).TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular
             ? PdfValidationLocation.OfObject(new PdfObjectId(stream, entry.Generation), entry.Offset + reader.HeaderOffset)
             : PdfValidationLocation.OfObject(new PdfObjectId(stream));
 
