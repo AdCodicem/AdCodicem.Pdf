@@ -150,14 +150,15 @@ internal sealed class CrossReferenceProbe
 
         var found = header.Number > 0 ? Invariant($"the header of object {header.Number}") : "no object header";
 
-        if (PdfFileReader.TryFindObjectHeader(source, number, offset, out var actual, out _))
+        // The generation is the one the reader records for the object it relocates, read as the search reads it: a header
+        // longer than the probe's own read is judged all the same (#118).
+        if (PdfFileReader.TryFindObjectHeader(source, number, offset, out var actual, out var generation))
         {
             Shifted.Add(new ProbeFinding(
                 PdfValidationLocation.OfObject(id, offset),
                 Invariant($"The entry of object {number} gives offset {offset}, where there is {found}; the object starts {RuleText.Distance(actual - offset)}, at offset {actual}.")));
 
-            var relocated = ReadHeader(source, actual, buffer);
-            CheckGeneration(number, entry, actual, relocated.Generation);
+            CheckGeneration(number, entry, actual, generation);
             return;
         }
 

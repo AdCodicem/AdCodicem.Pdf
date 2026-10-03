@@ -1294,6 +1294,72 @@ public class CrossReferenceRuleTests
             $"Object stream 4 gives its {key} as a real number, where Table {table} of ISO 32000-1 asks for an integer; the reader read it as the integer it equals."));
     }
 
+    [Theory]
+    [InlineData("3 1 obj")]
+    [InlineData("3 0000000000000000000000000000000000000000000000000000000000000000000001 obj")]
+    public void A_relocated_entry_whose_generation_its_header_contradicts_is_reported_however_long_the_header(string header)
+    {
+        // #118: the probe read the header it found nearby again through its own 64 bytes, and one longer than that — zeros
+        // leading its generation — gave it none to compare: the reader relocated the object under 3 1, and nothing said
+        // that the row gives 3 0. The probe takes the generation the search read, which the reader records.
+        var template = PdfTemplate.Sound
+            .Replace("3 0 obj", header, StringComparison.Ordinal)
+            .Replace("{row:3}", "{row:3:0:4}", StringComparison.Ordinal);
+
+        var finding = Single(Validate(PdfTemplate.Build(template)), PdfValidationRuleIds.XRefGenerationMismatch);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(3));
+        finding.Message.Should().Be("The entry of object 3 gives generation 0, and the object is written as 3 1 obj.");
+    }
+
+    [Theory]
+    [InlineData(-3, false)]
+    [InlineData(-3, true)]
+    [InlineData(9999, false)]
+    [InlineData(9999, true)]
+    public void An_object_stream_the_walk_relocates_or_rebuilds_is_located_where_its_row_places_it(int off, bool readFirst)
+    {
+        // #118, #128: object stream 4 is written 4 1 obj with a real /N, and its row gives generation 0, 3 bytes before its
+        // header or outside the file. Loading it in the dependency walk relocated it, or rebuilt the index, under the walk's
+        // own index, which then gave the header's generation and offset: the stream was named 4 1 there, 4 0 by the
+        // cross-reference rules, and 4 0 again once the stream had been read before validating.
+        var sound = XRefStreamFile();
+        var four = PdfTemplate.OffsetOf(sound, "\n4 0 obj") + 1;
+        var rows = WithRows([1, 4, 2], number: 4, type: 1, second: (ulong)(four + off), third: 0);
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(rows)
+            .Replace("\n4 0 obj", "\n4 1 obj", StringComparison.Ordinal)
+            .Replace("/N 2 /First", "/N 2./First", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        if (readFirst)
+        {
+            document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>();
+        }
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamValueWrong);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Location.Position.Should().Be(four + off);
+    }
+
+    [Fact]
+    public void An_object_stream_a_rebuild_found_is_located_under_its_header_s_generation()
+    {
+        // #118: startxref names nothing, and the rebuilt index records object stream 4 as its header writes it, 4 2 obj:
+        // the chain gave no index for the rules to name it by, and the one the reader reads with gives the header's.
+        var content = Encoding.Latin1.GetString(XRefStreamFile())
+            .Replace("\n4 0 obj", "\n4 2 obj", StringComparison.Ordinal)
+            .Replace("/N 2 /First", "/N 2./First", StringComparison.Ordinal);
+        var startxref = content.LastIndexOf("startxref\n", StringComparison.Ordinal) + "startxref\n".Length;
+        var file = Encoding.Latin1.GetBytes(content[..startxref] + "999999\n%%EOF\n");
+
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamValueWrong).Location.Object
+            .Should().Be(new PdfObjectId(4, 2));
+    }
+
     [Fact]
     public void An_encrypted_document_s_object_streams_are_said_to_be_unchecked()
     {

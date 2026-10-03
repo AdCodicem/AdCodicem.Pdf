@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -294,21 +295,58 @@ public class ObjectRuleTests
         Single(report, PdfValidationRuleIds.ObjectNameNullCharacter).Location.Object.Should().Be(new PdfObjectId(4, 2));
     }
 
-    [Fact]
-    public void A_catalog_found_by_its_type_is_named_one_way_throughout_a_report()
+    [Theory]
+    [InlineData("row")]
+    [InlineData("shifted")]
+    [InlineData("rebuilt")]
+    public void A_catalog_found_by_its_type_is_named_one_way_throughout_a_report(string layout)
     {
         // #118: /Root names nothing, and the reader finds the catalog, written 1 1 obj, among the indexed objects. The graph
         // named it from its entry, 1 1, and the Arlington walk from the reference the reader put in the trailer, 1 0.
-        var template = PdfTemplate.Sound
-            .Replace("1 0 obj", "1 1 obj", StringComparison.Ordinal)
-            .Replace("{row:1}", "{row:1:1}", StringComparison.Ordinal)
-            .Replace("/Root 1 0 R", "/Root 9 0 R", StringComparison.Ordinal)
-            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Outlines 8 0 R /PageMode 5", StringComparison.Ordinal);
-        var report = Validate(PdfTemplate.Build(template));
+        var report = Validate(DocumentReaderTests.CatalogWrittenUnderGeneration1(
+            layout, "/Type /Catalog /Pages 2 0 R /Outlines 8 0 R /PageMode 5"));
 
         Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Location.Object.Should().Be(new PdfObjectId(1, 1));
         Single(report, PdfValidationRuleIds.ObjectValueTypeWrong).Location.Object.Should().Be(new PdfObjectId(1, 1));
     }
+
+    [Fact]
+    public void An_object_only_a_rebuild_after_the_chain_finds_is_located_under_the_generation_its_header_gives()
+    {
+        // #118: the chain is read, and the catalog's row, which leads outside the file, rebuilds the index as the document
+        // opens. Object 5, written 5 1 obj, has no row: only the rebuild finds it, and the graph names it from the index the
+        // reader reads with, not from the chain's copy, which lacks it.
+        var template = PdfTemplate.Sound
+            .Replace("{row:1}", "{row:1:0:3000}", StringComparison.Ordinal)
+            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /PieceInfo 5 1 R", StringComparison.Ordinal)
+            .Replace("endobj\nxref", "endobj\n5 1 obj\n<< /Missing 9 0 R >>\nendobj\nxref", StringComparison.Ordinal);
+        using var document = PdfDocument.Open(PdfTemplate.Build(template));
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Structure.ChainRead.Should().BeTrue();
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Location.Object.Should().Be(new PdfObjectId(5, 1));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void A_relocated_object_is_located_under_its_header_s_generation_beside_the_row_s_mismatch(int row)
+    {
+        // #118, decision of 2026-10-03: the page's row gives another generation than its header, 3 1 obj, 4 bytes after
+        // it. The cross-reference rules name the object as the row does, and the graph as the relocated entry, its header.
+        var template = PdfTemplate.Sound
+            .Replace("3 0 obj", "3 1 obj", StringComparison.Ordinal)
+            .Replace("/Kids [3 0 R]", "/Kids [3 1 R]", StringComparison.Ordinal)
+            .Replace("/Resources << >>", "/Resources << >> /Annots [9 0 R]", StringComparison.Ordinal)
+            .Replace("{row:3}", string.Create(CultureInfo.InvariantCulture, $"{{row:3:{row}:4}}"), StringComparison.Ordinal);
+        var report = Validate(PdfTemplate.Build(template));
+
+        Single(report, PdfValidationRuleIds.XRefGenerationMismatch).Location.Object.Should().Be(new PdfObjectId(3, row));
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Location.Object.Should().Be(new PdfObjectId(3, 1));
+    }
+
+
 
     [Fact]
     public void Several_names_with_a_null_character_in_one_object_are_one_finding()

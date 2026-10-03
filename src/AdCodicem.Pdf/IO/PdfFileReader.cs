@@ -345,8 +345,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </summary>
     /// <remarks>
     /// An entry gives the generation of the row that placed it, or, for one a rebuild made or a relocation moved, the
-    /// generation the header found there gives (#118). A row whose generation its header contradicts keeps its own, as
-    /// the chain's index does: <see cref="Validation.PdfValidationRuleIds.XRefGenerationMismatch"/> reports it.
+    /// generation the header found there gives, whatever the row gave (#118). A row whose header, at the offset the row
+    /// gives, contradicts its generation keeps its own, as the chain's index does:
+    /// <see cref="Validation.PdfValidationRuleIds.XRefGenerationMismatch"/> reports it.
     /// </remarks>
     public PdfXRefTable Index => _xref;
 
@@ -3685,8 +3686,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             if (candidate.AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog))
             {
-                // The reference names the catalog as its entry does, now that it is read: a catalog written 1 1 obj is
-                // 1 1 R, not 1 0 R, wherever the reader names it (#118).
+                // The reference names the catalog as its entry does, read once the catalog is — a relocation on the way
+                // gives the header's generation —: an entry of 1 1 makes 1 1 R, not 1 0 R (#118).
                 var generation = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0;
                 Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number, generation), this));
                 _structure.CatalogFoundAs = number;
