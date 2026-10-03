@@ -2166,9 +2166,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             if (decodedWhole)
             {
-                // Rows the data does not hold, when the reader decoded all of it, are the file's to answer for.
+                // Rows the data does not hold, when the reader decoded all of it, are the file's to answer for. Every
+                // fault met before returned, and a refused row is kept apart: this is the section's first.
                 section.Incomplete = true;
-                section.Fault ??= string.Create(
+                section.Fault = string.Create(
                     CultureInfo.InvariantCulture,
                     $"it holds {held:N0} {(held == 1 ? "row" : "rows")} where its /Index and /Size declare {declared:N0}");
             }
