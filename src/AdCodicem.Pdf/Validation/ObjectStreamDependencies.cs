@@ -213,6 +213,11 @@ internal sealed class ObjectStreamDependencies
     /// stream may have relocated it or rebuilt the index since the walk began, and the live entry then gives the header
     /// found, not the file's row (#118, #128).
     /// </summary>
+    /// <remarks>
+    /// A stream the walk locates was loaded through a regular entry of that index, which the reader copies before it
+    /// first changes it; when the chain gave none, the rebuilt index keeps the stream's entry, regular, once made. The
+    /// location without an entry is defensive.
+    /// </remarks>
     private static PdfValidationLocation Location(IO.PdfFileReader reader, int stream) =>
         (reader.ChainIndex ?? reader.Index).TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular
             ? PdfValidationLocation.OfObject(new PdfObjectId(stream, entry.Generation), entry.Offset + reader.HeaderOffset)
