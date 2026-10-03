@@ -456,6 +456,17 @@ internal ref struct PdfObjectParser
 
             if (keyToken.Kind != PdfTokenKind.Name)
             {
+                // A string where a key should be is a string all the same, which the end of the data can leave open inside
+                // the dictionary: it is the innermost construct then.
+                if (keyToken.Kind is PdfTokenKind.LiteralString)
+                {
+                    ReportIfUnterminated(keyToken, "a literal string", depth + 1);
+                }
+                else if (keyToken.Kind is PdfTokenKind.HexString)
+                {
+                    ReportIfUnterminated(keyToken, "a hexadecimal string", depth + 1);
+                }
+
                 if (!AtWindowEdge(keyToken))
                 {
                     Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key was not a name.", keyToken.Start);
@@ -1125,7 +1136,7 @@ internal ref struct PdfObjectParser
 
         var data = atEndObj ? "An endobj ended the object" : _member is null ? "The file ended" : "The object stream's decoded data ended";
         var content = swallowed > 0
-            ? string.Create(CultureInfo.InvariantCulture, $", which takes the {swallowed:N0} bytes from where it opens to that end")
+            ? string.Create(CultureInfo.InvariantCulture, $", which takes the {swallowed:N0} {(swallowed == 1 ? "byte" : "bytes")} from where it opens to that end")
             : valueMissing ? ", which was never closed, before the value of its last key" : ", which was never closed";
         var around = enclosing switch
         {
