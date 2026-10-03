@@ -59,6 +59,10 @@ An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes f
 found nearby (`xref.offset-adjusted`), and the map is not rebuilt for it. The section `startxref` names is not
 looked for nearby: when it is not where `startxref` says, the map is rebuilt.
 
+A rebuilt map keeps the last definition of each number, under the generation its header gives, and an object found
+nearby takes the generation of the header found: a finding names such an object as the file writes it, `5 1` for
+`5 1 obj`. An entry of the chain keeps the generation its row gives.
+
 ## What it deliberately does not do
 
 Past the index and the catalog, nothing is parsed until something asks for it, and — short of a rebuild, which
