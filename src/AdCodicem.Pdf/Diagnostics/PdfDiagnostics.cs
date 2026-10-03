@@ -99,17 +99,21 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     }
 
     /// <summary>
-    /// Moves the entries recorded since <paramref name="mark"/> whose code starts with <paramref name="codePrefix"/> into
+    /// Moves the entries recorded since <paramref name="mark"/> that <paramref name="keep"/> keeps into
     /// <paramref name="target"/>, which applies its own capacity, counts there those this instance dropped, and drops the
     /// rest.
     /// </summary>
-    internal void MoveTo(PdfDiagnostics target, PdfDiagnosticsMark mark, string codePrefix)
+    /// <param name="target">The diagnostics the entries kept go to.</param>
+    /// <param name="mark">Where the entries to move start.</param>
+    /// <param name="state">What <paramref name="keep"/> needs besides the entry, so that it captures nothing.</param>
+    /// <param name="keep">Whether an entry is kept.</param>
+    internal void MoveTo<TState>(PdfDiagnostics target, PdfDiagnosticsMark mark, TState state, Func<PdfDiagnostic, TState, bool> keep)
     {
         for (var i = mark.Count; i < _entries.Count; i++)
         {
             var entry = _entries[i];
 
-            if (entry.Code.StartsWith(codePrefix, StringComparison.Ordinal))
+            if (keep(entry, state))
             {
                 target.Add(entry.Severity, entry.Code, entry.Message, entry.Position);
             }
