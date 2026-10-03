@@ -72,6 +72,27 @@ the major of .NET or of any framework, and support a framework's next major in t
   a prerelease tag and a `v1.0.0`, it agrees with semantic-release's own core run in dry run against a local remote:
   release type and version, every commit.
 
+### Dependabot follows the same lines
+
+- **A week of cooldown.** Every entry proposes a version only once it has been public for seven days, so that a
+  broken or compromised release has time to be pulled first; security updates are not delayed.
+- **No framework major is ignored, yet.** A new major of a framework a package ships is to be supported by a
+  decision — a floor, a target framework — never by a bump. Today no package ships a dependency: the core's nuspec
+  declares none, which `ci.yml` checks on every pull request (invariant 1). The first satellite that ships one,
+  `AdCodicem.Pdf.Html` or `AdCodicem.Pdf.AspNetCore`, adds the `ignore` rules for that framework's majors. They hold
+  back a security fix published only on a new major too: Dependabot's NuGet updater applies them to security
+  updates.
+- **No `fix(deps)` retitling, yet.** A Dependabot update of a dependency a package ships has to release a patch,
+  which its `build(deps)` prefix does not. Until a package ships one, every NuGet update is a test, benchmark or
+  tooling update, and `build(deps)` releasing nothing is right. The first satellite that ships a dependency brings
+  the retitling with it.
+- **Its subjects pass the commit check.** Dependabot writes `Bump <dependency> from <a> to <b>`, capitalized,
+  which commitlint's `subject-case` refused on 18 of its first 19 pull requests (#196); `commitlint.config.mjs`
+  lets exactly that subject through, so that the Conventional commits check can be required.
+- **Auto-merge by allow-list.** `dependabot-auto-merge.yml` queues only what `dependabot/fetch-metadata` classifies
+  as a patch or a minor; an empty classification, which it gives when it cannot read the versions, is left to a
+  person (#196).
+
 ### Rejected
 
 - **A version per package**, with `multi-semantic-release`. The satellites exist to extend the core, and one number
