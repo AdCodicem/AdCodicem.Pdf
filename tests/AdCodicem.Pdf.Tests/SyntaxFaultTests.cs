@@ -218,6 +218,39 @@ public class SyntaxFaultTests
         document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.SyntaxUnexpectedToken);
     }
 
+    [Theory]
+    [InlineData(1000, 600, 0)]
+    [InlineData(400, 400, 800)]
+    public void Many_faults_of_an_object_read_again_are_each_kept_once_and_read_the_same(int capacity, int kept, int suppressed)
+    {
+        // Six hundred repeats of one key, read, let go by the cache and read again: the second reading's reports are the
+        // first's, word for word, and none is kept twice. Once the diagnostics are full, each reading's reports are counted
+        // and dropped: 200 the first time, all 600 the second.
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "<< /A 0 " + string.Concat(Enumerable.Repeat("/A 1 ", 600)) + ">>");
+        for (var number = 4; number < 80; number++)
+        {
+            builder.WithObject(number, "null");
+        }
+
+        using var document = PdfDocument.Open(
+            builder.BuildClassic(rootNumber: 1), new PdfReaderOptions { ObjectCacheCapacity = 64, DiagnosticCapacity = capacity });
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            for (var number = 3; number < 80; number++)
+            {
+                _ = document.GetObject(new PdfObjectId(number));
+            }
+        }
+
+        document.Diagnostics.Should().HaveCount(kept).And.OnlyHaveUniqueItems()
+            .And.OnlyContain(entry => entry.Message == "The dictionary gives the key /A more than once; the last value given is kept.");
+        document.Diagnostics.SuppressedCount.Should().Be(suppressed);
+    }
+
     [Fact]
     public void A_fault_of_an_object_stream_s_dictionary_is_reported_once_though_the_validator_reads_it_again()
     {
