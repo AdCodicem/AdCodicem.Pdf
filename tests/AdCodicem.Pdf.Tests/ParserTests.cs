@@ -475,7 +475,7 @@ public class ParserTests
     [InlineData("(abc\\", 0, "The file ended inside a literal string, which takes the 5 bytes from where it opens to that end.")]
     [InlineData("(a(b)c", 0, "The file ended inside a literal string, which takes the 6 bytes from where it opens to that end.")]
     [InlineData("<414243", 0, "The file ended inside a hexadecimal string, which takes the 7 bytes from where it opens to that end.")]
-    [InlineData("<", 0, "The file ended inside a hexadecimal string, which takes the 1 bytes from where it opens to that end.")]
+    [InlineData("<", 0, "The file ended inside a hexadecimal string, which takes the 1 byte from where it opens to that end.")]
     [InlineData("[ << /A 1", 2, "The file ended inside a dictionary, which was never closed; the array or dictionary around it was never closed either.")]
     [InlineData("<< /A [1 2 (abc", 11, "The file ended inside a literal string, which takes the 4 bytes from where it opens to that end; the 2 arrays or dictionaries around it were never closed either.")]
     public void Reports_once_where_it_opens_the_innermost_construct_the_end_of_the_data_leaves_open(string text, int opens, string message)
@@ -677,6 +677,49 @@ public class ParserTests
         parser.IsTruncated.Should().BeTrue();
         array.Should().HaveCount(3);
         diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject);
+    }
+
+    [Fact]
+    public void Names_a_string_open_where_a_key_should_be_as_the_innermost_construct()
+    {
+        // The string stands where a key should, which is reported too; it is still what the end of the data left open last.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("<< /A 1 (abc"), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Select(entry => (entry.Position, entry.Message)).Should().Equal(
+            (8L, "The file ended inside a literal string, which takes the 4 bytes from where it opens to that end; the array or dictionary around it was never closed either."),
+            (8L, "A dictionary key was not a name."));
+    }
+
+    [Fact]
+    public void Ends_a_dictionary_skipped_for_its_depth_at_an_endobj()
+    {
+        var text = string.Concat(Enumerable.Repeat("<< /A ", 130)) + "1 endobj";
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        diagnostics[1].Message.Should().Be(
+            "An endobj ended the object inside a dictionary, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
+    }
+
+    [Fact]
+    public void Says_an_object_stream_s_data_rather_than_the_file_ended_where_a_member_should_be()
+    {
+        // The member's offset falls in the white space that ends the decoded data: no value is there, and none is open.
+        var diagnostics = new PdfDiagnostics();
+        var data = Encoding.ASCII.GetBytes("5 0   ");
+        var parser = PdfObjectParser.ForObjectStreamMember(data, 9, 1000, 5, ObjectSourceReturning(new PdfObjectId(1), PdfNull.Instance), diagnostics);
+        parser.Position = 4;
+
+        parser.ParseObject().Should().BeSameAs(PdfNull.Instance);
+
+        diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            "The object stream's decoded data ended in the middle of an object. It was met in object 5, at byte 6 of object stream 9's decoded data.");
     }
 
     [Fact]
