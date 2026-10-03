@@ -1918,7 +1918,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             return !syntaxOnly;
         }
 
-        // Once the diagnostics are full, what is added is counted and dropped, and need not be remembered.
+        // Once the diagnostics are full, what is added is counted and dropped, each time it is met, and need not be
+        // remembered: the set holds no more than the diagnostics do. A report met again then reads as one the diagnostics
+        // drop — its message not built — and is counted again, kept before or not.
         return _diagnostics.IsFull || _syntaxReported.Add(entry);
     }
 
