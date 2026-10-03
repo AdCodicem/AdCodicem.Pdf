@@ -318,6 +318,80 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void What_an_object_its_bound_cuts_met_before_the_cut_is_still_reported()
+    {
+        // ADR 34: what the parser met at the cut is the guard's; a stray parenthesis well before it is the file's, and is
+        // reported beside the guard.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "<< /A 1 ) /B 2 /Pad (" + new string('x', 3000) + ") >>")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetInteger(PdfName.Get("B")).Should().Be(2);
+
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position)).Should().Equal(
+            (PdfDiagnosticCodes.SyntaxUnexpectedToken, (long)OffsetOf(file, ") /B")),
+            (PdfDiagnosticCodes.LimitObject, (long)OffsetOf(file, "3 0 obj")));
+    }
+
+    [Fact]
+    public void An_object_its_bound_cuts_anywhere_in_its_last_tokens_reports_the_bound_alone()
+    {
+        // Wherever the bound falls in the last tokens — inside a keyword, a reference, a name and its escape, a string, a
+        // number, between the angle brackets that end the dictionary —, the token it cuts is no fault of the file's, nor is
+        // what that token leaves open: only the guard is reported.
+        const string Tail = "/K true /L 12 0 R /M [1 2] /N (s) /O <41> /P 1.5 /Q /R#20S /T >>";
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "<< /Pad (" + new string('x', 200) + ") " + Tail)
+            .BuildClassic(rootNumber: 1);
+        var start = OffsetOf(file, "3 0 obj");
+        var tail = OffsetOf(file, Tail) - start;
+        var failures = new List<string>();
+
+        for (var bound = tail; bound < tail + Tail.Length; bound++)
+        {
+            using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } });
+            _ = document.GetObject(new PdfObjectId(3));
+            var codes = string.Join(", ", document.Diagnostics.Select(entry => entry.Code));
+
+            if (codes != PdfDiagnosticCodes.LimitObject)
+            {
+                failures.Add($"cut after '{Tail[..(bound - tail)]}': {codes}");
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("<< /A 1 ) /B 2 /Pad (", PdfDiagnosticCodes.SyntaxUnexpectedToken)]
+    [InlineData("<< /A 1 /B tr", null)]
+    [InlineData("<< /A 1 /B [1 (s", null)]
+    public void What_a_member_its_object_stream_s_decoding_bound_cuts_met_before_the_cut_is_still_reported(string cutAfter, string? reported)
+    {
+        // The object stream decodes to more than the bound allows, and its member is cut where the decoded data stops: what
+        // the member met before the cut is reported, what the cut leaves open or makes of a token is not.
+        var body = cutAfter + "ue) /Pad (" + new string('x', 300) + ") >>";
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(4, body)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [4], compressObjectStream: true);
+        var bound = "4 0 ".Length + cutAfter.Length;
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = bound } });
+
+        _ = document.GetObject(new PdfObjectId(4));
+
+        document.Reader.IsCutAtLimit(4).Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            reported is null ? [PdfDiagnosticCodes.LimitDecodedStream] : [PdfDiagnosticCodes.LimitDecodedStream, reported]);
+    }
+
+    [Fact]
     public void An_object_is_read_no_further_than_its_bound()
     {
         var file = Case.For("object").File;

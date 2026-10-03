@@ -27,7 +27,10 @@ not how wrong the file is.
 The reader parses an object through a window of the file — 8 KB to start with — and reads it again
 through a larger one when it runs past the edge. What the smaller window saw there, such as a string
 without its end or a stream without its `endstream`, is dropped with that attempt, so the report says what
-the object holds, not where a window happened to end.
+the object holds, not where a window happened to end. When `MaxObjectLength` allows no larger window, the
+object is kept as far as it was read and the guard is reported: what the parse met before the edge — a stray
+token, a key that is not a name — is reported beside it, and nothing of the token the edge cut, nor of what that token
+leaves open, is.
 
 A stream's declared length is checked against the `endstream` that must follow it. When the data runs past
 the window, the reader asks the file for the few bytes after the declared length rather than reading the
