@@ -484,6 +484,86 @@ public class ParserTests
             "The file ended inside an array, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
     }
 
+    [Theory]
+    [InlineData("[1 2 3 endobj", 0, 7, "An endobj ended the object inside an array, which was never closed.")]
+    [InlineData("<< /A 1 endobj", 0, 8, "An endobj ended the object inside a dictionary, which was never closed.")]
+    [InlineData("<< /A endobj", 0, 6, "An endobj ended the object inside a dictionary, which was never closed, before the value of its last key.")]
+    [InlineData("[ << /A [1] endobj", 2, 12, "An endobj ended the object inside a dictionary, which was never closed; the array or dictionary around it was never closed either.")]
+    public void Ends_every_container_an_endobj_finds_open_and_reports_the_innermost_once(string text, int opens, int endobj, string message)
+    {
+        // An endobj where a value or a key should be ends the object: the containers it finds open end there, as PDFBox and
+        // pdfium read them, rather than take the objects after it (#119). The endobj itself is left for the object to end on.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text + " 5 0 obj << /X 1 >> endobj"), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        parser.Position.Should().Be(endobj);
+        parser.IsTruncated.Should().BeFalse();
+        var report = diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        report.Position.Should().Be(opens);
+        report.Message.Should().Be(message);
+    }
+
+    [Fact]
+    public void Reads_an_object_whose_array_an_endobj_ends_as_ending_there()
+    {
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("4 0 obj [1 2 3 endobj 5 0 obj << /X 1 >> endobj"), diagnostics: diagnostics);
+
+        parser.TryReadIndirectObject(out var id, out var value).Should().BeTrue();
+
+        id.Should().Be(new PdfObjectId(4));
+        value.Should().BeOfType<PdfArray>().Which.Select(item => item.AsInteger()).Should().Equal(1, 2, 3);
+        parser.EndObj.Should().Be(EndObjState.Present);
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+    }
+
+    [Theory]
+    [InlineData("(abc endobj")]
+    [InlineData("[(a endobj")]
+    public void Leaves_an_endobj_inside_a_string_to_the_string(string text)
+    {
+        // Inside a string, endobj is data: the string takes it, and the end of the data is what leaves the string open.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Should().ContainSingle().Which.Message.Should().StartWith("The file ended inside a literal string");
+    }
+
+    [Fact]
+    public void Takes_no_endobj_a_window_s_edge_may_have_cut_for_one()
+    {
+        // At the edge of a window, "endobj" may be the start of a longer keyword: the array is read again through a larger
+        // window rather than ended there.
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("[1 2 endobj"), diagnostics: diagnostics, endsData: false);
+
+        var array = parser.ParseObject().Should().BeOfType<PdfArray>().Subject;
+
+        parser.IsTruncated.Should().BeTrue();
+        array.Should().HaveCount(3);
+        diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject);
+    }
+
+    [Fact]
+    public void Ends_a_container_skipped_for_its_depth_at_an_endobj()
+    {
+        var text = new string('[', 130) + "1 2 endobj";
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        parser.Position.Should().Be(text.Length - "endobj".Length);
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        diagnostics[1].Message.Should().Be(
+            "An endobj ended the object inside an array, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
+    }
+
     private static PdfObject Parse(string text)
     {
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));

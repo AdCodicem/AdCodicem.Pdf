@@ -387,6 +387,13 @@ internal ref struct PdfObjectParser
                     Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "An array was closed by a dictionary end.", token.Start);
                     return array;
 
+                // An endobj where an element should be ends the object, the array with it, as PDFBox and pdfium read it:
+                // the array does not take the objects after it.
+                case PdfTokenKind.Keyword when IsEndObj(token):
+                    _lexer.Position = token.Start;
+                    ReportCut("an array", openedAt, depth, atEndObj: true);
+                    return array;
+
                 default:
                     array.Add(ParseValue(token, depth + 1));
                     break;
@@ -425,6 +432,15 @@ internal ref struct PdfObjectParser
                 return dictionary;
             }
 
+            // An endobj where a key should be ends the object, the dictionary with it: it does not take the entries of the
+            // object after it.
+            if (IsEndObj(keyToken))
+            {
+                _lexer.Position = keyToken.Start;
+                ReportCut("a dictionary", openedAt, depth, atEndObj: true);
+                return dictionary;
+            }
+
             if (keyToken.Kind != PdfTokenKind.Name)
             {
                 Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A dictionary key was not a name.", keyToken.Start);
@@ -445,6 +461,13 @@ internal ref struct PdfObjectParser
             {
                 _truncated = true;
                 ReportCut("a dictionary", openedAt, depth, valueMissing: true);
+                return dictionary;
+            }
+
+            if (IsEndObj(valueToken))
+            {
+                _lexer.Position = valueToken.Start;
+                ReportCut("a dictionary", openedAt, depth, valueMissing: true, atEndObj: true);
                 return dictionary;
             }
 
@@ -901,6 +924,11 @@ internal ref struct PdfObjectParser
                     ReportCut(endKind == PdfTokenKind.ArrayEnd ? "an array" : "a dictionary", openedAt, enclosing);
                     return;
 
+                case PdfTokenKind.Keyword when IsEndObj(token):
+                    _lexer.Position = token.Start;
+                    ReportCut(endKind == PdfTokenKind.ArrayEnd ? "an array" : "a dictionary", openedAt, enclosing, atEndObj: true);
+                    return;
+
                 case PdfTokenKind.ArrayStart when endKind == PdfTokenKind.ArrayEnd:
                 case PdfTokenKind.DictionaryStart when endKind == PdfTokenKind.DictionaryEnd:
                     depth++;
@@ -934,17 +962,19 @@ internal ref struct PdfObjectParser
     }
 
     /// <summary>
-    /// Reports, once for the innermost, the construct the end of the data cut short — at <paramref name="openedAt"/>,
-    /// where it opens —, unless the end of the buffer is a window's edge rather than the end of the data.
+    /// Reports, once for the innermost, the construct the end of the data, or an <c>endobj</c>, cut short — at
+    /// <paramref name="openedAt"/>, where it opens —, unless the end of the buffer is a window's edge rather than the end of
+    /// the data.
     /// </summary>
     /// <param name="what">The construct, as the message names it.</param>
     /// <param name="openedAt">Where the construct opens, in the buffer.</param>
     /// <param name="enclosing">How many arrays and dictionaries enclose it, each left open with it.</param>
     /// <param name="swallowed">The bytes a string took to the end of the data, or 0 for an array or a dictionary.</param>
-    /// <param name="valueMissing">Whether the data ended after a dictionary's key, before its value.</param>
-    private void ReportCut(string what, int openedAt, int enclosing, int swallowed = 0, bool valueMissing = false)
+    /// <param name="valueMissing">Whether the cut came after a dictionary's key, before its value.</param>
+    /// <param name="atEndObj">Whether an <c>endobj</c> made the cut, rather than the end of the data.</param>
+    private void ReportCut(string what, int openedAt, int enclosing, int swallowed = 0, bool valueMissing = false, bool atEndObj = false)
     {
-        if (!_endsData || _cutReported)
+        if ((!_endsData && !atEndObj) || _cutReported)
         {
             return;
         }
@@ -953,11 +983,11 @@ internal ref struct PdfObjectParser
 
         if (!KeepsReports)
         {
-            Report(PdfDiagnosticCodes.SyntaxTruncatedObject, "The data ended inside a construct it left open.", openedAt);
+            Report(PdfDiagnosticCodes.SyntaxTruncatedObject, "The object ended inside a construct it left open.", openedAt);
             return;
         }
 
-        var data = _member is null ? "The file" : "The object stream's decoded data";
+        var data = atEndObj ? "An endobj ended the object" : _member is null ? "The file ended" : "The object stream's decoded data ended";
         var content = swallowed > 0
             ? string.Create(CultureInfo.InvariantCulture, $", which takes the {swallowed:N0} bytes from where it opens to that end")
             : valueMissing ? ", which was never closed, before the value of its last key" : ", which was never closed";
@@ -968,8 +998,15 @@ internal ref struct PdfObjectParser
             _ => string.Create(CultureInfo.InvariantCulture, $"; the {enclosing} arrays or dictionaries around it were never closed either"),
         };
 
-        Report(PdfDiagnosticCodes.SyntaxTruncatedObject, $"{data} ended inside {what}{content}{around}.", openedAt);
+        Report(PdfDiagnosticCodes.SyntaxTruncatedObject, $"{data} inside {what}{content}{around}.", openedAt);
     }
+
+    /// <summary>
+    /// Determines whether <paramref name="token"/> is <c>endobj</c>, and whole: one that reaches the end of a buffer that is
+    /// a window's edge may be the start of a longer keyword.
+    /// </summary>
+    private readonly bool IsEndObj(PdfToken token) =>
+        token.IsKeyword("endobj"u8) && (_endsData || token.End < _memory.Length);
 
     /// <summary>Gets a value indicating whether a report made now is kept, rather than counted and dropped.</summary>
     private readonly bool KeepsReports => _member is { } member ? !member.Diagnostics.IsFull : _diagnostics is { IsFull: false };
