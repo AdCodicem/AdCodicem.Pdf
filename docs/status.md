@@ -14,34 +14,40 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which,
   [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
   fifth, [#157] and [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on
-  2026-10-03, and the seventh, [#118], with [#226] that day;
+  2026-10-03, and the seventh, [#118], with [#226] that day; the eighth, [#119] and [#172], in [#231];
   then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every
   other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
   fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
-  [#210]), its third ([#212]), its fifth ([#215], [#216]) and its sixth ([#218] to [#224]); [#123] moved to M20.
+  [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]) and its eighth ([#229],
+  [#230]); [#123] moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 3,103 unit on `main` since [#226] (3 skipped: 2 by design, and the theory
+- **Tests**: 3,103 unit on `main` since [#226], 3,256 on [#231]'s branch (3 skipped: 2 by design, and the theory
   over the remote corpus's streams whose length is wrong, which has no document without it) + 1,306 integration
   (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the
-  remote documents fetched, on [#226]'s branch: 5,008 unit with the 233 this container holds, 3 skipped — the laziness
+  remote documents fetched, on [#231]'s branch: 5,161 unit with the 233 this container holds, 3 skipped — the laziness
   test on the two documents recorded as unsupported until [#47], which every other test holds to their expectations,
   and the private manifest this container lacks —; 3,266 integration against qpdf in its container, 3,260 passed and
-  6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 26's 5,065
-  acceptance tests and 3,329 referee checks, on [#226]'s branch.
+  6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 29's 5,218
+  acceptance tests and 3,329 referee checks, on [#231]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.6 % of `src/` — 5,145 of 5,165 lines on `main` since [#213], 149 of its patch's 151
-  measurable lines among them; [#214]'s patch held none to measure. The 20 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members
-  that are private, or of a private type, which no input reaches — nine lines of `ArlingtonWalk` (193, 849, 956, 966,
-  967, 987, 989, 1061, 1077) and three of a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never
-  null where it is read and a switch's default arm (`CrossReferenceProbe` 86 and 225, `PageTreePageOrphanedRule` 51,
-  `RootInvalidRule` 87 and 96), a line the compiler puts after a call that never returns (`PdfFileReader` 1100), and
-  two branches the compiler adds that no input takes (`FileQuote` 138, an interpolation's buffer too small;
-  `PdfObjectParser` 647, a concatenation's null check). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
+  Arlington tables left out), 99.5 % of `src/` — 5,693 of 5,721 lines on [#231]'s branch, every one of its patch's
+  218 measurable lines among them, every branch taken; 5,527 of 5,555 on `main` since [#226]. The 28 left are those
+  the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private, or of a private type, which no
+  input reaches — nine lines of `ArlingtonWalk` (193, 849, 956, 966, 967, 987, 989, 1061, 1077) and three of a
+  defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a switch's
+  default arm (`CrossReferenceProbe` 86 and 231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 87 and 96), a line
+  the compiler puts after a call that never returns (`PdfFileReader` 1311), two branches the compiler adds that no
+  input takes (`FileQuote` 138, an interpolation's buffer too small; `PdfObjectParser` 782, a concatenation's null
+  check); and eight more, the same before this branch: `EndStreamAfter`'s two defensive arms (`PdfFileReader` 1279,
+  1283, journal of batch 6), the `HasValue` checks the compiler adds on a `long?` and a defensive arm of `Expanded`
+  (2479, 2629, batch 5), `ObjectStreamDependencies.Location`'s arm without a Regular entry (222, batch 7), one of the
+  six ways out of a cross-reference stream row's `switch` (2578) and `Repair`'s guard against a second rebuild (3501,
+  3503). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `2f26244` (CI run 460), [#226]'s last commit. `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
   after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run
@@ -50,12 +56,15 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   fetched passed.
   Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one rerun; run 25,
   on [#225]'s branch, passed whole at its first attempt; run 26, on [#226]'s branch, lost ECan's scan again at its
-  first attempt and passed whole at its one rerun.
+  first attempt and passed whole at its one rerun. The nightly run 27, on `main` at `2f26244`, lost the CFIA's form,
+  web.archive.org refusing the connection ([#204]), and passed every test over the 241 others. Runs 28 and 29, on
+  [#231]'s branch, passed whole at their first attempt, the second on the code the branch ends with; CI run 473 is
+  green on that code.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 26 on 2026-10-03. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in run 29 on 2026-10-03. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.53`, previews from `main` through trusted publishing, 1,141 downloads on 2026-10-02. The
   `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified.
@@ -105,6 +114,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Decoding a stream that turns corrupt halfway, the 2 MB before the fault kept | 4 MB of content | 8.1 ms | 6.6 MB |
 | Indexing, then parsing every page's content stream, each past the reader's first window | synthetic, 1000 pages of 16 KB | 3.9 ms from memory, 7.1 ms from a file | 2.0 MB |
 | The same, each stream declared 2 bytes too long and searched for its `endstream` | synthetic, 1000 pages of 16 KB | 7.3 ms from memory, 12.5 ms from a file | 2.8 MB |
+| Parsing one object, a medium job | Word's page dictionary | 6.0 µs | 4.6 KB |
 
 The gap between the first two rows is the library's promise: opening a document does not read its content.
 The validation rows are slice 3's thirty-eight rules. The first measures the rules alone on a document whose objects
@@ -151,6 +161,16 @@ now costs its record and its mark of one report: about 440 bytes more allocated 
 64 objects, keep 9.1 MB more. A sound stream allocates and keeps nothing more. The 4 KB streams take 3.3 → 3.5 ms
 from memory and 5.2 → 5.3 ms from a file, 3.7 → 3.9 and 6.0 → 6.0 ms when each length is wrong, within the
 measurement's error.
+The last row is `ParserBenchmarks`' ([#119], [#172]), the means of two medium runs of each alternated, before the
+checks of the syntax and with them. What a sound object allocates is what it was, to 10 bytes: 4.6 KB for Word's page
+dictionary, 1.37 MB for a thousand dictionaries of strings, 1.56 MB for a thousand of escaped names, 1.44 MB for ten
+thousand distinct keys. The checks cost 5.7 → 6.0 µs for the page dictionary, about 9 ns for each of its 34 names,
+1.71 → 1.77 ms for the names, 1.47 → 1.49 ms for the strings and 2.74 → 2.76 ms for the keys. A hostile object pays
+for its reports, formatted until the diagnostics hold 1,000 and counted past them: a thousand hexadecimal strings with
+stray bytes take 81 → 214 µs and 118 → 448 KB, a thousand names whose `#` is no escape 76 → 201 µs and 55 → 432 KB,
+ten thousand entries that give ten keys again and again 1.22 → 1.53 ms and 524 → 799 KB; ten thousand distinct keys
+given null, which a set now holds to tell a repeat that follows, 1.03 → 2.18 ms and 313 → 970 KB; an object the end
+of the data leaves open, 19.6 → 21.0 µs.
 
 ## Next concrete step
 
@@ -187,7 +207,8 @@ One pull request per batch, each design question put to the maintainer after mea
       done, merged with [#225] on 2026-10-03, `Remote corpus` run 25 green on its branch (journal of 2026-10-03).
    7. [#118], a rebuilt index's generations — done, merged with [#226] on 2026-10-03, `Remote corpus` run 26 green on
       its branch (journal of 2026-10-03).
-   8. [#119] and [#172].
+   8. [#119] and [#172], what the parser read in silence — done in [#231], `Remote corpus` run 28 green on its branch
+      (journal of 2026-10-03).
    9. [#125] and [#126].
    10. [#190] and [#212], the reader's public surface.
    11. [#164] and [#183], the index's size, the first new guard.
@@ -195,13 +216,13 @@ One pull request per batch, each design question put to the maintainer after mea
    13. [#128].
    14. [#129] and [#175].
    15. [#160] and [#161], object-stream members, with [#200] and [#202].
-   16. [#174] and [#170], stream data, with [#220] and [#224].
+   16. [#174] and [#170], stream data, with [#220], [#224] and [#230].
    17. [#155].
    18. [#167] and [#168], with [#201].
    19. [#188], [#197] and [#156], with [#207], [#208], [#210], [#221] and [#222].
    20. [#189].
    21. [#154] and [#171].
-   22. [#132], with [#218].
+   22. [#132], with [#218] and [#229].
    23. [#141].
    24. [#144] and [#169].
    25. [#181].
@@ -217,7 +238,8 @@ One pull request per batch, each design question put to the maintainer after mea
    the four batch 2 found, [#207] to [#210], are filed under M02 and paid in the batches above (journal of 2026-10-01).
    [#212], which batch 3 filed, is paid in batch 10, with [#190], as the maintainer placed it on 2026-10-02. The
    seven batch 6 filed are placed above: [#218] with [#132], as the maintainer placed it on 2026-10-02, the others
-   with the batch whose code they share.
+   with the batch whose code they share. The two batch 8 filed are placed likewise: [#229] with [#132], [#230] with
+   [#174].
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -238,6 +260,117 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-03 — Batch 8: what the parser read in silence ([#119], [#172])
+- **The question.** [#119]: an array or a dictionary left open until the end of the data was read in silence; [#172]:
+  so were a string left open, a hexadecimal string's stray bytes, a name's `#` that is no escape, and a key given
+  twice — a later null even kept the earlier value, where every other reader that keeps the last drops the key or
+  reads it as null. Measured first, each run twice: 134 small files over eleven shapes in seven readers (ours at
+  `c07e489`, qpdf 11.9.1, libqpdf 12, pypdf, PyMuPDF, PDFBox 3.0.5, pdf.js), ours the only one silent on every shape;
+  and the 401 corpus documents, every parse the reader keeps instrumented — 1.75 million dictionaries —, where one
+  document leaves a string, an array and a dictionary open at the end of the file (Foxit's garbage-`/BBox` signature
+  file) and one a trailer (iPRES `t04-010`), and none holds a stray hexadecimal byte, a bad escape or a repeated key.
+  The reader drops 552 end-of-input events, all at the edge of a window it grows, in 38 documents. The measurement
+  found three more defects on the same paths: a fault of the syntax reported again whenever its object is parsed
+  again; the rebuild's trailer scan reporting at its fixed 64 KB edge a fault the file does not have ([#49]'s); and a
+  window that ends exactly where the file does, at `MaxObjectLength`, taken for the guard's cut. Eleven questions
+  followed.
+- **Settled with the maintainer**, each as recommended:
+  - what the end of the data leaves open is `syntax.truncated-object`, one report per cut, for the innermost
+    construct, the others around it counted, placed where it opens — the missing value's report moving to its
+    dictionary's opening; inside an object stream's member, at the data's start, the member and the byte in the
+    message;
+  - the parser is told whether its buffer ends the data, and reports what the end leaves open only then: the rebuild's
+    false report at its 64 KB edge goes, and a window that ends where the file does is no guard's cut;
+  - a key given again keeps its last value, a null given last removing it, every repeat reported — written beside the
+    null-drop decision in `docs/adr/README.md`;
+  - three codes, `syntax.hex-string-invalid`, `syntax.name-escape-invalid` and `syntax.key-repeated`; `#00` stays
+    the validator's;
+  - every new `syntax.*` code met in a trailer or a cross-reference stream's dictionary makes it malformed;
+  - bounding a member at the next member's offset stays [#160]'s; the validator gains no rule, its line rewritten;
+  - four neighbors paid here: no message formatted once the document's diagnostics are full; a fault of the syntax
+    reported once however often its object is parsed again; what precedes a guard's cut kept (ADR 34), nothing said
+    of the token the edge touches; an `endobj` where a value or a key should be ends every container open, reported
+    once — the keyword alone, not an object header.
+- **Done**, in [#231]:
+  - `PdfObjectParser` takes `endsData`; reports a cut once, where the innermost construct opens (`ReportCut`); tells a
+    token the window's edge may have cut from one it cannot, a whole `>>` reported wherever it lies (`AtWindowEdge`),
+    and a stream whose `/Length` the file cannot hold from an edge it met (`_lengthUnsettled`); ends the containers at
+    an `endobj`; reports stray hexadecimal bytes and bad escapes, which `PdfStringDecoder` counts in the loops it
+    already ran, and repeated keys (`Give`: one lookup an entry, the first key given null held alone, a set made for a
+    second);
+  - `PdfFileReader` tells each of its five parse sites whether its window ends the data, and keeps a `syntax.*`
+    report once (`_syntaxReported`); an attempt a guard cut reports the guard first, then what it met before the cut;
+    the rebuild's trailer scan parses through the pending diagnostics; `PdfDiagnostics.KeptIn` leaves a message
+    unformatted only when the pending buffer or the document is full;
+  - `ParserBenchmarks`, nine shapes, sound and hostile.
+
+  Docs: `reference/diagnostics.md` (the three codes, and a section on the faults of the syntax),
+  `reference/validation-rules.md`, `concepts/diagnostics.md`, the ADR index, the threat model's object syntax rows,
+  its gaps for [#119] and [#172] removed and those for [#229] and [#230] added; the two corpus documents'
+  `requiredDiagnostics`, and the manifest schema's codes.
+- **Reviewed.** An adversarial review over five lenses — the parser, the reader, the tests, the documents, the
+  decisions — gave 33 findings, each put to a refuter, and a completeness critic 2 more: 29 kept whole, 3 in part,
+  1 refuted; several are one defect seen from more than one lens.
+  - Kept and fixed, among them:
+    - parsed again near the capacity, a fault was kept twice, the second time with the short message (four
+      findings): a message is now left unbuilt only when the pending buffer or the document is full by itself;
+    - a `>>` ending exactly at a window's edge silenced "a key had no value", and nothing read the trailer again: it
+      was no longer judged malformed — a regression;
+    - a key given again went unreported when its own value ran into a guard's cut, and a keyword the cut left short
+      read as a null that removed the key's earlier value;
+    - the guard's report, the one naming the property to raise, could be crowded out by what its object met first;
+    - a trailer read through a source whose reads stop short of its length took its short window for one the file
+      goes on past;
+    - a string left open where a key should be was not named as the innermost construct; "the 1 bytes"; every
+      dictionary that gave a null made a set, now made only for a second key given null;
+    - tests for what a window that is not the file's end reports, a member parsed again, and each new report left
+      unformatted once the diagnostics are full;
+    - documents that said more than the code: which readers read `<< /B 3 /B null >>` as 3 (pypdf and Ghostscript
+      do), what other readers make of a stray hexadecimal byte, an `endobj` taking nothing of the objects after it.
+  - Filed: [#230] — an object that lost both its closing delimiter and its own `endobj` takes the next object up to
+    its `endobj`, and `object.endobj-missing` is no longer reported for it; the object header the `endobj` decision
+    left out would hold it.
+  - Left: with a capacity of 0, a cross-reference stream whose dictionary is sound is judged malformed for its
+    stream's length fault, which is [#169]'s.
+  - Refuted: that the batch made [#49]'s and [#192]'s bodies false — their comments say what changed.
+  - Found by mutation, after the review: a stream whose `/Length` the file cannot hold marked the parse as having met
+    the window's edge, so a key given again after it, read whole, went unreported where the bound stopped the reader
+    short of the file's end ([#174]'s case). The parser now asks for the larger window without taking the stream for
+    an edge it met.
+- **Tests**: 153 new, 3,103 to 3,256; 5,161 with the remote corpus. Each case the fixes exist for fails on the code
+  before them. 39 mutants of the batch's defenses, each run against the suite: 37 fail a test. Two change nothing a
+  test can see: the trailer's first reading told its window does not end the data, which keeps only a parse that met
+  no edge; and the guard that leaves a key at a window's edge unreported as given again — which pointed at the defect
+  above, and once it was fixed can no longer act, a key whose value follows never touching the edge. Both stay, as
+  defenses.
+- **Tracking.** Filed [#229] — a catalog whose own load rebuilds the index is tested by neither search for it,
+  reproduced twice on `c07e489` and on the branch; placed with [#132] in batch 22 — and [#230], placed with [#174] in
+  batch 16. Commented: [#49] (the false report paid; the keys past 64 KB lost, which its body does not name,
+  reproduced twice on four files), [#192] (`ParserBenchmarks` holds the string case it left open), [#37] (the
+  transient string a name token makes, 26 % of what parsing Word's page dictionary allocates), [#174] (a stream whose
+  `/Length` the file cannot hold no longer silences what follows it; its own case stands).
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - each of the batch's commits builds with no warning and passes alone;
+  - 3,256 unit tests, 3 skipped, and 5,161 with the remote corpus;
+  - the patch's 218 measurable lines of `src/` covered on the committed corpus alone, every branch taken; three lines
+    of the validator the fuzzing reached by chance, which the parser's new reading of its mutated documents no longer
+    reaches, are held by two tests; 99.5 % of `src/` in all, as before the batch;
+  - the integration suite against qpdf in its container, with the remote documents this container holds, 3,266
+    tests: 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages, in 13 minutes;
+  - the corpus read and validated whole, twice, against `c07e489`: only the two documents above change, each as its
+    manifest now requires;
+  - `ParserBenchmarks`, two medium runs of each alternated, before the batch and with it: a sound object allocates
+    what it did, and parses 1 to 5 % slower, 5.7 → 6.0 µs for Word's page dictionary; a hostile one pays for its
+    reports (*Current measurements*);
+  - the site builds, 196 pages;
+  - `Remote corpus` runs 28 and 29, on the branch, each at its first attempt: all 242 documents; run 29's 5,218
+    acceptance tests with 3 skipped and 3,329 referee checks with 6 skipped, on the code the branch ends with;
+  - commitlint, which runs on the pull request alone, found sixteen commit messages wider than 100 columns: they were
+    rewrapped, the code of every commit unchanged, and the runs above stand for it.
+- **Next**: batch 9, [#125] and [#126], a `startxref` near the largest long and a finding located past the end of the
+  file, its questions put when it starts.
 
 ### 2026-10-03 — Batch 7: the generation a rebuilt or relocated entry records ([#118])
 - **The question.** [#118]: the rebuild's scan read a header's generation to know it from the `obj` of an `endobj`,
@@ -1184,3 +1317,6 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#224]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/224
 [#225]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/225
 [#226]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/226
+[#229]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/229
+[#230]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/230
+[#231]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/231
