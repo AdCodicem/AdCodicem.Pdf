@@ -282,7 +282,8 @@ not a fault of the file: the rules on it report at most, as information, that it
   611 KB once its summaries and tables are left out); the README's banner; the package's icon, the Pdf tile.
 - **Measured, and decided on it**: indexing the project documents would take the search index from 0.7 MB to 12.7 MB,
   fetched by every reader's first search; they are left out.
-- **Left**: the startup hook failed to install the SDK, the Ubuntu archive's index being stale ([#234]).
+- **Left**: the startup hook failed to install the SDK, the Ubuntu archive's index being stale ([#234]);
+  fixed the same day: the hook refreshes the index and retries when the install fails.
 
 ### 2026-10-03 — Batch 8: what the parser read in silence ([#119], [#172])
 - **The question.** [#119]: an array or a dictionary left open until the end of the data was read in silence; [#172]:
