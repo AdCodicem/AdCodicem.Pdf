@@ -33,12 +33,14 @@ internal sealed class ChainLoopRule : IValidationRule
         var namedFrom = structure.LoopNamedFrom;
         var written = context.Document.Reader.DescribeOffset(structure.LoopWrittenOffset);
 
-        // An offset outside the file names no section the chain read: an /XRefStm and a /Prev naming the same offset past
-        // the end of the file, or past what a long holds once the header's offset is added (#125), loop through it all the
-        // same, as the reader says.
-        var what = structure.LoopOffset < context.Source.Length
+        // The chain may loop through an offset where it read no section: an /XRefStm and a /Prev naming the same offset that
+        // holds nothing, in the file, past its end, or past what a long holds once the header's offset is added (#125). It
+        // loops all the same, as the reader says.
+        var what = structure.LoopOffsetRead
             ? "a section the chain has already read"
-            : "outside the file, which the chain has already named";
+            : structure.LoopOffset < context.Source.Length
+                ? "which the chain has already named"
+                : "outside the file, which the chain has already named";
 
         context.Report(
             this,

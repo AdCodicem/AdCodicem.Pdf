@@ -59,6 +59,12 @@ internal sealed class FileStructure
     /// <summary>Gets the offset the chain looped back through, as the file writes it, counted from its header; -1 when it never did.</summary>
     public long LoopWrittenOffset { get; set; } = -1;
 
+    /// <summary>
+    /// Gets a value indicating whether the chain read a section at the offset it looped back through, rather than only
+    /// naming it there; false when it never looped.
+    /// </summary>
+    public bool LoopOffsetRead { get; set; }
+
     /// <summary>Gets what named the section the chain looped back to.</summary>
     public string? LoopNamedBy { get; set; }
 
