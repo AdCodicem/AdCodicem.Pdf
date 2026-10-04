@@ -104,8 +104,9 @@ third-party PDFs, table of contents, bookmarks, continuous pagination).
 
 Claude Code web sessions: the .NET SDK is not preinstalled, and Microsoft's distribution hosts have been blocked by
 the network policy (they answered on 2026-10-03; see below). The `SessionStart` hook (`.claude/scripts/setup-dotnet.sh`) installs
-`dotnet-sdk-10.0` from the Ubuntu archive. nuget.org is reachable and `dotnet restore` works.
-If `dotnet` is missing: `apt-get install -y --no-install-recommends dotnet-sdk-10.0`.
+`dotnet-sdk-10.0` from the Ubuntu archive, refreshing the package index when the container's is too old to install
+from (#234). nuget.org is reachable and `dotnet restore` works.
+If `dotnet` is missing: `apt-get update && apt-get install -y --no-install-recommends dotnet-sdk-10.0`.
 The .NET 11 SDK the compatibility island needs (`tests/Compat/global.json`) is not in the Ubuntu archive; on
 2026-10-03 `builds.dotnet.microsoft.com` answered, and its `linux-x64` tarball, unpacked into a folder of its own, ran
 the island (`docs/releasing.md`, *The .NET compatibility island*).
