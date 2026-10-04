@@ -15,7 +15,7 @@ internal static partial class FeatureTables
     public const string ReadmeStart = "<!-- features:start -->";
     public const string ReadmeEnd = "<!-- features:end -->";
 
-    private const string SiteUrl = "https://adcodicem.github.io/AdCodicem.Pdf/features";
+    private const string SiteUrl = "https://adcodicem.github.io/AdCodicem.Pdf/docs/features";
 
     private static readonly JsonSerializerOptions Options = new()
     {
