@@ -137,7 +137,10 @@ public sealed class HeaderOffsetTests
         structure.ChainCutAt.Should().Be(long.MaxValue);
         structure.ChainCutWrittenOffset.Should().Be(long.MaxValue);
         structure.ChainCutNamedFrom.Should().Be(update);
-        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.LimitXRefSectionCount).Which.Position.Should().Be(update);
+        var limit = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.LimitXRefSectionCount).Which;
+        limit.Position.Should().Be(update);
+        limit.Message.Should().StartWith(
+            $"The cross-reference chain has more than 1 sections; the older ones were not read: the chain goes on at offset {LargestShifted}, outside the file.");
 
         var report = new PdfValidator().Validate(document);
         var finding = Single(report, PdfValidationRuleIds.XRefCheckedInPart);
@@ -149,15 +152,18 @@ public sealed class HeaderOffsetTests
         Codes(file, options).Should().BeEquivalentTo(Codes(Updated("/Prev {offset}", "999999", four, size), options));
     }
 
-    [Fact]
-    public void A_limit_reached_where_the_chain_goes_on_outside_the_file_throws_with_the_section_naming_it()
+    [Theory]
+    [InlineData(Largest, LargestShifted)]
+    [InlineData("999999", "1000004")]
+    public void A_limit_reached_where_the_chain_goes_on_outside_the_file_throws_with_the_section_naming_it(string offset, string named)
     {
         var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 }, ThrowOnLimit = true };
-        var file = Updated("/Prev {offset}", Largest);
+        var file = Updated("/Prev {offset}", offset);
 
         var thrown = FluentActions.Invoking(() => PdfDocument.Open(file, options)).Should().Throw<PdfLimitExceededException>().Which;
 
         thrown.Position.Should().Be(PdfTemplate.OffsetOf(file, "xref\n4 1"));
+        thrown.Message.Should().Contain($"the chain goes on at offset {named}, outside the file.");
     }
 
     [Fact]
