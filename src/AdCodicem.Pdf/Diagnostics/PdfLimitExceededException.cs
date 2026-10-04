@@ -37,6 +37,10 @@ public sealed class PdfLimitExceededException : PdfException
     /// <summary>Gets the value of that property when the guard was reached.</summary>
     public int Limit { get; }
 
-    /// <summary>Gets the byte offset the guard was reached at, or -1 when it relates to no position.</summary>
+    /// <summary>
+    /// Gets the byte offset the guard was reached at, or -1 when it relates to no position, as the diagnostic the guard
+    /// reports under places it (<see cref="PdfDiagnostic.Position"/>): a chain of cross-reference sections cut where it
+    /// goes on outside the file is placed at the section that names where.
+    /// </summary>
     public long Position { get; }
 }
