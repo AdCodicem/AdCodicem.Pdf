@@ -125,7 +125,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `limit.decoded-stream` | A stream decodes to more than `MaxDecodedStreamLength`; the part within it was kept |
 | `limit.object` | An object is longer than `MaxObjectLength`, its stream data aside; the part within it was parsed |
 | `limit.xref-section-length` | A classic cross-reference table is longer than `MaxXRefSectionLength`; the entries within it were read |
-| `limit.xref-section-count` | The chain of cross-reference sections is longer than `MaxXRefSectionCount`; the newest were read. Reported where the chain goes on, or, when that lies outside the file, at the section whose `/Prev` names it |
+| `limit.xref-section-count` | The chain of cross-reference sections is longer than `MaxXRefSectionCount`; the newest were read. Reported where the chain goes on, or, when that lies outside the file, at the section whose `/Prev` names it, the offset in the message |
 | `limit.trailer` | A trailer, or a cross-reference stream's dictionary, is longer than `MaxTrailerLength`; the part within it was parsed |
 
 The five `limit.*` codes report the reader's own limits, not faults of the file; each message names the property of

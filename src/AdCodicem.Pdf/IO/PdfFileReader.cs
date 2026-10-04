@@ -1477,18 +1477,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 // sections, read first, are the ones that win, and what only the older ones index is found by
                 // rebuilding the index when it is asked for.
                 // Placed where the chain goes on, a position in the file; one named outside the file is placed at what
-                // named it, as a section that is missing is (#125).
+                // named it, the offset in the message, as a section that is missing is (#125).
                 _indexIncomplete = true;
                 var cut = PositionOf(offset);
+                var inFile = IsInFile(cut);
                 _structure.ChainCutAt = cut;
                 _structure.ChainCutWrittenOffset = offset;
                 _structure.ChainCutNamedFrom = namedFrom;
                 ReachLimit(
                     PdfLimit.XRefSectionCount,
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"The cross-reference chain has more than {_guard.Bound(PdfLimit.XRefSectionCount):N0} sections; the older ones were not read."),
-                    IsInFile(cut) ? cut : namedFrom);
+                    inFile
+                        ? string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"The cross-reference chain has more than {_guard.Bound(PdfLimit.XRefSectionCount):N0} sections; the older ones were not read.")
+                        : string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"The cross-reference chain has more than {_guard.Bound(PdfLimit.XRefSectionCount):N0} sections; the older ones were not read: the chain goes on at offset {DescribeOffset(offset)}, outside the file."),
+                    inFile ? cut : namedFrom);
                 break;
             }
 
