@@ -78,7 +78,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   *Left to the maintainer*), and stops at its first step until they are made.
 - **The site**, <https://adcodicem.github.io/AdCodicem.Pdf/>, is versioned (ADR 31). With [#227] it is redeployed by
   every preview run, and by a push to `main` that changed no package input since the version on nuget.org (ADR 49);
-  before the first stable release the preview is the whole site.
+  before the first stable release the preview is the whole documentation. Since 2026-10-04 (branch
+  `claude/friendly-ptolemy-he5k0l`, not merged yet) it wears the AdCodicem design system, serves the documentation
+  under `/docs` behind a homepage, redirects every former address, and has a local search
+  (`docs/website/README.md`, *Look and feel*).
 - **Supply chain**: OpenSSF Scorecard **7.6** on `74ce382`. What Scorecard still marks down is settings and
   people: Code-Review 0 (nothing has ever been approved by a second person), Branch-Protection 5 (T15), Maintained 0
   (the repository is younger than 90 days), Contributors 3, CII-Best-Practices 0 (T18), Signed-Releases
@@ -265,6 +268,21 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-04 — The design system on the site, the README and the package, outside any milestone
+- **The question.** Apply the AdCodicem design system, as AdCodicem.ValueObjects did, to the site, the README and the
+  package icon; scope and choices settled with the maintainer one question at a time.
+- **In the design system first**: the compact Pdf lockups (`pdf-logo-horizontal-compact`, `-white`), which the navbar's
+  34px calls for, and the AdCodicem lockups with their name outlined, for the footer. Their text is outlined the way
+  the design system's Pdf lockup was, which it reproduces byte for byte (Archivo 600, no kerning, 0.47 H).
+- **Done**: the tokens, fonts, syntax palette and four color schemes, with theme and contrast toggles; the Pdf lockup
+  and favicons; the documentation under `/docs`, behind a homepage whose example is frozen with each stable line and
+  compiles against the current API, with every former address redirected (checked on a locally frozen line); a 404
+  page; a local search covering the user documentation, the API reference in an index of its own (232 KB instead of
+  611 KB once its summaries and tables are left out); the README's banner; the package's icon, the Pdf tile.
+- **Measured, and decided on it**: indexing the project documents would take the search index from 0.7 MB to 12.7 MB,
+  fetched by every reader's first search; they are left out.
+- **Left**: the startup hook failed to install the SDK, the Ubuntu archive's index being stale ([#234]).
 
 ### 2026-10-03 — Batch 8: what the parser read in silence ([#119], [#172])
 - **The question.** [#119]: an array or a dictionary left open until the end of the data was read in silence; [#172]:
@@ -1371,3 +1389,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#229]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/229
 [#230]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/230
 [#231]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/231
+[#234]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/234
