@@ -219,17 +219,14 @@ internal sealed class ObjectStreamDependencies
     /// location without an entry is defensive. A row that places the stream outside the file, which the reader found
     /// elsewhere, places it nowhere: the finding is located at the object alone (#125).
     /// </remarks>
-    private static PdfValidationLocation Location(IO.PdfFileReader reader, int stream)
-    {
-        if (!(reader.ChainIndex ?? reader.Index).TryGet(stream, out var entry) || entry.Kind != XRefEntryKind.Regular)
-        {
-            return PdfValidationLocation.OfObject(new PdfObjectId(stream));
-        }
+    private static PdfValidationLocation Location(IO.PdfFileReader reader, int stream) =>
+        (reader.ChainIndex ?? reader.Index).TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular
+            ? At(reader, new PdfObjectId(stream, entry.Generation), reader.PositionOf(entry))
+            : PdfValidationLocation.OfObject(new PdfObjectId(stream));
 
-        var id = new PdfObjectId(stream, entry.Generation);
-        var position = reader.PositionOf(entry);
-        return reader.IsInFile(position) ? PdfValidationLocation.OfObject(id, position) : PdfValidationLocation.OfObject(id);
-    }
+    /// <summary>Locates object <paramref name="id"/> at <paramref name="position"/>, or at the object alone outside the file.</summary>
+    private static PdfValidationLocation At(IO.PdfFileReader reader, PdfObjectId id, long position) =>
+        reader.IsInFile(position) ? PdfValidationLocation.OfObject(id, position) : PdfValidationLocation.OfObject(id);
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
