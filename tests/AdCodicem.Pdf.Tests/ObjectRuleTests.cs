@@ -604,6 +604,22 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_name_set_on_a_trailer_the_reader_merged_none_of_is_located_at_the_document()
+    {
+        // The file has no trailer: the rebuild recovers /Root alone, which nothing locates at the trailer. A value a caller
+        // sets on the trailer has no trailer in the file to point at.
+        var file = PdfTemplate.SoundWith("trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n", string.Empty);
+        using var document = PdfDocument.Open(file);
+        document.Reader.TrailerLocation.Should().Be(-1);
+        document.Trailer.Set(PdfName.Get("Kind"), PdfName.Get("B\0"));
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.ObjectNameNullCharacter);
+
+        finding.Message.Should().StartWith("The trailer holds the name /B#00");
+        finding.Location.IsDocument.Should().BeTrue();
+    }
+
+    [Fact]
     public void A_name_with_a_null_character_in_the_trailer_is_found_past_the_keys_naming_sections()
     {
         // The update's trailer gives /Prev and /XRefStm, the keys that name sections, before /Kind: the search passes

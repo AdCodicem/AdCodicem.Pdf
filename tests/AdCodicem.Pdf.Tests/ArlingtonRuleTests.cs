@@ -1214,6 +1214,24 @@ public class ArlingtonRuleTests
         finding.Location.Position.Should().Be(trailer);
     }
 
+    [Fact]
+    public void A_value_set_on_a_trailer_the_reader_merged_none_of_is_located_at_the_document()
+    {
+        // The file has no trailer: the rebuild recovers /Root alone, which nothing locates at the trailer. A value a caller
+        // sets on the trailer has no trailer in the file to point at.
+        var file = PdfTemplate.SoundWith("trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n", string.Empty);
+        using var document = PdfDocument.Open(file);
+        document.Reader.TrailerLocation.Should().Be(-1);
+        var info = new PdfDictionary();
+        info.Set(PdfName.Get("Author"), PdfInteger.Create(7));
+        document.Trailer.Set(PdfName.Get("Info"), info);
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.ObjectValueTypeWrong);
+
+        finding.Message.Should().StartWith("The dictionary under /Info of the trailer");
+        finding.Location.IsDocument.Should().BeTrue();
+    }
+
     private static PdfReaderOptions Limited(int maxObjectLength) =>
         new() { Limits = PdfReaderLimits.Default with { MaxObjectLength = maxObjectLength } };
 
