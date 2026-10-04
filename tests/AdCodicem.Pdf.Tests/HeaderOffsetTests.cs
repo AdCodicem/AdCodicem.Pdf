@@ -414,6 +414,26 @@ public sealed class HeaderOffsetTests
             d.Code == PdfDiagnosticCodes.StreamLengthInvalid && d.Message == "The stream declared 9000 bytes but ended after 200.");
     }
 
+    [Fact]
+    public void A_stream_a_rebuild_finds_before_the_header_ends_its_search_for_an_endstream_at_the_next_object()
+    {
+        // Objects 4 and 5 lie before the header, where only a rebuild finds them, at offsets negative counted from it; 4
+        // declares a length past the parser's window and has no endstream before 5. The search stops at 5's header rather
+        // than run on to 5's own endstream.
+        var data = new string('d', 200);
+        var before = $"4 0 obj\n<< /Length 9000 >>\nstream\n{data}\n5 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n";
+        var template = PdfTemplate.Sound
+            .Replace("%PDF-1.7\n", "%PDF-1.7\n%" + new string('x', 12000) + "\n", StringComparison.Ordinal)
+            .Replace("startxref\n{xref:1}", "startxref\n999999", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(before).Concat(PdfTemplate.Build(template)).ToArray();
+        using var document = PdfDocument.Open(file);
+
+        _ = document.GetObject(new PdfObjectId(4));
+
+        var five = string.Create(CultureInfo.InvariantCulture, $"before the next object, at {before.IndexOf("5 0 obj", StringComparison.Ordinal)};");
+        document.Diagnostics.Should().Contain(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid && d.Message.Contains(five, StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData(Largest)]
     [InlineData("999999")]
