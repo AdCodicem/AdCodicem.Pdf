@@ -127,6 +127,8 @@ A record struct; its default value designates the document as a whole.
 | A page | `page 3, object 12 0` |
 | The document | `the document` |
 
-A finding on a value the trailer holds, written in it rather than as an object of its own, is located at the trailer the
-reader read: the first section's, or, when the index was rebuilt, the newest trailer the rebuild found, at its `trailer`
-keyword; at the document when the reader read none. A key only an older trailer gives is located there too.
+A finding on a value the trailer holds, written in it rather than as an object of its own, is located at the newest
+trailer the reader merged: the first section's own when the chain read it — a table's `trailer` keyword, or a
+cross-reference stream's object —, even when the index was rebuilt afterward; otherwise the newest trailer a rebuild
+found, at its `trailer` keyword; and the document when there is none. A key only an older trailer gives is located
+there too.
