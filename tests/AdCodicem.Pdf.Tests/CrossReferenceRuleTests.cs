@@ -465,6 +465,18 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
+    public void A_section_s_trailer_finding_points_at_the_section_until_a_trailer_is_found()
+    {
+        // Every rule that locates a finding at a section's trailer judges one the reader found; the record, given what no
+        // file produces, points at the section itself.
+        var section = new XRefSectionRecord("/Prev", 120, namedFrom: 40);
+
+        section.TrailerLocation.Should().Be(120);
+        section.TrailerPosition = 180;
+        section.TrailerLocation.Should().Be(180);
+    }
+
+    [Fact]
     public void A_loop_named_from_no_known_section_is_reported_at_the_document()
     {
         // Only a section the chain has read can name one it read before, so the reader always knows where the loop is
