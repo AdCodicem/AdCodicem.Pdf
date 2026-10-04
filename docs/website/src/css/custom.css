@@ -1,25 +1,882 @@
-:root {
-  --ifm-color-primary: #1f3864;
-  --ifm-color-primary-dark: #1c3259;
-  --ifm-color-primary-darker: #1a2f54;
-  --ifm-color-primary-darkest: #152745;
-  --ifm-color-primary-light: #22406f;
-  --ifm-color-primary-lighter: #244374;
-  --ifm-color-primary-lightest: #294b83;
-  --ifm-code-font-size: 92%;
+/**
+ * The AdCodicem design system, applied to Infima.
+ *
+ * The tokens below are the design system's own, by name: primitives (ink, stone, paper, rust and the four signal
+ * hues), then the semantic tokens that switch per theme. Everything after them is written against the semantic
+ * tokens only, never a literal color, so it follows all four themes:
+ *
+ *   :root                                          paper, the brand light theme
+ *   [data-theme='dark']                            ink, the brand dark theme (the default, see docusaurus.config.js)
+ *   [data-contrast='accessible']                   paper, accessible: WCAG 2 AA on every pair drawn
+ *   [data-theme='dark'][data-contrast='accessible'] ink, accessible
+ *
+ * The brand themes keep the design system's exact values, a few of which fall below AA on paper (links at 4.26:1,
+ * for one). data-contrast is set by the contrast toggle in the navbar (src/components/ContrastToggle), and before
+ * the first paint by the script the `contrast` plugin in docusaurus.config.js puts in <head>.
+ */
+
+@font-face {
+  font-family: 'Archivo';
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../fonts/Archivo.woff2') format('woff2');
 }
 
-[data-theme='dark'] {
-  --ifm-color-primary: #8fb0e8;
-  --ifm-color-primary-dark: #6f99e1;
-  --ifm-color-primary-darker: #5f8ddd;
-  --ifm-color-primary-darkest: #3170d2;
-  --ifm-color-primary-light: #afc7ef;
-  --ifm-color-primary-lighter: #bfd3f3;
-  --ifm-color-primary-lightest: #eff4fc;
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('../fonts/AtkinsonHyperlegibleNext.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('../fonts/AtkinsonHyperlegibleNext-Italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('../fonts/JetBrainsMono.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/JetBrainsMono-Italic.woff2') format('woff2');
+}
+
+/* ---- Tokens ---------------------------------------------------------------------------------------------------- */
+
+:root {
+  --ink-950: #110e0c;
+  --ink-900: #14110f;
+  --ink-850: #1c1815;
+  --ink-800: #241f1b;
+  --ink-750: #2c2621;
+  --ink-700: #3a332d;
+  --ink-600: #4a423b;
+  --stone-700: #5c544d;
+  --stone-600: #6e6660;
+  --stone-500: #8b827a;
+  --stone-400: #9c948c;
+  --stone-300: #b9b1a8;
+  --stone-200: #d6cbbb;
+  --paper-300: #dcd3c7;
+  --paper-200: #e4dacc;
+  --paper-150: #eae4da;
+  --paper-100: #f2ece2;
+  --paper-50: #fbf8f3;
+  --rust-800: #6e3010;
+  --rust-700: #8e3f14;
+  --rust-600: #b4531f;
+  --rust-500: #c8622a;
+  --rust-400: #d97538;
+  --rust-300: #f0a96e;
+  --slate-400: oklch(0.74 0.05 240);
+  --slate-600: oklch(0.5 0.06 240);
+  --sage-400: oklch(0.74 0.07 140);
+  --sage-600: oklch(0.5 0.08 140);
+  --ochre-400: oklch(0.8 0.1 82);
+  --ochre-600: oklch(0.55 0.1 75);
+  --brick-400: oklch(0.68 0.13 28);
+  --brick-600: oklch(0.52 0.14 28);
+
+  --font-display: 'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-body: 'Atkinson Hyperlegible Next', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  --tracking-display: -0.025em;
+  --tracking-heading: -0.015em;
+  --tracking-label: 0.18em;
+  --tracking-baseline: 0.32em;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Paper */
+  --bg-page: var(--paper-100);
+  --bg-sunken: var(--paper-150);
+  --surface-1: var(--paper-50);
+  --surface-2: var(--paper-150);
+  --surface-hover: var(--paper-150);
+  --fg-strong: var(--ink-900);
+  --fg-1: var(--ink-900);
+  --fg-2: var(--stone-700);
+  --fg-3: var(--stone-600);
+  --border-1: var(--paper-300);
+  --border-2: var(--stone-200);
+  --border-subtle: var(--paper-200);
+  --accent: var(--rust-600);
+  --accent-hover: var(--rust-700);
+  --accent-strong: var(--rust-700);
+  --accent-fg: var(--paper-50);
+  --accent-text: var(--rust-700);
+  --accent-soft: rgba(180, 83, 31, 0.09);
+  --link: var(--rust-600);
+  --link-hover: var(--rust-700);
+  --focus-ring: var(--rust-600);
+  --note: var(--slate-600);
+  --tip: var(--sage-600);
+  --warning: var(--ochre-600);
+  --danger: var(--brick-600);
+  --note-soft: oklch(0.5 0.06 240 / 0.09);
+  --tip-soft: oklch(0.5 0.08 140 / 0.09);
+  --warning-soft: oklch(0.55 0.1 75 / 0.11);
+  --danger-soft: oklch(0.52 0.14 28 / 0.09);
+  --logo-wordmark-ad: var(--stone-600);
+  --overlay: rgba(20, 17, 15, 0.45);
+  --code-bg: var(--paper-50);
+  --code-bg-header: var(--paper-150);
+  --code-border: var(--paper-300);
+  --code-fg: #14110f;
+  --code-keyword: #a4471a;
+  --code-type: #7f5410;
+  --code-method: #2c5873;
+  --code-string: #4b6425;
+  --code-number: #7a3a70;
+  --code-attribute: #8a4b2e;
+  --code-comment: #7a726b;
+  --code-punct: #5c544d;
+  --code-line-number: #b9b1a8;
+  --code-highlight: rgba(180, 83, 31, 0.08);
+
+  /* Infima's primary scale, around `accent`. */
+  --ifm-color-primary: #b4531f;
+  --ifm-color-primary-dark: #a24b1c;
+  --ifm-color-primary-darker: #994619;
+  --ifm-color-primary-darkest: #8e3f14;
+  --ifm-color-primary-light: #c25a22;
+  --ifm-color-primary-lighter: #c8622a;
+  --ifm-color-primary-lightest: #d97538;
+
+  --ifm-color-emphasis-100: var(--paper-150);
+  --ifm-color-emphasis-200: var(--paper-200);
+  --ifm-color-emphasis-300: var(--paper-300);
+  --ifm-color-emphasis-400: var(--stone-200);
+  --ifm-color-emphasis-500: var(--stone-400);
+  --ifm-color-emphasis-600: var(--stone-600);
+  --ifm-color-emphasis-700: var(--stone-700);
+  --ifm-color-emphasis-800: var(--ink-750);
+  --ifm-color-emphasis-900: var(--ink-900);
+  --shadow-overlay: 0 16px 40px rgba(20, 17, 15, 0.14);
+}
+
+html[data-theme='dark'] {
+  --bg-page: var(--ink-850);
+  --bg-sunken: var(--ink-900);
+  --surface-1: var(--ink-800);
+  --surface-2: var(--ink-750);
+  --surface-hover: var(--ink-750);
+  --fg-strong: var(--paper-50);
+  --fg-1: var(--paper-150);
+  --fg-2: var(--stone-300);
+  --fg-3: var(--stone-400);
+  --border-1: var(--ink-700);
+  --border-2: var(--ink-600);
+  --border-subtle: var(--ink-750);
+  --accent: var(--rust-400);
+  --accent-hover: var(--rust-300);
+  --accent-strong: var(--rust-500);
+  --accent-fg: var(--ink-900);
+  --accent-text: var(--rust-300);
+  --accent-soft: rgba(217, 117, 56, 0.12);
+  --link: var(--rust-300);
+  --link-hover: var(--paper-50);
+  --focus-ring: var(--rust-300);
+  --note: var(--slate-400);
+  --tip: var(--sage-400);
+  --warning: var(--ochre-400);
+  --danger: var(--brick-400);
+  --note-soft: oklch(0.74 0.05 240 / 0.12);
+  --tip-soft: oklch(0.74 0.07 140 / 0.12);
+  --warning-soft: oklch(0.8 0.1 82 / 0.12);
+  --danger-soft: oklch(0.68 0.13 28 / 0.12);
+  --logo-wordmark-ad: var(--stone-400);
+  --overlay: rgba(17, 14, 12, 0.72);
+  --code-bg: var(--ink-900);
+  --code-bg-header: var(--ink-950);
+  --code-border: var(--ink-700);
+  --code-fg: #e4dcd0;
+  --code-keyword: #e08a4f;
+  --code-type: #e3c58e;
+  --code-method: #93b6cc;
+  --code-string: #afc08a;
+  --code-number: #cfa6cf;
+  --code-attribute: #d9a48a;
+  --code-comment: #8b827a;
+  --code-punct: #a69d93;
+  --code-line-number: #5c544d;
+  --code-highlight: rgba(217, 117, 56, 0.1);
+
+  --ifm-color-primary: #d97538;
+  --ifm-color-primary-dark: #d2672a;
+  --ifm-color-primary-darker: #c8622a;
+  --ifm-color-primary-darkest: #b4531f;
+  --ifm-color-primary-light: #e08a4f;
+  --ifm-color-primary-lighter: #e89a63;
+  --ifm-color-primary-lightest: #f0a96e;
+
+  --ifm-color-emphasis-100: var(--ink-800);
+  --ifm-color-emphasis-200: var(--ink-750);
+  --ifm-color-emphasis-300: var(--ink-700);
+  --ifm-color-emphasis-400: var(--ink-600);
+  --ifm-color-emphasis-500: var(--stone-600);
+  --ifm-color-emphasis-600: var(--stone-400);
+  --ifm-color-emphasis-700: var(--stone-300);
+  --ifm-color-emphasis-800: var(--paper-200);
+  --ifm-color-emphasis-900: var(--paper-150);
+  --shadow-overlay: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Paper, accessible: only the tokens the design system changes. */
+html[data-contrast='accessible'] {
+  --accent: var(--rust-700);
+  --link: var(--rust-700);
+  --focus-ring: var(--rust-700);
+  --accent-hover: var(--rust-800);
+  --link-hover: var(--rust-800);
+  --accent-strong: var(--rust-800);
+  --fg-3: #6d655f;
+  --warning: #845a0f;
+  --tip: #476c3f;
+  --danger: #a94037;
+  --border-2: var(--stone-600);
+  --code-comment: #6d655e;
+  --code-line-number: #726a62;
+
+  --ifm-color-primary: #8e3f14;
+  --ifm-color-primary-dark: #803912;
+  --ifm-color-primary-darker: #793611;
+  --ifm-color-primary-darkest: #6e3010;
+  --ifm-color-primary-light: #9c4516;
+  --ifm-color-primary-lighter: #a24818;
+  --ifm-color-primary-lightest: #b4531f;
+}
+
+/* Ink, accessible: the accent already passes on ink. */
+html[data-theme='dark'][data-contrast='accessible'] {
+  --accent: var(--rust-400);
+  --link: var(--rust-300);
+  --focus-ring: var(--rust-300);
+  --accent-hover: var(--rust-300);
+  --link-hover: var(--paper-50);
+  --accent-strong: var(--rust-500);
+  --fg-3: var(--stone-400);
+  --warning: var(--ochre-400);
+  --tip: var(--sage-400);
+  --danger: #df786c;
+  --border-2: var(--stone-500);
+  --code-comment: #8d837b;
+  --code-line-number: #8c837c;
+
+  --ifm-color-primary: #d97538;
+  --ifm-color-primary-dark: #d2672a;
+  --ifm-color-primary-darker: #c8622a;
+  --ifm-color-primary-darkest: #b4531f;
+  --ifm-color-primary-light: #e08a4f;
+  --ifm-color-primary-lighter: #e89a63;
+  --ifm-color-primary-lightest: #f0a96e;
+}
+
+/* ---- Infima, mapped to the tokens ------------------------------------------------------------------------------ */
+
+/* html[data-theme='dark'] too: Infima redefines several of these there, with that specificity. */
+:root,
+html[data-theme='dark'] {
+  --ifm-background-color: var(--bg-page);
+  --ifm-background-surface-color: var(--surface-1);
+  --ifm-color-content: var(--fg-1);
+  --ifm-color-content-secondary: var(--fg-2);
+  --ifm-font-color-base: var(--fg-1);
+  --ifm-font-color-secondary: var(--fg-2);
+  --ifm-heading-color: var(--fg-strong);
+  --ifm-hr-border-color: var(--border-1);
+  --ifm-toc-border-color: var(--border-1);
+  --ifm-link-color: var(--link);
+  --ifm-link-hover-color: var(--link-hover);
+  --ifm-link-hover-decoration: none;
+
+  --ifm-font-family-base: var(--font-body);
+  --ifm-heading-font-family: var(--font-display);
+  --ifm-font-family-monospace: var(--font-mono);
+  --ifm-font-size-base: 106.25%; /* 17px, the design system's body size */
+  --ifm-line-height-base: 1.6;
+  --ifm-heading-font-weight: 600;
+  --ifm-heading-line-height: 1.15;
+  --ifm-h1-font-size: 2.5rem;
+  --ifm-h2-font-size: 1.875rem;
+  --ifm-h3-font-size: 1.4rem;
+  --ifm-h4-font-size: 1.12rem;
+  --ifm-code-font-size: 84%;
+  --ifm-code-background: var(--surface-1);
+  --ifm-code-border-radius: var(--radius-sm);
+  --ifm-code-padding-horizontal: 5px;
+  --ifm-code-padding-vertical: 1px;
+  --ifm-pre-background: var(--code-bg);
+  --ifm-pre-color: var(--code-fg);
+
+  --ifm-global-radius: var(--radius-md);
+  --ifm-button-border-radius: var(--radius-md);
+  --ifm-card-border-radius: var(--radius-md);
+  --ifm-global-shadow-lw: none;
+  --ifm-global-shadow-md: var(--shadow-overlay);
+  --ifm-global-shadow-tl: var(--shadow-overlay);
+  --ifm-transition-fast: var(--duration-fast);
+  --ifm-transition-timing-default: var(--ease-standard);
+
+  --ifm-navbar-height: 60px;
+  --ifm-navbar-shadow: none;
+  --ifm-navbar-background-color: transparent;
+  --ifm-navbar-link-color: var(--fg-2);
+  --ifm-navbar-link-hover-color: var(--fg-strong);
+  --ifm-navbar-link-active-color: var(--accent-text);
+  --ifm-dropdown-background-color: var(--surface-2);
+  --ifm-dropdown-link-color: var(--fg-1);
+  --ifm-dropdown-hover-background-color: var(--surface-hover);
+
+  --ifm-menu-color: var(--fg-2);
+  --ifm-menu-color-active: var(--accent-text);
+  --ifm-menu-color-background-active: var(--accent-soft);
+  --ifm-menu-color-background-hover: var(--surface-hover);
+  --ifm-toc-link-color: var(--fg-2);
+  --ifm-breadcrumb-item-background-active: var(--accent-soft);
+  --ifm-breadcrumb-color-active: var(--accent-text);
+
+  --ifm-table-border-color: var(--border-subtle);
+  --ifm-table-stripe-background: transparent;
+  --ifm-table-head-background: transparent;
+  --ifm-table-head-color: var(--fg-2);
+
+  --ifm-footer-background-color: var(--bg-sunken);
+  --ifm-footer-color: var(--fg-2);
+  --ifm-footer-link-color: var(--fg-2);
+  --ifm-footer-link-hover-color: var(--fg-strong);
+  --ifm-footer-title-color: var(--fg-3);
+
+  --docusaurus-highlighted-code-line-bg: var(--code-highlight);
+  --docusaurus-announcement-bar-height: auto;
+}
+
+/* ---- Base ------------------------------------------------------------------------------------------------------ */
+
+::selection {
+  background: var(--rust-400);
+  color: var(--ink-900);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: var(--tracking-heading);
+}
+
+h1 {
+  font-weight: 700;
+}
+
+/* Links in prose: a 1px underline at 35 % of the text color, full on hover. */
+.markdown a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  transition: color var(--duration-fast) var(--ease-standard),
+    text-decoration-color var(--duration-fast) var(--ease-standard);
+}
+
+.markdown a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* The lead: the first paragraph of a page. */
+.markdown > header + p {
+  font-size: 1.18em;
+  line-height: 1.5;
+}
+
+/* Inline code: a chip in the type color. */
+:not(pre) > code {
+  border: 1px solid var(--border-1);
+  color: var(--code-type);
+  vertical-align: baseline;
+}
+
+a :not(pre) > code,
+a > code {
+  color: inherit;
 }
 
 .markdown table {
   display: table;
   width: 100%;
+}
+
+.markdown table th {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.markdown table thead tr {
+  border-bottom: 1px solid var(--border-1);
+}
+
+.markdown table th,
+.markdown table td {
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+}
+
+.markdown table td {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ---- Buttons --------------------------------------------------------------------------------------------------- */
+
+.button {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  transition: background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+
+.button:active {
+  transform: translateY(1px);
+}
+
+.button--primary {
+  --ifm-button-background-color: var(--accent);
+  --ifm-button-border-color: var(--accent);
+  --ifm-button-color: var(--accent-fg);
+  color: var(--accent-fg);
+}
+
+.button--primary:hover {
+  --ifm-button-background-color: var(--accent-hover);
+  --ifm-button-border-color: var(--accent-hover);
+  color: var(--accent-fg);
+}
+
+.button--secondary {
+  --ifm-button-background-color: transparent;
+  --ifm-button-border-color: var(--border-2);
+  --ifm-button-color: var(--fg-strong);
+  color: var(--fg-strong);
+}
+
+.button--secondary:hover,
+.button--secondary:not(.button--outline):hover {
+  --ifm-button-background-color: var(--surface-hover);
+  --ifm-button-border-color: var(--border-2);
+  color: var(--fg-strong);
+}
+
+/* ---- Icon buttons ---------------------------------------------------------------------------------------------- */
+
+/* The design system's IconButton, ghost, size md: a 36px square, radius-md, the icon in fg-2. The theme and contrast
+   toggles use it, and the GitHub link in the navbar takes its look. */
+.icon-button {
+  -webkit-tap-highlight-color: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.icon-button:hover {
+  background: var(--surface-hover);
+  color: var(--fg-strong);
+}
+
+.icon-button--active,
+.icon-button--active:hover {
+  background: var(--surface-hover);
+  color: var(--accent-text);
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+}
+
+/* The theme toggle shows the theme it switches to: the moon on paper, the sun on ink. Both icons are rendered and
+   data-theme picks one, so the right one shows before React hydrates. */
+.theme-toggles {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.theme-icon--on-dark,
+[data-theme='dark'] .theme-icon--on-light {
+  display: none;
+}
+
+[data-theme='dark'] .theme-icon--on-dark {
+  display: block;
+}
+
+/* The NuGet and GitHub links: the icon alone in the navbar, their label still read by screen readers; text in the
+   mobile menu. */
+.navbar__item.navbar-icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  margin: 0 0.125rem;
+  border-radius: var(--radius-md);
+  font-size: 0;
+  color: var(--fg-2);
+  transition: background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+/* Below 997px Infima hides every navbar item from the top bar; the display above would bring these back. */
+@media (max-width: 996px) {
+  .navbar__item.navbar-icon-link {
+    display: none;
+  }
+}
+
+.navbar__item.navbar-icon-link:hover {
+  background: var(--surface-hover);
+  color: var(--fg-strong);
+}
+
+.navbar__item.navbar-icon-link > svg {
+  display: none;
+}
+
+.navbar__item.navbar-icon-link::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+/* The design system's icons, drawn as masks: Lucide's `github` (ISC license) and its own `nuget`, a line redraw
+   of the NuGet mark in the Lucide grammar. */
+.navbar-icon-link--github {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4'/%3E%3Cpath d='M9 18c-4.51 2-5-2-7-2'/%3E%3C/svg%3E");
+}
+
+.navbar-icon-link--nuget {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='3' cy='3' r='1'/%3E%3Crect x='6' y='6' width='16' height='16' rx='5'/%3E%3Ccircle cx='10.5' cy='10.5' r='1.5'/%3E%3Ccircle cx='16.5' cy='16.5' r='2.5'/%3E%3C/svg%3E");
+}
+
+/* ---- Navbar ---------------------------------------------------------------------------------------------------- */
+
+/* bg-page at 92 % with an 8px blur. The blur sits on a pseudo-element: a backdrop-filter on .navbar itself would
+   become the containing block of the fixed mobile sidebar it holds. */
+.navbar {
+  border-bottom: 1px solid var(--border-1);
+}
+
+.navbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--bg-page) 92%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.navbar-sidebar {
+  background-color: var(--bg-page);
+}
+
+.navbar__brand {
+  margin-right: 1.25rem;
+}
+
+/* The lockup's name is 0.47 of its height: 34px sets it at 16px, still within the compact drawing's range. */
+.navbar__logo {
+  height: 34px;
+}
+
+/* The mobile sidebar's header also holds both toggles and the close button: the lockup drops to the 24px floor. */
+.navbar-sidebar__brand .navbar__brand {
+  margin-right: 0.5rem;
+}
+
+.navbar-sidebar__brand .navbar__logo {
+  height: 24px;
+}
+
+.navbar__link,
+.dropdown__link,
+.menu,
+.table-of-contents,
+.breadcrumbs,
+.pagination-nav,
+.footer {
+  font-family: var(--font-display);
+}
+
+.navbar__link {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* Infima colors the active link with the hover color; the design system sets it in accent-text. */
+.navbar__link--active,
+.navbar__link--active:hover {
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+.dropdown__menu {
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+}
+
+/* ---- Sidebar, breadcrumbs, table of contents, pager ------------------------------------------------------------ */
+
+.menu__link,
+.menu__caret {
+  font-size: 15px;
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  font-weight: 600;
+}
+
+.breadcrumbs__link {
+  font-size: 14px;
+}
+
+.table-of-contents::before {
+  content: 'On this page';
+  display: block;
+  margin-bottom: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.table-of-contents ul::before {
+  content: none;
+}
+
+.table-of-contents__link:hover {
+  color: var(--fg-strong);
+}
+
+.table-of-contents__link--active {
+  color: var(--fg-strong);
+  box-shadow: inset 2px 0 0 var(--accent);
+  padding-left: 10px;
+}
+
+.pagination-nav__link {
+  border: 1px solid var(--border-1);
+  background: var(--surface-1);
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--border-2);
+}
+
+.pagination-nav__link:hover .pagination-nav__label {
+  color: var(--accent-text);
+}
+
+.pagination-nav__label {
+  color: var(--fg-strong);
+}
+
+.pagination-nav__sublabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.theme-edit-this-page,
+.theme-last-updated {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ---- Code ------------------------------------------------------------------------------------------------------ */
+
+.theme-code-block {
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+/* The file-name strip: the block's first child, when there is a second. */
+.theme-code-block > div:first-child:not(:last-child) {
+  background: var(--code-bg-header);
+  border-bottom-color: var(--code-border);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+.theme-code-block-highlighted-line {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.theme-code-block button {
+  color: var(--fg-3);
+}
+
+/* ---- Admonitions: a tinted ground and a full hairline, no left bar --------------------------------------------- */
+
+.theme-admonition {
+  --ifm-alert-border-width: 1px;
+  --ifm-alert-border-left-width: 1px;
+  --ifm-alert-border-radius: var(--radius-md);
+  --ifm-alert-foreground-color: var(--fg-1);
+  --signal: var(--note);
+  --signal-soft: var(--note-soft);
+  --ifm-alert-background-color: var(--signal-soft);
+  --ifm-alert-border-color: color-mix(in srgb, var(--signal) 40%, transparent);
+  box-shadow: none;
+}
+
+.theme-admonition-tip {
+  --signal: var(--tip);
+  --signal-soft: var(--tip-soft);
+}
+
+.theme-admonition-warning,
+.theme-admonition-caution {
+  --signal: var(--warning);
+  --signal-soft: var(--warning-soft);
+}
+
+.theme-admonition-danger {
+  --signal: var(--danger);
+  --signal-soft: var(--danger-soft);
+}
+
+/* The heading, in the label style and the signal color; the body stays fg-1. */
+.theme-admonition > div:first-child {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  color: var(--signal);
+}
+
+.theme-admonition > div:first-child svg {
+  fill: var(--signal);
+}
+
+/* The version banners (unreleased, unmaintained) are Infima alerts too. */
+.alert--warning:not(.theme-admonition) {
+  --ifm-alert-background-color: var(--warning-soft);
+  --ifm-alert-border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  --ifm-alert-foreground-color: var(--fg-1);
+  --ifm-alert-border-left-width: 1px;
+  border-width: 1px;
+}
+
+/* ---- Badges, announcement bar ---------------------------------------------------------------------------------- */
+
+.badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  border-radius: var(--radius-sm);
+}
+
+.badge--secondary {
+  --ifm-badge-background-color: var(--accent-soft);
+  --ifm-badge-border-color: transparent;
+  color: var(--accent-text);
+}
+
+div[role='banner'] {
+  border-bottom: 1px solid var(--border-1);
+  font-family: var(--font-display);
+  font-size: 14px;
+}
+
+div[role='banner'] > div {
+  padding: 8px 0;
+}
+
+/* ---- Footer ---------------------------------------------------------------------------------------------------- */
+
+.footer {
+  border-top: 1px solid var(--border-1);
+}
+
+.footer__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.footer__link-item {
+  font-size: 15px;
+}
+
+/* 48px: the AdCodicem lockup carries the full codex, which the design system draws from 48px up. */
+.footer__logo {
+  max-width: none;
+  height: 48px;
+}
+
+.footer__copyright {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+/* The Latin baseline: lower case in the source, upper case on screen. */
+.baseline {
+  display: block;
+  margin-top: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: var(--tracking-baseline);
+  text-transform: uppercase;
+  color: var(--accent-text);
 }

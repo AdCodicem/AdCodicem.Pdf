@@ -5,10 +5,12 @@
 // when deciding whether to depend on a young library.
 
 import { previewIsCurrent, readReleases } from './scripts/versions.mjs';
+import { adcodicem } from './src/prism-adcodicem.js';
 
 const organization = 'AdCodicem';
 const repository = 'AdCodicem.Pdf';
 const source = `https://github.com/${organization}/${repository}/tree/main`;
+const baseUrl = `/${repository}/`;
 
 // The user documentation is versioned; the project documents are not — they describe the project, not a
 // release, and always come from main. Each stable line is frozen by the release that opens it (see
@@ -75,14 +77,47 @@ async function sidebarItems({ defaultSidebarItemsGenerator, ...args }) {
   return [...[...categories.values()].sort(byName), ...loose.sort(byName)];
 }
 
+/**
+ * The accessible color schemes (src/css/custom.css) hang off a data-contrast attribute on <html>, which this sets
+ * before the first paint, as Docusaurus does for data-theme: from the reader's choice in the navbar toggle
+ * (src/components/ContrastToggle), or, before they make one, from the system's prefers-contrast setting.
+ *
+ * @type {import('@docusaurus/types').PluginModule}
+ */
+function contrast() {
+  return {
+    name: 'contrast',
+    injectHtmlTags: () => ({
+      headTags: [
+        {
+          tagName: 'script',
+          innerHTML:
+            "(function(){try{var c=localStorage.getItem('adcodicem-contrast');" +
+            "if(c==='accessible'||(c===null&&window.matchMedia('(prefers-contrast: more)').matches))" +
+            "document.documentElement.setAttribute('data-contrast','accessible')}catch(e){}})();",
+        },
+      ],
+    }),
+  };
+}
+
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'AdCodicem.Pdf',
   tagline: 'Managed PDF generation and manipulation for .NET',
-  favicon: 'img/favicon.svg',
+  favicon: 'img/favicon.ico',
+
+  // The design system's Pdf favicon pack, with the link tags it prescribes; favicon.ico above is the fallback every
+  // browser requests.
+  headTags: [
+    { rel: 'icon', type: 'image/png', sizes: '16x16', href: `${baseUrl}img/favicon-16.png` },
+    { rel: 'icon', type: 'image/png', sizes: '32x32', href: `${baseUrl}img/favicon-32.png` },
+    { rel: 'apple-touch-icon', sizes: '180x180', href: `${baseUrl}img/favicon-180.png` },
+    { rel: 'manifest', href: `${baseUrl}site.webmanifest` },
+  ].map((attributes) => ({ tagName: 'link', attributes })),
 
   url: `https://${organization.toLowerCase()}.github.io`,
-  baseUrl: `/${repository}/`,
+  baseUrl,
   organizationName: organization,
   projectName: repository,
   trailingSlash: false,
@@ -127,6 +162,7 @@ const config = {
   ],
 
   plugins: [
+    contrast,
     [
       '@docusaurus/plugin-content-docs',
       {
@@ -160,8 +196,12 @@ const config = {
   ],
 
   themeConfig: {
+    // The design system is designed dark first: ink is what a reader gets when the system expresses no preference.
+    colorMode: { defaultMode: 'dark', respectPrefersColorScheme: true },
     navbar: {
-      title: 'AdCodicem.Pdf',
+      // The design system's Pdf lockup in its compact drawing, the one for a symbol of 24 to 48px. Its name is
+      // outlined, so it renders in Archivo whatever fonts the reader has.
+      logo: { alt: 'AdCodicem.Pdf', src: 'img/navbar-logo-light.svg', srcDark: 'img/navbar-logo-dark.svg' },
       items: [
         { type: 'docSidebar', sidebarId: 'documentation', position: 'left', label: 'Documentation' },
         { to: '/project/roadmap', label: 'Project', position: 'left' },
@@ -171,11 +211,30 @@ const config = {
           ? [{ type: 'docsVersionDropdown', position: 'right', versions: releases.map(({ line }) => line) }]
           : []),
         { type: 'custom-previewToggle', position: 'right' },
-        { href: `https://github.com/${organization}/${repository}`, label: 'GitHub', position: 'right' },
+        // Drawn as the design system's icon buttons, `nuget` and `github` (custom.css); the label is what screen
+        // readers and the mobile menu read.
+        {
+          href: 'https://www.nuget.org/packages/AdCodicem.Pdf',
+          label: 'NuGet',
+          position: 'right',
+          className: 'navbar-icon-link navbar-icon-link--nuget',
+          'aria-label': 'NuGet package',
+          title: 'NuGet package',
+        },
+        {
+          href: `https://github.com/${organization}/${repository}`,
+          label: 'GitHub',
+          position: 'right',
+          className: 'navbar-icon-link navbar-icon-link--github',
+          'aria-label': 'GitHub repository',
+          title: 'GitHub repository',
+        },
       ],
     },
     footer: {
-      style: 'dark',
+      style: 'light',
+      // The AdCodicem lockup: the brand the project belongs to, its name outlined like the navbar's.
+      logo: { alt: 'AdCodicem', src: 'img/footer-logo-light.svg', srcDark: 'img/footer-logo-dark.svg' },
       links: [
         {
           title: 'Documentation',
@@ -193,16 +252,22 @@ const config = {
             { label: 'Roadmap', to: '/project/roadmap' },
             { label: 'Decisions', to: '/project/adr/' },
             { label: 'GitHub', href: `https://github.com/${organization}/${repository}` },
+            { label: 'NuGet', href: 'https://www.nuget.org/packages/AdCodicem.Pdf' },
             { label: 'Contributing documents', to: '/project/corpus-contributions' },
           ],
         },
       ],
-      // HTML, which Docusaurus renders as is: the full disclaimer is on the introduction and in the README.
+      // HTML, which Docusaurus renders as is: the full disclaimer is on the introduction and in the README. The
+      // Latin baseline closes it, typed lower case and set upper case by the `baseline` style.
       copyright:
         `<a href="https://github.com/${organization}/${repository}/blob/main/LICENSE">MIT licensed</a>, ` +
-        `provided as is, without warranty of any kind. Documentation built ${new Date().getFullYear()}.`,
+        `provided as is, without warranty of any kind. Documentation built ${new Date().getFullYear()}.` +
+        '<span class="baseline" lang="la">lege artis</span>',
     },
+    // One theme for both color modes: its colors are the --code-* tokens, which each scheme sets.
     prism: {
+      theme: adcodicem,
+      darkTheme: adcodicem,
       additionalLanguages: ['csharp', 'bash', 'json'],
     },
   },
