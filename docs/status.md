@@ -15,40 +15,40 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
   fifth, [#157] and [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on
   2026-10-03, the seventh, [#118], with [#226] that day, and the eighth, [#119] and [#172], with [#231] on 2026-10-04;
-  then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every
-  other issue filed under M02 is closed. The debts come from
+  the ninth, [#125] and [#126], in [#238]; then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial
+  review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
   fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
-  [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]) and its eighth ([#229],
-  [#230]); [#123] moved to M20.
+  [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]), its eighth ([#229],
+  [#230]) and its ninth ([#237]); [#123] moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 3,256 unit on `main` since [#231] (3 skipped: 2 by design, and the theory
+- **Tests**: 3,256 unit on `main` since [#231], 3,313 on [#238]'s branch (3 skipped: 2 by design, and the theory
   over the remote corpus's streams whose length is wrong, which has no document without it) + 1,306 integration
   (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the
-  remote documents fetched, on [#231]'s branch: 5,161 unit with the 233 this container holds, 3 skipped — the laziness
+  remote documents fetched, on [#238]'s branch: 5,218 unit with the 233 this container holds, 3 skipped — the laziness
   test on the two documents recorded as unsupported until [#47], which every other test holds to their expectations,
   and the private manifest this container lacks —; 3,266 integration against qpdf in its container, 3,260 passed and
-  6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 29's 5,218
-  acceptance tests and 3,329 referee checks, on [#231]'s branch.
+  6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 33's 5,275
+  acceptance tests and 3,329 referee checks, on [#238]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.5 % of `src/` — 5,693 of 5,721 lines on `main` since [#231], every one of its patch's
-  218 measurable lines among them, every branch taken. The 28 left are those
-  the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private, or of a private type, which no
-  input reaches — nine lines of `ArlingtonWalk` (193, 849, 956, 966, 967, 987, 989, 1061, 1077) and three of a
-  defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a switch's
+  Arlington tables left out), 99.5 % of `src/` — 5,746 of 5,774 lines on [#238]'s branch, every one of its patch's 109
+  measurable lines among them, every branch taken; 5,693 of 5,721 on `main` since [#231]. The 28 left on the branch
+  are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private, or of a private type,
+  which no input reaches — nine lines of `ArlingtonWalk` (193, 849, 956, 966, 967, 987, 989, 1061, 1077) and three of
+  a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a switch's
   default arm (`CrossReferenceProbe` 86 and 231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 87 and 96), a line
-  the compiler puts after a call that never returns (`PdfFileReader` 1311), two branches the compiler adds that no
-  input takes (`FileQuote` 138, an interpolation's buffer too small; `PdfObjectParser` 782, a concatenation's null
-  check); and eight more, the same before this branch: `EndStreamAfter`'s two defensive arms (`PdfFileReader` 1279,
-  1283, journal of batch 6), the `HasValue` checks the compiler adds on a `long?` and a defensive arm of `Expanded`
-  (2479, 2629, batch 5), `ObjectStreamDependencies.Location`'s arm without a Regular entry (222, batch 7), one of the
-  six ways out of a cross-reference stream row's `switch` (2578) and `Repair`'s guard against a second rebuild (3501,
-  3503). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `78ff13b` (CI run 485), [#231]'s last commit. `Remote corpus` passed on every document in the
+  the compiler puts after a call that never returns (`PdfFileReader` 1347), two branches the compiler adds that no
+  input takes (`FileQuote` 138, an interpolation's buffer too small; `PdfObjectParser` 791, a concatenation's null
+  check); and eight more, the same before this branch: `EndStreamAfter`'s two defensive arms (`PdfFileReader` 1315,
+  1319, journal of batch 6), the `HasValue` checks the compiler adds on a `long?` and a defensive arm of `Expanded`
+  (2602, 2752, batch 5), `ObjectStreamDependencies.Location`'s arm without a Regular entry (223, batch 7), one of the
+  six ways out of a cross-reference stream row's `switch` (2701) and `Repair`'s guard against a second rebuild (3635,
+  3637). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
+- **CI**: green on `main` at `26506db` (CI run 504). `Remote corpus` passed on every document in the
   nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
   after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run
   22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
@@ -59,12 +59,15 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   first attempt and passed whole at its one rerun. The nightly run 27, on `main` at `2f26244`, lost the CFIA's form,
   web.archive.org refusing the connection ([#204]), and passed every test over the 241 others. Runs 28 and 29, on
   [#231]'s branch, passed whole at their first attempt, the second on the code the branch ends with; CI run 473 is
-  green on that code.
+  green on that code. The nightly run 30, on `main` at `78ff13b`, passed whole at its first attempt, and so did runs
+  31 and 32, on [#238]'s branch, the second on the batch's last code; run 33, on that code rebased onto `main`, lost
+  ECan's scan at its first attempt, web.archive.org refusing the connection ([#204]), and passed whole at its one
+  rerun. CI run 509 is green on that code.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 29 on 2026-10-03. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in run 33 on 2026-10-04. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.57`, one per push to `main` until [#227], through trusted publishing, 1,141 downloads on 2026-10-02.
   The `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified. With [#227] merged, previews come
@@ -217,11 +220,12 @@ One pull request per batch, each design question put to the maintainer after mea
       its branch (journal of 2026-10-03).
    8. [#119] and [#172], what the parser read in silence — done, merged with [#231] on 2026-10-04, `Remote corpus`
       run 28 green on its branch (journal of 2026-10-03).
-   9. [#125] and [#126].
+   9. [#125] and [#126], offsets past what a long holds and where a trailer's finding goes — done in [#238],
+      `Remote corpus` run 31 green on its branch (journal of 2026-10-04).
    10. [#190] and [#212], the reader's public surface.
    11. [#164] and [#183], the index's size, the first new guard.
    12. [#165] and [#166], filter chains, with [#199], [#209] and [#219].
-   13. [#128].
+   13. [#128], with [#237].
    14. [#129] and [#175].
    15. [#160] and [#161], object-stream members, with [#200] and [#202].
    16. [#174] and [#170], stream data, with [#220], [#224] and [#230].
@@ -247,7 +251,7 @@ One pull request per batch, each design question put to the maintainer after mea
    [#212], which batch 3 filed, is paid in batch 10, with [#190], as the maintainer placed it on 2026-10-02. The
    seven batch 6 filed are placed above: [#218] with [#132], as the maintainer placed it on 2026-10-02, the others
    with the batch whose code they share. The two batch 8 filed are placed likewise: [#229] with [#132], [#230] with
-   [#174].
+   [#174]; and the one batch 9 filed, [#237], with [#128].
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -268,6 +272,93 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-04 — Batch 9: offsets past what a long holds, and where a trailer's finding goes ([#125], [#126])
+- **The question.** [#125]: the reader added the header's offset to every offset the file gives unchecked, so five
+  bytes before the header turned a `startxref`, a `/Prev` or a row of 9223372036854775807 into a negative position;
+  [#126]: a finding on a value the trailer holds was located at the first section's trailer, past the end of the file
+  when `startxref` named an offset past it. Measured first, each claim twice, on files built independently by five
+  agents and a critic. The wrap reached far more than [#125] named: the loop and the cut read as none, so
+  `xref.chain-loop` and `xref.checked-in-part` went unsaid while `file.size-wrong` and `page-tree.page-orphaned` judged
+  a cut chain; a section named that far read as named by no offset; rows of classic tables, which the lexer reads at any
+  width, and of cross-reference streams wrapped too, and with 513 bytes or more before the header the object was looked
+  for in the file's first kilobyte; `Validate` threw where an object stream's finding was located, at a wrapped row or
+  at a negative one with no wrap at all ([#167]'s); `stream.self-reference` and `syntax.depth-exceeded` were placed
+  outside the file; and a negative row behind bytes before the header landed in them and was judged shifted. Trailer
+  findings went past the end, to an offset holding no trailer, or to the file's length when the first table ran to it.
+  The corpus — 401 documents, 18 with bytes before their header, offsets up to 146,707,130 — reaches none of it: its
+  records, read and validated whole, are the same before and after. The referees: qpdf refuses the shift, says so and
+  rebuilds; poppler and pdfium check the sum; MuPDF refuses to open a file whose `/Prev` is the largest long; pypdf and
+  pdfminer.six throw. Four questions followed.
+- **Settled with the maintainer**, each as recommended:
+  - a message names an offset whose shift overflows exactly, on 64 unsigned bits; the records keep a position
+    saturated at `long.MaxValue`, past the end of any file, and the offset as written beside it, which the three rules
+    that name it read;
+  - a finding on a trailer value is located at the newest trailer the reader merged: the first section's when the
+    chain read it, otherwise the newest a rebuild found, otherwise the document;
+  - one test in the header's frame at every shift site, the validator's two copies included, negative offsets
+    included: a negative offset lies before the file's start;
+  - two neighbors paid: `xref.chain-loop`'s wording for an offset outside the file, and `PdfDiagnostic.Position`
+    documenting that the file's length designates its end; the rest filed or commented.
+- **Done**, in [#238]:
+  - `PdfFileReader.PositionOf` tests an offset before adding the header's: negative, kept as given; past what a long
+    holds, `long.MaxValue`; `DescribeOffset` writes it exactly. Every shift site uses them: the chain's sections, loop
+    and cut, the entries, the relocation of objects and sections, the read while the chain is read, the reports on an
+    object, and the validator's probe and dependency walk, which locate a finding at the object alone when its row lies
+    outside the file. A cut outside the file is placed at the section that names it, the offset in its message, as a
+    missing section is (batch 2); the search near an entry reaches nothing more than 512 bytes before the file's start;
+  - `XRefEntry.FoundByReader`: an offset the reader found, rebuilding or searching near a row, is a position, before
+    the header though it be, and a section relocated there is read; the index leaves a row's negative offset out of
+    the bounds of the search for an `endstream`;
+  - `PdfFileReader.TrailerLocation`, the rebuild recording where its newest trailer starts, read by both walks;
+  - a loop through an offset where the chain read no section says it only named it, in the file as outside it.
+
+  Docs: `reference/diagnostics.md`, `reference/validation-rules.md`, `reference/validation.md` (where a trailer's
+  finding goes), `reference/reader-limits.md`; the threat model's gap for [#125] made a defense row, with the rows for
+  loops, cuts, sections, objects not where their entry says, object streams and the validator's locations, and
+  [#167]'s gap without the negative entry.
+- **Reviewed.** An adversarial review over five lenses — the reader, the validator, hostile files, the tests, the
+  documents — gave 28 findings, each put to two refuters: 27 kept, 25 by both, 1 refuted.
+  - Kept and fixed, among them:
+    - a regression of the batch's own: a section found near its offset but before the header came back as a negative
+      offset, outside the file, and the next candidate, the table naming it, made a loop — a section is now read at a
+      position;
+    - a negative row still bounded the search for an `endstream` in the bytes before the header;
+    - a loop through an offset the chain named and never read said it had read a section there, beside
+      `xref.section-not-found` saying it holds none;
+    - `limit.xref-section-count` for a cut outside the file named no offset, where the wrapped position had carried it;
+    - seven arms no test held, mutants the suite let live among them; documents that said more than the code.
+  - Commented, not this batch's: [#188] (a relocation landing on the section that names it), [#197] (the nearby
+    search's window near the file's start).
+  - Refuted: that the guard before the file's start assumed a radius the window does not have — [#197]'s, and the
+    guard narrows it.
+- **Tests**: 57 new, 3,256 to 3,313 (5,218 with the remote documents this container holds). Each case the fixes exist
+  for fails on the code before them. 40 mutants of the batch's defenses, each run against the suite: 37 fail a test
+  once the two the first run left were held. Three change nothing a test can see, and stay as defenses: a section's
+  relocation from an offset whose sum wraps, which stays outside the file; reading again at a rebuilt entry, every one
+  of which the reader found; and a found entry bounding the search for an `endstream`, which stops at that entry's
+  header anyway.
+- **Tracking.** Filed [#237] — a rebuild the object graph's walk triggers merges trailer keys the walk has passed, so
+  the first validation misses what the second finds — reproduced twice on two files; placed with [#128] in batch 13.
+  Commented: [#167] (the negative entry paid), [#171] (a `trailer` keyword in a comment merged by the rebuild), [#154]
+  (a cross-reference stream's dictionary the rebuild never merges, and where its trailer's findings would then go),
+  [#188], [#197].
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - each of the batch's commits builds with no warning and passes alone;
+  - the unit tests, 3,313, 3 skipped; 5,218 with the 233 remote documents this container holds, 3 skipped;
+  - the patch's 109 measurable lines of `src/` covered, every branch taken, on the committed corpus alone; 99.5 % of
+    `src/` in all, the 28 lines left those left before the batch;
+  - the integration suite against qpdf in its container, twice: 3,266, 3,260 passed and 6 skipped;
+  - the corpus read and validated whole, twice, before the batch and with it: every record the same;
+  - the site builds, before the rebase onto `main`'s redesign and after it;
+  - `Remote corpus` runs 31 and 32 on the branch, green at their first attempt with all 242 documents, the second on
+    the batch's last code; run 33, on it rebased onto `main`'s site work, which touches none of it, lost ECan's scan at
+    its first attempt, web.archive.org refusing the connection ([#204]), and passed whole at its one rerun;
+  - commitlint finds nothing; five messages were reworded before the first push, the code of every commit unchanged;
+    the branch rebased once onto `main`, each commit re-signed and checked alone again, the patch's coverage the same,
+    and the site built again.
+- **Next**: batch 10, [#190] and [#212], the reader's public surface, its questions put when it starts.
 
 ### 2026-10-04 — The design system on the site, the README and the package, outside any milestone ([#235])
 - **The question.** Apply the AdCodicem design system, as AdCodicem.ValueObjects did, to the site, the README and the
@@ -1392,3 +1483,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#231]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/231
 [#234]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/234
 [#235]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/235
+[#237]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/237
+[#238]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/238
