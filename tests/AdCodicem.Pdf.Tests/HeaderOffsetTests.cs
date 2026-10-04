@@ -172,6 +172,148 @@ public sealed class HeaderOffsetTests
             "its /Prev as the reference 9 0 R, where ISO 32000-1 makes it direct (Table 15)");
     }
 
+    [Theory]
+    [InlineData(Largest, LargestShifted)]
+    [InlineData("999999", "1000004")]
+    public void An_entry_past_what_a_long_holds_once_the_header_is_added_places_its_object_outside_the_file(string row, string named)
+    {
+        var file = Shifted(PdfTemplate.Sound.Replace("{row:3}", row + " 00000 n", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue("the rebuild finds it");
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefEntryOutOfRange).Which.Message.Should().Be(
+            $"The entry of object 3 places it at offset {named}, outside the file.");
+        Relocations(document).Should().BeEmpty();
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefEntryBroken).Message.Should().Be(
+            $"The entry of object 3 gives offset {named}, outside the file.");
+    }
+
+    [Fact]
+    public void An_entry_past_what_a_long_holds_is_not_looked_for_at_the_file_s_start_whatever_precedes_the_header()
+    {
+        // Six hundred bytes before the header: the wrapped sum, less the search's radius, did not wrap back, and the
+        // search read the file's first kilobyte, where it found the object.
+        var file = Shifted(PdfTemplate.Sound.Replace("{row:3}", Largest + " 00000 n", StringComparison.Ordinal), junk: 600);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue("the rebuild finds it");
+        Relocations(document).Should().BeEmpty();
+        document.WasRepaired.Should().BeTrue();
+        Codes(file).Should().BeEquivalentTo(
+            Codes(Shifted(PdfTemplate.Sound.Replace("{row:3}", "999999 00000 n", StringComparison.Ordinal), junk: 600)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(9)]
+    public void A_negative_entry_places_its_object_outside_the_file_whatever_precedes_the_header(int junk)
+    {
+        // With nine bytes before the header, -3 counted from it fell inside those bytes, and the entry was judged shifted.
+        var file = Shifted(PdfTemplate.Sound.Replace("{row:3}", "-3 00000 n", StringComparison.Ordinal), junk);
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        var finding = Single(report, PdfValidationRuleIds.XRefEntryBroken);
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Message.Should().Be("The entry of object 3 gives offset -3, outside the file.");
+        report.Contains(PdfValidationRuleIds.XRefEntryShifted).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_entry_far_before_the_file_s_start_is_not_looked_for_at_it()
+    {
+        // The search reaches 512 bytes either side of an entry: nothing of the file lies within reach of this one, whose
+        // neighborhood was worked out from 0 until now.
+        var file = PdfTemplate.SoundWith("{row:3}", "-9223372036854775000 00000 n");
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue("the rebuild finds it");
+        Relocations(document).Should().BeEmpty();
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefEntryOutOfRange).Which.Message.Should().Be(
+            "The entry of object 3 places it at offset -9223372036854775000, outside the file.");
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_finds_before_the_header_is_read_where_it_was_found()
+    {
+        // An offset the reader found is no offset the file gives: a negative one, counted from the header, names a byte
+        // of the file before it.
+        const string Before = "4 0 obj\n(before the header)\nendobj\n";
+        var template = PdfTemplate.Sound
+            .Replace("/Pages 2 0 R >>", "/Pages 2 0 R /Test 4 0 R >>", StringComparison.Ordinal)
+            .Replace("startxref\n{xref:1}", "startxref\n999999", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(Before).Concat(PdfTemplate.Build(template)).ToArray();
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("before the header");
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefEntryOutOfRange).Should().BeFalse();
+        document.Reader.Index.TryGet(4, out var entry).Should().BeTrue();
+        entry.FoundByReader.Should().BeTrue();
+        entry.Offset.Should().Be(-Before.Length);
+        document.Reader.PositionOf(entry).Should().Be(0);
+    }
+
+    [Fact]
+    public void An_object_found_near_its_entry_before_the_header_is_placed_where_it_was_found()
+    {
+        // The entry gives the header's own offset, 0, where the object is not; it is found within 512 bytes, before the
+        // header.
+        const string Before = "4 0 obj\n(before the header)\nendobj\n";
+        var template = PdfTemplate.Sound
+            .Replace("/Pages 2 0 R >>", "/Pages 2 0 R /Test 4 0 R >>", StringComparison.Ordinal)
+            .Replace("0 4\n", "0 5\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n0000000000 00000 n \n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 5", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(Before).Concat(PdfTemplate.Build(template)).ToArray();
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("before the header");
+        document.Reader.Index.TryGet(4, out var entry).Should().BeTrue();
+        entry.FoundByReader.Should().BeTrue();
+        document.Reader.PositionOf(entry).Should().Be(0);
+        Relocations(document).Should().ContainSingle().Which.Position.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(Largest)]
+    [InlineData("999999")]
+    public void A_report_on_an_object_its_entry_places_outside_the_file_is_placed_nowhere(string row)
+    {
+        // Each stream takes its /Length from the next: reading the first nests seventy loads, and the reader stops at the
+        // sixty-fifth, object 74, whose entry lies outside the file. The report was placed at the wrapped sum, or past the
+        // end.
+        var text = new StringBuilder("%PDF-1.7\n");
+        var offsets = new SortedDictionary<int, long>();
+        offsets[1] = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        offsets[2] = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        for (var number = 10; number < 80; number++)
+        {
+            offsets[number] = text.Length;
+            var length = number < 79 ? $"{number + 1} 0 R" : "5";
+            text.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Length {length} >>\nstream\nhello\nendstream\nendobj\n");
+        }
+
+        var xref = text.Length;
+        text.Append("xref\n0 1\n0000000000 65535 f \n1 2\n");
+        text.Append(CultureInfo.InvariantCulture, $"{offsets[1]:D10} 00000 n \n{offsets[2]:D10} 00000 n \n10 70\n");
+
+        for (var number = 10; number < 80; number++)
+        {
+            text.Append(number == 74 ? row : offsets[number].ToString("D10", CultureInfo.InvariantCulture)).Append(" 00000 n \n");
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 80 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        using var document = PdfDocument.Open(Shifted(text.ToString()));
+
+        _ = document.GetObject(new PdfObjectId(10));
+
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.SyntaxDepthExceeded).Which.Position.Should().Be(-1);
+    }
+
     /// <summary>
     /// The update, five bytes before its header, its trailer adding <paramref name="entries"/> with <paramref name="offset"/>
     /// for <c>{offset}</c> and giving <paramref name="size"/>, and object 4 written as <paramref name="four"/>.
@@ -188,6 +330,10 @@ public sealed class HeaderOffsetTests
         var prefix = junk == 0 ? string.Empty : new string('-', junk - 1) + "\n";
         return Encoding.Latin1.GetBytes(prefix).Concat(PdfTemplate.Build(template)).ToArray();
     }
+
+    /// <summary>The objects the reader found near where their entries place them, which share their code with the header's offset.</summary>
+    private static IEnumerable<PdfDiagnostic> Relocations(PdfDocument document) =>
+        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.XRefOffsetAdjusted && d.Message.StartsWith("Object ", StringComparison.Ordinal));
 
     /// <summary>What the reader reports of the file and what validating it finds, by code, in order.</summary>
     private static (string[] Diagnostics, string[] Findings) Codes(byte[] file, PdfReaderOptions? options = null)

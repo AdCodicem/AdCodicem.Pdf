@@ -508,7 +508,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 return null;
             }
 
-            var read = TryReadUnrecorded(id, entry.Offset + _headerOffset, out var value) ? value : null;
+            var read = TryReadUnrecorded(id, PositionOf(entry), out var value) ? value : null;
             (_readWhileChainIsRead ??= [])[id] = read;
             return read;
         }
@@ -627,7 +627,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
 
         var position = _xref.TryGet(objectStream, out var entry) && entry.Kind == XRefEntryKind.Regular
-            ? entry.Offset + _headerOffset
+            ? EntryPosition(entry)
             : -1;
 
         _diagnostics.Warn(
@@ -648,7 +648,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         _nestingReported = true;
         var position = _xref.TryGet(id.Number, out var entry) && entry.Kind == XRefEntryKind.Regular
-            ? entry.Offset + _headerOffset
+            ? EntryPosition(entry)
             : -1;
 
         _diagnostics.Warn(
@@ -657,6 +657,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 CultureInfo.InvariantCulture,
                 $"Object {id.Number} is reached through more nested objects than the reader will follow, and reads as null."),
             position);
+    }
+
+    /// <summary>
+    /// Gives where a regular entry places its object, for a report on the object; -1 when that lies outside the file, where
+    /// no report is placed (#125): the object, when it was read, was read elsewhere, and its entry is corrected only once it
+    /// is.
+    /// </summary>
+    private long EntryPosition(XRefEntry entry)
+    {
+        var position = PositionOf(entry);
+        return IsInFile(position) ? position : -1;
     }
 
     /// <inheritdoc/>
@@ -1523,7 +1534,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     }
 
     /// <summary>Determines whether <paramref name="position"/>, a position in the file, lies inside it.</summary>
-    private bool IsInFile(long position) => position >= 0 && position < _source.Length;
+    public bool IsInFile(long position) => position >= 0 && position < _source.Length;
 
     /// <summary>
     /// Gives the position in the file <paramref name="offset"/>, an offset the file gives, names: the header's own offset
@@ -1546,6 +1557,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     public static long PositionOf(long offset, long headerOffset) =>
         offset < 0 ? offset : offset > long.MaxValue - headerOffset ? long.MaxValue : offset + headerOffset;
 
+    /// <summary>
+    /// Gives the position in the file a regular entry places its object at: as <see cref="PositionOf(long)"/> gives it for an
+    /// offset a row of the file gives; where the reader found the object's header for one it found, before the header
+    /// though it be.
+    /// </summary>
+    public long PositionOf(XRefEntry entry) => entry.FoundByReader ? entry.Offset + _headerOffset : PositionOf(entry.Offset);
 
     /// <summary>
     /// Writes the position <paramref name="offset"/>, an offset the file gives, names, as a message names it: exactly, the
@@ -2828,7 +2845,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     {
         var loaded = entry.Kind switch
         {
-            XRefEntryKind.Regular => LoadRegularObject(id, entry.Offset + _headerOffset),
+            XRefEntryKind.Regular => LoadRegularObject(id, entry),
             XRefEntryKind.Compressed => LoadCompressedObject(id, entry),
             _ => PdfNull.Instance,
         };
@@ -2846,22 +2863,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     }
 
     /// <summary>
-    /// Loads an object the index places at <paramref name="offset"/>, in at most three attempts: where the
-    /// index says, in the neighborhood, and wherever a rebuilt index says.
+    /// Loads an object <paramref name="entry"/> places, in at most three attempts: where the index says, in the
+    /// neighborhood, and wherever a rebuilt index says.
     /// </summary>
     /// <remarks>
     /// The attempts are counted rather than chained. An earlier version let relocation call back into
     /// loading, and a fuzzed file drove the two into each other until the stack ran out — a file killing
     /// the process is the exact outcome the reader exists to prevent.
     /// </remarks>
-    private PdfObject? LoadRegularObject(PdfObjectId id, long offset)
+    private PdfObject? LoadRegularObject(PdfObjectId id, XRefEntry entry)
     {
-        if (offset < 0 || offset >= _source.Length)
+        var offset = PositionOf(entry);
+
+        if (!IsInFile(offset))
         {
-            // No position in the file names the entry, which the index does not keep where it was read.
+            // No position in the file names the entry, which the index does not keep where it was read. Only a row of the
+            // file places an object there: one the reader found is in the file.
             _diagnostics.Warn(
                 PdfDiagnosticCodes.XRefEntryOutOfRange,
-                string.Create(CultureInfo.InvariantCulture, $"The entry of object {id.Number} places it at offset {offset}, outside the file."));
+                string.Create(
+                    CultureInfo.InvariantCulture, $"The entry of object {id.Number} places it at offset {DescribeOffset(entry.Offset)}, outside the file."));
         }
         else if (TryParseObjectAt(id.Number, offset, out var atRecordedOffset))
         {
@@ -2881,7 +2902,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             // The entry records the header found, as a rebuilt one does: not the generation of the reference that asked
             // first, which would make the index depend on the order objects were asked for (#118).
             PreserveChainIndex();
-            _xref.Set(id.Number, XRefEntry.Regular(nearby - _headerOffset, generation));
+            _xref.Set(id.Number, XRefEntry.Found(nearby - _headerOffset, generation));
             return relocated;
         }
 
@@ -2892,9 +2913,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         Repair();
 
-        return _xref.TryGet(id.Number, out var entry) &&
-               entry.Kind == XRefEntryKind.Regular &&
-               TryParseObjectAt(id.Number, entry.Offset + _headerOffset, out var afterRebuild)
+        return _xref.TryGet(id.Number, out var rebuilt) &&
+               rebuilt.Kind == XRefEntryKind.Regular &&
+               TryParseObjectAt(id.Number, PositionOf(rebuilt), out var afterRebuild)
             ? afterRebuild
             : null;
     }
@@ -3219,6 +3240,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     {
         actualOffset = -1;
         generation = 0;
+
+        if (approximateOffset < -NearbySearchRadius)
+        {
+            // Nothing of the file lies within reach of an offset that far before its start, as a negative row gives; the
+            // window is not worked out from it, which would wrap (#125).
+            return false;
+        }
 
         var start = Math.Max(0, approximateOffset - NearbySearchRadius);
         var length = (int)Math.Min(NearbySearchRadius * 2, source.Length - start);
@@ -3649,7 +3677,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                         redefinitions.Add(number);
                     }
 
-                    _xref.Set(number, XRefEntry.Regular(position + headerStart - _headerOffset, generation));
+                    _xref.Set(number, XRefEntry.Found(position + headerStart - _headerOffset, generation));
                     found++;
                 }
 

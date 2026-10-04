@@ -216,12 +216,20 @@ internal sealed class ObjectStreamDependencies
     /// <remarks>
     /// A stream the walk locates was loaded through a regular entry of that index, which the reader copies before it
     /// first changes it; when the chain gave none, the rebuilt index keeps the stream's entry, regular, once made. The
-    /// location without an entry is defensive.
+    /// location without an entry is defensive. A row that places the stream outside the file, which the reader found
+    /// elsewhere, places it nowhere: the finding is located at the object alone (#125).
     /// </remarks>
-    private static PdfValidationLocation Location(IO.PdfFileReader reader, int stream) =>
-        (reader.ChainIndex ?? reader.Index).TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular
-            ? PdfValidationLocation.OfObject(new PdfObjectId(stream, entry.Generation), entry.Offset + reader.HeaderOffset)
-            : PdfValidationLocation.OfObject(new PdfObjectId(stream));
+    private static PdfValidationLocation Location(IO.PdfFileReader reader, int stream)
+    {
+        if (!(reader.ChainIndex ?? reader.Index).TryGet(stream, out var entry) || entry.Kind != XRefEntryKind.Regular)
+        {
+            return PdfValidationLocation.OfObject(new PdfObjectId(stream));
+        }
+
+        var id = new PdfObjectId(stream, entry.Generation);
+        var position = reader.PositionOf(entry);
+        return reader.IsInFile(position) ? PdfValidationLocation.OfObject(id, position) : PdfValidationLocation.OfObject(id);
+    }
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
