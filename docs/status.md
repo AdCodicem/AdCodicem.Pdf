@@ -78,8 +78,8 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   *Left to the maintainer*), and stops at its first step until they are made.
 - **The site**, <https://adcodicem.github.io/AdCodicem.Pdf/>, is versioned (ADR 31). With [#227] it is redeployed by
   every preview run, and by a push to `main` that changed no package input since the version on nuget.org (ADR 49);
-  before the first stable release the preview is the whole documentation. Since 2026-10-04 (branch
-  `claude/friendly-ptolemy-he5k0l`, not merged yet) it wears the AdCodicem design system, serves the documentation
+  before the first stable release the preview is the whole documentation. Since 2026-10-04 ([#235]) it
+  wears the AdCodicem design system, serves the documentation
   under `/docs` behind a homepage, redirects every former address, and has a local search
   (`docs/website/README.md`, *Look and feel*).
 - **Supply chain**: OpenSSF Scorecard **7.6** on `74ce382`. What Scorecard still marks down is settings and
@@ -269,7 +269,7 @@ not a fault of the file: the rules on it report at most, as information, that it
 
 ## Journal
 
-### 2026-10-04 — The design system on the site, the README and the package, outside any milestone
+### 2026-10-04 — The design system on the site, the README and the package, outside any milestone ([#235])
 - **The question.** Apply the AdCodicem design system, as AdCodicem.ValueObjects did, to the site, the README and the
   package icon; scope and choices settled with the maintainer one question at a time.
 - **In the design system first**: the compact Pdf lockups (`pdf-logo-horizontal-compact`, `-white`), which the navbar's
@@ -1390,3 +1390,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#230]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/230
 [#231]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/231
 [#234]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/234
+[#235]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/235
