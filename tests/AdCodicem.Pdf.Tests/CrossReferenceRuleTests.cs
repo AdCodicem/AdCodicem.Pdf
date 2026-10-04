@@ -1405,6 +1405,23 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
+    public void An_object_stream_found_near_a_row_past_the_end_is_located_at_the_object_alone()
+    {
+        // #125: the row of object stream 4, which has no /N, lies just past the end of the file, and the stream is found
+        // within reach of it: the probe's finding is located at the object alone, not past the end.
+        static byte[] Build(ulong row) => Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(
+                WithRows([1, 8, 2], number: 4, type: 1, second: row, third: 0))
+            .Replace("/N 2 /First", "/X 2 /First", StringComparison.Ordinal));
+        var length = Build(0).Length;
+        using var document = PdfDocument.Open(Build((ulong)length + 10));
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Location.Position.Should().BeNull();
+    }
+
+    [Fact]
     public void An_object_stream_whose_row_wraps_is_not_looked_for_at_the_file_s_start()
     {
         // #125: six hundred bytes before the header, and an object stream without /N, near the file's start. The wrapped
