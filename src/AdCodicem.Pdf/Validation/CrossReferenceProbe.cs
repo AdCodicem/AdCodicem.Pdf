@@ -123,13 +123,13 @@ internal sealed class CrossReferenceProbe
     {
         var source = reader.Source;
         var id = new PdfObjectId(number, entry.Generation);
-        var offset = entry.Offset + reader.HeaderOffset;
+        var offset = reader.PositionOf(entry);
 
-        if (offset < 0 || offset >= source.Length)
+        if (!reader.IsInFile(offset))
         {
             Broken.Add(new ProbeFinding(
                 PdfValidationLocation.OfObject(id),
-                Invariant($"The entry of object {number} gives offset {offset}, outside the file.")));
+                Invariant($"The entry of object {number} gives offset {reader.DescribeOffset(entry.Offset)}, outside the file.")));
             return;
         }
 
@@ -244,7 +244,11 @@ internal sealed class CrossReferenceProbe
             return;
         }
 
-        var offset = entry.Offset + reader.HeaderOffset;
+        var offset = reader.PositionOf(entry);
+
+        // A row outside the file, its stream found near it, places it nowhere in the file: the finding is located at the
+        // object alone, as the entry's own is (#125).
+        var at = reader.IsInFile(offset) ? PdfValidationLocation.OfObject(id, offset) : PdfValidationLocation.OfObject(id);
 
         switch (reader.ReadObjectStreamHeader(stream, offset, out var numbers, out var fault))
         {
@@ -254,19 +258,19 @@ internal sealed class CrossReferenceProbe
 
             case ObjectStreamHeaderResult.CutByLimit:
                 NotChecked.Add(new ProbeFinding(
-                    PdfValidationLocation.OfObject(id, offset),
+                    at,
                     Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it were not checked. Raising the limit the reader reported lets them be.")));
                 return;
 
             case ObjectStreamHeaderResult.NotAnObjectStream:
                 BrokenObjectStreams.Add(new ProbeFinding(
-                    PdfValidationLocation.OfObject(id, offset),
+                    at,
                     Invariant($"Object {stream}, where the index places {RuleText.Objects(objects.Count)}, {fault}.")));
                 return;
 
             case ObjectStreamHeaderResult.Unreadable:
                 BrokenObjectStreams.Add(new ProbeFinding(
-                    PdfValidationLocation.OfObject(id, offset),
+                    at,
                     Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, cannot be read: {fault}.")));
                 return;
         }

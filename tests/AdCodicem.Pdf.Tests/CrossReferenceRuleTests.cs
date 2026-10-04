@@ -1324,7 +1324,8 @@ public class CrossReferenceRuleTests
         // #118, #128: object stream 4 is written 4 1 obj with a real /N, and its row gives generation 0, 3 bytes before its
         // header or outside the file. Loading it in the dependency walk relocated it, or rebuilt the index, under the walk's
         // own index, which then gave the header's generation and offset: the stream was named 4 1 there, 4 0 by the
-        // cross-reference rules, and 4 0 again once the stream had been read before validating.
+        // cross-reference rules, and 4 0 again once the stream had been read before validating. A row outside the file
+        // places it nowhere, and the finding is located at the object alone (#125).
         var sound = XRefStreamFile();
         var four = PdfTemplate.OffsetOf(sound, "\n4 0 obj") + 1;
         var rows = WithRows([1, 4, 2], number: 4, type: 1, second: (ulong)(four + off), third: 0);
@@ -1341,7 +1342,52 @@ public class CrossReferenceRuleTests
         var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamValueWrong);
 
         finding.Location.Object.Should().Be(new PdfObjectId(4));
-        finding.Location.Position.Should().Be(four + off);
+        finding.Location.Position.Should().Be(off < 0 ? four + off : null);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_stream_whose_row_wraps_once_the_header_is_added_is_located_at_the_object_alone(bool readFirst)
+    {
+        // #125: five bytes before the header carry the row past what a long holds. The sum wrapped negative, and
+        // validating the file threw where the finding was located.
+        var rows = WithRows([1, 8, 2], number: 4, type: 1, second: long.MaxValue, third: 0);
+        var file = Encoding.Latin1.GetBytes("----\n" + Encoding.Latin1.GetString(rows)
+            .Replace("/N 2 /First", "/N 2./First", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        if (readFirst)
+        {
+            document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>();
+        }
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefObjectStreamValueWrong);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Location.Position.Should().BeNull();
+    }
+
+    [Fact]
+    public void An_object_stream_whose_row_wraps_is_not_looked_for_at_the_file_s_start()
+    {
+        // #125: six hundred bytes before the header, and an object stream without /N, near the file's start. The wrapped
+        // row, less the search's radius, did not wrap back: the probe read the file's first kilobyte, found the stream
+        // there, and validating the file threw where its finding was located. Held to the same row giving 999999.
+        static byte[] Shifted(ulong row)
+        {
+            var rows = WithRows([1, 8, 2], number: 4, type: 1, second: row, third: 0);
+            return Encoding.Latin1.GetBytes(new string('-', 599) + "\n" + Encoding.Latin1.GetString(rows)
+                .Replace("/N 2 /First", "/X 2 /First", StringComparison.Ordinal));
+        }
+
+        static string[] Findings(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            return [.. new PdfValidator().Validate(document).Findings.Select(f => f.RuleId).Order(StringComparer.Ordinal)];
+        }
+
+        Findings(Shifted(long.MaxValue)).Should().Equal(Findings(Shifted(999999)));
     }
 
     [Fact]
