@@ -1451,10 +1451,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 // find, as a missing section's is.
                 // Placed at the section looped back to, a position in the file; one named outside the file, as an
                 // /XRefStm and a /Prev naming the same offset past its end are, is placed at what named it.
+                // A section the chain named there may have been read, or not: an /XRefStm that names nothing, named again by
+                // a /Prev, is a loop through an offset the chain only named.
                 _indexIncomplete = true;
                 var looped = PositionOf(offset);
+                var read = ReadSectionNamedAt(offset);
                 _structure.LoopOffset = looped;
                 _structure.LoopWrittenOffset = offset;
+                _structure.LoopOffsetRead = read;
                 _structure.LoopNamedBy = naming;
                 _structure.LoopNamedFrom = namedFrom;
                 var inFile = IsInFile(looped);
@@ -1462,7 +1466,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     PdfDiagnosticCodes.XRefChainCycle,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The cross-reference chain loops back on itself: the {naming} of the section at offset {namedFrom} names offset {DescribeOffset(offset)}, {(inFile ? "which the chain has already read" : "outside the file, which the chain has already named")}."),
+                        $"The cross-reference chain loops back on itself: the {naming} of the section at offset {namedFrom} names offset {DescribeOffset(offset)}, {(read ? "which the chain has already read" : inFile ? "which the chain has already named" : "outside the file, which the chain has already named")}."),
                     inFile ? looped : namedFrom);
                 break;
             }
@@ -1532,6 +1536,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
 
         return _xref.Count > 0;
+    }
+
+    /// <summary>
+    /// Determines whether the chain read a section it named at <paramref name="offset"/>, as the file writes it: where it was
+    /// named, or near it.
+    /// </summary>
+    /// <remarks>Run once, when the chain loops: the sections are at most as many as the chain may read.</remarks>
+    private bool ReadSectionNamedAt(long offset)
+    {
+        foreach (var section in _structure.Sections)
+        {
+            if (section.WrittenOffset == offset && section.State is XRefSectionState.Read or XRefSectionState.Relocated)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Determines whether <paramref name="position"/>, a position in the file, lies inside it.</summary>

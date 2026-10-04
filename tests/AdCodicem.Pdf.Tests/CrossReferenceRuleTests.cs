@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
@@ -442,6 +443,28 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
+    public void A_loop_through_an_offset_the_chain_only_named_says_no_section_was_read_there()
+    {
+        // The update's /XRefStm names an offset in a comment, more than 512 bytes from anything, and its /Prev names it again:
+        // the chain loops through an offset where it read no section, and says so.
+        static byte[] Build(string offset) => PdfTemplate.Build(Updated
+            .Replace("4 0 obj\n", "%" + new string('-', 1200) + "\n4 0 obj\n", StringComparison.Ordinal)
+            .Replace("/Prev {xref:1}", $"/XRefStm {offset} /Prev {offset}", StringComparison.Ordinal));
+        var hole = PdfTemplate.OffsetOf(Build("0000000000"), "%---") + 600;
+        var named = hole.ToString("D10", CultureInfo.InvariantCulture);
+        var file = Build(named);
+        var update = PdfTemplate.OffsetOf(file, "\nxref\n", 2) + 1;
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.LoopOffsetRead.Should().BeFalse();
+        var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
+        cycle.Position.Should().Be(hole);
+        cycle.Message.Should().EndWith($"names offset {hole}, which the chain has already named.");
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefChainLoop).Message.Should().Be(
+            $"The /Prev of the cross-reference section at offset {update} names offset {hole}, which the chain has already named: the chain loops.");
+    }
+
+    [Fact]
     public void A_loop_named_from_no_known_section_is_reported_at_the_document()
     {
         // Only a section the chain has read can name one it read before, so the reader always knows where the loop is
@@ -450,6 +473,7 @@ public class CrossReferenceRuleTests
         var structure = document.Reader.Structure;
         structure.LoopOffset = 9;
         structure.LoopWrittenOffset = 9;
+        structure.LoopOffsetRead = true;
         structure.LoopNamedBy = "/Prev";
         var context = new ValidationContext(document, capacity: 16);
 
