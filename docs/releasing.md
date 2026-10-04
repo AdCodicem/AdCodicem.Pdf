@@ -391,10 +391,14 @@ The user documentation is **versioned** (ADR 31); the project documents are not,
 
 | Where | What | Comes from |
 |---|---|---|
-| `/` | The latest stable line | `versioned_docs/version-<newest line>` |
-| `/0.2/`, `/1/`… | Every older stable line, under a "no longer maintained" banner | `versioned_docs/version-<line>` |
-| `/preview/` | The preview, behind the navbar's **Preview** button | `docs/website/docs`, the working tree |
+| `/` | The homepage, its example read from the latest stable line | `src/pages`, and `_homepage-example.md` of `versioned_docs/version-<newest line>` |
+| `/docs/` | The latest stable line | `versioned_docs/version-<newest line>` |
+| `/docs/0.2/`, `/docs/1/`… | Every older stable line, under a "no longer maintained" banner | `versioned_docs/version-<line>` |
+| `/docs/preview/` | The preview, behind the navbar's **Preview** button | `docs/website/docs`, the working tree |
 | `/project/` | Roadmap, status, decisions, milestones | `docs/`, copied at build time |
+
+The user documentation was served at the root of the site until 2026-10; every page it had there, in every
+version, redirects to its address under `/docs`.
 
 A **line** is a minor version below 1.0 (`0.3`) and a major from 1.0 on (`1`), and the selector labels it
 with its latest release. `versions.json` lists the lines, newest first; `releases.json` maps each to its
@@ -402,7 +406,8 @@ latest release. Both are written by the stable release — never by hand, except
 
 The preview section exists only while a preview is newer than the latest stable release. Right after a
 release there is none, and the **Preview** button disappears until the next preview is published. Before
-the first stable release, the preview is the whole site, at the root, under a banner saying so.
+the first stable release, the preview is the whole documentation, at `/docs`, under a banner saying so, and the
+homepage reads its example from the working tree.
 
 ### When it is deployed
 
@@ -421,7 +426,7 @@ names the commit live).
 
 ### Changing the documentation
 
-- **For the next release**: edit `docs/website/docs`. It shows under `/preview` once the site is
+- **For the next release**: edit `docs/website/docs`. It shows under `/docs/preview` once the site is
   redeployed — after the merge, or with the next preview —, and is frozen by the next stable release.
 - **For a version already released**: edit its copy in `docs/website/versioned_docs/version-<line>`, then
   merge: the push redeploys the site, unless a package input is waiting for its preview, in which case the

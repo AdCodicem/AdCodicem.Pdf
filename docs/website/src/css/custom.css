@@ -478,15 +478,16 @@ a > code {
   color: var(--accent-fg);
 }
 
-.button--secondary {
+/* .button.button--secondary: Infima sets the secondary button's text color with both classes. */
+.button.button--secondary {
   --ifm-button-background-color: transparent;
   --ifm-button-border-color: var(--border-2);
   --ifm-button-color: var(--fg-strong);
   color: var(--fg-strong);
 }
 
-.button--secondary:hover,
-.button--secondary:not(.button--outline):hover {
+.button.button--secondary:hover,
+.button.button--secondary:not(.button--outline):hover {
   --ifm-button-background-color: var(--surface-hover);
   --ifm-button-border-color: var(--border-2);
   color: var(--fg-strong);
