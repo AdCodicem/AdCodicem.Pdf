@@ -1228,8 +1228,9 @@ internal sealed class ArlingtonWalk
             return _pages.Locate(holder);
         }
 
-        // At the trailer the reader merged last, read by the chain or found by a rebuild; at the document when it merged
-        // none (#126).
+        // At the newest trailer the reader merged, read by the chain or found by a rebuild (#126); at the document when it
+        // merged none, which leaves on the trailer only a /Root the reader recovered, never located there, and what a
+        // caller set on it.
         var trailer = _reader.TrailerLocation;
         return trailer >= 0 ? PdfValidationLocation.AtPosition(trailer) : default;
     }

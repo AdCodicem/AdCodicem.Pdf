@@ -349,11 +349,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// holds points at; -1 when the reader merged none.
     /// </summary>
     /// <remarks>
-    /// The first section's own trailer when the chain read it — a table's <c>trailer</c> keyword, or a cross-reference
-    /// stream's object —; otherwise the newest dictionary a rebuild found after a <c>trailer</c> keyword, which a rebuild
-    /// during validation may find late. A key only an older trailer gave is placed there too: in the file, at a trailer the
-    /// reader read (#126). The first section is never relocated: one that is not where <c>startxref</c> says leaves the
-    /// index to a rebuild, and what it names lies outside the file, or holds no trailer.
+    /// The first section's own trailer when the chain read it and merged it — a table's <c>trailer</c> keyword, or a
+    /// cross-reference stream's object —, though the index be rebuilt afterward; otherwise the newest dictionary a rebuild
+    /// found after a <c>trailer</c> keyword, which a rebuild during validation may find late. A key only an older trailer gave
+    /// is placed there too: in the file, at a trailer the reader read (#126). The first section is never relocated: one the
+    /// chain cannot read where <c>startxref</c> says, whether nothing is there or the section there is malformed, leaves the
+    /// index to a rebuild, and the chain merged no trailer of its own; its record names the offset <c>startxref</c> gives,
+    /// or the section's start, not a trailer the reader merged.
     /// </remarks>
     public long TrailerLocation =>
         _structure.Sections is [{ State: XRefSectionState.Read, Trailer: not null } first, ..]
