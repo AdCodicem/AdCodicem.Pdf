@@ -1,3 +1,6 @@
+<!-- The design system's GithubPdfBanner, rendered at 2x. An absolute address, so that nuget.org shows it too. -->
+![AdCodicem.Pdf — .NET 10, fully managed, MIT](https://raw.githubusercontent.com/AdCodicem/AdCodicem.Pdf/main/docs/assets/readme-banner.png)
+
 # AdCodicem.Pdf
 
 [![CI](https://github.com/AdCodicem/AdCodicem.Pdf/actions/workflows/ci.yml/badge.svg)](https://github.com/AdCodicem/AdCodicem.Pdf/actions/workflows/ci.yml)
@@ -51,7 +54,7 @@ need: a fully managed engine whose memory use follows the complexity of a page, 
 | A core with no dependency at all, NuGet or native, and a satellite package for everything that needs one | ✅ Available |
 | MIT license, no revenue threshold, no per-developer fee | ✅ Available |
 
-Every feature, planned ones included, and how the library compares with other PDF libraries: [Features and comparison](https://adcodicem.github.io/AdCodicem.Pdf/features), as of 2026-09-28.
+Every feature, planned ones included, and how the library compares with other PDF libraries: [Features and comparison](https://adcodicem.github.io/AdCodicem.Pdf/docs/features), as of 2026-09-28.
 <!-- features:end -->
 
 ## Packages
