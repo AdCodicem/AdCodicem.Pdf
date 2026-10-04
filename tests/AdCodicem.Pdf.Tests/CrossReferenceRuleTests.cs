@@ -382,7 +382,8 @@ public class CrossReferenceRuleTests
         var file = PdfTemplate.Build(Updated);
         using var document = PdfDocument.Open(file);
         var outside = file.Length + 100L;
-        document.Reader.Structure.Add(new XRefSectionRecord("/Prev", outside, namedFrom: -1) { State = XRefSectionState.NotFound });
+        document.Reader.Structure.Add(
+            new XRefSectionRecord("/Prev", outside, namedFrom: -1) { WrittenOffset = outside, State = XRefSectionState.NotFound });
         var context = new ValidationContext(document, capacity: 16);
 
         new SectionNotFoundRule().Check(context);
@@ -448,6 +449,7 @@ public class CrossReferenceRuleTests
         using var document = PdfDocument.Open(PdfTemplate.Build(Updated));
         var structure = document.Reader.Structure;
         structure.LoopOffset = 9;
+        structure.LoopWrittenOffset = 9;
         structure.LoopNamedBy = "/Prev";
         var context = new ValidationContext(document, capacity: 16);
 
@@ -1340,6 +1342,27 @@ public class CrossReferenceRuleTests
 
         finding.Location.Object.Should().Be(new PdfObjectId(4));
         finding.Location.Position.Should().Be(four + off);
+    }
+
+    [Fact]
+    public void A_cut_outside_the_file_named_from_no_known_section_is_reported_at_the_document()
+    {
+        // Only a section the chain has read names one past the sections the reader reads, so the reader always knows where
+        // a cut outside the file is written; the rule, given a structure no file produces that does not, locates the
+        // finding at the document.
+        var file = PdfTemplate.Build(Updated);
+        using var document = PdfDocument.Open(file);
+        var structure = document.Reader.Structure;
+        structure.ChainCutAt = file.Length + 100L;
+        structure.ChainCutWrittenOffset = file.Length + 100L;
+        var context = new ValidationContext(document, capacity: 16);
+
+        new CheckedInPartRule().Check(context);
+
+        var finding = context.ToReport(ValidationProfile.Structural).Findings.Should().ContainSingle().Which;
+        finding.Location.IsDocument.Should().BeTrue();
+        finding.Message.Should().StartWith(string.Create(
+            CultureInfo.InvariantCulture, $"The cross-reference chain goes on at offset {file.Length + 100}, outside the file,"));
     }
 
     [Fact]

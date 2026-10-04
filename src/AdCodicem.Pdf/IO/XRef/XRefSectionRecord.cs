@@ -8,7 +8,9 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// </summary>
 /// <remarks>
 /// Every offset here is a position in the file, the header's own offset added: what the validation rules report
-/// and a caller can seek to.
+/// and a caller can seek to. One the file names outside it is no position to seek to: past its end, or, when a long
+/// cannot hold its sum with the header's offset, <see cref="long.MaxValue"/> (#125); <see cref="WrittenOffset"/> keeps
+/// the offset as written.
 /// </remarks>
 internal sealed class XRefSectionRecord
 {
@@ -25,6 +27,12 @@ internal sealed class XRefSectionRecord
 
     /// <summary>Gets the position the section was named at, or -1 when what named it was not an offset.</summary>
     public long NamedOffset { get; }
+
+    /// <summary>
+    /// Gets the offset what named the section gives, as the file writes it, counted from its header; -1 when what named it
+    /// was not an offset, or the section was not named by one.
+    /// </summary>
+    public long WrittenOffset { get; init; } = -1;
 
     /// <summary>
     /// Gets where what named the section is written: the <c>startxref</c> keyword, or the section whose trailer

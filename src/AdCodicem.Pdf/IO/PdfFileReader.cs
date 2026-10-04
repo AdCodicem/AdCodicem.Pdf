@@ -1440,16 +1440,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 // Placed at the section looped back to, a position in the file; one named outside the file, as an
                 // /XRefStm and a /Prev naming the same offset past its end are, is placed at what named it.
                 _indexIncomplete = true;
-                _structure.LoopOffset = offset + _headerOffset;
+                var looped = PositionOf(offset);
+                _structure.LoopOffset = looped;
+                _structure.LoopWrittenOffset = offset;
                 _structure.LoopNamedBy = naming;
                 _structure.LoopNamedFrom = namedFrom;
-                var inFile = IsInFile(offset + _headerOffset);
+                var inFile = IsInFile(looped);
                 _diagnostics.Warn(
                     PdfDiagnosticCodes.XRefChainCycle,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"The cross-reference chain loops back on itself: the {naming} of the section at offset {namedFrom} names offset {offset + _headerOffset}, {(inFile ? "which the chain has already read" : "outside the file, which the chain has already named")}."),
-                    inFile ? offset + _headerOffset : namedFrom);
+                        $"The cross-reference chain loops back on itself: the {naming} of the section at offset {namedFrom} names offset {DescribeOffset(offset)}, {(inFile ? "which the chain has already read" : "outside the file, which the chain has already named")}."),
+                    inFile ? looped : namedFrom);
                 break;
             }
 
@@ -1458,18 +1460,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 // Each incremental save adds a section, so a long chain is a sound file saved often; the newest
                 // sections, read first, are the ones that win, and what only the older ones index is found by
                 // rebuilding the index when it is asked for.
+                // Placed where the chain goes on, a position in the file; one named outside the file is placed at what
+                // named it, as a section that is missing is (#125).
                 _indexIncomplete = true;
-                _structure.ChainCutAt = offset + _headerOffset;
+                var cut = PositionOf(offset);
+                _structure.ChainCutAt = cut;
+                _structure.ChainCutWrittenOffset = offset;
+                _structure.ChainCutNamedFrom = namedFrom;
                 ReachLimit(
                     PdfLimit.XRefSectionCount,
                     string.Create(
                         CultureInfo.InvariantCulture,
                         $"The cross-reference chain has more than {_guard.Bound(PdfLimit.XRefSectionCount):N0} sections; the older ones were not read."),
-                    offset + _headerOffset);
+                    IsInFile(cut) ? cut : namedFrom);
                 break;
             }
 
-            var section = new XRefSectionRecord(naming, offset + _headerOffset, namedFrom);
+            var section = new XRefSectionRecord(naming, PositionOf(offset), namedFrom) { WrittenOffset = offset };
             _structure.Add(section);
 
             if (TryReadXRefSection(offset, section, out var previous, out var hybrid) != XRefSectionState.Read)
@@ -1493,7 +1500,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             {
                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
                 // the stream, the objects it indexes are missing, and the chain goes on through /Prev.
-                var stream = new XRefSectionRecord("/XRefStm", hybrid + _headerOffset, section.Offset) { NamingTrailer = section.Trailer };
+                var stream = new XRefSectionRecord("/XRefStm", PositionOf(hybrid), section.Offset)
+                {
+                    WrittenOffset = hybrid,
+                    NamingTrailer = section.Trailer,
+                };
                 _structure.Add(stream);
 
                 if (TryReadXRefSection(hybrid, stream, out _, out _) != XRefSectionState.Read &&
@@ -1513,6 +1524,47 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>Determines whether <paramref name="position"/>, a position in the file, lies inside it.</summary>
     private bool IsInFile(long position) => position >= 0 && position < _source.Length;
+
+    /// <summary>
+    /// Gives the position in the file <paramref name="offset"/>, an offset the file gives, names: the header's own offset
+    /// added, as every offset the file gives counts from its header.
+    /// </summary>
+    /// <remarks>
+    /// The offset is tested before anything is added to it, so that none wraps (#125). A negative one, which a table's row
+    /// may give, is kept as given: it lies before the file's start, whatever precedes the header. One whose sum a long
+    /// cannot hold gives <see cref="long.MaxValue"/>, past the end of any file. Either reads as outside the file wherever a
+    /// position is tested, as an offset past its end does, and is treated as one: the section is not there, the entry
+    /// places its object nowhere. Not a guard (ADR 34): an offset that names a byte of the file is less than its length,
+    /// with the header's offset added too, so no file a reader could read whole reaches either.
+    /// </remarks>
+    public long PositionOf(long offset) => PositionOf(offset, _headerOffset);
+
+    /// <summary>
+    /// Gives the position in the file <paramref name="offset"/> names, <paramref name="headerOffset"/> added, as
+    /// <see cref="PositionOf(long)"/> does.
+    /// </summary>
+    public static long PositionOf(long offset, long headerOffset) =>
+        offset < 0 ? offset : offset > long.MaxValue - headerOffset ? long.MaxValue : offset + headerOffset;
+
+
+    /// <summary>
+    /// Writes the position <paramref name="offset"/>, an offset the file gives, names, as a message names it: exactly, the
+    /// header's offset added, though a long cannot hold the sum; a negative offset, which names no position, as given.
+    /// </summary>
+    public string DescribeOffset(long offset) => DescribeOffset(offset, _headerOffset);
+
+    /// <summary>
+    /// Writes the position <paramref name="offset"/> names, <paramref name="headerOffset"/> added, as
+    /// <see cref="DescribeOffset(long)"/> does.
+    /// </summary>
+    /// <remarks>
+    /// An unsigned 64-bit sum always holds it: an offset is at most <see cref="long.MaxValue"/>, and the header starts within
+    /// the first <see cref="HeaderSearchLength"/> bytes.
+    /// </remarks>
+    public static string DescribeOffset(long offset, long headerOffset) =>
+        offset < 0
+            ? offset.ToString(CultureInfo.InvariantCulture)
+            : ((ulong)offset + (ulong)headerOffset).ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Reports a section of the chain that could not be read where it was named, nor found near it, and marks the
@@ -1557,7 +1609,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private void ReportMissingSection(string naming, long offset, long namedFrom)
     {
         _indexIncomplete = true;
-        var absolute = offset + _headerOffset;
+        var absolute = PositionOf(offset);
         _diagnostics.Warn(
             PdfDiagnosticCodes.XRefSectionMissing,
             IsInFile(absolute)
@@ -1566,7 +1618,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     $"The cross-reference section {naming} names at offset {absolute} is not there, nor near it; the objects only it indexes are looked for by rebuilding the index.")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The cross-reference section {naming} names at offset {absolute} lies outside the file, which is {_source.Length:N0} bytes long; the objects only it indexes are looked for by rebuilding the index."),
+                    $"The cross-reference section {naming} names at offset {DescribeOffset(offset)} lies outside the file, which is {_source.Length:N0} bytes long; the objects only it indexes are looked for by rebuilding the index."),
             IsInFile(absolute) ? absolute : namedFrom);
     }
 
@@ -1587,9 +1639,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         previous = -1;
         hybrid = -1;
 
-        var absolute = offset + _headerOffset;
+        var absolute = PositionOf(offset);
 
-        if (absolute < 0 || absolute >= _source.Length)
+        if (!IsInFile(absolute))
         {
             return false;
         }
@@ -1705,8 +1757,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         previous = -1;
         hybrid = -1;
 
-        var absolute = offset + _headerOffset;
-        if (absolute < 0 || absolute >= _source.Length)
+        var absolute = PositionOf(offset);
+        if (!IsInFile(absolute))
         {
             // Reported once, by what the chain makes of it: a missing section, or a rebuild for the first.
             section.Fault = "lies outside the file";

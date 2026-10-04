@@ -31,6 +31,7 @@ internal sealed class ChainLoopRule : IValidationRule
         }
 
         var namedFrom = structure.LoopNamedFrom;
+        var written = context.Document.Reader.DescribeOffset(structure.LoopWrittenOffset);
 
         context.Report(
             this,
@@ -38,10 +39,10 @@ internal sealed class ChainLoopRule : IValidationRule
             namedFrom >= 0
                 ? string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The {structure.LoopNamedBy} of the cross-reference section at offset {namedFrom} names offset {structure.LoopOffset}, a section the chain has already read: the chain loops.")
+                    $"The {structure.LoopNamedBy} of the cross-reference section at offset {namedFrom} names offset {written}, a section the chain has already read: the chain loops.")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"A {structure.LoopNamedBy} names offset {structure.LoopOffset}, a section the chain has already read: the chain loops."),
+                    $"A {structure.LoopNamedBy} names offset {written}, a section the chain has already read: the chain loops."),
             "Point the /Prev at the section before it, or remove it from the oldest section.");
     }
 }

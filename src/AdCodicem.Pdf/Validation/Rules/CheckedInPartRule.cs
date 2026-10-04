@@ -28,12 +28,19 @@ internal sealed class CheckedInPartRule : IValidationRule
 
         if (structure.ChainCutAt >= 0)
         {
+            // Placed where the chain goes on, a position in the file; one named outside the file — past its end, or past
+            // what a long holds (#125) — is placed at the section that names it, as a section not found is.
+            var inFile = structure.ChainCutAt < context.Source.Length;
+            var location = inFile
+                ? PdfValidationLocation.AtPosition(structure.ChainCutAt)
+                : structure.ChainCutNamedFrom >= 0 ? PdfValidationLocation.AtPosition(structure.ChainCutNamedFrom) : default;
+
             context.Report(
                 this,
-                PdfValidationLocation.AtPosition(structure.ChainCutAt),
+                location,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The cross-reference chain goes on at offset {structure.ChainCutAt}, past the sections PdfReaderLimits.MaxXRefSectionCount lets the reader read: the older sections were not checked."),
+                    $"The cross-reference chain goes on at offset {context.Document.Reader.DescribeOffset(structure.ChainCutWrittenOffset)}{(inFile ? string.Empty : ", outside the file")}, past the sections PdfReaderLimits.MaxXRefSectionCount lets the reader read: the older sections were not checked."),
                 remedy: null);
         }
 
