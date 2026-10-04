@@ -17,6 +17,7 @@ internal static class RebuiltTrailers
         "startxref past what a long holds",
         "first table without a trailer",
         "entries only in the older trailer",
+        "first section a cross-reference stream that cannot be read",
     ];
 
     /// <summary>
@@ -69,6 +70,20 @@ internal static class RebuiltTrailers
 
                     """,
                 2),
+            "first section a cross-reference stream that cannot be read" => (
+                sound + """
+                    4 0 obj
+                    << /Type /XRef /Size 5 /Root 1 0 R /W [1 2] /Length 3 >>
+                    stream
+                    abc
+                    endstream
+                    endobj
+                    startxref
+                    {off:4}
+                    %%EOF
+
+                    """,
+                1),
             _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "No such shape."),
         };
 

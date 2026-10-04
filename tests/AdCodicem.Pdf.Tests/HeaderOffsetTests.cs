@@ -116,7 +116,10 @@ public sealed class HeaderOffsetTests
         using var document = PdfDocument.Open(file);
 
         document.Reader.Structure.LoopOffset.Should().Be(-1);
-        new PdfValidator().Validate(document).Findings.Count(f => f.RuleId == PdfValidationRuleIds.XRefSectionNotFound).Should().Be(2);
+        new PdfValidator().Validate(document).Findings.Where(f => f.RuleId == PdfValidationRuleIds.XRefSectionNotFound).Select(f => f.Message)
+            .Should().BeEquivalentTo(
+                $"The cross-reference section /XRefStm names at offset {LargestShifted} is not there, nor within 512 bytes of it: the offset lies outside the file.",
+                "The cross-reference section /Prev names at offset 9223372036854775811 is not there, nor within 512 bytes of it: the offset lies outside the file.");
         Codes(file).Should().BeEquivalentTo(Codes(Updated("/XRefStm {offset} /Prev 999998", "999999")));
     }
 
@@ -153,6 +156,22 @@ public sealed class HeaderOffsetTests
     }
 
     [Theory]
+    [InlineData("9223372036854775806", "9223372036854775811")]
+    [InlineData("999999", "1000004")]
+    public void A_chain_cut_outside_the_file_names_where_it_goes_on_as_the_file_writes_it_the_header_added(string offset, string named)
+    {
+        // The position recorded for an offset past what a long holds is the largest long, and only the offset as written
+        // gives the sum exactly.
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } };
+        using var document = PdfDocument.Open(Updated("/Prev {offset}", offset), options);
+
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.LimitXRefSectionCount).Which.Message.Should().Contain(
+            $"the chain goes on at offset {named}, outside the file.");
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefCheckedInPart).Message.Should().Be(
+            $"The cross-reference chain goes on at offset {named}, outside the file, past the sections PdfReaderLimits.MaxXRefSectionCount lets the reader read: the older sections were not checked.");
+    }
+
+    [Theory]
     [InlineData(Largest, LargestShifted)]
     [InlineData("999999", "1000004")]
     public void A_limit_reached_where_the_chain_goes_on_outside_the_file_throws_with_the_section_naming_it(string offset, string named)
@@ -179,6 +198,31 @@ public sealed class HeaderOffsetTests
 
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().Contain(
             "its /Prev as the reference 9 0 R, where ISO 32000-1 makes it direct (Table 15)");
+    }
+
+    [Fact]
+    public void A_prev_written_as_a_reference_whose_entry_is_negative_is_not_read_from_the_bytes_before_the_header()
+    {
+        // Nineteen bytes before the header hold object 9, giving the first table's offset: -19 counted from the header named
+        // them, and the chain read its /Prev there.
+        var template = Update
+            .Replace("{object}", "(an update)", StringComparison.Ordinal)
+            .Replace("4 1\n{row:4}", "4 1\n{row:4}\n9 1\n-19 00000 n", StringComparison.Ordinal)
+            .Replace("{entries}", "/Prev 9 0 R", StringComparison.Ordinal)
+            .Replace("/Size 5", "/Size 10", StringComparison.Ordinal);
+        var built = PdfTemplate.Build(template);
+        var junk = Encoding.Latin1.GetBytes(string.Create(CultureInfo.InvariantCulture, $"9 0 obj {PdfTemplate.OffsetOf(built, "xref\n0 4")} endobj\n"));
+        junk.Length.Should().Be(19);
+        var file = junk.Concat(built).ToArray();
+        var update = PdfTemplate.OffsetOf(file, "xref\n4 1");
+        using var document = PdfDocument.Open(file);
+
+        var prev = document.Reader.Structure.Sections.Should().ContainSingle(s => s.NamedBy == "/Prev").Which;
+        prev.State.Should().Be(IO.XRef.XRefSectionState.NotFound);
+        prev.NamedFrom.Should().Be(update);
+        var report = new PdfValidator().Validate(document);
+        Single(report, PdfValidationRuleIds.XRefSectionNotFound).Location.Position.Should().Be(update);
+        Single(report, PdfValidationRuleIds.XRefEntryBroken).Message.Should().Be("The entry of object 9 gives offset -19, outside the file.");
     }
 
     [Theory]
@@ -227,6 +271,37 @@ public sealed class HeaderOffsetTests
         finding.Severity.Should().Be(PdfValidationSeverity.Error);
         finding.Message.Should().Be("The entry of object 3 gives offset -3, outside the file.");
         report.Contains(PdfValidationRuleIds.XRefEntryShifted).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("/N 1 /First 999", 0, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData("/N 1 /First 999", 9, PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData("/N 1. /First 4", 0, PdfValidationRuleIds.XRefObjectStreamValueWrong)]
+    [InlineData("/N 1. /First 4", 9, PdfValidationRuleIds.XRefObjectStreamValueWrong)]
+    public void An_object_stream_a_negative_row_places_is_located_at_the_object_alone(string keys, int junk, string rule)
+    {
+        // A hybrid file: its table gives object stream 4 at -3, and its cross-reference stream places object 5 in it. The
+        // probe (an unreadable header) and the dependency walk (a real /N) located their finding at -3, and validating threw.
+        var text = new StringBuilder("%PDF-1.5\n");
+        var one = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var two = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+        var three = text.Length;
+        text.Append("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> /Test 5 0 R >>\nendobj\n");
+        text.Append(CultureInfo.InvariantCulture, $"4 0 obj\n<< /Type /ObjStm {keys} /Length 11 >>\nstream\n5 0 (hello)\nendstream\nendobj\n");
+        var six = text.Length;
+        text.Append("6 0 obj\n<< /Type /XRef /Size 7 /W [1 4 2] /Index [5 1] /Length 7 >>\nstream\n\u0002\0\0\0\u0004\0\0\nendstream\nendobj\n");
+        var xref = text.Length;
+        text.Append(CultureInfo.InvariantCulture, $"xref\n0 5\n0000000000 65535 f \n{one:D10} 00000 n \n{two:D10} 00000 n \n{three:D10} 00000 n \n-3 00000 n \n");
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 7 /Root 1 0 R /XRefStm {six} >>\nstartxref\n{xref}\n%%EOF\n");
+        var prefix = junk == 0 ? string.Empty : new string('-', junk - 1) + "\n";
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(prefix + text));
+
+        var finding = Single(new PdfValidator().Validate(document), rule);
+
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Location.Position.Should().BeNull();
     }
 
     [Fact]
@@ -376,6 +451,39 @@ public sealed class HeaderOffsetTests
         _ = document.GetObject(new PdfObjectId(10));
 
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.SyntaxDepthExceeded).Which.Position.Should().Be(-1);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(5)]
+    public void An_object_stream_that_needs_itself_found_near_a_row_past_the_end_is_reported_nowhere(int junk)
+    {
+        // The stream's /Length names object 5, which it holds, and its row lies just past the end: the stream is found
+        // within reach, read there, and reported while its entry still places it outside the file.
+        var built = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "0")
+            .WithObject(6, "<< /Title (six) >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], objectStreamEntries: "/Pad (0123456789)");
+        var text = Encoding.Latin1.GetString(built);
+        var dictionary = text.IndexOf("/Pad (0123456789) /Length ", StringComparison.Ordinal);
+        var end = text.IndexOf(" >>", dictionary, StringComparison.Ordinal);
+        text = text[..dictionary] + "/Length 5 0 R".PadRight(end - dictionary) + text[end..];
+        var prefix = junk == 0 ? string.Empty : new string('-', junk - 1) + "\n";
+        var file = Encoding.Latin1.GetBytes(prefix + text);
+        var rows = (prefix + text).IndexOf("stream\n", (prefix + text).IndexOf("/Type /XRef", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length;
+        var row = (uint)(file.Length - junk + 5);
+        file[rows + (7 * 7) + 1] = (byte)(row >> 24);
+        file[rows + (7 * 7) + 2] = (byte)(row >> 16);
+        file[rows + (7 * 7) + 3] = (byte)(row >> 8);
+        file[rows + (7 * 7) + 4] = (byte)row;
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(6)).AsDictionary()!.GetText(PdfName.Get("Title")).Should().Be("six");
+
+        Relocations(document).Should().ContainSingle();
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamSelfReference).Which.Position.Should().Be(-1);
     }
 
     /// <summary>
