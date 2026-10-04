@@ -28,7 +28,11 @@ export default function NotFound() {
               page added or renamed since exists in some of them only.
             </p>
             <div className={styles.buttons}>
-              <Link className="button button--primary" to="/docs/">
+              <Link className={clsx('button button--primary', styles.button)} to="/search">
+                <Icon name="search" size={16} />
+                Search the docs
+              </Link>
+              <Link className="button button--secondary" to="/docs">
                 Go to the introduction
               </Link>
               <Link

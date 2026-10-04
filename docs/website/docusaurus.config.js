@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { previewIsCurrent, readReleases } from './scripts/versions.mjs';
 import { adcodicem } from './src/prism-adcodicem.js';
+import { apiContext } from './src/components/SearchScope/context.js';
 
 const organization = 'AdCodicem';
 const repository = 'AdCodicem.Pdf';
@@ -234,6 +235,33 @@ const config = {
     ],
   ],
 
+  // Local search: the build writes a lunr index for each version of the docs, served with the site, so a search
+  // reaches no third party and always describes what is deployed. It covers the user documentation, not the project
+  // documents, whose milestones alone would take the index from 0.7 MB to 12.7 MB, fetched by the first search of
+  // every reader. The search bar searches the version the reader is in. The preview is noIndex once a stable line
+  // exists, which keeps it out of search engines but must not keep it out of its own search. Of the API reference,
+  // only the page titles and member headings are indexed: a member is still found by name, and the index is much
+  // lighter than with the summaries, parameter tables and signatures in (docs/website/README.md has the figures).
+  // The API reference has an index of its own in the version served at /docs/; src/components/SearchScope says why
+  // only there, and lets the reader pick the index.
+  themes: [
+    [
+      '@easyops-cn/docusaurus-search-local',
+      /** @type {import('@easyops-cn/docusaurus-search-local').PluginOptions} */
+      ({
+        hashed: true,
+        indexBlog: false,
+        indexPages: false,
+        docsRouteBasePath: ['docs'],
+        language: ['en'],
+        explicitSearchResultPath: true,
+        forceIgnoreNoIndex: true,
+        ignoreCssSelectors: [`html[class*='docs-doc-id-${apiDirectory}/'] article :is(p, li, table, .theme-code-block)`],
+        searchContextByPaths: [{ label: 'API reference', path: apiContext }],
+      }),
+    ],
+  ],
+
   themeConfig: {
     // The design system is designed dark first: ink is what a reader gets when the system expresses no preference.
     colorMode: { defaultMode: 'dark', respectPrefersColorScheme: true },
@@ -250,6 +278,7 @@ const config = {
           ? [{ type: 'docsVersionDropdown', position: 'right', versions: releases.map(({ line }) => line) }]
           : []),
         { type: 'custom-previewToggle', position: 'right' },
+        { type: 'search', position: 'right' },
         // Drawn as the design system's icon buttons, `nuget` and `github` (custom.css); the label is what screen
         // readers and the mobile menu read.
         {

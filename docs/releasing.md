@@ -396,6 +396,7 @@ The user documentation is **versioned** (ADR 31); the project documents are not,
 | `/docs/0.2/`, `/docs/1/`… | Every older stable line, under a "no longer maintained" banner | `versioned_docs/version-<line>` |
 | `/docs/preview/` | The preview, behind the navbar's **Preview** button | `docs/website/docs`, the working tree |
 | `/project/` | Roadmap, status, decisions, milestones | `docs/`, copied at build time |
+| `/search` | The results of the local search, in the guides or the API reference | the indexes each build writes |
 
 The user documentation was served at the root of the site until 2026-10; every page it had there, in every
 version, redirects to its address under `/docs`.
