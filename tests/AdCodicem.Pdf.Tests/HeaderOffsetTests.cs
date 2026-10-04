@@ -83,26 +83,29 @@ public sealed class HeaderOffsetTests
             Codes(Shifted(PdfTemplate.Sound.Replace("startxref\n{xref:1}", "startxref\n999999", StringComparison.Ordinal))));
     }
 
-    [Fact]
-    public void A_chain_that_names_the_same_offset_past_what_a_long_holds_twice_loops()
+    [Theory]
+    [InlineData(Largest, LargestShifted)]
+    [InlineData("999999", "1000004")]
+    public void A_chain_that_names_the_same_offset_outside_the_file_twice_loops(string offset, string named)
     {
-        // The sum wrapped negative, which the rule took for no loop at all.
-        const string Entries = "/Prev {offset} /XRefStm {offset}";
-        var file = Updated(Entries, Largest);
+        // Past what a long holds, the sum wrapped negative, which the rule took for no loop at all; past the end, the rule
+        // said the chain had read a section there.
+        var file = Updated("/Prev {offset} /XRefStm {offset}", offset);
         var update = PdfTemplate.OffsetOf(file, "xref\n4 1");
         using var document = PdfDocument.Open(file);
 
         var structure = document.Reader.Structure;
-        structure.LoopOffset.Should().Be(long.MaxValue);
-        structure.LoopWrittenOffset.Should().Be(long.MaxValue);
+        structure.LoopOffset.Should().Be(offset == Largest ? long.MaxValue : 1000004);
+        structure.LoopWrittenOffset.Should().Be(long.Parse(offset, CultureInfo.InvariantCulture));
         var cycle = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.XRefChainCycle).Which;
         cycle.Position.Should().Be(update);
-        cycle.Message.Should().EndWith($"names offset {LargestShifted}, outside the file, which the chain has already named.");
+        cycle.Message.Should().EndWith($"names offset {named}, outside the file, which the chain has already named.");
 
         var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefChainLoop);
         finding.Location.Position.Should().Be(update);
-        finding.Message.Should().Contain($"names offset {LargestShifted}");
-        Codes(file).Should().BeEquivalentTo(Codes(Updated(Entries, "999999")));
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The /Prev of the cross-reference section at offset {update} names offset {named}, outside the file, which the chain has already named: the chain loops."));
     }
 
     [Fact]
