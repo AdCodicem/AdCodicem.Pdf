@@ -278,6 +278,61 @@ public sealed class HeaderOffsetTests
         Relocations(document).Should().ContainSingle().Which.Position.Should().Be(0);
     }
 
+    [Fact]
+    public void A_section_found_near_where_prev_names_it_before_the_header_is_read_where_it_was_found()
+    {
+        // The older table, the only one to index object 4, lies in the bytes before the header; the newer one's /Prev names
+        // the header's own offset, 0. The table is found within 512 bytes, before the header, as an object is.
+        const string Header = "%PDF-1.7\n";
+        const string Body = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+                            "4 0 obj\n(older)\nendobj\n";
+        var four = Header.Length + Body.IndexOf("4 0 obj", StringComparison.Ordinal);
+        var older = "xref\n0 5\n0000000000 65535 f \n" +
+                    string.Create(CultureInfo.InvariantCulture, $"{Header.Length:D10} 00000 n \n") +
+                    string.Create(CultureInfo.InvariantCulture, $"{Header.Length + Body.IndexOf("2 0 obj", StringComparison.Ordinal):D10} 00000 n \n") +
+                    "0000000000 65535 f \n" +
+                    string.Create(CultureInfo.InvariantCulture, $"{four:D10} 00000 n \n") +
+                    "trailer\n<< /Size 5 /Root 1 0 R >>\n";
+        // The newer table lies further than 512 bytes from what its /Prev names, where it is no candidate.
+        var padding = "%" + new string('-', 600) + "\n";
+        var newer = Header.Length + Body.Length + padding.Length;
+        var file = older + Header + Body + padding +
+                   "xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 5 /Root 1 0 R /Prev 0 >>\n" +
+                   string.Create(CultureInfo.InvariantCulture, $"startxref\n{newer}\n%%EOF\n");
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(file));
+
+        var section = document.Reader.Structure.Sections.Should().ContainSingle(s => s.NamedBy == "/Prev").Which;
+        section.State.Should().Be(IO.XRef.XRefSectionState.Relocated);
+        section.Offset.Should().Be(0);
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("older");
+        document.Diagnostics.Contains(PdfDiagnosticCodes.XRefChainCycle).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(40)]
+    [InlineData(-1000)]
+    public void A_negative_entry_does_not_bound_the_search_for_the_endstream_of_a_stream_before_the_header(int intoData)
+    {
+        // Object 4 lies before the header, its declared length past the parser's window; object 5's row, counted from the
+        // header, fell inside 4's data and ended the search there, though the reader holds that row outside the file.
+        var data = new string('d', 200);
+        var before = $"4 0 obj\n<< /Length 9000 >>\nstream\n{data}\nendstream\nendobj\n";
+        var dataStart = before.IndexOf("stream\n", StringComparison.Ordinal) + "stream\n".Length;
+        var row = (dataStart + intoData - before.Length).ToString(CultureInfo.InvariantCulture);
+        var template = PdfTemplate.Sound
+            .Replace("%PDF-1.7\n", "%PDF-1.7\n%" + new string('x', 12000) + "\n", StringComparison.Ordinal)
+            .Replace("/Pages 2 0 R >>", "/Pages 2 0 R /Test 4 0 R /Other 5 0 R >>", StringComparison.Ordinal)
+            .Replace("0 4\n", "0 6\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n0000000000 00000 n \n" + row + " 00000 n \n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 6", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(before).Concat(PdfTemplate.Build(template)).ToArray();
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>().Which.RawLength.Should().Be(200);
+        document.Diagnostics.Should().Contain(d =>
+            d.Code == PdfDiagnosticCodes.StreamLengthInvalid && d.Message == "The stream declared 9000 bytes but ended after 200.");
+    }
+
     [Theory]
     [InlineData(Largest)]
     [InlineData("999999")]

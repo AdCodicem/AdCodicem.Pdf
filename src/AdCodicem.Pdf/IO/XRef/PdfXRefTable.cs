@@ -73,7 +73,8 @@ internal sealed class PdfXRefTable
 
     /// <summary>
     /// Gets the smallest offset an entry in use written directly — not in an object stream — gives that is greater
-    /// than <paramref name="offset"/>, or <see cref="long.MaxValue"/> when none is.
+    /// than <paramref name="offset"/>, or <see cref="long.MaxValue"/> when none is. A row's negative offset places
+    /// nothing, and is left out (#125).
     /// </summary>
     /// <remarks>
     /// The offsets are sorted the first time this is asked, and entries recorded since are sorted in as they come, so
@@ -89,7 +90,7 @@ internal sealed class PdfXRefTable
 
             foreach (var entry in _entries.Values)
             {
-                count += entry.Kind == XRefEntryKind.Regular ? 1 : 0;
+                count += PlacesInFile(entry) ? 1 : 0;
             }
 
             var offsets = new long[count];
@@ -97,7 +98,7 @@ internal sealed class PdfXRefTable
 
             foreach (var entry in _entries.Values)
             {
-                if (entry.Kind == XRefEntryKind.Regular)
+                if (PlacesInFile(entry))
                 {
                     offsets[index++] = entry.Offset;
                 }
@@ -118,11 +119,19 @@ internal sealed class PdfXRefTable
     /// <summary>Adds the offset an entry gives to the sorted ones, once they are kept.</summary>
     private void Track(XRefEntry entry)
     {
-        if (entry.Kind == XRefEntryKind.Regular)
+        if (PlacesInFile(entry))
         {
             _offsets?.Add(entry.Offset);
         }
     }
+
+    /// <summary>
+    /// Determines whether <paramref name="entry"/> places its object at an offset of the file: a regular one does, but for a
+    /// row's negative offset, which lies before the file's start whatever precedes the header (#125); one the reader found
+    /// does, before the header though it be.
+    /// </summary>
+    private static bool PlacesInFile(XRefEntry entry) =>
+        entry.Kind == XRefEntryKind.Regular && (entry.Offset >= 0 || entry.FoundByReader);
 
     /// <summary>Copies the entries, and not the trailer, into a table of their own.</summary>
     public PdfXRefTable CopyEntries() => new(new Dictionary<int, XRefEntry>(_entries));

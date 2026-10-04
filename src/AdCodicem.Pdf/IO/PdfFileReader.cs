@@ -823,10 +823,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// </summary>
     /// <remarks>
     /// Offsets in an index count from the header, which <see cref="_headerOffset"/> places in the file; an offset past
-    /// the end of the file places nothing. The index keeps its offsets sorted once asked, so that a lookup costs a
-    /// logarithm of it, however many streams are searched. The object's own entry is stepped over: the object read,
-    /// relocated from an entry that missed it, may have that entry past the start of its data. Its entry in the index the
-    /// reader reads with is not looked at: that one changes as objects are read, and the bound would change with it.
+    /// the end of the file places nothing, nor does a row's negative one, which the index leaves out (#125). The index
+    /// keeps its offsets sorted once asked, so that a lookup costs a logarithm of it, however many streams are searched.
+    /// The object's own entry is stepped over: the object read, relocated from an entry that missed it, may have that
+    /// entry past the start of its data. Its entry in the index the reader reads with is not looked at: that one changes
+    /// as objects are read, and the bound would change with it.
     /// </remarks>
     private long? NextObjectStart(int number, long position)
     {
@@ -1490,7 +1491,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
             var section = new XRefSectionRecord(naming, PositionOf(offset), namedFrom) { WrittenOffset = offset };
             _structure.Add(section);
 
-            if (TryReadXRefSection(offset, section, out var previous, out var hybrid) != XRefSectionState.Read)
+            if (TryReadXRefSection(section.Offset, section, out var previous, out var hybrid) != XRefSectionState.Read)
             {
                 // The first section is where startxref says, and one that is not there leaves no index to
                 // complete: the file is scanned whole, which is reported. A later one is named by the section
@@ -1518,7 +1519,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 };
                 _structure.Add(stream);
 
-                if (TryReadXRefSection(hybrid, stream, out _, out _) != XRefSectionState.Read &&
+                if (TryReadXRefSection(stream.Offset, stream, out _, out _) != XRefSectionState.Read &&
                     !TryRelocateXRefSection(hybrid, stream, out _, out _))
                 {
                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
@@ -1688,7 +1689,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
             var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
 
-            if (TryReadXRefSection(candidate - _headerOffset, attempt, out previous, out hybrid, candidate: true) == XRefSectionState.Read)
+            if (TryReadXRefSection(candidate, attempt, out previous, out hybrid, candidate: true) == XRefSectionState.Read)
             {
                 section.RelocateTo(attempt);
                 _diagnostics.Repair(
@@ -1756,25 +1757,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     }
 
     /// <summary>
-    /// Reads the section at <paramref name="offset"/> into the index, and what became of it into
+    /// Reads the section at <paramref name="absolute"/> into the index, and what became of it into
     /// <paramref name="section"/>: <see cref="XRefSectionState.Read"/>, <see cref="XRefSectionState.NotFound"/> when
     /// nothing there is a section, or <see cref="XRefSectionState.Malformed"/> when one is and cannot be read.
     /// </summary>
-    /// <param name="offset">Where the section is named, counted from the header.</param>
+    /// <param name="absolute">
+    /// Where the section is looked for, a position in the file: one an offset the chain gives names, or one the reader found,
+    /// before the header though it be.
+    /// </param>
     /// <param name="section">Receives what became of the section.</param>
     /// <param name="previous">The offset its <c>/Prev</c> gives, or -1.</param>
     /// <param name="hybrid">The offset its <c>/XRefStm</c> gives, or -1.</param>
     /// <param name="candidate">
-    /// Whether the offset is a place the section may have been moved to rather than one the chain names: an object there
+    /// Whether the position is a place the section may have been moved to rather than one the chain names: an object there
     /// that is no cross-reference stream leaves nothing of its reading.
     /// </param>
     private XRefSectionState TryReadXRefSection(
-        long offset, XRefSectionRecord section, out long previous, out long hybrid, bool candidate = false)
+        long absolute, XRefSectionRecord section, out long previous, out long hybrid, bool candidate = false)
     {
         previous = -1;
         hybrid = -1;
 
-        var absolute = PositionOf(offset);
         if (!IsInFile(absolute))
         {
             // Reported once, by what the chain makes of it: a missing section, or a rebuild for the first.
