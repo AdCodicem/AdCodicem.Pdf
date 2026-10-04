@@ -33,16 +33,23 @@ internal sealed class ChainLoopRule : IValidationRule
         var namedFrom = structure.LoopNamedFrom;
         var written = context.Document.Reader.DescribeOffset(structure.LoopWrittenOffset);
 
+        // An offset outside the file names no section the chain read: an /XRefStm and a /Prev naming the same offset past
+        // the end of the file, or past what a long holds once the header's offset is added (#125), loop through it all the
+        // same, as the reader says.
+        var what = structure.LoopOffset < context.Source.Length
+            ? "a section the chain has already read"
+            : "outside the file, which the chain has already named";
+
         context.Report(
             this,
             namedFrom >= 0 ? PdfValidationLocation.AtPosition(namedFrom) : default,
             namedFrom >= 0
                 ? string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The {structure.LoopNamedBy} of the cross-reference section at offset {namedFrom} names offset {written}, a section the chain has already read: the chain loops.")
+                    $"The {structure.LoopNamedBy} of the cross-reference section at offset {namedFrom} names offset {written}, {what}: the chain loops.")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"A {structure.LoopNamedBy} names offset {written}, a section the chain has already read: the chain loops."),
+                    $"A {structure.LoopNamedBy} names offset {written}, {what}: the chain loops."),
             "Point the /Prev at the section before it, or remove it from the oldest section.");
     }
 }
