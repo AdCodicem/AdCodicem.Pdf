@@ -60,7 +60,7 @@ With `PdfReaderOptions.ThrowOnLimit` set — it is false by default —, reachin
 | `Code` | The limit's code, such as `limit.decoded-stream` |
 | `LimitName` | The property of `PdfReaderLimits` that lifts it, such as `MaxDecodedStreamLength` |
 | `Limit` | The bound in force, such as `268435456` |
-| `Position` | The byte offset where the limit was reached, or -1 |
+| `Position` | The byte offset where the limit was reached, or -1; a chain cut where it goes on outside the file gives the section whose `/Prev` names where |
 
 The exception comes from whichever operation reaches the limit:
 
