@@ -1228,10 +1228,10 @@ internal sealed class ArlingtonWalk
             return _pages.Locate(holder);
         }
 
-        var sections = _reader.Structure.Sections;
-        return sections.Count > 0 && sections[0].TrailerLocation >= 0
-            ? PdfValidationLocation.AtPosition(sections[0].TrailerLocation)
-            : default;
+        // At the trailer the reader merged last, read by the chain or found by a rebuild; at the document when it merged
+        // none (#126).
+        var trailer = _reader.TrailerLocation;
+        return trailer >= 0 ? PdfValidationLocation.AtPosition(trailer) : default;
     }
 
     /// <summary>The generated rules, in the order the profile runs them.</summary>

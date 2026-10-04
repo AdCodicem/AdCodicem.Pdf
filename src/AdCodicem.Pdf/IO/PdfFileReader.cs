@@ -284,6 +284,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private bool _repaired;
     private bool _nestingReported;
 
+    /// <summary>
+    /// Where the newest dictionary a rebuild merged into the trailer starts, at its <c>trailer</c> keyword; -1 while no
+    /// rebuild merged one.
+    /// </summary>
+    private long _rebuiltTrailerPosition = -1;
+
     /// <summary>How many places have been tried for sections of the chain that were not where it named them.</summary>
     private int _relocationCandidatesTried;
 
@@ -337,6 +343,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     /// <summary>Gets how far into the file its header starts: every offset the file gives is counted from there.</summary>
     public long HeaderOffset => _headerOffset;
+
+    /// <summary>
+    /// Gets where the newest trailer the reader merged into <see cref="Trailer"/> lies, which a finding on a value the trailer
+    /// holds points at; -1 when the reader merged none.
+    /// </summary>
+    /// <remarks>
+    /// The first section's own trailer when the chain read it — a table's <c>trailer</c> keyword, or a cross-reference
+    /// stream's object —; otherwise the newest dictionary a rebuild found after a <c>trailer</c> keyword, which a rebuild
+    /// during validation may find late. A key only an older trailer gave is placed there too: in the file, at a trailer the
+    /// reader read (#126). The first section is never relocated: one that is not where <c>startxref</c> says leaves the
+    /// index to a rebuild, and what it names lies outside the file, or holds no trailer.
+    /// </remarks>
+    public long TrailerLocation =>
+        _structure.Sections is [{ State: XRefSectionState.Read, Trailer: not null } first, ..]
+            ? first.TrailerLocation
+            : _rebuiltTrailerPosition;
 
     /// <summary>
     /// Gets the index as the file's chain of cross-reference sections gave it — before anything the reader found
@@ -3640,6 +3662,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 if (parser.ParseObject().AsDictionary() is { } trailer)
                 {
                     _xref.MergeTrailer(trailer);
+
+                    if (_rebuiltTrailerPosition < 0)
+                    {
+                        _rebuiltTrailerPosition = positions[i] - TrailerKeyword.Length;
+                    }
                 }
 
                 KeepPending(mark);
