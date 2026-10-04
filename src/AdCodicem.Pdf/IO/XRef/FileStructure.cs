@@ -50,7 +50,14 @@ internal sealed class FileStructure
     /// Gets where the chain named, through <see cref="LoopNamedBy"/>, a section it had already read; -1 when it
     /// never did.
     /// </summary>
+    /// <remarks>
+    /// A position, the header's offset added; one whose sum a long cannot hold reads as <see cref="long.MaxValue"/>, past
+    /// the end of the file (#125). <see cref="LoopWrittenOffset"/> is the offset as written.
+    /// </remarks>
     public long LoopOffset { get; set; } = -1;
+
+    /// <summary>Gets the offset the chain looped back through, as the file writes it, counted from its header; -1 when it never did.</summary>
+    public long LoopWrittenOffset { get; set; } = -1;
 
     /// <summary>Gets what named the section the chain looped back to.</summary>
     public string? LoopNamedBy { get; set; }
@@ -62,7 +69,17 @@ internal sealed class FileStructure
     /// Gets where the chain went on when <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/> stopped it,
     /// or -1 when it was read to its end.
     /// </summary>
+    /// <remarks>
+    /// A position, the header's offset added; one whose sum a long cannot hold reads as <see cref="long.MaxValue"/>, past
+    /// the end of the file (#125). <see cref="ChainCutWrittenOffset"/> is the offset as written.
+    /// </remarks>
     public long ChainCutAt { get; set; } = -1;
+
+    /// <summary>Gets the offset the chain went on at when it was cut, as the file writes it, counted from its header; -1 when it was not cut.</summary>
+    public long ChainCutWrittenOffset { get; set; } = -1;
+
+    /// <summary>Gets where the section whose <c>/Prev</c> names <see cref="ChainCutAt"/> starts; -1 when the chain was not cut.</summary>
+    public long ChainCutNamedFrom { get; set; } = -1;
 
     /// <summary>Gets a value indicating whether the trailer the chain gave holds any entry at all.</summary>
     public bool TrailerRead { get; set; }

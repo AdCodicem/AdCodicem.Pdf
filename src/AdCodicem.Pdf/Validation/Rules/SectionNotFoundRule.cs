@@ -45,7 +45,7 @@ internal sealed class SectionNotFoundRule : IValidationRule
                     $"The {section.NamedBy} of the cross-reference section at offset {section.NamedFrom} {section.Fault}.")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The cross-reference section {section.NamedBy} names at offset {named} is not there, nor within {PdfFileReader.NearbySearchRadius} bytes of it: the offset {section.Fault ?? "holds no section"}.");
+                    $"The cross-reference section {section.NamedBy} names at offset {context.Document.Reader.DescribeOffset(section.WrittenOffset)} is not there, nor within {PdfFileReader.NearbySearchRadius} bytes of it: the offset {section.Fault ?? "holds no section"}.");
 
             context.Report(
                 this,
