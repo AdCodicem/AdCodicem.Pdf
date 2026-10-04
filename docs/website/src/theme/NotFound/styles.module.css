@@ -1,0 +1,51 @@
+.page {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 96px 16px;
+}
+
+.content {
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.content > p {
+  margin: 0;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.title {
+  margin: 0;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.08;
+}
+
+.text {
+  color: var(--fg-2);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

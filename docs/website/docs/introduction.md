@@ -50,10 +50,10 @@ It follows [Diátaxis](https://diataxis.fr/): each page is written for one need,
 
 | Section | For when you want to | Start with |
 |---|---|---|
-| [Tutorials](/tutorials) | Learn the library by using it, one step at a time | [Open, inspect and validate a PDF](tutorials/first-steps.md) |
-| [How-to guides](/guides) | Get a task done that you already have in mind | [Validate a document before accepting it](guides/validate-a-received-document.md) |
-| [Reference](/reference) | Look up a code, a rule, a limit or a type while you work | [Diagnostics](reference/diagnostics.md), [Validation rules](reference/validation-rules.md), the API reference |
-| [Explanation](/concepts) | Understand why the library works the way it does | [Lazy reading](concepts/lazy-reading.md) |
+| [Tutorials](/docs/tutorials) | Learn the library by using it, one step at a time | [Open, inspect and validate a PDF](tutorials/first-steps.md) |
+| [How-to guides](/docs/guides) | Get a task done that you already have in mind | [Validate a document before accepting it](guides/validate-a-received-document.md) |
+| [Reference](/docs/reference) | Look up a code, a rule, a limit or a type while you work | [Diagnostics](reference/diagnostics.md), [Validation rules](reference/validation-rules.md), the API reference |
+| [Explanation](/docs/concepts) | Understand why the library works the way it does | [Lazy reading](concepts/lazy-reading.md) |
 
 New to the library? The [tutorial](tutorials/first-steps.md) opens, repairs and validates a document in about fifteen
 minutes, with nothing to download but the package.

@@ -1,0 +1,99 @@
+/* A left-aligned hero on the sunken ground, with a code sample as its image (the design system's DocsKit). */
+.hero {
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.heroInner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 80px 40px 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 56px;
+  align-items: center;
+}
+
+.heroText {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.heroText > p {
+  margin: 0;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.heroTitle {
+  margin: 0;
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.prefix {
+  color: var(--logo-wordmark-ad);
+}
+
+.heroLead {
+  font-size: 20px;
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+
+.heroLede {
+  color: var(--fg-2);
+}
+
+.heroCode {
+  min-width: 0;
+  font-size: 0.8rem;
+}
+
+.heroCode :global(.theme-code-block) {
+  margin-bottom: 0;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Arrows nudge 3px on hover. */
+.arrow {
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.button:hover .arrow {
+  transform: translateX(3px);
+}
+
+@media screen and (max-width: 996px) {
+  .heroInner {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 48px 16px;
+    gap: 40px;
+  }
+
+  .heroTitle {
+    font-size: 40px;
+  }
+}

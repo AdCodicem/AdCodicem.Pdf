@@ -1,4 +1,7 @@
 // @ts-check
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 // The documentation site. It publishes two things: the user-facing documentation written here, and the
 // project's own working documents from ../docs, unchanged. Publishing the second is deliberate — the
 // roadmap, the decisions and their rejected alternatives are the most useful thing a reader can have
@@ -77,6 +80,32 @@ async function sidebarItems({ defaultSidebarItemsGenerator, ...args }) {
   return [...[...categories.values()].sort(byName), ...loose.sort(byName)];
 }
 
+// Not import.meta.dirname: Docusaurus loads this file through jiti, which rewrites import.meta.url and nothing else.
+const site = fileURLToPath(new URL('.', import.meta.url));
+
+/**
+ * The homepage is not versioned, but its example must describe what `dotnet add package` installs, so it is a
+ * partial frozen with the rest of the user documentation and read from the latest stable line's copy. Before the
+ * first stable release there is none, and the preview is what the site serves anyway.
+ *
+ * @type {import('@docusaurus/types').PluginModule}
+ */
+function homepageExample() {
+  const partial = '_homepage-example.md';
+  const source = hasStable
+    ? path.join(site, 'versioned_docs', `version-${releases[0].line}`, partial)
+    : path.join(site, 'docs', partial);
+  // Falling back to docs/ here would quietly put unreleased code on the homepage, which is what reading the
+  // snapshot is for. A renamed partial waits for the next release.
+  if (!existsSync(source)) {
+    throw new Error(`The homepage example ${path.relative(site, source)} does not exist.`);
+  }
+  return {
+    name: 'homepage-example',
+    configureWebpack: () => ({ resolve: { alias: { '@homepage-example': source } } }),
+  };
+}
+
 /**
  * The accessible color schemes (src/css/custom.css) hang off a data-contrast attribute on <html>, which this sets
  * before the first paint, as Docusaurus does for data-theme: from the reader's choice in the navbar toggle
@@ -116,6 +145,9 @@ const config = {
     { rel: 'manifest', href: `${baseUrl}site.webmanifest` },
   ].map((attributes) => ({ tagName: 'link', attributes })),
 
+  // Read by the homepage: before the first stable release, `dotnet add package` needs --prerelease.
+  customFields: { hasStable },
+
   url: `https://${organization.toLowerCase()}.github.io`,
   baseUrl,
   organizationName: organization,
@@ -142,7 +174,8 @@ const config = {
       ({
         docs: {
           path: 'docs',
-          routeBasePath: '/',
+          // Under /docs, the root being the homepage. The redirects below keep the addresses published before.
+          routeBasePath: 'docs',
           sidebarPath: './sidebars.js',
           sidebarItemsGenerator: sidebarItems,
           lastVersion: hasStable ? releases[0].line : 'current',
@@ -162,6 +195,7 @@ const config = {
   ],
 
   plugins: [
+    homepageExample,
     contrast,
     [
       '@docusaurus/plugin-content-docs',
@@ -179,17 +213,22 @@ const config = {
       },
     ],
     [
-      // Pages that moved when the user documentation took the Diátaxis quadrants (ADR 47): a link published
-      // before the move lands on the page's new address rather than on a 404. Only the built site carries the
-      // redirects, as small pages at the old addresses; `npm start` does not.
+      // Addresses published before, landing on the page's new one rather than on a 404. Only the built site carries
+      // the redirects, as small pages at the old addresses; `npm start` does not.
       '@docusaurus/plugin-client-redirects',
       {
-        redirects: [{ from: '/project/validation-rules', to: '/reference/validation-rules' }],
-        // Every page of the API reference, in every version, under its address before the move.
+        // A page that moved when the user documentation took the Diátaxis quadrants (ADR 47).
+        redirects: [{ from: '/project/validation-rules', to: '/docs/reference/validation-rules' }],
+        // Every page of the user documentation, in every version, at the address it had while the documentation
+        // was served at the root of the site; and every page of the API reference at the one it had before the
+        // quadrants, under /api. The root itself is the homepage now, and keeps it.
         createRedirects: (existingPath) => {
+          const prefix = '/docs';
+          if (!existingPath.startsWith(`${prefix}/`)) return undefined;
+          const before = existingPath.slice(prefix.length);
           const marker = `/${apiDirectory}/`;
-          const at = existingPath.indexOf(marker);
-          return at < 0 ? undefined : `${existingPath.slice(0, at)}/api/${existingPath.slice(at + marker.length)}`;
+          const at = before.indexOf(marker);
+          return at < 0 ? [before] : [before, `${before.slice(0, at)}/api/${before.slice(at + marker.length)}`];
         },
       },
     ],
@@ -239,11 +278,11 @@ const config = {
         {
           title: 'Documentation',
           items: [
-            { label: 'Introduction', to: '/' },
-            { label: 'Tutorials', to: '/tutorials' },
-            { label: 'How-to guides', to: '/guides' },
-            { label: 'Reference', to: '/reference' },
-            { label: 'Explanation', to: '/concepts' },
+            { label: 'Introduction', to: '/docs' },
+            { label: 'Tutorials', to: '/docs/tutorials' },
+            { label: 'How-to guides', to: '/docs/guides' },
+            { label: 'Reference', to: '/docs/reference' },
+            { label: 'Explanation', to: '/docs/concepts' },
           ],
         },
         {

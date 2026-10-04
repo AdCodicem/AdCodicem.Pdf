@@ -1,11 +1,11 @@
 name: Documentation
 
 # Builds the whole site and deploys it to GitHub Pages: every stable line frozen by a release, served
-# unchanged, the newest at the root; and the preview — the working tree — under /preview, whenever the
+# unchanged, the newest at /docs; and the preview — the working tree — under /docs/preview, whenever the
 # version it documents is a preview newer than the latest stable release. Before the first stable release,
-# the preview is the site (ADR 31).
+# the preview is the documentation, at /docs (ADR 31).
 #
-# Called only, never dispatched: the label of /preview/ has to name the version on nuget.org that describes
+# Called only, never dispatched: the label of /docs/preview/ has to name the version on nuget.org that describes
 # the commit being built, and only the callers know it (ADR 49). preview.yml calls this after every run on
 # its schedule or on dispatch, and on a push to main that changed nothing a package is built from;
 # dispatching preview.yml is how the site is redeployed by hand. release.yml calls it after a stable
