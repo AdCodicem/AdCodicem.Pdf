@@ -1199,19 +1199,19 @@ public class ArlingtonRuleTests
             "The dictionary under /Annots[0]/PMD of object 3 0, a PaperMetaData in the Arlington model, has /Version as a string, where the model wants a number.");
     }
 
-    [Fact]
-    public void A_value_of_a_trailer_no_section_locates_is_located_at_the_document()
+    [Theory]
+    [MemberData(nameof(RebuiltTrailers.Shapes), MemberType = typeof(RebuiltTrailers))]
+    public void A_value_of_a_trailer_only_a_rebuild_finds_is_located_at_the_newest_trailer_it_merged(string shape)
     {
-        // Without startxref, the trailer is found by scanning and no section is recorded: a finding on a value the
-        // trailer holds is located at the document.
-        var text = Encoding.Latin1.GetString(Declaring("1.7", "/Info << /Author 7 >>", Catalog, Root, Page));
-        var file = Encoding.Latin1.GetBytes(text[..text.IndexOf("startxref", StringComparison.Ordinal)]);
+        // Not at what startxref names, which lies past the end of the file, holds no trailer or wraps, nor at the end of
+        // a table that runs to it: at the trailer the reader read (#126).
+        var (file, trailer) = RebuiltTrailers.Build(shape, "/Info << /Author 7 >>");
 
         var finding = Single(Validate(file), PdfValidationRuleIds.ObjectValueTypeWrong);
 
         finding.Message.Should().Be(
             "The dictionary under /Info of the trailer, a DocInfo in the Arlington model, has /Author as an integer, where the model wants a string.");
-        finding.Location.IsDocument.Should().BeTrue();
+        finding.Location.Position.Should().Be(trailer);
     }
 
     private static PdfReaderOptions Limited(int maxObjectLength) =>

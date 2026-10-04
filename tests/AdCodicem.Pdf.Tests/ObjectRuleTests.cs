@@ -591,6 +591,18 @@ public class ObjectRuleTests
             .Message.Should().Be(message);
     }
 
+    [Theory]
+    [MemberData(nameof(RebuiltTrailers.Shapes), MemberType = typeof(RebuiltTrailers))]
+    public void A_reference_in_a_trailer_only_a_rebuild_finds_is_located_at_the_newest_trailer_it_merged(string shape)
+    {
+        var (file, trailer) = RebuiltTrailers.Build(shape, "/Info 9 0 R");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.ObjectReferenceMissing);
+
+        finding.Location.Position.Should().Be(trailer);
+        finding.Message.Should().Be("The trailer refers to object 9 0 under /Info, which the file lacks: the reference reads as null.");
+    }
+
     [Fact]
     public void A_name_with_a_null_character_in_the_trailer_is_found_past_the_keys_naming_sections()
     {

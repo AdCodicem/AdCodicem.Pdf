@@ -65,7 +65,11 @@ internal sealed class XRefSectionRecord
     /// <summary>Gets what is wrong with the trailer.</summary>
     public XRefTrailerFault TrailerFault { get; set; }
 
-    /// <summary>Gets where the trailer's dictionary starts, or where the trailer was expected; -1 when unknown.</summary>
+    /// <summary>
+    /// Gets where the trailer lies — a table's <c>trailer</c> keyword, or the dictionary its rows run into without one; a
+    /// cross-reference stream's object —, or where it was expected, the file's length when the file ends first; -1 when
+    /// unknown.
+    /// </summary>
     public long TrailerPosition { get; set; } = -1;
 
     /// <summary>Gets where a finding about the section's trailer points: the trailer, or the section itself while no trailer was found.</summary>
