@@ -1216,8 +1216,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Closes the reader as its document is disposed: whatever asks it for an object or for a stream's data from now on
     /// is refused with an <see cref="ObjectDisposedException"/> that names the document, and what it kept — the objects
-    /// it cached, the object streams it decoded, its index, the source — is let go, though a reference the caller holds
-    /// keeps the reader itself. Closing it again does nothing.
+    /// it cached, the object streams it decoded, its index, what it noted of each object it read, the source — is let go,
+    /// though a reference the caller holds keeps the reader itself. Closing it again does nothing.
     /// </summary>
     internal void Close()
     {
@@ -1245,6 +1245,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _objectStreamBytes = 0;
         _xref.Release();
         _chainIndex = null;
+
+        // What it noted of each object grows with a damaged file, past what the file weighs: nothing reads it once closed.
+        _nullWhileDecoding.Clear();
+        _nullWhileDecoding.TrimExcess();
+        Release(_unproduced);
+        Release(_cutAtLimit);
+        _endObjMissing.Clear();
+        _endObjMissing.TrimExcess();
+        _streamLengthFaults.Clear();
+        _streamLengthFaults.TrimExcess();
+        _endStreamSearches.Clear();
+        _endStreamSearches.TrimExcess();
+        Release(_lengthFaultsReported);
+        Release(_syntaxReported);
+        Release(_limitsReached);
+        _objectStreamReports.Clear();
+
+        static void Release<T>(HashSet<T> set)
+        {
+            set.Clear();
+            set.TrimExcess();
+        }
     }
 
     private void Initialize()
@@ -4106,6 +4128,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         /// <summary>Records that object <paramref name="number"/> is elsewhere in object stream <paramref name="stream"/>, and tells whether it is the first time.</summary>
         public bool IsFirstMove(int stream, int number) => _moves.Add((stream, number));
+
+        /// <summary>Forgets what was reported, for a reader that will report nothing more.</summary>
+        public void Clear()
+        {
+            _faults.Clear();
+            _faults.TrimExcess();
+            _moves.Clear();
+            _moves.TrimExcess();
+        }
     }
 
     /// <summary>The objects packed inside one object stream, and where each of them starts.</summary>

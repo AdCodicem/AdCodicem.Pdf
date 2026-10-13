@@ -712,10 +712,46 @@ public class DocumentReaderTests
             ownsSource: true);
 
         reader.Close();
+        var closed = reader.Source;
         reader.Close();
 
         source.Disposals.Should().Be(1, "the source the reader owns is released once");
+        reader.Source.Should().BeSameAs(closed, "a second close changes nothing the first left");
         FluentActions.Invoking(() => reader.GetObject(new PdfObjectId(1))).Should().Throw<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public void Disposing_lets_go_of_the_index_the_object_streams_and_what_was_noted_of_each_object()
+    {
+        // A stream whose /Length is wrong and an object that lost its endobj, read before: what the reader noted of
+        // them, its index and the object streams it decoded go once the document is disposed.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>")
+            .WithObject(4, "<< /Length 99 >>\nstream\nBT (Bonjour) Tj ET\nendstream")
+            .WithObject(5, "<< /Type /ExtGState /CA 1 >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5]);
+        var damaged = Encoding.Latin1.GetString(file).Replace("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>\nendobj", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>\n      ", StringComparison.Ordinal);
+        var document = PdfDocument.Open(Encoding.Latin1.GetBytes(damaged));
+        var reader = document.Reader;
+
+        foreach (var number in document.ObjectNumbers.ToList())
+        {
+            _ = document.GetObject(new PdfObjectId(number));
+        }
+
+        reader.TryGetStreamLengthFault(4, out _).Should().BeTrue("the stream's /Length was found wrong");
+        reader.IsEndObjMissing(3, out _).Should().BeTrue("the page lost its endobj");
+        reader.ObjectStreamBytes.Should().BePositive();
+
+        document.Dispose();
+
+        reader.TryGetStreamLengthFault(4, out _).Should().BeFalse();
+        reader.IsEndObjMissing(3, out _).Should().BeFalse();
+        reader.ObjectStreamBytes.Should().Be(0);
+        reader.ObjectCount.Should().Be(0);
+        reader.ChainIndex.Required().Count.Should().Be(0, "the copy of the chain's index goes as well");
     }
 
     [Fact]
