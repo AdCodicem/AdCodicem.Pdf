@@ -1459,9 +1459,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         var written = span[versionStart..versionEnd];
         _structure.HeaderVersion = System.Text.Encoding.Latin1.GetString(written);
+        _structure.HeaderVersionCut = versionEnd == span.Length && span.Length < _source.Length;
 
         if (written is [>= (byte)'0' and <= (byte)'9', (byte)'.', >= (byte)'0' and <= (byte)'9'] &&
-            (versionEnd < span.Length || span.Length == _source.Length))
+            !_structure.HeaderVersionCut)
         {
             _headerVersion = _structure.HeaderVersion;
         }

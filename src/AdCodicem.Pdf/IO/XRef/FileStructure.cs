@@ -32,6 +32,12 @@ internal sealed class FileStructure
     /// </summary>
     public string? HeaderVersion { get; set; }
 
+    /// <summary>
+    /// Gets whether the reader's search window ends before what follows <c>%PDF-</c> does: <see cref="HeaderVersion"/>
+    /// then holds its start, and the whole is at least that long.
+    /// </summary>
+    public bool HeaderVersionCut { get; set; }
+
     /// <summary>Gets where the last <c>startxref</c> keyword of the file's tail starts, or -1 when there is none.</summary>
     public long StartXRefPosition { get; set; } = -1;
 

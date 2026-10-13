@@ -37,7 +37,7 @@ internal sealed class FileHeaderVersionRule : IValidationRule
             PdfValidationLocation.AtPosition(structure.HeaderPosition),
             string.IsNullOrEmpty(structure.HeaderVersion)
                 ? "The header names no version after %PDF-."
-                : $"The header names version {FileQuote.Keyword(Encoding.Latin1.GetBytes(structure.HeaderVersion))}, which is not a version of PDF: 1.0 to 1.7, or 2.0.",
+                : $"The header names version {FileQuote.Keyword(Encoding.Latin1.GetBytes(structure.HeaderVersion), structure.HeaderVersionCut)}, which is not a version of PDF: 1.0 to 1.7, or 2.0.",
             "Write after %PDF- the version the file conforms to, such as 1.7.");
     }
 
