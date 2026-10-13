@@ -63,6 +63,66 @@ public class DocumentReaderTests
         document.Catalog.Should().NotBeNull();
     }
 
+    [Fact]
+    public void A_version_the_end_of_the_file_ends_is_one()
+    {
+        // The header is the file's last bytes: the end of the file ends its version, as white space would.
+        var body = PdfTemplate.Build(PdfTemplate.Sound)[9..];
+        var file = body.Concat(Encoding.Latin1.GetBytes("%PDF-1.7")).ToArray();
+
+        using var document = PdfDocument.Open(file);
+
+        document.Version.Should().Be("1.7");
+        document.Reader.Structure.HeaderVersionCut.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_version_that_ends_where_the_header_search_and_the_file_both_end_is_one()
+    {
+        // 4,096 bytes in all: the version's last digit is the file's last byte and the search window's.
+        var body = PdfTemplate.Build(PdfTemplate.Sound)[9..];
+        var file = body.Concat(Encoding.Latin1.GetBytes("\n" + new string('%', 4096 - body.Length - 9) + "%PDF-1.7")).ToArray();
+        file.Length.Should().Be(4096);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Version.Should().Be("1.7");
+    }
+
+    [Theory]
+    [InlineData(9, "/1.7", "1.7")]
+    [InlineData(9, "(1.7)", "1.4")]
+    [InlineData(8, "/1.7", "1.4")]
+    public void A_catalog_s_version_written_as_a_reference_is_read_as_the_document_opens(int named, string value, string version)
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, $"<< /Type /Catalog /Pages 2 0 R /Version {named} 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>")
+            .WithObject(9, value)
+            .BuildClassic(rootNumber: 1);
+        "%PDF-1.4"u8.CopyTo(file);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Version.Should().Be(version);
+    }
+
+    [Fact]
+    public void Without_a_catalog_the_version_is_the_header_s()
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 /Version /1.7 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>")
+            .BuildClassic(rootNumber: 1);
+        "%PDF-1.4"u8.CopyTo(file);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Catalog.Should().BeNull("no object is the catalog /Root names");
+        document.Version.Should().Be("1.4");
+    }
+
     [Theory]
     [InlineData("%PDF-1.4", "/Version /1.7", "1.7")]
     [InlineData("%PDF-1.3", "/Version /1.6", "1.6")]

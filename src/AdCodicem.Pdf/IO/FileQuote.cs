@@ -52,12 +52,18 @@ internal static class FileQuote
     /// Writes a keyword's bytes as a name's, with no solidus: each byte a writer would not write as itself — the number
     /// sign, a delimiter, any byte outside printable ASCII — as <c>#xx</c>, and cut past <see cref="MaxBytes"/>.
     /// </summary>
-    public static string Keyword(ReadOnlySpan<byte> keyword)
+    public static string Keyword(ReadOnlySpan<byte> keyword) => Keyword(keyword, cut: false);
+
+    /// <summary>
+    /// Writes a keyword's bytes as <see cref="Keyword(ReadOnlySpan{byte})"/> does, saying, when <paramref name="cut"/> is
+    /// set, that what the reader read of it stops short of its end: the whole is at least as long as the bytes given.
+    /// </summary>
+    public static string Keyword(ReadOnlySpan<byte> keyword, bool cut)
     {
         Span<char> shown = stackalloc char[MaxBytes];
         var count = Encoding.Latin1.GetChars(keyword[..Math.Min(keyword.Length, MaxBytes)], shown);
         Span<char> buffer = stackalloc char[BufferLength];
-        return new string(buffer[..Write(null, shown[..count], keyword.Length, buffer)]);
+        return new string(buffer[..Write(null, shown[..count], keyword.Length, buffer, cut)]);
     }
 
     /// <summary>
@@ -75,7 +81,8 @@ internal static class FileQuote
     /// <param name="value">The characters to quote, each up to U+00FF one byte.</param>
     /// <param name="whole">How many bytes the whole holds, or -1 to count them from <paramref name="value"/> on a cut.</param>
     /// <param name="destination">Where the quote is written, <see cref="BufferLength"/> characters long.</param>
-    private static int Write(char? lead, ReadOnlySpan<char> value, long whole, Span<char> destination)
+    /// <param name="atLeast">Whether the whole is only known to be at least <paramref name="whole"/> bytes long.</param>
+    private static int Write(char? lead, ReadOnlySpan<char> value, long whole, Span<char> destination, bool atLeast = false)
     {
         var length = 0;
 
@@ -132,10 +139,13 @@ internal static class FileQuote
             whole = bytes + ByteLength(value[index..]);
         }
 
-        if (whole > bytes)
+        if (whole > bytes || atLeast)
         {
             // A space no quote holds: the note cannot be read as the name's.
-            destination[length..].TryWrite(CultureInfo.InvariantCulture, $" (the first {bytes} of {whole:N0} bytes)", out var written);
+            destination[length..].TryWrite(
+                CultureInfo.InvariantCulture,
+                $" (the first {bytes} of {(atLeast ? "at least " : string.Empty)}{whole:N0} bytes)",
+                out var written);
             length += written;
         }
 

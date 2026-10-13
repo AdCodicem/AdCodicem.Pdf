@@ -89,6 +89,23 @@ public class FileRuleTests
         finding.Message.Should().Be(message);
     }
 
+    [Theory]
+    [InlineData(0, 10_000, 4091)]
+    [InlineData(0, 4092, 4091)]
+    [InlineData(500, 3_800, 3591)]
+    public void A_header_s_text_the_header_search_cuts_is_quoted_as_at_least_what_was_read(int before, int length, int read)
+    {
+        var file = Encoding.Latin1.GetBytes(new string(' ', before))
+            .Concat(PdfTemplate.SoundWith("%PDF-1.7", "%PDF-" + new string('K', length)))
+            .ToArray();
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.FileHeaderVersionInvalid);
+
+        finding.Message.Should().Be(
+            "The header names version " + new string('K', 127) +
+            string.Create(CultureInfo.InvariantCulture, $" (the first 127 of at least {read:N0} bytes), which is not a version of PDF: 1.0 to 1.7, or 2.0."));
+    }
+
     [Fact]
     public void A_header_s_long_text_is_quoted_as_a_keyword_bounded_with_its_whole_length()
     {
