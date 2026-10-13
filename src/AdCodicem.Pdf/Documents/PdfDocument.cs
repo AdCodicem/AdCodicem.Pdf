@@ -9,7 +9,8 @@ namespace AdCodicem.Pdf.Documents;
 /// </summary>
 /// <remarks>
 /// Opening a document indexes it from its cross-reference sections, with the objects a cross-reference stream's
-/// dictionary refers to for its data and its rows, and reads its catalog through the trailer's <c>/Root</c>. When
+/// dictionary refers to for its data and its rows, and reads its catalog through the trailer's <c>/Root</c>, with what
+/// its <c>/Type</c> and its <c>/Version</c> refer to. When
 /// <c>/Root</c> leads to no catalog, opening loads the indexed objects one after another until one is a catalog, and
 /// rebuilds the index when none is. A rebuild scans the whole file and loads every object written directly in it, to
 /// take in those its object streams hold, then looks for the catalog the same way if <c>/Root</c> still leads to
@@ -69,9 +70,11 @@ public sealed class PdfDocument : IDisposable
     /// <remarks>
     /// <para>
     /// A header names a version when <c>%PDF-</c> is followed by one digit, a period and one digit, and then by white
-    /// space, a comment or the end of the file: <c>%PDF-1.4.5.6</c>, <c>%PDF-1.7abc</c> and <c>%PDF-14</c> name none, nor
-    /// does a file without a header, whatever its catalog says. A version so written that ISO 32000 does not define,
-    /// such as <c>1.8</c>, is given as written. The catalog's <c>/Version</c> counts when it is written the same way.
+    /// space, a comment or the end of the file, within the first 4,096 bytes, where the reader looks for the header:
+    /// <c>%PDF-1.4.5.6</c>, <c>%PDF-1.7abc</c> and <c>%PDF-14</c> name none, nor does a version those bytes end before
+    /// what follows it, nor a file without a header, whatever its catalog says. A version so written that ISO 32000 does
+    /// not define, such as <c>1.8</c>, is given as written. The catalog's <c>/Version</c> counts when it is a name written
+    /// the same way; written as a reference, it is read as the document opens.
     /// </para>
     /// <para>
     /// It is worked out as the document opens, from the catalog it opens with. What the header says is judged by the

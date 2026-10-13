@@ -52,8 +52,9 @@ What a caller entrusts to the library when it opens a file it did not produce:
   encryption, hiding a cut, or getting the reader's own limit blamed on the file.
 - **The host's logs and terminals.** Diagnostic and finding messages quote names and keywords from the file, and
   hosts log and print them, as they print the objects a document hands out, through their `ToString`. A quote is
-  printable ASCII on one line and at most 127 bytes of what the file wrote, and so is what an object says of itself, so
-  what a host prints is the library's text, not the file's (*Reports*, below).
+  printable ASCII on one line and at most 127 bytes of what the file wrote, and what an object says of itself is too,
+  127 characters of a string's text at most, so what a host prints is the library's text, not the file's (*Reports*,
+  below).
 
 The library holds more later: the files it writes ([M03]), the original bytes and existing signatures an
 incremental update preserves ([M03], [M04]), passwords and file keys ([M16]), signing keys and certificates
