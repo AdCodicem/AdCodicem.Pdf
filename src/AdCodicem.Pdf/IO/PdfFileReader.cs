@@ -139,7 +139,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private static ReadOnlySpan<byte> StartXRefKeyword => "startxref"u8;
     private static ReadOnlySpan<byte> HeaderMarker => "%PDF-"u8;
 
-    private readonly PdfFileSource _source;
+    private PdfFileSource _source;
     private readonly PdfDiagnostics _diagnostics;
     private readonly PdfLimitGuard _guard;
 
@@ -282,6 +282,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
     private long _headerOffset;
 
+    /// <summary>
+    /// Whether the document was disposed: from then on, whatever asks the reader for an object or for a stream's data is
+    /// refused, whatever it kept.
+    /// </summary>
+    private bool _closed;
+
     /// <summary>The version the header names, one digit, a period and one digit; null when it names none.</summary>
     private string? _headerVersion;
 
@@ -396,8 +402,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     internal long ObjectStreamBytes => _objectStreamBytes;
 
     /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfObject GetObject(PdfObjectId id)
     {
+        // First, before the cache: what a reference taken from a disposed document answers does not depend on what was
+        // read before, nor on what the cache kept.
+        ObjectDisposedException.ThrowIf(_closed, typeof(PdfDocument));
+
         if (id.Number <= 0)
         {
             return PdfNull.Instance;
@@ -689,7 +700,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         // A declared length is a claim made by the file, so it is clamped to what the file can hold.
         // Without this, "/Length 2147483647" would ask for two gigabytes of memory.
         var available = (int)Math.Clamp(_source.Length - absoluteOffset, 0, int.MaxValue);
-        return new FileStreamData(_source, absoluteOffset, Math.Clamp(length, 0, available), _guard);
+        return new FileStreamData(this, absoluteOffset, Math.Clamp(length, 0, available), _guard);
     }
 
     /// <inheritdoc/>
@@ -1198,13 +1209,38 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Closes the reader as its document is disposed: whatever asks it for an object or for a stream's data from now on
+    /// is refused with an <see cref="ObjectDisposedException"/> that names the document, and what it kept — the objects
+    /// it cached, the object streams it decoded, its index, the source — is let go, though a reference the caller holds
+    /// keeps the reader itself. Closing it again does nothing.
+    /// </summary>
     public void Dispose()
     {
+        if (_closed)
+        {
+            return;
+        }
+
+        _closed = true;
+
         if (_ownsSource)
         {
             _source.Dispose();
         }
+
+        _source = PdfFileSource.FromMemory(ReadOnlyMemory<byte>.Empty);
+        _cache.Clear();
+        _cache.TrimExcess();
+        _cacheOrder.Clear();
+        _cacheOrder.TrimExcess();
+        _objectStreams.Clear();
+        _objectStreams.TrimExcess();
+        _objectStreamOrder.Clear();
+        _objectStreamOrder.TrimExcess();
+        _objectStreamBytes = 0;
+        _xref.Release();
+        _chainIndex = null;
     }
 
     private void Initialize()
@@ -3935,7 +3971,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         }
     }
 
-    private sealed class FileStreamData(PdfFileSource source, long offset, int length, PdfLimitGuard guard) : PdfStreamData
+    /// <summary>
+    /// A stream's data in the file, read the first time something asks for it, and refused, read or not, once the
+    /// document is disposed.
+    /// </summary>
+    private sealed class FileStreamData(PdfFileReader reader, long offset, int length, PdfLimitGuard guard) : PdfStreamData
     {
         private byte[]? _bytes;
         private bool _cutByGuard;
@@ -3950,15 +3990,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
 
         public void MarkCutByGuard() => _cutByGuard = true;
 
+        /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
         public override ReadOnlyMemory<byte> GetBytes()
         {
+            ObjectDisposedException.ThrowIf(reader._closed, typeof(PdfDocument));
+
             if (_bytes is not null)
             {
                 return _bytes;
             }
 
             var buffer = new byte[length];
-            var read = source.Read(offset, buffer);
+            var read = reader._source.Read(offset, buffer);
             _bytes = read == length ? buffer : buffer[..read];
             return _bytes;
         }

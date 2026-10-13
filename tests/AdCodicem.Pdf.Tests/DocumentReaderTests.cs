@@ -590,6 +590,153 @@ public class DocumentReaderTests
         FluentActions.Invoking(document.Dispose).Should().NotThrow();
     }
 
+    public static TheoryData<string> Openings() =>
+        new("bytes", "a stream it copies", "a memory stream it reads in place", "a path", "a source it does not own");
+
+    [Theory]
+    [MemberData(nameof(Openings))]
+    public void A_disposed_document_answers_nothing_but_its_diagnostics_nor_does_what_was_taken_from_it(string opening)
+    {
+        var bytes = HeldObjectsDocument();
+        var path = opening == "a path" ? Path.GetTempFileName() : null;
+
+        try
+        {
+            if (path is not null)
+            {
+                File.WriteAllBytes(path, bytes);
+            }
+
+            using var stream = opening switch
+            {
+                "a stream it copies" => new MemoryStream(bytes),
+                "a memory stream it reads in place" => new MemoryStream(bytes, 0, bytes.Length, writable: false, publiclyVisible: true),
+                _ => null,
+            };
+            using var source = opening == "a source it does not own" ? PdfFileSource.FromMemory(bytes) : null;
+            var document = opening switch
+            {
+                "bytes" => PdfDocument.Open(bytes),
+                "a path" => PdfDocument.Open(path!),
+                "a source it does not own" => PdfDocument.Open(source!, options: null, ownsSource: false),
+                _ => PdfDocument.Open(stream!),
+            };
+
+            // Taken before: a page, cached; its content stream, cached and its data read; a stream whose data was not
+            // read; an object of an object stream read, so cached, and one of the same stream not read.
+            var page = document.GetObject(new PdfObjectId(3)).AsDictionary().Required();
+            var contents = page.GetRaw(PdfName.Contents).Should().BeOfType<PdfReference>().Subject;
+            var read = contents.Resolve().Should().BeOfType<PdfStream>().Subject;
+            read.GetRawBytes().Length.Should().Be(18);
+            var unread = document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfStream>().Subject;
+            var states = page.GetDictionary(PdfName.Get("Resources")).Required().GetDictionary(PdfName.Get("ExtGState")).Required();
+            states.GetDictionary(PdfName.Get("A")).Should().NotBeNull();
+            var packed = states.GetRaw(PdfName.Get("A")).Should().BeOfType<PdfReference>().Subject;
+            var packedUnread = states.GetRaw(PdfName.Get("B")).Should().BeOfType<PdfReference>().Subject;
+            using var numbers = document.ObjectNumbers.GetEnumerator();
+            numbers.MoveNext().Should().BeTrue();
+
+            document.Dispose();
+
+            document.Diagnostics.Should().BeEmpty("the record of the reading keeps answering");
+            Disposed(() => document.Trailer);
+            Disposed(() => document.Catalog);
+            Disposed(() => document.Version);
+            Disposed(() => document.WasRepaired);
+            Disposed(() => document.ObjectCount);
+            Disposed(() => document.ObjectNumbers);
+            Disposed(() => document.IsEncrypted);
+            Disposed(() => document.GetObject(new PdfObjectId(3)));
+            Disposed(() => document.GetObject(new PdfObjectId(2)));
+            Disposed(() => numbers.MoveNext());
+            Disposed(() => contents.Resolve());
+            Disposed(() => packed.Resolve());
+            Disposed(() => packedUnread.Resolve());
+            Disposed(() => states.GetDictionary(PdfName.Get("B")));
+            Disposed(() => page.GetStream(PdfName.Contents));
+            Disposed(() => read.GetRawBytes());
+            Disposed(() => read.Decode(document.Diagnostics));
+            Disposed(() => unread.GetRawBytes());
+
+            read.RawLength.Should().Be(18, "what was handed out stays the caller's");
+            read.ToString().Should().Be("<<stream of 18 bytes>>");
+            page.ToString().Should().Be("<</Type /Page ... 5 entries>>");
+            FluentActions.Invoking(document.Dispose).Should().NotThrow();
+            source?.Length.Should().Be(bytes.Length, "a source the document did not own stays the caller's");
+        }
+        finally
+        {
+            if (path is not null)
+            {
+                File.Delete(path);
+            }
+        }
+
+        static void Disposed(Func<object?> act) =>
+            FluentActions.Invoking(act).Should().Throw<ObjectDisposedException>()
+                .Which.ObjectName.Should().Be(typeof(PdfDocument).FullName);
+    }
+
+    [Fact]
+    public void What_was_taken_from_a_document_read_in_the_caller_s_memory_reads_none_of_what_it_holds_once_disposed()
+    {
+        // The caller reuses its buffer once the document is disposed, as a pool does: a reference or a stream taken
+        // before reads neither the bytes the document was read from nor those the caller wrote since.
+        var buffer = HeldObjectsDocument();
+        var document = PdfDocument.Open(buffer);
+        var contents = document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetRaw(PdfName.Contents)!;
+        var unread = document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfStream>().Subject;
+
+        document.Dispose();
+        SampleDocument("BT (Another file) Tj ET").BuildWithXRefStream(rootNumber: 1).CopyTo(buffer, 0);
+
+        FluentActions.Invoking(contents.Resolve).Should().Throw<ObjectDisposedException>();
+        FluentActions.Invoking(() => unread.GetRawBytes()).Should().Throw<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public void Disposing_lets_go_of_what_the_document_kept_though_a_reference_taken_from_it_is_held()
+    {
+        var (held, cached, source) = OpenTakeAndDispose();
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        cached.IsAlive.Should().BeFalse("the objects the document cached are let go");
+        source.IsAlive.Should().BeFalse("and so is the file it was read from");
+        GC.KeepAlive(held);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (PdfObject Held, WeakReference Cached, WeakReference Source) OpenTakeAndDispose()
+    {
+        var source = PdfFileSource.FromMemory(HeldObjectsDocument());
+        var document = PdfDocument.Open(source, options: null, ownsSource: true);
+        var page = document.GetObject(new PdfObjectId(3));
+        var taken = (page.AsDictionary().Required().GetRaw(PdfName.Contents)!, new WeakReference(page), new WeakReference(source));
+
+        document.Dispose();
+        return taken;
+    }
+
+    /// <summary>
+    /// A page whose content stream, a stream beside it, and two objects of an object stream are what a caller takes from
+    /// a document before disposing of it.
+    /// </summary>
+    private static byte[] HeldObjectsDocument() =>
+        new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(
+                3,
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /ExtGState << /A 5 0 R /B 6 0 R >> >> >>")
+            .Stream(4, string.Empty, "BT (Bonjour) Tj ET")
+            .WithObject(5, "<< /Type /ExtGState /CA 1 >>")
+            .WithObject(6, "<< /Type /ExtGState /CA 0.5 >>")
+            .Stream(7, string.Empty, "q Q")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6]);
+
     [Fact]
     public void Reads_a_cross_reference_stream_that_leaves_out_the_type_field()
     {

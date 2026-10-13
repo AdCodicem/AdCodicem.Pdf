@@ -71,6 +71,13 @@ internal sealed class PdfXRefTable
         _offsets = null;
     }
 
+    /// <summary>Removes every entry, and lets go of the room they took, for a table nothing will read again.</summary>
+    public void Release()
+    {
+        Clear();
+        _entries.TrimExcess();
+    }
+
     /// <summary>
     /// Gets the smallest offset an entry in use written directly — not in an object stream — gives that is greater
     /// than <paramref name="offset"/>, or <see cref="long.MaxValue"/> when none is. A row's negative offset places

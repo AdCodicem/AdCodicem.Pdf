@@ -19,6 +19,15 @@ namespace AdCodicem.Pdf.Documents;
 /// something asks for it. A document is not thread-safe: it caches what it parses, so one document belongs to one
 /// thread at a time. Several documents can of course be processed in parallel, and the reader holds no shared
 /// mutable state to make that unsafe.
+/// <para>
+/// Once disposed, a document answers nothing but its <see cref="Diagnostics"/>, the record of its reading, and
+/// <see cref="Dispose"/>: every other member throws <see cref="ObjectDisposedException"/>, and so does whatever reaches
+/// back into it from an object taken before — a reference resolved, through <see cref="PdfReference.Resolve"/> or an
+/// accessor that resolves, a stream's data asked for —, however it was opened and whether or not it was read before.
+/// What was handed out stays the caller's: a dictionary's direct values, a stream's <see cref="PdfStream.RawLength"/>,
+/// every object's <c>ToString</c>. Disposing lets go of what the document kept: the objects it read, its index, and the
+/// file, closed when it was opened from a path, and held no longer when it was opened from memory or a stream.
+/// </para>
 /// </remarks>
 public sealed class PdfDocument : IDisposable
 {
@@ -32,12 +41,25 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>Gets what the reader noticed while opening and reading the document.</summary>
+    /// <remarks>
+    /// It keeps answering once the document is disposed, as the final record of its reading: nothing adds to it then,
+    /// since nothing can be read.
+    /// </remarks>
     public PdfDiagnostics Diagnostics { get; }
 
     /// <summary>Gets the document trailer.</summary>
-    public PdfDictionary Trailer => _reader.Trailer;
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+    public PdfDictionary Trailer
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _reader.Trailer;
+        }
+    }
 
     /// <summary>Gets the document catalog, the root of the object graph.</summary>
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfDictionary? Catalog => Trailer.GetDictionary(PdfName.Root);
 
     /// <summary>
@@ -56,7 +78,15 @@ public sealed class PdfDocument : IDisposable
     /// validator's <c>file.header-missing</c> and <c>file.header-version-invalid</c> rules.
     /// </para>
     /// </remarks>
-    public string? Version => _reader.Version;
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+    public string? Version
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _reader.Version;
+        }
+    }
 
     /// <summary>Gets a value indicating whether the cross-reference index had to be rebuilt.</summary>
     /// <remarks>
@@ -64,16 +94,33 @@ public sealed class PdfDocument : IDisposable
     /// neither where the index places it nor near it, or one missing from an index the file's sections did not give
     /// whole. It can therefore turn true after the document has opened, as more of the document is read.
     /// </remarks>
-    public bool WasRepaired => _reader.WasRepaired;
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+    public bool WasRepaired
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _reader.WasRepaired;
+        }
+    }
 
     /// <summary>
     /// Gets the number of entries in the cross-reference index, one per object number: those in use, and those the
     /// file's sections mark free, object 0 — the head of the free list — among them. A rebuild empties the index,
     /// free entries included, and fills it with the objects its scan finds and those their object streams hold.
     /// </summary>
-    public int ObjectCount => _reader.ObjectCount;
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+    public int ObjectCount
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _reader.ObjectCount;
+        }
+    }
 
     /// <summary>Gets a value indicating whether the document is encrypted.</summary>
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public bool IsEncrypted => Trailer.ContainsKey(PdfName.Encrypt);
 
     /// <summary>Opens a document from a file, reading its contents on demand.</summary>
@@ -200,6 +247,7 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>Returns the object with the given identifier, reading it if it is not already in memory.</summary>
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     /// <exception cref="PdfLimitExceededException">
     /// Reading it reached one of <see cref="PdfReaderOptions.Limits"/>, and <see cref="PdfReaderOptions.ThrowOnLimit"/> is set.
     /// </exception>
@@ -213,7 +261,33 @@ public sealed class PdfDocument : IDisposable
     /// Gets the object numbers of the entries <see cref="ObjectCount"/> counts, those the file's sections mark free
     /// included — object 0, the head of the free list, among them.
     /// </summary>
-    public IEnumerable<int> ObjectNumbers => _reader.ObjectNumbers;
+    /// <remarks>An enumeration begun before the document is disposed is refused at its next step after.</remarks>
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+    public IEnumerable<int> ObjectNumbers
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return Numbers();
+
+            IEnumerable<int> Numbers()
+            {
+                using var numbers = _reader.ObjectNumbers.GetEnumerator();
+
+                while (true)
+                {
+                    ThrowIfDisposed();
+
+                    if (!numbers.MoveNext())
+                    {
+                        yield break;
+                    }
+
+                    yield return numbers.Current;
+                }
+            }
+        }
+    }
 
     /// <summary>Gets the bytes the document is read from, for the validation rules that look at the file itself.</summary>
     internal PdfFileSource Source
