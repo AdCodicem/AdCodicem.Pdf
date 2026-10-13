@@ -14,9 +14,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which,
   [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
   fifth, [#157] and [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on
-  2026-10-03, the seventh, [#118], with [#226] that day, and the eighth, [#119] and [#172], with [#231] on 2026-10-04;
-  the ninth, [#125] and [#126], in [#238]; then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial
-  review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
+  2026-10-03, the seventh, [#118], with [#226] that day, the eighth, [#119] and [#172], with [#231] on 2026-10-04,
+  and the ninth, [#125] and [#126], with [#238] that day; then slices 4 to 6 ([#60] to [#62]); then the milestone's
+  adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
   the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
   fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
   [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]), its eighth ([#229],
@@ -26,7 +26,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 3,256 unit on `main` since [#231], 3,313 on [#238]'s branch (3 skipped: 2 by design, and the theory
+- **Tests**: 3,313 unit on `main` since [#238] (3 skipped: 2 by design, and the theory
   over the remote corpus's streams whose length is wrong, which has no document without it) + 1,306 integration
   (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the
   remote documents fetched, on [#238]'s branch: 5,218 unit with the 233 this container holds, 3 skipped — the laziness
@@ -35,39 +35,38 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 33's 5,275
   acceptance tests and 3,329 referee checks, on [#238]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.5 % of `src/` — 5,746 of 5,774 lines on [#238]'s branch, every one of its patch's 109
-  measurable lines among them, every branch taken; 5,693 of 5,721 on `main` since [#231]. The 28 left on the branch
-  are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): members that are private, or of a private type,
-  which no input reaches — nine lines of `ArlingtonWalk` (193, 849, 956, 966, 967, 987, 989, 1061, 1077) and three of
-  a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a switch's
-  default arm (`CrossReferenceProbe` 86 and 231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 87 and 96), a line
-  the compiler puts after a call that never returns (`PdfFileReader` 1347), two branches the compiler adds that no
-  input takes (`FileQuote` 138, an interpolation's buffer too small; `PdfObjectParser` 791, a concatenation's null
-  check); and eight more, the same before this branch: `EndStreamAfter`'s two defensive arms (`PdfFileReader` 1315,
-  1319, journal of batch 6), the `HasValue` checks the compiler adds on a `long?` and a defensive arm of `Expanded`
-  (2602, 2752, batch 5), `ObjectStreamDependencies.Location`'s arm without a Regular entry (223, batch 7), one of the
-  six ways out of a cross-reference stream row's `switch` (2701) and `Repair`'s guard against a second rebuild (3635,
-  3637). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `26506db` (CI run 504). `Remote corpus` passed on every document in the
-  nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
-  after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run
-  22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
+  Arlington tables left out), 99.5 % of `src/` — 5,746 of 5,774 lines on `main` since [#238], every one of its patch's
+  109 measurable lines among them, every branch taken. The 28 left are those the rule of 2026-09-29 leaves
+  (`CLAUDE.md`, *Coverage*): members that are private, or of a private type, which no input reaches — nine lines of
+  `ArlingtonWalk` (193, 849, 956, 966, 967, 987, 989, 1061, 1077) and three of a defensive branch of `PdfLexer` (161,
+  164, 165) —, a `?.` on an index never null where it is read and a switch's default arm (`CrossReferenceProbe` 86 and
+  231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 87 and 96), a line the compiler puts after a call that never
+  returns (`PdfFileReader` 1347), two branches the compiler adds that no input takes (`FileQuote` 138, an
+  interpolation's buffer too small; `PdfObjectParser` 791, a concatenation's null check); and eight more, the same
+  before [#238]: `EndStreamAfter`'s two defensive arms (`PdfFileReader` 1315, 1319, journal of batch 6), the
+  `HasValue` checks the compiler adds on a `long?` and a defensive arm of `Expanded` (2602, 2752, batch 5),
+  `ObjectStreamDependencies.Location`'s arm without a Regular entry (223, batch 7), one of the six ways out of a
+  cross-reference stream row's `switch` (2701) and `Repair`'s guard against a second rebuild (3635, 3637).
+  `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
+- **CI**: green on `main` at `83d15a1` (CI run 512), [#238]'s last commit. `Remote corpus` passed on every document in
+  the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun
+  once after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in
+  run 22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
   web.archive.org refused the download of ECan's scan (`Connection refused`, [#204]): every test over the 241 it
-  fetched passed.
-  Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one rerun; run 25,
-  on [#225]'s branch, passed whole at its first attempt; run 26, on [#226]'s branch, lost ECan's scan again at its
-  first attempt and passed whole at its one rerun. The nightly run 27, on `main` at `2f26244`, lost the CFIA's form,
-  web.archive.org refusing the connection ([#204]), and passed every test over the 241 others. Runs 28 and 29, on
-  [#231]'s branch, passed whole at their first attempt, the second on the code the branch ends with; CI run 473 is
-  green on that code. The nightly run 30, on `main` at `78ff13b`, passed whole at its first attempt, and so did runs
-  31 and 32, on [#238]'s branch, the second on the batch's last code; run 33, on that code rebased onto `main`, lost
-  ECan's scan at its first attempt, web.archive.org refusing the connection ([#204]), and passed whole at its one
+  fetched passed. Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one
+  rerun; run 25, on [#225]'s branch, passed whole at its first attempt; run 26, on [#226]'s branch, lost ECan's scan
+  again at its first attempt and passed whole at its one rerun. The nightly run 27, on `main` at `2f26244`, lost the
+  CFIA's form, web.archive.org refusing the connection ([#204]), and passed every test over the 241 others. Runs 28
+  and 29, on [#231]'s branch, passed whole at their first attempt, the second on the code the branch ends with; CI run
+  473 is green on that code. The nightly run 30, on `main` at `78ff13b`, passed whole at its first attempt, and so did
+  runs 31 and 32, on [#238]'s branch, the second on the batch's last code; run 33, on that code rebased onto `main`,
+  lost ECan's scan at its first attempt, web.archive.org refusing the connection ([#204]), and passed whole at its one
   rerun. CI run 509 is green on that code.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in run 33 on 2026-10-04. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in the nightly run 41 on 2026-10-12. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.57`, one per push to `main` until [#227], through trusted publishing, 1,141 downloads on 2026-10-02.
   The `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified. With [#227] merged, previews come
@@ -220,8 +219,8 @@ One pull request per batch, each design question put to the maintainer after mea
       its branch (journal of 2026-10-03).
    8. [#119] and [#172], what the parser read in silence — done, merged with [#231] on 2026-10-04, `Remote corpus`
       run 28 green on its branch (journal of 2026-10-03).
-   9. [#125] and [#126], offsets past what a long holds and where a trailer's finding goes — done in [#238],
-      `Remote corpus` run 31 green on its branch (journal of 2026-10-04).
+   9. [#125] and [#126], offsets past what a long holds and where a trailer's finding goes — done, merged with [#238]
+      on 2026-10-04, `Remote corpus` run 31 green on its branch (journal of 2026-10-04).
    10. [#190] and [#212], the reader's public surface.
    11. [#164] and [#183], the index's size, the first new guard.
    12. [#165] and [#166], filter chains, with [#199], [#209] and [#219].
