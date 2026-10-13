@@ -42,7 +42,9 @@ What a caller entrusts to the library when it opens a file it did not produce:
 - **The caller's resources.**
   - `Open(string)` opens a read-only handle (`FileShare.Read`) and holds it until `Dispose`.
   - `Open(ReadOnlyMemory<byte>)` reads the caller's memory where it lies, without copying it.
-  - `Open(Stream)` reads the caller's stream and leaves it open.
+  - `Open(Stream)` reads the caller's stream from its start when it can seek, from where it stands otherwise, and
+    leaves it open. Only a `MemoryStream` itself is read in its buffer; a derived one, which may lend its buffer again
+    once disposed, is copied.
   - `Open(PdfFileSource, …)` releases the source when it was given to own it, on failure too.
 - **The truth of what the library returns.** A caller decides on the objects, the decoded data, the diagnostics
   and the validation report. Should an upload be accepted? Is the document encrypted? Did the reader cut
@@ -190,6 +192,7 @@ caller asks for its data.
 | A failure while indexing that leaks the file handle | A guard thrown while indexing releases a source the document owns. A rebuild that reaches a guard finishes the index before it throws | `ReaderLimitsTests.Opening_releases_a_source_it_owns_when_a_guard_throws`, `A_rebuild_that_reaches_a_guard_finishes_the_index_before_it_throws` | No |
 | Ciphertext handed out as content | With `ThrowOnEncrypted`, on by default, `Open` refuses a trailer that holds `/Encrypt` with `PdfEncryptedException`. A rebuilt index can lose the key ([#154]) | `DocumentReaderTests.Refuses_an_encrypted_document_with_a_typed_exception` | No: encrypted seeds are left out |
 | Opening that reads the whole file | The index comes from the cross-reference sections, and stream data is read only when asked for | `DocumentReaderTests.Does_not_read_stream_data_until_it_is_asked_for`; `CorpusReadingTests.Opening_does_not_read_the_content_of` | — |
+| A caller's stream read from somewhere but the file's start, or a buffer lent again under the document | A seekable stream is read from its start, whatever was read of it — a type sniffed from its first bytes and not rewound no longer opens as a damaged file, blamed on it —; one that cannot seek, from where it stands. Only a `MemoryStream` itself is read in its buffer: a derived one, which may lend its buffer again once disposed, as a pooled one does, is copied | `DocumentReaderTests.Opens_a_seekable_stream_from_its_start_wherever_it_stands`, `A_seekable_stream_holds_what_comes_before_the_header_whatever_was_read_of_it`, `Opens_a_stream_that_cannot_seek_from_where_it_stands`, `Only_a_memory_stream_itself_is_read_in_its_buffer` | — |
 | Use after dispose | `Dispose` is idempotent, `GetObject` throws `ObjectDisposedException` after it, and the validator refuses a disposed document | `DocumentReaderTests.Disposing_a_document_twice_is_harmless`; `ValidatorTests.Validating_a_disposed_document_throws_before_any_rule_runs` | — |
 | Limits that allow nothing | Every `PdfReaderLimits` property refuses zero or less, and `PdfReaderOptions.Limits` refuses null | `ReaderLimitsTests.A_limit_of_zero_or_less_is_refused_and_named`, `The_options_refuse_limits_that_are_not_there` | — |
 
@@ -201,10 +204,10 @@ Known gaps:
   thread, after the document is disposed.
 - [#167] `ObjectNumbers` and `Diagnostics` are live: a read that rebuilds the index while a caller enumerates them
   throws `InvalidOperationException`.
-- [#149] `Open(Stream)` copies a seekable stream into memory, where its documentation says only a non-seekable one is.
+- [#149] `Open(Stream)` copies a seekable stream into memory, as its documentation now says, where reading it in place would
+  keep invariant 2.
 - [#52] A source whose `Read` returns fewer bytes than asked is taken as the end of the data.
-- [#190] A disposed document keeps answering through every member but `GetObject`, and `Open(Stream)` reads a
-  `MemoryStream` from its start or from its position depending on how it was built.
+- [#190] A disposed document keeps answering through every member but `GetObject`.
 - [#191] A reference taken before `Dispose` resolves through the reader, not the document, and skips its disposed
   check: it keeps resolving for a document opened from memory.
 

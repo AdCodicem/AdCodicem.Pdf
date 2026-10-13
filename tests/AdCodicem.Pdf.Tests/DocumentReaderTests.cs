@@ -340,24 +340,207 @@ public class DocumentReaderTests
         Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("BT (B");
     }
 
+    public static TheoryData<string, string> StreamKinds()
+    {
+        var kinds = new[]
+        {
+            "a memory stream written to", "a memory stream that shows its buffer", "a memory stream that hides its buffer",
+            "a memory stream whose buffer starts past an origin", "a stream derived from a memory stream", "a buffered stream",
+            "a file stream",
+        };
+        var data = new TheoryData<string, string>();
+
+        foreach (var kind in kinds)
+        {
+            foreach (var place in new[] { "at its start", "at its end", "partly read", "past its end" })
+            {
+                data.Add(kind, place);
+            }
+        }
+
+        return data;
+    }
+
     [Theory]
-    [InlineData("a memory stream that shows its buffer")]
-    [InlineData("a memory stream that hides its buffer")]
-    [InlineData("a stream of another kind")]
-    public void Opens_a_document_from_any_stream(string kind)
+    [MemberData(nameof(StreamKinds))]
+    public void Opens_a_seekable_stream_from_its_start_wherever_it_stands(string kind, string place)
     {
         var bytes = SampleDocument().BuildClassic(rootNumber: 1);
-        using Stream stream = kind switch
+        var path = kind == "a file stream" ? Path.GetTempFileName() : null;
+
+        try
         {
-            "a memory stream that shows its buffer" => new MemoryStream(bytes, 0, bytes.Length, writable: false, publiclyVisible: true),
-            "a memory stream that hides its buffer" => new MemoryStream(bytes),
-            _ => new BufferedStream(new MemoryStream(bytes)),
-        };
+            using var stream = SeekableStream(kind, bytes, path);
+            stream.Position = place switch
+            {
+                "at its start" => 0,
+                "at its end" => stream.Length,
+                "partly read" => 5,
+                _ => stream.Length + 100,
+            };
+
+            using var document = PdfDocument.Open(stream);
+
+            PageContent(document).Should().Be("BT (Bonjour) Tj ET");
+            document.ObjectCount.Should().Be(5, "objects 1 to 4, and the free head of the table");
+            document.Diagnostics.Should().BeEmpty("the stream is the file from its first byte");
+        }
+        finally
+        {
+            if (path is not null)
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("a memory stream written to")]
+    [InlineData("a memory stream that hides its buffer")]
+    [InlineData("a file stream")]
+    public void A_seekable_stream_holds_what_comes_before_the_header_whatever_was_read_of_it(string kind)
+    {
+        var bytes = Encoding.Latin1.GetBytes(new string('x', 100) + "\n").Concat(SampleDocument().BuildClassic(rootNumber: 1)).ToArray();
+        var path = kind == "a file stream" ? Path.GetTempFileName() : null;
+
+        try
+        {
+            using var stream = SeekableStream(kind, bytes, path);
+            stream.Position = 101;
+
+            using var document = PdfDocument.Open(stream);
+
+            PageContent(document).Should().Be("BT (Bonjour) Tj ET");
+            document.Diagnostics.Select(diagnostic => (diagnostic.Code, diagnostic.Position))
+                .Should().Equal((PdfDiagnosticCodes.XRefOffsetAdjusted, 101L));
+        }
+        finally
+        {
+            if (path is not null)
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(101)]
+    public void Opens_a_stream_that_cannot_seek_from_where_it_stands(int prefix)
+    {
+        var file = SampleDocument().BuildClassic(rootNumber: 1);
+        var bytes = Encoding.Latin1.GetBytes(new string('x', prefix)).Concat(file).ToArray();
+        using var stream = new ForwardOnlyStream(new MemoryStream(bytes));
+        stream.ReadExactly(new byte[prefix]);
 
         using var document = PdfDocument.Open(stream);
 
         PageContent(document).Should().Be("BT (Bonjour) Tj ET");
-        document.ObjectCount.Should().Be(5, "objects 1 to 4, and the free head of the table");
+        document.Diagnostics.Should().BeEmpty("what was read of it before is not the file's");
+    }
+
+    [Fact]
+    public void A_stream_that_cannot_seek_and_was_read_to_its_end_is_empty()
+    {
+        using var stream = new ForwardOnlyStream(new MemoryStream(SampleDocument().BuildClassic(rootNumber: 1)));
+        stream.CopyTo(Stream.Null);
+
+        FluentActions.Invoking(() => PdfDocument.Open(stream))
+            .Should().Throw<PdfFormatException>().WithMessage("The input is empty.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Only_a_memory_stream_itself_is_read_in_its_buffer(bool derived)
+    {
+        // A derived memory stream may lend its buffer again once disposed, as a pooled one does: it is copied, and what is
+        // written over its buffer after the document opened reaches none of the document's objects.
+        var bytes = SampleDocument().BuildClassic(rootNumber: 1);
+        using var stream = derived ? new DerivedMemoryStream() : new MemoryStream();
+        stream.Write(bytes);
+
+        using var document = PdfDocument.Open(stream);
+        var content = Page(document).GetRaw(PdfName.Contents).Should().BeOfType<PdfReference>().Subject;
+        stream.GetBuffer().AsSpan(0, bytes.Length).Fill((byte)'z');
+
+        (content.Resolve() is PdfStream).Should().Be(derived, "a document read in the caller's buffer reads what is there now");
+    }
+
+    private static Stream SeekableStream(string kind, byte[] bytes, string? path)
+    {
+        switch (kind)
+        {
+            case "a memory stream written to":
+                var written = new MemoryStream();
+                written.Write(bytes);
+                return written;
+
+            case "a memory stream that shows its buffer":
+                return new MemoryStream(bytes, 0, bytes.Length, writable: false, publiclyVisible: true);
+
+            case "a memory stream that hides its buffer":
+                return new MemoryStream(bytes);
+
+            case "a memory stream whose buffer starts past an origin":
+                var padded = Encoding.Latin1.GetBytes(new string('x', 37)).Concat(bytes).ToArray();
+                return new MemoryStream(padded, 37, bytes.Length, writable: false, publiclyVisible: true);
+
+            case "a stream derived from a memory stream":
+                var derived = new DerivedMemoryStream();
+                derived.Write(bytes);
+                return derived;
+
+            case "a buffered stream":
+                return new BufferedStream(new MemoryStream(bytes));
+
+            default:
+                File.WriteAllBytes(path!, bytes);
+                return new FileStream(path!, FileMode.Open, FileAccess.Read);
+        }
+    }
+
+    /// <summary>A memory stream of a type derived from it, as a pooled one is.</summary>
+    private sealed class DerivedMemoryStream : MemoryStream;
+
+    /// <summary>A stream that can be read forward only, as a network response is.</summary>
+    private sealed class ForwardOnlyStream(Stream inner) : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 
     [Theory]

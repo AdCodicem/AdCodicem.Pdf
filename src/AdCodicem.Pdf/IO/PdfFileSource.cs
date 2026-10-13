@@ -29,18 +29,34 @@ public abstract class PdfFileSource : IDisposable
         return new FileSource(path);
     }
 
-    /// <summary>Reads a stream fully into memory and serves it from there.</summary>
+    /// <summary>
+    /// Creates a source over a stream that holds a whole file: from its start when it can seek, whatever its position,
+    /// and from where it stands when it cannot.
+    /// </summary>
     /// <remarks>
-    /// A non-seekable stream cannot be read at random, so it is buffered. Callers that care about memory
-    /// should hand the reader a file path instead.
+    /// <para>
+    /// A <see cref="MemoryStream"/> itself — not a type derived from one — that exposes its buffer is read in that
+    /// buffer, from its origin to its length, without a copy: it must neither change nor grow while the source is read.
+    /// Any other stream is copied into memory, a seekable one included; callers that care about memory should hand the
+    /// reader a file path instead. A derived <see cref="MemoryStream"/> is copied because it may lend its buffer again
+    /// once disposed, as a pooled one does.
+    /// </para>
+    /// <para>The stream's position afterward is unspecified, and the stream is not disposed of.</para>
     /// </remarks>
     public static PdfFileSource FromStream(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
 
-        if (stream is MemoryStream memoryStream && memoryStream.TryGetBuffer(out var segment))
+        if (stream.GetType() == typeof(MemoryStream) && ((MemoryStream)stream).TryGetBuffer(out var segment))
         {
             return new MemorySource(segment.AsMemory());
+        }
+
+        // A file's offsets count from its first byte: a seekable stream is the file from its start, whatever was read of
+        // it before, as a type sniffed from its first bytes and not rewound.
+        if (stream.CanSeek)
+        {
+            stream.Position = 0;
         }
 
         using var buffer = new MemoryStream();
