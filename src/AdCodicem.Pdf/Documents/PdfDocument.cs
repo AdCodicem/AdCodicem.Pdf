@@ -105,8 +105,20 @@ public sealed class PdfDocument : IDisposable
     public static PdfDocument Open(ReadOnlyMemory<byte> bytes, PdfReaderOptions? options = null) =>
         Open(PdfFileSource.FromMemory(bytes), options, ownsSource: true);
 
-    /// <summary>Opens a document from a stream. A non-seekable stream is buffered in full.</summary>
-    /// <param name="stream">The stream that holds the file, which the document does not dispose of.</param>
+    /// <summary>
+    /// Opens a document from a stream: from its start when it can seek, whatever its position, and from where it stands
+    /// when it cannot.
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="MemoryStream"/> itself that exposes its buffer — one written to after <c>new MemoryStream()</c>, or
+    /// built with <c>publiclyVisible: true</c> — is read in that buffer, without a copy. Any other stream, a seekable one
+    /// or a type derived from <see cref="MemoryStream"/> included, is copied into memory as the document opens: to read
+    /// a file without holding it, open it from its path.
+    /// </remarks>
+    /// <param name="stream">
+    /// The stream that holds the file. It is the document's until the document is disposed: neither write to it, move
+    /// it, nor dispose of it meanwhile. The document does not dispose of it, and leaves its position unspecified.
+    /// </param>
     /// <param name="options">How to open the document, or null for <see cref="PdfReaderOptions.Default"/>.</param>
     /// <exception cref="PdfFormatException">
     /// What was read from the stream is empty, or no object could be found in it.

@@ -46,9 +46,13 @@ How you open a document decides what it holds in memory:
 | You pass | Held in memory |
 |---|---|
 | A path | Only what you read: the file is read where it lies |
-| A `MemoryStream` | Its buffer, used as it is |
-| Any other `Stream` — a `FileStream`, a network response | The whole stream, copied into memory first |
+| A `MemoryStream` that exposes its buffer — written to after `new MemoryStream()`, or built with `publiclyVisible: true` | Its buffer, used as it is |
+| Any other `Stream` — a `FileStream`, a network response, a `MemoryStream` built over an array without `publiclyVisible`, a type derived from `MemoryStream` | The whole stream, copied into memory first |
 | `ReadOnlyMemory<byte>` | The bytes you already hold |
+
+A stream is read as the whole file: from its start when it can seek, whatever you read of it before, and from where it
+stands when it cannot. Until the document is disposed the stream is the document's: do not write to it, move it, or
+dispose of it, and do not change or grow a buffer the document reads in place.
 
 Open from a path whenever the document is a file. Dispose each document when you are done with it: opened from a
 path, it holds the file open until then.
