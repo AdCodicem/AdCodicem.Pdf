@@ -106,7 +106,10 @@ public sealed class PdfString : PdfObject
     public override string ToString()
     {
         var encoding = TextEncoding(out var bytes);
-        var whole = encoding.GetCharCount(bytes);
+
+        // Counted, not decoded: under the replacement fallback every two bytes of UTF-16 read as one character, either
+        // half of a pair as one, a lone half or a dangling last byte as one U+FFFD.
+        var whole = encoding.IsSingleByte ? bytes.Length : (bytes.Length + 1) / 2;
 
         // One character more than is shown is decoded, so that a surrogate pair the cut falls in is still read as one.
         Span<char> text = stackalloc char[ShownCharacters + 1];
