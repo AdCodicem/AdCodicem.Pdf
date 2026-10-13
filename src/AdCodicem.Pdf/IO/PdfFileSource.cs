@@ -53,13 +53,18 @@ public abstract class PdfFileSource : IDisposable
         }
 
         // A file's offsets count from its first byte: a seekable stream is the file from its start, whatever was read of
-        // it before, as a type sniffed from its first bytes and not rewound.
+        // it before, as a type sniffed from its first bytes and not rewound. It says how long it is, and is copied into
+        // an array that long, rather than into one grown by doubling, which the document would keep at up to twice the
+        // file; a length past what an array holds is left to the copy to refuse.
+        var capacity = 0;
+
         if (stream.CanSeek)
         {
             stream.Position = 0;
+            capacity = stream.Length <= Array.MaxLength ? (int)stream.Length : 0;
         }
 
-        using var buffer = new MemoryStream();
+        using var buffer = new MemoryStream(capacity);
         stream.CopyTo(buffer);
         return new MemorySource(buffer.GetBuffer().AsMemory(0, (int)buffer.Length));
     }

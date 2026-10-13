@@ -157,10 +157,11 @@ public sealed class PdfDocument : IDisposable
     /// when it cannot.
     /// </summary>
     /// <remarks>
-    /// A <see cref="MemoryStream"/> itself that exposes its buffer — one written to after <c>new MemoryStream()</c>, or
-    /// built with <c>publiclyVisible: true</c> — is read in that buffer, without a copy. Any other stream, a seekable one
-    /// or a type derived from <see cref="MemoryStream"/> included, is copied into memory as the document opens: to read
-    /// a file without holding it, open it from its path.
+    /// A <see cref="MemoryStream"/> itself that exposes its buffer — one written to after <c>new MemoryStream()</c> or
+    /// <c>new MemoryStream(capacity)</c>, or built with <c>publiclyVisible: true</c> — is read in that buffer, without a
+    /// copy. Any other stream, a seekable one or a type derived from <see cref="MemoryStream"/> included, is copied into
+    /// memory as the document opens, into an array of its length when it can seek: to read a file without holding it,
+    /// open it from its path.
     /// </remarks>
     /// <param name="stream">
     /// The stream that holds the file. It is the document's until the document is disposed: neither write to it, move
