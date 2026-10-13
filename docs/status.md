@@ -15,38 +15,41 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
   fifth, [#157] and [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on
   2026-10-03, the seventh, [#118], with [#226] that day, the eighth, [#119] and [#172], with [#231] on 2026-10-04,
-  and the ninth, [#125] and [#126], with [#238] that day; then slices 4 to 6 ([#60] to [#62]); then the milestone's
-  adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
-  the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after the
-  fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
-  [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]), its eighth ([#229],
-  [#230]) and its ninth ([#237]); [#123] moved to M20.
+  and the ninth, [#125] and [#126], with [#238] that day; the tenth, [#190] and [#212], is in [#248]; then slices 4
+  to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every other issue
+  filed under M02 is closed. The debts come from the reader's own work, the threat model's first version ([#135],
+  `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of step 4
+  ([#199] to [#202]), its second batch ([#207] to [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth
+  ([#218] to [#224]), its eighth ([#229], [#230]), its ninth ([#237]) and its tenth ([#241], [#247]); [#123] moved
+  to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 3,313 unit on `main` since [#238] (3 skipped: 2 by design, and the theory
+- **Tests**: 3,439 unit on [#248]'s branch (3 skipped: 2 by design, and the theory
   over the remote corpus's streams whose length is wrong, which has no document without it) + 1,306 integration
   (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the
-  remote documents fetched, on [#238]'s branch: 5,218 unit with the 233 this container holds, 3 skipped — the laziness
+  remote documents fetched, on [#248]'s branch: 5,344 unit with the 233 this container holds, 3 skipped — the laziness
   test on the two documents recorded as unsupported until [#47], which every other test holds to their expectations,
   and the private manifest this container lacks —; 3,266 integration against qpdf in its container, 3,260 passed and
-  6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 33's 5,275
-  acceptance tests and 3,329 referee checks, on [#238]'s branch.
+  6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 44's 5,401
+  acceptance tests and 3,329 referee checks, on [#248]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.5 % of `src/` — 5,746 of 5,774 lines on `main` since [#238], every one of its patch's
-  109 measurable lines among them, every branch taken. The 28 left are those the rule of 2026-09-29 leaves
-  (`CLAUDE.md`, *Coverage*): members that are private, or of a private type, which no input reaches — nine lines of
-  `ArlingtonWalk` (193, 849, 956, 966, 967, 987, 989, 1061, 1077) and three of a defensive branch of `PdfLexer` (161,
-  164, 165) —, a `?.` on an index never null where it is read and a switch's default arm (`CrossReferenceProbe` 86 and
-  231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 87 and 96), a line the compiler puts after a call that never
-  returns (`PdfFileReader` 1347), two branches the compiler adds that no input takes (`FileQuote` 138, an
-  interpolation's buffer too small; `PdfObjectParser` 791, a concatenation's null check); and eight more, the same
-  before [#238]: `EndStreamAfter`'s two defensive arms (`PdfFileReader` 1315, 1319, journal of batch 6), the
-  `HasValue` checks the compiler adds on a `long?` and a defensive arm of `Expanded` (2602, 2752, batch 5),
-  `ObjectStreamDependencies.Location`'s arm without a Regular entry (223, batch 7), one of the six ways out of a
-  cross-reference stream row's `switch` (2701) and `Repair`'s guard against a second rebuild (3635, 3637).
+  Arlington tables left out), 99.5 % of `src/` — 5,844 of 5,872 lines on [#248]'s branch, every one of its patch's
+  168 measurable lines among them, every branch taken but two that were partial before it, on lines it changes or
+  moves (`FileQuote` 145, `PdfReal` 66, below). The 28 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`,
+  *Coverage*), the same as on `main` since [#238], at new line numbers: members that are private, or of a private
+  type, which no input reaches — nine lines of `ArlingtonWalk` (177, 833, 940, 950, 951, 971, 973, 1045, 1061) and
+  three of a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a
+  switch's default arm (`CrossReferenceProbe` 86 and 231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 87 and
+  96), a line the compiler puts after a call that never returns (`PdfFileReader` 1417), two branches the compiler adds
+  that no input takes (`FileQuote` 145, an interpolation's buffer too small; `PdfObjectParser` 791, a concatenation's
+  null check); `EndStreamAfter`'s two defensive arms (`PdfFileReader` 1385, 1389, journal of batch 6), the `HasValue`
+  checks the compiler adds on a `long?` (2699, batch 5) and a defensive arm of the real's expansion, moved from the
+  reader into `PdfReal.ToString` by batch 10 (`PdfReal` 66, batch 5), `ObjectStreamDependencies.Location`'s arm
+  without a Regular entry (223, batch 7), one of the six ways out of a cross-reference stream row's `switch` (2798) and
+  `Repair`'s guard against a second rebuild (3704, 3706).
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `83d15a1` (CI run 512), [#238]'s last commit. `Remote corpus` passed on every document in
   the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun
@@ -61,7 +64,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   473 is green on that code. The nightly run 30, on `main` at `78ff13b`, passed whole at its first attempt, and so did
   runs 31 and 32, on [#238]'s branch, the second on the batch's last code; run 33, on that code rebased onto `main`,
   lost ECan's scan at its first attempt, web.archive.org refusing the connection ([#204]), and passed whole at its one
-  rerun. CI run 509 is green on that code.
+  rerun. CI run 509 is green on that code. The nightly runs 34 to 36 and 39 to 41, on `main` at `83d15a1`, passed
+  whole at their first attempt; runs 37 and 38 lost ECan's scan, web.archive.org refusing the connection, and run 42
+  the 88 documents of the ipres2017 archive, its host timing out ([#204]), every test over the others passing. Run 43,
+  on [#248]'s branch, and run 44, on its last code, lost the ipres2017 archive the same way at their first attempt,
+  every other test passing; run 44 passed whole at its one rerun. CI run 534 is green on that code.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
@@ -221,16 +228,17 @@ One pull request per batch, each design question put to the maintainer after mea
       run 28 green on its branch (journal of 2026-10-03).
    9. [#125] and [#126], offsets past what a long holds and where a trailer's finding goes — done, merged with [#238]
       on 2026-10-04, `Remote corpus` run 31 green on its branch (journal of 2026-10-04).
-   10. [#190] and [#212], the reader's public surface.
+   10. [#190] and [#212], the reader's public surface — done in [#248], `Remote corpus` run 44 green on its
+       branch (journal of 2026-10-13).
    11. [#164] and [#183], the index's size, the first new guard.
-   12. [#165] and [#166], filter chains, with [#199], [#209] and [#219].
+   12. [#165] and [#166], filter chains, with [#199], [#209], [#219] and [#247].
    13. [#128], with [#237].
    14. [#129] and [#175].
    15. [#160] and [#161], object-stream members, with [#200] and [#202].
    16. [#174] and [#170], stream data, with [#220], [#224] and [#230].
    17. [#155].
    18. [#167] and [#168], with [#201].
-   19. [#188], [#197] and [#156], with [#207], [#208], [#210], [#221] and [#222].
+   19. [#188], [#197] and [#156], with [#207], [#208], [#210], [#221], [#222] and [#241].
    20. [#189].
    21. [#154] and [#171].
    22. [#132], with [#218] and [#229].
@@ -250,7 +258,8 @@ One pull request per batch, each design question put to the maintainer after mea
    [#212], which batch 3 filed, is paid in batch 10, with [#190], as the maintainer placed it on 2026-10-02. The
    seven batch 6 filed are placed above: [#218] with [#132], as the maintainer placed it on 2026-10-02, the others
    with the batch whose code they share. The two batch 8 filed are placed likewise: [#229] with [#132], [#230] with
-   [#174]; and the one batch 9 filed, [#237], with [#128].
+   [#174]; the one batch 9 filed, [#237], with [#128]; and of the three batch 10 filed, [#241] with [#188], [#247]
+   with [#165], and [#240] under M03, whose full rewrite it concerns.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -271,6 +280,100 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-13 — Batch 10: the reader's public surface ([#190], [#212])
+- **The question.** [#190]: `PdfDocument.Version` said 1.4 of a file that declares no version, `Open(Stream)` read a
+  `MemoryStream` from its origin or from its position depending on how it was built, and a disposed document kept
+  answering through every member but `GetObject`; [#212]: the objects' public `ToString` wrote what the file wrote, raw
+  and whole, and `PdfReal`'s rounded to six decimals. Measured first, each claim twice, by seven agents and a critic,
+  who found more than the issues named: `Version` ignored the catalog's `/Version`, which ISO 32000-1 lets raise it —
+  nine Quartz documents of the corpus declare 1.4 or 1.6 over a 1.3 header —, and read `%PDF-1.7abc` as 1.7 in
+  silence; a seekable stream a caller had read the first bytes of, to tell its type, and not rewound, opened as a
+  damaged file, with an untrue `header.missing`, objects lost and, past 1,024 bytes, the catalog; once a caller reused
+  its buffer after `Dispose`, a held reference read another file's objects beside the first's cached ones, with nothing
+  reported; and `((IDisposable)reference.Source).Dispose()` closed the file of a document still in use. The referees
+  disagree on a missing version: qpdf 1.2, MuPDF 1.7, PDFBox and PdfPig 1.4, poppler 0.0. Ten questions followed.
+- **Settled with the maintainer**, each as recommended:
+  - after `Dispose`, every member but `Diagnostics` throws `ObjectDisposedException`, and so does whatever reaches
+    back from an object taken before, cached or not, whatever the opening; disposal lets go of what the reader kept;
+  - `Version` is null when the header names no version, and is the version the document declares: the header's, or
+    the catalog's `/Version` when that is later, worked out as it opens; a header without a version declares none,
+    whatever its catalog says;
+  - a header names a version as one digit, a period and one digit, then white space, a comment or the end of the file;
+  - `Open(Stream)` reads a seekable stream from its start, one that cannot seek from where it stands, and only a
+    `MemoryStream` itself in its buffer;
+  - a name, a dictionary and a stream describe themselves as the messages quote a name, through `FileQuote`; a string
+    its text, escaped as C# writes it and cut past 127 characters; a real the shortest decimal that reads back, with a
+    point, which `page-tree.mediabox-invalid` uses too;
+  - the reader stops being disposable, in this batch.
+- **Done**, in [#248]:
+  - `PdfReal.ToString` writes the shortest decimal that reads back, never an exponent, always a point; the reader's
+    messages quote reals through it, and `page-tree.mediabox-invalid` quotes each corner as the file wrote it;
+  - `PdfName`, `PdfDictionary` and `PdfStream` describe themselves through `FileQuote`, "1 entry" and "1 byte" in ASCII;
+    `PdfString` between double quotes, escaped, cut past 127 characters, counting a UTF-16 text without decoding it;
+  - `Version` is `string?`, the declared version, worked out once at opening; what follows `%PDF-` is recorded up to
+    the white space or comment that ends it, so that `file.header-version-invalid` judges `1.7abc` whole and quotes it
+    bounded, "at least" when the 4,096-byte search cuts it; `ArlingtonWalk` takes the declared version from `Version`;
+  - `FromStream` reads a seekable stream from its start, into an array of its length; only an exact `MemoryStream` is
+    read in its buffer;
+  - the reader closes as its document is disposed: `GetObject`, a stream's data — one an object stream holds included
+    — and an enumeration of `ObjectNumbers` refuse, whatever was read before, and the cache, the decoded object
+    streams, the index, what was noted of each object and the source are let go; the reader is no longer disposable.
+
+  Docs: `reference/object-model.md`, new; `reference/validation-rules.md`, `concepts/validation.md`,
+  `guides/tune-reader-memory.md`; the threat model's *Messages* boundary takes in the objects' `ToString`, the rows
+  for use after dispose and for the caller's stream are rewritten, [#190]'s gap goes; `M03.md` says what an input that
+  declares no version is written as; the "7.2.2" two places cited for the header is 7.5.2.
+- **Reviewed.** An adversarial review over five lenses — the reader, hostile inputs, the tests, the documents, and the
+  corpus before and after — gave 25 findings, each put to two refuters: 22 kept, 20 by both, 3 refuted.
+  - Kept and fixed, among them:
+    - a stream an object stream holds, as no file should, still gave its data after `Dispose`;
+    - closing kept what the reader noted of each object: one held reference kept 41.7 MB after disposing of a file of
+      300,000 streams whose `/Length` was wrong;
+    - `PdfString.ToString` counted a UTF-16 text by decoding it, a quarter of a gigabyte for a 15 MB string of lone
+      surrogates;
+    - a header's text the search cut was quoted with what the window held as its whole;
+    - a seekable stream copied by doubling kept up to twice the file, a path derived `MemoryStream`s now took:
+      `StreamOpenBenchmarks` (ShortRun) gives 16.26 MB and 6.4 ms before, 4.5 MB and 2.0 ms after;
+    - the object model's page planted a raw right-to-left override where it meant its escape; bounds and examples
+      wrong; tests that could not fail.
+  - Refuted: a catalog `/Version` naming a version the model does not describe turns version-aware rules off — the
+    decision, as for a header naming one; a stream's data keeping its reader alive — it is the document's, until
+    disposed; a stream that claims to seek and refuses its position — the caller's contract, broken.
+- **Tests**: 126 new, 3,313 to 3,439 (5,344 with the remote documents this container holds); each case the fixes
+  exist for fails on the code before them. 52 mutants of the batch's defenses, each run against the suite: 51 fail a
+  test once the four the first run left were held and four rewritten to compile. One changes nothing a test can see
+  and stays as a defense: `GetObject` refusing before its cache, which the closing empties anyway.
+- **Tracking.** Filed [#241] — messages say "1 bytes into the file" and "found -1 bytes from where the index said" —
+  reproduced twice, placed with [#188] in batch 19; [#247] — `FilterDamageTests` holds sound data's allocation within
+  1 KB of a measure the runtime can count 8 KB over, in a window that allocates on the large-object heap — reproduced
+  twice on the branch and three times on `main`, placed with [#165] in batch 12; and [#240] under M03 — its full
+  rewrite would keep a catalog `/Version` lower than the header, which MuPDF, pdf.js and PDFium read as the
+  document's version — reproduced twice.
+  Commented: [#204] (the nightly runs 37, 38 and 42), [#149] (the position rule, the documentation now true, and what
+  a copy past 2 GB throws), [#191] (references refuse, and the reader is no longer disposable), [#161] (a stream an
+  object stream holds refuses once disposed).
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - each of the batch's commits builds with no warning and passes alone, but for one test once: the run over the
+    final series failed `FilterDamageTests`' allocation budget for sound data on a commit of documentation alone,
+    whose code passed beside it and in the run before. Run again, 20 times alone and 20 times in the suite at the
+    head, it passed; it is [#247], older than the batch;
+  - the unit tests, 3,439, 3 skipped; 5,344 with the 233 remote documents this container holds, 3 skipped;
+  - the patch's 168 measurable lines of `src/` covered, every branch taken but two: one the compiler adds
+    (`FileQuote` 145) and `Expanded`'s defensive arm, moved into `PdfReal` (66), both partial before the batch; 99.5 %
+    of `src/` in all, on the committed corpus alone;
+  - the integration suite against qpdf in its container, twice: 3,266, 3,260 passed and 6 skipped where qpdf cannot
+    walk a damaged document's pages;
+  - the corpus read, validated and described whole, twice, before the batch and with it: 14 versions change as the
+    decisions say — nine Quartz documents, four headerless and `%PDF-14` —, and no diagnostic, finding or message;
+  - the site builds;
+  - `Remote corpus`: runs 43, before the branch's last two commits, and 44, on its last code, lost the 88 documents
+    of the ipres2017 archive at their first attempt, its host timing out ([#204]), every other test passing; run 44
+    passed whole at its one rerun, 5,401 acceptance tests and 3,329 referee checks over all 242 documents;
+  - commitlint finds nothing; four messages were reworded, three before the pull request and one, a body line too
+    long, just after it opened, the code of every commit unchanged.
+- **Next**: batch 11, [#164] and [#183], the index's size, the first new guard.
 
 ### 2026-10-04 — Batch 9: offsets past what a long holds, and where a trailer's finding goes ([#125], [#126])
 - **The question.** [#125]: the reader added the header's offset to every offset the file gives unchecked, so five
@@ -1484,3 +1587,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#235]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/235
 [#237]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/237
 [#238]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/238
+[#240]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/240
+[#241]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/241
+[#247]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/247
+[#248]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/248
