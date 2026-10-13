@@ -135,6 +135,34 @@ public class ObjectModelTests
         new PdfString(System.Text.Encoding.Latin1.GetBytes(text)).ToString().Should().Be(described);
     }
 
+    [Theory]
+    [InlineData(0xFE, 0xD8, 0x3D)]
+    [InlineData(0xFE, 0xDC, 0x00)]
+    [InlineData(0xFE, 0x00, 0x41)]
+    [InlineData(0xFF, 0x3D, 0xD8)]
+    public void A_utf16_string_of_megabytes_is_described_without_decoding_what_is_cut(byte mark, byte first, byte second)
+    {
+        // A lone half of a pair, the other half, and a plain letter, repeated over two megabytes, and a dangling byte.
+        var bytes = new byte[2 + (2 * 1024 * 1024) + 1];
+        bytes[0] = mark;
+        bytes[1] = (byte)(mark ^ 0x01);
+        for (var i = 2; i + 1 < bytes.Length; i += 2)
+        {
+            bytes[i] = first;
+            bytes[i + 1] = second;
+        }
+
+        var text = new PdfString(bytes);
+
+        _ = text.ToString();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var described = text.ToString();
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        described.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"\" (the first 127 of {text.ToText().Length:N0} characters)"));
+        allocated.Should().BeLessThan(16 * 1024, "the whole is counted, not decoded");
+    }
+
     [Fact]
     public void A_utf16_string_describes_its_marks_and_separators_escaped()
     {

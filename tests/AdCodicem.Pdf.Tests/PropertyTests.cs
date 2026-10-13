@@ -112,7 +112,13 @@ public class PropertyTests
     [Fact]
     public void What_an_object_says_of_itself_is_printable_ascii_on_one_line_and_bounded_whatever_the_bytes()
     {
-        Check.One(Settings, Prop.ForAll(Buffers, bytes =>
+        // Up to 600 bytes, past the 127 a description shows.
+        var longer =
+            from length in Gen.Choose(0, 600)
+            from values in Gen.ArrayOf(Gen.Choose(0, 255), length)
+            select values.Select(value => (byte)value).ToArray();
+
+        Check.One(Settings, Prop.ForAll(Gen.OneOf(Buffers.Generator, longer).ToArbitrary(), bytes =>
         {
             // A name, a dictionary and a stream typed by it, and a string in either encoding, hold any byte the file
             // chose; what their ToString gives a debugger or a log holds none a terminal could take for something else,
