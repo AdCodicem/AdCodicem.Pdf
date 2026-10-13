@@ -500,6 +500,24 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_seekable_stream_is_copied_into_an_array_of_its_length()
+    {
+        using var stream = new DerivedMemoryStream();
+        stream.Write(new byte[1_000_001]);
+        using (PdfFileSource.FromStream(stream))
+        {
+            // Warmed up first: the pool's buffer for the copy is not what is measured.
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        using var source = PdfFileSource.FromStream(stream);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        source.Length.Should().Be(1_000_001);
+        allocated.Should().BeLessThan(1_250_000, "the copy is sized from the stream's length, not grown by doubling");
+    }
+
+    [Fact]
     public void A_seekable_stream_longer_than_an_array_holds_is_copied_as_it_reads()
     {
         // A stream that says it is longer than any array: its copy is not sized from what it says.
@@ -830,6 +848,52 @@ public class DocumentReaderTests
         reader.ObjectStreamBytes.Should().Be(0);
         reader.ObjectCount.Should().Be(0);
         reader.ChainIndex.Required().Count.Should().Be(0, "the copy of the chain's index goes as well");
+    }
+
+    [Fact]
+    public void Disposing_lets_go_of_the_copy_of_the_chain_s_index()
+    {
+        // Every row three bytes off: each object is found near it, and the reader keeps the chain's index beside its own.
+        var document = PdfDocument.Open(SampleDocument().BuildClassic(rootNumber: 1, offsetError: 3));
+        var reader = document.Reader;
+
+        foreach (var number in document.ObjectNumbers.ToList())
+        {
+            _ = document.GetObject(new PdfObjectId(number));
+        }
+
+        document.WasRepaired.Should().BeFalse("each object was found near its row");
+        reader.ChainIndex.Should().NotBeSameAs(reader.Index, "the reader corrected its own index");
+
+        document.Dispose();
+
+        reader.ChainIndex.Required().Count.Should().Be(0);
+    }
+
+    [Fact]
+    public void Disposing_lets_go_of_the_object_streams_the_document_decoded()
+    {
+        var (held, decoded) = OpenDecodeAndDispose();
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        decoded.IsAlive.Should().BeFalse("the object streams the document decoded are let go");
+        GC.KeepAlive(held);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (PdfObject Held, WeakReference Decoded) OpenDecodeAndDispose()
+    {
+        // The data of a stream an object stream holds lies in that object stream's decoded data, which it hands out.
+        var document = PdfDocument.Open(HeldObjectsDocument());
+        var member = document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfStream>().Subject;
+        System.Runtime.InteropServices.MemoryMarshal.TryGetArray(member.GetRawBytes(), out var segment).Should().BeTrue();
+        var taken = (document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetRaw(PdfName.Contents)!, new WeakReference(segment.Array));
+
+        document.Dispose();
+        return taken;
     }
 
     [Fact]

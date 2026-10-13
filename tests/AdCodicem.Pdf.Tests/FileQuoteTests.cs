@@ -78,6 +78,15 @@ public class FileQuoteTests
         FileQuote.Keyword(Encoding.ASCII.GetBytes(new string('k', 300))).Should().Be(new string('k', 127) + " (the first 127 of 300 bytes)");
     }
 
+    [Fact]
+    public void Quotes_a_keyword_cut_short_of_its_end_as_at_least_what_was_read()
+    {
+        FileQuote.Keyword("1.7"u8, cut: true).Should().Be("1.7 (the first 3 of at least 3 bytes)");
+        FileQuote.Keyword(Encoding.ASCII.GetBytes(new string('k', 300)), cut: true)
+            .Should().Be(new string('k', 127) + " (the first 127 of at least 300 bytes)");
+        FileQuote.Keyword("1.7"u8, cut: false).Should().Be("1.7");
+    }
+
     [Theory]
     [InlineData("€", "#E2#82#AC")]
     [InlineData("\U0001F600", "#F0#9F#98#80")]
