@@ -231,7 +231,7 @@ public sealed class PdfDocument : IDisposable
 
         if (reader.ObjectCount == 0)
         {
-            reader.Dispose();
+            reader.Close();
             throw new PdfFormatException("No PDF object could be found in the input.");
         }
 
@@ -324,6 +324,6 @@ public sealed class PdfDocument : IDisposable
         }
 
         _disposed = true;
-        _reader.Dispose();
+        _reader.Close();
     }
 }

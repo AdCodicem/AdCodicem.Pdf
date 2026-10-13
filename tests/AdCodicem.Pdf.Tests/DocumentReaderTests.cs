@@ -274,7 +274,7 @@ public class DocumentReaderTests
         // A document refuses an empty input before any reader sees it; handed one all the same, the reader finds
         // neither a header nor a startxref, and says so.
         var diagnostics = new PdfDiagnostics();
-        using var reader = new PdfFileReader(
+        var reader = new PdfFileReader(
             PdfFileSource.FromMemory(ReadOnlyMemory<byte>.Empty),
             diagnostics,
             new PdfLimitGuard(PdfReaderLimits.Default, throwOnLimit: false),
@@ -692,6 +692,29 @@ public class DocumentReaderTests
 
         FluentActions.Invoking(contents.Resolve).Should().Throw<ObjectDisposedException>();
         FluentActions.Invoking(() => unread.GetRawBytes()).Should().Throw<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public void A_reference_s_source_cannot_close_the_document_s_file()
+    {
+        var path = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllBytes(path, HeldObjectsDocument());
+            using var document = PdfDocument.Open(path);
+            var page = document.GetObject(new PdfObjectId(3)).AsDictionary().Required();
+            var contents = page.GetRaw(PdfName.Contents).Should().BeOfType<PdfReference>().Subject;
+
+            (contents.Source as IDisposable)?.Dispose();
+
+            contents.Source.Should().NotBeAssignableTo<IDisposable>("no holder of a reference may close the document's file");
+            contents.Resolve().Should().BeOfType<PdfStream>().Which.GetRawBytes().Length.Should().Be(18);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]
@@ -1384,7 +1407,7 @@ public class DocumentReaderTests
         var file = Encoding.ASCII.GetBytes(text.Replace("/Prev 00000", string.Create(CultureInfo.InvariantCulture, $"/Prev {older:D5}"), StringComparison.Ordinal));
         var diagnostics = new PdfDiagnostics();
 
-        using var reader = new PdfFileReader(
+        var reader = new PdfFileReader(
             PdfFileSource.FromMemory(file),
             diagnostics,
             new PdfLimitGuard(PdfReaderLimits.Default, throwOnLimit: false),
