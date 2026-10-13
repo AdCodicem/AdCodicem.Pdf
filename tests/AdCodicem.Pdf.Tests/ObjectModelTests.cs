@@ -72,10 +72,94 @@ public class ObjectModelTests
 
         ((IEnumerable<KeyValuePair<PdfName, PdfObject>>)dictionary).Select(entry => entry.Key.Value)
             .Should().BeEquivalentTo("Type", "Count");
-        dictionary.ToString().Should().Be("<</Type /Page … 2 entries>>");
+        dictionary.ToString().Should().Be("<</Type /Page ... 2 entries>>");
 
-        dictionary.Remove(PdfName.Type);
+        dictionary.Remove(PdfName.Count);
+        dictionary.ToString().Should().Be("<</Type /Page ... 1 entry>>");
+
+        dictionary.Set(PdfName.Type, PdfInteger.Create(3));
         dictionary.ToString().Should().Be("<<dictionary of 1>>");
+    }
+
+    [Fact]
+    public void A_name_describes_itself_as_a_writer_writes_it_whatever_it_holds()
+    {
+        PdfName.Get("Esc\u001B[31mred\nline").ToString().Should().Be("/Esc#1B#5B31mred#0Aline");
+        PdfName.Get("A B#").ToString().Should().Be("/A#20B#23");
+        PdfName.Get("caf\u00E9").ToString().Should().Be("/caf#E9");
+        PdfName.Get("\u20AC").ToString().Should().Be("/#E2#82#AC", "a name a caller builds past U+00FF is written as its UTF-8 bytes");
+    }
+
+    [Fact]
+    public void A_name_of_megabytes_and_what_it_types_describe_themselves_in_a_few_hundred_characters()
+    {
+        var name = PdfName.Get(new string('A', 4 * 1024 * 1024));
+        var dictionary = new PdfDictionary { [PdfName.Type] = name };
+        var stream = new PdfStream(new PdfDictionary { [PdfName.Subtype] = name }, PdfStreamData.FromMemory(new byte[1]));
+        var quote = "/" + new string('A', 127) + " (the first 127 of 4,194,304 bytes)";
+
+        // Warmed up first: what is measured is the describing, not the first call's own costs.
+        _ = (name.ToString(), dictionary.ToString(), stream.ToString());
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var described = (Name: name.ToString(), Dictionary: dictionary.ToString(), Stream: stream.ToString());
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        described.Name.Should().Be(quote);
+        described.Dictionary.Should().Be("<</Type " + quote + " ... 1 entry>>");
+        described.Stream.Should().Be("<<" + quote + " stream of 1 byte>>");
+        allocated.Should().BeLessThan(4096, "a description copies none of the name it cuts");
+    }
+
+    [Fact]
+    public void Objects_read_from_a_file_describe_themselves_in_printable_ascii_on_one_line()
+    {
+        var dictionary = Parse(@"<< /Type /T#1B#5B2J#0A /Title (text\033[31m\nline) >>").Should().BeOfType<PdfDictionary>().Subject;
+        var stream = Parse("<< /Length 3 /Subtype /S#1B#5B31m >>\nstream\nabc\nendstream").Should().BeOfType<PdfStream>().Subject;
+
+        dictionary.GetName(PdfName.Type)!.ToString().Should().Be("/T#1B#5B2J#0A");
+        dictionary.ToString().Should().Be("<</Type /T#1B#5B2J#0A ... 2 entries>>");
+        dictionary[PdfName.Get("Title")]!.ToString().Should().Be("\"text\\u001B[31m\\nline\"");
+        stream.ToString().Should().Be("<</S#1B#5B31m stream of 3 bytes>>");
+
+        static PdfObject Parse(string text) => new IO.PdfObjectParser(System.Text.Encoding.Latin1.GetBytes(text)).ParseObject();
+    }
+
+    [Theory]
+    [InlineData("plain text", "\"plain text\"")]
+    [InlineData("say \"hi\" \\ bye", "\"say \\\"hi\\\" \\\\ bye\"")]
+    [InlineData("tab\tcr\rlf\nnul\0end", "\"tab\\tcr\\rlf\\nnul\\0end\"")]
+    [InlineData("\u001B[2J\u007F\u0085\u009B", "\"\\u001B[2J\\u007F\\u0085\\u009B\"")]
+    [InlineData("", "\"\"")]
+    public void A_string_describes_its_text_quoted_with_what_is_not_printable_ascii_escaped(string text, string described)
+    {
+        new PdfString(System.Text.Encoding.Latin1.GetBytes(text)).ToString().Should().Be(described);
+    }
+
+    [Fact]
+    public void A_utf16_string_describes_its_marks_and_separators_escaped()
+    {
+        var text = PdfString.FromText("abc\u202Edef\u2028caf\u00E9 \U0001F600");
+
+        text.ToText().Should().Be("abc\u202Edef\u2028caf\u00E9 \U0001F600");
+        text.ToString().Should().Be("\"abc\\u202Edef\\u2028caf\\u00E9 \\uD83D\\uDE00\"");
+    }
+
+    [Fact]
+    public void A_string_of_megabytes_describes_its_first_127_characters_and_how_many_it_holds()
+    {
+        var latin = new PdfString(System.Text.Encoding.ASCII.GetBytes(new string('A', 4 * 1024 * 1024)));
+        var utf16 = PdfString.FromText(new string('a', 126) + "\U0001F600b");
+
+        _ = latin.ToString();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var described = latin.ToString();
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        described.Should().Be("\"" + new string('A', 127) + "\" (the first 127 of 4,194,304 characters)");
+        allocated.Should().BeLessThan(4096, "a description decodes no more of the text than it shows");
+        utf16.ToString().Should().Be(
+            "\"" + new string('a', 126) + "\\uD83D\" (the first 127 of 129 characters)",
+            "the cut falls inside the pair, whose first half is still read as the half it is");
     }
 
     [Theory]
@@ -245,7 +329,7 @@ public class ObjectModelTests
         var text = new PdfString(new byte[] { 0xFF, 0xFE, (byte)'h', 0, (byte)'i', 0 });
 
         text.ToText().Should().Be("hi");
-        text.ToString().Should().Be("hi");
+        text.ToString().Should().Be("\"hi\"");
     }
 
     [Fact]

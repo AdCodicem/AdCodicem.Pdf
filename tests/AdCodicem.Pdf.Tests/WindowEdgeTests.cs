@@ -518,7 +518,7 @@ public class WindowEdgeTests
                     text.Append("<<");
                     foreach (var key in dictionary.Keys.OrderBy(k => k.Value, StringComparer.Ordinal))
                     {
-                        text.Append(' ').Append(key).Append(' ');
+                        text.Append(" /").Append(key.Value).Append(' ');
                         Write(dictionary[key]!, text);
                     }
 
@@ -534,6 +534,10 @@ public class WindowEdgeTests
                     }
 
                     text.Append(" ]");
+                    break;
+
+                case PdfName name:
+                    text.Append("PdfName:/").Append(name.Value);
                     break;
 
                 case PdfString content:
