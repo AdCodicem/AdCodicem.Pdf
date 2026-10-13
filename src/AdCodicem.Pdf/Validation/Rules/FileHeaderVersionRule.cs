@@ -1,3 +1,6 @@
+using System.Text;
+using AdCodicem.Pdf.IO;
+
 namespace AdCodicem.Pdf.Validation.Rules;
 
 /// <summary>
@@ -6,7 +9,10 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <remarks>
 /// Readers open a file whatever version its header names, and a catalog's <c>/Version</c> may raise it (ISO 32000-1,
 /// 7.5.2); a version that does not exist says the file was not written by a tool that knew the format, or was
-/// edited by hand. A header that cannot be found is <see cref="PdfValidationRuleIds.FileHeaderMissing"/>'s.
+/// edited by hand. A header that cannot be found is <see cref="PdfValidationRuleIds.FileHeaderMissing"/>'s. What follows
+/// <c>%PDF-</c> is judged whole, up to the white space, the comment or the end of the file that ends it: <c>%PDF-1.7abc</c>
+/// names <c>1.7abc</c>, no version, as <see cref="Documents.PdfDocument.Version"/> says, and the message quotes it as it
+/// quotes a keyword, bounded and in printable ASCII.
 /// </remarks>
 internal sealed class FileHeaderVersionRule : IValidationRule
 {
@@ -31,7 +37,7 @@ internal sealed class FileHeaderVersionRule : IValidationRule
             PdfValidationLocation.AtPosition(structure.HeaderPosition),
             string.IsNullOrEmpty(structure.HeaderVersion)
                 ? "The header names no version after %PDF-."
-                : $"The header names version {structure.HeaderVersion}, which is not a version of PDF: 1.0 to 1.7, or 2.0.",
+                : $"The header names version {FileQuote.Keyword(Encoding.Latin1.GetBytes(structure.HeaderVersion))}, which is not a version of PDF: 1.0 to 1.7, or 2.0.",
             "Write after %PDF- the version the file conforms to, such as 1.7.");
     }
 

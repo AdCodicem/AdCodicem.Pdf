@@ -527,13 +527,15 @@ public class ArlingtonRuleTests
         Version("1.4", "/Version /1.6").Should().Be(16);
         Version("1.7", "/Version /1.4").Should().Be(17, "a catalog cannot lower the header's version");
         Version("1.9", string.Empty).Should().Be(0, "1.9 is no version of PDF");
-        Version("1.9", "/Version /1.5").Should().Be(0, "a catalog's version is later than a header's, and there is none to be later than");
+        Version("1.9", "/Version /1.5").Should().Be(0, "the file declares 1.9, which is no version of PDF");
+        Version("1.4", "/Version /1.8").Should().Be(0, "the file declares 1.8, which the model does not describe");
 
         using var headerless = PdfDocument.Open(Headerless(Pdf(Catalog, Root, Page)));
-        headerless.Version.Should().Be("1.4", "the reader's default, which the walk does not take for a declaration");
+        headerless.Version.Should().BeNull("a file without a header declares no version");
         ArlingtonWalk.DeclaredVersion(headerless).Should().Be(0);
 
         using var catalogOnly = PdfDocument.Open(Headerless(Pdf("<< /Type /Catalog /Pages 2 0 R /Version /1.7 >>", Root, Page)));
+        catalogOnly.Version.Should().BeNull("a catalog's version is later than a header's, and there is none to be later than");
         ArlingtonWalk.DeclaredVersion(catalogOnly).Should().Be(0, "without a header, the file declares no version the rules rely on");
     }
 

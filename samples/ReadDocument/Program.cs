@@ -15,7 +15,7 @@ if (args.Length != 1)
 
 using var document = PdfDocument.Open(args[0]);
 
-Console.WriteLine($"PDF version     {document.Version}");
+Console.WriteLine($"PDF version     {document.Version ?? "none declared"}");
 Console.WriteLine($"Objects         {document.ObjectCount}");
 Console.WriteLine($"Index rebuilt   {document.WasRepaired}");
 Console.WriteLine($"Pages           {CountPages(document)}");

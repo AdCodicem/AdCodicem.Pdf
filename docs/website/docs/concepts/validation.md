@@ -72,9 +72,9 @@ file declares ([ADR 44](/project/adr/object-shape-rules-generated-from-the-arlin
 Each object is given its type in the model by how it is reached — the catalog's `/Pages` is the page tree's root, a
 page's `/Annots` holds annotations, whose `/Subtype` says which — and is checked once; one whose type the file leaves
 ambiguous is not checked, rather than judged against a guess. The rules are
-**version-aware**: a key is required, or deprecated, as of the version the file declares — its header's, or its
-catalog's `/Version` when that is later. A file whose header declares no version is not judged on what depends on
-one, whatever its catalog says.
+**version-aware**: a key is required, or deprecated, as of the version the file declares, which `PdfDocument.Version`
+gives — its header's, or its catalog's `/Version` when that is later. A file whose header declares no version is not
+judged on what depends on one, whatever its catalog says.
 
 The model describes ISO 32000-2. Where it asks more than ISO 32000-1, the version nearly every file declares, the
 library follows ISO 32000-1: such rows are overridden by name, each with the words of the specification that justify

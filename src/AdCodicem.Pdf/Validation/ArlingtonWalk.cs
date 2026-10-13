@@ -147,35 +147,19 @@ internal sealed class ArlingtonWalk
     }
 
     /// <summary>
-    /// Works out the version the file declares: its header's, or its catalog's <c>/Version</c> when that is later
-    /// (ISO 32000-1, 7.2.2 and 7.7.2), never rounded; none when the header names none of the nine versions of PDF.
+    /// Takes the version the file declares, <see cref="PdfDocument.Version"/> — its header's, or its catalog's
+    /// <c>/Version</c> when that is later (ISO 32000-1, 7.5.2 and 7.7.2) —, as one of the nine versions of PDF the model
+    /// describes, never rounded; none when the file declares none, or one the model does not describe, such as 1.8.
     /// </summary>
     /// <remarks>
-    /// <see cref="PdfDocument.Version"/> is not used: it says 1.4 of a file without a header. The header is the one the
-    /// reader recorded as it opened the file, which the <c>file.header-*</c> rules judge. A catalog's <c>/Version</c>
-    /// only says the file is later than its header (7.7.2): without a header's version to be later than, the file
-    /// declares none these rules rely on, whatever its catalog says.
+    /// A catalog's <c>/Version</c> only says the file is later than its header (7.7.2): without a header's version to be
+    /// later than, the file declares none these rules rely on, whatever its catalog says, and the document's version is
+    /// null.
     /// </remarks>
-    internal static byte DeclaredVersion(PdfDocument document)
-    {
-        var structure = document.Reader.Structure;
-
-        if (structure.HeaderPosition < 0 ||
-            structure.HeaderVersion is not { } header ||
-            !ArlingtonVersion.TryParse(header, out var version))
-        {
-            return ArlingtonVersion.None;
-        }
-
-        if (document.Catalog?.GetName(PdfName.Version) is { } name &&
-            ArlingtonVersion.TryParse(name.Value, out var catalog) &&
-            catalog > version)
-        {
-            version = catalog;
-        }
-
-        return version;
-    }
+    internal static byte DeclaredVersion(PdfDocument document) =>
+        document.Version is { } declared && ArlingtonVersion.TryParse(declared, out var version)
+            ? version
+            : ArlingtonVersion.None;
 
     private void Walk()
     {

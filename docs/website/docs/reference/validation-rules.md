@@ -37,7 +37,7 @@ References are to ISO 32000-1:2008.
 |---|---|---|---|
 | `file.header-missing` | Warning | No `%PDF-` header in the first 1,024 bytes of the file (7.5.2). Acrobat refuses such a file; the reader, as qpdf, reads it without one. Located at the file's start, or where a header lies further in. | Where the reader found the header, in the first 4,096 bytes |
 | `file.header-offset` | Warning | The header does not start at the file's first byte: a transfer prepended something, and every offset of the file is counted from the header rather than from the file's start. The reader counts from the header, as other readers do. | The header's position |
-| `file.header-version-invalid` | Warning | The header names no version of PDF — 1.0 to 1.7, or 2.0 —, or none at all. Readers open the file whatever version it names. | What follows `%PDF-` |
+| `file.header-version-invalid` | Warning | The header names no version of PDF — 1.0 to 1.7, or 2.0 —, or none at all. What follows `%PDF-` is judged whole, up to the white space, comment or end of file that ends it: `%PDF-1.7abc` names `1.7abc`. Readers open the file whatever version it names. | What follows `%PDF-` |
 | `file.eof-missing` | Warning | No `%%EOF` marker in the last 1,024 bytes of the file. ISO 32000 wants it alone on the file's last line; readers look for it that far from the end, so bytes a transfer appended after it do not matter. Without it, the file was most likely cut short, or had something appended: the reader may still find every object, which is why this is not an error. A second marker, as each incremental update writes, is legal. The finding is located at the end of the file. | The file's last 1,024 bytes |
 | `file.startxref-missing` | Error | No `startxref` followed by an offset in the file's last 4,096 bytes (7.5.5): the reader rebuilds the index by scanning, and cannot vouch that it reads what was written — which copy of an object an update left wins, whether a deleted object comes back. | The file's tail, as the reader read it |
 | `file.startxref-wrong` | Error | The offset `startxref` gives holds no cross-reference section: the index is out of reach, and is rebuilt by scanning. White space before the section is `xref.offset-imprecise`'s; a section that is there and cannot be read is `xref.section-malformed`'s. | The first section of the chain |
@@ -123,11 +123,12 @@ per row of the model —, applying the overrides below; the validator reads no f
 2020 PDF Association, Inc., under the Apache License 2.0, and `NOTICE`, in the repository and in the package, carries
 its notice.
 
-**The version.** The version a file declares is its header's, or its catalog's `/Version` when that is later (7.2.2,
-7.7.2), never rounded. A file whose header names none of the nine versions — 1.0 to 1.7, or 2.0 — declares none for
-these rules, whatever its catalog says, since a catalog's `/Version` only says how much later than the header the file
-is: what depends on the version, a key required in some versions only or a deprecation, is not judged, and the rest
-takes the keys of PDF 2.0.
+**The version.** The version a file declares is `PdfDocument.Version`: its header's, or its catalog's `/Version` when
+that is later (7.5.2, 7.7.2), never rounded. A file that declares none of the nine versions — 1.0 to 1.7, or 2.0 —
+declares none for these rules: its header names no version, whatever its catalog says, since a catalog's `/Version` only
+says how much later than the header the file is; or the version it declares, such as 1.8, is one the model does not
+describe. What depends on the version, a key required in some versions only or a deprecation, is then not judged, and
+the rest takes the keys of PDF 2.0.
 
 **How an object gets its type.** The walk starts at the trailer, which it does not check — its entries are the file
 rules', and its `/ID` the metadata rules' (slice 5, [#61]) —, following only what leads into the document: `/Root`,

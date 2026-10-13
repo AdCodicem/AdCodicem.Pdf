@@ -6,7 +6,7 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The version is the header's, or the catalog's <c>/Version</c> when that is later (ISO 32000-1, 7.2.2 and 7.7.2);
+/// The version is the header's, or the catalog's <c>/Version</c> when that is later (ISO 32000-1, 7.5.2 and 7.7.2);
 /// a file whose header names no version is not judged, whatever its catalog says. A key deprecated in or before that version is reported;
 /// deprecated values are not.
 /// </para>
