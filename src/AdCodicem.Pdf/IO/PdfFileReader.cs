@@ -2738,7 +2738,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         PdfReference reference => string.Create(
             CultureInfo.InvariantCulture, $"the reference {reference.Id.Number} {reference.Id.Generation} R"),
         PdfInteger integer => string.Create(CultureInfo.InvariantCulture, $"the integer {integer.Value}"),
-        PdfReal real => "the real number " + real,
+        PdfReal real => "the real number " + real.ToString(),
         PdfName name => "the name " + FileQuote.Name(name),
         PdfNull => "null",
         _ => $"a value of type {value.GetType().Name.Replace("Pdf", string.Empty, StringComparison.Ordinal).ToLowerInvariant()}",
