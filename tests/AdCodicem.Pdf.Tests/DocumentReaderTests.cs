@@ -22,6 +22,72 @@ public class DocumentReaderTests
         PageContent(document).Should().Be("BT (Bonjour) Tj ET");
     }
 
+    [Theory]
+    [InlineData("%PDF-1.7", "1.7")]
+    [InlineData("%PDF-2.0", "2.0")]
+    [InlineData("%PDF-1.8", "1.8")]
+    [InlineData("%PDF-1.4 ", "1.4")]
+    [InlineData("%PDF-1.4\r", "1.4")]
+    [InlineData("%PDF-1.4\t", "1.4")]
+    [InlineData("%PDF-1.4%comment", "1.4")]
+    [InlineData("%XYZ-1.7", null)]
+    [InlineData("%PDF-x", null)]
+    [InlineData("%PDF-", null)]
+    [InlineData("%PDF- 1.7", null)]
+    [InlineData("%PDF-1.4.5.6", null)]
+    [InlineData("%PDF-1.99999999", null)]
+    [InlineData("%PDF-1.7abc", null)]
+    [InlineData("%PDF-2.0x", null)]
+    [InlineData("%PDF-14", null)]
+    [InlineData("%PDF-1.", null)]
+    [InlineData("%PDF-.5", null)]
+    [InlineData("%PDF-01.4", null)]
+    public void The_version_is_the_header_s_when_it_names_one_digit_a_period_and_one_digit(string header, string? version)
+    {
+        using var document = PdfDocument.Open(PdfTemplate.SoundWith("%PDF-1.7", header));
+
+        document.Version.Should().Be(version);
+        document.Catalog.Should().NotBeNull("the header names a version or not; the file reads all the same");
+    }
+
+    [Fact]
+    public void A_version_the_header_search_cuts_is_none()
+    {
+        // The header's search ends at the 4,096th byte, right after "1.7": what follows it there is not known.
+        var file = Encoding.Latin1.GetBytes(new string('%', 4087) + "\n").Concat(PdfTemplate.Build(PdfTemplate.Sound)).ToArray();
+
+        using var document = PdfDocument.Open(file);
+
+        document.Version.Should().BeNull();
+        document.Reader.Structure.HeaderVersion.Should().Be("1.7");
+        document.Catalog.Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData("%PDF-1.4", "/Version /1.7", "1.7")]
+    [InlineData("%PDF-1.3", "/Version /1.6", "1.6")]
+    [InlineData("%PDF-1.4", "/Version /2.0", "2.0")]
+    [InlineData("%PDF-1.4", "/Version /1.8", "1.8")]
+    [InlineData("%PDF-1.7", "/Version /1.4", "1.7")]
+    [InlineData("%PDF-1.7", "/Version /1.7", "1.7")]
+    [InlineData("%PDF-1.4", "/Version (1.7)", "1.4")]
+    [InlineData("%PDF-1.4", "/Version /1.7.1", "1.4")]
+    [InlineData("%PDF-1.4", "/Version /17", "1.4")]
+    [InlineData("%PDF-1.4", "/Version 1.7", "1.4")]
+    [InlineData("%PDF-x", "/Version /1.7", null)]
+    [InlineData("%XYZ-1.7", "/Version /1.7", null)]
+    public void The_version_is_the_catalog_s_when_it_is_written_as_one_and_later_than_the_header_s(
+        string header, string catalog, string? version)
+    {
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("%PDF-1.7", header, StringComparison.Ordinal)
+            .Replace("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Catalog /Pages 2 0 R " + catalog + " >>", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        document.Version.Should().Be(version);
+    }
+
     [Fact]
     public void Opens_a_document_indexed_by_a_cross_reference_stream()
     {

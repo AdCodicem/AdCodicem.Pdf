@@ -281,6 +281,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     private readonly bool _ownsSource;
 
     private long _headerOffset;
+
+    /// <summary>The version the header names, one digit, a period and one digit; null when it names none.</summary>
+    private string? _headerVersion;
+
     private bool _repaired;
     private bool _nestingReported;
 
@@ -318,13 +322,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         _ownsSource = ownsSource;
 
         Initialize();
+        Version = DeclaredVersion();
     }
 
     /// <summary>Gets the trailer of the document, merged across the whole cross-reference chain.</summary>
     public PdfDictionary Trailer => _xref.Trailer;
 
-    /// <summary>Gets the version declared by the file header, such as <c>1.7</c>.</summary>
-    public string Version { get; private set; } = "1.4";
+    /// <summary>
+    /// Gets the version the file declares, such as <c>1.7</c>: its header's, or its catalog's <c>/Version</c> when that
+    /// is later; null when its header names none.
+    /// </summary>
+    public string? Version { get; }
 
     /// <summary>Gets a value indicating whether the index had to be rebuilt.</summary>
     public bool WasRepaired => _repaired;
@@ -1377,20 +1385,46 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                 index);
         }
 
+        // What follows %PDF- runs to the white space, the comment or the end of the file that ends it, and names a version
+        // only when it is one digit, a period and one digit (ISO 32000-1, 7.5.2): 1.4.5.6, 1.7abc and 14 name none. Text
+        // the window cuts names none either, what follows it being unknown; the window bounds what is kept of it.
         var versionStart = index + HeaderMarker.Length;
         var versionEnd = versionStart;
-        while (versionEnd < span.Length && versionEnd - versionStart < 8 &&
-               (PdfCharacters.IsDigit(span[versionEnd]) || span[versionEnd] == (byte)'.'))
+        while (versionEnd < span.Length && !PdfCharacters.IsWhitespace(span[versionEnd]) && span[versionEnd] != (byte)'%')
         {
             versionEnd++;
         }
 
-        _structure.HeaderVersion = System.Text.Encoding.ASCII.GetString(span[versionStart..versionEnd]);
+        var written = span[versionStart..versionEnd];
+        _structure.HeaderVersion = System.Text.Encoding.Latin1.GetString(written);
 
-        if (versionEnd > versionStart)
+        if (written is [>= (byte)'0' and <= (byte)'9', (byte)'.', >= (byte)'0' and <= (byte)'9'] &&
+            (versionEnd < span.Length || span.Length == _source.Length))
         {
-            Version = _structure.HeaderVersion;
+            _headerVersion = _structure.HeaderVersion;
         }
+    }
+
+    /// <summary>
+    /// Works out the version the file declares: its header's, or its catalog's <c>/Version</c> when that is later (ISO
+    /// 32000-1, 7.5.2 and 7.7.2); none when the header names none, whatever the catalog says.
+    /// </summary>
+    /// <remarks>
+    /// A catalog's <c>/Version</c> is written as the header's is, one digit, a period and one digit; any other value, or
+    /// a catalog the reader cannot read — one in an object stream of an encrypted document —, leaves the header's. The
+    /// catalog is the one the document opened with: worked out once, the version does not move as more is read.
+    /// </remarks>
+    private string? DeclaredVersion()
+    {
+        if (_headerVersion is not { } header)
+        {
+            return null;
+        }
+
+        return Trailer.GetDictionary(PdfName.Root)?.GetName(PdfName.Version)?.Value is
+            [>= '0' and <= '9', '.', >= '0' and <= '9'] catalog && string.CompareOrdinal(catalog, header) > 0
+            ? catalog
+            : header;
     }
 
     private long FindStartXRef()

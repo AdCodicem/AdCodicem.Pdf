@@ -74,6 +74,12 @@ public class FileRuleTests
     [InlineData("%PDF-3.0", "The header names version 3.0, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     [InlineData("%PDF-14", "The header names version 14, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     [InlineData("%PDF-", "The header names no version after %PDF-.")]
+    [InlineData("%PDF- 1.7", "The header names no version after %PDF-.")]
+    [InlineData("%PDF-1.7abc", "The header names version 1.7abc, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-2.0x", "The header names version 2.0x, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-1.4.5.6", "The header names version 1.4.5.6, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-1.99999999", "The header names version 1.99999999, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
+    [InlineData("%PDF-1.7\u001B[2J#", "The header names version 1.7#1B#5B2J#23, which is not a version of PDF: 1.0 to 1.7, or 2.0.")]
     public void A_header_that_names_no_version_of_pdf_is_a_warning(string header, string message)
     {
         var finding = Single(Validate(PdfTemplate.SoundWith("%PDF-1.7", header)), PdfValidationRuleIds.FileHeaderVersionInvalid);
@@ -81,6 +87,18 @@ public class FileRuleTests
         finding.Severity.Should().Be(PdfValidationSeverity.Warning);
         finding.Location.Position.Should().Be(0);
         finding.Message.Should().Be(message);
+    }
+
+    [Fact]
+    public void A_header_s_long_text_is_quoted_as_a_keyword_bounded_with_its_whole_length()
+    {
+        var finding = Single(
+            Validate(PdfTemplate.SoundWith("%PDF-1.7", "%PDF-1.7" + new string('x', 300))),
+            PdfValidationRuleIds.FileHeaderVersionInvalid);
+
+        finding.Message.Should().Be(
+            "The header names version 1.7" + new string('x', 124) +
+            " (the first 127 of 303 bytes), which is not a version of PDF: 1.0 to 1.7, or 2.0.");
     }
 
     [Theory]

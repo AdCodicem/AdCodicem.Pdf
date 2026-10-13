@@ -26,8 +26,9 @@ internal sealed class FileStructure
     public long HeaderPosition { get; set; } = -1;
 
     /// <summary>
-    /// Gets what follows <c>%PDF-</c>, its digits and dots as written — empty when nothing does —, or null when
-    /// there is no header.
+    /// Gets what follows <c>%PDF-</c> up to the white space, the comment or the end of the file that ends it, a
+    /// character for each byte as written — empty when nothing does —, or null when there is no header. The reader's
+    /// search window bounds it.
     /// </summary>
     public string? HeaderVersion { get; set; }
 

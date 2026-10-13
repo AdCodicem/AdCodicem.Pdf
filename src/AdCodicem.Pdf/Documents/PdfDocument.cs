@@ -40,8 +40,23 @@ public sealed class PdfDocument : IDisposable
     /// <summary>Gets the document catalog, the root of the object graph.</summary>
     public PdfDictionary? Catalog => Trailer.GetDictionary(PdfName.Root);
 
-    /// <summary>Gets the version declared by the file header.</summary>
-    public string Version => _reader.Version;
+    /// <summary>
+    /// Gets the version of PDF the document declares, such as <c>1.7</c>: its header's, or its catalog's
+    /// <c>/Version</c> when that is later, as ISO 32000-1 (7.5.2, 7.7.2) has it; null when its header names none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A header names a version when <c>%PDF-</c> is followed by one digit, a period and one digit, and then by white
+    /// space, a comment or the end of the file: <c>%PDF-1.4.5.6</c>, <c>%PDF-1.7abc</c> and <c>%PDF-14</c> name none, nor
+    /// does a file without a header, whatever its catalog says. A version so written that ISO 32000 does not define,
+    /// such as <c>1.8</c>, is given as written. The catalog's <c>/Version</c> counts when it is written the same way.
+    /// </para>
+    /// <para>
+    /// It is worked out as the document opens, from the catalog it opens with. What the header says is judged by the
+    /// validator's <c>file.header-missing</c> and <c>file.header-version-invalid</c> rules.
+    /// </para>
+    /// </remarks>
+    public string? Version => _reader.Version;
 
     /// <summary>Gets a value indicating whether the cross-reference index had to be rebuilt.</summary>
     /// <remarks>
