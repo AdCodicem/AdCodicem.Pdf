@@ -833,13 +833,20 @@ internal ref struct PdfObjectParser
         }
     }
 
+    /// <summary>
+    /// Wraps a stream's data held in the parser's own buffer: one an object stream holds, which ISO 32000-1 (7.5.7)
+    /// forbids but a file can write, is refused with the rest of its document once that is disposed.
+    /// </summary>
+    private readonly PdfStreamData Held(ReadOnlyMemory<byte> bytes) =>
+        _member is not null && _source is PdfFileReader reader ? reader.MemberStreamData(bytes) : PdfStreamData.FromMemory(bytes);
+
     private PdfStream Finish(PdfDictionary dictionary, int dataStart, int length, int bufferLength)
     {
         length = Math.Max(length, 0);
 
         var data = _streamData is not null
             ? _streamData.Create(_baseOffset + dataStart, length)
-            : PdfStreamData.FromMemory(_memory.Slice(dataStart, Math.Min(length, bufferLength - dataStart)));
+            : Held(_memory.Slice(dataStart, Math.Min(length, bufferLength - dataStart)));
 
         var afterData = (int)Math.Min((long)dataStart + length, bufferLength);
         _lexer.Position = afterData;

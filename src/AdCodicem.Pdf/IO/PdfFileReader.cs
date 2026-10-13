@@ -3976,6 +3976,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
+    /// Gives the data of a stream an object stream holds, from that stream's decoded data, refused as a stream's data in
+    /// the file is once the document is disposed.
+    /// </summary>
+    internal PdfStreamData MemberStreamData(ReadOnlyMemory<byte> bytes) => new MemberData(this, bytes);
+
+    /// <summary>
     /// A stream's data in the file, read the first time something asks for it, and refused, read or not, once the
     /// document is disposed.
     /// </summary>
@@ -4008,6 +4014,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var read = reader._source.Read(offset, buffer);
             _bytes = read == length ? buffer : buffer[..read];
             return _bytes;
+        }
+    }
+
+    /// <summary>
+    /// A stream's data an object stream holds, in that stream's decoded data, and refused once the document is
+    /// disposed. It decodes under the default guards and keeps the decoded data it lies in, as #161 says.
+    /// </summary>
+    private sealed class MemberData(PdfFileReader reader, ReadOnlyMemory<byte> bytes) : PdfStreamData
+    {
+        public override int Length => bytes.Length;
+
+        /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+        public override ReadOnlyMemory<byte> GetBytes()
+        {
+            ObjectDisposedException.ThrowIf(reader._closed, typeof(PdfDocument));
+            return bytes;
         }
     }
 

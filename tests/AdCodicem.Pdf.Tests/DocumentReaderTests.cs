@@ -613,7 +613,7 @@ public class DocumentReaderTests
                 "a memory stream it reads in place" => new MemoryStream(bytes, 0, bytes.Length, writable: false, publiclyVisible: true),
                 _ => null,
             };
-            using var source = opening == "a source it does not own" ? PdfFileSource.FromMemory(bytes) : null;
+            using var source = opening == "a source it does not own" ? new CountingSource(bytes) : null;
             var document = opening switch
             {
                 "bytes" => PdfDocument.Open(bytes),
@@ -623,7 +623,8 @@ public class DocumentReaderTests
             };
 
             // Taken before: a page, cached; its content stream, cached and its data read; a stream whose data was not
-            // read; an object of an object stream read, so cached, and one of the same stream not read.
+            // read; an object of an object stream read, so cached, and one of the same stream not read; a stream an
+            // object stream holds, which ISO 32000-1 forbids, its data read, and one in an array there, not read.
             var page = document.GetObject(new PdfObjectId(3)).AsDictionary().Required();
             var contents = page.GetRaw(PdfName.Contents).Should().BeOfType<PdfReference>().Subject;
             var read = contents.Resolve().Should().BeOfType<PdfStream>().Subject;
@@ -633,6 +634,9 @@ public class DocumentReaderTests
             states.GetDictionary(PdfName.Get("A")).Should().NotBeNull();
             var packed = states.GetRaw(PdfName.Get("A")).Should().BeOfType<PdfReference>().Subject;
             var packedUnread = states.GetRaw(PdfName.Get("B")).Should().BeOfType<PdfReference>().Subject;
+            var member = document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfStream>().Subject;
+            member.GetRawBytes().Length.Should().Be(3);
+            var nested = document.GetObject(new PdfObjectId(9)).Should().BeOfType<PdfArray>().Subject[0].Should().BeOfType<PdfStream>().Subject;
             using var numbers = document.ObjectNumbers.GetEnumerator();
             numbers.MoveNext().Should().BeTrue();
 
@@ -657,12 +661,14 @@ public class DocumentReaderTests
             Disposed(() => read.GetRawBytes());
             Disposed(() => read.Decode(document.Diagnostics));
             Disposed(() => unread.GetRawBytes());
+            Disposed(() => member.GetRawBytes());
+            Disposed(() => nested.Decode(document.Diagnostics));
 
             read.RawLength.Should().Be(18, "what was handed out stays the caller's");
             read.ToString().Should().Be("<<stream of 18 bytes>>");
             page.ToString().Should().Be("<</Type /Page ... 5 entries>>");
             FluentActions.Invoking(document.Dispose).Should().NotThrow();
-            source?.Length.Should().Be(bytes.Length, "a source the document did not own stays the caller's");
+            source?.Disposals.Should().Be(0, "a source the document did not own stays the caller's");
         }
         finally
         {
@@ -762,8 +768,8 @@ public class DocumentReaderTests
     }
 
     /// <summary>
-    /// A page whose content stream, a stream beside it, and two objects of an object stream are what a caller takes from
-    /// a document before disposing of it.
+    /// A page whose content stream, a stream beside it, two objects of an object stream, and two streams an object stream
+    /// holds, as no file should, are what a caller takes from a document before disposing of it.
     /// </summary>
     private static byte[] HeldObjectsDocument() =>
         new TestPdfBuilder()
@@ -776,7 +782,9 @@ public class DocumentReaderTests
             .WithObject(5, "<< /Type /ExtGState /CA 1 >>")
             .WithObject(6, "<< /Type /ExtGState /CA 0.5 >>")
             .Stream(7, string.Empty, "q Q")
-            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6]);
+            .WithObject(8, "<< /Length 3 >>\nstream\nabc\nendstream")
+            .WithObject(9, "[<< /Length 3 >>\nstream\nxyz\nendstream]")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6, 8, 9]);
 
     [Fact]
     public void Reads_a_cross_reference_stream_that_leaves_out_the_type_field()
