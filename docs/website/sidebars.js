@@ -43,6 +43,7 @@ const sidebars = {
       },
       items: [
         'reference/diagnostics',
+        'reference/object-model',
         'reference/reader-limits',
         'reference/validation',
         'reference/validation-rules',

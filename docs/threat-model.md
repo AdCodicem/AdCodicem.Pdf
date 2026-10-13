@@ -51,7 +51,8 @@ What a caller entrusts to the library when it opens a file it did not produce:
   something? A file that makes the report lie defeats the caller as surely as a crash does. That covers hiding its
   encryption, hiding a cut, or getting the reader's own limit blamed on the file.
 - **The host's logs and terminals.** Diagnostic and finding messages quote names and keywords from the file, and
-  hosts log and print them. A quote is printable ASCII on one line and at most 127 bytes of what the file wrote, so
+  hosts log and print them, as they print the objects a document hands out, through their `ToString`. A quote is
+  printable ASCII on one line and at most 127 bytes of what the file wrote, and so is what an object says of itself, so
   what a host prints is the library's text, not the file's (*Reports*, below).
 
 The library holds more later: the files it writes ([M03]), the original bytes and existing signatures an
@@ -81,7 +82,7 @@ Where a byte from outside the caller's code enters today:
 |---|---|---|
 | The file source | `PdfDocument.Open(string)`, `Open(ReadOnlyMemory<byte>)`, `Open(Stream)`, `Open(PdfFileSource, PdfReaderOptions?, bool)` | Every byte of the file, read lazily through windows |
 | What the reader derives | `GetObject`, `PdfReference.Resolve`, the `PdfObjectExtensions` accessors, `Trailer`, `Catalog`, `ObjectNumbers`, `PdfStream.GetRawBytes`, `Decode` | Values the file chose, handed to the caller's code |
-| Messages | `PdfDiagnostic.Message` and `ToString`, `PdfValidationFinding.Message` and `ToString` | Text that quotes names and keywords from the file, escaped and cut |
+| Messages | `PdfDiagnostic.Message` and `ToString`, `PdfValidationFinding.Message` and `ToString`; the `ToString` of the objects a document hands out — `PdfName`, `PdfDictionary`, `PdfStream`, `PdfString`, `PdfReal` | Text that quotes names and keywords from the file, escaped and cut; a string's text, escaped and cut; a real's shortest decimal |
 | The validator | `PdfValidator.Validate` | The same document, plus bytes the validator reads itself: the file's tail, 64 bytes at each entry's offset, object stream headers |
 
 Every surface still to come adds a boundary of its own: HTML, CSS and template data, the resource loader, font
@@ -156,6 +157,18 @@ about it. Held by `FileQuoteTests`; `PropertyTests.A_quote_of_the_file_is_printa
 `Validating_an_object_whose_key_path_holds_megabyte_keys_stays_within_an_allocation_budget`; and
 `CorpusReadingTests.Every_message_a_document_earns_is_printable_ascii_on_one_line_whatever_the_culture`, under a Persian
 culture.
+
+What an object says of itself through `ToString` — what a debugger, an interpolation in a log line or a test runner's
+failure message shows — follows the same rules ([#212]): a name is quoted through `FileQuote`, and so is the type a
+dictionary or a stream gives itself by; a string's text is written between double quotes, every character outside
+printable ASCII escaped as C# writes it in a literal, cut past 127 characters with the whole's length, decoding no more
+of the text than it shows; a real is the shortest decimal that reads back to it, at most 327 characters. None copies
+what it cuts. `Value`, `Bytes`, `ToText` and `GetRawBytes` stay the raw accessors. Held by
+`ObjectModelTests.A_name_of_megabytes_and_what_it_types_describe_themselves_in_a_few_hundred_characters`,
+`A_string_of_megabytes_describes_its_first_127_characters_and_how_many_it_holds`,
+`Objects_read_from_a_file_describe_themselves_in_printable_ascii_on_one_line`;
+`PropertyTests.What_an_object_says_of_itself_is_printable_ascii_on_one_line_and_bounded_whatever_the_bytes` and
+`A_real_describes_itself_as_a_decimal_that_reads_back_to_its_bits`.
 
 ### What may be thrown
 
@@ -656,6 +669,7 @@ The last column also names the questions they leave open, which that milestone s
 [#195]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/195
 [#196]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/196
 [#197]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/197
+[#212]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/212
 [#218]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/218
 [#220]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/220
 [#221]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/221
