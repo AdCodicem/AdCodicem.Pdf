@@ -500,6 +500,17 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_seekable_stream_longer_than_an_array_holds_is_copied_as_it_reads()
+    {
+        // A stream that says it is longer than any array: its copy is not sized from what it says.
+        using var stream = new OverlongStream(SampleDocument().BuildClassic(rootNumber: 1));
+
+        using var document = PdfDocument.Open(stream);
+
+        PageContent(document).Should().Be("BT (Bonjour) Tj ET");
+    }
+
+    [Fact]
     public void A_stream_that_cannot_seek_and_was_read_to_its_end_is_empty()
     {
         using var stream = new ForwardOnlyStream(new MemoryStream(SampleDocument().BuildClassic(rootNumber: 1)));
@@ -562,6 +573,12 @@ public class DocumentReaderTests
 
     /// <summary>A memory stream of a type derived from it, as a pooled one is.</summary>
     private sealed class DerivedMemoryStream : MemoryStream;
+
+    /// <summary>A memory stream that says it is longer than any array can be.</summary>
+    private sealed class OverlongStream(byte[] buffer) : MemoryStream(buffer)
+    {
+        public override long Length => (long)Array.MaxLength + 1;
+    }
 
     /// <summary>A stream that can be read forward only, as a network response is.</summary>
     private sealed class ForwardOnlyStream(Stream inner) : Stream
@@ -725,6 +742,7 @@ public class DocumentReaderTests
             Disposed(() => nested.Decode(document.Diagnostics));
 
             read.RawLength.Should().Be(18, "what was handed out stays the caller's");
+            member.RawLength.Should().Be(3);
             read.ToString().Should().Be("<<stream of 18 bytes>>");
             page.ToString().Should().Be("<</Type /Page ... 5 entries>>");
             FluentActions.Invoking(document.Dispose).Should().NotThrow();
