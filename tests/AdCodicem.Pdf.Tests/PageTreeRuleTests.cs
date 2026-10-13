@@ -451,6 +451,8 @@ public class PageTreeRuleTests
     [InlineData("[0 0 (612) 792]", "The /MediaBox of object 6 holds a string among its corners, not a rectangle of four numbers.")]
     [InlineData("[0 0 612 0]", "The /MediaBox of object 6, [0 0 612 0], encloses no area.")]
     [InlineData("[10.5 20 10.5 792]", "The /MediaBox of object 6, [10.5 20 10.5 792], encloses no area.")]
+    [InlineData("[0.0000001 0 0.0000001 792.0]", "The /MediaBox of object 6, [0.0000001 0 0.0000001 792.0], encloses no area.")]
+    [InlineData("[123456789012345678901 0 123456789012345678901 1]", "The /MediaBox of object 6, [123456789012345680000.0 0 123456789012345680000.0 1], encloses no area.")]
     public void A_media_box_that_is_no_rectangle_is_reported_where_it_is_written(string box, string message)
     {
         var finding = Single(
