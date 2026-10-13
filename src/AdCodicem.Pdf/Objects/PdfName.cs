@@ -43,8 +43,17 @@ public sealed class PdfName : PdfObject, IEquatable<PdfName>
     /// <inheritdoc/>
     public override int GetHashCode() => Value.GetHashCode(StringComparison.Ordinal);
 
-    /// <inheritdoc/>
-    public override string ToString() => "/" + Value;
+    /// <summary>
+    /// Describes the name for a debugger or a log as a PDF writer writes it, with its solidus: on one line, in printable
+    /// ASCII, every byte a writer does not write as itself as <c>#xx</c>, and cut past 127 bytes, with how many bytes the
+    /// whole holds.
+    /// </summary>
+    /// <remarks>
+    /// The text the library's messages quote a name with, and which reads back as the name up to 127 bytes. What the file
+    /// wrote reaches no terminal or log through it, however long or however strange: a line feed is <c>#0A</c>, an escape
+    /// <c>#1B</c>. <see cref="Value"/> is the name itself.
+    /// </remarks>
+    public override string ToString() => IO.FileQuote.Name(this);
 
     /// <summary>Compares two names for equality.</summary>
     public static bool operator ==(PdfName? left, PdfName? right) =>

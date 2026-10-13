@@ -32,13 +32,20 @@ public sealed class PdfStream : PdfObject
     /// <summary>Returns the encoded bytes, exactly as they appear in the file.</summary>
     public ReadOnlyMemory<byte> GetRawBytes() => Data.GetBytes();
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Describes the stream for a debugger or a log by its <c>/Subtype</c>, or else its <c>/Type</c>, and the count of its
+    /// encoded bytes, as in <c>&lt;&lt;/Image stream of 4096 bytes&gt;&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// The name is quoted as <see cref="PdfName.ToString"/> quotes one: printable ASCII, bounded, whatever the file wrote.
+    /// The data is neither read nor described.
+    /// </remarks>
     public override string ToString()
     {
-        var subtype = Dictionary[PdfName.Subtype] as PdfName;
-        var type = subtype ?? Dictionary[PdfName.Type] as PdfName;
+        var type = Dictionary[PdfName.Subtype] as PdfName ?? Dictionary[PdfName.Type] as PdfName;
+        var bytes = RawLength == 1 ? "byte" : "bytes";
         return type is null
-            ? string.Create(CultureInfo.InvariantCulture, $"<<stream of {RawLength} bytes>>")
-            : string.Create(CultureInfo.InvariantCulture, $"<<{type} stream of {RawLength} bytes>>");
+            ? string.Create(CultureInfo.InvariantCulture, $"<<stream of {RawLength} {bytes}>>")
+            : string.Create(CultureInfo.InvariantCulture, $"<<{type} stream of {RawLength} {bytes}>>");
     }
 }

@@ -76,12 +76,21 @@ public sealed class PdfDictionary : PdfObject, IEnumerable<KeyValuePair<PdfName,
 
     IEnumerator IEnumerable.GetEnumerator() => _entries.GetEnumerator();
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Describes the dictionary for a debugger or a log by its <c>/Type</c> and its count of entries, as in
+    /// <c>&lt;&lt;/Type /Page ... 3 entries&gt;&gt;</c>, or by its count alone when its <c>/Type</c> is no name.
+    /// </summary>
+    /// <remarks>
+    /// The type is quoted as <see cref="PdfName.ToString"/> quotes a name: printable ASCII, bounded, whatever the file
+    /// wrote. The entries themselves are not described.
+    /// </remarks>
     public override string ToString()
     {
-        var type = this[PdfName.Type] as PdfName;
-        return type is null
-            ? string.Create(CultureInfo.InvariantCulture, $"<<dictionary of {_entries.Count}>>")
-            : string.Create(CultureInfo.InvariantCulture, $"<</Type {type} … {_entries.Count} entries>>");
+        var count = _entries.Count;
+        return this[PdfName.Type] is PdfName type
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"<</Type {type} ... {count} {(count == 1 ? "entry" : "entries")}>>")
+            : string.Create(CultureInfo.InvariantCulture, $"<<dictionary of {count}>>");
     }
 }

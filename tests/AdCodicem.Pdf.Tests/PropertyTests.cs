@@ -110,6 +110,29 @@ public class PropertyTests
     }
 
     [Fact]
+    public void What_an_object_says_of_itself_is_printable_ascii_on_one_line_and_bounded_whatever_the_bytes()
+    {
+        Check.One(Settings, Prop.ForAll(Buffers, bytes =>
+        {
+            // A name, a dictionary and a stream typed by it, and a string in either encoding, hold any byte the file
+            // chose; what their ToString gives a debugger or a log holds none a terminal could take for something else,
+            // and never more than the bound's worth (#212).
+            var name = PdfName.Get(Encoding.Latin1.GetString(bytes));
+            var described = new[]
+            {
+                name.ToString(),
+                new PdfDictionary { [PdfName.Type] = name }.ToString(),
+                new PdfStream(new PdfDictionary { [PdfName.Subtype] = name }, PdfStreamData.FromMemory(bytes)).ToString(),
+                new PdfString(bytes).ToString(),
+                new PdfString((byte[])[0xFE, 0xFF, .. bytes]).ToString(),
+            };
+            const int Longest = 2 + (6 * FileQuote.MaxBytes) + 48;
+
+            return described.All(text => text.All(c => c is >= ' ' and <= '~') && text.Length <= Longest);
+        }));
+    }
+
+    [Fact]
     public void A_quote_of_a_name_of_at_most_127_bytes_reads_back_as_that_name()
     {
         Check.One(Settings, Prop.ForAll(Buffers, bytes =>
