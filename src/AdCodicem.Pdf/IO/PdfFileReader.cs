@@ -23,8 +23,12 @@ namespace AdCodicem.Pdf.IO;
 /// file. When the index turns out to be wrong — which real files manage in a remarkable number of ways — the reader
 /// rebuilds it by scanning, and says so in the diagnostics. A rebuild loads every object written directly in the
 /// file, to take in those its object streams hold.
+/// <para>
+/// It is not disposable: a reference read from the file hands it out as its <see cref="PdfReference.Source"/>, and no
+/// holder of one may close the document's file. The document closes it, through <see cref="Close"/>.
+/// </para>
 /// </remarks>
-internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, IDisposable
+internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 {
     internal const int InitialObjectWindow = 8 * 1024;
     internal const int XRefWindow = 64 * 1024;
@@ -1215,7 +1219,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
     /// it cached, the object streams it decoded, its index, the source — is let go, though a reference the caller holds
     /// keeps the reader itself. Closing it again does nothing.
     /// </summary>
-    public void Dispose()
+    internal void Close()
     {
         if (_closed)
         {
