@@ -695,6 +695,24 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void Closing_a_reader_again_does_nothing_more()
+    {
+        var source = new CountingSource(SampleDocument().BuildClassic(rootNumber: 1));
+        var reader = new PdfFileReader(
+            source,
+            new PdfDiagnostics(),
+            new PdfLimitGuard(PdfReaderLimits.Default, throwOnLimit: false),
+            cacheCapacity: 64,
+            ownsSource: true);
+
+        reader.Close();
+        reader.Close();
+
+        source.Disposals.Should().Be(1, "the source the reader owns is released once");
+        FluentActions.Invoking(() => reader.GetObject(new PdfObjectId(1))).Should().Throw<ObjectDisposedException>();
+    }
+
+    [Fact]
     public void A_reference_s_source_cannot_close_the_document_s_file()
     {
         var path = Path.GetTempFileName();
@@ -1921,6 +1939,8 @@ public class DocumentReaderTests
 
         public long BytesRead { get; private set; }
 
+        public int Disposals { get; private set; }
+
         public override long Length => _inner.Length;
 
         public override int Read(long offset, Span<byte> buffer)
@@ -1934,6 +1954,7 @@ public class DocumentReaderTests
         {
             if (disposing)
             {
+                Disposals++;
                 _inner.Dispose();
             }
 
