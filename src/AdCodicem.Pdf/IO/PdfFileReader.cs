@@ -2664,7 +2664,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
         PdfReference reference => string.Create(
             CultureInfo.InvariantCulture, $"the reference {reference.Id.Number} {reference.Id.Generation} R"),
         PdfInteger integer => string.Create(CultureInfo.InvariantCulture, $"the integer {integer.Value}"),
-        PdfReal real => "the real number " + Expanded(real.Value),
+        PdfReal real => "the real number " + real,
         PdfName name => "the name " + FileQuote.Name(name),
         PdfNull => "null",
         _ => $"a value of type {value.GetType().Name.Replace("Pdf", string.Empty, StringComparison.Ordinal).ToLowerInvariant()}",
@@ -2724,34 +2724,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider, 
                     break;
             }
         }
-    }
-
-    /// <summary>
-    /// Writes a real read from a file as the shortest decimal that reads back to it, with no exponent, as PDF writes
-    /// reals: 1E-07 is written 0.0000001.
-    /// </summary>
-    private static string Expanded(double value)
-    {
-        var shortest = value.ToString("R", CultureInfo.InvariantCulture);
-        var e = shortest.IndexOf('E', StringComparison.Ordinal);
-
-        if (e < 0)
-        {
-            return shortest;
-        }
-
-        var exponent = int.Parse(shortest.AsSpan(e + 1), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
-        var sign = shortest[0] == '-' ? "-" : string.Empty;
-        var mantissa = shortest[sign.Length..e];
-        var point = mantissa.IndexOf('.', StringComparison.Ordinal);
-        var digits = point < 0 ? mantissa : mantissa.Remove(point, 1);
-        var whole = (point < 0 ? mantissa.Length : point) + exponent;
-
-        // "R" writes an exponent only below 10^-4, where the whole part is none, and from 10^17, where it is longer than
-        // the 17 digits a double needs at most: the last arm stands for a runtime that writes one sooner.
-        return sign + (whole <= 0
-            ? "0." + new string('0', -whole) + digits
-            : whole >= digits.Length ? digits + new string('0', whole - digits.Length) : digits[..whole] + "." + digits[whole..]);
     }
 
     /// <summary>

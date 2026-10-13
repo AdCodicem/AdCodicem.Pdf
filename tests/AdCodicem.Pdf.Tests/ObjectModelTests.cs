@@ -114,14 +114,37 @@ public class ObjectModelTests
     [Theory]
     [InlineData(3.5, "3.5")]
     [InlineData(-0.25, "-0.25")]
-    [InlineData(4.0, "4")]
-    [InlineData(2.0 / 3, "0.666667")]
-    [InlineData(1e20, "100000000000000000000")]
-    [InlineData(1e-7, "0")]
-    [InlineData(-1e-7, "-0")]
-    public void A_real_describes_itself_without_an_exponent_and_to_six_decimals(double value, string described)
+    [InlineData(4.0, "4.0")]
+    [InlineData(0.0, "0.0")]
+    [InlineData(-0.0, "-0.0")]
+    [InlineData(2.0 / 3, "0.6666666666666666")]
+    [InlineData(0.1 + 0.2, "0.30000000000000004")]
+    [InlineData(1e20, "100000000000000000000.0")]
+    [InlineData(1.2345678901234568E+20, "123456789012345680000.0")]
+    [InlineData(1e-7, "0.0000001")]
+    [InlineData(-1e-7, "-0.0000001")]
+    [InlineData(1.5e-5, "0.000015")]
+    [InlineData(double.NaN, "NaN")]
+    [InlineData(double.PositiveInfinity, "Infinity")]
+    [InlineData(double.NegativeInfinity, "-Infinity")]
+    public void A_real_describes_itself_as_the_shortest_decimal_that_reads_back_with_a_point(double value, string described)
     {
         new PdfReal(value).ToString().Should().Be(described);
+    }
+
+    [Theory]
+    [InlineData(double.Epsilon)]
+    [InlineData(-double.Epsilon)]
+    [InlineData(double.MaxValue)]
+    [InlineData(double.MinValue)]
+    public void A_real_at_the_ends_of_a_double_is_described_whole_within_327_characters(double value)
+    {
+        var described = new PdfReal(value).ToString();
+
+        described.Should().NotContainAny("E", "e");
+        described.Should().Contain(".");
+        described.Length.Should().BeLessThanOrEqualTo(327);
+        double.Parse(described, CultureInfo.InvariantCulture).Should().Be(value);
     }
 
     [Theory]

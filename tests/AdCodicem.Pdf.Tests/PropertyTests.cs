@@ -276,6 +276,28 @@ public class PropertyTests
     }
 
     [Fact]
+    public void A_real_describes_itself_as_a_decimal_that_reads_back_to_its_bits()
+    {
+        // Any finite double, drawn from all 64 of its bits: what it says of itself has a period and no exponent, stays
+        // within 327 characters, and reads back to the same bits, -0.0 included.
+        var doubles =
+            from high in Gen.Choose(int.MinValue, int.MaxValue)
+            from low in Gen.Choose(int.MinValue, int.MaxValue)
+            let value = BitConverter.Int64BitsToDouble(((long)high << 32) | (uint)low)
+            where double.IsFinite(value)
+            select value;
+
+        Check.One(Settings, Prop.ForAll(doubles.ToArbitrary(), value =>
+        {
+            var described = new PdfReal(value).ToString();
+            var read = double.Parse(
+                described, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+
+            return described.Contains('.', StringComparison.Ordinal) && described.Length <= 327 && SameBits(read, value);
+        }));
+    }
+
+    [Fact]
     public void An_object_reads_the_same_wherever_the_window_edge_falls_in_it()
     {
         // WindowEdgeTests slides a few fixed objects across the reader's 8 KB window one byte at a time.

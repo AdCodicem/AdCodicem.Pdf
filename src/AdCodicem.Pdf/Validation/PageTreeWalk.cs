@@ -521,7 +521,7 @@ internal sealed class PageTreeWalk
         {
             MediaBoxFaults.Add(new ProbeFinding(
                 location,
-                Invariant($"{MediaBoxOf(id)}, [{corners[0]} {corners[1]} {corners[2]} {corners[3]}], encloses no area.")));
+                Invariant($"{MediaBoxOf(id)}, [{array.Resolved(0)} {array.Resolved(1)} {array.Resolved(2)} {array.Resolved(3)}], encloses no area.")));
         }
     }
 

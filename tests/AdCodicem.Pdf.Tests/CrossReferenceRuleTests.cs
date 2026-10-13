@@ -190,7 +190,7 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4 2] /Index [0 (six)]", "its /Index holds a value of type string where an integer belongs.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [/Zero 6]", "its /Index holds the name /Zero where an integer belongs.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 null]", "its /Index holds null where an integer belongs.")]
-    [InlineData("/Size 6 /W [1 4 2] /Index [92233720368547758080 6]", "its /Index holds the real number 92233720368547760000 where an integer belongs.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [92233720368547758080 6]", "its /Index holds the real number 92233720368547760000.0 where an integer belongs.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 1 0 R]", "its /Index holds the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W [1 4 2] /Index 1 0 R", "its /Index is the reference 1 0 R, which no section read before it places where it can be read.")]
     [InlineData("/Size 6 /W 1 0 R", "its /W is the reference 1 0 R, which no section read before it places where it can be read.")]
@@ -335,7 +335,7 @@ public class CrossReferenceRuleTests
     [InlineData("/Offset", "The /Prev of the cross-reference section at offset {update} is the name /Offset, not an offset.")]
     [InlineData("/Na#0Ame#1B", "The /Prev of the cross-reference section at offset {update} is the name /Na#0Ame#1B, not an offset.")]
     [InlineData("1.5", "The /Prev of the cross-reference section at offset {update} is the real number 1.5, not an offset.")]
-    [InlineData("9223372036854775808", "The /Prev of the cross-reference section at offset {update} is the real number 9223372036854776000, not an offset.")]
+    [InlineData("9223372036854775808", "The /Prev of the cross-reference section at offset {update} is the real number 9223372036854776000.0, not an offset.")]
     [InlineData("0.0000001", "The /Prev of the cross-reference section at offset {update} is the real number 0.0000001, not an offset.")]
     [InlineData("-0.000000000000000000000012", "The /Prev of the cross-reference section at offset {update} is the real number -0.000000000000000000000012, not an offset.")]
     public void A_section_prev_names_where_none_is_is_not_found(string prev, string message)
