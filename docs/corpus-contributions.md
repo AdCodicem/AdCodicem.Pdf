@@ -302,6 +302,7 @@ The milestone is closed, so nothing here blocks: these widen what the reader is 
 | A structurally sound file whose Flate stream lost its tail, and one whose LZW stream uses a code it never defined, as derived variants of our invoice | T32's fix and the 'filters decodable' rule meet these only in unit tests: the committed damage cuts a whole file, not a stream inside a sound one | documents/damaged/invoice-truncated-tail.pdf (the whole file cut); the committed LZW documents (vendor/us-federal/acrobat3-import-irs-1040-1988-scan.pdf, distiller3-irs-ss4-1995-form.pdf, pdfwriter3-copyright-office-dmca-summary-1998-rc4-40.pdf) | Generate here | 2 |
 | An object stream whose /DecodeParms names an object stored inside it, hand-built and marked as such | Since M02's third slice the reader reports it (`stream.self-reference`) and so does the validator (`xref.object-stream-circular`), but on hand-built test files only | none | Generate here | 3 |
 | A widget that belongs to no field, and a destination naming a page the file lacks, from a real producer | The annotation rules meet these only in hand-written and damaged files | none from a real producer | Contribution | 3 |
+| A stream from a real producer whose `/Filter` chains three filters or more, or whose Flate or LZW step takes a `/Predictor`, `/Columns` or `/EarlyChange` through a reference | The bound the filters before the last share, and the parameters a stream resolves before decoding its data, meet these in hand-built files only (batch 12, [#165], [#166]) | the 18 documents whose streams chain two filters, and jhove-hul-117 and xerox-workcentre-5755, whose `/DecodeParms` elements an object stream holds (`FilterChainCorpusTests`) | Contribution | 3 |
 
 ### M03
 
@@ -769,3 +770,5 @@ The milestone is closed, so nothing here blocks: these widen what the reader is 
 [W28]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/87
 [W29]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/88
 [W30]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/89
+[#165]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/165
+[#166]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/166

@@ -38,6 +38,18 @@ the guard, and the sentence of the context that classified them is struck. And w
 is no longer rebuilt as damage: it reads as null, unknown rather than missing, until the property is raised
 (*Reaching a guard*, below).
 
+Amended again on 2026-10-14, by the maintainer, while [#165](https://github.com/AdCodicem/AdCodicem.Pdf/issues/165),
+[#166](https://github.com/AdCodicem/AdCodicem.Pdf/issues/166) and [#199](https://github.com/AdCodicem/AdCodicem.Pdf/issues/199)
+were fixed: `MaxDecodedStreamLength` bounded each filter of a chain alone, so that a stream cost what its `/Filter` array
+asked — a 513-byte cross-reference stream naming `/RunLengthDecode` sixteen times allocated 3.3 GB as it opened, and a
+sound chain of stored Flate layers 14.9 GB with nothing reported. The filters before the last now share one bound for what
+they pass along together, and the last keeps its own: a stream of one or two filters decodes as before, and no count of
+filters becomes a bound, since ISO 32000 sets none. What follows a filter that stopped at the bound is data the reader cut,
+reported once as the guard, never as damage. And the reason given for `MaxNestedLoads` was false: a filter's parameters
+can name an object an object stream holds, and decoding one stream could decode another while holding its own output, 64
+deep. A stream now resolves its filters and every parameter they read before any of its data, so that no level of a load
+chain holds decoded data while the next loads; that is what keeps the bound an internal constant.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -45,7 +57,9 @@ value the file chose without a checked bound. The reader has a dozen such bounds
 until now nothing told them apart.
 
 **Bounds only an invalid or hostile file reaches.** A chain of objects loaded while loading another is
-bounded at 64 (T29): an indirect `/Length` must lead to an integer, which loads nothing further. Containers
+bounded at 64 (T29): an indirect `/Length` must lead to an integer, and the filters of a stream and the parameters they
+read resolve before any of its data is decoded, so that no level holds decoded data while the next loads (the second
+2026-10-14 amendment). Containers
 nest at most 128 deep, and references to references are followed 32 times. These bounds never refuse
 a document the specification allows in practice, and a caller has nothing to gain from lifting them. (The
 first version of this record listed two more here, on the objects a rebuild indexes and the entries a subsection
@@ -55,7 +69,7 @@ claims; neither bounded what it was said to, and the 2026-10-14 amendment made t
 
 | Bound | Value | What a valid file can do |
 |---|---|---|
-| A stream's decoded length | 256 MB | The USGS topographic map in the remote corpus holds one image, 9,600 × 11,410 RGB, that decodes to 313 MB; qpdf reads it whole |
+| A stream's decoded length, its filters before the last sharing one bound for what they pass along together | 256 MB | The USGS topographic map in the remote corpus holds one image, 9,600 × 11,410 RGB, that decodes to 313 MB; qpdf reads it whole. A chain of filters whose outputs together pass the bound is valid too, and qpdf reads three thousand of them |
 | An object's length, streams' data aside | 16 MB | A direct array or dictionary of that size: a page-tree node with a million kids |
 | A classic cross-reference section | 64 MB | About 3.3 million entries; the informative annex C of ISO 32000-1 gives Acrobat's own limit as 8,388,607 objects |
 | The number of cross-reference sections | 1,024 | A document saved incrementally more than a thousand times |
@@ -92,8 +106,10 @@ guard: active by default, reported when it is reached, and lifted by an option.
   `limit.xref-section-count`, `limit.trailer`, `limit.index-entries` — whose message names the property that
   lifts it. What the parser met at the cut is the reader's, not the file's, and is dropped in favor of the guard. An
   object, a section or a trailer is reported once, however often it is read again; a stream, each time it is
-  decoded past the bound, and in its document's diagnostics when the caller supplied none; a full index, once a
-  document. The code `filter.limit-exceeded`, added by T31 and never released, becomes `limit.decoded-stream`.
+  decoded past the bound, by the first of its filters that stopped there, and in its document's diagnostics when the
+  caller supplied none; a full index, once a document. The filters after one a guard stopped are given data the reader
+  cut: that it runs out — a lost tail, a missing checksum, a digit without its pair, a row the predictor cannot finish —
+  is not reported, and a fault in what was read is. The code `filter.limit-exceeded`, added by T31 and never released, becomes `limit.decoded-stream`.
 - **What a guard leaves out of the index is not damage** (amended on 2026-10-14). The objects only a section past
   `MaxXRefSectionCount`, rows past `MaxXRefSectionLength` or `MaxDecodedStreamLength`, or numbers past
   `MaxIndexEntries` index read as null, and the validator treats them as unknown rather than missing, until the

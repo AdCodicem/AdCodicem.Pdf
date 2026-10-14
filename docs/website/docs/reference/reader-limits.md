@@ -13,7 +13,7 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 
 | Property of `PdfReaderLimits` | Default | Reached by | What is kept | Code |
 |---|---|---|---|---|
-| `MaxDecodedStreamLength` | 256 MB | A decompression bomb, or a large-format scan: a 9,600 × 11,410 RGB map decodes to 313 MB | The first bytes, up to the bound | `limit.decoded-stream` |
+| `MaxDecodedStreamLength` | 256 MB | A decompression bomb, or a large-format scan: a 9,600 × 11,410 RGB map decodes to 313 MB. Of a chain of filters, the filters before the last share the bound for what they pass along together, and the last has its own | The first bytes, up to the bound | `limit.decoded-stream` |
 | `MaxObjectLength` | 16 MB | An object that long, the data of a stream aside: an array of a million references | The object as far as the bound | `limit.object` |
 | `MaxXRefSectionLength` | 64 MB | A classic cross-reference table of more than about 3.3 million entries | The entries within the bound | `limit.xref-section-length` |
 | `MaxXRefSectionCount` | 1,024 | A document saved incrementally more than a thousand times | The newest sections | `limit.xref-section-count` |
@@ -55,7 +55,17 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. A section a limit cut is
   where it was named, and is not looked for near there, as a section that is not there is.
 - A stream is reported each time it is decoded past the bound — in the diagnostics you pass to `Decode`, or in the
-  document's own when you pass none.
+  document's own when you pass none —, once, by the first of its filters that stopped there. The filters after it decode
+  what it kept as data the reader cut: that it runs out is not reported as damage.
+- A stream of one or two filters decodes as each filter alone would. Of a longer chain, once the filters before the
+  last have passed along the bound together, the next decodes nothing more, and the stream comes back as what the last
+  decoded of what they kept, possibly nothing. The report says so:
+
+  ```text
+  Warning limit.decoded-stream at 1904: The filters before the last decode to more than 256 MB together; decoding
+  stopped in the /RunLengthDecode data. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
+  ```
+
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever
@@ -97,7 +107,7 @@ the documents producers write. They are not options:
 |---|---|---|
 | Nesting of arrays and dictionaries | 128 levels | Real documents nest a handful of levels; the bound keeps a hostile file from exhausting the stack |
 | A reference that resolves to another reference | followed 32 times | Producers write the object itself; the bound breaks a chain that loops |
-| Objects loaded while loading another | 64 | An indirect `/Length` leads to an integer, which loads nothing further |
+| Objects loaded while loading another | 64 | An indirect `/Length` leads to an integer, and a stream resolves its filters and the parameters they read before decoding any of its data: no level holds decoded data while the next loads |
 | Object numbers | up to 2,147,483,647 | An object's number is an `int`, and ISO 32000-1's Annex C advises at most 8,388,607 indirect objects. A number past it is refused where it is read — a header, a reference, a subsection, a row, an object stream's header —, never narrowed to one that would name another object. An object is numbered from 1; 0 names the head of the free list, where a reference, a subsection or a row may give it |
 | Generations | 0 to 65,535 | No object in use has a higher one (ISO 32000-1, 7.5.4). A free row of a table is read whatever its generation: producers give the free list's head 65,536 |
 | Reals | within ±1.8 × 10³⁰⁸ | A real is a `double`, and ISO 32000-1's Annex C advises reals within ±3.403 × 10³⁸. A number past it reads as null, reported as `syntax.number-out-of-range` |

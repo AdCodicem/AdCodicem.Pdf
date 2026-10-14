@@ -45,8 +45,16 @@ public sealed record PdfReaderLimits
     /// kilobytes can claim gigabytes, and a scanned map can hold an image of 300 MB.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A decoded stream is held in one piece, so a value above <see cref="Array.MaxLength"/> is taken as that
     /// length. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitDecodedStream"/>.
+    /// </para>
+    /// <para>
+    /// Of a stream whose data passes through several filters, the last filter's output is bounded alone, and the filters
+    /// before it share the bound for what they pass along together: a stream of one or two filters decodes as each filter
+    /// alone would, and a chain however long holds two bounds at most. Under a bound of <see cref="Array.MaxLength"/>,
+    /// the filters before the last share none.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxDecodedStreamLength { get; init => field = Length(value); } = 256 * 1024 * 1024;
