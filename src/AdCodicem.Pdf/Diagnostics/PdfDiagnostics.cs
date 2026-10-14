@@ -14,6 +14,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
 {
     private readonly List<PdfDiagnostic> _entries = [];
     private int _suppressed;
+    private int _limits;
 
     /// <summary>
     /// Gets the largest number of entries kept. A pathological file can produce an unbounded
@@ -43,6 +44,12 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     /// report must read the same whenever it is made, for a repeat of it to be known.
     /// </summary>
     internal bool IsFull => _entries.Count >= Capacity || KeptIn is { IsFull: true };
+
+    /// <summary>
+    /// Gets the number of guards reached (<see cref="ReachLimit"/>), whether their reports were kept or dropped: what a guard
+    /// cut is the guard's, not the file's, though the capacity left no room to say so.
+    /// </summary>
+    internal int LimitsReached => _limits;
 
     /// <inheritdoc/>
     public PdfDiagnostic this[int index] => _entries[index];
@@ -76,14 +83,22 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     public void Warn(string code, string message, long position = -1) =>
         Add(PdfDiagnosticSeverity.Warning, code, message, position);
 
-    /// <summary>Records where the entries stand, so that what follows can be kept or dropped as one.</summary>
-    internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed);
+    /// <summary>Records that a guard was reached, as a warning under its <c>limit.*</c> code, and counts it.</summary>
+    internal void ReachLimit(string code, string message, long position)
+    {
+        _limits++;
+        Warn(code, message, position);
+    }
 
-    /// <summary>Drops every entry recorded since <paramref name="mark"/>, suppressed ones included.</summary>
+    /// <summary>Records where the entries stand, so that what follows can be kept or dropped as one.</summary>
+    internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed, _limits);
+
+    /// <summary>Drops every entry recorded since <paramref name="mark"/>, suppressed ones and guards reached included.</summary>
     internal void RollBack(PdfDiagnosticsMark mark)
     {
         _entries.RemoveRange(mark.Count, _entries.Count - mark.Count);
         _suppressed = mark.Suppressed;
+        _limits = mark.Limits;
     }
 
     /// <summary>
@@ -99,6 +114,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         }
 
         target._suppressed += _suppressed - mark.Suppressed;
+        target._limits += _limits - mark.Limits;
         RollBack(mark);
     }
 
@@ -124,6 +140,7 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         }
 
         target._suppressed += _suppressed - mark.Suppressed;
+        target._limits += _limits - mark.Limits;
         RollBack(mark);
     }
 

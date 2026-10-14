@@ -63,7 +63,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
             throw new PdfLimitExceededException(Code(limit), name, bound, message, position);
         }
 
-        (diagnostics ?? documentDiagnostics)?.Warn(Code(limit), message, position);
+        (diagnostics ?? documentDiagnostics)?.ReachLimit(Code(limit), message, position);
     }
 
     /// <summary>Writes a length the way a message states a bound: <c>256 MB</c>, <c>64 KB</c>, <c>1,000 bytes</c>.</summary>

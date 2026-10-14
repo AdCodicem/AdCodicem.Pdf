@@ -409,6 +409,51 @@ public class ReaderLimitsTests
         findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart).And.NotContain(PdfValidationRuleIds.XRefObjectStreamBroken);
     }
 
+    [Theory]
+    [InlineData(4)]
+    [InlineData(100)]
+    public void A_row_refused_before_a_full_index_is_the_file_s_and_an_object_stream_past_it_stays_unknown(int bound)
+    {
+        // The stream refuses row 3 and fills the index at row 4 under a bound of 4, before object stream 5's row: the
+        // refused row makes the catalog, packed in 5, damage that sets off a rebuild. The rebuild found 5, and the validator
+        // blamed the file for a stream the chain's index lacked only because the guard stopped it; and the refused row,
+        // read before the cut, was reported nowhere.
+        var file = new List<byte>();
+        void Append(string text) => file.AddRange(Encoding.Latin1.GetBytes(text));
+
+        Append("%PDF-1.7\n");
+        var members = Catalog + "\n" + Pages + "\n";
+        var header = string.Create(CultureInfo.InvariantCulture, $"1 0 2 {Catalog.Length + 1} ");
+        var objectStream = file.Count;
+        Append(string.Create(
+            CultureInfo.InvariantCulture,
+            $"5 0 obj\n<< /Type /ObjStm /N 2 /First {header.Length} /Length {header.Length + members.Length} >>\nstream\n{header}{members}\nendstream\nendobj\n"));
+        var xref = file.Count;
+        byte[] rows =
+        [
+            0, 0, 0, 0, 0, 255, 255,
+            2, 0, 0, 0, 5, 0, 0,
+            2, 0, 0, 0, 5, 0, 1,
+            2, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 1,
+            1, 0, 0, 0, (byte)objectStream, 0, 0,
+            1, 0, 0, (byte)(xref >> 8), (byte)xref, 0, 0,
+        ];
+        Append(string.Create(CultureInfo.InvariantCulture, $"6 0 obj\n<< /Type /XRef /Size 7 /W [1 4 2] /Root 1 0 R /Length {rows.Length} >>\nstream\n"));
+        file.AddRange(rows);
+        Append(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n"));
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = bound };
+
+        using var document = PdfDocument.Open(file.ToArray(), new PdfReaderOptions { Limits = limits });
+
+        document.WasRepaired.Should().Be(bound == 4);
+        var findings = new PdfValidator().Validate(document).Findings;
+        findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed)
+            .Which.Message.Should().Contain("the row for object 3");
+        findings.Select(finding => finding.RuleId).Should().NotContain(PdfValidationRuleIds.XRefObjectStreamBroken);
+        findings.Any(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Should().Be(bound == 4);
+    }
+
     [Fact]
     public void A_catalog_packed_in_an_object_stream_past_a_full_index_reads_as_null_and_rebuilds_nothing()
     {
@@ -538,7 +583,7 @@ public class ReaderLimitsTests
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnEncrypted = false });
         var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
         section.TrailerPosition.Should().Be(OffsetOf(file, "trailer\n<<"));
-        section.FaultPastLimit.Should().Be(damaged);
+        (section.Fault is not null).Should().Be(damaged);
         document.IsEncrypted.Should().BeTrue();
     }
 

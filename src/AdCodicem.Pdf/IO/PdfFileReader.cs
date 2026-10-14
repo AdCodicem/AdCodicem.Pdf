@@ -351,6 +351,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     private long _indexFullAt = -1;
 
+    /// <summary>Whether the index filled as the chain was read, before any rebuild: the chain's index stops short of it.</summary>
+    private bool _chainFilledIndex;
+
     public PdfFileReader(
         PdfFileSource source, PdfDiagnostics diagnostics, PdfLimitGuard guard, int cacheCapacity, bool ownsSource)
     {
@@ -615,6 +618,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// guard left part of the chain unread. A rebuild scans the whole file, and lifts the second.
     /// </summary>
     private bool IndexStoppedByGuard => _indexFull || (_cutByGuard && !_repaired);
+
+    /// <summary>
+    /// Gets a value indicating whether a guard stopped <see cref="ChainIndex"/> short of the file: the index filled as the
+    /// chain was read, or a guard left part of the chain unread. An object the chain's index lacks is then unknown to it,
+    /// whatever a rebuild found since.
+    /// </summary>
+    internal bool ChainStoppedByGuard => _chainFilledIndex || _cutByGuard;
 
     /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, is not followed by <c>endobj</c>, and
@@ -1678,18 +1688,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     return false;
                 }
 
-                if (!TryRelocateXRefSection(offset, section, out previous, out hybrid))
+                // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
+                // stand for it.
+                if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
                 {
                     ReportLostSection(section, naming, offset, namedFrom);
                     break;
                 }
             }
 
-            if (section.CutByLimit && previous < 0)
+            if (section.TrailerCutByLimit)
             {
-                // A section, or its trailer, a limit cut may have named an older one past the cut: what only the older ones
-                // index is the guard's to hide, not the file's to lack.
+                // A trailer a limit cut may have named an older section past the cut, and given keys the older trailers
+                // give otherwise: the chain ends here, and what only the older sections index is the guard's to hide, not
+                // the file's to lack.
                 _cutByGuard = true;
+                previous = -1;
             }
 
             if (_indexFullAt >= 0)
@@ -1712,7 +1726,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 _structure.Add(stream);
 
                 if (TryReadXRefSection(stream.Offset, stream, out _, out _) != XRefSectionState.Read &&
-                    !TryRelocateXRefSection(hybrid, stream, out _, out _))
+                    (stream.CutByLimit || !TryRelocateXRefSection(hybrid, stream, out _, out _)))
                 {
                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
                 }
@@ -2288,7 +2302,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     if (stray < 0)
                     {
                         stray = start + at;
-                        section.FaultPastLimit = true;
                         section.Fault ??= string.Create(
                             CultureInfo.InvariantCulture,
                             $"it holds {DescribeToken(new PdfLexer(head).Read())} at offset {stray}, where a subsection or the trailer should start");
@@ -2317,7 +2330,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         section.TrailerPosition = found;
         var guards = _guardsReached;
         _ = TryParseNumberedAt(found + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out var syntaxFault);
-        section.CutByLimit |= _guardsReached != guards;
+
+        if (_guardsReached != guards)
+        {
+            section.CutByLimit = true;
+            section.TrailerCutByLimit = true;
+        }
 
         if (JudgeTrailer(value, syntaxFault, section) is { } trailer)
         {
@@ -2381,7 +2399,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // where nothing can be parsed the value is null, and anything that is not a dictionary is no trailer.
         var guards = _guardsReached;
         _ = TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out var syntaxFault);
-        section.CutByLimit |= _guardsReached != guards;
+
+        if (_guardsReached != guards)
+        {
+            section.CutByLimit = true;
+            section.TrailerCutByLimit = true;
+        }
+
         return JudgeTrailer(value, syntaxFault, section);
     }
 
@@ -2446,19 +2470,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         return false;
     }
 
-    /// <summary>Determines whether a guard was reported since <paramref name="mark"/>.</summary>
-    private static bool LimitSince(PdfDiagnostics diagnostics, PdfDiagnosticsMark mark)
-    {
-        for (var i = mark.Count; i < diagnostics.Count; i++)
-        {
-            if (diagnostics[i].Code.StartsWith("limit.", StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    /// <summary>
+    /// Determines whether a guard was reached since <paramref name="mark"/>, its report kept or dropped: a cut taken for
+    /// the file's damage once the capacity is reached would let an older section's rows stand for what the cut hid.
+    /// </summary>
+    private static bool LimitSince(PdfDiagnostics diagnostics, PdfDiagnosticsMark mark) => diagnostics.LimitsReached > mark.Limits;
 
     /// <summary>Says what a token is, for a message about what stood where something else should have.</summary>
     private static string DescribeToken(PdfToken token) => token.Kind switch
@@ -2568,10 +2584,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 candidate ? DeclaresCrossReferenceStream : null) ||
             !DeclaresCrossReferenceStream(value))
         {
-            if (!candidate && number != 0 && _guardsReached != guards)
+            if (!candidate && _guardsReached != guards && value is PdfDictionary { } cut && !cut.ContainsKey(PdfName.Type))
             {
-                // An object whose dictionary MaxTrailerLength cut before it said what it is may be the section: unknown,
-                // and the guard's, which says so (ADR 34), rather than a section missing.
+                // A dictionary MaxTrailerLength cut before it said what it is may be the section's: unknown, and the
+                // guard's, which says so (ADR 34), rather than a section missing. An array, a dictionary of another type,
+                // or a stream whose dictionary was read whole is no cross-reference stream, cut or not.
                 section.CutByLimit = true;
                 section.Fault = string.Create(
                     CultureInfo.InvariantCulture,
@@ -3232,6 +3249,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private void ReachIndexBound(long position)
     {
         _indexFull = true;
+        _chainFilledIndex |= !_repaired;
 
         if (_indexFullAt >= 0)
         {
