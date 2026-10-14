@@ -559,16 +559,14 @@ public class FilterDamageTests
         };
         LeastAllocation(sound, Length);
         DecodeWithin(data, Length, new PdfDiagnostics());
-        var diagnostics = new PdfDiagnostics();
 
         var least = LeastAllocation(sound, Length);
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var decoded = DecodeWithin(data, Length, diagnostics);
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = LeastAllocated(reports => DecodeWithin(data, Length, reports), out var decoded, out var diagnostics);
+        var excess = allocated - least;
 
         decoded.Length.Should().Be(Length);
         diagnostics.Select(d => d.Code).Should().NotContain(PdfDiagnosticCodes.LimitDecodedStream);
-        (allocated - least).Should().BeLessThan(damage == "sound" ? 1024 : 16 * 1024);
+        excess.Should().BeLessThan(damage == "sound" ? 1024 : 16 * 1024);
     }
 
     [Fact]
@@ -587,12 +585,11 @@ public class FilterDamageTests
         var least = LeastAllocation(Compress(plain, CompressionLevel.Optimal), Length);
         DecodeWithin(data, Length, new PdfDiagnostics());
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var decoded = DecodeWithin(data, Length, new PdfDiagnostics());
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = LeastAllocated(reports => DecodeWithin(data, Length, reports), out var decoded, out _);
+        var excess = allocated - least;
 
         decoded.ToArray().Should().Equal(plain);
-        (allocated - least).Should().BeLessThan(Length + (16 * 1024));
+        excess.Should().BeLessThan(Length + (16 * 1024));
     }
 
     [Fact]
@@ -664,16 +661,12 @@ public class FilterDamageTests
         var compressed = Compress(RandomBytes(Length), CompressionLevel.Optimal);
         var withoutChecksum = compressed.AsSpan(0, compressed.Length - ChecksumLength).ToArray();
         Decode(compressed, PdfName.FlateDecode, new PdfDiagnostics());
-        var diagnostics = new PdfDiagnostics();
 
-        var beforeWhole = GC.GetAllocatedBytesForCurrentThread();
-        Decode(compressed, PdfName.FlateDecode, new PdfDiagnostics());
-        var whole = GC.GetAllocatedBytesForCurrentThread() - beforeWhole;
-        var beforeCut = GC.GetAllocatedBytesForCurrentThread();
-        var decoded = Decode(withoutChecksum, PdfName.FlateDecode, diagnostics);
-        var cut = GC.GetAllocatedBytesForCurrentThread() - beforeCut;
+        var whole = LeastAllocated(reports => Decode(compressed, PdfName.FlateDecode, reports), out _, out _);
+        var cut = LeastAllocated(reports => Decode(withoutChecksum, PdfName.FlateDecode, reports), out var decoded, out var diagnostics);
+        var excess = cut - whole;
 
-        (cut - whole).Should().BeLessThan(16 * 1024);
+        excess.Should().BeLessThan(16 * 1024);
         decoded.Length.Should().Be(Length);
         Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Repair, ChecksumMissing));
     }
@@ -1207,17 +1200,60 @@ public class FilterDamageTests
     }
 
     /// <summary>What decoding zlib data allocates at the least: its output, and one inflater's own objects.</summary>
-    private static long LeastAllocation(byte[] compressed, int length)
-    {
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var output = new byte[length];
+    private static long LeastAllocation(byte[] compressed, int length) =>
+        LeastAllocated(
+            _ =>
+            {
+                var output = new byte[length];
 
-        using (var zlib = new ZLibStream(new MemoryStream(compressed), CompressionMode.Decompress))
+                using (var zlib = new ZLibStream(new MemoryStream(compressed), CompressionMode.Decompress))
+                {
+                    zlib.ReadExactly(output);
+                }
+
+                return output;
+            },
+            out _,
+            out _);
+
+    /// <summary>
+    /// What <paramref name="decode"/> allocates on this thread: the least of three measures that no collection paused,
+    /// or, past thirty measures, the least of all. Each measure is given diagnostics of its own, made before it starts.
+    /// </summary>
+    /// <remarks>
+    /// One measure is not enough when the work allocates on the large-object heap: a collection that runs during it now
+    /// and then has the thread's count take up to one allocation quantum, some 8 KB, that the thread never used (#247).
+    /// The excess only ever adds, so the least of measures no collection paused is what the work allocated, to the byte,
+    /// and the margins kept below it still catch a buffer that is no longer pooled.
+    /// </remarks>
+    private static long LeastAllocated(
+        Func<PdfDiagnostics, ReadOnlyMemory<byte>> decode, out ReadOnlyMemory<byte> decoded, out PdfDiagnostics diagnostics)
+    {
+        const int Measures = 3;
+        const int Attempts = 30;
+        var least = long.MaxValue;
+        var leastUnpaused = long.MaxValue;
+        var unpaused = 0;
+        decoded = default;
+        diagnostics = new PdfDiagnostics();
+
+        for (var attempt = 0; attempt < Attempts && unpaused < Measures; attempt++)
         {
-            zlib.ReadExactly(output);
+            diagnostics = new PdfDiagnostics();
+            var paused = GC.GetTotalPauseDuration();
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            decoded = decode(diagnostics);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            least = Math.Min(least, allocated);
+
+            if (GC.GetTotalPauseDuration() == paused)
+            {
+                leastUnpaused = Math.Min(leastUnpaused, allocated);
+                unpaused++;
+            }
         }
 
-        return GC.GetAllocatedBytesForCurrentThread() - before;
+        return unpaused > 0 ? leastUnpaused : least;
     }
 
     private static byte[] WithWrongChecksum(byte[] compressed)
