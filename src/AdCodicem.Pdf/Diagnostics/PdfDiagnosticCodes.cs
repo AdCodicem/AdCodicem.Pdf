@@ -223,4 +223,10 @@ public static class PdfDiagnosticCodes
     /// <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/>, and only the part within it was parsed.
     /// </summary>
     public const string LimitTrailer = "limit.trailer";
+
+    /// <summary>
+    /// The index holds <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/> object numbers, and took no more: the
+    /// objects past them, in the order the reader met them, were not indexed, and read as null.
+    /// </summary>
+    public const string LimitIndexEntries = "limit.index-entries";
 }

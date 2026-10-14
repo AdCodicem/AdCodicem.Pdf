@@ -1621,6 +1621,7 @@ public class StreamLengthTests
                 MaxXRefSectionLength = raised.MaxXRefSectionLength ?? PdfReaderLimits.Default.MaxXRefSectionLength,
                 MaxXRefSectionCount = raised.MaxXRefSectionCount ?? PdfReaderLimits.Default.MaxXRefSectionCount,
                 MaxTrailerLength = raised.MaxTrailerLength ?? PdfReaderLimits.Default.MaxTrailerLength,
+                MaxIndexEntries = raised.MaxIndexEntries ?? PdfReaderLimits.Default.MaxIndexEntries,
             },
         };
 

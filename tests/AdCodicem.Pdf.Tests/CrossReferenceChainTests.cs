@@ -407,6 +407,45 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void The_entry_guard_counts_the_entries_of_every_section_and_stops_the_chain_at_the_one_that_fills_it()
+    {
+        // Read newest first: the third update's ten objects, the second's forty, then ten of the first's, which fill an
+        // index of sixty. The first update's section is the one reported, and the original table, older still, is not read.
+        const string Catalog = "<< /Type /Catalog /Pages 2 0 R >>";
+        const string Pages = "<< /Type /Pages /Kids [] /Count 0 >>";
+        var builder = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages);
+        for (var number = 3; number < 43; number++)
+        {
+            builder.WithObject(number, "null");
+        }
+
+        var file = builder.BuildClassic(rootNumber: 1);
+        var sections = new List<long>();
+
+        foreach (var (first, count) in new[] { (43, 40), (83, 40), (123, 8) })
+        {
+            sections.Add(file.Length);
+            var updates = Enumerable.Range(first, count).Select(number => (number, "null")).ToList();
+            if (first == 123)
+            {
+                updates.AddRange([(1, Catalog), (2, Pages)]);
+            }
+
+            file = TestPdfBuilder.AppendIncrementalUpdate(file, rootNumber: 1, [.. updates]);
+        }
+
+        var firstUpdate = OffsetAfter(file, sections[0], "xref\n");
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 60 } });
+
+        document.ObjectCount.Should().Be(60);
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.GetObject(new PdfObjectId(52)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries)
+            .Which.Position.Should().Be(firstUpdate);
+        document.Reader.Structure.Sections.Should().HaveCount(3);
+    }
+
+    [Fact]
     public void Looks_for_an_object_the_index_lacks_when_a_guard_stopped_the_chain()
     {
         // Two saves on top of the original, and a chain read no further than two sections: the original section,
@@ -659,6 +698,10 @@ public class CrossReferenceChainTests
 
     private static string Text(PdfDocument document, int number) =>
         document.GetObject(new PdfObjectId(number)).Should().BeOfType<PdfString>().Subject.ToText();
+
+    /// <summary>Gives where <paramref name="text"/> first appears in <paramref name="file"/> at or after <paramref name="start"/>.</summary>
+    private static long OffsetAfter(byte[] file, long start, string text) =>
+        start + Encoding.Latin1.GetString(file, (int)start, file.Length - (int)start).IndexOf(text, StringComparison.Ordinal);
 
     private static long StartXRef(byte[] file)
     {

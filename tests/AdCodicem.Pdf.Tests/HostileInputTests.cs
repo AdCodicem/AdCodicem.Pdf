@@ -390,6 +390,54 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_cross_reference_stream_of_one_byte_rows_decoding_to_the_bound_indexes_no_more_entries_than_the_guard_allows()
+    {
+        // #164: /W [0 1 0] makes a row of one byte, an object at the offset that byte gives, and two Flate filters let a
+        // few hundred bytes decode to the 256 MB bound itself, which no guard reports: 268,435,456 rows. Unguarded, the
+        // index took one entry a row, 20 GB and more, and the process ran out of memory. The guard, lowered here to keep the
+        // test light, stops the index at its bound, reported once, at the section. Decoding the 256 MB is what the rest
+        // of the allocation is, whatever the guard.
+        var file = OneByteRows(256 * 1024 * 1024, out var section);
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 1_000_000 };
+        file.Length.Should().BeLessThan(2048);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        using var document = Measure(() => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits }));
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        document.ObjectCount.Should().Be(1_000_000);
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.LimitIndexEntries);
+        report.Position.Should().Be(section);
+        report.Message.Should().Be(
+            "The index reached 1,000,000 entries; the objects past them were not indexed. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
+        // Measured at 675,532,296 and 675,531,848 bytes, 5 % above.
+        allocated.Should().BeLessThan(709_300_000, "the index holds the guard's entries, and the decoded rows are read once");
+    }
+
+    [Fact]
+    public void Rows_a_section_refuses_count_toward_the_entries_the_index_may_hold()
+    {
+        // A refused row keeps its number out of the index, so that no older section's row stands for it: the reader holds
+        // that number all the same, and a section of refused rows alone would fill memory the index never shows. Object
+        // 0 and the three objects of the file are indexed; the rows for 4 to 53 give offsets past what a long holds.
+        var file = RefusedRows(50, out var section);
+
+        using (var guarded = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 20 } }))
+        {
+            guarded.ObjectCount.Should().Be(4);
+            guarded.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+            guarded.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries)
+                .Which.Position.Should().Be(section);
+        }
+
+        using var whole = PdfDocument.Open(file);
+        whole.ObjectCount.Should().Be(4);
+        whole.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
+    }
+
+    [Fact]
     public void Serves_no_object_under_a_number_past_a_long_that_once_wrapped_to_its_number()
     {
         // #157: 92233720368547758082 wrapped at its 19th digit to 2, so /Pages led to object 2, and the header written
@@ -1293,6 +1341,99 @@ public class HostileInputTests
         output.Write(compressedRows.ToArray());
         Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
         return output.ToArray();
+    }
+
+    /// <summary>
+    /// The catalog, an empty page tree and a cross-reference stream of <paramref name="rows"/> rows of one byte, under
+    /// two Flate filters: rows 1 to 3 place objects 1 to 3, every other row an object at offset 0. Built a piece at a
+    /// time, so that the rows are never held whole.
+    /// </summary>
+    private static byte[] OneByteRows(int rows, out long section)
+    {
+        var head = new StringBuilder("%PDF-1.7\n");
+        var catalog = head.Length;
+        head.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = head.Length;
+        head.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        section = head.Length;
+
+        using var inner = new MemoryStream();
+        using (var zlib = new ZLibStream(inner, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write([0, (byte)catalog, (byte)pages, (byte)section]);
+            var zeros = new byte[64 * 1024];
+
+            for (long written = 4; written < rows; written += zeros.Length)
+            {
+                zlib.Write(zeros, 0, (int)Math.Min(zeros.Length, rows - written));
+            }
+        }
+
+        using var outer = new MemoryStream();
+        using (var zlib = new ZLibStream(outer, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(inner.GetBuffer(), 0, (int)inner.Length);
+        }
+
+        var data = outer.ToArray();
+        head.Append(string.Create(
+            CultureInfo.InvariantCulture,
+            $"3 0 obj\n<< /Type /XRef /Size {rows} /W [0 1 0] /Root 1 0 R /Filter [/FlateDecode /FlateDecode] /Length {data.Length} >>\nstream\n"));
+
+        return
+        [
+            .. Encoding.ASCII.GetBytes(head.ToString()),
+            .. data,
+            .. Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{section}\n%%EOF\n")),
+        ];
+    }
+
+    /// <summary>
+    /// The catalog, an empty page tree and a cross-reference stream whose rows place them, then <paramref name="refused"/>
+    /// rows for objects 4 onward whose offsets need all of eight bytes, past what a long holds.
+    /// </summary>
+    private static byte[] RefusedRows(int refused, out long section)
+    {
+        var head = new StringBuilder("%PDF-1.7\n");
+        var catalog = head.Length;
+        head.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = head.Length;
+        head.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        section = head.Length;
+
+        var rows = new List<byte>();
+        Row(0, 0);
+        Row(1, (ulong)catalog);
+        Row(1, (ulong)pages);
+        Row(1, (ulong)section);
+
+        for (var i = 0; i < refused; i++)
+        {
+            Row(1, ulong.MaxValue);
+        }
+
+        head.Append(string.Create(
+            CultureInfo.InvariantCulture,
+            $"3 0 obj\n<< /Type /XRef /Size {4 + refused} /W [1 8 1] /Root 1 0 R /Length {rows.Count} >>\nstream\n"));
+
+        return
+        [
+            .. Encoding.Latin1.GetBytes(head.ToString()),
+            .. rows,
+            .. Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{section}\n%%EOF\n")),
+        ];
+
+        void Row(byte type, ulong offset)
+        {
+            rows.Add(type);
+
+            for (var shift = 56; shift >= 0; shift -= 8)
+            {
+                rows.Add((byte)(offset >> shift));
+            }
+
+            rows.Add(0);
+        }
     }
 
     /// <summary>The catalog and an empty page tree, then objects 3 to 20,002, each <paramref name="body"/>, packed or written directly.</summary>

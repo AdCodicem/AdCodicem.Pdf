@@ -373,7 +373,7 @@ public class PropertyTests
     public void A_reader_limit_is_refused_at_zero_or_less_and_otherwise_held_within_what_the_reader_can_hold()
     {
         // ADR 34: a guard below one lets nothing be read, and one past Array.MaxLength asks for an array no
-        // runtime allocates. The count has no such ceiling. Every int, the edges FsCheck favors included.
+        // runtime allocates. The counts have no such ceiling. Every int, the edges FsCheck favors included.
         Check.One(Settings, Prop.ForAll(ArbMap.Default.ArbFor<int>(), value =>
         {
             if (value <= 0)
@@ -382,7 +382,8 @@ public class PropertyTests
                     && Refused(() => PdfReaderLimits.Default with { MaxObjectLength = value })
                     && Refused(() => PdfReaderLimits.Default with { MaxXRefSectionLength = value })
                     && Refused(() => PdfReaderLimits.Default with { MaxXRefSectionCount = value })
-                    && Refused(() => PdfReaderLimits.Default with { MaxTrailerLength = value });
+                    && Refused(() => PdfReaderLimits.Default with { MaxTrailerLength = value })
+                    && Refused(() => PdfReaderLimits.Default with { MaxIndexEntries = value });
             }
 
             var length = Math.Min(value, Array.MaxLength);
@@ -393,11 +394,12 @@ public class PropertyTests
                 MaxXRefSectionLength = value,
                 MaxXRefSectionCount = value,
                 MaxTrailerLength = value,
+                MaxIndexEntries = value,
             };
 
             return limits.MaxDecodedStreamLength == length && limits.MaxObjectLength == length
                 && limits.MaxXRefSectionLength == length && limits.MaxXRefSectionCount == value
-                && limits.MaxTrailerLength == length;
+                && limits.MaxTrailerLength == length && limits.MaxIndexEntries == value;
         }));
 
         static bool Refused(Func<PdfReaderLimits> setting)
