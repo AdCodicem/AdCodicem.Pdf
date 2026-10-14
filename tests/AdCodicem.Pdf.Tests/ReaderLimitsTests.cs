@@ -463,6 +463,9 @@ public class ReaderLimitsTests
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.GetObject(new PdfObjectId(3)).AsText().Should().Be("packed three");
         document.GetObject(new PdfObjectId(4)).AsText().Should().Be("packed four");
+
+        // Five headers found, two entries kept: the chain's free row for object 0 is no object, and is not.
+        document.ObjectCount.Should().Be(7);
     }
 
     [Fact]
@@ -510,11 +513,13 @@ public class ReaderLimitsTests
     }
 
     [Theory]
-    [InlineData("trailer\n", "% the rows end here\ntrailer\n")]
-    [InlineData("trailer\n", "%-------------------------------------------------------------\ntrailer\n")]
-    [InlineData(" n \r\ntrailer\n", " x \r\ntrailer\n")]
-    [InlineData(" 00000 n \r\ntrailer\n", " +0000 n \r\ntrailer\n")]
-    public void A_table_its_length_bound_cuts_keeps_the_encryption_its_trailer_names_past_what_no_row_holds(string written, string replacement)
+    [InlineData("trailer\n", "% the rows end here\ntrailer\n", false)]
+    [InlineData("trailer\n", "%-------------------------------------------------------------\ntrailer\n", false)]
+    [InlineData(" 00000 n \r\ntrailer\n", " +0000 n \r\ntrailer\n", false)]
+    [InlineData(" n \r\ntrailer\n", " x \r\ntrailer\n", true)]
+    [InlineData(" n \r\ntrailer\n", " ntrailer \r\ntrailer\n", true)]
+    public void A_table_its_length_bound_cuts_keeps_the_encryption_its_trailer_names_past_what_no_row_holds(
+        string written, string replacement, bool damaged)
     {
         // Past the cut, the search for the trailer stopped at the first byte no row holds, and the trailer was lost when a
         // comment, a damaged row or a signed number came before it: an encrypted file opened as plain. A reader that reads
@@ -529,8 +534,12 @@ public class ReaderLimitsTests
         var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
         opening.Should().Throw<PdfEncryptedException>();
 
+        // A comment and a signed number are no fault; a damaged row is, and "trailer" ending a longer token is no keyword.
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnEncrypted = false });
-        document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerPosition.Should().Be(OffsetOf(file, "trailer"));
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.TrailerPosition.Should().Be(OffsetOf(file, "trailer\n<<"));
+        section.FaultPastLimit.Should().Be(damaged);
+        document.IsEncrypted.Should().BeTrue();
     }
 
     [Theory]
