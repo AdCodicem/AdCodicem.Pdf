@@ -1699,11 +1699,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 break;
             }
 
-            if (sections == 1 && (previous >= 0 || hybrid >= 0))
-            {
-                ReserveChain();
-            }
-
             if (hybrid >= 0 && visited.Add(hybrid))
             {
                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
@@ -2036,8 +2031,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var maxWindow = _guard.Bound(PdfLimit.XRefSectionLength);
         var windowSize = Math.Min(XRefWindow, maxWindow);
 
-        // Where the last subsection the index made room for starts: a larger window reads the subsections again.
-        var reservedThrough = -1;
 
         while (true)
         {
@@ -2057,6 +2050,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 section.Fault = "does not start with the xref keyword";
                 return false;
+            }
+
+            if (!truncated)
+            {
+                // The rows are read in the window that holds their end, rather than read again in each larger one: until
+                // a window holds it, the window grows. The index makes room for as many rows as their bytes hold, at 20
+                // bytes a row, before they are read: a subsection's count is the file's claim, and room made for each
+                // subsection in turn would double the map at each.
+                var rowsEnd = span[keyword.End..].IndexOfAnyExcept(TableBytes);
+
+                if (rowsEnd < 0 && canGrow)
+                {
+                    windowSize = (int)Math.Min((long)windowSize * 4, maxWindow);
+                    continue;
+                }
+
+                ReserveIndex((rowsEnd < 0 ? span.Length - keyword.End : rowsEnd) / XRefRowLength);
             }
 
             while (!truncated)
@@ -2126,14 +2136,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         CultureInfo.InvariantCulture,
                         $"the subsection header at offset {absolute + token.Start} numbers its rows past object {PdfObjectId.MaxNumber}");
                     return false;
-                }
-
-                // The index makes room for the subsection's rows before they are read, once, and for no more than the bytes
-                // left of the section hold: the count is the file's claim.
-                if (token.Start > reservedThrough)
-                {
-                    reservedThrough = token.Start;
-                    ReserveIndex(Math.Min(countToken.Integer, (Math.Min(_source.Length - absolute, maxWindow) - countToken.End) / XRefRowLength));
                 }
 
                 // A count is bounded by what it numbers, and its rows by the window, which MaxXRefSectionLength bounds: the
@@ -3176,25 +3178,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Makes room in the index for the <paramref name="rows"/> a section is about to give, so that the map is sized once
     /// rather than grown by doubling, and for no more numbers than <see cref="PdfReaderLimits.MaxIndexEntries"/> lets it
-    /// take from here on. The caller bounds the rows by those the section holds: a count the file declares is a claim.
+    /// take from here on, nor than the newest section's <c>/Size</c> numbers once it is read: one more than the document's
+    /// highest object number (ISO 32000-1, 7.5.5), which an older section's rows, superseded, add nothing to. The caller
+    /// bounds the rows by those the section holds: a count the file declares is a claim.
     /// </summary>
-    private void ReserveIndex(long rows) => _xref.Reserve((int)Math.Min(rows, IndexRoom), _guard.Bound(PdfLimit.IndexEntries));
-
-    /// <summary>
-    /// Makes room in the index, once the chain's newest section is read and an older one follows, for the objects its
-    /// <c>/Size</c> numbers: one more than the document's highest object number (ISO 32000-1, 7.5.5), which the older
-    /// sections index with the newest. They then fill a map sized once, rather than doubled toward it section by section,
-    /// which leaves a chain of many like sections up to twice the room it needs. The size is the file's claim: room is
-    /// made for no more objects than the file's bytes hold rows of a classic table, nor than the index may take.
-    /// </summary>
-    private void ReserveChain()
+    private void ReserveIndex(long rows)
     {
-        // A size the newest section's rows reach already asks for nothing, and one written as a reference gives none.
-        if (_xref.Trailer.GetInteger(PdfName.Size) is { } size && size > _xref.Count)
+        var most = _guard.Bound(PdfLimit.IndexEntries);
+
+        if (_xref.Trailer.GetInteger(PdfName.Size) is { } size)
         {
-            var rows = (int)Math.Min(Math.Min(size - _xref.Count, _source.Length / XRefRowLength), IndexRoom);
-            _xref.Reserve(rows, _xref.Count + rows);
+            most = (int)Math.Min(most, Math.Max(size, _xref.Count));
         }
+
+        _xref.Reserve((int)Math.Min(rows, IndexRoom), most);
     }
 
     /// <summary>

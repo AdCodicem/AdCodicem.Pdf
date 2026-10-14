@@ -7,14 +7,17 @@ using BenchmarkDotNet.Attributes;
 namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
-/// Measures what indexing a document of many objects costs as it opens: one classic table, one cross-reference stream, or
-/// a chain of a thousand classic sections that each add their own objects (#164).
+/// Measures what indexing a document of 300,000 objects costs as it opens, by the shape of its index (#164): one classic
+/// table, one cross-reference stream, an original and an update that rewrites a tenth of it, a hybrid file as Word writes
+/// it, and a chain of a thousand like sections.
 /// </summary>
 /// <remarks>
-/// Each section makes room in the index for the rows it holds before it reads them, rather than letting the map double as
-/// it grows: what opening allocates is the map, sized once, and the chain's sections add room by no less than the map
-/// holds, so that a thousand of them resize it about as often as growth would. The objects are not read: opening reads
-/// the index and the catalog.
+/// A section makes room in the index for the rows it holds before it reads them, rather than letting the map double as it
+/// grows, and for no more than the newest section's <c>/Size</c> numbers once it is read: an older section's rows for
+/// numbers a newer one gave are superseded, and add nothing. What opening allocates is the map, sized once for the first
+/// four shapes. A chain of many like sections makes room section after section, never by less than the map holds: it lands
+/// where doubling from its first section's rows lands, as growth from 3 landed elsewhere. The objects are not read: opening
+/// reads the index and the catalog.
 /// </remarks>
 [MemoryDiagnoser]
 public class IndexBenchmarks
@@ -32,15 +35,31 @@ public class IndexBenchmarks
         /// <summary>One cross-reference stream, its rows compressed.</summary>
         Stream,
 
+        /// <summary>An original's classic table, and an update's that rewrites 30,000 of its objects.</summary>
+        Update,
+
+        /// <summary>
+        /// A hybrid file as Word writes it: a table of no rows naming a stream that indexes every object, and an older
+        /// table that indexes them all again.
+        /// </summary>
+        Hybrid,
+
         /// <summary>A thousand classic sections, each adding 300 objects to those the older ones define.</summary>
         Chain,
     }
 
-    [Params(IndexShape.Table, IndexShape.Stream, IndexShape.Chain)]
+    [Params(IndexShape.Table, IndexShape.Stream, IndexShape.Update, IndexShape.Hybrid, IndexShape.Chain)]
     public IndexShape Shape { get; set; }
 
     [GlobalSetup]
-    public void Setup() => _document = Build(Shape);
+    public void Setup() => _document = Shape switch
+    {
+        IndexShape.Stream => Streamed(),
+        IndexShape.Update => Updated(),
+        IndexShape.Hybrid => Hybrid(),
+        IndexShape.Chain => Chained(1000),
+        _ => Chained(1),
+    };
 
     [Benchmark(Description = "Open an index of 300,000 objects")]
     public int Open()
@@ -50,55 +69,59 @@ public class IndexBenchmarks
     }
 
     /// <summary>
-    /// Builds a catalog, an empty page tree and <see cref="Objects"/> objects in all, each <c>null</c> but those two,
-    /// indexed in the <paramref name="shape"/> asked.
+    /// Writes a catalog, an empty page tree and nulls up to <see cref="Objects"/>, and records where each starts.
     /// </summary>
-    private static byte[] Build(IndexShape shape)
+    private static long[] WriteObjects(MemoryStream buffer, int from, int to, long[]? offsets = null)
+    {
+        offsets ??= new long[Objects + 2];
+
+        for (var number = Math.Max(from, 1); number < to; number++)
+        {
+            offsets[number] = buffer.Position;
+            Write(buffer, number switch
+            {
+                1 => "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+                2 => "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n",
+                _ => string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\nnull\nendobj\n"),
+            });
+        }
+
+        return offsets;
+    }
+
+    /// <summary>Writes a classic table's rows for objects <paramref name="first"/> to <paramref name="last"/>.</summary>
+    private static void WriteRows(MemoryStream buffer, long[] offsets, int first, int last)
+    {
+        var rows = new StringBuilder();
+
+        for (var number = first; number <= last; number++)
+        {
+            rows.Append(number == 0
+                ? "0000000000 65535 f\r\n"
+                : string.Create(CultureInfo.InvariantCulture, $"{offsets[number]:D10} 00000 n\r\n"));
+        }
+
+        Write(buffer, rows.ToString());
+    }
+
+    /// <summary>A chain of <paramref name="sections"/> classic sections, each written after the objects it adds.</summary>
+    private static byte[] Chained(int sections)
     {
         using var buffer = new MemoryStream();
-        var offsets = new long[Objects + 1];
-        var sections = shape == IndexShape.Chain ? 1000 : 1;
+        var offsets = new long[Objects + 2];
         var perSection = Objects / sections;
         long previous = -1;
-
         Write(buffer, "%PDF-1.7\n");
 
         for (var section = 0; section < sections; section++)
         {
             var first = section * perSection;
-
-            for (var number = Math.Max(first, 1); number < first + perSection; number++)
-            {
-                offsets[number] = buffer.Position;
-                Write(buffer, number switch
-                {
-                    1 => "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-                    2 => "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n",
-                    _ => string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\nnull\nendobj\n"),
-                });
-            }
-
+            WriteObjects(buffer, first, first + perSection, offsets);
             var at = buffer.Position;
-
-            if (shape == IndexShape.Stream)
-            {
-                WriteStream(buffer, offsets, at);
-            }
-            else
-            {
-                Write(buffer, string.Create(CultureInfo.InvariantCulture, $"xref\n{first} {perSection}\n"));
-
-                for (var number = first; number < first + perSection; number++)
-                {
-                    Write(buffer, number == 0
-                        ? "0000000000 65535 f\r\n"
-                        : string.Create(CultureInfo.InvariantCulture, $"{offsets[number]:D10} 00000 n\r\n"));
-                }
-
-                var prev = previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}");
-                Write(buffer, string.Create(CultureInfo.InvariantCulture, $"trailer\n<< /Size {first + perSection} /Root 1 0 R{prev} >>\n"));
-            }
-
+            Write(buffer, string.Create(CultureInfo.InvariantCulture, $"xref\n{first} {perSection}\n"));
+            WriteRows(buffer, offsets, first, first + perSection - 1);
+            var prev = previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}");
+            Write(buffer, string.Create(CultureInfo.InvariantCulture, $"trailer\n<< /Size {first + perSection} /Root 1 0 R{prev} >>\n"));
             previous = at;
         }
 
@@ -106,8 +129,68 @@ public class IndexBenchmarks
         return buffer.ToArray();
     }
 
-    /// <summary>Writes the cross-reference stream, object <see cref="Objects"/>, at <paramref name="at"/>: rows of
-    /// <c>/W [1 4 2]</c> under Flate.</summary>
+    /// <summary>The original's table, then an update rewriting objects 3 to 30,002, a subsection of one row each.</summary>
+    private static byte[] Updated()
+    {
+        using var buffer = new MemoryStream();
+        Write(buffer, "%PDF-1.7\n");
+        var offsets = WriteObjects(buffer, 0, Objects);
+        var original = buffer.Position;
+        Write(buffer, string.Create(CultureInfo.InvariantCulture, $"xref\n0 {Objects}\n"));
+        WriteRows(buffer, offsets, 0, Objects - 1);
+        Write(buffer, string.Create(CultureInfo.InvariantCulture, $"trailer\n<< /Size {Objects} /Root 1 0 R >>\n"));
+
+        var rows = new StringBuilder();
+
+        for (var number = 3; number < 30_003; number++)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"{number} 1\n{buffer.Position:D10} 00000 n\r\n");
+            Write(buffer, string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n(updated)\nendobj\n"));
+        }
+
+        var update = buffer.Position;
+        Write(buffer, "xref\n" + rows);
+        Write(buffer, string.Create(
+            CultureInfo.InvariantCulture,
+            $"trailer\n<< /Size {Objects} /Root 1 0 R /Prev {original} >>\nstartxref\n{update}\n%%EOF\n"));
+        return buffer.ToArray();
+    }
+
+    /// <summary>One cross-reference stream, object <see cref="Objects"/>: rows of <c>/W [1 4 2]</c> under Flate.</summary>
+    private static byte[] Streamed()
+    {
+        using var buffer = new MemoryStream();
+        Write(buffer, "%PDF-1.7\n");
+        var offsets = WriteObjects(buffer, 0, Objects);
+        var at = buffer.Position;
+        WriteStream(buffer, offsets, at);
+        Write(buffer, string.Create(CultureInfo.InvariantCulture, $"startxref\n{at}\n%%EOF\n"));
+        return buffer.ToArray();
+    }
+
+    /// <summary>
+    /// A hybrid file as Word writes it: an older table of every row, then a stream of every row and a table of none that
+    /// names it, whose trailer names the older table.
+    /// </summary>
+    private static byte[] Hybrid()
+    {
+        using var buffer = new MemoryStream();
+        Write(buffer, "%PDF-1.7\n");
+        var offsets = WriteObjects(buffer, 0, Objects);
+        var stream = buffer.Position;
+        WriteStream(buffer, offsets, stream);
+        var original = buffer.Position;
+        Write(buffer, string.Create(CultureInfo.InvariantCulture, $"xref\n0 {Objects + 1}\n"));
+        WriteRows(buffer, offsets, 0, Objects);
+        Write(buffer, string.Create(CultureInfo.InvariantCulture, $"trailer\n<< /Size {Objects + 1} /Root 1 0 R >>\n"));
+        var newest = buffer.Position;
+        Write(buffer, string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 0\ntrailer\n<< /Size {Objects + 1} /Root 1 0 R /Prev {original} /XRefStm {stream} >>\nstartxref\n{newest}\n%%EOF\n"));
+        return buffer.ToArray();
+    }
+
+    /// <summary>Writes the cross-reference stream, object <see cref="Objects"/>, at <paramref name="at"/>.</summary>
     private static void WriteStream(MemoryStream buffer, long[] offsets, long at)
     {
         offsets[Objects] = at;

@@ -2055,13 +2055,14 @@ public class DocumentReaderTests
     }
 
     [Fact]
-    public void Opening_a_chain_of_a_thousand_sections_sizes_the_index_once_from_its_newest_size()
+    public void Opening_a_chain_of_a_thousand_sections_resizes_the_index_no_more_often_than_doubling_it()
     {
-        // A section makes room for its own rows, and a chain's sections each for theirs: a thousand sections of 300 rows
-        // would double the map toward 300,000 entries from 353 slots, to 560,689 at the last, where growth from 3 reached
-        // 324,449 (#164). The newest section's /Size numbers the objects the chain indexes, and the map is sized for them
-        // once it is read. Measured on 2026-10-14, after a warm-up: 17,518,448 bytes, where growth allocated 33,196,448
-        // and doubling from the sections' rows alone 56,911,504. The budget is 5 % over.
+        // Each section makes room for its rows, and never by less than the map holds already: room made for each in turn
+        // would resize the map at every section, and copy it whole each time past the largest prime .NET keeps in its
+        // table. A thousand sections of 300 rows land where doubling from 353 slots lands, capped by the newest /Size,
+        // as growth from 3 landed elsewhere: 44,621,888 bytes allocated, measured twice on 2026-10-14 after a warm-up,
+        // where growth allocated 33,196,448; on sections of a thousand rows, room made for each in turn allocated 2.6
+        // times what growth did. The budget is 5 % over.
         var file = ChainOfSections(sections: 1000, rows: 300);
         using (PdfDocument.Open(file))
         {
@@ -2078,8 +2079,74 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Should().BeEmpty();
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
-        allocated.Should().BeLessThan(18_400_000, "the map is sized once for the 300,000 entries the newest section's /Size numbers");
+        allocated.Should().BeLessThan(46_860_000, "the map doubles at most, section after section");
         elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void An_update_s_rows_and_the_original_s_make_room_for_the_objects_the_newest_size_numbers()
+    {
+        // The update rewrites a thousand of the original's 3,000 objects: the original's rows for them supersede nothing,
+        // and room made for all its rows on top of the update's doubled the map. The newest /Size numbers every object.
+        var file = TestPdfBuilder.AppendIncrementalUpdate(
+            ChainOfSections(sections: 1, rows: 3000),
+            rootNumber: 1,
+            [.. Enumerable.Range(3, 1000).Select(number => (number, "(updated)"))]);
+
+        using var document = PdfDocument.Open(file);
+
+        document.ObjectCount.Should().Be(3000);
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(4000, "3,000 objects take 3,371 slots, and 7,013 doubled");
+    }
+
+    [Fact]
+    public void A_table_of_many_subsections_makes_room_for_its_rows_once()
+    {
+        // Three hundred subsections of ten rows each: room made for each in turn doubled the map from 11 slots, to 4,861.
+        var file = ChainOfSections(sections: 1, rows: 3000);
+        var text = Encoding.Latin1.GetString(file);
+        var rows = text.IndexOf("xref\n0 3000\n", StringComparison.Ordinal) + "xref\n".Length;
+        var table = new StringBuilder();
+        var lines = text[(rows + "0 3000\n".Length)..text.IndexOf("trailer", StringComparison.Ordinal)].Split("\r\n");
+
+        for (var first = 0; first < 3000; first += 10)
+        {
+            table.Append(CultureInfo.InvariantCulture, $"{first} 10\n");
+
+            for (var number = first; number < first + 10; number++)
+            {
+                table.Append(lines[number]).Append("\r\n");
+            }
+        }
+
+        // The table follows the objects, so that the rows written in subsections move no offset.
+        var split = string.Concat(text.AsSpan(0, rows), table.ToString(), text.AsSpan(text.IndexOf("trailer", StringComparison.Ordinal)));
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(split));
+
+        document.ObjectCount.Should().Be(3000);
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(4000, "3,000 rows take 3,371 slots");
+    }
+
+    [Fact]
+    public void A_subsection_claiming_millions_of_rows_makes_room_for_the_rows_its_bytes_hold()
+    {
+        // A table at the file's start claims three million rows and holds four, then its trailer; the file goes on for 2 MB.
+        // Room was made for as many rows as the bytes to the file's end hold: 100,000.
+        const string Header = "%PDF-1.7\n";
+        const string Catalog = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+        const string Pages = "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n";
+        string Table(int first) => string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3000000\n0000000000 65535 f\r\n{first:D10} 00000 n\r\n{first + Catalog.Length:D10} 00000 n\r\n{first + Catalog.Length + Pages.Length:D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\n");
+        var objects = Header.Length + Table(0).Length;
+        var text = Header + Table(objects) + Catalog + Pages + $"3 0 obj\n({new string('x', 2 * 1024 * 1024)})\nendobj\n"
+            + string.Create(CultureInfo.InvariantCulture, $"startxref\n{Header.Length}\n%%EOF\n");
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
+
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(64, "the table holds four rows");
     }
 
     /// <summary>The ways <see cref="LargeIndexFile"/> indexes its objects.</summary>
