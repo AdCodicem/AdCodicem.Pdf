@@ -1,8 +1,9 @@
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// The tests that compare the time the reader takes on inputs of two sizes: they run alone, after the rest of the
-/// suite, since whatever else runs beside them weighs on one measure more than on the one it is compared with.
+/// The tests that measure the whole process: the time the reader takes on inputs of two sizes, or the memory live at
+/// once while it reads one. They run alone, after the rest of the suite, since whatever else runs beside them weighs on
+/// one measure more than on the one it is compared with, and holds memory of its own.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage(
     "Naming",
