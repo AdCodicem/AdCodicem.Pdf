@@ -454,6 +454,70 @@ public class ReaderLimitsTests
         document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerPosition.Should().Be(OffsetOf(file, "trailer"));
     }
 
+    [Theory]
+    [InlineData("trailer\n", "% the rows end here\ntrailer\n")]
+    [InlineData("trailer\n", "%-------------------------------------------------------------\ntrailer\n")]
+    [InlineData(" n \r\ntrailer\n", " x \r\ntrailer\n")]
+    [InlineData(" 00000 n \r\ntrailer\n", " +0000 n \r\ntrailer\n")]
+    public void A_table_its_length_bound_cuts_keeps_the_encryption_its_trailer_names_past_what_no_row_holds(string written, string replacement)
+    {
+        // Past the cut, the search for the trailer stopped at the first byte no row holds, and the trailer was lost when a
+        // comment, a damaged row or a signed number came before it: an encrypted file opened as plain. A reader that reads
+        // the rows reads past each to the trailer, and so does the search.
+        var text = Encoding.Latin1.GetString(Trailed("/Encrypt 5 0 R"));
+        text.Should().Contain(written);
+        var file = Encoding.Latin1.GetBytes(text.Replace(written, replacement, StringComparison.Ordinal));
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 };
+
+        var unguarded = () => PdfDocument.Open(file);
+        unguarded.Should().Throw<PdfEncryptedException>();
+        var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        opening.Should().Throw<PdfEncryptedException>();
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnEncrypted = false });
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerPosition.Should().Be(OffsetOf(file, "trailer"));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    [InlineData(6)]
+    public void A_table_cut_before_its_keyword_ends_keeps_its_trailer(int bound)
+    {
+        // The search started seven bytes before the cut, so that a keyword the cut split is found: under a bound shorter
+        // than the keyword it started before the table, in another object's bytes, and named them as the table's fault.
+        var file = Trailed("/Info 6 0 R");
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = bound };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.Fault.Should().BeNull();
+        section.TrailerFault.Should().Be(XRefTrailerFault.None);
+        section.TrailerPosition.Should().Be(OffsetOf(file, "trailer"));
+        document.Trailer.ContainsKey(PdfName.Info).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Rows_past_a_full_index_are_not_read_and_the_trailer_past_them_is()
+    {
+        // A cross-reference stream's rows past a full index were not read, and a classic table's were: a row refused past
+        // the bound marked the index damaged, and the next lookup rebuilt it. The rows left can only repeat numbers the
+        // index holds; the trailer past them names the encryption, and is read.
+        var text = Encoding.Latin1.GetString(Trailed("/Encrypt 5 0 R"));
+        var file = Encoding.Latin1.GetBytes(text.Replace(" 00000 n \r\ntrailer", " 70000 n \r\ntrailer", StringComparison.Ordinal));
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 };
+
+        var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        opening.Should().Throw<PdfEncryptedException>();
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnEncrypted = false });
+        document.GetObject(new PdfObjectId(10)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitIndexEntries);
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerPosition.Should().Be(OffsetOf(file, "trailer"));
+    }
+
     [Fact]
     public void A_table_its_length_bound_cuts_ends_the_chain_though_its_trailer_names_an_older_section()
     {

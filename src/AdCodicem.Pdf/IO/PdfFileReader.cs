@@ -142,8 +142,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private static ReadOnlySpan<byte> StartXRefKeyword => "startxref"u8;
     private static ReadOnlySpan<byte> HeaderMarker => "%PDF-"u8;
 
-    /// <summary>What a classic table's rows and subsection headers are made of: digits, white space, <c>n</c> and <c>f</c>.</summary>
-    private static readonly SearchValues<byte> TableBytes = SearchValues.Create("0123456789nf\0\t\n\f\r "u8);
+    /// <summary>
+    /// What a classic table's rows and subsection headers are made of: digits, signs, white space, <c>n</c> and <c>f</c>.
+    /// </summary>
+    private static readonly SearchValues<byte> TableBytes = SearchValues.Create("0123456789+-nf\0\t\n\f\r "u8);
+
+    /// <summary>The bytes that may start a comment, the trailer keyword or a dictionary, among what no table holds.</summary>
+    private static readonly SearchValues<byte> TrailerSearchBytes = SearchValues.Create("%t<"u8);
 
     private PdfFileSource _source;
     private readonly PdfDiagnostics _diagnostics;
@@ -1697,6 +1702,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
                 }
+
+                if (_indexFullAt >= 0)
+                {
+                    // Filled by the stream: an older section could add nothing either.
+                    break;
+                }
             }
 
             offset = previous;
@@ -1987,7 +1998,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (first.IsKeyword("xref"u8))
             {
                 section.Kind = XRefSectionKind.Table;
-                section.State = TryReadClassicTable(absolute, section, out previous, out hybrid)
+                section.State = TryReadClassicTable(absolute, section, out previous, out hybrid, candidate)
                     ? XRefSectionState.Read
                     : XRefSectionState.Malformed;
                 return section.State;
@@ -1998,7 +2009,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         return section.State;
     }
 
-    private bool TryReadClassicTable(long absolute, XRefSectionRecord section, out long previous, out long hybrid)
+    private bool TryReadClassicTable(long absolute, XRefSectionRecord section, out long previous, out long hybrid, bool candidate)
     {
         previous = -1;
         hybrid = -1;
@@ -2108,6 +2119,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // A count is bounded by what it numbers, and its rows by the window, which MaxXRefSectionLength bounds: the
                 // most rows an int counts lie far past any window, and a count past them describes rows that are not read.
                 truncated = !ReadSubsection(ref lexer, (int)first, (int)Math.Min(countToken.Integer, int.MaxValue), section, absolute);
+
+                if (_indexFullAt >= 0)
+                {
+                    // The index takes no more numbers: the rows left can only repeat numbers it holds, and are not read.
+                    // The trailer past them still names the catalog, the encryption and the identity of the document.
+                    if (!candidate)
+                    {
+                        ReadTrailerPastRows(absolute + lexer.Position, section);
+                    }
+
+                    return true;
+                }
             }
 
             if (!canGrow)
@@ -2121,8 +2144,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         $"The cross-reference table runs past {PdfLimitGuard.FormatLength(maxWindow)}; only the entries within it were read.",
                         absolute);
 
-                    // The keyword may start within the window's last bytes, which it cut.
-                    ReadTrailerPastCut(absolute + windowSize - TrailerKeyword.Length, section);
+                    // The keyword may start within the window's last bytes, which it cut, though not before the table's
+                    // own. A place the section may have been moved to is a guess, and its trailer is not looked for past
+                    // the guard: each guess would read the file to its end.
+                    if (!candidate)
+                    {
+                        ReadTrailerPastRows(
+                            Math.Max(absolute + windowSize - TrailerKeyword.Length, absolute + section.Padding + "xref".Length),
+                            section);
+                    }
                 }
                 else
                 {
@@ -2140,62 +2170,95 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Finds the trailer of a classic table <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cut, past the rows it left
-    /// unread from <paramref name="from"/> on, and merges it into the document's: the rows are not indexed, but the trailer
-    /// names the catalog, the encryption and the identity of the document, which a cut table lost before. The chain goes no
-    /// further: an older section's rows would stand for the objects the rows left unread define.
+    /// Finds the trailer of a classic table past the rows the reader left unread from <paramref name="from"/> on — those
+    /// <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cut, or those past an index
+    /// <see cref="PdfReaderLimits.MaxIndexEntries"/> filled —, and merges it into the document's: the rows are not
+    /// indexed, but the trailer names the catalog, the encryption and the identity of the document. The chain goes no
+    /// further: an older section's rows would stand for the objects the rows left unread define, or find no room.
     /// </summary>
     /// <remarks>
-    /// Only a table's own bytes — digits, white space, <c>n</c> and <c>f</c> — lie between the cut and its trailer, and they
-    /// are searched a piece at a time, so that reaching the trailer costs a read of the rows, not memory for them. What ends
-    /// them is judged as it is where no guard cut the table: the end of the file, or a dictionary no keyword introduces, is
-    /// a missing trailer, and anything else no part of a table.
+    /// <para>
+    /// The rows are searched a piece at a time for the first byte no table holds, so that reaching the trailer costs a
+    /// read of them, not memory for them. A comment is skipped, as the lexer skips it. Anything else that is no part of a
+    /// table — a damaged row, a stray token — is the section's fault, and the search goes on past it to the trailer
+    /// keyword, which a reader that read the rows would reach as well: the trailer names the encryption, which must not be
+    /// lost to damage the guard hid.
+    /// </para>
+    /// <para>
+    /// The search ends at the trailer keyword, at a dictionary no keyword introduces, or at the end of the file; the last
+    /// two are a missing trailer, as they are where no guard stopped the reader, unless something no table holds came
+    /// first, which is then all the section is judged by. Each byte is read once, and the search is made once a document:
+    /// the chain ends at the section it is made for.
+    /// </para>
     /// </remarks>
-    private void ReadTrailerPastCut(long from, XRefSectionRecord section)
+    private void ReadTrailerPastRows(long from, XRefSectionRecord section)
     {
         var position = from;
+        var stray = -1L;
+        var found = false;
 
-        while (position < _source.Length)
+        while (position < _source.Length && !found)
         {
             var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
-            using var window = _source.GetWindow(position, length);
-            var end = window.Memory.Span.IndexOfAnyExcept(TableBytes);
+            int next;
 
-            if (end >= 0)
+            using (var window = _source.GetWindow(position, length))
             {
-                position += end;
-                break;
+                var span = window.Memory.Span;
+                next = stray < 0 ? span.IndexOfAnyExcept(TableBytes) : span.IndexOfAny(TrailerSearchBytes);
             }
 
-            position += length;
+            if (next < 0)
+            {
+                position += length;
+                continue;
+            }
+
+            position += next;
+
+            using var probe = _source.GetWindow(position, XRefProbeLength);
+            var head = probe.Memory.Span;
+
+            if (head[0] == (byte)'%')
+            {
+                position = EndOfComment(position);
+            }
+            else if (head.StartsWith("<<"u8))
+            {
+                break;
+            }
+            else if (head[0] == (byte)'t' && StartsToken(position) && new PdfLexer(head).Read().IsKeyword(TrailerKeyword))
+            {
+                found = true;
+            }
+            else
+            {
+                if (stray < 0)
+                {
+                    stray = position;
+                    section.Fault ??= string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"it holds {DescribeToken(new PdfLexer(head).Read())} at offset {position}, where a subsection or the trailer should start");
+                }
+
+                position++;
+            }
+        }
+
+        if (!found)
+        {
+            // Rows that end in the file's end, or in a dictionary no keyword introduces, lack their trailer; rows that end in
+            // something else are judged by it alone.
+            if (stray < 0)
+            {
+                section.TrailerFault = XRefTrailerFault.Missing;
+            }
+
+            section.TrailerPosition = stray >= 0 ? stray : Math.Min(position, _source.Length);
+            return;
         }
 
         section.TrailerPosition = position;
-
-        using (var next = _source.GetWindow(position, XRefProbeLength))
-        {
-            var lexer = new PdfLexer(next.Memory.Span);
-            var token = lexer.Read();
-
-            if (!token.IsKeyword(TrailerKeyword))
-            {
-                // As where no guard cut the table: the file ending, or a dictionary no keyword introduces, is a missing
-                // trailer; anything else is no part of a table.
-                if (token.Kind is PdfTokenKind.EndOfInput or PdfTokenKind.DictionaryStart)
-                {
-                    section.TrailerFault = XRefTrailerFault.Missing;
-                }
-                else
-                {
-                    section.Fault ??= string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"it holds {DescribeToken(token)} at offset {position}, where a subsection or the trailer should start");
-                }
-
-                return;
-            }
-        }
-
         var guards = _guardsReached;
         _ = TryParseNumberedAt(position + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out var syntaxFault);
         section.CutByLimit |= _guardsReached != guards;
@@ -2204,6 +2267,41 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             _xref.MergeTrailer(trailer);
         }
+    }
+
+    /// <summary>Gets where the line of the comment at <paramref name="position"/> ends, or the file's end.</summary>
+    private long EndOfComment(long position)
+    {
+        while (position < _source.Length)
+        {
+            var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
+            using var window = _source.GetWindow(position, length);
+            var end = window.Memory.Span.IndexOfAny((byte)'\r', (byte)'\n');
+
+            if (end >= 0)
+            {
+                return position + end;
+            }
+
+            position += length;
+        }
+
+        return _source.Length;
+    }
+
+    /// <summary>
+    /// Determines whether a token can start at <paramref name="position"/>: the byte before it, if any, is white space or a
+    /// delimiter, so that it is not the end of a longer one.
+    /// </summary>
+    private bool StartsToken(long position)
+    {
+        if (position == 0)
+        {
+            return true;
+        }
+
+        using var window = _source.GetWindow(position - 1, 1);
+        return !PdfCharacters.IsRegular(window.Memory.Span[0]);
     }
 
     /// <summary>
@@ -2340,7 +2438,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     private bool ReadSubsection(ref PdfLexer lexer, int first, int count, XRefSectionRecord section, long absolute)
     {
-        for (var i = 0; i < count; i++)
+        for (var i = 0; i < count && _indexFullAt < 0; i++)
         {
             var offsetToken = lexer.Read();
             var generationToken = lexer.Read();
