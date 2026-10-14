@@ -80,10 +80,11 @@ public class CrossReferenceRuleTests
     [Theory]
     [InlineData("2147483647 2", true)]
     [InlineData("2147483646 2", false)]
+    [InlineData("2 9223372036854775807", true)]
     public void A_subsection_numbering_rows_past_the_largest_object_number_makes_the_table_malformed(string header, bool malformed)
     {
         // A second subsection of rows placing the page again: its last number, first + count - 1, once wrapped past
-        // int.MaxValue to a negative object number.
+        // int.MaxValue to a negative object number, and, with a count as large as a long, past what a long holds.
         var file = PdfTemplate.SoundWith("{row:3}\n", "{row:3}\n" + header + "\n{row:3}\n{row:3}\n");
 
         var findings = Validate(file).Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed).ToList();
@@ -221,6 +222,7 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4 2] /Index [4294967296 6]", "its /Index gives a subsection of 6 rows from object 4294967296, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [2147483647 6]", "its /Index gives a subsection of 6 rows from object 2147483647, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2147483648 0]", "its /Index gives a subsection of 0 rows from object 2147483648, outside object numbers 0 to 2147483647.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 6 2 9223372036854775807]", "its /Index gives a subsection of 9,223,372,036,854,775,807 rows from object 2, outside object numbers 0 to 2147483647.")]
     [InlineData("/W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
     [InlineData("/Size -6 /W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
     [InlineData("/Size 6.5 /W [1 4 2]", "it has no /Index, and its /Size gives no count of objects.")]
