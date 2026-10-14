@@ -345,6 +345,69 @@ public class ReaderLimitsTests
         document.WasRepaired.Should().BeTrue();
         document.ObjectCount.Should().Be(50);
         document.GetObject(new PdfObjectId(5)).AsText().Should().Be("newest");
+
+        // An object the full index left out reads as null by the guard's decision, which a document opened to throw on one
+        // is told each time it asks.
+        rebuilding.Should().Throw<PdfLimitExceededException>().Which.Position.Should().Be(OffsetOf(file, "51 0 obj"));
+    }
+
+    [Fact]
+    public void A_lookup_past_a_full_index_reads_null_and_rebuilds_nothing()
+    {
+        // #164, #183: a rebuild would scan the whole file to refill an index already at its bound, and could add nothing.
+        var @case = Case.For("index entries");
+
+        using var document = PdfDocument.Open(@case.File, new PdfReaderOptions { Limits = @case.Reached });
+
+        document.GetObject(new PdfObjectId(250)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.GetPresence(250).Should().Be(ObjectPresence.Unindexed, "whether the file holds it is unknown");
+        document.Reader.GetPresence(99).Should().Be(ObjectPresence.Defined);
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitIndexEntries);
+    }
+
+    [Fact]
+    public void A_catalog_past_a_guard_cut_reads_as_null_and_rebuilds_nothing()
+    {
+        // The catalog only the oldest section indexes lies past MaxXRefSectionCount: /Root names an object the index lacks
+        // because of the guard, which is no damage, and the document opens without a catalog until the guard is lifted.
+        var @case = Case.For("section count");
+
+        using (var document = PdfDocument.Open(@case.File, new PdfReaderOptions { Limits = @case.Reached }))
+        {
+            document.Catalog.Should().BeNull();
+            document.WasRepaired.Should().BeFalse();
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionCount);
+        }
+
+        using var lifted = PdfDocument.Open(@case.File, new PdfReaderOptions { Limits = @case.Raised });
+        lifted.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_rebuild_damage_sets_off_keeps_the_entries_a_chain_a_guard_cut_gave_that_the_scan_cannot_find()
+    {
+        // The cross-reference stream decodes no further than five of its eight rows: objects 3 and 4, packed in object 6,
+        // are indexed; the catalog, object 5, and object 6 itself are past the cut. /Root names object 2, the page tree,
+        // which is no catalog, and none is among the indexed objects: that is damage, and the index is rebuilt. The scan
+        // finds every header, but object 6 has no /Type /ObjStm, so the rebuild does not take in what it holds: only the
+        // chain's entries for 3 and 4, kept through the rebuild, still place them.
+        var written = new TestPdfBuilder()
+            .WithObject(1, "(one)")
+            .WithObject(2, Pages)
+            .WithObject(3, "(packed three)")
+            .WithObject(4, "(packed four)")
+            .WithObject(5, Catalog)
+            .BuildWithXRefStream(rootNumber: 2, compressedObjects: [3, 4], compressXRefStream: true);
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(written).Replace("/Type /ObjStm", "/Kind /ObjStm", StringComparison.Ordinal));
+        var limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 35 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("packed three");
+        document.GetObject(new PdfObjectId(4)).AsText().Should().Be("packed four");
     }
 
     [Fact]
@@ -1017,7 +1080,7 @@ public class ReaderLimitsTests
         private static Case ManySections()
         {
             // A document saved three times after it was written: four sections, of which a bound of two reads
-            // the newest. The catalog is only in the oldest, so reaching it rebuilds the index.
+            // the newest. The catalog is only in the oldest, and reads as null until the guard is lifted (#183).
             var file = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages).BuildClassic(rootNumber: 1);
             var sections = new List<int> { OffsetOf(file, "xref\n") };
 
@@ -1034,8 +1097,8 @@ public class ReaderLimitsTests
                 file,
                 PdfReaderLimits.Default with { MaxXRefSectionCount = 2 },
                 PdfReaderLimits.Default,
-                IndexState,
-                "as written",
+                document => document.ObjectCount.ToString(CultureInfo.InvariantCulture),
+                "4",
                 "The cross-reference chain has more than 2 sections; the older ones were not read.",
                 sections[1],
                 ThrowsOnOpening: true,

@@ -304,12 +304,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private int _relocationCandidatesTried;
 
     /// <summary>
-    /// Whether the index may lack objects the file defines: a section the chain names could not be found, a
-    /// guard stopped the chain or a table before its end, a cross-reference stream holds fewer rows than it
-    /// declares, or a row was refused. Only then is an object the index lacks looked for by rebuilding it; otherwise a reference to it
-    /// is null, as the specification says.
+    /// Whether the index may lack objects the file defines because the file is damaged: a section the chain names could not
+    /// be found or read, the chain loops, a cross-reference stream's data holds fewer rows than it declares, or a row was
+    /// refused. Only then is an object the index lacks looked for by rebuilding it; otherwise a reference to it is null, as
+    /// the specification says.
     /// </summary>
     private bool _indexIncomplete;
+
+    /// <summary>
+    /// Whether one of the reader's guards left part of the chain unread: <see cref="PdfReaderLimits.MaxXRefSectionCount"/>
+    /// stopped it, <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cut a table, or a cross-reference stream lost rows to
+    /// <see cref="PdfReaderLimits.MaxDecodedStreamLength"/> or the section itself to <see cref="PdfReaderLimits.MaxTrailerLength"/>.
+    /// What lies past the cut reads as null until the caller lifts the guard, whose report names the property: the cut is
+    /// the reader's, not damage in the file, and the index is not rebuilt for it (ADR 34).
+    /// </summary>
+    private bool _cutByGuard;
+
+    /// <summary>
+    /// Whether the index as last built had no room for a number it lacks, <see cref="PdfReaderLimits.MaxIndexEntries"/>
+    /// reached: an object it holds no entry for reads as null, and is not looked for by rebuilding it.
+    /// </summary>
+    private bool _indexFull;
 
     /// <summary>
     /// The object numbers whose row a section of the chain refused, or null while none was: the sections the chain reads
@@ -555,8 +570,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// An object the index lacks, or holds as free — the one the chain gave as the reader first read it, and the
     /// one it reads with now —, is missing: a reference to it is null (ISO 32000-1, 7.3.10). One either index holds
     /// in use, and that the reader gave up on or lost in a rebuild, is unproduced: what went wrong is the index's
-    /// or the object stream's, and the cross-reference rules report it. Object 0 is missing whatever its entry says: it
-    /// heads the free list and is never in use (ISO 32000-1, 7.5.4), and the reader never reads it.
+    /// or the object stream's, and the cross-reference rules report it. One the index lacks while a guard left part of the
+    /// chain unread, or filled the index, is unindexed: whether the file holds it is unknown. Object 0 is missing whatever
+    /// its entry says: it heads the free list and is never in use (ISO 32000-1, 7.5.4), and the reader never reads it.
     /// </remarks>
     internal ObjectPresence GetPresence(int number)
     {
@@ -565,15 +581,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return ObjectPresence.Missing;
         }
 
-        if (_xref.TryGet(number, out var entry) && entry.Kind != XRefEntryKind.Free)
+        var indexed = _xref.TryGet(number, out var entry);
+
+        if (indexed && entry.Kind != XRefEntryKind.Free)
         {
             return _unproduced.Contains(number) ? ObjectPresence.Unproduced : ObjectPresence.Defined;
         }
 
-        return ChainIndex?.TryGet(number, out var written) == true && written.Kind != XRefEntryKind.Free
-            ? ObjectPresence.Unproduced
-            : ObjectPresence.Missing;
+        if (ChainIndex?.TryGet(number, out var written) == true && written.Kind != XRefEntryKind.Free)
+        {
+            return ObjectPresence.Unproduced;
+        }
+
+        return !indexed && IndexStoppedByGuard ? ObjectPresence.Unindexed : ObjectPresence.Missing;
     }
+
+    /// <summary>
+    /// Gets a value indicating whether a guard stopped the index short of the file: it filled, or it is the chain's and a
+    /// guard left part of the chain unread. A rebuild scans the whole file, and lifts the second.
+    /// </summary>
+    private bool IndexStoppedByGuard => _indexFull || (_cutByGuard && !_repaired);
 
     /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, is not followed by <c>endobj</c>, and
@@ -1347,6 +1374,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (value.AsInteger() is not { } length || length is < 0 or > int.MaxValue)
             {
                 var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(number);
+
+                // A /Length a guard left out of the index is unknown, not wrong: the guard's report says why.
+                if (presence == ObjectPresence.Unindexed)
+                {
+                    continue;
+                }
+
                 var held = presence switch
                 {
                     ObjectPresence.Missing => "which the file lacks",
@@ -1413,13 +1447,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         var reached = FindCatalog();
 
-        if (!HasUsableRoot() && !_repaired)
+        if (!HasUsableRoot() && !_repaired && !RootHiddenByGuard())
         {
             Repair();
         }
 
         reached?.Throw();
     }
+
+    /// <summary>
+    /// Determines whether <c>/Root</c> names an object the index lacks because a guard stopped it short: the catalog lies
+    /// past the cut, and reads as null until the guard is lifted, as any object there does. A <c>/Root</c> that names an
+    /// object the index holds, or none, says the file is damaged.
+    /// </summary>
+    private bool RootHiddenByGuard() =>
+        IndexStoppedByGuard && Trailer.GetRaw(PdfName.Root) is PdfReference root && !_xref.TryGet(root.Id.Number, out _);
 
     private void DetectHeader()
     {
@@ -1578,11 +1620,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (++sections > _guard.Bound(PdfLimit.XRefSectionCount))
             {
                 // Each incremental save adds a section, so a long chain is a sound file saved often; the newest
-                // sections, read first, are the ones that win, and what only the older ones index is found by
-                // rebuilding the index when it is asked for.
+                // sections, read first, are the ones that win, and what only the older ones index reads as null until the
+                // guard is lifted.
                 // Placed where the chain goes on, a position in the file; one named outside the file is placed at what
                 // named it, the offset in the message, as a section that is missing is (#125).
-                _indexIncomplete = true;
+                _cutByGuard = true;
                 var cut = PositionOf(offset);
                 var inFile = IsInFile(cut);
                 _structure.ChainCutAt = cut;
@@ -1739,12 +1781,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return;
         }
 
-        _indexIncomplete = true;
-
         if (section.CutByLimit)
         {
+            _cutByGuard = true;
             return;
         }
+
+        _indexIncomplete = true;
 
         // Every fault but a table's missing trailer keyword is described where it is met: rows that run into a
         // dictionary, or into the end of the file, are the one left.
@@ -2048,7 +2091,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 if (windowFull)
                 {
-                    _indexIncomplete = true;
+                    _cutByGuard = true;
                     section.CutByLimit = true;
                     ReachLimit(
                         PdfLimit.XRefSectionLength,
@@ -2508,19 +2551,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         // Compared by division: a /Size can be as large as a long, and its product with the row length overflow one.
+        var rowsCut = false;
+
         if (declared > held)
         {
-            // Rows the data does not hold index nothing: the objects they stood for are the index's to find.
-            _indexIncomplete = true;
-
             if (decodedWhole)
             {
-                // Rows the data does not hold, when the reader decoded all of it, are the file's to answer for. Every
-                // fault met before returned, and a refused row is kept apart: this is the section's first.
+                // Rows the data does not hold, when the reader decoded all of it, are the file's to answer for, and the
+                // objects they stood for the index's to find. Every fault met before returned, and a refused row is kept
+                // apart: this is the section's first.
+                _indexIncomplete = true;
                 section.Incomplete = true;
                 section.Fault = string.Create(
                     CultureInfo.InvariantCulture,
                     $"it holds {held:N0} {(held == 1 ? "row" : "rows")} where its /Index and /Size declare {declared:N0}");
+            }
+            else
+            {
+                // Rows past what MaxDecodedStreamLength let the data decode to are the guard's: what they index reads as
+                // null until it is lifted, and the chain ends here, since an older section's rows would stand for them.
+                _cutByGuard = true;
+                rowsCut = true;
             }
         }
 
@@ -2530,7 +2581,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         _xref.MergeTrailer(dictionary);
-        previous = SectionOffset(dictionary, PdfName.Prev, absolute);
+        previous = rowsCut ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute);
         return XRefSectionState.Read;
     }
 
@@ -2861,12 +2912,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         int count,
         XRefSectionRecord section)
     {
-        if ((long)count * rowLength > data.Length - position)
-        {
-            // Rows the data does not hold index nothing: the objects they stood for are the index's to find.
-            _indexIncomplete = true;
-        }
-
+        // Rows the data does not hold are the caller's to judge, once every subsection is read: the data was cut by a guard,
+        // or holds fewer rows than the section declares.
         // Once the index takes no more numbers, the rows left can only repeat numbers it holds: they are not read.
         for (var i = 0; i < count && rowLength <= data.Length - position && _indexFullAt < 0; i++, position += rowLength)
         {
@@ -2973,19 +3020,25 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </exception>
     private void ReachIndexBound(long position)
     {
+        _indexFull = true;
+
         if (_indexFullAt >= 0)
         {
             return;
         }
 
-        var bound = _guard.Bound(PdfLimit.IndexEntries);
         _indexFullAt = position;
-        ReachLimit(
-            PdfLimit.IndexEntries,
-            string.Create(
-                CultureInfo.InvariantCulture,
-                $"The index reached {bound:N0} {(bound == 1 ? "entry" : "entries")}; the objects past them were not indexed."),
-            position);
+        _structure.IndexFullAt = position;
+        ReachLimit(PdfLimit.IndexEntries, IndexFullMessage(), position);
+    }
+
+    /// <summary>Says that the index reached <see cref="PdfReaderLimits.MaxIndexEntries"/>.</summary>
+    private string IndexFullMessage()
+    {
+        var bound = _guard.Bound(PdfLimit.IndexEntries);
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"The index reached {bound:N0} {(bound == 1 ? "entry" : "entries")}; the objects past them were not indexed.");
     }
 
     /// <summary>Says why a cross-reference stream's row of type 1 or 2 was refused.</summary>
@@ -3064,25 +3117,46 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         if (!_xref.TryGet(id.Number, out var entry))
         {
-            // A reference to an object the file does not define is null (ISO 32000-1, 7.3.10): only an index
-            // that may have lost entries is rebuilt to look for it, once.
-            if (_repaired || !_indexIncomplete)
+            // A reference to an object the file does not define is null (ISO 32000-1, 7.3.10): only an index damage
+            // may have lost entries from is rebuilt to look for it, once. One a guard cut or filled reads it as null until
+            // the guard is lifted (ADR 34): a rebuild would scan the file for what the guard's report already names.
+            if (!_repaired && _indexIncomplete)
             {
-                // While a rebuilt index takes in what its object streams hold, the object may be in one not
-                // expanded yet: that null is not the object's, and is not kept.
-                if (_expandingObjectStreams)
-                {
-                    _reentries++;
-                }
+                Repair();
 
-                return PdfNull.Instance;
+                if (_xref.TryGet(id.Number, out entry))
+                {
+                    return LoadFromEntry(id, entry);
+                }
             }
 
-            Repair();
-            return _xref.TryGet(id.Number, out entry) ? LoadFromEntry(id, entry) : PdfNull.Instance;
+            // While a rebuilt index takes in what its object streams hold, the object may be in one not
+            // expanded yet: that null is not the object's, and is not kept.
+            if (_expandingObjectStreams)
+            {
+                _reentries++;
+            }
+
+            return NotIndexed();
         }
 
         return LoadFromEntry(id, entry);
+    }
+
+    /// <summary>
+    /// Answers null for an object the index holds no entry for; or, for a document opened to throw on a guard, throws each
+    /// time the index <see cref="PdfReaderLimits.MaxIndexEntries"/> filled leaves one out, as an object read again past
+    /// its guard throws again.
+    /// </summary>
+    /// <exception cref="PdfLimitExceededException">The index is full, and the document was opened to throw on a guard.</exception>
+    private PdfNull NotIndexed()
+    {
+        if (_indexFull && _guard.ThrowsOnLimit)
+        {
+            _guard.Reach(PdfLimit.IndexEntries, null, IndexFullMessage(), _indexFullAt);
+        }
+
+        return PdfNull.Instance;
     }
 
     private PdfObject LoadFromEntry(PdfObjectId id, XRefEntry entry)
@@ -3853,6 +3927,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _diagnostics.Repair(PdfDiagnosticCodes.XRefRebuilt, "The cross-reference index was rebuilt by scanning the file.");
 
         PreserveChainIndex();
+
+        // What a chain a guard cut kept is kept through a rebuild that damage set off: the scan finds every header the file
+        // holds, the objects the guard hid included, but not every entry the chain gave — an object stream's members it has
+        // not expanded, a header it cannot read.
+        var kept = _cutByGuard ? _chainIndex : null;
+        _indexFull = false;
         _xref.Clear();
         _cache.Clear();
         _cacheOrder.Clear();
@@ -3870,6 +3950,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         ScanForTrailers();
         var expanding = ExpandObjectStreams(redefinitions);
         reached ??= expanding;
+
+        if (kept is not null)
+        {
+            var merging = MergeChainIndex(kept);
+            reached ??= merging;
+        }
 
         if (redefinitions.Count > 0)
         {
@@ -3952,6 +4038,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             position += length - ScanOverlap;
+        }
+
+        return reached;
+    }
+
+    /// <summary>
+    /// Takes into a rebuilt index the entries in use of <paramref name="chain"/>, the index a chain a guard cut gave, for the
+    /// numbers the rebuild did not find: what the file defines last, and the scan found, wins.
+    /// </summary>
+    /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
+    private ExceptionDispatchInfo? MergeChainIndex(PdfXRefTable chain)
+    {
+        ExceptionDispatchInfo? reached = null;
+        var position = _structure.Sections.Count > 0 ? _structure.Sections[0].Offset : 0;
+
+        foreach (var (number, entry) in chain.Entries)
+        {
+            if (entry.Kind == XRefEntryKind.Free || _xref.TryGet(number, out _))
+            {
+                continue;
+            }
+
+            if (HasRoomInRebuild(position, ref reached))
+            {
+                _xref.Set(number, entry);
+            }
         }
 
         return reached;

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.Tests;
@@ -446,53 +447,120 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
-    public void Looks_for_an_object_the_index_lacks_when_a_guard_stopped_the_chain()
+    public void Reads_an_object_only_a_section_past_the_section_count_indexes_as_null_until_the_guard_is_lifted()
     {
-        // Two saves on top of the original, and a chain read no further than two sections: the original section,
-        // which alone indexes the page tree, is left unread by the reader's own limit, so what it held is looked
-        // for by rebuilding the index when asked for, rather than read as null.
+        // Two saves on top of the original, and a chain read no further than two sections: the original section, which
+        // alone indexes the page tree, is left unread by the reader's own limit. That is no damage: what it held reads as
+        // null, unknown rather than missing, and the index is not rebuilt for it (#183), until the guard is lifted. A
+        // rebuild once lost what the chain had read, past the two million headers it counted.
         var (original, _) = Updated();
         var file = TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, [(1, "<< /Type /Catalog /Pages 2 0 R >>")]);
         var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2 } };
 
-        using var document = PdfDocument.Open(file, options);
+        using (var document = PdfDocument.Open(file, options))
+        {
+            document.Catalog.GetDictionary(PdfName.Pages).Should().BeNull();
+            document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+            Text(document, 4).Should().Be("updated");
+            document.Reader.GetPresence(5).Should().Be(ObjectPresence.Unindexed);
+            document.WasRepaired.Should().BeFalse();
+            document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionCount);
+        }
 
-        document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionCount);
-        ReadsWhole(document);
-        document.WasRepaired.Should().BeTrue();
+        using var lifted = PdfDocument.Open(file);
+        ReadsWhole(lifted);
+        lifted.WasRepaired.Should().BeFalse();
     }
 
     [Fact]
-    public void Looks_for_an_object_the_index_lacks_when_a_guard_stopped_the_table()
+    public void Reads_an_object_a_length_bound_cut_out_of_its_table_as_null_until_the_guard_is_lifted()
     {
-        // Tables read no further than 128 bytes: the update's, which names the catalog, fits; the original's six
-        // rows do not, and the last, object 5's, is cut. Object 5 is looked for by rebuilding the index when
-        // asked for, rather than read as null.
+        // Tables read no further than 128 bytes: the update's, which names the catalog, fits; the original's six rows do
+        // not, and the last, object 5's, is cut. Object 5 reads as null, unknown rather than missing, and the index is not
+        // rebuilt for it (#183), until the guard is lifted.
         var (file, _) = Updated();
         var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 } };
 
+        using (var document = PdfDocument.Open(file, options))
+        {
+            Text(document, 4).Should().Be("updated");
+            document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+            document.Reader.GetPresence(5).Should().Be(ObjectPresence.Unindexed);
+            document.GetObject(new PdfObjectId(99)).Should().BeSameAs(PdfNull.Instance);
+            document.Reader.GetPresence(99).Should().Be(ObjectPresence.Unindexed, "the rows past the cut might have defined it");
+            document.WasRepaired.Should().BeFalse();
+            document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionLength);
+        }
+
+        using var lifted = PdfDocument.Open(file);
+        ReadsWhole(lifted);
+        lifted.Reader.GetPresence(99).Should().Be(ObjectPresence.Missing);
+    }
+
+    [Fact]
+    public void A_stream_whose_length_a_guard_left_out_of_the_index_is_read_to_its_endstream_and_not_reported()
+    {
+        // The update places the stream; its /Length is object 9, which only the original section places, past the guard.
+        // Whether the file holds a length there is unknown: the data is taken up to its endstream, and the guard's report
+        // is the only one.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(9, "5")
+            .BuildClassic(rootNumber: 1);
+        var file = TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, [(4, "<< /Length 9 0 R >>\nstream\nhello\nendstream")]);
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } };
+
         using var document = PdfDocument.Open(file, options);
 
-        document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionLength);
-        ReadsWhole(document);
-        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal("hello"u8.ToArray());
+        document.Reader.GetPresence(9).Should().Be(ObjectPresence.Unindexed);
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionCount);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_whose_length_a_guard_left_out_of_the_index_is_not_reported()
+    {
+        // The newest section, a cross-reference stream, gives its /Length as object 9, which only the original table places:
+        // read once the chain is, and the chain stopped short of that table. The length is unknown, not wrong.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(9, "7")
+            .BuildClassic(rootNumber: 1);
+        var table = StartXRef(original);
+        var update = original.Length;
+        var head = Encoding.ASCII.GetBytes(string.Create(
+            CultureInfo.InvariantCulture,
+            $"10 0 obj\n<< /Type /XRef /Size 11 /W [1 4 2] /Index [10 1] /Prev {table} /Root 1 0 R /Length 9 0 R >>\nstream\n"));
+        byte[] row = [1, (byte)(update >> 24), (byte)(update >> 16), (byte)(update >> 8), (byte)update, 0, 0];
+        var tail = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{update}\n%%EOF\n"));
+        byte[] file = [.. original, .. head, .. row, .. tail];
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Catalog.Should().BeNull("the catalog lies past the guard");
+        document.Reader.GetPresence(9).Should().Be(ObjectPresence.Unindexed);
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionCount);
     }
 
     [Fact]
     public void Reports_a_cross_reference_stream_whose_dictionary_the_guard_cuts_under_the_guard_alone()
     {
         // The original section's dictionary is longer than the 48 bytes trailers are read to: what the reader makes of
-        // the cut — no stream data after it — is not the file's fault, and the guard's report is the only one.
+        // the cut — no stream data after it — is not the file's fault, and the guard's report is the only one. What only
+        // that section indexes reads as null until the guard is lifted, and the index is not rebuilt for it (#183).
         var (file, _) = Updated(padding: 600, originalAsStream: true);
         var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 48 } };
 
         using var document = PdfDocument.Open(file, options);
 
         document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer);
-        ReadsWhole(document);
-        document.WasRepaired.Should().BeTrue();
+        Text(document, 4).Should().Be("updated");
+        document.GetObject(new PdfObjectId(5)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.GetPresence(5).Should().Be(ObjectPresence.Unindexed);
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Fact]
