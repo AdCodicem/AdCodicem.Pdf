@@ -2029,7 +2029,7 @@ public class DocumentReaderTests
     {
         // M01's file of several hundred thousand objects (#193). Opening allocates the reader's map of the index, which the
         // section sizes before its rows are read to 324,449 slots of 52 bytes here, and a cross-reference stream's rows
-        // decoded besides. Measured on 2026-10-14, after a warm-up: 16,875,160 bytes for the table, 29,478,256 for the
+        // decoded besides. Measured on 2026-10-14, after a warm-up: 16,875,176 bytes for the table, 29,478,272 for the
         // stream, whose rows Flate stores uncompressed so that no runtime's zlib moves the figure — 32,571,368 and
         // 45,174,464 when the map grew by doubling (#164). The budget is 5 % over each. 324,449 is the first prime of
         // .NET's table past 300,000, so a change of a few thousand objects does not move it either.
@@ -2060,7 +2060,7 @@ public class DocumentReaderTests
         // Each section makes room for its rows, and never by less than the map holds already: room made for each in turn
         // would resize the map at every section, and copy it whole each time past the largest prime .NET keeps in its
         // table. Once a doubling comes within a doubling of what the newest /Size numbers, room is made for it at once.
-        // A thousand sections of 300 rows: 30,562,544 bytes allocated, measured twice on 2026-10-14 after a warm-up,
+        // A thousand sections of 300 rows: 30,562,560 bytes allocated, measured twice on 2026-10-14 after a warm-up,
         // where growth allocated 33,196,448, doubling alone 44,621,888, and, on sections of a thousand rows, room made for
         // each in turn 2.6 times what growth did. The budget is 5 % over.
         var file = ChainOfSections(sections: 1000, rows: 300);
@@ -2164,16 +2164,16 @@ public class DocumentReaderTests
     public void Rows_written_a_byte_short_make_room_for_each_of_them(string end)
     {
         // Rows ended by one byte, as some producers write them: room made for as many 20-byte rows as their bytes hold fell
-        // short of the count, and the map doubled past it, to 130,363 slots for 66,000 objects.
-        var text = Encoding.Latin1.GetString(ChainOfSections(sections: 1, rows: 66_000));
+        // short of the count, and the map doubled past it, to 156,437 slots for 76,000 objects, as it does when it grows.
+        var text = Encoding.Latin1.GetString(ChainOfSections(sections: 1, rows: 76_000));
         var rows = text.IndexOf("xref\n", StringComparison.Ordinal);
         var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, rows), text[rows..].Replace("\r\n", end, StringComparison.Ordinal)));
-        file.Length.Should().Be(text.Length - 66_000);
+        file.Length.Should().Be(text.Length - 76_000);
 
         using var document = PdfDocument.Open(file);
 
-        document.ObjectCount.Should().Be(66_000);
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(80_000, "66,000 rows take 75,431 slots");
+        document.ObjectCount.Should().Be(76_000);
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(100_000, "76,000 rows take 90,523 slots");
     }
 
     [Fact]
