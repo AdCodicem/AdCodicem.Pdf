@@ -410,6 +410,44 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_row_an_older_section_refuses_for_a_number_a_newer_one_gave_takes_no_room(bool refusedInTheUpdate)
+    {
+        // The original refuses its row for object 3, which the update gives, or refuses as well: the number is the index's
+        // already, or a refused one, and takes no room again. Under a bound of exactly the four numbers the file gives, the
+        // index was said to be full.
+        var original = Encoding.Latin1.GetString(new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "(three)")
+            .BuildClassic(rootNumber: 1));
+        var rows = original.IndexOf("xref\n0 4\n", StringComparison.Ordinal) + "xref\n0 4\n".Length;
+        var three = rows + (3 * 21) + 11;
+        original[three..].Should().StartWith("00000 n");
+        original = string.Concat(original.AsSpan(0, three), "70000", original.AsSpan(three + 5));
+        var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(
+            Encoding.Latin1.GetBytes(original), rootNumber: 1, [(3, "(new three)")]));
+
+        if (refusedInTheUpdate)
+        {
+            var update = text.LastIndexOf("xref\n3 1\n", StringComparison.Ordinal) + "xref\n3 1\n".Length + 11;
+            text[update..].Should().StartWith("00000 n");
+            text = string.Concat(text.AsSpan(0, update), "70000", text.AsSpan(update + 5));
+        }
+
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 };
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text), new PdfReaderOptions { Limits = limits });
+
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        document.Diagnostics.Select(entry => entry.Code).Should().NotContain(PdfDiagnosticCodes.LimitIndexEntries);
+        document.Reader.Structure.IndexFullAt.Should().BeNegative();
+        document.Reader.Structure.Sections[1].RefusedRow.Should().Contain("the row for object 3");
+        (document.Reader.Structure.Sections[0].RefusedRow is not null).Should().Be(refusedInTheUpdate);
+    }
+
+    [Theory]
     [InlineData(4)]
     [InlineData(100)]
     public void A_row_refused_before_a_full_index_is_the_file_s_and_an_object_stream_past_it_stays_unknown(int bound)
@@ -588,6 +626,29 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData(nameof(PdfReaderLimits.MaxXRefSectionLength))]
+    [InlineData(nameof(PdfReaderLimits.MaxIndexEntries))]
+    public void A_trailer_past_rows_left_unread_that_its_own_bound_cuts_keeps_what_precedes_the_cut(string limit)
+    {
+        // The trailer past the rows a guard left unread runs past MaxTrailerLength: what it gives before the cut is kept,
+        // and what lies past it is unknown, the trailer the guard's as a trailer its table's window cut is.
+        var file = Trailed($"/Pad ({new string('x', 70 * 1024)}) /Info 6 0 R");
+        var limits = limit == nameof(PdfReaderLimits.MaxIndexEntries)
+            ? PdfReaderLimits.Default with { MaxIndexEntries = 4 }
+            : PdfReaderLimits.Default with { MaxXRefSectionLength = 128 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.TrailerCutByLimit.Should().BeTrue();
+        section.CutByLimit.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitTrailer);
+        document.Trailer.GetRaw(PdfName.Root).Should().NotBeNull();
+        document.Trailer.GetRaw(PdfName.Info).Should().BeNull();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("% rows of the first revision follow", 15)]
     [InlineData("%          trailer << /Size 11 /Root 1 0 R >>", 10)]
     public void A_cut_in_a_comment_among_the_rows_searches_for_the_trailer_from_the_comment_s_start(string comment, int into)
@@ -611,17 +672,19 @@ public class ReaderLimitsTests
     }
 
     [Theory]
-    [InlineData(nameof(PdfReaderLimits.MaxXRefSectionLength))]
-    [InlineData(nameof(PdfReaderLimits.MaxIndexEntries))]
-    public void The_trailer_past_rows_left_unread_is_found_wherever_the_search_s_window_ends(string limit)
+    [InlineData(nameof(PdfReaderLimits.MaxXRefSectionLength), "% trailer << /Root 9 0 R >>\n")]
+    [InlineData(nameof(PdfReaderLimits.MaxIndexEntries), "% trailer << /Root 9 0 R >>\n")]
+    [InlineData(nameof(PdfReaderLimits.MaxXRefSectionLength), "ntrailer\n")]
+    public void The_trailer_past_rows_left_unread_is_found_wherever_the_search_s_window_ends(string limit, string before)
     {
         // The search for the trailer reads the file a megabyte at a time: a comment, or the keyword, that the window's end
         // splits is looked at again from the next one, and a comment that runs past the window is still one in the next.
-        // White space puts the comment, a fake trailer in its text, and the trailer on every byte around the window's end.
+        // White space puts what comes before the trailer — a comment with a fake trailer in its text, or "trailer" ending a
+        // longer token, a fault of the table's — and the trailer on every byte around the window's end.
         var text = Encoding.Latin1.GetString(Trailed("/Info 6 0 R"));
         var at = text.IndexOf("trailer\n", StringComparison.Ordinal);
         var head = Encoding.Latin1.GetBytes(text[..at]);
-        var tail = Encoding.Latin1.GetBytes("% trailer << /Root 9 0 R >>\n" + text[at..]);
+        var tail = Encoding.Latin1.GetBytes(before + text[at..]);
         var limits = limit == nameof(PdfReaderLimits.MaxIndexEntries)
             ? PdfReaderLimits.Default with { MaxIndexEntries = 4 }
             : PdfReaderLimits.Default with { MaxXRefSectionLength = 128 };
@@ -637,7 +700,7 @@ public class ReaderLimitsTests
 
             var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
             section.TrailerPosition.Should().Be(head.Length + spaces + tail.AsSpan().IndexOf("trailer\n<<"u8), "with {0} spaces", spaces);
-            section.Fault.Should().BeNull("with {0} spaces", spaces);
+            (section.Fault is null).Should().Be(before[0] == '%', "with {0} spaces", spaces);
             document.Trailer.GetRaw(PdfName.Info).Should().BeOfType<PdfReference>("with {0} spaces", spaces)
                 .Which.Id.Should().Be(new PdfObjectId(6));
         }

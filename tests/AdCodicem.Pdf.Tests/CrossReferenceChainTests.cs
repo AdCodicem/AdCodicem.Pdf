@@ -600,6 +600,46 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void Sections_named_a_few_bytes_off_are_looked_for_at_thirty_two_places_a_document_at_most()
+    {
+        // Forty hybrid sections each name their stream three bytes past its header, which is found there, the nearest
+        // place: each search reads a window, and a document's searches stop at the thirty-second, so that the streams of
+        // the eight oldest sections are missing rather than looked for.
+        const int Sections = 40;
+        var text = new StringBuilder("%PDF-1.7\n");
+        var catalog = text.Length;
+        text.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = text.Length;
+        text.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var previous = -1;
+
+        for (var section = 0; section < Sections; section++)
+        {
+            var number = section + 3;
+            var stream = text.Length;
+            var row = Encoding.Latin1.GetString([1, (byte)(stream >> 24), (byte)(stream >> 16), (byte)(stream >> 8), (byte)stream, 0, 0]);
+            text.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Type /XRef /Size {Sections + 3} /W [1 4 2] /Index [{number} 1] /Length 7 >>\nstream\n")
+                .Append(row).Append("\nendstream\nendobj\n");
+            var table = text.Length;
+            text.Append("xref\n0 3\n0000000000 65535 f\r\n")
+                .Append(CultureInfo.InvariantCulture, $"{catalog:D10} 00000 n\r\n{pages:D10} 00000 n\r\n")
+                .Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {Sections + 3} /Root 1 0 R /XRefStm {stream + 3}")
+                .Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}"))
+                .Append(" >>\n");
+            previous = table;
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n");
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text.ToString()));
+
+        var codes = document.Diagnostics.Select(entry => entry.Code).ToList();
+        codes.Count(code => code == PdfDiagnosticCodes.XRefOffsetAdjusted).Should().Be(32);
+        codes.Count(code => code == PdfDiagnosticCodes.XRefSectionMissing).Should().Be(Sections - 32);
+        document.Reader.Structure.Sections.Should().HaveCount(2 * Sections);
+    }
+
+    [Fact]
     public void A_full_index_ends_the_chain_at_the_cross_reference_stream_that_filled_it()
     {
         // The update's stream fills the index at its second row: the original section, which /Prev names, could add

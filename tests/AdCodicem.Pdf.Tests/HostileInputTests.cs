@@ -417,6 +417,24 @@ public class HostileInputTests
         allocated.Should().BeLessThan(625_700_000, "the index holds the guard's entries, and the decoded rows are read once");
     }
 
+    [Fact]
+    public void Blank_lines_among_a_table_s_rows_make_room_for_no_more_rows_than_their_bytes_hold()
+    {
+        // A table's rows are counted by their lines, and a line can be a single byte: two million line feeds among four
+        // rows made room for two million entries, 104 MB, where their bytes hold 110,000 rows of 19 bytes.
+        var text = Encoding.Latin1.GetString(new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "null")
+            .BuildClassic(rootNumber: 1));
+        var file = Encoding.Latin1.GetBytes(text.Replace("trailer\n", new string('\n', 2_000_000) + "trailer\n", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        document.ObjectCount.Should().Be(4);
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(200_000);
+    }
+
     [Theory]
     [InlineData(DeclaredSize.Stream, 8_000_000)]
     [InlineData(DeclaredSize.Stream, 268_435_456)]
@@ -1095,7 +1113,8 @@ public class HostileInputTests
         // Each section's trailer opens an array that never closes, so it runs past the window's edge and on
         // to the end of the file, through every section after it and a megabyte of comment. A cut trailer
         // is read again through a window of its own, which stops at 64 KB: growing the table's window to the
-        // end of the file for each of the hundred sections read about 300 MB.
+        // end of the file for each of the hundred sections read about 300 MB. MaxTrailerLength cuts the newest
+        // trailer, which ends the chain: what lay past the cut, its /Prev among them, is unknown.
         const int Sections = 100;
         var text = new StringBuilder("%PDF-1.7\n");
         var catalog = text.Length;
@@ -1123,16 +1142,17 @@ public class HostileInputTests
         using var document = Measure(() => PdfDocument.Open(source, options: null, ownsSource: false));
 
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
-        source.BytesRead.Should().BeLessThan(Sections * 256L * 1024);
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerCutByLimit.Should().BeTrue();
+        source.BytesRead.Should().BeLessThan(256L * 1024);
     }
 
     [Fact]
     public void Opening_a_chain_of_hybrid_sections_whose_streams_never_close_reads_a_bounded_amount()
     {
         // Every section of the chain names, in /XRefStm, a cross-reference stream of its own whose
-        // dictionary opens an array that never closes and runs on to the end of the file. Each is parsed
-        // through windows that stop at 64 KB, so the chain costs a bounded read per section, not one the
-        // size of the file.
+        // dictionary opens an array that never closes and runs on to the end of the file. The newest is parsed
+        // through windows that stop at 64 KB, a bounded read, not one the size of the file; MaxTrailerLength
+        // cuts it, which ends the chain, an older section's rows standing for none of what it defines.
         const int Sections = 100;
         var text = new StringBuilder("%PDF-1.7\n");
         var catalog = text.Length;
@@ -1168,7 +1188,8 @@ public class HostileInputTests
         using var document = Measure(() => PdfDocument.Open(source, options: null, ownsSource: false));
 
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
-        source.BytesRead.Should().BeLessThan(Sections * 256L * 1024);
+        document.Reader.Structure.Sections.Should().HaveCount(2).And.Subject.Last().CutByLimit.Should().BeTrue();
+        source.BytesRead.Should().BeLessThan(256L * 1024);
     }
 
     [Fact]

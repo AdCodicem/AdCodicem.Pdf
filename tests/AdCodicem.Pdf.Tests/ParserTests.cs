@@ -232,19 +232,22 @@ public class ParserTests
         diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
     }
 
-    [Fact]
-    public void Refuses_to_follow_dictionaries_nested_deeper_than_its_limit()
+    [Theory]
+    [InlineData("0")]
+    [InlineData("[1 [2] 3]")]
+    public void Refuses_to_follow_dictionaries_nested_deeper_than_its_limit(string innermost)
     {
         var diagnostics = new PdfDiagnostics();
         var bytes = Encoding.ASCII.GetBytes(
-            string.Concat(Enumerable.Repeat("<< /A ", 5000)) + "0" + string.Concat(Enumerable.Repeat(" >>", 5000)));
+            string.Concat(Enumerable.Repeat("<< /A ", 5000)) + innermost + string.Concat(Enumerable.Repeat(" >>", 5000)));
         var parser = new PdfObjectParser(bytes, diagnostics: diagnostics);
 
         parser.ParseObject().Should().BeOfType<PdfDictionary>();
 
         diagnostics.Contains(PdfDiagnosticCodes.SyntaxDepthExceeded).Should().BeTrue();
 
-        // The levels past the limit are skipped whole, their delimiters balanced: the parse ends with the input.
+        // The levels past the limit are skipped whole, their delimiters balanced, an array among them included: the parse
+        // ends with the input.
         parser.Position.Should().Be(bytes.Length);
     }
 
