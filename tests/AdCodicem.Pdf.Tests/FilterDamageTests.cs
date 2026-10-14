@@ -504,6 +504,56 @@ public class FilterDamageTests
         }));
     }
 
+    [Fact]
+    public void A_chain_of_filters_decodes_to_its_data_or_to_the_start_of_it_with_the_guard_alone_reported()
+    {
+        // Any chain of the filters the library decodes, over any data, under any bound: what comes back is the data,
+        // whole and with nothing reported when the bound holds every filter's output — the filters before the last
+        // together, the last alone —, and otherwise the start of it, with the guard reported once and nothing the reader
+        // cut taken for damage (#166, #199).
+        string[] names = ["FlateDecode", "LZWDecode", "ASCII85Decode", "ASCIIHexDecode", "RunLengthDecode"];
+        var cases =
+            from length in Gen.Choose(0, 600)
+            from text in Gen.Elements(true, false)
+            from chain in Gen.Choose(1, 4).SelectMany(count => Gen.ArrayOf(Gen.Elements(names), count))
+            from bound in Gen.Frequency((3, Gen.Choose(1, 3_000)), (1, Gen.Constant(1 << 20)))
+            select (length, text, chain, bound);
+
+        Check.One(Properties(300), Prop.ForAll(cases.ToArbitrary(), c =>
+        {
+            var plain = c.text ? Text(c.length) : RandomBytes(c.length);
+            var layers = new List<byte[]> { plain };
+
+            for (var step = c.chain.Length - 1; step >= 0; step--)
+            {
+                var inner = layers[^1];
+                layers.Add(c.chain[step] switch
+                {
+                    "FlateDecode" => Compress(inner, CompressionLevel.Optimal),
+                    "LZWDecode" => LzwEncode(inner),
+                    _ => Encode(inner, c.chain[step]),
+                });
+            }
+
+            // layers[^1] is the data as written; what the filters before the last pass along are the layers between.
+            var passed = 0L;
+
+            for (var layer = 1; layer < layers.Count - 1; layer++)
+            {
+                passed += layers[layer].Length;
+            }
+
+            var diagnostics = new PdfDiagnostics();
+            var decoded = DecodeChainWithin(layers[^1], c.bound, diagnostics, [.. c.chain.Select(PdfName.Get)]).ToArray();
+            var codes = diagnostics.Select(d => d.Code).ToArray();
+            var holds = passed <= c.bound && plain.Length <= c.bound;
+
+            return holds
+                ? decoded.AsSpan().SequenceEqual(plain) && codes.Length == 0
+                : plain.AsSpan().StartsWith(decoded) && codes.SequenceEqual([PdfDiagnosticCodes.LimitDecodedStream]);
+        }));
+    }
+
     [Theory]
     [InlineData("checksum")]
     [InlineData("corrupt")]

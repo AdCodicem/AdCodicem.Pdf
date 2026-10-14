@@ -7,7 +7,8 @@ using BenchmarkDotNet.Attributes;
 namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
-/// Measures what decoding a Flate content stream costs, whole, cut short, and damaged.
+/// Measures what decoding a Flate content stream costs, whole, cut short, and damaged; and what a chain of two filters
+/// costs, its parameters read before its data.
 /// </summary>
 /// <remarks>
 /// A whole stream is what nearly every document holds, and noticing a lost tail or a fault must cost it nothing. A
@@ -28,6 +29,7 @@ public class FilterBenchmarks
     private PdfStream _withoutTail = null!;
     private PdfStream _wrongChecksum = null!;
     private PdfStream _corrupt = null!;
+    private PdfStream _chain = null!;
 
     [Params(64 * 1024, 4 * 1024 * 1024)]
     public int DecodedLength { get; set; }
@@ -45,6 +47,15 @@ public class FilterBenchmarks
         wrongChecksum[^1] ^= 0xFF;
         _wrongChecksum = FlateStream(wrongChecksum);
         _corrupt = FlateStream(CorruptHalfway(content));
+
+        // ReportLab's default, the chain the corpus holds most: ASCII85 over Flate, here with the parameters a predictor
+        // would take, so that every value a chain's steps read is read before its data.
+        var chain = new PdfDictionary();
+        chain.Set(PdfName.Filter, new PdfArray([PdfName.ASCII85Decode, PdfName.FlateDecode]));
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(1));
+        chain.Set(PdfName.DecodeParms, new PdfArray([PdfNull.Instance, parameters]));
+        _chain = new PdfStream(chain, PdfStreamData.FromMemory(Ascii85(compressed)));
     }
 
     [Benchmark(Baseline = true, Description = "Decode a whole Flate stream")]
@@ -61,6 +72,37 @@ public class FilterBenchmarks
 
     [Benchmark(Description = "Decode a Flate stream that turns corrupt halfway")]
     public int Corrupt() => _corrupt.Decode(new PdfDiagnostics()).Length;
+
+    [Benchmark(Description = "Decode a chain of ASCII85 and Flate")]
+    public int Chain() => _chain.Decode(new PdfDiagnostics()).Length;
+
+    private static byte[] Ascii85(byte[] data)
+    {
+        var encoded = new List<byte>((data.Length * 5 / 4) + 8);
+        Span<byte> digits = stackalloc byte[5];
+
+        for (var start = 0; start < data.Length; start += 4)
+        {
+            var count = Math.Min(4, data.Length - start);
+            var tuple = 0u;
+
+            for (var i = 0; i < 4; i++)
+            {
+                tuple = (tuple << 8) | (i < count ? data[start + i] : 0u);
+            }
+
+            for (var i = 4; i >= 0; i--)
+            {
+                digits[i] = (byte)('!' + (tuple % 85));
+                tuple /= 85;
+            }
+
+            encoded.AddRange(digits[..(count + 1)]);
+        }
+
+        encoded.AddRange("~>"u8);
+        return [.. encoded];
+    }
 
     private static PdfStream FlateStream(ReadOnlyMemory<byte> data)
     {
