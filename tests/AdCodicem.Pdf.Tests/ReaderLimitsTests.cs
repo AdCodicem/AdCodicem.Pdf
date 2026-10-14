@@ -1039,25 +1039,25 @@ public class ReaderLimitsTests
     }
 
     [Fact]
-    public void The_room_a_chain_makes_for_its_newest_size_stays_within_the_entries_the_index_may_take()
+    public void A_newest_size_makes_room_for_no_object_the_sections_hold_no_row_for()
     {
-        // The chain's newest /Size, once read, sizes the index for the objects the older sections index with the newest,
-        // as many as the file's 20 KB hold rows of: under a guard of ten entries, for ten.
+        // The update claims five million objects, and 2 MB of the file are a string: room was made for as many objects as
+        // the file's bytes hold rows of, 100,000, for a document of four. A /Size numbers objects, sparse as they may be,
+        // and holds none: room is made for the rows the sections hold.
         var original = new TestPdfBuilder()
             .WithObject(1, Catalog)
             .WithObject(2, Pages)
-            .WithObject(3, $"({new string('x', 20 * 1024)})")
+            .WithObject(3, $"({new string('x', 2 * 1024 * 1024)})")
             .BuildClassic(rootNumber: 1);
         var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, [(1, Catalog)]));
         var newest = text.LastIndexOf("/Size 4 ", StringComparison.Ordinal);
-        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, newest), "/Size 100000 ", text.AsSpan(newest + "/Size 4 ".Length)));
-        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 10 };
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, newest), "/Size 5000000 ", text.AsSpan(newest + "/Size 4 ".Length)));
 
-        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        using var document = PdfDocument.Open(file);
 
         document.ObjectCount.Should().Be(4);
         document.Diagnostics.Should().BeEmpty();
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(32, "room is made for the ten entries the guard lets the index take");
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(64, "the sections hold four rows");
     }
 
     /// <summary>Object 4, an array of three numbers without its endobj, padded to be longer than the sound document's objects.</summary>
