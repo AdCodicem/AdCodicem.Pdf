@@ -11,9 +11,9 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// <see cref="PdfFileReader.ChainIndex"/> serves. An index holds 52 bytes a slot of its map. A section makes room for the
 /// rows it holds before they are read, for no more objects than the newest section's <c>/Size</c> numbers, to the next
 /// prime in .NET's table (<see cref="Reserve"/>): 52 to 63 bytes an object, so a hundred thousand objects hold 5 to 6 MB
-/// whatever the objects themselves weigh. A map left to grow — by a rebuild, rows written shorter than a classic table's,
-/// or a chain of many like sections, each making room in turn — doubles, holding 52 to 108 bytes an object and
-/// allocating about as much again on the way. The copy is sized to the count, not grown: about 60 bytes an object more.
+/// whatever the objects themselves weigh. A map left to grow — by a rebuild, or rows written shorter than a classic
+/// table's — doubles, holding 52 to 108 bytes an object and allocating about as much again on the way. The copy is sized
+/// to the count, not grown: about 60 bytes an object more.
 /// </remarks>
 internal sealed class PdfXRefTable
 {
@@ -34,6 +34,9 @@ internal sealed class PdfXRefTable
 
     /// <summary>Gets the number of indexed objects.</summary>
     public int Count => _entries.Count;
+
+    /// <summary>Gets how many entries the table holds room for.</summary>
+    public int Capacity => _entries.EnsureCapacity(0);
 
     /// <summary>Gets the indexed object numbers with their entries.</summary>
     public Dictionary<int, XRefEntry> Entries => _entries;
@@ -78,7 +81,7 @@ internal sealed class PdfXRefTable
     /// </remarks>
     public void Reserve(int count, int most)
     {
-        var capacity = _entries.EnsureCapacity(0);
+        var capacity = Capacity;
         var needed = (int)Math.Min((long)_entries.Count + count, most);
 
         if (needed > capacity)

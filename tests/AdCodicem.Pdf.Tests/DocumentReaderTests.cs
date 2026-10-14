@@ -2059,10 +2059,10 @@ public class DocumentReaderTests
     {
         // Each section makes room for its rows, and never by less than the map holds already: room made for each in turn
         // would resize the map at every section, and copy it whole each time past the largest prime .NET keeps in its
-        // table. A thousand sections of 300 rows land where doubling from 353 slots lands, capped by the newest /Size,
-        // as growth from 3 landed elsewhere: 44,621,888 bytes allocated, measured twice on 2026-10-14 after a warm-up,
-        // where growth allocated 33,196,448; on sections of a thousand rows, room made for each in turn allocated 2.6
-        // times what growth did. The budget is 5 % over.
+        // table. Once a doubling comes within a doubling of what the newest /Size numbers, room is made for it at once.
+        // A thousand sections of 300 rows: 30,562,544 bytes allocated, measured twice on 2026-10-14 after a warm-up,
+        // where growth allocated 33,196,448, doubling alone 44,621,888, and, on sections of a thousand rows, room made for
+        // each in turn 2.6 times what growth did. The budget is 5 % over.
         var file = ChainOfSections(sections: 1000, rows: 300);
         using (PdfDocument.Open(file))
         {
@@ -2079,8 +2079,23 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Should().BeEmpty();
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
-        allocated.Should().BeLessThan(46_860_000, "the map doubles at most, section after section");
+        allocated.Should().BeLessThan(32_100_000, "the map doubles at most, section after section, and lands on the newest /Size");
         elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void A_newest_size_far_past_the_room_made_so_far_is_not_made_room_for_at_once()
+    {
+        // The newest section's /Size claims 100,000 objects; its rows and the older section's hold 2,000. Room is made for
+        // the size at once only when a doubling would come within a doubling of it, four times what the map held.
+        var text = Encoding.Latin1.GetString(ChainOfSections(sections: 2, rows: 1000));
+        var newest = text.LastIndexOf("/Size 2000 ", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, newest), "/Size 100000 ", text.AsSpan(newest + "/Size 2000 ".Length)));
+
+        using var document = PdfDocument.Open(file);
+
+        document.ObjectCount.Should().Be(2000);
+        document.Reader.Index.Capacity.Should().BeLessThan(4000, "the map doubles from the newest section's 1,103 slots");
     }
 
     [Fact]

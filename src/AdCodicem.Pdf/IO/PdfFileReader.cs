@@ -3182,16 +3182,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// highest object number (ISO 32000-1, 7.5.5), which an older section's rows, superseded, add nothing to. The caller
     /// bounds the rows by those the section holds: a count the file declares is a claim.
     /// </summary>
+    /// <remarks>
+    /// A chain of many like sections makes room section after section, the map doubling at least each time it must grow.
+    /// Once a doubling would bring it within a doubling of what the <c>/Size</c> numbers, room is made for that at once:
+    /// the last step lands on the size, rather than past it, and makes room for no more than four times what the map held,
+    /// which the rows read paid for.
+    /// </remarks>
     private void ReserveIndex(long rows)
     {
         var most = _guard.Bound(PdfLimit.IndexEntries);
+        var room = (int)Math.Min(rows, IndexRoom);
 
         if (_xref.Trailer.GetInteger(PdfName.Size) is { } size)
         {
             most = (int)Math.Min(most, Math.Max(size, _xref.Count));
+
+            if ((long)_xref.Count + room > _xref.Capacity && 4L * _xref.Capacity >= most)
+            {
+                room = most - _xref.Count;
+            }
         }
 
-        _xref.Reserve((int)Math.Min(rows, IndexRoom), most);
+        _xref.Reserve(room, most);
     }
 
     /// <summary>

@@ -32,9 +32,10 @@ cross-reference section makes room for the rows it holds before it reads them, u
 table past the count, and for no more objects than the newest section's `/Size` numbers, since an older section's rows
 for numbers a newer one gave add nothing. A count the file declares is its claim, so room is made for no more rows than
 a stream's data holds, or than a classic table's bytes hold at 20 bytes a row up to the first byte no row holds, which
-the table is read in a window large enough to reach. A map left to grow — by a rebuild, rows written shorter than that,
-or a chain of many like sections, each making room in turn — doubles as it grows, and allocates 100 to 210 bytes an
-object, by where the count falls against its steps.
+the table is read in a window large enough to reach. A chain of many like sections makes room section after section,
+doubling the map at least each time it must grow, and for the whole `/Size` once a doubling comes within a doubling of
+it. A map left to grow — by a rebuild, or rows written shorter than 20 bytes — doubles as it grows, and allocates 100 to
+210 bytes an object, by where the count falls against its steps.
 A cross-reference stream adds the decoding of its rows: 7 bytes an object when they are written as they are, up to
 about 42 when Flate stores them without compressing, compressed rows in between. Opening also decodes the object
 stream that holds the catalog, when one does, and that costs what the stream holds: a producer that packs every object
@@ -121,11 +122,10 @@ hold.
 | Indexing and walking the page tree | real 1000-page file | — | 3.2 MB |
 | Indexing a classic table | generated, 300,000 objects | — | 16.9 MB |
 | Indexing a cross-reference stream whose rows Flate stores | generated, 300,000 objects | — | 29.5 MB |
-| Indexing a chain of a thousand classic sections | generated, 300,000 objects | — | 44.6 MB |
+| Indexing a chain of a thousand classic sections | generated, 300,000 objects | — | 30.6 MB |
 
 The first two rows are BenchmarkDotNet's. The last four are measured in the test suite, in Release, after a first
 reading — the journal's on 2026-10-02, the generated indexes' on 2026-10-14 —, and enforced as budgets in CI, so that
-an allocation regression past one fails the build: 4 MB for the journal, 17.7 MB, 31.0 MB and 46.9 MB for the generated
-indexes, 5 % over their figures. A map sized before it is filled allocates half what growing it did, 31.1 MB and
-43.1 MB; a chain of many like sections lands where doubling lands, as growth landed elsewhere, at 33.2 MB here. The
-stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.
+an allocation regression past one fails the build: 4 MB for the journal, 17.7 MB, 31.0 MB and 32.1 MB for the generated
+indexes, 5 % over their figures. A map sized before it is filled allocates about half what growing it did: 31.1 MB,
+43.1 MB and 33.2 MB. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.
