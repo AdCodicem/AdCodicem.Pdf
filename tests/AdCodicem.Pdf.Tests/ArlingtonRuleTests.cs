@@ -138,6 +138,54 @@ public class ArlingtonRuleTests
         finding.Message.Should().Be("Object 1 0, a Catalog in the Arlington model, has /Outlines as a stream, where the model wants a dictionary.");
     }
 
+    [Theory]
+    [InlineData("/Filter /FlateDecode /DecodeParms << /Predictor 12.0 /Columns 3.0 >>", "FilterFlateDecode", 2)]
+    [InlineData("/Filter /FlateDecode /DecodeParms << /Predictor (twelve) /Columns 3 >>", "FilterFlateDecode", 1)]
+    [InlineData("/Filter [/FlateDecode] /DecodeParms [<< /Predictor 12.0 /Columns 3.0 >>]", "FilterFlateDecode", 2)]
+    [InlineData("/Filter /FlateDecode /DecodeParms [<< /Predictor 12.0 >>]", "FilterFlateDecode", 1)]
+    [InlineData("/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms [null << /Predictor /Twelve >>]", "FilterFlateDecode", 1)]
+    [InlineData("/Filter /LZWDecode /DecodeParms << /Predictor 12.0 >>", "FilterLZWDecode", 1)]
+    [InlineData("/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 3 >>", "", 0)]
+    [InlineData("/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms << /Predictor 12.0 >>", "", 0)]
+    [InlineData("/Filter /ASCIIHexDecode /DecodeParms << /Predictor 12.0 >>", "", 0)]
+    [InlineData("/Filter /Fl /DecodeParms << /Predictor 12.0 >>", "", 0)]
+    [InlineData("/Filter [5 /FlateDecode] /DecodeParms [<< /Predictor 12.0 >> << /Predictor 1 >>]", "", 0)]
+    [InlineData("/DecodeParms << /Predictor 12.0 >>", "", 0)]
+    public void A_stream_s_filter_parameters_are_the_type_of_the_filter_at_their_place(string entries, string type, int findings)
+    {
+        // Flate's parameters and LZW's share every key but /EarlyChange: what a dictionary holds cannot tell them apart, and
+        // two candidates that score alike leave it unchecked. The filter at the same place says whose parameters they
+        // are; where none does — a dictionary beside several filters, a filter that takes none, one the model knows only by
+        // its full name, an element that names none, or no filter at all —, they stay unchecked (#219).
+        var report = Validate(Pdf(
+            Catalog,
+            Root,
+            Page.Replace(">> >>", ">> /Contents 4 0 R >>", StringComparison.Ordinal),
+            $"<< {entries} /Length 0 >>\nstream\n\nendstream"));
+
+        var wrong = report.Findings
+            .Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong && finding.Message.Contains("/DecodeParms", StringComparison.Ordinal))
+            .ToArray();
+        wrong.Should().HaveCount(findings, string.Join("; ", report.Findings));
+        wrong.Should().OnlyContain(finding => finding.Message.Contains($", a {type} in the Arlington model,", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Filter_parameters_typed_by_their_filter_are_counted_and_tie_no_more()
+    {
+        var file = Pdf(
+            Catalog,
+            Root,
+            Page.Replace(">> >>", ">> /Contents 4 0 R >>", StringComparison.Ordinal),
+            "<< /Filter [/FlateDecode /LZWDecode] /DecodeParms [<< /Predictor 12 /Columns 3 >> 5 0 R] /Length 0 >>\nstream\n\nendstream",
+            "<< /Predictor 12 /Columns 3 >>");
+
+        var walk = Walk(file);
+
+        walk.ChosenByFilter.Should().Be(2);
+        walk.Ties.Should().Be(0);
+    }
+
     [Fact]
     public void A_value_is_judged_by_its_class_never_converted()
     {
