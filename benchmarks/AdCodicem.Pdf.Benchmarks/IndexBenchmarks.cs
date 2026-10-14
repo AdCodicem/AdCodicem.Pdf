@@ -15,9 +15,9 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// A section makes room in the index for the rows it holds before it reads them, rather than letting the map double as it
 /// grows, and for no more than the newest section's <c>/Size</c> numbers once it is read: an older section's rows for
 /// numbers a newer one gave are superseded, and add nothing. What opening allocates is the map, sized once for the first
-/// four shapes. A chain of many like sections makes room section after section, never by less than the map holds: it lands
-/// where doubling from its first section's rows lands, as growth from 3 landed elsewhere. The objects are not read: opening
-/// reads the index and the catalog.
+/// four shapes. A chain of many like sections makes room section after section, never by less than the map holds, and
+/// for the whole <c>/Size</c> once a doubling comes within a doubling of it. The objects are not read: opening reads the
+/// index and the catalog.
 /// </remarks>
 [MemoryDiagnoser]
 public class IndexBenchmarks
