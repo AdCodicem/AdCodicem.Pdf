@@ -47,6 +47,33 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void A_guard_reached_is_counted_though_the_capacity_drops_its_report_and_follows_it_when_moved_or_rolled_back()
+    {
+        // The reader tells a guard's cut from the file's damage by the guard's report: once the capacity was reached, the
+        // report was dropped and the cut taken for damage.
+        var pending = new PdfDiagnostics { Capacity = 0 };
+        var target = new PdfDiagnostics { Capacity = 0 };
+        var mark = pending.GetMark();
+
+        pending.ReachLimit(PdfDiagnosticCodes.LimitDecodedStream, "Cut.", 7);
+        pending.Warn("other", "No guard.");
+
+        pending.Count.Should().Be(0);
+        pending.SuppressedCount.Should().Be(2);
+        pending.LimitsReached.Should().Be(1);
+
+        var kept = pending.GetMark();
+        pending.ReachLimit(PdfDiagnosticCodes.LimitObject, "Dropped with its parse.", 9);
+        pending.RollBack(kept);
+        pending.LimitsReached.Should().Be(1);
+
+        pending.MoveTo(target, mark, 0, static (_, _) => false);
+        pending.LimitsReached.Should().Be(0);
+        target.LimitsReached.Should().Be(1);
+        target.SuppressedCount.Should().Be(2);
+    }
+
+    [Fact]
     public void A_nested_mark_keeps_or_drops_only_what_came_after_it()
     {
         // A nested load parses while an outer parse holds entries of its own: it moves or drops its own,

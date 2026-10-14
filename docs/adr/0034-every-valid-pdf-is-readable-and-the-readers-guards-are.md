@@ -99,9 +99,10 @@ guard: active by default, reported when it is reached, and lifted by an option.
   `MaxIndexEntries` index read as null, and the validator treats them as unknown rather than missing, until the
   property is raised: the index is not rebuilt for them, which turned a sound file into an `xref.rebuilt` error
   (ADR 45) and could lose what the chain had read. A classic table cut by its length keeps its trailer. The chain ends
-  at a cut — a table's, a stream's rows, a trailer cut before it could name an older section —, since an older section
-  would stand for what the cut left out. A rebuild that damage forces on such a chain keeps the entries the chain read;
-  one the chain cannot do without — a guard that leaves it no section — runs as before.
+  at a cut — a table's, a stream's rows, a section or a trailer cut wherever the cut falls —, since an older section,
+  or its trailer, would stand for what the cut left out; and a section a guard cut is where it was named, not looked for
+  near there. A rebuild that damage forces on such a chain keeps the entries the chain read; one the chain cannot do
+  without — a guard that leaves it no section — runs as before.
 - **Or it throws.** `PdfReaderOptions.ThrowOnLimit`, false by default, turns every guard reached into a
   `PdfLimitExceededException`, a `PdfException` carrying the code and the name of the property: from
   `PdfDocument.Open` when it is reached while opening, from `GetObject` or `Decode` when it is reached later.

@@ -558,6 +558,47 @@ public class CrossReferenceChainTests
         document.WasRepaired.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("array")]
+    [InlineData("dictionary")]
+    [InlineData("image")]
+    [InlineData("stream")]
+    public void An_object_a_guard_cut_where_prev_names_a_section_is_a_section_missing_when_it_cannot_be_one(string kind)
+    {
+        // The update's /Prev names object 3, which runs past MaxTrailerLength: an array, a dictionary of another type, or a
+        // stream whose dictionary was read whole is no cross-reference stream, cut or not. It was taken for one the guard
+        // cut before it declared itself, and what only the original section indexes read as unknown, with no rebuild.
+        var pad = new string('x', 70 * 1024);
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, kind switch
+            {
+                "array" => "[" + string.Concat(Enumerable.Repeat("0 ", 36 * 1024)) + "]",
+                "dictionary" => $"<< /Type /Annot /Pad ({pad}) >>",
+                "image" => $"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /Length 4 0 R >>\nstream\n{pad}\nendstream",
+                _ => $"<< /Length 4 0 R >>\nstream\n{pad}\nendstream",
+            })
+            .WithObject(4, (pad.Length + 1).ToString(CultureInfo.InvariantCulture));
+        var original = builder.BuildClassic(rootNumber: 1);
+        var updated = Encoding.Latin1.GetString(
+            TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, [(1, "<< /Type /Catalog /Pages 2 0 R >>")]));
+        var prev = updated.LastIndexOf("/Prev ", StringComparison.Ordinal) + "/Prev ".Length;
+        var file = Encoding.Latin1.GetBytes(string.Concat(
+            updated[..prev],
+            updated.IndexOf("3 0 obj", StringComparison.Ordinal).ToString(CultureInfo.InvariantCulture),
+            updated[updated.IndexOf(' ', prev)..]));
+
+        using var document = PdfDocument.Open(file);
+
+        var named = document.Reader.Structure.Sections.Should().HaveCount(2).And.Subject.Last();
+        named.CutByLimit.Should().BeFalse();
+        named.State.Should().Be(XRefSectionState.NotFound);
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.XRefSectionMissing);
+        document.GetObject(new PdfObjectId(2)).Should().BeOfType<PdfDictionary>();
+        document.WasRepaired.Should().BeTrue();
+    }
+
     [Fact]
     public void A_full_index_ends_the_chain_at_the_cross_reference_stream_that_filled_it()
     {
@@ -575,15 +616,22 @@ public class CrossReferenceChainTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void An_older_section_does_not_stand_for_what_a_cross_reference_stream_s_cut_rows_define(bool hybrid)
+    [InlineData(false, 1000)]
+    [InlineData(true, 1000)]
+    [InlineData(false, 0)]
+    [InlineData(true, 0)]
+    public void An_older_section_does_not_stand_for_what_a_cross_reference_stream_s_cut_rows_define(bool hybrid, int capacity)
     {
         // The update redefines object 3 in a cross-reference stream whose rows MaxDecodedStreamLength cuts before 3's: the
         // original section's row for it would serve the revision the update replaced. The chain ends at the cut, a hybrid
-        // file's stream included, and object 3 reads as null until the guard is lifted.
+        // file's stream included, and object 3 reads as null until the guard is lifted. The cut was known by its report,
+        // and taken for the file's damage once the diagnostics were full.
         var file = UpdatedThroughAStream(hybrid);
-        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 7 } };
+        var options = PdfReaderOptions.Default with
+        {
+            Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 7 },
+            DiagnosticCapacity = capacity,
+        };
 
         using (var document = PdfDocument.Open(file, options))
         {
@@ -594,6 +642,106 @@ public class CrossReferenceChainTests
 
         using var lifted = PdfDocument.Open(file);
         Text(lifted, 3).Should().Be("new three");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_cross_reference_stream_a_guard_cut_is_not_looked_for_near_where_it_was_named(bool hybrid)
+    {
+        // MaxTrailerLength cuts the update's stream before its /Type, where the table that names a hybrid file's stream, or
+        // a later update's /Prev, names it: the original's table, or the naming one, within reach of it, stood for it, so
+        // that the chain went on and object 3 read as the revision the update replaced. The section is where it was named,
+        // and the guard's.
+        var file = UpdatedThroughAStream(hybrid, $" /Pad ({new string('x', 70 * 1024)})");
+
+        if (!hybrid)
+        {
+            file = TestPdfBuilder.AppendIncrementalUpdate(file, rootNumber: 1, [(2, "<< /Type /Pages /Kids [] /Count 0 >>")]);
+        }
+
+        using (var document = PdfDocument.Open(file))
+        {
+            document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+            document.Reader.GetPresence(3).Should().Be(ObjectPresence.Unindexed);
+            document.WasRepaired.Should().BeFalse();
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer);
+            document.Reader.Structure.Sections.Should().ContainSingle(section => section.CutByLimit)
+                .Which.State.Should().Be(XRefSectionState.Malformed);
+        }
+
+        using var lifted = PdfDocument.Open(file, PdfReaderOptions.Default with
+        {
+            Limits = PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 },
+        });
+        Text(lifted, 3).Should().Be("new three");
+    }
+
+    [Fact]
+    public void A_stream_a_guard_cut_where_prev_names_it_is_not_found_again_in_the_table_that_names_it()
+    {
+        // The original is a cross-reference stream, and MaxTrailerLength cuts its dictionary: the update's table, within
+        // reach of it, was taken for it, which made a loop of the chain, a rebuild, and an error of the file's.
+        var written = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildWithXRefStream(rootNumber: 1);
+        var file = TestPdfBuilder.AppendIncrementalUpdate(written, rootNumber: 1, [(1, "<< /Type /Catalog /Pages 2 0 R >>")]);
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 40 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.GetPresence(2).Should().Be(ObjectPresence.Unindexed);
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer);
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId)
+            .Should().NotContain([PdfValidationRuleIds.XRefChainLoop, PdfValidationRuleIds.XRefSectionShifted]);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_trailer_a_guard_cut_past_its_prev_ends_the_chain(bool hybrid)
+    {
+        // MaxTrailerLength cuts the newest trailer past its /Prev: the /XRefStm, or the /Root, past the cut is unknown,
+        // and the chain went on to the original, whose rows and trailer stood for what the cut hid.
+        string file;
+
+        if (hybrid)
+        {
+            var text = Encoding.Latin1.GetString(UpdatedThroughAStream(hybrid: true));
+            file = text.Insert(text.LastIndexOf(" /XRefStm", StringComparison.Ordinal), $" /Pad ({new string('x', 70 * 1024)})");
+        }
+        else
+        {
+            var original = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Lang (old) >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .BuildClassic(rootNumber: 1);
+            var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(
+                original, rootNumber: 7, [(7, "<< /Type /Catalog /Pages 2 0 R /Lang (new) >>")]));
+            var root = text.LastIndexOf(" /Root 7 0 R", StringComparison.Ordinal);
+            file = text.Remove(root, " /Root 7 0 R".Length)
+                .Insert(text.IndexOf(" >>", root, StringComparison.Ordinal) - " /Root 7 0 R".Length, $" /Pad ({new string('x', 70 * 1024)}) /Root 7 0 R");
+        }
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(file));
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerCutByLimit.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+
+        if (hybrid)
+        {
+            document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+            document.Reader.GetPresence(3).Should().Be(ObjectPresence.Unindexed);
+        }
+        else
+        {
+            // The catalog is found among the objects the newest section indexes, not taken from the original's trailer.
+            document.Catalog.Required().GetRaw(PdfName.Get("Lang")).Should().BeOfType<PdfString>()
+                .Which.ToText().Should().Be("new");
+        }
     }
 
     [Fact]
@@ -935,9 +1083,9 @@ public class CrossReferenceChainTests
     /// The catalog, an empty page tree and object 3, <c>(old three)</c>, in a classic table; then an update that redefines
     /// object 3, <c>(new three)</c>, in a cross-reference stream, object 4, whose Flate rows are 4's and then 3's, seven
     /// bytes each. The stream is the update's section, or, when <paramref name="hybrid"/>, the /XRefStm of a classic table
-    /// that holds only row 0.
+    /// that holds only row 0. Its dictionary starts with <paramref name="pad"/>, when one is given.
     /// </summary>
-    private static byte[] UpdatedThroughAStream(bool hybrid)
+    private static byte[] UpdatedThroughAStream(bool hybrid, string pad = "")
     {
         var original = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -963,7 +1111,7 @@ public class CrossReferenceChainTests
         var link = hybrid ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous} /Root 1 0 R");
         Append(string.Create(
             CultureInfo.InvariantCulture,
-            $"4 0 obj\n<< /Type /XRef /Size 5 /W [1 4 2] /Index [4 1 3 1]{link} /Filter /FlateDecode /Length {compressed.Length} >>\nstream\n"));
+            $"4 0 obj\n<<{pad} /Type /XRef /Size 5 /W [1 4 2] /Index [4 1 3 1]{link} /Filter /FlateDecode /Length {compressed.Length} >>\nstream\n"));
         file.AddRange(compressed.ToArray());
         Append("\nendstream\nendobj\n");
 

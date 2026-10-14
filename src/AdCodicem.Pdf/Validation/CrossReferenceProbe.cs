@@ -230,9 +230,9 @@ internal sealed class CrossReferenceProbe
 
         if (reader.ChainIndex?.TryGet(stream, out var entry) != true || entry.Kind == XRefEntryKind.Free)
         {
-            // An object stream one of the reader's limits left out of the index is unknown, and what it holds unchecked:
-            // xref.checked-in-part says the index was stopped short.
-            if (reader.GetPresence(stream) == ObjectPresence.Unindexed)
+            // An object stream one of the reader's limits left out of the chain's index is unknown, and what it holds
+            // unchecked, though a rebuild found it since: xref.checked-in-part says the index was stopped short.
+            if (reader.ChainStoppedByGuard)
             {
                 return;
             }

@@ -100,7 +100,9 @@ public sealed record PdfReaderLimits
     /// A classic trailer that ends within the window its cross-reference table was read through is read whole,
     /// whatever its length: the guard bounds how far the reader follows one past that window. A value above
     /// <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
-    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitTrailer"/>.
+    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitTrailer"/>, and ends the cross-reference chain at the section cut: an
+    /// older section, or a key, past the cut is unknown, and what only older sections index reads as null until the
+    /// limit is raised.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxTrailerLength { get; init => field = Length(value); } = 64 * 1024;

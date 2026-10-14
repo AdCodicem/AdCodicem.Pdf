@@ -51,8 +51,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   numbers past `MaxIndexEntries` — reads as null until you raise the limit. The reader does not rebuild the index for
   it, since the file may be sound, and the validator reports it as unknown, under `xref.checked-in-part`, rather than
   missing. A classic table cut by its length, or whose rows run past a full index, keeps its trailer: the document's
-  catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut before an
-  older section could be named.
+  catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut: a `/Prev`,
+  an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. A section a limit cut is
+  where it was named, and is not looked for near there, as a section that is not there is.
 - A stream is reported each time it is decoded past the bound — in the diagnostics you pass to `Decode`, or in the
   document's own when you pass none.
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
