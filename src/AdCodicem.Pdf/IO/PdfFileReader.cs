@@ -41,6 +41,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal const int XRefProbeLength = 32;
 
     /// <summary>
+    /// The length of a classic table's row, its end of line included (ISO 32000-1, 7.5.4): the index makes room for no
+    /// more rows than a table's bytes hold at this length. A row written shorter takes room as the map grows.
+    /// </summary>
+    private const int XRefRowLength = 20;
+
+    /// <summary>
     /// How much of the file's start is searched for <c>%PDF-</c>. Not a guard a valid file reaches: ISO 32000-1
     /// (7.5.2) puts the header on the file's first line. A file that has none within these bytes is reported as
     /// lacking one, under <see cref="PdfDiagnosticCodes.HeaderMissing"/>.
@@ -1670,6 +1676,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 break;
             }
 
+            if (sections == 1 && (previous >= 0 || hybrid >= 0))
+            {
+                ReserveChain();
+            }
+
             if (hybrid >= 0 && visited.Add(hybrid))
             {
                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
@@ -1994,6 +2005,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var maxWindow = _guard.Bound(PdfLimit.XRefSectionLength);
         var windowSize = Math.Min(XRefWindow, maxWindow);
 
+        // Where the last subsection the index made room for starts: a larger window reads the subsections again.
+        var reservedThrough = -1;
+
         while (true)
         {
             using var window = _source.GetWindow(absolute, windowSize);
@@ -2080,6 +2094,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         CultureInfo.InvariantCulture,
                         $"the subsection header at offset {absolute + token.Start} numbers its rows past object {PdfObjectId.MaxNumber}");
                     return false;
+                }
+
+                // The index makes room for the subsection's rows before they are read, once, and for no more than the bytes
+                // left of the section hold: the count is the file's claim.
+                if (token.Start > reservedThrough)
+                {
+                    reservedThrough = token.Start;
+                    ReserveIndex(Math.Min(countToken.Integer, (Math.Min(_source.Length - absolute, maxWindow) - countToken.End) / XRefRowLength));
                 }
 
                 // A count is bounded by what it numbers, and its rows by the window, which MaxXRefSectionLength bounds: the
@@ -2523,13 +2545,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var row = rowLength <= data.Length ? (int)rowLength : 0;
         var held = row == 0 ? 0 : data.Length / row;
         var position = 0;
-        long declared = 0;
+        long declared = size.GetValueOrDefault();
+
+        if (index is not null)
+        {
+            // Each count is within the object numbers, and an /Index holds no more pairs than a trailer: their sum is
+            // within a long.
+            declared = 0;
+
+            for (var i = 1; i < subsections.Length; i += 2)
+            {
+                declared += subsections[i];
+            }
+        }
+
+        // A declared count is the file's claim: the index makes room for no more rows than the data holds.
+        ReserveIndex(Math.Min(declared, held));
 
         if (index is null)
         {
             // Rows past the data are not read, so a /Size past an int numbers no row past one: the data holds fewer.
-            declared = size.GetValueOrDefault();
-
             if (row > 0)
             {
                 ReadXRefStreamRows(data, ref position, fieldWidths, row, 0, (int)Math.Min(declared, int.MaxValue), section);
@@ -2542,11 +2577,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             for (var i = 0; i < subsections.Length && row > 0; i += 2)
             {
                 ReadXRefStreamRows(data, ref position, fieldWidths, row, (int)subsections[i], (int)Math.Min(subsections[i + 1], int.MaxValue), section);
-            }
-
-            for (var i = 1; i < subsections.Length; i += 2)
-            {
-                declared += subsections[i];
             }
         }
 
@@ -3009,6 +3039,36 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// with it: no number is in both. A row or a header for a number the index holds already takes no room.
     /// </summary>
     private bool IndexHasRoom => _xref.Count + (_refusedNumbers?.Count ?? 0) < _guard.Bound(PdfLimit.IndexEntries);
+
+    /// <summary>
+    /// Makes room in the index for the <paramref name="rows"/> a section is about to give, so that the map is sized once
+    /// rather than grown by doubling, and for no more numbers than <see cref="PdfReaderLimits.MaxIndexEntries"/> lets it
+    /// take from here on. The caller bounds the rows by those the section holds: a count the file declares is a claim.
+    /// </summary>
+    private void ReserveIndex(long rows) => _xref.Reserve((int)Math.Min(rows, IndexRoom), _guard.Bound(PdfLimit.IndexEntries));
+
+    /// <summary>
+    /// Makes room in the index, once the chain's newest section is read and an older one follows, for the objects its
+    /// <c>/Size</c> numbers: one more than the document's highest object number (ISO 32000-1, 7.5.5), which the older
+    /// sections index with the newest. They then fill a map sized once, rather than doubled toward it section by section,
+    /// which leaves a chain of many like sections up to twice the room it needs. The size is the file's claim: room is
+    /// made for no more objects than the file's bytes hold rows of a classic table, nor than the index may take.
+    /// </summary>
+    private void ReserveChain()
+    {
+        // A size the newest section's rows reach already asks for nothing, and one written as a reference gives none.
+        if (_xref.Trailer.GetInteger(PdfName.Size) is { } size && size > _xref.Count)
+        {
+            var rows = (int)Math.Min(Math.Min(size - _xref.Count, _source.Length / XRefRowLength), IndexRoom);
+            _xref.Reserve(rows, _xref.Count + rows);
+        }
+    }
+
+    /// <summary>
+    /// Gets how many object numbers more the index may take under <see cref="PdfReaderLimits.MaxIndexEntries"/>, the
+    /// numbers the chain refused counted with it.
+    /// </summary>
+    private int IndexRoom => _guard.Bound(PdfLimit.IndexEntries) - _xref.Count - (_refusedNumbers?.Count ?? 0);
 
     /// <summary>
     /// Reports that the index had no room for a number it lacks, met at <paramref name="position"/>: the first time, under

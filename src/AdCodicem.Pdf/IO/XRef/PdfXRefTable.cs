@@ -8,10 +8,12 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// <remarks>
 /// The reader keeps one for the whole document. Once it has changed the one the chain gave — an object found away
 /// from its entry, or a rebuild —, it also keeps a copy of that one as it was, which
-/// <see cref="PdfFileReader.ChainIndex"/> serves. An index holds 52 bytes a slot of its map, which doubles as it grows:
-/// 52 to 108 bytes an object, so a hundred thousand objects hold 8 MB whatever the objects themselves weigh, the
-/// growth allocating about as much again on the way. The copy is sized to the count, not grown: about 60 bytes an
-/// object more.
+/// <see cref="PdfFileReader.ChainIndex"/> serves. An index holds 52 bytes a slot of its map. A section makes room for the
+/// rows it holds before they are read, and a chain for the objects its newest <c>/Size</c> numbers
+/// (<see cref="Reserve"/>), to the next prime in .NET's table: 52 to 63 bytes an object, so a hundred thousand objects
+/// hold 5 to 6 MB whatever the objects themselves weigh. A map left to grow — by a rebuild, or rows written shorter than a
+/// classic table's — doubles, holding 52 to 108 bytes an object and allocating about as much again on the way. The copy is
+/// sized to the count, not grown: about 60 bytes an object more.
 /// </remarks>
 internal sealed class PdfXRefTable
 {
@@ -62,6 +64,27 @@ internal sealed class PdfXRefTable
     {
         _entries[number] = entry;
         Track(entry);
+    }
+
+    /// <summary>
+    /// Makes room for <paramref name="count"/> entries more than the table holds, and no more than
+    /// <paramref name="most"/> in all, before they are recorded.
+    /// </summary>
+    /// <remarks>
+    /// A count is a section's claim, which the caller bounds by the rows the section holds and by the entries the index
+    /// may take. Room is never added by less than the map holds already: a chain of many sections, each making room for
+    /// its own rows, would otherwise resize the map at each one, and past the largest prime .NET keeps in its table, at
+    /// 7,199,369, every resize copies the whole map.
+    /// </remarks>
+    public void Reserve(int count, int most)
+    {
+        var capacity = _entries.EnsureCapacity(0);
+        var needed = (int)Math.Min((long)_entries.Count + count, most);
+
+        if (needed > capacity)
+        {
+            _entries.EnsureCapacity((int)Math.Min(Math.Max(needed, 2L * capacity), most));
+        }
     }
 
     /// <summary>Removes every entry.</summary>

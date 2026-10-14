@@ -2022,16 +2022,17 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData(LargeIndex.ClassicTable, 300_000, 34_200_000)]
-    [InlineData(LargeIndex.CrossReferenceStream, 300_002, 47_430_000)]
+    [InlineData(LargeIndex.ClassicTable, 300_000, 17_720_000)]
+    [InlineData(LargeIndex.CrossReferenceStream, 300_002, 30_960_000)]
     public void Opening_an_index_of_three_hundred_thousand_objects_stays_within_its_memory_budget(
         string shape, int entries, long budget)
     {
-        // M01's file of several hundred thousand objects (#193). Opening allocates the reader's map of the index, which
-        // grows by doubling to 324,449 slots of 52 bytes here, and a cross-reference stream's rows decoded besides. Measured
-        // on 2026-10-02, after a warm-up: 32,571,368 bytes for the table, 45,174,464 for the stream, whose rows Flate
-        // stores uncompressed so that no runtime's zlib moves the figure. The budget is 5 % over each. 300,000 objects
-        // lie 24,449 below the map's next growth step, so a change of a few thousand objects does not move it either.
+        // M01's file of several hundred thousand objects (#193). Opening allocates the reader's map of the index, which the
+        // section sizes before its rows are read to 324,449 slots of 52 bytes here, and a cross-reference stream's rows
+        // decoded besides. Measured on 2026-10-14, after a warm-up: 16,875,160 bytes for the table, 29,478,256 for the
+        // stream, whose rows Flate stores uncompressed so that no runtime's zlib moves the figure — 32,571,368 and
+        // 45,174,464 when the map grew by doubling (#164). The budget is 5 % over each. 324,449 is the first prime of
+        // .NET's table past 300,000, so a change of a few thousand objects does not move it either.
         var file = LargeIndexFile(shape);
         using (PdfDocument.Open(file))
         {
@@ -2050,6 +2051,34 @@ public class DocumentReaderTests
         allocated.Should().BeLessThan(budget, $"opening {shape} of {entries:N0} entries holds the map of them and little else");
 
         // A bound, not a throughput: what a regression that allocates nothing, such as a quadratic search, would pass.
+        elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void Opening_a_chain_of_a_thousand_sections_sizes_the_index_once_from_its_newest_size()
+    {
+        // A section makes room for its own rows, and a chain's sections each for theirs: a thousand sections of 300 rows
+        // would double the map toward 300,000 entries from 353 slots, to 560,689 at the last, where growth from 3 reached
+        // 324,449 (#164). The newest section's /Size numbers the objects the chain indexes, and the map is sized for them
+        // once it is read. Measured on 2026-10-14, after a warm-up: 17,518,448 bytes, where growth allocated 33,196,448
+        // and doubling from the sections' rows alone 56,911,504. The budget is 5 % over.
+        var file = ChainOfSections(sections: 1000, rows: 300);
+        using (PdfDocument.Open(file))
+        {
+            // The first opening pays what any first call does once.
+        }
+
+        var elapsed = Stopwatch.StartNew();
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        using var document = PdfDocument.Open(file);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        elapsed.Stop();
+
+        document.ObjectCount.Should().Be(300_000);
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        allocated.Should().BeLessThan(18_400_000, "the map is sized once for the 300,000 entries the newest section's /Size numbers");
         elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
     }
 
@@ -2076,6 +2105,49 @@ public class DocumentReaderTests
         return shape == LargeIndex.ClassicTable
             ? builder.BuildClassic(rootNumber: 1)
             : builder.BuildWithXRefStream(rootNumber: 1, compressXRefStream: true, compressionLevel: CompressionLevel.NoCompression);
+    }
+
+    /// <summary>
+    /// A catalog, an empty page tree and nulls, indexed by a chain of <paramref name="sections"/> classic sections of
+    /// <paramref name="rows"/> rows, each written after the objects it adds, its /Size counting every object up to them
+    /// and its /Prev naming the section before it.
+    /// </summary>
+    private static byte[] ChainOfSections(int sections, int rows)
+    {
+        var file = new StringBuilder("%PDF-1.7\n");
+        var offsets = new long[sections * rows];
+        long previous = -1;
+
+        for (var section = 0; section < sections; section++)
+        {
+            var first = section * rows;
+
+            for (var number = Math.Max(first, 1); number < first + rows; number++)
+            {
+                offsets[number] = file.Length;
+                file.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n").Append(number switch
+                {
+                    1 => "<< /Type /Catalog /Pages 2 0 R >>",
+                    2 => "<< /Type /Pages /Kids [] /Count 0 >>",
+                    _ => "null",
+                }).Append("\nendobj\n");
+            }
+
+            var at = file.Length;
+            file.Append(CultureInfo.InvariantCulture, $"xref\n{first} {rows}\n");
+
+            for (var number = first; number < first + rows; number++)
+            {
+                file.Append(number == 0 ? "0000000000 65535 f\r\n" : string.Create(CultureInfo.InvariantCulture, $"{offsets[number]:D10} 00000 n\r\n"));
+            }
+
+            file.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {first + rows} /Root 1 0 R");
+            file.Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}")).Append(" >>\n");
+            previous = at;
+        }
+
+        file.Append(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n");
+        return Encoding.ASCII.GetBytes(file.ToString());
     }
 
     /// <summary>Where the data of the file's object stream starts.</summary>

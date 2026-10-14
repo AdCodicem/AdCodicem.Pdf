@@ -446,6 +446,29 @@ public class CrossReferenceChainTests
         document.Reader.Structure.Sections.Should().HaveCount(3);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("/Size 9 0 R ")]
+    [InlineData("/Size 2 ")]
+    [InlineData("/Size -9223372036854775808 ")]
+    public void Reads_a_chain_whose_newest_size_numbers_no_object_past_its_rows_whole(string size)
+    {
+        // Once the newest section is read, the index makes room for the objects its /Size numbers. One the trailer lacks,
+        // writes as a reference, or gives no larger than the entries the newest section holds asks for no room: the older
+        // sections make room for their own rows, and nothing else changes.
+        var (updated, _) = Updated();
+        var text = Encoding.Latin1.GetString(updated);
+        var newest = text.LastIndexOf("/Size 8 ", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, newest), size, text.AsSpan(newest + "/Size 8 ".Length)));
+
+        using var document = PdfDocument.Open(file);
+
+        document.ObjectCount.Should().Be(6);
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+        ReadsWhole(document);
+    }
+
     [Fact]
     public void Reads_an_object_only_a_section_past_the_section_count_indexes_as_null_until_the_guard_is_lifted()
     {
