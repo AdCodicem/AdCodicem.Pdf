@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -134,6 +135,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private static ReadOnlySpan<byte> TrailerKeyword => "trailer"u8;
     private static ReadOnlySpan<byte> StartXRefKeyword => "startxref"u8;
     private static ReadOnlySpan<byte> HeaderMarker => "%PDF-"u8;
+
+    /// <summary>What a classic table's rows and subsection headers are made of: digits, white space, <c>n</c> and <c>f</c>.</summary>
+    private static readonly SearchValues<byte> TableBytes = SearchValues.Create("0123456789nf\0\t\n\f\r "u8);
 
     private PdfFileSource _source;
     private readonly PdfDiagnostics _diagnostics;
@@ -2050,6 +2054,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         PdfLimit.XRefSectionLength,
                         $"The cross-reference table runs past {PdfLimitGuard.FormatLength(maxWindow)}; only the entries within it were read.",
                         absolute);
+
+                    // The keyword may start within the window's last bytes, which it cut.
+                    ReadTrailerPastCut(absolute + windowSize - TrailerKeyword.Length, section);
                 }
                 else
                 {
@@ -2063,6 +2070,73 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             windowSize = (int)Math.Min((long)windowSize * 4, maxWindow);
+        }
+    }
+
+    /// <summary>
+    /// Finds the trailer of a classic table <see cref="PdfReaderLimits.MaxXRefSectionLength"/> cut, past the rows it left
+    /// unread from <paramref name="from"/> on, and merges it into the document's: the rows are not indexed, but the trailer
+    /// names the catalog, the encryption and the identity of the document, which a cut table lost before. The chain goes no
+    /// further: an older section's rows would stand for the objects the rows left unread define.
+    /// </summary>
+    /// <remarks>
+    /// Only a table's own bytes — digits, white space, <c>n</c> and <c>f</c> — lie between the cut and its trailer, and they
+    /// are searched a piece at a time, so that reaching the trailer costs a read of the rows, not memory for them. What ends
+    /// them is judged as it is where no guard cut the table: the end of the file, or a dictionary no keyword introduces, is
+    /// a missing trailer, and anything else no part of a table.
+    /// </remarks>
+    private void ReadTrailerPastCut(long from, XRefSectionRecord section)
+    {
+        var position = from;
+
+        while (position < _source.Length)
+        {
+            var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
+            using var window = _source.GetWindow(position, length);
+            var end = window.Memory.Span.IndexOfAnyExcept(TableBytes);
+
+            if (end >= 0)
+            {
+                position += end;
+                break;
+            }
+
+            position += length;
+        }
+
+        section.TrailerPosition = position;
+
+        using (var next = _source.GetWindow(position, XRefProbeLength))
+        {
+            var lexer = new PdfLexer(next.Memory.Span);
+            var token = lexer.Read();
+
+            if (!token.IsKeyword(TrailerKeyword))
+            {
+                // As where no guard cut the table: the file ending, or a dictionary no keyword introduces, is a missing
+                // trailer; anything else is no part of a table.
+                if (token.Kind is PdfTokenKind.EndOfInput or PdfTokenKind.DictionaryStart)
+                {
+                    section.TrailerFault = XRefTrailerFault.Missing;
+                }
+                else
+                {
+                    section.Fault ??= string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"it holds {DescribeToken(token)} at offset {position}, where a subsection or the trailer should start");
+                }
+
+                return;
+            }
+        }
+
+        var guards = _guardsReached;
+        _ = TryParseNumberedAt(position + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out var syntaxFault);
+        section.CutByLimit |= _guardsReached != guards;
+
+        if (JudgeTrailer(value, syntaxFault, section) is { } trailer)
+        {
+            _xref.MergeTrailer(trailer);
         }
     }
 

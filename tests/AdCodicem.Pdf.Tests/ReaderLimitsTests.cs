@@ -3,6 +3,7 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -368,6 +369,92 @@ public class ReaderLimitsTests
         document.GetObject(new PdfObjectId(106)).Should().BeSameAs(PdfNull.Instance);
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries)
             .Which.Position.Should().Be(OffsetOf(file, "3 0 obj"));
+    }
+
+    [Fact]
+    public void A_table_its_length_bound_cuts_keeps_its_trailer_and_the_encryption_it_names()
+    {
+        // The cut fell before the trailer, and the reader stopped there: /Encrypt, /Info and /ID were lost with it, and an
+        // encrypted file opened as plain, ThrowOnEncrypted never seeing what it guards against. The trailer past the rows
+        // left unread is read all the same.
+        var file = Trailed("/Encrypt 5 0 R /Info 6 0 R /ID [<0123> <4567>]");
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 };
+
+        var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        opening.Should().Throw<PdfEncryptedException>();
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnEncrypted = false });
+        document.IsEncrypted.Should().BeTrue();
+        document.Trailer.ContainsKey(PdfName.Info).Should().BeTrue();
+        document.Trailer.ContainsKey(PdfName.ID).Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionLength);
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.TrailerPosition.Should().Be(OffsetOf(file, "trailer"));
+    }
+
+    [Fact]
+    public void A_table_its_length_bound_cuts_ends_the_chain_though_its_trailer_names_an_older_section()
+    {
+        // Rows past the cut may define objects an older section defines too: read, the older rows would stand for them.
+        // The update defines the catalog again, and objects 3 to 10: the bound keeps its first two rows.
+        var original = Numbered(10).BuildClassic(rootNumber: 1);
+        var file = TestPdfBuilder.AppendIncrementalUpdate(
+            original, rootNumber: 1, [(1, Catalog), .. Enumerable.Range(3, 8).Select(number => (number, "(updated)"))]);
+        var update = OffsetOf(file, "xref\n1 1");
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 64 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Offset.Should().Be(update);
+        document.Trailer.ContainsKey(PdfName.Prev).Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionLength);
+    }
+
+    [Theory]
+    [InlineData("<< /Size", "missing")]
+    [InlineData("startxref 0 << /Size", "the keyword startxref")]
+    public void What_ends_the_rows_a_length_bound_cut_is_judged_as_it_is_where_none_did(string replacement, string judged)
+    {
+        // A dictionary the trailer keyword does not introduce is a trailer missing; anything else is no part of a table.
+        var file = Trailed(string.Empty);
+        file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file).Replace("trailer\n<< /Size", replacement, StringComparison.Ordinal));
+        var end = Encoding.Latin1.GetString(file).LastIndexOf(replacement, StringComparison.Ordinal);
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.TrailerPosition.Should().Be(end);
+
+        if (judged == "missing")
+        {
+            section.TrailerFault.Should().Be(XRefTrailerFault.Missing);
+            section.Fault.Should().BeNull();
+        }
+        else
+        {
+            section.TrailerFault.Should().Be(XRefTrailerFault.None);
+            section.Fault.Should().Be($"it holds {judged} at offset {end}, where a subsection or the trailer should start");
+        }
+    }
+
+    [Fact]
+    public void A_table_a_length_bound_cuts_that_runs_to_the_end_of_the_file_has_no_trailer()
+    {
+        // The file ends in the table's rows, its startxref written before them, in reach of the search at the file's end.
+        var written = Trailed(string.Empty);
+        var table = OffsetOf(written, "xref\n");
+        var rows = written.AsSpan(table, OffsetOf(written, "trailer") - table).ToArray();
+        const string Pointer = "startxref\n{0:D10}\n%%EOF\n";
+        var pointer = Encoding.ASCII.GetBytes(string.Format(CultureInfo.InvariantCulture, Pointer, table + string.Format(CultureInfo.InvariantCulture, Pointer, 0).Length));
+        byte[] file = [.. written.AsSpan(0, table), .. pointer, .. rows];
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.Offset.Should().Be(table + pointer.Length);
+        section.TrailerFault.Should().Be(XRefTrailerFault.Missing);
+        section.TrailerPosition.Should().Be(file.Length);
     }
 
     [Fact]
@@ -774,6 +861,29 @@ public class ReaderLimitsTests
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
+    /// <summary>
+    /// Ten objects, among them an encryption dictionary as object 5 and a document information dictionary as object 6,
+    /// whose table's trailer holds <paramref name="entries"/> after its /Size and /Root.
+    /// </summary>
+    private static byte[] Trailed(string entries)
+    {
+        var builder = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages);
+        for (var number = 3; number <= 10; number++)
+        {
+            builder.WithObject(number, number switch
+            {
+                5 => "<< /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>",
+                6 => "<< /Title (cut) >>",
+                _ => "null",
+            });
+        }
+
+        var written = builder.BuildClassic(rootNumber: 1);
+        var text = Encoding.Latin1.GetString(written);
+        text.Should().Contain("<< /Size 11 /Root 1 0 R >>");
+        return Encoding.Latin1.GetBytes(text.Replace("<< /Size 11 /Root 1 0 R >>", $"<< /Size 11 /Root 1 0 R {entries} >>", StringComparison.Ordinal));
+    }
+
     /// <summary>The catalog, an empty page tree, and objects 3 to <paramref name="last"/>, each its own number.</summary>
     private static TestPdfBuilder Numbered(int last)
     {
@@ -880,8 +990,8 @@ public class ReaderLimitsTests
 
         private static Case LongSection()
         {
-            // Three hundred entries, 6 KB of table, which a bound of 2 KB cuts before its trailer: the catalog is
-            // then looked for among the entries read, the /Root the trailer held being out of reach.
+            // Three hundred entries, 6 KB of table, which a bound of 2 KB cuts: the entries within it are indexed, and the
+            // trailer past the rows left unread is read all the same, with the /Root it holds.
             var builder = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages);
             for (var number = 3; number < 300; number++)
             {
@@ -896,12 +1006,12 @@ public class ReaderLimitsTests
                 file,
                 PdfReaderLimits.Default with { MaxXRefSectionLength = 2048 },
                 PdfReaderLimits.Default,
-                IndexState,
-                "as written",
+                document => document.ObjectCount.ToString(CultureInfo.InvariantCulture),
+                "300",
                 "The cross-reference table runs past 2 KB; only the entries within it were read.",
                 OffsetOf(file, "xref\n"),
                 ThrowsOnOpening: true,
-                ReportsNothingElse: false);
+                ReportsNothingElse: true);
         }
 
         private static Case ManySections()
