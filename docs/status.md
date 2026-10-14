@@ -15,19 +15,19 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
   fifth, [#157] and [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on
   2026-10-03, the seventh, [#118], with [#226] that day, the eighth, [#119] and [#172], with [#231] on 2026-10-04,
-  and the ninth, [#125] and [#126], with [#238] that day; the tenth, [#190] and [#212], is in [#248]; then slices 4
-  to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every other issue
-  filed under M02 is closed. The debts come from the reader's own work, the threat model's first version ([#135],
-  `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning of step 4
-  ([#199] to [#202]), its second batch ([#207] to [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth
-  ([#218] to [#224]), its eighth ([#229], [#230]), its ninth ([#237]) and its tenth ([#241], [#247]); [#123] moved
-  to M20.
+  the ninth, [#125] and [#126], with [#238] that day, and the tenth, [#190] and [#212], with [#248] on 2026-10-14;
+  then slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7 ([#137], ADR 46), once every
+  other issue filed under M02 is closed. The debts come from the reader's own work, the threat model's first
+  version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136], `docs/reviews/M01.md`), the planning
+  of step 4 ([#199] to [#202]), its second batch ([#207] to [#210]), its third ([#212]), its fifth ([#215], [#216]),
+  its sixth ([#218] to [#224]), its eighth ([#229], [#230]), its ninth ([#237]) and its tenth ([#241], [#247]);
+  [#123] moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 3,439 unit on [#248]'s branch (3 skipped: 2 by design, and the theory
+- **Tests**: 3,439 unit on `main` since [#248] (3 skipped: 2 by design, and the theory
   over the remote corpus's streams whose length is wrong, which has no document without it) + 1,306 integration
   (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the
   remote documents fetched, on [#248]'s branch: 5,344 unit with the 233 this container holds, 3 skipped — the laziness
@@ -36,7 +36,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run 44's 5,401
   acceptance tests and 3,329 referee checks, on [#248]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.5 % of `src/` — 5,844 of 5,872 lines on [#248]'s branch, every one of its patch's
+  Arlington tables left out), 99.5 % of `src/` — 5,844 of 5,872 lines on `main` since [#248], every one of its patch's
   168 measurable lines among them, every branch taken but two that were partial before it, on lines it changes or
   moves (`FileQuote` 145, `PdfReal` 66, below). The 28 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`,
   *Coverage*), the same as on `main` since [#238], at new line numbers: members that are private, or of a private
@@ -51,7 +51,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   without a Regular entry (223, batch 7), one of the six ways out of a cross-reference stream row's `switch` (2798) and
   `Repair`'s guard against a second rebuild (3704, 3706).
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `83d15a1` (CI run 512), [#238]'s last commit. `Remote corpus` passed on every document in
+- **CI**: green on `main` at `a930544` (CI run 540), [#248]'s last commit. `Remote corpus` passed on every document in
   the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun
   once after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in
   run 22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
@@ -228,8 +228,8 @@ One pull request per batch, each design question put to the maintainer after mea
       run 28 green on its branch (journal of 2026-10-03).
    9. [#125] and [#126], offsets past what a long holds and where a trailer's finding goes — done, merged with [#238]
       on 2026-10-04, `Remote corpus` run 31 green on its branch (journal of 2026-10-04).
-   10. [#190] and [#212], the reader's public surface — done in [#248], `Remote corpus` run 44 green on its
-       branch (journal of 2026-10-13).
+   10. [#190] and [#212], the reader's public surface — done, merged with [#248] on 2026-10-14, `Remote corpus` run
+       44 green on its branch (journal of 2026-10-13).
    11. [#164] and [#183], the index's size, the first new guard.
    12. [#165] and [#166], filter chains, with [#199], [#209], [#219] and [#247].
    13. [#128], with [#237].
