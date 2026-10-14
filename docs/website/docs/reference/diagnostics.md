@@ -126,8 +126,8 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `limit.object` | An object is longer than `MaxObjectLength`, its stream data aside; the part within it was parsed |
 | `limit.xref-section-length` | A classic cross-reference table is longer than `MaxXRefSectionLength`; the entries within it were read, and its trailer past them; the objects the rows past them place read as null, and the chain is not followed further |
 | `limit.xref-section-count` | The chain of cross-reference sections is longer than `MaxXRefSectionCount`; the newest were read, and what only the older ones index reads as null. Reported where the chain goes on, or, when that lies outside the file, at the section whose `/Prev` names it, the offset in the message |
-| `limit.trailer` | A trailer, or a cross-reference stream's dictionary, is longer than `MaxTrailerLength`; the part within it was parsed |
-| `limit.index-entries` | The index holds `MaxIndexEntries` object numbers — those in use, free or refused — and met another: the numbers it holds were indexed, and an object past them reads as null. Reported once a document, where the first number it had no room for was met: the section that gave it, or the object header a rebuild read |
+| `limit.trailer` | A trailer, or a cross-reference stream's dictionary, is longer than `MaxTrailerLength`; the part within it was parsed, and an older section a `/Prev` past the cut named is left unread, what only it indexes reading as null |
+| `limit.index-entries` | The index holds `MaxIndexEntries` object numbers — those in use, free or refused — and met another: the numbers it holds were indexed, and an object past them reads as null. Reported once a document, where the first number it had no room for was met: the section that gave it, the object header or object stream a rebuild read, or the chain's newest section for an entry the chain gave that a rebuild could not keep |
 
 The six `limit.*` codes report the reader's own limits, not faults of the file; each message names the property of
 `PdfReaderLimits` that lifts it. They are listed with their defaults in [Reader limits](reader-limits.md).

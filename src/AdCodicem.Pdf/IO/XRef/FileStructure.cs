@@ -96,8 +96,9 @@ internal sealed class FileStructure
 
     /// <summary>
     /// Gets where the index first had no room for an object number, <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>
-    /// reached — the section whose row it was, or the header or object stream a rebuild found it in —, or -1 while it had
-    /// room for every number it met.
+    /// reached — the section whose row it was, the header or object stream a rebuild found it in, or the chain's newest
+    /// section for an entry the chain gave that a rebuild could not keep, since the index it keeps no longer knows which
+    /// section gave it —, or -1 while it had room for every number it met.
     /// </summary>
     public long IndexFullAt { get; set; } = -1;
 
