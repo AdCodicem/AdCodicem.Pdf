@@ -206,7 +206,7 @@ public class FilterTests
     {
         byte[] data = [2, 1, 2, 3, 4];
 
-        PredictorTransform.TryApply(data, predictor, colors: 1, bitsPerComponent: 8, columns: 4, out var result).Should().BeTrue();
+        PredictorTransform.TryApply(data, predictor, colors: 1, bitsPerComponent: 8, columns: 4, cut: false, out var result).Should().BeTrue();
 
         result.Should().BeSameAs(data);
     }
@@ -378,10 +378,11 @@ public class FilterTests
     }
 
     [Fact]
-    public void Undoes_a_predictor_over_whole_rows_of_a_bounded_output()
+    public void Undoes_a_predictor_over_the_rows_of_a_bounded_output_and_the_part_of_the_last_it_holds()
     {
-        // Ten PNG-up rows of four bytes, five with their tag byte. However many bytes the bound leaves,
-        // the predictor keeps whole rows, and the report says decoding stopped rather than what was kept.
+        // Ten PNG-up rows of four bytes, five with their tag byte. However many bytes the bound leaves, the predictor
+        // undoes the whole rows, and of the row the bound cut, what follows its tag byte: each byte is predicted from the
+        // one above it alone. The report says decoding stopped, not that the parameters describe rows the data lacks.
         var predicted = new byte[50];
         for (var row = 0; row < 10; row++)
         {
@@ -401,15 +402,24 @@ public class FilterTests
         var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(Compress(predicted)));
         var failures = new List<string>();
 
-        for (var bound = 5; bound <= 50; bound++)
+        for (var bound = 1; bound <= 50; bound++)
         {
             var diagnostics = new PdfDiagnostics();
             var output = PdfFilterPipeline.Decode(stream, diagnostics, Within(bound)).ToArray();
-            var rows = bound / 5;
+            var expected = new List<byte>();
+
+            for (var at = 0; at < bound; at++)
+            {
+                if (at % 5 != 0)
+                {
+                    expected.Add((byte)(((at / 5) + 1) * (at % 5)));
+                }
+            }
+
             var reported = diagnostics.Select(d => d.Code).ToArray();
 
-            if (output.Length != rows * 4 || (rows > 0 && output[^1] != (byte)(4 * rows)) ||
-                reported.Length != (bound < 50 ? 1 : 0) ||
+            if (!output.SequenceEqual(expected) ||
+                !reported.SequenceEqual(bound < 50 ? [PdfDiagnosticCodes.LimitDecodedStream] : []) ||
                 (bound < 50 && !diagnostics[0].Message.Contains("decoding stopped there.", StringComparison.Ordinal)))
             {
                 failures.Add($"bound {bound}: {output.Length} bytes, [{string.Join(";", reported)}]");
@@ -530,10 +540,11 @@ public class FilterTests
     }
 
     [Fact]
-    public void Bounds_a_filter_in_the_middle_of_a_chain_as_well_as_the_last()
+    public void Bounds_a_filter_in_the_middle_of_a_chain_as_well_as_the_last_and_reports_the_first_that_stopped()
     {
         // 15,000 RunLength pairs, 30,000 bytes once inflated: Flate, the first step, stops at the bound, and RunLength
-        // decodes what it kept, until it stops at the bound in turn (#158).
+        // decodes what it kept, until it stops at the bound in turn (#158). The stream was cut once, where Flate stopped:
+        // that RunLength stops too follows from it (#199).
         var runs = new byte[30_000];
         for (var pair = 0; pair < 15_000; pair++)
         {
@@ -557,8 +568,6 @@ public class FilterTests
         output.Length.Should().Be(10_000);
         diagnostics.Select(d => d.Message).Should().Equal(
             "The /FlateDecode data decodes to more than 10,000 bytes; decoding stopped there. " +
-            "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.",
-            "The /RunLengthDecode data decodes to more than 10,000 bytes; decoding stopped there. " +
             "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
     }
 
@@ -605,7 +614,7 @@ public class FilterTests
     {
         byte[] predicted = [0x12, 0x34, 0x56, 0x78];
 
-        PredictorTransform.TryApply(predicted, predictor: 2, colors: 1, bitsPerComponent, columns, out var result)
+        PredictorTransform.TryApply(predicted, predictor: 2, colors: 1, bitsPerComponent, columns, cut: false, out var result)
             .Should().BeTrue();
 
         result.Should().Equal((byte)0x12, 0x34, 0x56, 0x78);
@@ -619,7 +628,7 @@ public class FilterTests
     {
         byte[] predicted = [10, 5, 5, 5];
 
-        PredictorTransform.TryApply(predicted, predictor: 2, colors: 1, bitsPerComponent, columns: 4, out var result)
+        PredictorTransform.TryApply(predicted, predictor: 2, colors: 1, bitsPerComponent, columns: 4, cut: false, out var result)
             .Should().BeTrue();
 
         result.Should().Equal((byte)10, 15, 20, 25);
@@ -630,7 +639,7 @@ public class FilterTests
     {
         byte[] predicted = [0x02, 0x0A, 0x14, 0x1E, 0x28, 0x02, 0x01, 0x02, 0x03, 0x04, 0x02, 0x01, 0x02, 0x03, 0x04];
 
-        PredictorTransform.TryApply(predicted, predictor: 12, colors: 1, bitsPerComponent: 8, columns: 4, out var result)
+        PredictorTransform.TryApply(predicted, predictor: 12, colors: 1, bitsPerComponent: 8, columns: 4, cut: false, out var result)
             .Should().BeTrue();
 
         result.Should().Equal((byte)10, 20, 30, 40, 11, 22, 33, 44, 12, 24, 36, 48);
@@ -641,7 +650,7 @@ public class FilterTests
     {
         byte[] predicted = [10, 5, 5, 5];
 
-        PredictorTransform.TryApply(predicted, predictor: 2, colors: 1, bitsPerComponent: 8, columns: 4, out var result)
+        PredictorTransform.TryApply(predicted, predictor: 2, colors: 1, bitsPerComponent: 8, columns: 4, cut: false, out var result)
             .Should().BeTrue();
 
         result.Should().Equal((byte)10, 15, 20, 25);

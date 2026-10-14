@@ -1052,6 +1052,133 @@ public class FilterDamageTests
     }
 
     [Theory]
+    [InlineData("RunLengthDecode", 1_000, 993)]
+    [InlineData("RunLengthDecode", 4_009, 4_000)]
+    [InlineData("RunLengthDecode", 1_000_000, 4_000)]
+    [InlineData("ASCIIHexDecode", 1_000, 993)]
+    [InlineData("ASCIIHexDecode", 4_009, 4_000)]
+    [InlineData("ASCII85Decode", 1_000, 993)]
+    [InlineData("ASCII85Decode", 4_009, 4_000)]
+    public void Says_nothing_of_the_end_of_data_a_filter_before_it_stopped_at_the_bound(string first, int bound, int kept)
+    {
+        // 4,000 bytes stored in zlib, 4,011 bytes, encoded once more. The first filter stops at the bound in the zlib
+        // body, or in its checksum, and Flate decodes what it kept: that the data then runs out is the reader's doing,
+        // which the guard reported, not the file's (#199). Within a bound past the data, nothing is reported.
+        var plain = ContentStream(1000).AsSpan(0, 4_000).ToArray();
+        var zlib = Compress(plain, CompressionLevel.NoCompression);
+        zlib.Length.Should().Be(4_011);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = DecodeChainWithin(Encode(zlib, first), bound, diagnostics, PdfName.Get(first), PdfName.FlateDecode);
+
+        decoded.ToArray().Should().Equal(plain.AsSpan(0, kept).ToArray());
+        diagnostics.Select(d => d.Code).Should().Equal(bound < zlib.Length ? [PdfDiagnosticCodes.LimitDecodedStream] : []);
+    }
+
+    [Fact]
+    public void Reports_a_fault_in_the_data_a_filter_kept_though_a_filter_before_it_stopped_at_the_bound()
+    {
+        // The hex stops at the bound past the byte the fault lies in: the fault is in bytes the reader read, and the
+        // whole data would meet it at the same point. It is the file's, and is reported beside the guard.
+        var prefix = RandomBytes(1_000);
+        var data = CorruptAfter(prefix, out var faultAt, after: new byte[2_000]);
+        var bound = faultAt + 500;
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = DecodeChainWithin(Encode(data, "ASCIIHexDecode"), bound, diagnostics, PdfName.ASCIIHexDecode, PdfName.FlateDecode);
+
+        decoded.ToArray().Should().Equal(prefix);
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.FilterFailed);
+        diagnostics[1].Message.Should().Be(CorruptAt(faultAt, bound, prefix.Length));
+    }
+
+    [Fact]
+    public void Reports_a_checksum_that_disagrees_with_data_a_filter_kept_whole_though_a_filter_before_it_stopped_at_the_bound()
+    {
+        // The whole zlib stream lies before where the hex stopped: its checksum is the file's to answer for.
+        var plain = RandomBytes(1_000);
+        var zlib = WithWrongChecksum(Compress(plain, CompressionLevel.Optimal));
+        var bound = zlib.Length + 500;
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = DecodeChainWithin(Encode([.. zlib, .. new byte[2_000]], "ASCIIHexDecode"), bound, diagnostics, PdfName.ASCIIHexDecode, PdfName.FlateDecode);
+
+        decoded.ToArray().Should().Equal(plain);
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.FilterChecksumMismatch);
+    }
+
+    [Theory]
+    [InlineData("ASCIIHexDecode", "41424344454647>", 3, "A")]
+    [InlineData("ASCIIHexDecode", "41424344454647>", 4, "AB")]
+    [InlineData("ASCII85Decode", "87cURD]i,\"Ebo7~>", 7, "Hell")]
+    [InlineData("ASCII85Decode", "87cURD]i,\"Ebo7~>", 5, "Hell")]
+    public void Drops_the_unit_a_filter_before_it_parted_at_the_bound_rather_than_complete_it(
+        string second, string encoded, int bound, string expected)
+    {
+        // The first filter keeps as many characters of the second's data as the bound allows: a hex digit without its
+        // pair, or an ASCII85 group short of five, is one the cut parted, and completing it would make up a byte.
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = DecodeChainWithin(Encode(Encoding.ASCII.GetBytes(encoded), "RunLengthDecode"), bound, diagnostics, PdfName.RunLengthDecode, PdfName.Get(second));
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be(expected);
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Theory]
+    [InlineData("ASCIIHexDecode", 41)]
+    [InlineData("ASCIIHexDecode", 42)]
+    [InlineData("ASCII85Decode", 37)]
+    [InlineData("ASCII85Decode", 40)]
+    public void Drops_the_unit_a_guard_of_the_reader_parted_rather_than_complete_it(string filter, int characters)
+    {
+        // A /Length far too short sends the reader looking for endstream past the largest window MaxObjectLength
+        // allows, which ends after the given number of characters of the data: a digit without its pair, or a group
+        // short of five, is one the guard parted, and what comes back is the start of the data, with the guard alone
+        // reported.
+        var plain = Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat("The quick brown fox. ", 20)));
+        var encoded = Encoding.ASCII.GetString(Encode(plain, filter));
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, $"<< /Filter /{filter} /Length 10 >>\nstream\n{encoded}\nendstream")
+            .BuildClassic(rootNumber: 1);
+        var header = file.AsSpan().IndexOf("3 0 obj"u8);
+        var data = file.AsSpan().IndexOf(Encoding.ASCII.GetBytes(encoded));
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = data + characters - header } };
+
+        using var document = PdfDocument.Open(file, options);
+        var decoded = document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        var whole = filter == "ASCIIHexDecode" ? characters / 2 : characters / 5 * 4;
+        decoded.ToArray().Should().Equal(plain.AsSpan(0, whole).ToArray());
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void Says_nothing_of_the_end_of_data_a_filter_before_it_stopped_at_the_bound_in_a_document()
+    {
+        // #199's file: a stream whose first filter stops at the bound the document was opened with, and whose Flate
+        // data then runs out, reports the guard alone.
+        var plain = ContentStream(1000).AsSpan(0, 4_000).ToArray();
+        var runs = Encode(Compress(plain, CompressionLevel.NoCompression), "RunLengthDecode");
+        var placeholder = new string('#', runs.Length);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, $"<< /Filter [/RunLengthDecode /FlateDecode] /Length {runs.Length} >>\nstream\n{placeholder}\nendstream")
+            .BuildClassic(rootNumber: 1);
+        runs.CopyTo(file, file.AsSpan().IndexOf(Encoding.ASCII.GetBytes(placeholder)));
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1_000 } };
+
+        using var document = PdfDocument.Open(file, options);
+        var decoded = document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        decoded.Length.Should().Be(993);
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Theory]
     [InlineData(-2)]
     [InlineData(100)]
     public void Says_nothing_of_a_guard_s_cut_that_falls_in_the_checksum_or_after_the_data(int bytesPastTheBody)
@@ -1136,6 +1263,63 @@ public class FilterDamageTests
         }
 
         return (CorruptAfter(new byte[131_071], out _), 100_000);
+    }
+
+    /// <summary>Decodes <paramref name="data"/> through <paramref name="filters"/>, each bounded at <paramref name="bound"/>.</summary>
+    private static ReadOnlyMemory<byte> DecodeChainWithin(byte[] data, int bound, PdfDiagnostics diagnostics, params PdfName[] filters)
+    {
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([.. filters]));
+        var guard = new PdfLimitGuard(PdfReaderLimits.Default with { MaxDecodedStreamLength = bound }, throwOnLimit: false);
+        return PdfFilterPipeline.Decode(new PdfStream(dictionary, PdfStreamData.FromMemory(data)), diagnostics, guard);
+    }
+
+    /// <summary>Encodes <paramref name="data"/> as <paramref name="filter"/> does: RunLength in literal runs, hex, or ASCII85.</summary>
+    private static byte[] Encode(byte[] data, string filter)
+    {
+        if (filter == "ASCIIHexDecode")
+        {
+            return Encoding.ASCII.GetBytes(Convert.ToHexString(data) + ">");
+        }
+
+        var encoded = new List<byte>();
+
+        if (filter == "RunLengthDecode")
+        {
+            for (var start = 0; start < data.Length; start += 128)
+            {
+                var run = Math.Min(128, data.Length - start);
+                encoded.Add((byte)(run - 1));
+                encoded.AddRange(data.AsSpan(start, run).ToArray());
+            }
+
+            encoded.Add(0x80);
+            return [.. encoded];
+        }
+
+        var digits = new byte[5];
+
+        for (var start = 0; start < data.Length; start += 4)
+        {
+            var count = Math.Min(4, data.Length - start);
+            var tuple = 0u;
+
+            for (var i = 0; i < 4; i++)
+            {
+                tuple = (tuple << 8) | (i < count ? data[start + i] : 0u);
+            }
+
+            for (var i = 4; i >= 0; i--)
+            {
+                digits[i] = (byte)('!' + (tuple % 85));
+                tuple /= 85;
+            }
+
+            encoded.AddRange(digits.AsSpan(0, count + 1).ToArray());
+        }
+
+        encoded.AddRange("~>"u8.ToArray());
+        return [.. encoded];
     }
 
     private static string Describe(PdfDiagnostics diagnostics) =>
