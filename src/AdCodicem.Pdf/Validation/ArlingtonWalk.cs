@@ -70,6 +70,8 @@ internal sealed class ArlingtonWalk
     private static readonly PdfName AcroForm = PdfName.Get("AcroForm");
     private static readonly PdfName DefaultAppearance = PdfName.Get("DA");
     private static readonly PdfName Nums = PdfName.Get("Nums");
+    private static readonly PdfName FileFilter = PdfName.Get("FFilter");
+    private static readonly PdfName FileDecodeParms = PdfName.Get("FDecodeParms");
 
     /// <summary>The trailer's entries that lead into the document, in ordinal order: the rest are the trailer's own.</summary>
     private static readonly PdfName[] Followed = [PdfName.Encrypt, PdfName.Info, PdfName.Root];
@@ -94,6 +96,18 @@ internal sealed class ArlingtonWalk
     private KeyValuePair<PdfName, PdfObject>[] _entries = [];
     private KeyValuePair<PdfName, PdfObject>[] _candidateEntries = [];
     private bool _acroFormDefaultAppearance;
+
+    /// <summary>
+    /// The <c>/Filter</c> — or <c>/FFilter</c> — of the stream whose parameters are being typed, as the file wrote it;
+    /// null while no parameters are.
+    /// </summary>
+    private PdfObject? _decodeFilters;
+
+    /// <summary>
+    /// Where in <see cref="_decodeFilters"/> stands the filter of the parameters being typed: the place of an element of a
+    /// <c>/DecodeParms</c> array, or -1 for a <c>/DecodeParms</c> dictionary.
+    /// </summary>
+    private int _decodeIndex = -1;
 
     private ArlingtonWalk(PdfDocument document, PageTreeWalk pages, byte version)
     {
@@ -136,6 +150,9 @@ internal sealed class ArlingtonWalk
     /// it tied on, however many contexts link them.
     /// </summary>
     public int Ties { get; private set; }
+
+    /// <summary>Gets how many filter parameters the filter at their place typed.</summary>
+    public int ChosenByFilter { get; private set; }
 
     /// <summary>Walks the objects of <paramref name="document"/> reachable from its trailer, and checks them.</summary>
     public static ArlingtonWalk Run(PdfDocument document, PageTreeWalk pages)
@@ -289,7 +306,15 @@ internal sealed class ArlingtonWalk
 
             if (exact)
             {
+                // A stream's filter parameters are typed by the filter they belong to, not by what they hold (#219).
+                if (key == PdfName.DecodeParms || key == FileDecodeParms)
+                {
+                    _decodeFilters = dictionary.GetRaw(key == PdfName.DecodeParms ? PdfName.Filter : FileFilter) ?? PdfNull.Instance;
+                    _decodeIndex = -1;
+                }
+
                 CheckValue(work, type.GetRow(position), raw, resolved, kind, number, key, element: -1);
+                _decodeFilters = null;
             }
             else if (hasWildcard)
             {
@@ -389,7 +414,10 @@ internal sealed class ArlingtonWalk
 
             if (hasWildcard)
             {
+                _decodeFilters = work.Filters;
+                _decodeIndex = index;
                 CheckElement(work, wildcard, raw, resolved, kind, number, index);
+                _decodeFilters = null;
             }
         }
     }
@@ -480,8 +508,20 @@ internal sealed class ArlingtonWalk
 
         var value = resolved ?? Resolve(raw);
         var ties = Ties;
+        ArlingtonObject type;
 
-        if (!TryChoose(value, kind, link, out var type))
+        if (_decodeFilters is { } filters && kind == ValueClass.Dictionary && link.IsCandidateSet)
+        {
+            // Parameters the filter at their place does not type stay untyped: their keys say nothing of which filter's
+            // they are, and Flate's and LZW's share every key but one.
+            if (!TryChooseByFilter(filters, link, out type))
+            {
+                return;
+            }
+
+            ChosenByFilter++;
+        }
+        else if (!TryChoose(value, kind, link, out type))
         {
             if (tie >= 0 && Ties != ties)
             {
@@ -491,14 +531,60 @@ internal sealed class ArlingtonWalk
             return;
         }
 
+        // An array of parameters takes the filters along, for each element to find its own.
+        var carried = kind == ValueClass.Array ? _decodeFilters : null;
+
         if (number != 0)
         {
             _numbers[number] |= Typed;
-            _queue.Enqueue(new Work(type, ((PdfReference)raw).Id, Step: -1, Direct: null));
+            _queue.Enqueue(new Work(type, ((PdfReference)raw).Id, Step: -1, Direct: null, carried));
             return;
         }
 
-        _queue.Enqueue(new Work(type, holder, AddStep(parentStep, key, element), value));
+        _queue.Enqueue(new Work(type, holder, AddStep(parentStep, key, element), value, carried));
+    }
+
+    /// <summary>
+    /// Chooses, among the link's candidates, the parameters of the filter at the place of the parameters being typed: the
+    /// filter a <c>/DecodeParms</c> dictionary belongs to — the only one, a name or an array of one —, or the element of
+    /// the filters at the place of an element of a <c>/DecodeParms</c> array, the first one standing for a single name.
+    /// False when no filter stands there, or it names no candidate: a filter that takes no parameters, one the model does
+    /// not know or knows only abbreviated, an element that names none, or a dictionary beside several filters.
+    /// </summary>
+    private bool TryChooseByFilter(PdfObject filters, ArlingtonLink link, out ArlingtonObject chosen)
+    {
+        const string Prefix = "Filter";
+        chosen = default;
+        var resolved = Resolve(filters);
+        var at = (resolved, _decodeIndex) switch
+        {
+            (PdfName, -1 or 0) => resolved,
+            (PdfArray { Count: 1 } array, -1) => array[0],
+            (PdfArray array, >= 0) when _decodeIndex < array.Count => array[_decodeIndex],
+            _ => null,
+        };
+
+        if (at is null || Resolve(at) is not PdfName name)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < link.CandidateCount; index++)
+        {
+            var candidate = link.GetCandidate(index);
+            var candidateName = candidate.Name;
+
+            if (!candidate.IsArray &&
+                candidateName.Length == Prefix.Length + name.Value.Length &&
+                ArlingtonModel.Compare(candidateName[..Prefix.Length], Prefix) == 0 &&
+                ArlingtonModel.Compare(candidateName[Prefix.Length..], name.Value) == 0)
+            {
+                chosen = candidate;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -1287,7 +1373,12 @@ internal sealed class ArlingtonWalk
     /// An object to check: its type, the indirect object that holds it (object 0 for the trailer), and — for a value
     /// written inside another object — the value and the step that leads to it.
     /// </summary>
-    private readonly record struct Work(ArlingtonObject Type, PdfObjectId Holder, int Step, PdfObject? Direct);
+    /// <param name="Type">The type the object is checked against.</param>
+    /// <param name="Holder">The indirect object that holds it.</param>
+    /// <param name="Step">The step that leads to it from its holder, or -1 for the holder itself.</param>
+    /// <param name="Direct">The value written inside the holder, or null for the holder itself.</param>
+    /// <param name="Filters">For an array of filter parameters, the filters of its stream; null otherwise.</param>
+    private readonly record struct Work(ArlingtonObject Type, PdfObjectId Holder, int Step, PdfObject? Direct, PdfObject? Filters = null);
 
     /// <summary>A step from an object to a value written inside it: a key, an element, or a key's element.</summary>
     private readonly record struct Step(int Parent, PdfName? Key, int Element);
