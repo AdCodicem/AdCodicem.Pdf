@@ -4,6 +4,7 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -553,6 +554,22 @@ public class CrossReferenceChainTests
 
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer);
         document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.GetPresence(2).Should().Be(ObjectPresence.Unindexed);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_full_index_ends_the_chain_at_the_cross_reference_stream_that_filled_it()
+    {
+        // The update's stream fills the index at its second row: the original section, which /Prev names, could add
+        // nothing, and is not read.
+        var file = UpdatedThroughAStream(hybrid: false);
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 1 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Kind.Should().Be(XRefSectionKind.Stream);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
         document.Reader.GetPresence(2).Should().Be(ObjectPresence.Unindexed);
         document.WasRepaired.Should().BeFalse();
     }
