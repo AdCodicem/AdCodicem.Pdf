@@ -46,9 +46,27 @@ internal static class PdfFilterPipeline
         var cut = stream.Data.CutByGuard;
         var limitReported = false;
 
+        // The filters before the last share one bound for what they pass along together, and the last keeps its own: a
+        // stream of one or two filters decodes as each filter alone would, and a chain however long holds, and fills, no
+        // more than twice the bound (#166). Under a bound the reader cannot raise, they share none either.
+        var bound = guard.Bound(PdfLimit.DecodedStream);
+        var shared = bound >= Array.MaxLength ? long.MaxValue : bound;
+
         for (var index = 0; index < chain.Count; index++)
         {
-            data = ApplyOne(chain[index], data, diagnostics, stream.Data.Position, guard, ref cut, ref limitReported, out var failed);
+            var last = index == chain.Count - 1;
+            // The identity crypt filter passes its data along whole, whatever the bound, and can leave the others none.
+            var maxLength = last ? bound : (int)Math.Clamp(shared, 0, bound);
+            data = ApplyOne(
+                chain[index],
+                data,
+                new Bounds(maxLength, Shared: maxLength < bound),
+                diagnostics,
+                stream.Data.Position,
+                guard,
+                ref cut,
+                ref limitReported,
+                out var failed);
 
             // Data a filter could not decode at all comes back as the filters before it left it, as it does at a filter the
             // library does not know: the filters after it would read what it encoded, and each fail on it again.
@@ -56,6 +74,8 @@ internal static class PdfFilterPipeline
             {
                 return data;
             }
+
+            shared -= data.Length;
         }
 
         ReportEnd(chain, diagnostics, stream.Data.Position);
@@ -72,9 +92,10 @@ internal static class PdfFilterPipeline
     /// <summary>Decodes the data one filter of the chain is given.</summary>
     /// <param name="step">The filter, and the values of its parameters.</param>
     /// <param name="data">What the filters before it decoded.</param>
+    /// <param name="bounds">The most the filter's output may hold, and whether it is what the filters before the last share.</param>
     /// <param name="diagnostics">Receives what decoding met.</param>
     /// <param name="position">Where the stream's data starts, where every report is placed.</param>
-    /// <param name="guard">Bounds the filter's output.</param>
+    /// <param name="guard">Says what reaching the bound does.</param>
     /// <param name="cut">
     /// Whether <paramref name="data"/> is data the reader cut; set when this filter stops at the bound too.
     /// </param>
@@ -83,6 +104,7 @@ internal static class PdfFilterPipeline
     private static ReadOnlyMemory<byte> ApplyOne(
         in FilterStep step,
         ReadOnlyMemory<byte> data,
+        Bounds bounds,
         PdfDiagnostics? diagnostics,
         long position,
         PdfLimitGuard guard,
@@ -91,7 +113,7 @@ internal static class PdfFilterPipeline
         out bool failed)
     {
         var name = step.Name;
-        var maxLength = guard.Bound(PdfLimit.DecodedStream);
+        var maxLength = bounds.MaxLength;
         var given = cut;
         failed = false;
 
@@ -120,7 +142,7 @@ internal static class PdfFilterPipeline
                 data.Length,
                 diagnostics,
                 position);
-            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
+            Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
             return ApplyPredictor(decoded, step, diagnostics, position, cut);
         }
 
@@ -138,28 +160,28 @@ internal static class PdfFilterPipeline
                     position);
             }
 
-            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
+            Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
             return ApplyPredictor(decoded, step, diagnostics, position, cut);
         }
 
         if (name == PdfName.ASCII85Decode)
         {
             var decoded = Ascii85Filter.Decode(data.Span, out var limited, maxLength, given);
-            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
+            Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
             return decoded;
         }
 
         if (name == PdfName.ASCIIHexDecode)
         {
             var decoded = AsciiHexFilter.Decode(data.Span, out var limited, maxLength, given);
-            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
+            Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
             return decoded;
         }
 
         if (name == PdfName.RunLengthDecode)
         {
             var decoded = RunLengthFilter.Decode(data.Span, out var limited, maxLength);
-            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
+            Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
             return decoded;
         }
 
@@ -242,7 +264,7 @@ internal static class PdfFilterPipeline
     /// and not damage in it.
     /// </summary>
     private static void Reached(
-        bool limited, PdfName name, PdfDiagnostics? diagnostics, long position, PdfLimitGuard guard, ref bool cut, ref bool limitReported)
+        bool limited, PdfName name, bool shared, PdfDiagnostics? diagnostics, long position, PdfLimitGuard guard, ref bool cut, ref bool limitReported)
     {
         if (!limited)
         {
@@ -261,9 +283,16 @@ internal static class PdfFilterPipeline
         guard.Reach(
             PdfLimit.DecodedStream,
             diagnostics,
-            $"The {FileQuote.Name(name)} data decodes to more than {bound}; decoding stopped there.",
+            shared
+                ? $"The filters before the last decode to more than {bound} together; decoding stopped in the {FileQuote.Name(name)} data."
+                : $"The {FileQuote.Name(name)} data decodes to more than {bound}; decoding stopped there.",
             position);
     }
+
+    /// <summary>The most a filter's output may hold, and whether it is what the filters before the last have left of their bound.</summary>
+    /// <param name="MaxLength">The most the output may hold.</param>
+    /// <param name="Shared">Whether the bound the filters before the last share holds it to less than the bound itself.</param>
+    private readonly record struct Bounds(int MaxLength, bool Shared);
 
     private static ReadOnlyMemory<byte> ApplyPredictor(
         byte[] decoded, in FilterStep step, PdfDiagnostics? diagnostics, long position, bool cut)
