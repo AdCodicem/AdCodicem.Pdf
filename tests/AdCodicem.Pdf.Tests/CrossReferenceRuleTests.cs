@@ -57,7 +57,6 @@ public class CrossReferenceRuleTests
     [Theory]
     [InlineData("xref\n0\n")]
     [InlineData("xref\n0 -4\n")]
-    [InlineData("xref\n0 50000001\n")]
     [InlineData("xref\n3000000000 4\n")]
     public void A_subsection_header_without_a_first_number_and_a_count_it_can_hold_makes_the_table_malformed(string header)
     {
@@ -65,6 +64,17 @@ public class CrossReferenceRuleTests
 
         Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message
             .Should().Contain("does not give a first object number and a count of rows");
+    }
+
+    [Fact]
+    public void A_subsection_claiming_more_rows_than_the_table_holds_makes_it_malformed_where_the_rows_end()
+    {
+        // Fifty million and one rows, which the table does not hold: a count is no fault in itself, however large, since
+        // the rows it numbers are read only as far as they are there. The first that is not makes the table malformed.
+        var file = PdfTemplate.SoundWith("xref\n0 4\n", "xref\n0 50000001\n");
+
+        Single(Validate(file), PdfValidationRuleIds.XRefSectionMalformed).Message.Should().EndWith(
+            $"cannot be read: the row for object 4, at offset {PdfTemplate.OffsetOf(file, "trailer")}, is not an offset, a generation and n or f.");
     }
 
     [Theory]
@@ -181,7 +191,7 @@ public class CrossReferenceRuleTests
     [InlineData("/Size 6 /W [1 4]", "its /W does not give the widths of three fields.")]
     [InlineData("/Size 6 /W [0 0 0]", "its /W gives rows of no bytes.")]
     [InlineData("/Size 6 /W [1 4 2] /Index [0 -1]", "its /Index gives a subsection a count of rows out of range.")]
-    [InlineData("/Size 6 /W [1 4 2] /Index [0 4294967302]", "its /Index gives a subsection a count of rows out of range.")]
+    [InlineData("/Size 6 /W [1 4 2] /Index [0 4294967302]", "its /Index gives a subsection of 4,294,967,302 rows from object 0, outside object numbers 0 to 2147483647.")]
     [InlineData("/Size 6 /W [1 4 2] /Index 6", "its /Index is the integer 6, not an array.")]
     [InlineData("/Size 6 /W [1 4 2] /Index /All", "its /Index is the name /All, not an array.")]
     [InlineData("/Size 6 /W [1 4 2] /Index []", "its /Index holds 0 values, not pairs of a first object number and a count of rows.")]

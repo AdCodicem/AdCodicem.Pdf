@@ -40,13 +40,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal const int XRefProbeLength = 32;
 
     /// <summary>
-    /// Most entries a subsection may claim. Not a guard a valid file reaches: a classic table holds its rows
-    /// within <see cref="PdfReaderLimits.MaxXRefSectionLength"/>, a stream within its decoded length, and a
-    /// count past both describes rows that are not there.
-    /// </summary>
-    private const int MaxSubsectionEntries = 50_000_000;
-
-    /// <summary>
     /// How much of the file's start is searched for <c>%PDF-</c>. Not a guard a valid file reaches: ISO 32000-1
     /// (7.5.2) puts the header on the file's first line. A file that has none within these bytes is reported as
     /// lacking one, under <see cref="PdfDiagnosticCodes.HeaderMissing"/>.
@@ -77,7 +70,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private const int MaxRelocationCandidates = 32;
     private const int ScanChunkSize = 1024 * 1024;
     private const int ScanOverlap = 64;
-    private const int MaxRepairObjects = 2_000_000;
 
     /// <summary>
     /// The decoded data of object streams kept at once, in bytes. Past it the oldest is let go, and decoded again if
@@ -2027,9 +2019,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     break;
                 }
 
-                if (countToken.Kind != PdfTokenKind.Integer ||
-                    countToken.Integer is < 0 or > MaxSubsectionEntries ||
-                    first is < 0 or > PdfObjectId.MaxNumber)
+                if (countToken.Kind != PdfTokenKind.Integer || countToken.Integer < 0 || first is < 0 or > PdfObjectId.MaxNumber)
                 {
                     section.Fault ??= string.Create(
                         CultureInfo.InvariantCulture,
@@ -2045,7 +2035,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     return false;
                 }
 
-                truncated = !ReadSubsection(ref lexer, (int)first, (int)countToken.Integer, section, absolute);
+                // A count is bounded by what it numbers, and its rows by the window, which MaxXRefSectionLength bounds: the
+                // most rows an int counts lie far past any window, and a count past them describes rows that are not read.
+                truncated = !ReadSubsection(ref lexer, (int)first, (int)Math.Min(countToken.Integer, int.MaxValue), section, absolute);
             }
 
             if (!canGrow)
@@ -2428,9 +2420,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
         else
         {
+            // A count is bounded by what it numbers, and its rows by the decoded data: the most rows an int counts lie past
+            // any data a stream decodes to, and a count past them describes rows that are not read.
             for (var i = 0; i < subsections.Length && row > 0; i += 2)
             {
-                ReadXRefStreamRows(data, ref position, fieldWidths, row, subsections[i], subsections[i + 1], section);
+                ReadXRefStreamRows(data, ref position, fieldWidths, row, (int)subsections[i], (int)Math.Min(subsections[i + 1], int.MaxValue), section);
             }
 
             for (var i = 1; i < subsections.Length; i += 2)
@@ -2662,7 +2656,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Says what is wrong with how a cross-reference stream numbers its rows — through its <c>/Index</c>, or through its
     /// <c>/Size</c> when it has no <c>/Index</c> —, or gives null when nothing is, with the first number and the count of
-    /// each subsection its <c>/Index</c> gives, which then all fit an <see cref="int"/>.
+    /// each subsection its <c>/Index</c> gives: each first number is an object number, and each count numbers object
+    /// numbers alone.
     /// </summary>
     /// <remarks>
     /// An integral real counts as an integer, as everywhere the reader reads one from a value rather than from the tokens
@@ -2673,7 +2668,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="index">The <c>/Index</c>, resolved, or null when there is none.</param>
     /// <param name="size">The <c>/Size</c>, when it is an integer.</param>
     /// <param name="subsections">Each subsection's first number then its count, empty without an <c>/Index</c> or with a fault.</param>
-    private static string? NumberingFault(PdfObject? written, PdfObject? index, long? size, out int[] subsections)
+    private static string? NumberingFault(PdfObject? written, PdfObject? index, long? size, out long[] subsections)
     {
         subsections = [];
 
@@ -2695,7 +2690,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 $"its /Index holds {ranges.Count} {(ranges.Count == 1 ? "value" : "values")}, not pairs of a first object number and a count of rows");
         }
 
-        var checkedSubsections = new int[ranges.Count];
+        var checkedSubsections = new long[ranges.Count];
 
         for (var i = 0; i < ranges.Count; i += 2)
         {
@@ -2707,7 +2702,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return $"its /Index holds {DescribeValue(ranges[start is null ? i : i + 1])} where an integer belongs";
             }
 
-            if (count is < 0 or > MaxSubsectionEntries)
+            if (count < 0)
             {
                 return "its /Index gives a subsection a count of rows out of range";
             }
@@ -2719,8 +2714,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     $"its /Index gives a subsection of {count:N0} {(count == 1 ? "row" : "rows")} from object {start}, outside object numbers 0 to {PdfObjectId.MaxNumber}");
             }
 
-            checkedSubsections[i] = (int)start.Value;
-            checkedSubsections[i + 1] = (int)count.Value;
+            checkedSubsections[i] = start.Value;
+            checkedSubsections[i + 1] = count.Value;
         }
 
         subsections = checkedSubsections;
@@ -3819,13 +3814,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         reached?.Throw();
     }
 
+    /// <summary>
+    /// Indexes every object header the file holds, read once each, to its end: the last definition of a number wins, under
+    /// the generation its header gives.
+    /// </summary>
+    /// <remarks>
+    /// The index takes object numbers as the file gives them, as many as <see cref="PdfReaderLimits.MaxIndexEntries"/>
+    /// lets it; past that, a header for a number it holds still replaces its entry, so that the newest definition wins
+    /// whatever came before it, and one for a number it lacks is left out. A number defined again takes no room, so a file
+    /// that repeats one header millions of times hides nothing behind them. The scan's time follows the file's length, and
+    /// what it keeps the index's bound.
+    /// </remarks>
+    /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
     private ExceptionDispatchInfo? ScanForObjects(Redefinitions redefinitions)
     {
         var position = 0L;
-        var found = 0;
         ExceptionDispatchInfo? reached = null;
 
-        while (position < _source.Length && found < MaxRepairObjects)
+        while (position < _source.Length)
         {
             var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
             using var window = _source.GetWindow(position, length);
@@ -3861,8 +3867,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     {
                         _xref.Set(number, XRefEntry.Found(position + headerStart - _headerOffset, generation));
                     }
-
-                    found++;
                 }
 
                 searchFrom = objPosition + ObjKeyword.Length;
