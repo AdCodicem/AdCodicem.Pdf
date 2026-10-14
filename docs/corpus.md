@@ -156,7 +156,7 @@ Five fields serve that rule:
 - `readerLimits` — beside `expect`, not in it, since it is a setting chosen rather than an observation:
   the reader limits the document is opened with, when it is valid but exceeds a default one (ADR 34), such
   as `"readerLimits": { "maxDecodedStreamLength": 536870912 }`. Its keys are the properties of
-  `PdfReaderLimits` in camel case, in bytes or sections, and each must raise its default; a misspelled one
+  `PdfReaderLimits` in camel case, in bytes, sections or entries, and each must raise its default; a misspelled one
   fails loading. The document is then read, not skipped, and a test run on the remote corpus checks that the
   defaults still cut it, so that a raise outlives no reason. Every other document is opened with the defaults.
 - `conformanceValid` — veraPDF's verdict on the PDF/A level the document claims (`claimsConformance`),

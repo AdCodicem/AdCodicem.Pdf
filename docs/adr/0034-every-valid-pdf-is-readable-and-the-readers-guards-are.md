@@ -13,7 +13,7 @@ saying which bounds a sound file could reach, and follows [8](0008-facade-immuta
 in making them options on an immutable record.
 
 Implemented by `PdfReaderLimits`, `PdfReaderOptions.Limits` and `PdfReaderOptions.ThrowOnLimit`,
-`PdfLimitExceededException`, the five `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
+`PdfLimitExceededException`, the six `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
 `tests/corpus/manifest.json`, and `ReaderLimitsTests`.
 
 Amended on 2026-09-27, by the maintainer, while M08 was specified: one record bounds every hostile read, the
@@ -27,6 +27,17 @@ key path (`RuleText.PathEnds`); the whole value stays in the document. Such a co
 `No guard (ADR 34): it bounds what a message repeats, not what is read`, in place of the reason no valid file
 reaches it. `PdfObjectParser.EndObjLookahead`, which bounds what the reader sees of an object's end, was the first.
 
+Amended on 2026-10-14, by the maintainer, while [#164](https://github.com/AdCodicem/AdCodicem.Pdf/issues/164) and
+[#183](https://github.com/AdCodicem/AdCodicem.Pdf/issues/183) were fixed: a sixth guard, `MaxIndexEntries`
+(8,388,607, `limit.index-entries`), bounds the object numbers the index holds, whatever gives them — a section's rows,
+a rebuild's headers, an object stream a rebuild expands. Nothing bounded them before: a cross-reference stream of
+one-byte rows decoding to 256 MB from a few hundred bytes asked for 268 million entries, and two internal constants
+said to bound the rest did not — a rebuild counted headers rather than objects, and stopped silently behind two million
+copies of one; a subsection's count bounded none of the rows an object stream adds. Both constants are folded into
+the guard, and the sentence of the context that classified them is struck. And what a guard leaves out of the index
+is no longer rebuilt as damage: it reads as null, unknown rather than missing, until the property is raised
+(*Reaching a guard*, below).
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -35,9 +46,10 @@ until now nothing told them apart.
 
 **Bounds only an invalid or hostile file reaches.** A chain of objects loaded while loading another is
 bounded at 64 (T29): an indirect `/Length` must lead to an integer, which loads nothing further. Containers
-nest at most 128 deep, and references to references are followed 32 times. A rebuild indexes at most two
-million objects, and a subsection may not claim more than fifty million entries. These bounds never refuse
-a document the specification allows in practice, and a caller has nothing to gain from lifting them.
+nest at most 128 deep, and references to references are followed 32 times. These bounds never refuse
+a document the specification allows in practice, and a caller has nothing to gain from lifting them. (The
+first version of this record listed two more here, on the objects a rebuild indexes and the entries a subsection
+claims; neither bounded what it was said to, and the 2026-10-14 amendment made them one guard.)
 
 **Bounds a valid file can exceed**, because ISO 32000 sets no limit where the reader set one:
 
@@ -48,6 +60,7 @@ a document the specification allows in practice, and a caller has nothing to gai
 | A classic cross-reference section | 64 MB | About 3.3 million entries; the informative annex C of ISO 32000-1 gives Acrobat's own limit as 8,388,607 objects |
 | The number of cross-reference sections | 1,024 | A document saved incrementally more than a thousand times |
 | A trailer | 64 KB | A trailer is a few hundred bytes in practice; nothing forbids more. A cross-reference stream's dictionary is its trailer: its `/Index` holds two numbers per subsection, and a document updated in many scattered places has thousands |
+| The entries of the index | 8,388,607 | The informative annex C of ISO 32000-1 gives Acrobat's limit as 8,388,607 objects, and PDF/A-1 to 3 make it normative; PDF 2.0 sets none, and PDFium raised its own past it for documents of about six million. Each entry the index holds costs 52 to 108 bytes, so the default holds 436 to 906 MB of index |
 
 None of these was an option. Until T21, T23 and T31 some were not even reported, or were reported as damage
 in the file: the map's image came out as "a Flate stream was truncated".
@@ -65,26 +78,35 @@ hands its output out a piece at a time can read the stream (T28).
 We will read every PDF that is valid under ISO 32000, and treat each bound a valid file can exceed as a
 guard: active by default, reported when it is reached, and lifted by an option.
 
-- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the five bounds
-  of the table: `MaxDecodedStreamLength`, `MaxObjectLength`, `MaxXRefSectionLength`, `MaxXRefSectionCount`
-  and `MaxTrailerLength`. `PdfReaderLimits.Default` keeps the values above; `PdfReaderLimits.Unbounded`
-  takes the implementation's maximums — `Array.MaxLength` for a length, `int.MaxValue` for the count. A
-  value of zero or less is refused; a value above the implementation's maximum is taken as that maximum.
+- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the six bounds
+  of the table: `MaxDecodedStreamLength`, `MaxObjectLength`, `MaxXRefSectionLength`, `MaxXRefSectionCount`,
+  `MaxTrailerLength` and `MaxIndexEntries`. `PdfReaderLimits.Default` keeps the values above;
+  `PdfReaderLimits.Unbounded` takes the implementation's maximums — `Array.MaxLength` for a length,
+  `int.MaxValue` for a count. A value of zero or less is refused; a value above the implementation's maximum is
+  taken as that maximum.
 - **The defaults stay on.** An application that opens files it did not produce is protected without
   configuring anything; one that reads a sound but exceptional file asks for it, by raising one bound or by
   choosing `Unbounded`.
 - **Reaching a guard** keeps what fits within it, as the reader does today, and reports it as a warning
   under a code of its own — `limit.decoded-stream`, `limit.object`, `limit.xref-section-length`,
-  `limit.xref-section-count`, `limit.trailer` — whose message names the property that lifts it. What the
-  parser met at the cut is the reader's, not the file's, and is dropped in favor of the guard. An object,
-  a section or a trailer is reported once, however often it is read again; a stream, each time it is decoded
-  past the bound, and in its document's diagnostics when the caller supplied none. The code
-  `filter.limit-exceeded`, added by T31 and never released, becomes `limit.decoded-stream`.
+  `limit.xref-section-count`, `limit.trailer`, `limit.index-entries` — whose message names the property that
+  lifts it. What the parser met at the cut is the reader's, not the file's, and is dropped in favor of the guard. An
+  object, a section or a trailer is reported once, however often it is read again; a stream, each time it is
+  decoded past the bound, and in its document's diagnostics when the caller supplied none; a full index, once a
+  document. The code `filter.limit-exceeded`, added by T31 and never released, becomes `limit.decoded-stream`.
+- **What a guard leaves out of the index is not damage** (amended on 2026-10-14). The objects only a section past
+  `MaxXRefSectionCount`, rows past `MaxXRefSectionLength` or `MaxDecodedStreamLength`, or numbers past
+  `MaxIndexEntries` index read as null, and the validator treats them as unknown rather than missing, until the
+  property is raised: the index is not rebuilt for them, which turned a sound file into an `xref.rebuilt` error
+  (ADR 45) and could lose what the chain had read. A classic table cut by its length keeps its trailer. A rebuild
+  that damage forces on such a chain keeps the entries the chain read; one the chain cannot do without — a guard
+  that leaves it no section — runs as before.
 - **Or it throws.** `PdfReaderOptions.ThrowOnLimit`, false by default, turns every guard reached into a
   `PdfLimitExceededException`, a `PdfException` carrying the code and the name of the property: from
   `PdfDocument.Open` when it is reached while opening, from `GetObject` or `Decode` when it is reached later.
   A rebuild of the index that reaches a guard finishes first and throws after, since a rebuild is never run
-  twice; `Open` releases a source it was given to own when it throws.
+  twice; each later lookup of an object a full index left out throws again. `Open` releases a source it was given
+  to own when it throws.
 - **A stream decodes under its document's settings.** A stream read from a document decodes under that
   document's limits and `ThrowOnLimit`, however long after opening; a stream built in memory decodes under
   the defaults.
@@ -122,7 +144,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
   length: the guard bounds how far the reader follows one past that window, which is where the cost is.
 - **Rejected** — reading everything by default and making the guards opt-in: every service that accepts
   uploaded PDFs would be exposed to decompression bombs until someone read this record.
-- **Rejected** — flat properties on `PdfReaderOptions`: five related bounds and their presets belong
+- **Rejected** — flat properties on `PdfReaderOptions`: six related bounds and their presets belong
   together, and the options record would grow with every bound.
 - **Rejected** — one code for every guard: a caller could not tell, without parsing a message, which bound to
   raise before trying again.

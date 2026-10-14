@@ -18,11 +18,17 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 | `MaxXRefSectionLength` | 64 MB | A classic cross-reference table of more than about 3.3 million entries | The entries within the bound | `limit.xref-section-length` |
 | `MaxXRefSectionCount` | 1,024 | A document saved incrementally more than a thousand times | The newest sections | `limit.xref-section-count` |
 | `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary: its `/Index` grows with every scattered update | The trailer as far as the bound | `limit.trailer` |
+| `MaxIndexEntries` | 8,388,607 | A document of more objects than ISO 32000-1's Annex C advises; or a cross-reference stream of one-byte rows, of which 256 MB decode from a few hundred bytes | The object numbers indexed first: the newest sections', a rebuild's first | `limit.index-entries` |
 
 | Member | Value |
 |---|---|
 | `PdfReaderLimits.Default` | Every limit at the default above; what `PdfReaderOptions.Limits` holds unless you set it |
-| `PdfReaderLimits.Unbounded` | Every length at `Array.MaxLength`, about 2 GB, and `MaxXRefSectionCount` at `int.MaxValue` |
+| `PdfReaderLimits.Unbounded` | Every length at `Array.MaxLength`, about 2 GB, and `MaxXRefSectionCount` and `MaxIndexEntries` at `int.MaxValue` |
+
+`MaxIndexEntries` bounds what a document costs after opening too. The index holds 52 to 63 bytes an object, up to 108
+when a rebuild grew it, so 436 MB or more at the default bound; and validating a document costs about 3 µs and 350
+bytes allocated an object, so a document near the bound takes about 24 s and 3 GB to validate. An application that
+validates uploads can lower it to the documents it accepts.
 
 A value of zero or less is refused with an `ArgumentOutOfRangeException`. A length above `Array.MaxLength`
 is taken as `Array.MaxLength`: a decoded stream is held in one piece, and no runtime allocates a larger one.
@@ -38,7 +44,13 @@ Warning limit.decoded-stream at 48213: The /FlateDecode data decodes to more tha
 there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 ```
 
-- An object, a cross-reference section or a trailer is reported once, however often it is read again.
+- An object, a cross-reference section or a trailer is reported once, however often it is read again; a full index,
+  once a document.
+- What a limit leaves out of the index — the sections past `MaxXRefSectionCount`, the rows past
+  `MaxXRefSectionLength` or past what `MaxDecodedStreamLength` decodes of a cross-reference stream, the object
+  numbers past `MaxIndexEntries` — reads as null until you raise the limit. The reader does not rebuild the index for
+  it, since the file may be sound, and the validator reports it as unknown, under `xref.checked-in-part`, rather than
+  missing. A classic table cut by its length keeps its trailer: the document's catalog, encryption and identity.
 - A stream is reported each time it is decoded past the bound — in the diagnostics you pass to `Decode`, or in the
   document's own when you pass none.
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
@@ -67,7 +79,7 @@ The exception comes from whichever operation reaches the limit:
 | Operation | When |
 |---|---|
 | `PdfDocument.Open` | While it indexes the file and reads its catalog |
-| `GetObject`, or resolving a reference | When an object is too long, or the object stream that holds it decodes too far; or, when the read rebuilds the index, at any limit the rebuild reaches, once the rebuild is finished |
+| `GetObject`, or resolving a reference | When an object is too long, or the object stream that holds it decodes too far; when the read rebuilds the index, at any limit the rebuild reaches, once the rebuild is finished; and each time it looks up an object a full index left out |
 | `Decode` | When a stream decodes too far |
 | `PdfValidator.Validate` | As it reads, like any other caller |
 
@@ -75,7 +87,7 @@ A document whose index had to be rebuilt finishes the rebuild before throwing, s
 
 ## What cannot be lifted
 
-Some bounds protect the reader itself — its stack, its rebuild of a damaged index — and are not reached by
+Some bounds protect the reader itself — its stack, the chains of references it follows — and are not reached by
 the documents producers write. They are not options:
 
 | Bound | Value | Why it is not an option |
@@ -83,8 +95,6 @@ the documents producers write. They are not options:
 | Nesting of arrays and dictionaries | 128 levels | Real documents nest a handful of levels; the bound keeps a hostile file from exhausting the stack |
 | A reference that resolves to another reference | followed 32 times | Producers write the object itself; the bound breaks a chain that loops |
 | Objects loaded while loading another | 64 | An indirect `/Length` leads to an integer, which loads nothing further |
-| Objects indexed by a rebuild | 2,000,000 | A rebuild only runs on a damaged file |
-| Entries one subsection claims | 50,000,000 | A table's rows are bounded by `MaxXRefSectionLength` already; a count past that describes rows that are not there |
 | Object numbers | up to 2,147,483,647 | An object's number is an `int`, and ISO 32000-1's Annex C advises at most 8,388,607 indirect objects. A number past it is refused where it is read — a header, a reference, a subsection, a row, an object stream's header —, never narrowed to one that would name another object. An object is numbered from 1; 0 names the head of the free list, where a reference, a subsection or a row may give it |
 | Generations | 0 to 65,535 | No object in use has a higher one (ISO 32000-1, 7.5.4). A free row of a table is read whatever its generation: producers give the free list's head 65,536 |
 | Reals | within ±1.8 × 10³⁰⁸ | A real is a `double`, and ISO 32000-1's Annex C advises reals within ±3.403 × 10³⁸. A number past it reads as null, reported as `syntax.number-out-of-range` |
