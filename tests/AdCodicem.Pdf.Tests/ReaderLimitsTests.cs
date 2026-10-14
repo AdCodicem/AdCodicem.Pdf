@@ -897,6 +897,43 @@ public class ReaderLimitsTests
         source.Disposed.Should().BeTrue();
     }
 
+    [Fact]
+    public void A_table_its_length_guard_cuts_makes_room_for_no_more_rows_than_the_guard_lets_the_reader_read()
+    {
+        // The index makes room for a subsection's rows before it reads them, as many as the bytes left of the section hold:
+        // those MaxXRefSectionLength lets the reader read, not the 100 KB of the table past them.
+        var file = Numbered(5000).BuildClassic(rootNumber: 1);
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 2048 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        document.ObjectCount.Should().BeLessThan(103);
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(128, "room is made for about the 102 rows 2 KB hold");
+    }
+
+    [Fact]
+    public void The_room_a_chain_makes_for_its_newest_size_stays_within_the_entries_the_index_may_take()
+    {
+        // The chain's newest /Size, once read, sizes the index for the objects the older sections index with the newest,
+        // as many as the file's 20 KB hold rows of: under a guard of ten entries, for ten.
+        var original = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, $"({new string('x', 20 * 1024)})")
+            .BuildClassic(rootNumber: 1);
+        var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, [(1, Catalog)]));
+        var newest = text.LastIndexOf("/Size 4 ", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, newest), "/Size 100000 ", text.AsSpan(newest + "/Size 4 ".Length)));
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 10 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.ObjectCount.Should().Be(4);
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(32, "room is made for the ten entries the guard lets the index take");
+    }
+
     /// <summary>Object 4, an array of three numbers without its endobj, padded to be longer than the sound document's objects.</summary>
     private static string PaddedArray { get; } = "4 0 obj\n[1 2 3" + new string(' ', 200) + "]";
 
