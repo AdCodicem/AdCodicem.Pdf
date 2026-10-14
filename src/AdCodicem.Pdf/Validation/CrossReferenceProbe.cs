@@ -230,6 +230,13 @@ internal sealed class CrossReferenceProbe
 
         if (reader.ChainIndex?.TryGet(stream, out var entry) != true || entry.Kind == XRefEntryKind.Free)
         {
+            // An object stream one of the reader's limits left out of the index is unknown, and what it holds unchecked:
+            // xref.checked-in-part says the index was stopped short.
+            if (reader.GetPresence(stream) == ObjectPresence.Unindexed)
+            {
+                return;
+            }
+
             BrokenObjectStreams.Add(new ProbeFinding(
                 PdfValidationLocation.OfObject(id),
                 Invariant($"The index places {RuleText.Objects(objects.Count)} in object stream {stream}, which it does not hold as an object.")));

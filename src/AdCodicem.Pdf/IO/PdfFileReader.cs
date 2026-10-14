@@ -582,8 +582,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// one it reads with now —, is missing: a reference to it is null (ISO 32000-1, 7.3.10). One either index holds
     /// in use, and that the reader gave up on or lost in a rebuild, is unproduced: what went wrong is the index's
     /// or the object stream's, and the cross-reference rules report it. One the index lacks while a guard left part of the
-    /// chain unread, or filled the index, is unindexed: whether the file holds it is unknown. Object 0 is missing whatever
-    /// its entry says: it heads the free list and is never in use (ISO 32000-1, 7.5.4), and the reader never reads it.
+    /// chain unread, or filled the index, is unindexed: whether the file holds it is unknown; and so is one the reader could
+    /// not produce because the object stream that holds it is such an object. Object 0 is missing whatever its entry says:
+    /// it heads the free list and is never in use (ISO 32000-1, 7.5.4), and the reader never reads it.
     /// </remarks>
     internal ObjectPresence GetPresence(int number)
     {
@@ -596,7 +597,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (indexed && entry.Kind != XRefEntryKind.Free)
         {
-            return _unproduced.Contains(number) ? ObjectPresence.Unproduced : ObjectPresence.Defined;
+            return !_unproduced.Contains(number) ? ObjectPresence.Defined
+                : HiddenByGuard(number) ? ObjectPresence.Unindexed
+                : ObjectPresence.Unproduced;
         }
 
         if (ChainIndex?.TryGet(number, out var written) == true && written.Kind != XRefEntryKind.Free)
@@ -1471,8 +1474,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// past the cut, and reads as null until the guard is lifted, as any object there does. A <c>/Root</c> that names an
     /// object the index holds, or none, says the file is damaged.
     /// </summary>
-    private bool RootHiddenByGuard() =>
-        IndexStoppedByGuard && Trailer.GetRaw(PdfName.Root) is PdfReference root && !_xref.TryGet(root.Id.Number, out _);
+    private bool RootHiddenByGuard() => Trailer.GetRaw(PdfName.Root) is PdfReference root && HiddenByGuard(root.Id.Number);
+
+    /// <summary>
+    /// Determines whether a guard keeps object <paramref name="number"/> from the reader: it stopped the index short of
+    /// the file, and the index lacks the object, or holds it in an object stream it lacks.
+    /// </summary>
+    private bool HiddenByGuard(int number) =>
+        IndexStoppedByGuard &&
+        (!_xref.TryGet(number, out var entry) ||
+            (entry.Kind == XRefEntryKind.Compressed && !_xref.TryGet(entry.ObjectStreamNumber, out _)));
 
     private void DetectHeader()
     {
