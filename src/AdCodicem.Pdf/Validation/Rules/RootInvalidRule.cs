@@ -18,7 +18,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <para>
 /// It judges the trailer the file's chain gave, merged across its sections as readers merge them, and <c>/Root</c>
 /// as it was before the reader looked for a catalog. A trailer that could not be read at all, or an index the chain
-/// did not give, is another rule's to report.
+/// did not give, is another rule's to report, and a catalog one of the reader's limits left out of the index
+/// <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>'s.
 /// </para>
 /// </remarks>
 internal sealed class RootInvalidRule : IValidationRule
@@ -35,6 +36,14 @@ internal sealed class RootInvalidRule : IValidationRule
         var structure = context.Structure;
 
         if (!structure.ChainRead || !structure.TrailerRead || structure.RootUsable)
+        {
+            return;
+        }
+
+        // A catalog a guard left out of the index is unknown, not lacking: xref.checked-in-part says the index was stopped
+        // short of it, and raising the guard reads it.
+        if (structure.RootAsWritten is PdfReference hidden &&
+            context.Document.Reader.GetPresence(hidden.Id.Number) == ObjectPresence.Unindexed)
         {
             return;
         }

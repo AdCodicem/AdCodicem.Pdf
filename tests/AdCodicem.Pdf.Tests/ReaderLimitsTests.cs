@@ -378,9 +378,64 @@ public class ReaderLimitsTests
             document.Catalog.Should().BeNull();
             document.WasRepaired.Should().BeFalse();
             document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionCount);
+
+            // Nor is it a catalog the file lacks: file.root-invalid, an error, once said so.
+            var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId);
+            findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart).And.NotContain(PdfValidationRuleIds.FileRootInvalid);
         }
 
         using var lifted = PdfDocument.Open(@case.File, new PdfReaderOptions { Limits = @case.Raised });
+        lifted.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Fact]
+    public void An_object_stream_past_a_full_index_is_unknown_and_what_it_holds_too()
+    {
+        // Object 3's row places it in object stream 4, whose own row lies past the bound: the validator said the index
+        // places an object in a stream it does not hold, an error of the file's.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "(packed)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3]);
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 };
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.GetPresence(3).Should().Be(ObjectPresence.Unindexed);
+        document.WasRepaired.Should().BeFalse();
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+        findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart).And.NotContain(PdfValidationRuleIds.XRefObjectStreamBroken);
+    }
+
+    [Fact]
+    public void A_catalog_packed_in_an_object_stream_past_a_full_index_reads_as_null_and_rebuilds_nothing()
+    {
+        // The catalog's row is indexed, the row of the object stream that holds it is past the bound: the catalog cannot
+        // be produced, which was taken for damage, and the index was rebuilt, as the validator blamed the file for an
+        // object stream it does not hold. Both are unknown until the guard is lifted.
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .WithObject(3, "(packed)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [1, 3]);
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 };
+
+        using (var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits }))
+        {
+            document.Catalog.Should().BeNull();
+            document.WasRepaired.Should().BeFalse();
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitIndexEntries);
+            document.Reader.GetPresence(1).Should().Be(ObjectPresence.Unindexed);
+            document.Reader.GetPresence(4).Should().Be(ObjectPresence.Unindexed);
+
+            var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).ToList();
+            findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart);
+            findings.Should().NotContain([PdfValidationRuleIds.FileRootInvalid, PdfValidationRuleIds.XRefObjectStreamBroken]);
+        }
+
+        using var lifted = PdfDocument.Open(file);
         lifted.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
