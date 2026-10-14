@@ -703,19 +703,96 @@ public class FilterTests
         diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.FilterUnsupported);
     }
 
+    [Theory]
+    [InlineData("7", "an integer")]
+    [InlineData("1.5", "a real number")]
+    [InlineData("(FlateDecode)", "a string")]
+    [InlineData("true", "a boolean")]
+    [InlineData("<< /FlateDecode 1 >>", "a dictionary")]
+    [InlineData("4 0 R", "an integer")]
+    public void Leaves_the_data_as_it_is_under_a_filter_entry_that_is_neither_a_name_nor_an_array_and_says_where(
+        string filter, string kind)
+    {
+        // Where the stream's data starts, as every other report on its filters is placed, and what the entry holds in
+        // words that quote nothing of the file (#209).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, $"/Filter {filter}", "plain")
+            .WithObject(4, "7")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file);
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+        var decoded = stream.Decode(document.Diagnostics);
+
+        Text(decoded).Should().Be("plain");
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterUnsupported);
+        report.Message.Should().Be($"The /Filter entry is {kind}, neither a name nor an array; the data was left as it is.");
+        report.Position.Should().Be(stream.Data.Position).And.BePositive();
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("4 0 R")]
+    [InlineData("99 0 R")]
+    public void Reads_a_filter_entry_that_is_null_as_one_the_stream_does_not_have(string filter)
+    {
+        // Null, an object that holds null, and an object the file lacks (7.3.10): the data is not encoded.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, $"/Filter {filter}", "plain")
+            .WithObject(4, "null")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file);
+        var decoded = document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        Text(decoded).Should().Be("plain");
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("5", "an integer")]
+    [InlineData("(x)", "a string")]
+    [InlineData("[/FlateDecode]", "an array")]
+    [InlineData("null", "null")]
+    [InlineData("99 0 R", "null")]
+    public void Ends_a_chain_at_an_element_that_names_no_filter_and_returns_what_the_filters_before_it_decoded(
+        string element, string kind)
+    {
+        // The filters after the element would decode what it encoded, if it encoded anything: Flate would find no zlib
+        // data in what the hex gave, and report damage the file does not have.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, $"/Filter [/ASCIIHexDecode {element} /FlateDecode /ASCIIHexDecode]", "706C61696E>")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file);
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+        var decoded = stream.Decode(document.Diagnostics);
+
+        Text(decoded).Should().Be("plain");
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterUnsupported);
+        report.Message.Should().Be($"Element 1 of the /Filter entry is {kind}, which names no filter; decoding stopped there.");
+        report.Position.Should().Be(stream.Data.Position).And.BePositive();
+    }
+
     [Fact]
-    public void Leaves_the_data_as_it_is_under_a_filter_entry_that_is_neither_a_name_nor_an_array()
+    public void Reports_no_damage_for_data_an_element_that_names_no_filter_stands_before()
     {
         var dictionary = new PdfDictionary();
-        dictionary.Set(PdfName.Filter, PdfInteger.Create(5));
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfInteger.Create(5), PdfName.FlateDecode]));
         var diagnostics = new PdfDiagnostics();
 
         var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory("plain"u8.ToArray())).Decode(diagnostics);
 
         Text(decoded).Should().Be("plain");
-        var report = diagnostics.Should().ContainSingle().Which;
-        report.Code.Should().Be(PdfDiagnosticCodes.FilterUnsupported);
-        report.Message.Should().Be("The /Filter entry is neither a name nor an array.");
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.FilterUnsupported);
     }
 
     [Fact]

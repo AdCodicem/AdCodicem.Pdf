@@ -2872,6 +2872,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return stepFilterFault;
             }
 
+            // Decoding stops at an element that names no filter, and reads nothing past it.
+            if (step is not PdfName name)
+            {
+                return null;
+            }
+
             var stepParameters = parameters;
 
             if (parameters is PdfArray parameterArray)
@@ -2884,18 +2890,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
             }
 
-            if (step is PdfName name)
+            // Decoding stops at an image filter, and reads no parameter past it.
+            if (Filters.PdfFilterPipeline.IsImageFilter(name))
             {
-                // Decoding stops at an image filter, and reads no parameter past it.
-                if (Filters.PdfFilterPipeline.IsImageFilter(name))
-                {
-                    return null;
-                }
+                return null;
+            }
 
-                if (UnreadParameter(name, stepParameters as PdfDictionary) is { } stepFault)
-                {
-                    return stepFault;
-                }
+            if (UnreadParameter(name, stepParameters as PdfDictionary) is { } stepFault)
+            {
+                return stepFault;
             }
         }
 

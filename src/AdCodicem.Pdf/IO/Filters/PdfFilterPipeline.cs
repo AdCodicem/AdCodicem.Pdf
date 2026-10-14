@@ -37,7 +37,9 @@ internal static class PdfFilterPipeline
         var data = stream.GetRawBytes();
         var filters = stream.Dictionary.GetRaw(PdfName.Filter).Resolved();
 
-        if (filters is null)
+        // A /Filter that is null, or names an object that holds null or that the file lacks, is one the dictionary does not
+        // have (7.3.7, 7.3.10): the data is not encoded.
+        if (filters is null or PdfNull)
         {
             return data;
         }
@@ -51,7 +53,10 @@ internal static class PdfFilterPipeline
 
         if (filters is not PdfArray chain)
         {
-            diagnostics?.Warn(PdfDiagnosticCodes.FilterUnsupported, "The /Filter entry is neither a name nor an array.");
+            diagnostics?.Warn(
+                PdfDiagnosticCodes.FilterUnsupported,
+                $"The /Filter entry is {PdfObjectParser.KindOf(filters)}, neither a name nor an array; the data was left as it is.",
+                stream.Data.Position);
             return data;
         }
 
@@ -59,9 +64,19 @@ internal static class PdfFilterPipeline
 
         for (var index = 0; index < chain.Count; index++)
         {
-            if (chain.Resolved(index) is not PdfName name)
+            // An element that names no filter is read as a filter the library does not know: the filters after it would
+            // decode what it encoded, if it encoded anything.
+            var element = chain.Resolved(index);
+
+            if (element is not PdfName name)
             {
-                continue;
+                diagnostics?.Warn(
+                    PdfDiagnosticCodes.FilterUnsupported,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Element {index} of the /Filter entry is {PdfObjectParser.KindOf(element)}, which names no filter; decoding stopped there."),
+                    stream.Data.Position);
+                return data;
             }
 
             var stepParameters = parameterArray is not null && index < parameterArray.Count
