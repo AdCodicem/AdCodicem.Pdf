@@ -51,32 +51,12 @@ public static class PdfStreamDecodingExtensions
     }
 
     /// <summary>
-    /// Determines whether the stream's data is an encoded image that <see cref="Decode"/> leaves alone.
+    /// Determines whether the stream's data is an encoded image that <see cref="Decode"/> leaves alone: whether its
+    /// filters, decoded in order, reach an image filter before anything else ends them.
     /// </summary>
     public static bool HasImageFilter(this PdfStream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
-
-        var filters = stream.Dictionary.GetRaw(PdfName.Filter).Resolved();
-
-        switch (filters)
-        {
-            case PdfName single:
-                return PdfFilterPipeline.IsImageFilter(single);
-
-            case PdfArray chain:
-                for (var index = 0; index < chain.Count; index++)
-                {
-                    if (chain.Resolved(index) is PdfName name && PdfFilterPipeline.IsImageFilter(name))
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-
-            default:
-                return false;
-        }
+        return FilterChain.Resolve(stream.Dictionary, readParameters: false).End == FilterChainEnd.Image;
     }
 }

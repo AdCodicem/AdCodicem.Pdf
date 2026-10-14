@@ -1,9 +1,12 @@
+using System.Buffers;
+using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.Objects;
+using NSubstitute;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -807,6 +810,160 @@ public class FilterTests
         stream.Decode().ToArray().Should().Equal(jpeg);
     }
 
+    [Theory]
+    [InlineData("the second filter")]
+    [InlineData("the second step's parameters")]
+    [InlineData("/Predictor")]
+    [InlineData("/Colors")]
+    [InlineData("/BitsPerComponent")]
+    [InlineData("/Columns")]
+    [InlineData("/EarlyChange")]
+    public void Resolves_every_value_a_step_reads_before_any_step_reads_the_data(string where)
+    {
+        // A chain of two steps whose second takes one value through a reference, to a source that keeps nothing, as a
+        // reader whose cache let the object go: each resolution is a load. Every load comes before any step looks at
+        // the data, so that a load that decodes an object stream runs while this stream holds nothing decoded (#165).
+        var lzw = where == "/EarlyChange";
+        byte[] rows = [0, (byte)'H', (byte)'e', (byte)'l', (byte)'l', (byte)'o', 0, (byte)'w', (byte)'o', (byte)'r', (byte)'l', (byte)'d'];
+        byte[] inner = lzw ? [0x80, 0x0B, 0x60, 0x50, 0x22, 0x0C, 0x0C, 0x85, 0x01] : Compress(rows);
+        using var memory = new LookCountingMemory(Compress(inner));
+        var loads = new List<int>();
+        var second = lzw ? PdfName.LZWDecode : PdfName.FlateDecode;
+        var parameters = new PdfDictionary();
+        PdfObject value = where switch
+        {
+            "the second filter" => second,
+            "the second step's parameters" => parameters,
+            "/Predictor" => PdfInteger.Create(12),
+            "/Columns" => PdfInteger.Create(5),
+            "/BitsPerComponent" => PdfInteger.Create(8),
+            _ => PdfInteger.Create(1),
+        };
+        var source = Substitute.For<IPdfObjectSource>();
+        source.GetObject(Arg.Any<PdfObjectId>()).Returns(_ =>
+        {
+            loads.Add(memory.Looks);
+            return value;
+        });
+        var reference = new PdfReference(new PdfObjectId(9), source);
+
+        if (lzw)
+        {
+            parameters.Set(PdfName.EarlyChange, reference);
+        }
+        else
+        {
+            parameters.Set(PdfName.Predictor, where == "/Predictor" ? reference : PdfInteger.Create(12));
+            parameters.Set(PdfName.Columns, where == "/Columns" ? reference : PdfInteger.Create(5));
+            parameters.Set(PdfName.Colors, where == "/Colors" ? reference : PdfInteger.Create(1));
+            parameters.Set(PdfName.BitsPerComponent, where == "/BitsPerComponent" ? reference : PdfInteger.Create(8));
+        }
+
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.FlateDecode, where == "the second filter" ? reference : second]));
+        dictionary.Set(PdfName.DecodeParms, new PdfArray([PdfNull.Instance, where == "the second step's parameters" ? reference : parameters]));
+        var diagnostics = new PdfDiagnostics();
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(memory.Memory));
+        var unread = memory.Looks;
+
+        var decoded = PdfFilterPipeline.Decode(stream, diagnostics);
+
+        Text(decoded).Should().Be(lzw ? "-----A---B" : "Helloworld");
+        diagnostics.Should().BeEmpty();
+        loads.Should().ContainSingle().Which.Should().Be(unread, "the value is loaded before the data is read");
+    }
+
+    [Theory]
+    [InlineData("/Filter /ASCIIHexDecode /DecodeParms 9 0 R", 0)]
+    [InlineData("/Filter [/ASCIIHexDecode /RunLengthDecode /ASCII85Decode /Crypt] /DecodeParms [9 0 R 9 0 R 9 0 R 9 0 R]", 0)]
+    [InlineData("/Filter [/ASCIIHexDecode /DCTDecode] /DecodeParms [null 9 0 R]", 0)]
+    [InlineData("/Filter [/ASCIIHexDecode /DCTDecode 9 0 R] /DecodeParms [null null 9 0 R]", 0)]
+    [InlineData("/Filter [/ASCIIHexDecode /MadeUpDecode /FlateDecode] /DecodeParms [null 9 0 R 9 0 R]", 0)]
+    [InlineData("/Filter [/ASCIIHexDecode 5 9 0 R] /DecodeParms 9 0 R", 0)]
+    [InlineData("/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms [null 9 0 R]", 1)]
+    public void Resolves_nothing_a_step_does_not_read(string entries, int expected)
+    {
+        // Each value is a reference to an object nothing should ask for: parameters of filters that take none, and
+        // what stands at or past an image filter, an unknown one, or an element that names none. The last case, whose
+        // Flate step does read its parameters, shows the source is asked when it should be.
+        var asked = 0;
+        var source = Substitute.For<IPdfObjectSource>();
+        source.GetObject(Arg.Any<PdfObjectId>()).Returns(_ =>
+        {
+            asked++;
+            return PdfNull.Instance;
+        });
+        var dictionary = new PdfObjectParser(Encoding.ASCII.GetBytes($"<< {entries} >>"), source: source).ParseObject().AsDictionary().Required();
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(Encoding.ASCII.GetBytes(Convert.ToHexString(Compress("Hello"u8.ToArray())) + ">")));
+
+        stream.Decode(new PdfDiagnostics());
+
+        asked.Should().Be(expected);
+    }
+
+    [Fact]
+    public void Undoes_the_predictor_an_array_of_parameters_gives_a_single_filter()
+    {
+        // ISO 32000-1 (7.3.8.2) pairs an array of parameters with an array of filters; beside a single name, its first
+        // element is the filter's, as qpdf reads it, rather than no parameters at all and the rows left predicted.
+        byte[] rows = [2, 1, 2, 3, 4, 2, 1, 1, 1, 1];
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(12));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(4));
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfName.FlateDecode);
+        dictionary.Set(PdfName.DecodeParms, new PdfArray([parameters]));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(Compress(rows))).Decode(diagnostics);
+
+        decoded.ToArray().Should().Equal(1, 2, 3, 4, 2, 3, 4, 5);
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Gives_a_dictionary_of_parameters_beside_a_chain_to_each_of_its_steps()
+    {
+        // A shape ISO 32000-1 does not allow, which qpdf reads too: the hex step takes no parameters, and the Flate step
+        // undoes the predictor the dictionary describes.
+        byte[] rows = [2, 1, 2, 3, 4, 2, 1, 1, 1, 1];
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(12));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(4));
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.ASCIIHexDecode, PdfName.FlateDecode]));
+        dictionary.Set(PdfName.DecodeParms, parameters);
+        var diagnostics = new PdfDiagnostics();
+        var hex = Encoding.ASCII.GetBytes(Convert.ToHexString(Compress(rows)) + ">");
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(hex)).Decode(diagnostics);
+
+        decoded.ToArray().Should().Equal(1, 2, 3, 4, 2, 3, 4, 5);
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/Filter /DCTDecode", true)]
+    [InlineData("/Filter [/ASCIIHexDecode /DCTDecode]", true)]
+    [InlineData("/Filter [/ASCIIHexDecode /JPXDecode /FlateDecode]", true)]
+    [InlineData("/Filter [/MadeUpDecode /DCTDecode]", false)]
+    [InlineData("/Filter [5 /DCTDecode]", false)]
+    [InlineData("/Filter (DCTDecode)", false)]
+    [InlineData("/Filter [/ASCIIHexDecode /FlateDecode]", false)]
+    [InlineData("/Filter null", false)]
+    [InlineData("", false)]
+    public void Says_a_stream_is_an_image_only_when_decoding_it_stops_at_an_image_filter(string entries, bool image)
+    {
+        // Decoding stops at the first filter it does not know, or at an element that names none: the data that comes
+        // back is not the image a filter after it names. Telling it reads no parameter.
+        var source = Substitute.For<IPdfObjectSource>();
+        var dictionary = new PdfObjectParser(Encoding.ASCII.GetBytes($"<< {entries} /DecodeParms 9 0 R >>"), source: source).ParseObject().AsDictionary().Required();
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory("00>"u8.ToArray()));
+
+        stream.HasImageFilter().Should().Be(image);
+        source.ReceivedCalls().Should().BeEmpty();
+    }
+
     [Fact]
     public void Returns_raw_data_when_no_filter_is_declared()
     {
@@ -932,4 +1089,27 @@ public class FilterTests
     }
 
     private static string Text(ReadOnlyMemory<byte> data) => Encoding.ASCII.GetString(data.Span);
+
+    /// <summary>Data that counts how often a decoder looks at it.</summary>
+    private sealed class LookCountingMemory(byte[] contents) : MemoryManager<byte>
+    {
+        /// <summary>Gets how many times the data was looked at.</summary>
+        public int Looks { get; private set; }
+
+        public override Span<byte> GetSpan()
+        {
+            Looks++;
+            return contents;
+        }
+
+        public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+
+        public override void Unpin()
+        {
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+        }
+    }
 }

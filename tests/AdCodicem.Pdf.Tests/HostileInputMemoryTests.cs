@@ -1,0 +1,170 @@
+using System.Globalization;
+using System.IO.Compression;
+using System.Text;
+using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.Objects;
+
+namespace AdCodicem.Pdf.Tests;
+
+/// <summary>
+/// Hostile inputs held to a budget on memory live at once: a measure of the whole process, taken alone.
+/// </summary>
+[Collection(TimingCollection.Name)]
+public class HostileInputMemoryTests
+{
+    [Fact]
+    public void A_chain_of_object_streams_each_needing_the_next_to_decode_holds_one_level_s_output_at_once()
+    {
+        // 64 object streams, each decoding through [/FlateDecode /FlateDecode] to 4 MB less a byte, each taking its
+        // second step's /Predictor from an object the next one holds, under a bound of 4 MB. Memory live at once is
+        // sampled, every object collected first, each time the reader reads the file. Decoding while the parameters
+        // loaded held one output per level, 64 deep: about 250 MB. Resolved first, no level holds an output while the
+        // next decodes, and what stays live is the object streams the reader keeps, within its 32 MB budget (#165).
+        const int Bound = 4 * 1024 * 1024;
+        var source = new SamplingSource(NestedChain(64, Bound - 1));
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = Bound } };
+        using var document = PdfDocument.Open(source, options, ownsSource: true);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        var three = document.GetObject(new PdfObjectId(3));
+
+        source.Sampling = false;
+        three.Should().BeOfType<PdfDictionary>();
+        var held = source.MostLive - before;
+        held.Should().BeLessThan((32L * 1024 * 1024) + (3L * Bound), $"memory was sampled {source.Samples} times");
+    }
+
+    private static byte[] Compress(byte[] data)
+    {
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            zlib.Write(data);
+        }
+
+        return compressed.ToArray();
+    }
+
+    /// <summary>
+    /// A file whose catalog's object 3 object stream 101 holds, and each object stream 100+k of
+    /// <paramref name="levels"/> takes its predictor from object 200+k, which object stream 100+k+1 holds; the last
+    /// is not encoded.
+    /// </summary>
+    private static byte[] NestedChain(int levels, int decodedLength)
+    {
+        using var output = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        void WriteObject(int number, string dictionary, byte[]? data = null)
+        {
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{dictionary}"));
+
+            if (data is not null)
+            {
+                Write("\nstream\n");
+                output.Write(data);
+                Write("\nendstream");
+            }
+
+            Write("\nendobj\n");
+        }
+
+        Write("%PDF-1.5\n");
+        WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        WriteObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var level = 1; level <= levels + 1; level++)
+        {
+            var member = level == 1 ? 3 : 200 + level - 1;
+            var body = level == 1 ? "<< /Title (three) >>" : "1";
+            var header = string.Create(CultureInfo.InvariantCulture, $"{member} 0 ");
+            var last = level == levels + 1;
+            var contents = new byte[last ? header.Length + body.Length : Math.Max(decodedLength, header.Length + body.Length)];
+            contents.AsSpan().Fill((byte)' ');
+            Encoding.ASCII.GetBytes(header + body).CopyTo(contents, 0);
+
+            if (last)
+            {
+                WriteObject(100 + level, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header.Length} /Length {contents.Length} >>"), contents);
+            }
+            else
+            {
+                var data = Compress(Compress(contents));
+                WriteObject(
+                    100 + level,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"<< /Type /ObjStm /N 1 /First {header.Length} /Filter [/FlateDecode /FlateDecode] /DecodeParms [null << /Predictor {200 + level} 0 R >>] /Length {data.Length} >>"),
+                    data);
+            }
+        }
+
+        const int XRef = 400;
+        var rows = new byte[(XRef + 1) * 7];
+
+        void Row(int number, int type, long field, int index)
+        {
+            var at = number * 7;
+            rows[at] = (byte)type;
+            rows[at + 1] = (byte)(field >> 24);
+            rows[at + 2] = (byte)(field >> 16);
+            rows[at + 3] = (byte)(field >> 8);
+            rows[at + 4] = (byte)field;
+            rows[at + 5] = (byte)(index >> 8);
+            rows[at + 6] = (byte)index;
+        }
+
+        Row(0, 0, 0, 65535);
+
+        foreach (var (number, offset) in offsets)
+        {
+            Row(number, 1, offset, 0);
+        }
+
+        Row(3, 2, 101, 0);
+
+        for (var level = 1; level <= levels; level++)
+        {
+            Row(200 + level, 2, 100 + level + 1, 0);
+        }
+
+        var xref = output.Position;
+        Row(XRef, 1, xref, 0);
+        Write(string.Create(CultureInfo.InvariantCulture, $"{XRef} 0 obj\n<< /Type /XRef /Size {XRef + 1} /W [1 4 2] /Root 1 0 R /Length {rows.Length} >>\nstream\n"));
+        output.Write(rows);
+        Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xref}\n%%EOF\n"));
+        return output.ToArray();
+    }
+
+    /// <summary>A file in memory that samples the memory live at once, every object collected first, at each read.</summary>
+    private sealed class SamplingSource(byte[] data) : PdfFileSource
+    {
+        /// <summary>Gets or sets a value indicating whether reads sample the memory live at once.</summary>
+        public bool Sampling { get; set; }
+
+        /// <summary>Gets the most memory a sample found live at once.</summary>
+        public long MostLive { get; private set; }
+
+        /// <summary>Gets how many samples were taken.</summary>
+        public int Samples { get; private set; }
+
+        public override long Length => data.Length;
+
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            if (Sampling)
+            {
+                Samples++;
+                MostLive = Math.Max(MostLive, GC.GetTotalMemory(forceFullCollection: true));
+            }
+
+            var count = (int)Math.Min(buffer.Length, data.Length - offset);
+            data.AsSpan((int)offset, count).CopyTo(buffer);
+            return count;
+        }
+    }
+}

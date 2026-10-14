@@ -126,8 +126,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Deepest chain of objects loaded while loading another. Real documents stay within a handful — a stream
     /// in an object stream whose <c>/Length</c> is indirect is three —; each level costs a dozen frames, and the
-    /// parsing of the object it loads besides. The count alone does not bound the stack, since each load parses
-    /// as deep as the parser allows: the stack is asked as well before each load.
+    /// parsing of the object it loads besides. No level holds decoded data while it loads the next: a stream resolves
+    /// its filters and every parameter they read before its first filter runs (<see cref="Filters.FilterChain"/>), so
+    /// that a chain of loads holds at once one stream's decoding, and the object streams
+    /// <see cref="ObjectStreamBudget"/> keeps. A stream an object stream holds, which ISO 32000-1 (7.5.7) forbids, is
+    /// the exception: its <c>/Length</c> is read while its object stream's data is held (#161). The count alone does
+    /// not bound the stack, since each load parses as deep as the parser allows: the stack is asked as well before each
+    /// load.
     /// </summary>
     private const int MaxNestedLoads = 64;
 
@@ -2802,10 +2807,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     /// <remarks>
     /// What is followed is what reading the rows reads, as it reads it: <c>/W</c> and the widths of its three fields;
-    /// <c>/Index</c> and its elements, or <c>/Size</c> when there is no <c>/Index</c>; <c>/Filter</c> and its elements; and,
-    /// when the data is encoded, <c>/DecodeParms</c>, its elements, and in the parameters of each Flate or LZW step,
-    /// <c>/Predictor</c>, LZW's <c>/EarlyChange</c>, and <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> when
-    /// the predictor is past 1 — each through as many references as <see cref="PdfReference.Resolve"/> follows. A value the
+    /// <c>/Index</c> and its elements, or <c>/Size</c> when there is no <c>/Index</c>; and what decoding the data reads
+    /// before any of it is (<see cref="Filters.FilterChain"/>): <c>/Filter</c> and its elements up to the first that ends
+    /// decoding, and for each Flate or LZW step, <c>/DecodeParms</c>, its element at the step's place, LZW's
+    /// <c>/EarlyChange</c>, <c>/Predictor</c>, and <c>/Colors</c>, <c>/BitsPerComponent</c> and <c>/Columns</c> when the
+    /// predictor is past 1 — each through as many references as <see cref="PdfReference.Resolve"/> follows. A value the
     /// rows are read without — <c>/Type</c>, <c>/Size</c> beside an <c>/Index</c>, an entry no filter reads — leaves the
     /// section readable; the validator reports how it is written.
     /// </remarks>
@@ -2844,102 +2850,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return sizeFault;
         }
 
-        if (Unread(dictionary, PdfName.Filter, out var filters) is { } filterFault)
-        {
-            return filterFault;
-        }
-
-        // Data that is not encoded is read without its parameters.
-        if (filters is null or PdfNull)
-        {
-            return null;
-        }
-
-        if (Unread(dictionary, PdfName.DecodeParms, out var parameters) is { } parametersFault)
-        {
-            return parametersFault;
-        }
-
-        if (filters is PdfName single)
-        {
-            return UnreadParameter(single, parameters as PdfDictionary);
-        }
-
-        for (var i = 0; filters is PdfArray chain && i < chain.Count; i++)
-        {
-            if (Follow(PdfName.Filter, chain[i], entry: false, out var step) is { } stepFilterFault)
-            {
-                return stepFilterFault;
-            }
-
-            // Decoding stops at an element that names no filter, and reads nothing past it.
-            if (step is not PdfName name)
-            {
-                return null;
-            }
-
-            var stepParameters = parameters;
-
-            if (parameters is PdfArray parameterArray)
-            {
-                stepParameters = null;
-
-                if (i < parameterArray.Count && Follow(PdfName.DecodeParms, parameterArray[i], entry: false, out stepParameters) is { } stepParametersFault)
-                {
-                    return stepParametersFault;
-                }
-            }
-
-            // Decoding stops at an image filter, and reads no parameter past it.
-            if (Filters.PdfFilterPipeline.IsImageFilter(name))
-            {
-                return null;
-            }
-
-            if (UnreadParameter(name, stepParameters as PdfDictionary) is { } stepFault)
-            {
-                return stepFault;
-            }
-        }
-
-        return null;
+        var following = new Following(this);
+        return Filters.FilterChain.TryRead(dictionary, ref following, readParameters: true, out _) ? null : following.Fault;
     }
 
     /// <summary>
-    /// Says which value the parameters of a Flate or LZW step refer to, among those decoding reads, that no section read so
-    /// far places where it can be read; null when every one can be, or the step reads none.
+    /// Follows the values a cross-reference stream's filters are decoded with through what the sections read so far place,
+    /// and keeps, as the section's fault, the first that cannot be read.
     /// </summary>
-    private string? UnreadParameter(PdfName filter, PdfDictionary? parameters)
+    /// <param name="reader">The reader whose sections place the values.</param>
+    private struct Following(PdfFileReader reader) : Filters.IFilterValueReader
     {
-        if (parameters is null || (filter != PdfName.FlateDecode && filter != PdfName.LZWDecode))
-        {
-            return null;
-        }
+        /// <summary>Gets what could not be read, once a value could not be.</summary>
+        public string? Fault { get; private set; }
 
-        if (filter == PdfName.LZWDecode && Follow(PdfName.DecodeParms, parameters.GetRaw(PdfName.EarlyChange), entry: false, out _) is { } earlyChange)
+        /// <inheritdoc/>
+        public bool TryRead(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
         {
-            return earlyChange;
+            Fault = reader.Follow(key, written, entry, out value);
+            return Fault is null;
         }
-
-        if (Follow(PdfName.DecodeParms, parameters.GetRaw(PdfName.Predictor), entry: false, out var predictor) is { } predictorFault)
-        {
-            return predictorFault;
-        }
-
-        if (predictor?.AsInteger() is not > 1)
-        {
-            return null;
-        }
-
-        foreach (var key in (ReadOnlySpan<PdfName>)[PdfName.Colors, PdfName.BitsPerComponent, PdfName.Columns])
-        {
-            if (Follow(PdfName.DecodeParms, parameters.GetRaw(key), entry: false, out _) is { } unread)
-            {
-                return unread;
-            }
-        }
-
-        return null;
     }
 
     /// <summary>

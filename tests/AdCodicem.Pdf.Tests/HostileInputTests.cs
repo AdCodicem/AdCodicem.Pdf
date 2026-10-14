@@ -919,12 +919,12 @@ public class HostileInputTests
     [Fact]
     public void An_object_stream_decoded_again_while_it_is_decoded_and_short_both_times_reads_as_nothing_without_failing()
     {
-        // Object stream 7 takes its /Filter from object 10, which object stream 9 holds, and its /DecodeParms from
-        // object 5, which 7 holds and the index does not list — its row is of a reserved type —, in an index a row
-        // short of its /Size. Decoding 7 asks for 5, which rebuilds the index while 10 is not yet in it: the rebuild
-        // reads 7 unfiltered, and places 5 in it. Reading 5 decodes 7 again inside the first decoding, through
-        // /ASCIIHexDecode this time, into fewer bytes than its /First: neither decoding gives anything to keep, and the
-        // second to end has nothing to take the place of.
+        // Object stream 7 takes its first filter from object 10, which object stream 9 holds, and the parameters of its
+        // second, a Flate step, from object 5, which 7 holds and the index does not list — its row is of a reserved type
+        // —, in an index a row short of its /Size. Decoding 7 asks for 5, which rebuilds the index while 10 is not yet in
+        // it: the rebuild reads 7 as far as its first filter, which names none yet, and places 5 in it. Reading 5 decodes
+        // 7 again inside the first decoding, through /ASCIIHexDecode this time, into fewer bytes than its /First: neither
+        // decoding gives anything to keep, and the second to end has nothing to take the place of.
         using var output = new MemoryStream();
         var offsets = new Dictionary<int, long>();
         void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
@@ -938,7 +938,7 @@ public class HostileInputTests
         Write("%PDF-1.5\n");
         WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
         WriteObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
-        WriteObject(7, "<< /Type /ObjStm /N 2 /First 9 /Filter 10 0 R /DecodeParms 5 0 R /Length 47 >>\nstream\n5 0 6 19 << /Predictor 1 >>\n<< /Title (six) >>\n\nendstream");
+        WriteObject(7, "<< /Type /ObjStm /N 2 /First 9 /Filter [10 0 R /FlateDecode] /DecodeParms 5 0 R /Length 47 >>\nstream\n5 0 6 19 << /Predictor 1 >>\n<< /Title (six) >>\n\nendstream");
         WriteObject(9, "<< /Type /ObjStm /N 1 /First 5 /Length 21 >>\nstream\n10 0 /ASCIIHexDecode\n\nendstream");
 
         var xref = output.Position;

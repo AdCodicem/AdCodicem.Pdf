@@ -34,68 +34,18 @@ internal static class PdfFilterPipeline
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard)
     {
         diagnostics ??= guard.DocumentDiagnostics;
+
+        // Every value the filters are decoded with is resolved before any of the data is read: one an object stream holds
+        // decodes that stream while this one holds nothing decoded (#165).
+        var chain = FilterChain.Resolve(stream.Dictionary, readParameters: true);
         var data = stream.GetRawBytes();
-        var filters = stream.Dictionary.GetRaw(PdfName.Filter).Resolved();
-
-        // A /Filter that is null, or names an object that holds null or that the file lacks, is one the dictionary does not
-        // have (7.3.7, 7.3.10): the data is not encoded.
-        if (filters is null or PdfNull)
-        {
-            return data;
-        }
-
-        var parameters = stream.Dictionary.GetRaw(PdfName.DecodeParms).Resolved();
-
-        if (filters is PdfName single)
-        {
-            return ApplyOne(single, data, parameters.AsDictionary(), diagnostics, stream.Data, guard, out _);
-        }
-
-        if (filters is not PdfArray chain)
-        {
-            diagnostics?.Warn(
-                PdfDiagnosticCodes.FilterUnsupported,
-                $"The /Filter entry is {PdfObjectParser.KindOf(filters)}, neither a name nor an array; the data was left as it is.",
-                stream.Data.Position);
-            return data;
-        }
-
-        var parameterArray = parameters as PdfArray;
 
         for (var index = 0; index < chain.Count; index++)
         {
-            // An element that names no filter is read as a filter the library does not know: the filters after it would
-            // decode what it encoded, if it encoded anything.
-            var element = chain.Resolved(index);
-
-            if (element is not PdfName name)
-            {
-                diagnostics?.Warn(
-                    PdfDiagnosticCodes.FilterUnsupported,
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"Element {index} of the /Filter entry is {PdfObjectParser.KindOf(element)}, which names no filter; decoding stopped there."),
-                    stream.Data.Position);
-                return data;
-            }
-
-            var stepParameters = parameterArray is not null && index < parameterArray.Count
-                ? parameterArray.Resolved(index).AsDictionary()
-                : parameters.AsDictionary();
-
-            if (IsImageFilter(name))
-            {
-                return data;
-            }
-
-            data = ApplyOne(name, data, stepParameters, diagnostics, stream.Data, guard, out var unknown);
-
-            if (unknown)
-            {
-                return data;
-            }
+            data = ApplyOne(chain[index], data, diagnostics, stream.Data, guard);
         }
 
+        ReportEnd(chain, diagnostics, stream.Data.Position);
         return data;
     }
 
@@ -107,22 +57,14 @@ internal static class PdfFilterPipeline
         name == PdfName.JBIG2Decode || name == PdfName.CCITTFaxDecode;
 
     private static ReadOnlyMemory<byte> ApplyOne(
-        PdfName name,
+        in FilterStep step,
         ReadOnlyMemory<byte> data,
-        PdfDictionary? parameters,
         PdfDiagnostics? diagnostics,
         PdfStreamData source,
-        PdfLimitGuard guard,
-        out bool unknown)
+        PdfLimitGuard guard)
     {
+        var name = step.Name;
         var position = source.Position;
-        unknown = false;
-
-        if (IsImageFilter(name))
-        {
-            return data;
-        }
-
         var maxLength = guard.Bound(PdfLimit.DecodedStream);
 
         if (name == PdfName.FlateDecode)
@@ -149,13 +91,12 @@ internal static class PdfFilterPipeline
                 diagnostics,
                 position);
             ReportLimit(limited, name, diagnostics, position, guard);
-            return ApplyPredictor(decoded, parameters, diagnostics, position);
+            return ApplyPredictor(decoded, step, diagnostics, position);
         }
 
         if (name == PdfName.LZWDecode)
         {
-            var earlyChange = (int)(parameters.GetInteger(PdfName.EarlyChange) ?? 1);
-            var decoded = LzwFilter.Decode(data.Span, earlyChange is 0 ? 0 : 1, out var limited, out var undefinedCode, maxLength);
+            var decoded = LzwFilter.Decode(data.Span, step.EarlyChange is 0 ? 0 : 1, out var limited, out var undefinedCode, maxLength);
 
             if (undefinedCode >= 0)
             {
@@ -168,7 +109,7 @@ internal static class PdfFilterPipeline
             }
 
             ReportLimit(limited, name, diagnostics, position, guard);
-            return ApplyPredictor(decoded, parameters, diagnostics, position);
+            return ApplyPredictor(decoded, step, diagnostics, position);
         }
 
         if (name == PdfName.ASCII85Decode)
@@ -192,18 +133,28 @@ internal static class PdfFilterPipeline
             return decoded;
         }
 
-        if (name == PdfName.Crypt)
-        {
-            // The identity crypt filter is a no-op; anything else needs the security handler (M16).
-            return data;
-        }
-
-        unknown = true;
-        diagnostics?.Warn(
-            PdfDiagnosticCodes.FilterUnsupported,
-            $"The filter {FileQuote.Name(name)} is not supported; decoding stopped there.",
-            position);
+        // The identity crypt filter is a no-op; anything else needs the security handler (M16).
         return data;
+    }
+
+    /// <summary>Reports what ended the chain before its last element, when it is no image filter.</summary>
+    private static void ReportEnd(FilterChain chain, PdfDiagnostics? diagnostics, long position)
+    {
+        var message = chain.End switch
+        {
+            FilterChainEnd.Unsupported => $"The filter {FileQuote.Name((PdfName)chain.EndValue!)} is not supported; decoding stopped there.",
+            FilterChainEnd.NotAName => string.Create(
+                CultureInfo.InvariantCulture,
+                $"Element {chain.EndIndex} of the /Filter entry is {PdfObjectParser.KindOf(chain.EndValue)}, which names no filter; decoding stopped there."),
+            FilterChainEnd.NotAFilterEntry =>
+                $"The /Filter entry is {PdfObjectParser.KindOf(chain.EndValue)}, neither a name nor an array; the data was left as it is.",
+            _ => null,
+        };
+
+        if (message is not null)
+        {
+            diagnostics?.Warn(PdfDiagnosticCodes.FilterUnsupported, message, position);
+        }
     }
 
     /// <summary>
@@ -273,29 +224,14 @@ internal static class PdfFilterPipeline
     }
 
     private static ReadOnlyMemory<byte> ApplyPredictor(
-        byte[] decoded, PdfDictionary? parameters, PdfDiagnostics? diagnostics, long position)
+        byte[] decoded, in FilterStep step, PdfDiagnostics? diagnostics, long position)
     {
-        if (parameters is null)
+        if (step.Predictor <= 1)
         {
             return decoded;
         }
 
-        var predictor = (int)parameters.GetInteger(PdfName.Predictor, 1);
-
-        // Without a predictor the other parameters mean nothing, and are not read: each can be a reference,
-        // and resolving one can load, or even rebuild, what nothing asked for.
-        if (predictor <= 1)
-        {
-            return decoded;
-        }
-
-        if (!PredictorTransform.TryApply(
-                decoded,
-                predictor,
-                (int)parameters.GetInteger(PdfName.Colors, 1),
-                (int)parameters.GetInteger(PdfName.BitsPerComponent, 8),
-                (int)Math.Clamp(parameters.GetInteger(PdfName.Columns, 1), 1, int.MaxValue),
-                out var result))
+        if (!PredictorTransform.TryApply(decoded, step.Predictor, step.Colors, step.BitsPerComponent, step.Columns, out var result))
         {
             diagnostics?.Warn(
                 PdfDiagnosticCodes.FilterFailed,
