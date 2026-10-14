@@ -19,7 +19,7 @@ public class ReaderLimitsTests
 
     /// <summary>A guard for each bound of <see cref="PdfReaderLimits"/>, the trailer's reached two ways.</summary>
     public static TheoryData<string> Guards =>
-        ["decoded stream", "object", "section length", "section count", "trailer", "cross-reference stream"];
+        ["decoded stream", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries"];
 
     [Fact]
     public void The_defaults_are_the_bounds_the_reader_kept_before_they_were_options()
@@ -31,6 +31,7 @@ public class ReaderLimitsTests
         limits.MaxXRefSectionLength.Should().Be(64 * 1024 * 1024);
         limits.MaxXRefSectionCount.Should().Be(1024);
         limits.MaxTrailerLength.Should().Be(64 * 1024);
+        limits.MaxIndexEntries.Should().Be(8_388_607);
         PdfReaderOptions.Default.Limits.Should().BeSameAs(limits);
         PdfReaderOptions.Default.ThrowOnLimit.Should().BeFalse();
     }
@@ -45,6 +46,7 @@ public class ReaderLimitsTests
         limits.MaxXRefSectionLength.Should().Be(Array.MaxLength);
         limits.MaxXRefSectionCount.Should().Be(int.MaxValue);
         limits.MaxTrailerLength.Should().Be(Array.MaxLength);
+        limits.MaxIndexEntries.Should().Be(int.MaxValue);
     }
 
     [Theory]
@@ -53,6 +55,7 @@ public class ReaderLimitsTests
     [InlineData(nameof(PdfReaderLimits.MaxXRefSectionLength), int.MinValue)]
     [InlineData(nameof(PdfReaderLimits.MaxXRefSectionCount), 0)]
     [InlineData(nameof(PdfReaderLimits.MaxTrailerLength), -1)]
+    [InlineData(nameof(PdfReaderLimits.MaxIndexEntries), 0)]
     public void A_limit_of_zero_or_less_is_refused_and_named(string limit, int value)
     {
         var setting = () => With(PdfReaderLimits.Default, limit, value);
@@ -70,6 +73,7 @@ public class ReaderLimitsTests
             MaxXRefSectionLength = int.MaxValue,
             MaxXRefSectionCount = int.MaxValue,
             MaxTrailerLength = int.MaxValue,
+            MaxIndexEntries = int.MaxValue,
         };
 
         limits.Should().Be(PdfReaderLimits.Unbounded);
@@ -87,20 +91,26 @@ public class ReaderLimitsTests
     public void A_guard_already_at_the_most_the_reader_can_hold_does_not_ask_to_be_raised()
     {
         // Past about 2 GB a stream cannot be held in one piece, whatever the options (issue #48): the report says so
-        // rather than send the caller after a property that can go no higher. A section count one below its
-        // ceiling still asks to be raised.
+        // rather than send the caller after a property that can go no higher. A count one below its ceiling still
+        // asks to be raised.
         var diagnostics = new PdfDiagnostics();
         var unbounded = new PdfLimitGuard(PdfReaderLimits.Unbounded, throwOnLimit: false);
-        var justBelow = new PdfLimitGuard(PdfReaderLimits.Default with { MaxXRefSectionCount = int.MaxValue - 1 }, throwOnLimit: false);
+        var justBelow = new PdfLimitGuard(
+            PdfReaderLimits.Default with { MaxXRefSectionCount = int.MaxValue - 1, MaxIndexEntries = int.MaxValue - 1 },
+            throwOnLimit: false);
 
         unbounded.Reach(PdfLimit.DecodedStream, diagnostics, "Cut.", 7);
         unbounded.Reach(PdfLimit.XRefSectionCount, diagnostics, "Cut.", 8);
         justBelow.Reach(PdfLimit.XRefSectionCount, diagnostics, "Cut.", 9);
+        unbounded.Reach(PdfLimit.IndexEntries, diagnostics, "Cut.", 10);
+        justBelow.Reach(PdfLimit.IndexEntries, diagnostics, "Cut.", 11);
 
         diagnostics.Select(entry => entry.Message).Should().Equal(
             "Cut. PdfReaderLimits.MaxDecodedStreamLength is already at the most the reader can hold.",
             "Cut. PdfReaderLimits.MaxXRefSectionCount is already at the most the reader can hold.",
-            "Cut. Raise PdfReaderLimits.MaxXRefSectionCount to read past it.");
+            "Cut. Raise PdfReaderLimits.MaxXRefSectionCount to read past it.",
+            "Cut. PdfReaderLimits.MaxIndexEntries is already at the most the reader can hold.",
+            "Cut. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
     }
 
     [Theory]
@@ -273,6 +283,91 @@ public class ReaderLimitsTests
 
         rebuilding.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be("MaxObjectLength");
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_rebuild_indexes_object_numbers_up_to_the_entry_guard_and_reports_the_first_it_had_no_room_for()
+    {
+        // #183, #158: a file with no index, rebuilt by scanning, of a hundred objects under a bound of fifty. The first fifty
+        // are indexed, in the file's order, and read; the rest read as null; the header of the fifty-first is reported.
+        var file = Numbered(100).BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 50 } });
+
+        document.WasRepaired.Should().BeTrue();
+        document.ObjectCount.Should().Be(50);
+        document.GetObject(new PdfObjectId(50)).AsText().Should().Be("50");
+        document.GetObject(new PdfObjectId(51)).Should().BeSameAs(PdfNull.Instance);
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries).Which;
+        report.Position.Should().Be(OffsetOf(file, "51 0 obj"));
+        report.Message.Should().Be(
+            "The index reached 50 entries; the objects past them were not indexed. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
+    }
+
+    [Fact]
+    public void A_rebuild_past_the_entry_guard_still_takes_the_newest_definition_of_a_number_it_holds()
+    {
+        // The scan runs to the file's end: past the bound, a number it holds is still defined again, and the newest
+        // definition wins, as it does for every rebuild; a number it lacks takes no room.
+        var written = Numbered(100).BuildClassic(rootNumber: 1, includeXRef: false);
+        byte[] file = [.. written, .. "5 0 obj\n(newest)\nendobj\n101 0 obj\n(no room)\nendobj\n"u8];
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 50 } });
+
+        document.GetObject(new PdfObjectId(5)).AsText().Should().Be("newest");
+        document.GetObject(new PdfObjectId(101)).Should().BeSameAs(PdfNull.Instance);
+        document.ObjectCount.Should().Be(50);
+    }
+
+    [Fact]
+    public void A_rebuild_that_reaches_the_entry_guard_finishes_the_index_before_it_throws()
+    {
+        // The chain indexes the catalog and the page tree alone, and names through /Prev a section that is not there, so
+        // that asking for an object it lacks rebuilds the index. The scan reaches the bound at object 51, and goes on to the
+        // file's end before the guard throws: object 5's newest definition, after it, is taken.
+        var builder = Numbered(100);
+        var written = builder.BuildClassic(rootNumber: 1, includeXRef: false);
+        byte[] objects = [.. written.AsSpan(0, written.AsSpan().LastIndexOf("%%EOF"u8)), .. "5 0 obj\n(newest)\nendobj\n"u8];
+        var xref = objects.Length;
+        var table = string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 3\n0000000000 65535 f\r\n{OffsetOf(objects, "1 0 obj"):D10} 00000 n\r\n{OffsetOf(objects, "2 0 obj"):D10} 00000 n\r\ntrailer\n<< /Size 3 /Root 1 0 R /Prev 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        byte[] file = [.. objects, .. Encoding.ASCII.GetBytes(table)];
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 50 }, ThrowOnLimit = true };
+
+        using var document = PdfDocument.Open(file, options);
+        var rebuilding = () => document.GetObject(new PdfObjectId(80));
+
+        var thrown = rebuilding.Should().Throw<PdfLimitExceededException>().Which;
+        thrown.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
+        thrown.Position.Should().Be(OffsetOf(file, "51 0 obj"));
+        document.WasRepaired.Should().BeTrue();
+        document.ObjectCount.Should().Be(50);
+        document.GetObject(new PdfObjectId(5)).AsText().Should().Be("newest");
+    }
+
+    [Fact]
+    public void A_rebuild_takes_in_the_members_of_object_streams_no_further_than_the_entry_guard()
+    {
+        // ADR 34 said a rebuild indexed at most two million objects: it counted the headers the scan read, and the object
+        // streams' members, taken in after the scan, counted for nothing. The bound counts them: four headers found, then
+        // ninety-six of the five hundred members, and the object stream that held them is reported.
+        var header = string.Join(' ', Enumerable.Range(10, 500).Select(number => string.Create(CultureInfo.InvariantCulture, $"{number} {(number - 10) * 2}")));
+        var members = string.Concat(Enumerable.Repeat("0 ", 500));
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .Stream(3, string.Create(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 500 /First {header.Length + 1}"), header + " " + members)
+            .WithObject(4, "(direct)")
+            .BuildClassic(rootNumber: 1, includeXRef: false);
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 100 } });
+
+        document.ObjectCount.Should().Be(100);
+        document.GetObject(new PdfObjectId(105)).Should().BeOfType<PdfInteger>();
+        document.GetObject(new PdfObjectId(106)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries)
+            .Which.Position.Should().Be(OffsetOf(file, "3 0 obj"));
     }
 
     [Fact]
@@ -664,6 +759,7 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxXRefSectionLength) => limits with { MaxXRefSectionLength = value },
         nameof(PdfReaderLimits.MaxXRefSectionCount) => limits with { MaxXRefSectionCount = value },
         nameof(PdfReaderLimits.MaxTrailerLength) => limits with { MaxTrailerLength = value },
+        nameof(PdfReaderLimits.MaxIndexEntries) => limits with { MaxIndexEntries = value },
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
@@ -674,8 +770,21 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxXRefSectionLength) => limits.MaxXRefSectionLength,
         nameof(PdfReaderLimits.MaxXRefSectionCount) => limits.MaxXRefSectionCount,
         nameof(PdfReaderLimits.MaxTrailerLength) => limits.MaxTrailerLength,
+        nameof(PdfReaderLimits.MaxIndexEntries) => limits.MaxIndexEntries,
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
+
+    /// <summary>The catalog, an empty page tree, and objects 3 to <paramref name="last"/>, each its own number.</summary>
+    private static TestPdfBuilder Numbered(int last)
+    {
+        var builder = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages);
+        for (var number = 3; number <= last; number++)
+        {
+            builder.WithObject(number, string.Create(CultureInfo.InvariantCulture, $"({number})"));
+        }
+
+        return builder;
+    }
 
     private static string Hex(string text) => Convert.ToHexString(Encoding.ASCII.GetBytes(text)) + ">";
 
@@ -716,6 +825,7 @@ public class ReaderLimitsTests
             "section count" => ManySections(),
             "trailer" => LongTrailer(),
             "cross-reference stream" => LongXRefStreamDictionary(),
+            "index entries" => ManyObjects(),
             _ => throw new ArgumentOutOfRangeException(nameof(guard), guard, "Not a guard."),
         };
 
@@ -862,6 +972,32 @@ public class ReaderLimitsTests
                 OffsetOf(file, "<< /Type /XRef") - "4 0 obj\n".Length,
                 ThrowsOnOpening: true,
                 ReportsNothingElse: false);
+        }
+
+        private static Case ManyObjects()
+        {
+            // Three hundred objects, of which a bound of a hundred indexes the first hundred rows of the table: the
+            // catalog is among them, and the rows after them add nothing.
+            var builder = new TestPdfBuilder().WithObject(1, Catalog).WithObject(2, Pages);
+            for (var number = 3; number < 300; number++)
+            {
+                builder.WithObject(number, "null");
+            }
+
+            var file = builder.BuildClassic(rootNumber: 1);
+
+            return new Case(
+                nameof(PdfReaderLimits.MaxIndexEntries),
+                PdfDiagnosticCodes.LimitIndexEntries,
+                file,
+                PdfReaderLimits.Default with { MaxIndexEntries = 100 },
+                PdfReaderLimits.Default,
+                document => document.ObjectCount.ToString(CultureInfo.InvariantCulture),
+                "300",
+                "The index reached 100 entries; the objects past them were not indexed.",
+                OffsetOf(file, "xref\n"),
+                ThrowsOnOpening: true,
+                ReportsNothingElse: true);
         }
 
         private static byte[] Replace(byte[] file, string text, string replacement)

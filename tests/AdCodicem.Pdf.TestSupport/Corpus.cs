@@ -121,6 +121,9 @@ public sealed record CorpusReaderLimits
 
     /// <summary>The longest trailer, in bytes.</summary>
     public int? MaxTrailerLength { get; init; }
+
+    /// <summary>The most object numbers the index holds.</summary>
+    public int? MaxIndexEntries { get; init; }
 }
 
 /// <summary>One entry of the corpus manifest.</summary>

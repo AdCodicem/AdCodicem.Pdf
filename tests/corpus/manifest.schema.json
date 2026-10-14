@@ -275,7 +275,8 @@
               "limit.object",
               "limit.xref-section-length",
               "limit.xref-section-count",
-              "limit.trailer"
+              "limit.trailer",
+              "limit.index-entries"
             ]
           },
           "uniqueItems": true
@@ -459,6 +460,12 @@
           "type": "integer",
           "description": "The longest trailer, in bytes.",
           "exclusiveMinimum": 65536,
+          "maximum": 2147483647
+        },
+        "maxIndexEntries": {
+          "type": "integer",
+          "description": "The most object numbers the index holds.",
+          "exclusiveMinimum": 8388607,
           "maximum": 2147483647
         }
       }

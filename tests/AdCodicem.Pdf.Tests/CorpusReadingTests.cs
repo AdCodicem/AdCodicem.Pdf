@@ -427,6 +427,7 @@ public class CorpusReadingTests
             Raises(raised.MaxXRefSectionLength, limits.MaxXRefSectionLength, PdfReaderLimits.Default.MaxXRefSectionLength, file);
             Raises(raised.MaxXRefSectionCount, limits.MaxXRefSectionCount, PdfReaderLimits.Default.MaxXRefSectionCount, file);
             Raises(raised.MaxTrailerLength, limits.MaxTrailerLength, PdfReaderLimits.Default.MaxTrailerLength, file);
+            Raises(raised.MaxIndexEntries, limits.MaxIndexEntries, PdfReaderLimits.Default.MaxIndexEntries, file);
             limits.Should().NotBe(PdfReaderLimits.Default, $"{file}: readerLimits raises at least one limit");
         }
 
@@ -492,6 +493,7 @@ public class CorpusReadingTests
             MaxXRefSectionLength = raised.MaxXRefSectionLength ?? limits.MaxXRefSectionLength,
             MaxXRefSectionCount = raised.MaxXRefSectionCount ?? limits.MaxXRefSectionCount,
             MaxTrailerLength = raised.MaxTrailerLength ?? limits.MaxTrailerLength,
+            MaxIndexEntries = raised.MaxIndexEntries ?? limits.MaxIndexEntries,
         };
     }
 
@@ -503,7 +505,8 @@ public class CorpusReadingTests
             || (raised.MaxObjectLength != defaults.MaxObjectLength && message.Contains("PdfReaderLimits.MaxObjectLength", StringComparison.Ordinal))
             || (raised.MaxXRefSectionLength != defaults.MaxXRefSectionLength && message.Contains("PdfReaderLimits.MaxXRefSectionLength", StringComparison.Ordinal))
             || (raised.MaxXRefSectionCount != defaults.MaxXRefSectionCount && message.Contains("PdfReaderLimits.MaxXRefSectionCount", StringComparison.Ordinal))
-            || (raised.MaxTrailerLength != defaults.MaxTrailerLength && message.Contains("PdfReaderLimits.MaxTrailerLength", StringComparison.Ordinal));
+            || (raised.MaxTrailerLength != defaults.MaxTrailerLength && message.Contains("PdfReaderLimits.MaxTrailerLength", StringComparison.Ordinal))
+            || (raised.MaxIndexEntries != defaults.MaxIndexEntries && message.Contains("PdfReaderLimits.MaxIndexEntries", StringComparison.Ordinal));
     }
 
     /// <summary>
