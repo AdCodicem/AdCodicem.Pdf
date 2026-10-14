@@ -571,6 +571,43 @@ public class FilterTests
             "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
     }
 
+    [Theory]
+    [InlineData(604, 100, "")]
+    [InlineData(603, 100, "shared")]
+    [InlineData(500, 48, "shared")]
+    [InlineData(403, 0, "shared")]
+    [InlineData(402, 0, "its own")]
+    public void Shares_one_bound_among_the_filters_before_the_last(int bound, int kept, string reached)
+    {
+        // A hundred bytes hex-encoded three times over: the first filter passes along 403 bytes, the second 201, the
+        // last decodes them to the hundred. The first two share the bound, 604 bytes for both; the last keeps its own.
+        // What the second may pass along is what the first left of it, and when it stops there the last decodes what it
+        // kept as data the reader cut, a digit without its pair dropped (#166). A first filter that stops at the bound
+        // itself is reported as before.
+        var plain = Encoding.ASCII.GetBytes(string.Concat(Enumerable.Repeat("0123456789", 10)));
+        var encoded = plain;
+
+        for (var layer = 0; layer < 3; layer++)
+        {
+            encoded = Encoding.ASCII.GetBytes(Convert.ToHexString(encoded) + ">");
+        }
+
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.ASCIIHexDecode, PdfName.ASCIIHexDecode, PdfName.ASCIIHexDecode]));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = PdfFilterPipeline.Decode(new PdfStream(dictionary, PdfStreamData.FromMemory(encoded)), diagnostics, Within(bound));
+
+        decoded.ToArray().Should().Equal(plain.AsSpan(0, kept).ToArray());
+        diagnostics.Select(d => d.Message).Should().Equal(
+            reached switch
+            {
+                "shared" => [$"The filters before the last decode to more than {bound:N0} bytes together; decoding stopped in the /ASCIIHexDecode data. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it."],
+                "its own" => [$"The /ASCIIHexDecode data decodes to more than {bound:N0} bytes; decoding stopped there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it."],
+                _ => [],
+            });
+    }
+
     [Fact]
     public void Tells_a_corrupt_flate_stream_from_one_that_reaches_the_bound()
     {

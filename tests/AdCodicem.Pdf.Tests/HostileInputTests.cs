@@ -1265,6 +1265,77 @@ public class HostileInputTests
         diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
     }
 
+    [Fact]
+    public void Opens_a_cross_reference_stream_whose_run_length_filters_multiply_its_data_at_a_cost_its_number_of_filters_leaves_alone()
+    {
+        // #166's file: a cross-reference stream naming /RunLengthDecode again and again over two bytes, each filter
+        // multiplying what the one before gave by 64. Each filter was bounded alone: from the fifth on, each filled an
+        // array of the bound, 3.3 GB as the 513-byte file opened at the default bound. The filters before the last share
+        // one bound, so that once they have decoded it together the rest decode nothing: opening the file allocates a
+        // few bounds' worth, the same whether it names sixteen filters or sixty-four.
+        const int Bound = 4 * 1024 * 1024;
+        var sixteen = Opening(16, out var reports);
+        var sixtyFour = Opening(64, out _);
+
+        sixteen.Should().BeLessThan(6L * Bound);
+        (sixtyFour - sixteen).Should().BeLessThan(64 * 1024);
+        reports.Should().ContainSingle(code => code == PdfDiagnosticCodes.LimitDecodedStream);
+
+        static long Opening(int filters, out string[] reports)
+        {
+            var file = Encoding.Latin1.GetBytes(
+                "%PDF-1.5\n1 0 obj\n<< /Type /XRef /Size 2 /W [1 1 1] /Root 2 0 R /Length 2 /Filter [" +
+                string.Concat(Enumerable.Repeat("/RunLengthDecode ", filters)) +
+                "] >>\nstream\n\u0081\u0081\nendstream\nendobj\nstartxref\n9\n%%EOF\n");
+            var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = Bound } };
+            PdfDocument.Open(file, options).Dispose();
+            var before = GC.GetAllocatedBytesForCurrentThread();
+
+            using var document = Measure(() => PdfDocument.Open(file, options));
+
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            reports = [.. document.Diagnostics.Select(d => d.Code)];
+            return allocated;
+        }
+    }
+
+    [Fact]
+    public void Decodes_a_long_chain_of_sound_flate_layers_within_twice_the_bound()
+    {
+        // Two thousand layers of zlib, each storing the one inside it, around two bytes: a sound stream whose layers
+        // grow by a few bytes each, about 23 MB together. Each filter was bounded alone, so that a few hundred kilobytes
+        // of file decoded every layer, gigabytes for twenty thousand. The filters before the last share the bound: they
+        // stop once they have passed along a megabyte together, and the chain allocates a few bounds' worth.
+        const int Bound = 1024 * 1024;
+        var data = "ok"u8.ToArray();
+
+        for (var layer = 0; layer < 2_000; layer++)
+        {
+            using var compressed = new MemoryStream();
+            using (var zlib = new ZLibStream(compressed, CompressionLevel.NoCompression, leaveOpen: true))
+            {
+                zlib.Write(data);
+            }
+
+            data = compressed.ToArray();
+        }
+
+        var chain = new PdfObject[2_000];
+        Array.Fill(chain, PdfName.FlateDecode);
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray(chain));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(data));
+        var guard = new PdfLimitGuard(PdfReaderLimits.Default with { MaxDecodedStreamLength = Bound }, throwOnLimit: false);
+        var diagnostics = new PdfDiagnostics();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        var decoded = Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard));
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().BeLessThan(8L * Bound);
+        decoded.Length.Should().Be(0);
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
     /// <summary>
     /// Adds <paramref name="streams"/> streams from object <paramref name="first"/> on, each taking its /Length
     /// from the next, the last from <paramref name="end"/>.
