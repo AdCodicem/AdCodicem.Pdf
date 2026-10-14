@@ -429,6 +429,56 @@ public class FilterTests
         failures.Should().BeEmpty();
     }
 
+    [Fact]
+    public void Undoes_a_tiff_predictor_over_the_rows_of_a_bounded_output_and_the_part_of_the_last_it_holds()
+    {
+        // Ten TIFF-predicted rows of four bytes, each byte the difference from the one before it. However many bytes the
+        // bound leaves, the whole rows are undone, and so is the part of the row the bound cut: each byte is predicted
+        // from the bytes before it in its row alone.
+        var predicted = new byte[40];
+        Array.Fill(predicted, (byte)1);
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(2));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(4));
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfName.FlateDecode);
+        dictionary.Set(PdfName.DecodeParms, parameters);
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(Compress(predicted)));
+        var failures = new List<string>();
+
+        for (var bound = 1; bound <= 40; bound++)
+        {
+            var diagnostics = new PdfDiagnostics();
+            var output = PdfFilterPipeline.Decode(stream, diagnostics, Within(bound)).ToArray();
+            var expected = Enumerable.Range(0, bound).Select(at => (byte)((at % 4) + 1)).ToArray();
+
+            if (!output.SequenceEqual(expected) ||
+                !diagnostics.Select(d => d.Code).SequenceEqual(bound < 40 ? [PdfDiagnosticCodes.LimitDecodedStream] : []))
+            {
+                failures.Add($"bound {bound}: [{string.Join(",", output)}]");
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Gives_no_parameters_to_a_filter_an_array_of_them_is_too_short_to_reach()
+    {
+        // ISO 32000-1 asks for as many parameters as filters; one missing at the Flate step's place is no predictor.
+        byte[] rows = [2, 1, 2, 3, 4];
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.ASCIIHexDecode, PdfName.FlateDecode]));
+        dictionary.Set(PdfName.DecodeParms, new PdfArray([PdfNull.Instance]));
+        var diagnostics = new PdfDiagnostics();
+        var hex = Encoding.ASCII.GetBytes(Convert.ToHexString(Compress(rows)) + ">");
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(hex)).Decode(diagnostics);
+
+        decoded.ToArray().Should().Equal(rows);
+        diagnostics.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData(2, 32, 8, 16_777_216)]
     [InlineData(12, 32, 16, 5_000_000)]

@@ -145,6 +145,9 @@ public class ArlingtonRuleTests
     [InlineData("/Filter /FlateDecode /DecodeParms [<< /Predictor 12.0 >>]", "FilterFlateDecode", 1)]
     [InlineData("/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms [null << /Predictor /Twelve >>]", "FilterFlateDecode", 1)]
     [InlineData("/Filter /LZWDecode /DecodeParms << /Predictor 12.0 >>", "FilterLZWDecode", 1)]
+    [InlineData("/Filter [/LZWDecode] /DecodeParms << /Predictor 12.0 >>", "FilterLZWDecode", 1)]
+    [InlineData("/Filter /FlateDecode /DecodeParms [<< /Predictor 1 >> << /Predictor 12.0 >>]", "", 0)]
+    [InlineData("/F (data.bin) /FFilter /FlateDecode /FDecodeParms << /Predictor 12.0 >>", "FilterFlateDecode", 1)]
     [InlineData("/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 3 >>", "", 0)]
     [InlineData("/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms << /Predictor 12.0 >>", "", 0)]
     [InlineData("/Filter /ASCIIHexDecode /DecodeParms << /Predictor 12.0 >>", "", 0)]
@@ -164,7 +167,7 @@ public class ArlingtonRuleTests
             $"<< {entries} /Length 0 >>\nstream\n\nendstream"));
 
         var wrong = report.Findings
-            .Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong && finding.Message.Contains("/DecodeParms", StringComparison.Ordinal))
+            .Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong && finding.Message.Contains("DecodeParms", StringComparison.Ordinal))
             .ToArray();
         wrong.Should().HaveCount(findings, string.Join("; ", report.Findings));
         wrong.Should().OnlyContain(finding => finding.Message.Contains($", a {type} in the Arlington model,", StringComparison.Ordinal));
