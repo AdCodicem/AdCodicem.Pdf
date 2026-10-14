@@ -7,10 +7,18 @@ internal static class Ascii85Filter
     /// Decodes <paramref name="data"/>, keeping at most <paramref name="maxLength"/> bytes;
     /// <paramref name="limited"/> says whether it decodes to more. A <c>z</c> alone decodes to four bytes.
     /// </summary>
+    /// <param name="data">The encoded data.</param>
+    /// <param name="limited">Whether the data decodes to more than <paramref name="maxLength"/> bytes.</param>
+    /// <param name="maxLength">The most the data may decode to.</param>
+    /// <param name="cut">
+    /// Whether the reader cut the data short at one of its limits: a group left partial at its end, before any
+    /// <c>~</c>, is one the cut parted, and is dropped rather than completed.
+    /// </param>
     public static byte[] Decode(
-        ReadOnlySpan<byte> data, out bool limited, int maxLength)
+        ReadOnlySpan<byte> data, out bool limited, int maxLength, bool cut = false)
     {
         limited = false;
+        var ended = false;
         var output = new PdfBoundedOutput(Math.Max(16, data.Length * 4L / 5), maxLength);
         Span<byte> group = stackalloc byte[4];
 
@@ -37,6 +45,7 @@ internal static class Ascii85Filter
 
             if (current == (byte)'~')
             {
+                ended = true;
                 break;
             }
 
@@ -74,7 +83,7 @@ internal static class Ascii85Filter
             count = 0;
         }
 
-        if (count > 1)
+        if (count > 1 && (ended || !cut))
         {
             // A partial group encodes count-1 bytes; the missing digits count as 'u'.
             for (var i = count; i < 5; i++)

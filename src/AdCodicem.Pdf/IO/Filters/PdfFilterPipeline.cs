@@ -40,9 +40,15 @@ internal static class PdfFilterPipeline
         var chain = FilterChain.Resolve(stream.Dictionary, readParameters: true);
         var data = stream.GetRawBytes();
 
+        // Whether the data a filter is given is data the reader cut at one of its limits: the parser's window cut the
+        // stream, or a filter before it stopped at MaxDecodedStreamLength. Every filter after a cut is given cut data,
+        // and the cut is reported once, by the guard that made it.
+        var cut = stream.Data.CutByGuard;
+        var limitReported = false;
+
         for (var index = 0; index < chain.Count; index++)
         {
-            data = ApplyOne(chain[index], data, diagnostics, stream.Data, guard, out var failed);
+            data = ApplyOne(chain[index], data, diagnostics, stream.Data.Position, guard, ref cut, ref limitReported, out var failed);
 
             // Data a filter could not decode at all comes back as the filters before it left it, as it does at a filter the
             // library does not know: the filters after it would read what it encoded, and each fail on it again.
@@ -63,17 +69,30 @@ internal static class PdfFilterPipeline
         name == PdfName.DCTDecode || name == PdfName.JPXDecode ||
         name == PdfName.JBIG2Decode || name == PdfName.CCITTFaxDecode;
 
+    /// <summary>Decodes the data one filter of the chain is given.</summary>
+    /// <param name="step">The filter, and the values of its parameters.</param>
+    /// <param name="data">What the filters before it decoded.</param>
+    /// <param name="diagnostics">Receives what decoding met.</param>
+    /// <param name="position">Where the stream's data starts, where every report is placed.</param>
+    /// <param name="guard">Bounds the filter's output.</param>
+    /// <param name="cut">
+    /// Whether <paramref name="data"/> is data the reader cut; set when this filter stops at the bound too.
+    /// </param>
+    /// <param name="limitReported">Whether the stream reported a filter that stopped at the bound already.</param>
+    /// <param name="failed">Whether the filter could decode nothing, which ends the chain.</param>
     private static ReadOnlyMemory<byte> ApplyOne(
         in FilterStep step,
         ReadOnlyMemory<byte> data,
         PdfDiagnostics? diagnostics,
-        PdfStreamData source,
+        long position,
         PdfLimitGuard guard,
+        ref bool cut,
+        ref bool limitReported,
         out bool failed)
     {
         var name = step.Name;
-        var position = source.Position;
         var maxLength = guard.Bound(PdfLimit.DecodedStream);
+        var given = cut;
         failed = false;
 
         if (name == PdfName.FlateDecode)
@@ -90,18 +109,19 @@ internal static class PdfFilterPipeline
                 diagnostics?.Repair(PdfDiagnosticCodes.FilterFailed, "A Flate stream was not valid zlib data.", position);
             }
 
-            // Data a guard of the reader's cut ends early because the reader stopped reading it, which the guard
-            // reported: that it ran out says nothing of the file. A fault, or a checksum that disagrees, lies in
-            // bytes the reader did read, and the whole data would meet it at the same point: it is the file's.
+            // Data a guard of the reader's cut ends early because the reader stopped reading it, or a filter before
+            // this one stopped decoding it, which the guard reported: that it ran out says nothing of the file. A fault,
+            // or a checksum that disagrees, lies in bytes the reader did read, and the whole data would meet it at the
+            // same point: it is the file's.
             ReportEnding(
-                source.CutByGuard && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing ? FlateEnding.Whole : ending,
+                given && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing ? FlateEnding.Whole : ending,
                 decoded.Length,
                 faultAt,
                 data.Length,
                 diagnostics,
                 position);
-            ReportLimit(limited, name, diagnostics, position, guard);
-            return ApplyPredictor(decoded, step, diagnostics, position);
+            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
+            return ApplyPredictor(decoded, step, diagnostics, position, cut);
         }
 
         if (name == PdfName.LZWDecode)
@@ -118,28 +138,28 @@ internal static class PdfFilterPipeline
                     position);
             }
 
-            ReportLimit(limited, name, diagnostics, position, guard);
-            return ApplyPredictor(decoded, step, diagnostics, position);
+            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
+            return ApplyPredictor(decoded, step, diagnostics, position, cut);
         }
 
         if (name == PdfName.ASCII85Decode)
         {
-            var decoded = Ascii85Filter.Decode(data.Span, out var limited, maxLength);
-            ReportLimit(limited, name, diagnostics, position, guard);
+            var decoded = Ascii85Filter.Decode(data.Span, out var limited, maxLength, given);
+            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
             return decoded;
         }
 
         if (name == PdfName.ASCIIHexDecode)
         {
-            var decoded = AsciiHexFilter.Decode(data.Span, out var limited, maxLength);
-            ReportLimit(limited, name, diagnostics, position, guard);
+            var decoded = AsciiHexFilter.Decode(data.Span, out var limited, maxLength, given);
+            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
             return decoded;
         }
 
         if (name == PdfName.RunLengthDecode)
         {
             var decoded = RunLengthFilter.Decode(data.Span, out var limited, maxLength);
-            ReportLimit(limited, name, diagnostics, position, guard);
+            Reached(limited, name, diagnostics, position, guard, ref cut, ref limitReported);
             return decoded;
         }
 
@@ -217,31 +237,43 @@ internal static class PdfFilterPipeline
     }
 
     /// <summary>
-    /// Reports that a filter stopped at the bound: a guard of the reader's, which the file may well be within
-    /// its rights to exceed, and not damage in it.
+    /// Takes the data a filter that stopped at the bound gives the next as data the reader cut, and reports the first
+    /// filter of the stream that did: a guard of the reader's, which the file may well be within its rights to exceed,
+    /// and not damage in it.
     /// </summary>
-    private static void ReportLimit(bool limited, PdfName name, PdfDiagnostics? diagnostics, long position, PdfLimitGuard guard)
+    private static void Reached(
+        bool limited, PdfName name, PdfDiagnostics? diagnostics, long position, PdfLimitGuard guard, ref bool cut, ref bool limitReported)
     {
-        if (limited)
+        if (!limited)
         {
-            var bound = PdfLimitGuard.FormatLength(guard.Bound(PdfLimit.DecodedStream));
-            guard.Reach(
-                PdfLimit.DecodedStream,
-                diagnostics,
-                $"The {FileQuote.Name(name)} data decodes to more than {bound}; decoding stopped there.",
-                position);
+            return;
         }
+
+        cut = true;
+
+        if (limitReported)
+        {
+            return;
+        }
+
+        limitReported = true;
+        var bound = PdfLimitGuard.FormatLength(guard.Bound(PdfLimit.DecodedStream));
+        guard.Reach(
+            PdfLimit.DecodedStream,
+            diagnostics,
+            $"The {FileQuote.Name(name)} data decodes to more than {bound}; decoding stopped there.",
+            position);
     }
 
     private static ReadOnlyMemory<byte> ApplyPredictor(
-        byte[] decoded, in FilterStep step, PdfDiagnostics? diagnostics, long position)
+        byte[] decoded, in FilterStep step, PdfDiagnostics? diagnostics, long position, bool cut)
     {
         if (step.Predictor <= 1)
         {
             return decoded;
         }
 
-        if (!PredictorTransform.TryApply(decoded, step.Predictor, step.Colors, step.BitsPerComponent, step.Columns, out var result))
+        if (!PredictorTransform.TryApply(decoded, step.Predictor, step.Colors, step.BitsPerComponent, step.Columns, cut, out var result))
         {
             diagnostics?.Warn(
                 PdfDiagnosticCodes.FilterFailed,
