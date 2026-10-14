@@ -3195,7 +3195,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (_xref.Trailer.GetInteger(PdfName.Size) is { } size)
         {
-            most = (int)Math.Min(most, Math.Max(size, _xref.Count));
+            // A size the index holds as many entries as already asks for no room, nor does one below zero, which is not
+            // narrowed to an int that would.
+            most = (int)Math.Min(most, Math.Max(size, 0));
 
             if ((long)_xref.Count + room > _xref.Capacity && 4L * _xref.Capacity >= most)
             {
