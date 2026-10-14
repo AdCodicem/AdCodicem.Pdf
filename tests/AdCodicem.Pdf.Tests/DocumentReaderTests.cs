@@ -2144,6 +2144,78 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_table_read_again_in_a_larger_window_makes_room_for_its_rows_once()
+    {
+        // The trailer keyword starts four bytes before the first window's end, which cuts it: the rows are read again in a
+        // larger window, and room was made for them again on top of those the index held, which doubled the map to 7,013.
+        var file = ChainOfSections(sections: 1, rows: 3276);
+        var table = PdfTemplate.OffsetOf(file, "xref\n");
+        PdfTemplate.OffsetOf(file, "trailer").Should().Be(table + (64 * 1024) - 4);
+
+        using var document = PdfDocument.Open(file);
+
+        document.ObjectCount.Should().Be(3276);
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(4000, "3,276 rows take 3,371 slots");
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r")]
+    public void Rows_written_a_byte_short_make_room_for_each_of_them(string end)
+    {
+        // Rows ended by one byte, as some producers write them: room made for as many 20-byte rows as their bytes hold fell
+        // short of the count, and the map doubled past it, to 130,363 slots for 66,000 objects.
+        var text = Encoding.Latin1.GetString(ChainOfSections(sections: 1, rows: 66_000));
+        var rows = text.IndexOf("xref\n", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, rows), text[rows..].Replace("\r\n", end, StringComparison.Ordinal)));
+        file.Length.Should().Be(text.Length - 66_000);
+
+        using var document = PdfDocument.Open(file);
+
+        document.ObjectCount.Should().Be(66_000);
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(80_000, "66,000 rows take 75,431 slots");
+    }
+
+    [Fact]
+    public void A_newest_size_an_update_did_not_raise_makes_room_for_the_objects_its_rows_add()
+    {
+        // The update adds a hundred objects past those the original numbers, and keeps the original's /Size: room made for
+        // no more than the /Size fell short of the count, and the map doubled past it.
+        var original = ChainOfSections(sections: 1, rows: 62_800);
+        var updates = new (int Number, string Body)[100];
+
+        for (var i = 0; i < updates.Length; i++)
+        {
+            updates[i] = (62_800 + i, "null");
+        }
+
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, updates))
+            .Replace("/Size 62900", "/Size 62800", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        document.ObjectCount.Should().Be(62_900);
+        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(80_000, "62,900 entries take 75,431 slots");
+    }
+
+    [Fact]
+    public void A_lowered_entry_guard_reads_a_table_in_no_larger_window_than_its_room_needs()
+    {
+        // The window grew until it held the rows' end before any row was read: for a guard of a thousand entries, a window
+        // of 16 MB for a table of 300,000 rows. The rows past the thousandth are searched for the trailer a megabyte at a
+        // time.
+        var file = ChainOfSections(sections: 1, rows: 300_000);
+        using var source = new CountingSource(file);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 1000 } };
+
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
+        document.Trailer.GetRaw(PdfName.Root).Should().NotBeNull();
+        source.LargestRead.Should().BeLessThanOrEqualTo(1024 * 1024);
+    }
+
+    [Fact]
     public void A_subsection_claiming_millions_of_rows_makes_room_for_the_rows_its_bytes_hold()
     {
         // A table at the file's start claims three million rows and holds four, then its trailer; the file goes on for 2 MB.
@@ -2318,6 +2390,8 @@ public class DocumentReaderTests
 
         public long BytesRead { get; private set; }
 
+        public int LargestRead { get; private set; }
+
         public int Disposals { get; private set; }
 
         public override long Length => _inner.Length;
@@ -2326,6 +2400,7 @@ public class DocumentReaderTests
         {
             var read = _inner.Read(offset, buffer);
             BytesRead += read;
+            LargestRead = Math.Max(LargestRead, read);
             return read;
         }
 

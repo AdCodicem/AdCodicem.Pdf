@@ -11,8 +11,8 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// <see cref="PdfFileReader.ChainIndex"/> serves. An index holds 52 bytes a slot of its map. A section makes room for the
 /// rows it holds before they are read, for no more objects than the newest section's <c>/Size</c> numbers, to the next
 /// prime in .NET's table (<see cref="Reserve"/>): 52 to 63 bytes an object, so a hundred thousand objects hold 5 to 6 MB
-/// whatever the objects themselves weigh. A map left to grow — by a rebuild, or rows written shorter than a classic
-/// table's — doubles, holding 52 to 108 bytes an object and allocating about as much again on the way. The copy is sized
+/// whatever the objects themselves weigh. A map left to grow — by a rebuild, or rows written shorter than 19 bytes —
+/// doubles, holding 52 to 108 bytes an object and allocating about as much again on the way. The copy is sized
 /// to the count, not grown: about 60 bytes an object more.
 /// </remarks>
 internal sealed class PdfXRefTable
