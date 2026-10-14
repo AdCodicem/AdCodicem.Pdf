@@ -1244,6 +1244,27 @@ public class HostileInputTests
             "Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.");
     }
 
+    [Fact]
+    public void Decodes_data_no_flate_reading_can_decode_once_however_many_flate_filters_name_it()
+    {
+        // A hundred thousand /FlateDecode over two bytes no Flate reading can decode. Each filter handed the next the
+        // bytes it could not decode, and each read them again: 424 MB allocated, two seconds, and as many reports as
+        // the diagnostics hold. The chain ends at the first, which reports once.
+        var chain = new PdfObject[100_000];
+        Array.Fill(chain, PdfName.FlateDecode);
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray(chain));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(new byte[] { 0xFF, 0xFF }));
+        var diagnostics = new PdfDiagnostics();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        var decoded = Measure(() => stream.Decode(diagnostics));
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().BeLessThan(16L * 1024 * 1024);
+        decoded.ToArray().Should().Equal(0xFF, 0xFF);
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+    }
+
     /// <summary>
     /// Adds <paramref name="streams"/> streams from object <paramref name="first"/> on, each taking its /Length
     /// from the next, the last from <paramref name="end"/>.

@@ -42,7 +42,14 @@ internal static class PdfFilterPipeline
 
         for (var index = 0; index < chain.Count; index++)
         {
-            data = ApplyOne(chain[index], data, diagnostics, stream.Data, guard);
+            data = ApplyOne(chain[index], data, diagnostics, stream.Data, guard, out var failed);
+
+            // Data a filter could not decode at all comes back as the filters before it left it, as it does at a filter the
+            // library does not know: the filters after it would read what it encoded, and each fail on it again.
+            if (failed)
+            {
+                return data;
+            }
         }
 
         ReportEnd(chain, diagnostics, stream.Data.Position);
@@ -61,17 +68,20 @@ internal static class PdfFilterPipeline
         ReadOnlyMemory<byte> data,
         PdfDiagnostics? diagnostics,
         PdfStreamData source,
-        PdfLimitGuard guard)
+        PdfLimitGuard guard,
+        out bool failed)
     {
         var name = step.Name;
         var position = source.Position;
         var maxLength = guard.Bound(PdfLimit.DecodedStream);
+        failed = false;
 
         if (name == PdfName.FlateDecode)
         {
             if (!FlateFilter.TryDecode(data, out var decoded, out var repaired, out var ending, out var faultAt, out var limited, maxLength))
             {
                 diagnostics?.Warn(PdfDiagnosticCodes.FilterFailed, "A Flate stream could not be decoded.", position);
+                failed = true;
                 return data;
             }
 

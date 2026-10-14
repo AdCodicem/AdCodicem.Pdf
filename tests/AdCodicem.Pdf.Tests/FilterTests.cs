@@ -82,6 +82,23 @@ public class FilterTests
     }
 
     [Fact]
+    public void Ends_a_chain_at_a_flate_step_that_decodes_nothing_and_returns_what_the_filters_before_it_decoded()
+    {
+        // The hex decodes to bytes no Flate reading can decode: the Flate filters after the first would each fail on
+        // them again, and the hex after them decode bytes that are no hex.
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray([PdfName.ASCIIHexDecode, PdfName.FlateDecode, PdfName.FlateDecode, PdfName.ASCIIHexDecode]));
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory("FFFF>"u8.ToArray())).Decode(diagnostics);
+
+        decoded.ToArray().Should().Equal(0xFF, 0xFF);
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+        report.Message.Should().Be("A Flate stream could not be decoded.");
+    }
+
+    [Fact]
     public void Decodes_a_hexadecimal_stream()
     {
         Text(Decode("48656C6C6F>"u8.ToArray(), PdfName.ASCIIHexDecode)).Should().Be("Hello");
