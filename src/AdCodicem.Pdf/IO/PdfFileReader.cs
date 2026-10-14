@@ -2171,8 +2171,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     // the guard: each guess would read the file to its end.
                     if (!candidate)
                     {
+                        // From the start of the line the cut fell in, outside any comment: a line holds a row, a header, a
+                        // comment or the trailer keyword, which the cut may have split. Not before the table's own keyword.
+                        var line = span.LastIndexOfAny((byte)'\r', (byte)'\n');
                         ReadTrailerPastRows(
-                            Math.Max(absolute + windowSize - TrailerKeyword.Length, absolute + section.Padding + "xref".Length),
+                            Math.Max(absolute + (line >= 0 ? line + 1 : windowSize - TrailerKeyword.Length), absolute + section.Padding + "xref".Length),
                             section);
                     }
                 }
@@ -2204,71 +2207,101 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// read of them, not memory for them. A comment is skipped, as the lexer skips it. Anything else that is no part of a
     /// table — a damaged row, a stray token — is the section's fault, and the search goes on past it to the trailer
     /// keyword, which a reader that read the rows would reach as well: the trailer names the encryption, which must not be
-    /// lost to damage the guard hid.
+    /// lost to damage the guard hid. <paramref name="from"/> starts a line, outside any comment.
     /// </para>
     /// <para>
     /// The search ends at the trailer keyword, at a dictionary no keyword introduces, or at the end of the file; the last
     /// two are a missing trailer, as they are where no guard stopped the reader, unless something no table holds came
-    /// first, which is then all the section is judged by. Each byte is read once, and the search is made once a document:
-    /// the chain ends at the section it is made for.
+    /// first, which is then all the section is judged by. The file is read a megabyte at a time, each piece once and every
+    /// byte of it looked at before the next is read, however many comments or stray bytes it holds; what starts within a
+    /// piece's last bytes, which may run past its end, starts the next. The search is made once a document: the chain
+    /// ends at the section it is made for.
     /// </para>
     /// </remarks>
     private void ReadTrailerPastRows(long from, XRefSectionRecord section)
     {
         var position = from;
         var stray = -1L;
-        var found = false;
+        var found = -1L;
+        var dictionary = -1L;
+        var comment = false;
 
-        while (position < _source.Length && !found)
+        while (position < _source.Length && found < 0 && dictionary < 0)
         {
-            var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
-            int next;
+            var start = position;
+            var length = (int)Math.Min(ScanChunkSize, _source.Length - start);
+            using var window = _source.GetWindow(start, length);
+            var span = window.Memory.Span;
 
-            using (var window = _source.GetWindow(position, length))
-            {
-                var span = window.Memory.Span;
-                next = stray < 0 ? span.IndexOfAnyExcept(TableBytes) : span.IndexOfAny(TrailerSearchBytes);
-            }
+            // What starts within the window's last bytes may run past its end: it is looked at again from a window that
+            // starts with it, so that each piece of the file is read once.
+            var edge = start + length < _source.Length ? span.Length - XRefProbeLength : span.Length;
+            var at = 0;
 
-            if (next < 0)
+            while (at < span.Length)
             {
-                position += length;
-                continue;
-            }
+                var rest = span[at..];
+                var next = comment ? rest.IndexOfAny((byte)'\r', (byte)'\n')
+                    : stray < 0 ? rest.IndexOfAnyExcept(TableBytes)
+                    : rest.IndexOfAny(TrailerSearchBytes);
 
-            position += next;
-
-            using var probe = _source.GetWindow(position, XRefProbeLength);
-            var head = probe.Memory.Span;
-
-            if (head[0] == (byte)'%')
-            {
-                position = EndOfComment(position);
-            }
-            else if (head.StartsWith("<<"u8))
-            {
-                break;
-            }
-            else if (head[0] == (byte)'t' && StartsToken(position) && new PdfLexer(head).Read().IsKeyword(TrailerKeyword))
-            {
-                found = true;
-            }
-            else
-            {
-                if (stray < 0)
+                if (next < 0)
                 {
-                    stray = position;
-                    section.FaultPastLimit = true;
-                    section.Fault ??= string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"it holds {DescribeToken(new PdfLexer(head).Read())} at offset {position}, where a subsection or the trailer should start");
+                    at = span.Length;
+                    break;
                 }
 
-                position++;
+                at += next;
+
+                if (comment)
+                {
+                    comment = false;
+                    continue;
+                }
+
+                if (at >= edge)
+                {
+                    break;
+                }
+
+                var head = span[at..];
+
+                if (head[0] == (byte)'%')
+                {
+                    comment = true;
+                    at++;
+                }
+                else if (head.StartsWith("<<"u8))
+                {
+                    dictionary = start + at;
+                    break;
+                }
+                else if (head[0] == (byte)'t' &&
+                    (at > 0 ? !PdfCharacters.IsRegular(span[at - 1]) : StartsToken(start)) &&
+                    new PdfLexer(head).Read().IsKeyword(TrailerKeyword))
+                {
+                    found = start + at;
+                    break;
+                }
+                else
+                {
+                    if (stray < 0)
+                    {
+                        stray = start + at;
+                        section.FaultPastLimit = true;
+                        section.Fault ??= string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"it holds {DescribeToken(new PdfLexer(head).Read())} at offset {stray}, where a subsection or the trailer should start");
+                    }
+
+                    at++;
+                }
             }
+
+            position = start + at;
         }
 
-        if (!found)
+        if (found < 0)
         {
             // Rows that end in the file's end, or in a dictionary no keyword introduces, lack their trailer; rows that end in
             // something else are judged by it alone.
@@ -2277,39 +2310,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 section.TrailerFault = XRefTrailerFault.Missing;
             }
 
-            section.TrailerPosition = stray >= 0 ? stray : Math.Min(position, _source.Length);
+            section.TrailerPosition = stray >= 0 ? stray : dictionary >= 0 ? dictionary : _source.Length;
             return;
         }
 
-        section.TrailerPosition = position;
+        section.TrailerPosition = found;
         var guards = _guardsReached;
-        _ = TryParseNumberedAt(position + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out var syntaxFault);
+        _ = TryParseNumberedAt(found + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out var syntaxFault);
         section.CutByLimit |= _guardsReached != guards;
 
         if (JudgeTrailer(value, syntaxFault, section) is { } trailer)
         {
             _xref.MergeTrailer(trailer);
         }
-    }
-
-    /// <summary>Gets where the line of the comment at <paramref name="position"/> ends, or the file's end.</summary>
-    private long EndOfComment(long position)
-    {
-        while (position < _source.Length)
-        {
-            var length = (int)Math.Min(ScanChunkSize, _source.Length - position);
-            using var window = _source.GetWindow(position, length);
-            var end = window.Memory.Span.IndexOfAny((byte)'\r', (byte)'\n');
-
-            if (end >= 0)
-            {
-                return position + end;
-            }
-
-            position += length;
-        }
-
-        return _source.Length;
     }
 
     /// <summary>

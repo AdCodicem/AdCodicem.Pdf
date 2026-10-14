@@ -2271,6 +2271,45 @@ public class DocumentReaderTests
         return Encoding.ASCII.GetString(stream.Decode(document.Diagnostics).Span);
     }
 
+    [Theory]
+    [InlineData("%\n", false, false)]
+    [InlineData("t ", true, false)]
+    [InlineData("<a", true, false)]
+    [InlineData("%\n", false, true)]
+    public void The_search_for_the_trailer_past_rows_left_unread_reads_the_file_once(string hit, bool stray, bool full)
+    {
+        // The search took one comment, or one candidate past a stray byte, a window at a time, and read a megabyte again for
+        // each: hours for a file a little past the default bound, opened from a path. A two-megabyte comment before
+        // startxref keeps each window a megabyte long.
+        var builder = new TestPdfBuilder();
+
+        for (var number = 1; number <= 10; number++)
+        {
+            builder.WithObject(number, number switch
+            {
+                1 => "<< /Type /Catalog /Pages 2 0 R >>",
+                2 => "<< /Type /Pages /Kids [] /Count 0 >>",
+                _ => "null",
+            });
+        }
+
+        var text = Encoding.Latin1.GetString(builder.BuildClassic(rootNumber: 1));
+        var hits = (stray ? "x " : string.Empty) + string.Concat(Enumerable.Repeat(hit, 10_000)) + "\n";
+        text = text
+            .Replace("trailer\n", hits + "trailer\n", StringComparison.Ordinal)
+            .Replace("startxref", "%" + new string('-', 2 * 1024 * 1024) + "\nstartxref", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(text);
+        var limits = full
+            ? PdfReaderLimits.Default with { MaxIndexEntries = 4 }
+            : PdfReaderLimits.Default with { MaxXRefSectionLength = 64 };
+        using var source = new CountingSource(file);
+
+        using var document = PdfDocument.Open(source, new PdfReaderOptions { Limits = limits }, ownsSource: false);
+
+        document.Trailer.GetRaw(PdfName.Root).Should().NotBeNull();
+        source.BytesRead.Should().BeLessThan(2L * file.Length);
+    }
+
     private sealed class CountingSource : PdfFileSource
     {
         private readonly PdfFileSource _inner;
