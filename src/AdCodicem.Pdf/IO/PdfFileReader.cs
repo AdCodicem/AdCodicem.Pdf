@@ -3191,7 +3191,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private void ReserveIndex(long rows)
     {
         var most = _guard.Bound(PdfLimit.IndexEntries);
-        var room = (int)Math.Min(rows, IndexRoom);
+        var room = (int)Math.Min(rows, int.MaxValue);
 
         if (_xref.Trailer.GetInteger(PdfName.Size) is { } size)
         {
@@ -3207,12 +3207,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         _xref.Reserve(room, most);
     }
-
-    /// <summary>
-    /// Gets how many object numbers more the index may take under <see cref="PdfReaderLimits.MaxIndexEntries"/>, the
-    /// numbers the chain refused counted with it.
-    /// </summary>
-    private int IndexRoom => _guard.Bound(PdfLimit.IndexEntries) - _xref.Count - (_refusedNumbers?.Count ?? 0);
 
     /// <summary>
     /// Reports that the index had no room for a number it lacks, met at <paramref name="position"/>: the first time, under
