@@ -510,6 +510,21 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Rows_past_a_full_index_are_not_read_so_that_one_refused_there_marks_nothing_damaged()
+    {
+        // The index fills at the stream's third row; the rows past it can only repeat numbers it holds, and are not read.
+        // Read, a row refused there marked the index damaged, and the next lookup of an object past the bound rebuilt it.
+        var file = RefusedRows(50, out _);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 2 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.GetObject(new PdfObjectId(10)).Should().BeSameAs(PdfNull.Instance);
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitIndexEntries);
+    }
+
+    [Fact]
     public void Serves_no_object_under_a_number_past_a_long_that_once_wrapped_to_its_number()
     {
         // #157: 92233720368547758082 wrapped at its 19th digit to 2, so /Pages led to object 2, and the header written
