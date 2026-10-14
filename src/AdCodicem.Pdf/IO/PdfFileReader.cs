@@ -2088,7 +2088,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     return false;
                 }
 
-                if (first + countToken.Integer - 1 > PdfObjectId.MaxNumber)
+                // Compared by subtraction: a count as large as a long would carry first + count - 1 past what one holds.
+                if (countToken.Integer > PdfObjectId.MaxNumber - first + 1)
                 {
                     section.Fault ??= string.Create(
                         CultureInfo.InvariantCulture,
@@ -2862,7 +2863,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return "its /Index gives a subsection a count of rows out of range";
             }
 
-            if (start is < 0 or > PdfObjectId.MaxNumber || start + count - 1 > PdfObjectId.MaxNumber)
+            // The last number is compared by subtraction: a count as large as a long would carry start + count - 1 past what
+            // one holds, and the rows past int.MaxValue would be read under negative numbers.
+            if (start is < 0 or > PdfObjectId.MaxNumber || count > PdfObjectId.MaxNumber - start + 1)
             {
                 return string.Create(
                     CultureInfo.InvariantCulture,
