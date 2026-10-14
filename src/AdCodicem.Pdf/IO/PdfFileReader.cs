@@ -317,9 +317,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// The object numbers whose row a section of the chain refused, or null while none was: the sections the chain reads
-    /// after it describe older revisions, whose rows must not stand for the current one.
+    /// after it describe older revisions, whose rows must not stand for the current one. Let go once the chain is read,
+    /// when nothing reads it any more; until then <see cref="PdfReaderLimits.MaxIndexEntries"/> counts it with the index,
+    /// which no number is in at once.
     /// </summary>
     private HashSet<int>? _refusedNumbers;
+
+    /// <summary>
+    /// Where the index first had no room for an object number, <see cref="PdfReaderLimits.MaxIndexEntries"/> reached: the
+    /// section of the chain whose row it was, or the header or object stream a rebuild found it in; -1 while it has room.
+    /// </summary>
+    private long _indexFullAt = -1;
 
     public PdfFileReader(
         PdfFileSource source, PdfDiagnostics diagnostics, PdfLimitGuard guard, int cacheCapacity, bool ownsSource)
@@ -1285,6 +1293,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             _readingChain = false;
             _readWhileChainIsRead = null;
+            _refusedNumbers = null;
         }
 
         if (!chainRead)
@@ -1614,6 +1623,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     ReportLostSection(section, naming, offset, namedFrom);
                     break;
                 }
+            }
+
+            if (_indexFullAt >= 0)
+            {
+                // The index takes no more numbers: an older section could only add rows for numbers it lacks, which it
+                // has no room for, or for numbers a newer section gave already.
+                break;
             }
 
             if (hybrid >= 0 && visited.Add(hybrid))
@@ -2224,16 +2240,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (kindToken.IsKeyword("f"u8))
             {
                 // A free row's generation serves no object: some producers give the head of the free list 65,536.
-                AddFromChain(number, XRefEntry.Free);
+                AddFromChain(number, XRefEntry.Free, section);
             }
             else if (generationToken.Integer is >= 0 and <= PdfObjectId.MaxGeneration)
             {
-                AddFromChain(number, XRefEntry.Regular(offsetToken.Integer, (int)generationToken.Integer));
+                AddFromChain(number, XRefEntry.Regular(offsetToken.Integer, (int)generationToken.Integer), section);
             }
             else
             {
                 // The rows after it are still in step: only this one is refused, and its object is the index's to find.
-                Refuse(number);
+                Refuse(number, section);
                 section.RefusedRow ??= string.Create(
                     CultureInfo.InvariantCulture,
                     $"the row for object {number}, at offset {absolute + offsetToken.Start}, gives it generation {generationToken.Integer}, outside 0 to {PdfObjectId.MaxGeneration}");
@@ -2782,7 +2798,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             _indexIncomplete = true;
         }
 
-        for (var i = 0; i < count && rowLength <= data.Length - position; i++, position += rowLength)
+        // Once the index takes no more numbers, the rows left can only repeat numbers it holds: they are not read.
+        for (var i = 0; i < count && rowLength <= data.Length - position && _indexFullAt < 0; i++, position += rowLength)
         {
             var row = data.Slice(position, rowLength);
             var cursor = 0;
@@ -2798,20 +2815,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             switch (type)
             {
                 case 0:
-                    AddFromChain(number, XRefEntry.Free);
+                    AddFromChain(number, XRefEntry.Free, section);
                     break;
 
                 case 1 when second <= long.MaxValue && third <= PdfObjectId.MaxGeneration:
-                    AddFromChain(number, XRefEntry.Regular((long)second, (int)third));
+                    AddFromChain(number, XRefEntry.Regular((long)second, (int)third), section);
                     break;
 
                 case 2 when second is >= 1 and <= PdfObjectId.MaxNumber && third <= int.MaxValue:
-                    AddFromChain(number, XRefEntry.Compressed((int)second, (int)third));
+                    AddFromChain(number, XRefEntry.Compressed((int)second, (int)third), section);
                     break;
 
                 case 1 or 2:
                     // The rows after it are still in step: only this one is refused, and its object is the index's to find.
-                    Refuse(number);
+                    Refuse(number, section);
                     section.RefusedRow ??= RowFault(number, type, second, third, row, widths);
                     break;
 
@@ -2824,25 +2841,82 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Indexes what a row of the chain says of object <paramref name="number"/>, unless a newer section said it already or
-    /// refused its row.
+    /// Indexes what a row of <paramref name="section"/> says of object <paramref name="number"/>, unless a newer section
+    /// said it already or refused its row, or the index has no room left for a number it lacks.
     /// </summary>
-    private void AddFromChain(int number, XRefEntry entry)
+    private void AddFromChain(int number, XRefEntry entry, XRefSectionRecord section)
     {
-        if (_refusedNumbers is null || !_refusedNumbers.Contains(number))
+        if (_refusedNumbers?.Contains(number) == true)
+        {
+            return;
+        }
+
+        // While the index has room, a number it holds is simply not taken again: one lookup a row.
+        if (IndexHasRoom)
         {
             _xref.TryAdd(number, entry);
+        }
+        else if (!_xref.TryGet(number, out _))
+        {
+            ReachIndexBound(section.Offset);
+            section.CutByLimit = true;
         }
     }
 
     /// <summary>
-    /// Refuses a row of the chain for object <paramref name="number"/>: the object is left for a rebuild to find, and no
-    /// older section's row stands for it.
+    /// Refuses a row of <paramref name="section"/> for object <paramref name="number"/>: the object is left for a rebuild to
+    /// find, and no older section's row stands for it. A row for a number a newer section gave already describes an older
+    /// revision, and refusing it changes nothing.
     /// </summary>
-    private void Refuse(int number)
+    private void Refuse(int number, XRefSectionRecord section)
     {
         _indexIncomplete = true;
-        (_refusedNumbers ??= []).Add(number);
+
+        if (_xref.TryGet(number, out _) || _refusedNumbers?.Contains(number) == true)
+        {
+            return;
+        }
+
+        if (IndexHasRoom)
+        {
+            (_refusedNumbers ??= []).Add(number);
+        }
+        else
+        {
+            ReachIndexBound(section.Offset);
+            section.CutByLimit = true;
+        }
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether the index has room for one more object number, the numbers the chain refused counted
+    /// with it: no number is in both. A row or a header for a number the index holds already takes no room.
+    /// </summary>
+    private bool IndexHasRoom => _xref.Count + (_refusedNumbers?.Count ?? 0) < _guard.Bound(PdfLimit.IndexEntries);
+
+    /// <summary>
+    /// Reports that the index had no room for a number it lacks, met at <paramref name="position"/>: the first time, under
+    /// <see cref="PdfReaderLimits.MaxIndexEntries"/>. The index stays full from then on, and is reported once whatever is
+    /// met afterward.
+    /// </summary>
+    /// <exception cref="PdfLimitExceededException">
+    /// The guard is reached for the first time, and the document was opened to throw on one.
+    /// </exception>
+    private void ReachIndexBound(long position)
+    {
+        if (_indexFullAt >= 0)
+        {
+            return;
+        }
+
+        var bound = _guard.Bound(PdfLimit.IndexEntries);
+        _indexFullAt = position;
+        ReachLimit(
+            PdfLimit.IndexEntries,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The index reached {bound:N0} {(bound == 1 ? "entry" : "entries")}; the objects past them were not indexed."),
+            position);
     }
 
     /// <summary>Says why a cross-reference stream's row of type 1 or 2 was refused.</summary>
@@ -3719,13 +3793,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _nullWhileDecoding.Clear();
 
         var redefinitions = new Redefinitions();
-        ScanForObjects(redefinitions);
-        ScanForTrailers();
 
-        // Loading objects can reach a guard. A document opened to throw on one throws once the index is
-        // whole, not half-way through rebuilding it: a rebuild is never run twice, and one abandoned mid-way
-        // would leave the document unable to find the objects it had not reached.
-        var reached = ExpandObjectStreams(redefinitions);
+        // Indexing and loading objects can reach a guard. A document opened to throw on one throws once the index is
+        // whole, not half-way through rebuilding it: a rebuild is never run twice, and one abandoned mid-way would leave
+        // the document unable to find the objects it had not reached. The first guard reached is the one thrown.
+        var reached = ScanForObjects(redefinitions);
+        ScanForTrailers();
+        var expanding = ExpandObjectStreams(redefinitions);
+        reached ??= expanding;
 
         if (redefinitions.Count > 0)
         {
@@ -3744,10 +3819,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         reached?.Throw();
     }
 
-    private void ScanForObjects(Redefinitions redefinitions)
+    private ExceptionDispatchInfo? ScanForObjects(Redefinitions redefinitions)
     {
         var position = 0L;
         var found = 0;
+        ExceptionDispatchInfo? reached = null;
 
         while (position < _source.Length && found < MaxRepairObjects)
         {
@@ -3772,13 +3848,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 if (TryReadHeaderBackwards(span, objPosition, out var number, out var generation, out var headerStart))
                 {
                     // The last definition wins: that is what an incrementally updated file means. Its entry records
-                    // the generation its header gives, whatever an earlier definition gave (#118).
-                    if (_xref.TryGet(number, out _))
+                    // the generation its header gives, whatever an earlier definition gave (#118). A number the index
+                    // lacks takes room in it, which it may have no more of.
+                    var known = _xref.TryGet(number, out _);
+
+                    if (known)
                     {
                         redefinitions.Add(number);
                     }
 
-                    _xref.Set(number, XRefEntry.Found(position + headerStart - _headerOffset, generation));
+                    if (known || HasRoomInRebuild(position + headerStart, ref reached))
+                    {
+                        _xref.Set(number, XRefEntry.Found(position + headerStart - _headerOffset, generation));
+                    }
+
                     found++;
                 }
 
@@ -3792,6 +3875,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             position += length - ScanOverlap;
         }
+
+        return reached;
+    }
+
+    /// <summary>
+    /// Determines whether a rebuilt index has room for one more object number, met at <paramref name="position"/>; when it
+    /// has none, reports <see cref="PdfReaderLimits.MaxIndexEntries"/> the first time, and holds the exception a document
+    /// opened to throw asked for in <paramref name="reached"/>, unless one is held already: the rebuild finishes first.
+    /// </summary>
+    private bool HasRoomInRebuild(long position, ref ExceptionDispatchInfo? reached)
+    {
+        if (IndexHasRoom)
+        {
+            return true;
+        }
+
+        try
+        {
+            ReachIndexBound(position);
+        }
+        catch (PdfLimitExceededException exception)
+        {
+            reached ??= ExceptionDispatchInfo.Capture(exception);
+        }
+
+        return false;
     }
 
     private void ScanForTrailers()
@@ -3918,10 +4027,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             for (var index = 0; index < contents.Count; index++)
             {
                 // An object written directly in the file wins over a copy inside an object stream, and the first
-                // copy listed in the object streams read wins over the others.
-                if (!_xref.TryAdd(contents.NumberAt(index), XRefEntry.Compressed(number, index)))
+                // copy listed in the object streams read wins over the others. A member the index lacks takes room in
+                // it, which it may have no more of.
+                if (_xref.TryGet(contents.NumberAt(index), out _))
                 {
                     redefinitions.Add(contents.NumberAt(index));
+                }
+                else if (HasRoomInRebuild(PositionOf(entry.Offset), ref reached))
+                {
+                    _xref.Set(contents.NumberAt(index), XRefEntry.Compressed(number, index));
                 }
             }
         }

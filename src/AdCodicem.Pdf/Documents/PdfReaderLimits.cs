@@ -17,8 +17,8 @@ namespace AdCodicem.Pdf.Documents;
 /// instead.
 /// </para>
 /// <para>
-/// Bounds that only an invalid file can reach — how deeply containers nest, how many objects a rebuilt index
-/// holds — are not options: lifting them would let nothing more be read.
+/// Bounds that only an invalid file can reach — how deeply containers nest, how far references to references are
+/// followed — are not options: lifting them would let nothing more be read.
 /// </para>
 /// </remarks>
 public sealed record PdfReaderLimits
@@ -37,6 +37,7 @@ public sealed record PdfReaderLimits
         MaxXRefSectionLength = int.MaxValue,
         MaxXRefSectionCount = int.MaxValue,
         MaxTrailerLength = int.MaxValue,
+        MaxIndexEntries = int.MaxValue,
     };
 
     /// <summary>
@@ -103,6 +104,27 @@ public sealed record PdfReaderLimits
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxTrailerLength { get; init => field = Length(value); } = 64 * 1024;
+
+    /// <summary>
+    /// Gets the most object numbers the reader indexes, free ones and those whose row it refused included. Defaults to
+    /// 8,388,607, the most ISO 32000-1 advises a document to hold (annex C): a cross-reference stream of a few hundred
+    /// bytes can claim hundreds of millions of objects, and the index holds 52 to 108 bytes for each.
+    /// </summary>
+    /// <remarks>
+    /// The index takes object numbers in the order the reader meets them — the newest section of the chain first, a
+    /// rebuild in the file's order —, and once it holds this many takes no more: an object it holds no entry for reads
+    /// as null. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitIndexEntries"/>, once.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
+    public int MaxIndexEntries
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(MaxIndexEntries));
+            field = value;
+        }
+    } = 8_388_607;
 
     private static int Length(int value, [System.Runtime.CompilerServices.CallerMemberName] string? property = null)
     {
