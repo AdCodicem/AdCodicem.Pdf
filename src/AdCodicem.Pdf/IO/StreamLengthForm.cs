@@ -30,4 +30,10 @@ internal enum StreamLengthForm : byte
     /// read and checked once the chain is read (#182).
     /// </summary>
     Deferred,
+
+    /// <summary>
+    /// A reference to an object one of the reader's guards left out of the index: whether the file holds it is unknown. The
+    /// data is taken up to its <c>endstream</c>, and nothing is reported: the guard's report says why.
+    /// </summary>
+    ObjectUnindexed,
 }

@@ -94,6 +94,13 @@ internal sealed class FileStructure
     /// <summary>Gets where the section whose <c>/Prev</c> names <see cref="ChainCutAt"/> starts; -1 when the chain was not cut.</summary>
     public long ChainCutNamedFrom { get; set; } = -1;
 
+    /// <summary>
+    /// Gets where the index first had no room for an object number, <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>
+    /// reached — the section whose row it was, or the header or object stream a rebuild found it in —, or -1 while it had
+    /// room for every number it met.
+    /// </summary>
+    public long IndexFullAt { get; set; } = -1;
+
     /// <summary>Gets a value indicating whether the trailer the chain gave holds any entry at all.</summary>
     public bool TrailerRead { get; set; }
 
