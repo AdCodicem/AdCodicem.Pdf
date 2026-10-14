@@ -26,32 +26,41 @@ On a file whose index and `/Root` are sound, that is all: no page is read, and n
 cross-reference streams and of the object stream holding the catalog. The search for a lost catalog parses
 objects, and a rebuild scans the whole file, but neither decodes a page's content, an image or a font.
 
-Indexing allocates 100 to 210 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
-costs the same to index as an empty one. Where in that range depends on the count: the map doubles as it grows,
-52 bytes a slot, so a count just below one of its growth steps costs 100 bytes an object and one just past it 208.
+Indexing allocates 52 to 63 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
+costs the same to index as an empty one. The map holds 52 bytes a slot, and is sized before it is filled: each
+cross-reference section makes room for the rows it holds before it reads them, and a chain, once its newest section is
+read, for the objects that section's `/Size` numbers, up to the next prime of the runtime's table past the count. A
+count the file declares is its claim, so room is made for no more rows than a section's data holds, or than its bytes
+hold at the 20 bytes a classic table's row takes. A map left to grow — by a rebuild, or rows written shorter than
+that — doubles as it grows, and allocates 100 to 210 bytes an object, by where the count falls against its steps.
 A cross-reference stream adds the decoding of its rows: 7 bytes an object when they are written as they are, up to
 about 42 when Flate stores them without compressing, compressed rows in between. Opening also decodes the object
 stream that holds the catalog, when one does, and that costs what the stream holds: a producer that packs every object
 into one stream makes opening pay their decoded weight: 864 bytes an object on one such file, damaged, of 65,564. An open
-document keeps the map, 52 to 108 bytes an object: on the corpus's thousand-page journal, about 107, nearly all of it
-the map's. When the
-reader relocates an object or rebuilds the map once the chain is read, it keeps a copy of the map the chain gave
-as well, so that validation still judges the file's own.
+document keeps the map, 52 to 63 bytes an object, 108 at most when it grew: on the corpus's thousand-page journal, about
+61, where it kept 105 when the map grew by doubling. When the reader relocates an object or rebuilds the map once the
+chain is read, it keeps a copy of the map the chain gave as well, so that validation still judges the file's own.
+
+The map holds at most 8,388,607 object numbers by default, the most ISO 32000-1's Annex C advises a document to have,
+and `PdfReaderLimits.MaxIndexEntries` raises it ([Reader limits](reader-limits.md)): at the default, the map alone
+can take 436 MB.
 
 An object the map does not hold is one the file does not define, and a reference to it reads as null, as the
-specification says. The map is rebuilt by scanning the whole file, once at most, and never while the chain is read:
+specification says — or one a limit left out of the map, which reads as null too, until the limit is raised: the
+sections past `MaxXRefSectionCount`, the rows past `MaxXRefSectionLength` or past what `MaxDecodedStreamLength`
+decodes of a cross-reference stream, the numbers past `MaxIndexEntries`. That is no damage, and the map is not rebuilt
+for it. The map is rebuilt by scanning the whole file, once at most, and never while the chain is read:
 
 - at opening, when `startxref` cannot be found or read, when the section it names cannot be read, when the
   chain indexes nothing, or when `/Root` leads to no catalog and no object of the map is one;
 - when an object the map lacks is asked for, by opening or after it, while the map may have lost entries: a
   cross-reference section the chain names cannot be found, or a `/Prev` or `/XRefStm` is not an offset — one
   written as a reference no section read before it places included — (`xref.section-missing`); one is found and
-  cannot be read (`xref.section-unreadable`), a value its rows need written as such a reference among the causes; the chain loops back on itself (`xref.chain-cycle`); a limit stopped the chain or a
-  table before its end; a row of a classic table cannot be read, which ends its subsection; a row gives an object
+  cannot be read (`xref.section-unreadable`), a value its rows need written as such a reference among the causes; the chain loops back on itself (`xref.chain-cycle`); a row of a classic table cannot be read, which ends its subsection; a row gives an object
   in use what no entry can hold — a generation past 65,535, an offset of 2⁶³ or more, an object stream that is no
   object number, an index past 2,147,483,647, a field wider than 8 bytes whose leading bytes are not all zero —,
   which refuses that row alone, no older section's row standing for
-  the object; or a cross-reference stream holds fewer rows than it declares;
+  the object; or a cross-reference stream whose data the reader decoded whole holds fewer rows than it declares;
 - when an object is asked for, by opening or after it, that is neither where the map says nor within 512 bytes
   of it.
 
@@ -66,6 +75,11 @@ found nearby takes the generation of the header found there, whatever its row ga
 keeps its row's. The rules that name an object from the map — `object.reference-missing`,
 `object.name-null-character`, `object.endobj-missing` — name it so, `5 1` for `5 1 obj`; the cross-reference rules
 name it as the file's row does, and the page tree and object-shape rules as the reference that reached it does.
+
+A rebuild reads the file to its end, and holds no more numbers than the map may: a header for a number it holds already
+takes no room, so that a million copies of one object hide nothing behind them, and the first number past
+`MaxIndexEntries` is reported once (`limit.index-entries`). A rebuild of a chain a limit had cut keeps the entries the
+chain read for the numbers the scan did not find, rather than losing them.
 
 ## What it deliberately does not do
 

@@ -37,8 +37,8 @@ it, and a file that kills the process is the worst outcome a document reader can
 ## Guards a valid file can reach
 
 Some of those bounds are reachable by a sound document: a large-format scan decodes past the 256 MB a stream may
-decode to by default, and a file saved incrementally a thousand times has a thousand cross-reference sections. A
-bound like that is a **guard**. It is on by default, so an application that opens files it did not produce is
+decode to by default, a file saved incrementally a thousand times has a thousand cross-reference sections, and nothing
+in PDF 2.0 forbids more objects than the 8,388,607 the index holds by default. A bound like that is a **guard**. It is on by default, so an application that opens files it did not produce is
 protected without configuring anything; it is reported under its own `limit.*` code when a document reaches it; and
 its message names the option that lifts it, so that the document stays readable by whoever needs to read it.
 
@@ -48,13 +48,18 @@ when it was the reader that stopped reading it. The bounds live on the options r
 two documents opened side by side can be read under different ones, and a stream decodes under the limits of the
 document it came from, however long after opening.
 
+What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
+table's bound, the objects past the most the index holds — is no damage either. Those objects read as null, unknown
+rather than missing, until you raise the limit; the reader does not rebuild the index for them, as it would for a file
+whose index is broken, since a rebuild would report a sound file as damaged and could lose what the chain had read.
+
 `PdfReaderLimits.Unbounded` takes every limit to the most the implementation can hold. It is for documents your own
 application produced, never for uploads: under it, a file can make the reader hold whatever it asks for, up to those
 maxima.
 
 ## Bounds only a damaged file reaches
 
-Other bounds protect the reader itself — its stack, its rebuild of a damaged index — and are not reached by the
+Other bounds protect the reader itself — its stack, the chains of references it follows — and are not reached by the
 documents producers write: real documents nest a handful of levels, not 128, and producers write an object rather
 than a reference to a reference. Those stay internal constants, since lifting them would let nothing more be read,
 and each says where it is declared why no valid file reaches it.
