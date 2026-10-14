@@ -113,7 +113,9 @@ public sealed record PdfReaderLimits
     /// <remarks>
     /// The index takes object numbers in the order the reader meets them — the newest section of the chain first, a
     /// rebuild in the file's order —, and once it holds this many takes no more: an object it holds no entry for reads
-    /// as null. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitIndexEntries"/>, once.
+    /// as null until the bound is raised, and the index is not rebuilt for it. Reaching it reports
+    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitIndexEntries"/>, once. The bound also sets what validating a
+    /// document can cost, which follows its index: about 24 seconds and 3 GB near the default.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxIndexEntries

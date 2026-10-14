@@ -30,7 +30,8 @@ foreach (var entry in document.Diagnostics)
 ```
 
 Reading is lazy: a stream reaches `MaxDecodedStreamLength` when it is decoded, so look after decoding, not only after
-opening.
+opening. And an object a limit left out of the cross-reference index — the oldest sections of a long chain, the objects
+past `MaxIndexEntries` — reads as null, as an object the file lacks does: the `limit.*` entry is what tells them apart.
 
 ## Raise the limit the report names
 
@@ -58,7 +59,7 @@ var trusted = new PdfReaderOptions { Limits = PdfReaderLimits.Unbounded };
 ```
 
 Never use it for uploads: under it, a file can make the reader hold whatever it asks for, up to about 2 GB per
-stream or object.
+stream or object, and an index of two billion entries.
 
 ## Refuse the document instead
 
@@ -87,7 +88,7 @@ catch (PdfLimitExceededException exception)
 
 Put the `try` around everything that uses the document, not only around `Open`: the exception comes from whichever
 operation reaches the limit — `Open` while it indexes the file, `GetObject` or resolving a reference when an object is
-too long, `Decode` when a stream decodes too far, `Validate` as it reads.
+too long or lies past what a full index holds, `Decode` when a stream decodes too far, `Validate` as it reads.
 
 ## See also
 
