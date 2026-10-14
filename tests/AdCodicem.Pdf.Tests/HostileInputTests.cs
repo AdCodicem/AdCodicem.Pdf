@@ -417,6 +417,32 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_rebuild_finds_a_document_behind_millions_of_repeated_headers_of_one_object()
+    {
+        // #183: a rebuild counted every header it read, and stopped after two million, once the 1 MB piece it was reading
+        // was done, so that 2,200,000 copies of "1 0 obj" hid the document after them, which nothing reported. A header for
+        // a number the index holds takes no room: the scan reads to the file's end, and the last definition wins.
+        const int Copies = 2_200_000;
+        var prefix = Encoding.ASCII.GetBytes("%PDF-1.7\n" + string.Concat(Enumerable.Repeat("1 0 obj\n", Copies)));
+        byte[] file =
+        [
+            .. prefix,
+            .. "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"u8,
+            .. "trailer\n<< /Root 1 0 R >>\nstartxref\n999999999\n%%EOF\n"u8,
+        ];
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        using var document = Measure(() => PdfDocument.Open(file));
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.ObjectCount.Should().Be(2);
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
+        allocated.Should().BeLessThan(1024 * 1024, "a header read again replaces an entry, and allocates nothing");
+    }
+
+    [Fact]
     public void Rows_a_section_refuses_count_toward_the_entries_the_index_may_hold()
     {
         // A refused row keeps its number out of the index, so that no older section's row stands for it: the reader holds
