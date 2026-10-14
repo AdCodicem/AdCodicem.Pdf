@@ -543,6 +543,62 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("% rows of the first revision follow", 15)]
+    [InlineData("%          trailer << /Size 11 /Root 1 0 R >>", 10)]
+    public void A_cut_in_a_comment_among_the_rows_searches_for_the_trailer_from_the_comment_s_start(string comment, int into)
+    {
+        // The search started seven bytes before the cut, inside the comment the lexer was skipping: its text was taken for
+        // a fault of the table's, and a trailer written in it for the table's own, an encrypted file opened as plain.
+        var text = Encoding.Latin1.GetString(Trailed("/Encrypt 5 0 R"));
+        const string FirstRow = "0000000000 65535 f \r\n";
+        var file = Encoding.Latin1.GetBytes(text.Replace(FirstRow, FirstRow + comment + "\r\n", StringComparison.Ordinal));
+        var limits = PdfReaderLimits.Default with { MaxXRefSectionLength = OffsetOf(file, comment) - OffsetOf(file, "xref\n") + into };
+
+        var opening = () => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        opening.Should().Throw<PdfEncryptedException>();
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnEncrypted = false });
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.CutByLimit.Should().BeTrue();
+        section.Fault.Should().BeNull();
+        section.TrailerPosition.Should().Be(OffsetOf(file, "trailer\n<<"));
+        document.IsEncrypted.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(nameof(PdfReaderLimits.MaxXRefSectionLength))]
+    [InlineData(nameof(PdfReaderLimits.MaxIndexEntries))]
+    public void The_trailer_past_rows_left_unread_is_found_wherever_the_search_s_window_ends(string limit)
+    {
+        // The search for the trailer reads the file a megabyte at a time: a comment, or the keyword, that the window's end
+        // splits is looked at again from the next one, and a comment that runs past the window is still one in the next.
+        // White space puts the comment, a fake trailer in its text, and the trailer on every byte around the window's end.
+        var text = Encoding.Latin1.GetString(Trailed("/Info 6 0 R"));
+        var at = text.IndexOf("trailer\n", StringComparison.Ordinal);
+        var head = Encoding.Latin1.GetBytes(text[..at]);
+        var tail = Encoding.Latin1.GetBytes("% trailer << /Root 9 0 R >>\n" + text[at..]);
+        var limits = limit == nameof(PdfReaderLimits.MaxIndexEntries)
+            ? PdfReaderLimits.Default with { MaxIndexEntries = 4 }
+            : PdfReaderLimits.Default with { MaxXRefSectionLength = 128 };
+
+        for (var spaces = (1024 * 1024) - 300; spaces <= (1024 * 1024) + 8; spaces++)
+        {
+            var file = new byte[head.Length + spaces + tail.Length];
+            head.CopyTo(file, 0);
+            file.AsSpan(head.Length, spaces).Fill((byte)' ');
+            tail.CopyTo(file, head.Length + spaces);
+
+            using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+            var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+            section.TrailerPosition.Should().Be(head.Length + spaces + tail.AsSpan().IndexOf("trailer\n<<"u8), "with {0} spaces", spaces);
+            section.Fault.Should().BeNull("with {0} spaces", spaces);
+            document.Trailer.GetRaw(PdfName.Info).Should().BeOfType<PdfReference>("with {0} spaces", spaces)
+                .Which.Id.Should().Be(new PdfObjectId(6));
+        }
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(4)]
     [InlineData(6)]
