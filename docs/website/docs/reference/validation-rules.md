@@ -141,6 +141,12 @@ fixed values the object matches and the required keys it lacks, a discriminator 
 `/FunctionType`, `/ShadingType`, `/PatternType`, `/HalftoneType`, `/FT`, `/TransformMethod`, `/CFM`, an array's first
 element — weighing most, and **a tie leaves the object unchecked** rather than judged against a guess.
 
+- A stream's `/DecodeParms` is typed by the filter at its place, not by score: Flate's parameters and LZW's share every
+  key but `/EarlyChange`, so that what a dictionary holds cannot tell them apart. A dictionary is the parameters of the
+  stream's only filter, a name or an array of one; an element of an array, those of the filter at the same place, the
+  first standing for a single name, as decoding pairs them; `/FDecodeParms` follows `/FFilter` likewise. Parameters no
+  filter claims — a dictionary beside several filters, a filter that takes none, one the model knows only by its full
+  name, an element that names none — are not checked ([#219]).
 - An indirect object is typed by the first context that types it, and checked once; a later context that disagrees is
   not heard, and one a tie left untyped may still be typed by a later one.
 - A key that points back up the graph — any `/Parent`, the `/P` of a structure element or of an annotation, an outline
@@ -319,5 +325,6 @@ PDF/UA profiles of the `AdCodicem.Pdf.Conformance` package (M20) take families o
 [#123]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/123
 [#182]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/182
 [#215]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/215
+[#219]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/219
 [#221]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/221
 [#230]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/230

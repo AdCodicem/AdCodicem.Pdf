@@ -96,7 +96,7 @@ programs, image files, content streams, XML, encryption, signatures and the netw
 
 | `PdfReaderLimits` | Default | Code | Where it applies |
 |---|---|---|---|
-| `MaxDecodedStreamLength` | 256 MB | `limit.decoded-stream` | Every filter's output, each step of a chain separately (`PdfFilterPipeline`) |
+| `MaxDecodedStreamLength` | 256 MB | `limit.decoded-stream` | Every filter's output: the last filter of a chain alone, the filters before it together, for what they pass along (`PdfFilterPipeline`) |
 | `MaxObjectLength` | 16 MB | `limit.object` | The window a regular object is parsed through, grown ×8 from 8 KB (`PdfFileReader.TryParseNumberedAt`) |
 | `MaxXRefSectionLength` | 64 MB | `limit.xref-section-length` | The window a classic cross-reference table is read through |
 | `MaxXRefSectionCount` | 1,024 | `limit.xref-section-count` | The `/Prev` links the chain follows |
@@ -119,7 +119,8 @@ mutation campaign opens with the defaults and never with `ThrowOnLimit`.
   recursion, and reported as `syntax.depth-exceeded`.
 - **Loads nest.** An indirect `/Length`, an object stream's dictionary or a filter parameter loads another object
   while one is being parsed. `PdfFileReader.MaxNestedLoads` (64) and a stack probe before each load bound the
-  chain; `_loading` turns a load that needs itself into null. While the cross-reference chain is read, nothing
+  chain; `_loading` turns a load that needs itself into null. A stream resolves its filters and every parameter they
+  read before any of its data (`FilterChain`), so that no level of the chain holds decoded data while the next loads. While the cross-reference chain is read, nothing
   loads: what the chain refers to is read where a section already read places it, under the same bounds (see
   *Indexing*).
 - **Every walk the validator makes across objects is iterative**, with a visited set by object number: the
@@ -300,6 +301,7 @@ Known gaps:
 | Threat | Defense | Held by | Fuzzed |
 |---|---|---|---|
 | An object whose load needs itself, or loads chained without end | `_loading` turns a load of an object being loaded into null. `PdfFileReader.MaxNestedLoads` (64) and a stack probe bound the chain, reported once as `syntax.depth-exceeded` | `HostileInputTests.Survives_an_object_whose_length_refers_to_itself`, `Survives_a_chain_of_lengths_longer_than_the_stack_is_deep`, `Reports_chains_that_run_too_deep_once` | The load path, not the bound |
+| Decodes nested through filter parameters, each holding its output while the next decodes | A stream resolves its filters, its parameters and the values they hold before it reads any of its data, and holds them as plain values: only what a step reads — LZW's `/EarlyChange`, a Flate or LZW step's predictor values —, nothing past an image filter, an unknown one or an element that names none. A chain of loads holds what `ObjectStreamBudget` keeps, the object stream decoded last, and one decoding, whatever its depth ([#165]) | `FilterTests.Resolves_every_value_a_step_reads_before_any_step_reads_the_data`, `Resolves_nothing_a_step_does_not_read`; `HostileInputMemoryTests.A_chain_of_object_streams_each_needing_the_next_to_decode_holds_one_level_s_output_at_once` (64 levels of 4 MB, held to 32 MB plus three bounds, live at once) | No |
 | References to references that loop | `PdfReference.Resolve` gives up after 32 fetches and reads null, with no report ([#173]) | `ObjectModelTests.A_chain_of_references_that_loops_resolves_to_null` | No |
 | An object stream that needs an object it holds, or two that need each other | While an object stream is decoded, an object it holds reads as null and is reported once as `stream.self-reference`, at the stream's entry, or nowhere when the entry lies outside the file; the null is remembered, so a later decode reads the same | `HostileInputTests.An_object_stream_that_needs_an_object_it_holds_reads_the_same_after_the_budget_lets_it_go`, `Two_object_streams_that_need_each_other_read_the_same_after_the_budget_lets_them_go`; `HeaderOffsetTests.An_object_stream_that_needs_itself_found_near_a_row_past_the_end_is_reported_nowhere` | Object-stream seeds, not the cycle |
 | An offset table that lies | `/N` and `/First` are checked against each other and against the decoded data, and the header is read up to its first pair that is not two integers, or that gives a number outside 1..`int.MaxValue` or an offset outside 0..`int.MaxValue` — the reader, the rebuild and the validator alike —, each fault reported once as `object-stream.unreadable`. A wrong index falls back on a lookup by number built once, reported once for each object as `object-stream.member-moved`. A member's start is checked against the data | `ReaderTimingTests.An_object_stream_whose_every_index_is_wrong_is_read_in_linear_time`; `DocumentReaderTests.Reads_an_object_where_its_stream_s_header_lists_it_rather_than_where_the_index_says`, `Reports_an_object_stream_whose_dictionary_or_header_cannot_be_believed_where_its_data_starts`, `Reads_no_member_an_object_stream_header_numbers_as_no_object_can_be`, `Reads_no_member_an_object_stream_header_places_where_no_member_can_start`, `Indexes_no_member_a_rebuild_finds_listed_under_a_number_no_object_can_have`; `CrossReferenceRuleTests.An_object_stream_whose_header_lists_something_other_than_objects_cannot_be_read`; `Reports_an_object_at_another_index_of_its_stream_once_however_often_it_is_parsed` | Yes |
@@ -314,7 +316,6 @@ Known gaps:
   before an entry is read.
 - [#161] A stream written inside an object stream decodes under the default guards, and keeps its object stream's
   decoded data alive past `ObjectStreamBudget`.
-- [#165] Decodes nested through filter parameters each hold a whole output: up to 64 of them at once.
 - [#181] Nothing bounds the work one document asks. Two large object streams evict each other on every member, and
   objects are parsed again through windows grown to 16 MB.
 - [#173] A chain or a loop of references reads as null with no report, one reference short of its bound.
@@ -357,18 +358,18 @@ its zlib patched is keeping part of the reader patched.
 
 | Threat | Defense | Held by | Fuzzed |
 |---|---|---|---|
-| A decompression bomb | Every decoder writes through `PdfBoundedOutput`, or a buffer capped like it, at `MaxDecodedStreamLength`. Each step of a chain is capped on its own, and nothing bounds how many steps there are ([#166]) | `FilterTests.Keeps_exactly_what_the_bound_allows_and_reports_only_a_bound_it_met`, `Bounds_a_filter_in_the_middle_of_a_chain_as_well_as_the_last`; `HostileInputTests.Decodes_a_run_length_stream_no_further_than_the_bound` | Not at the bound |
+| A decompression bomb | Every decoder writes through `PdfBoundedOutput`, or a buffer capped like it, at `MaxDecodedStreamLength` | `FilterTests.Keeps_exactly_what_the_bound_allows_and_reports_only_a_bound_it_met`; `HostileInputTests.Decodes_a_run_length_stream_no_further_than_the_bound` | Not at the bound |
+| A `/Filter` array of any length, each filter decoding to the bound | The filters before the last share one `MaxDecodedStreamLength` for what they pass along together, and the last has its own: a chain holds and fills two bounds at most, whatever its length. The number of filters is not bounded, since ISO 32000 sets none, and a sound chain may be thousands long. A filter that decodes nothing ends the chain, so that a faulty Flate stream is read again once, not once an entry ([#166]) | `FilterTests.Shares_one_bound_among_the_filters_before_the_last`, `Bounds_a_filter_in_the_middle_of_a_chain_as_well_as_the_last_and_reports_the_first_that_stopped`, `Ends_a_chain_at_a_flate_step_that_decodes_nothing_and_returns_what_the_filters_before_it_decoded`; `HostileInputTests.Opens_a_cross_reference_stream_whose_run_length_filters_multiply_its_data_at_a_cost_its_number_of_filters_leaves_alone`, `Decodes_a_long_chain_of_sound_flate_layers_within_twice_the_bound`, `Decodes_data_no_flate_reading_can_decode_once_however_many_flate_filters_name_it`; `FilterDamageTests.A_chain_of_filters_decodes_to_its_data_or_to_the_start_of_it_with_the_guard_alone_reported` | Property |
+| A guard's cut reported as damage by the filters after it | Every filter after one the bound stopped, or after the parser's window cut the data, is given data the reader cut: no lost tail or missing checksum, no rows longer than the data; a hexadecimal digit or an ASCII85 group the cut parted is dropped, not completed. A fault, or a checksum that disagrees, in what was read stays the file's ([#199]) | `FilterDamageTests.Says_nothing_of_the_end_of_data_a_filter_before_it_stopped_at_the_bound`, `Reports_a_fault_in_the_data_a_filter_kept_though_a_filter_before_it_stopped_at_the_bound`, `Drops_the_unit_a_guard_of_the_reader_parted_rather_than_complete_it`; `FilterTests.Undoes_a_predictor_over_the_rows_of_a_bounded_output_and_the_part_of_the_last_it_holds` | Property |
 | An output buffer sized from the file | The first buffer is an estimate from the input, capped at the bound; it doubles and never grows past it | `FilterTests.A_filter_s_first_buffer_is_sized_by_its_bound_not_by_its_input`, `A_bounded_output_never_grows_past_its_bound_and_hands_back_a_full_buffer_as_it_is` | Yes |
 | Predictor parameters that overflow or size a row before a check | The row length is computed in 64 bits and compared with the data before anything is allocated | `FilterTests.Leaves_the_data_as_decoded_when_the_predictor_describes_rows_it_cannot_hold` | Seeds only |
 | An LZW code past the table | A fixed table of 4,096 codes. A code not yet defined stops decoding, keeps what came before and reports `filter.failed` | `FilterDamageTests.Decodes_an_lzw_code_up_to_the_next_one_to_define_and_stops_at_any_past_it`; `FilterTests.Stops_an_lzw_stream_at_a_code_it_has_not_defined_and_says_so` | Two seeds |
-| Damaged Flate data read again and again | A form is read again only after a fault, into the same output. The byte-at-a-time pass covers only the 8 KB piece the fault was met in (`FlateInput.ChunkLength`). A stream costs at most eight readings, three of them byte by byte. This is accepted: damaged streams read about 40 times slower, still linear in the file (#135, comment of 2026-09-30) | `FilterDamageTests.Reads_sound_data_once`, `Reads_again_a_byte_at_a_time_only_the_piece_of_input_the_fault_was_met_in`, `Reading_damaged_data_again_allocates_no_second_output_and_sound_data_nothing_to_read_it_again_with` | Yes |
+| Damaged Flate data read again and again | A form is read again only after a fault, into the same output. The byte-at-a-time pass covers only the 8 KB piece the fault was met in (`FlateInput.ChunkLength`). A stream costs at most eight readings, three of them byte by byte, and a chain reads its input again only in the filter that met the fault: one that decodes nothing ends it. This is accepted: damaged streams read about 40 times slower, still linear in the file (#135, comment of 2026-09-30) | `FilterDamageTests.Reads_sound_data_once`, `Reads_again_a_byte_at_a_time_only_the_piece_of_input_the_fault_was_met_in`, `Reading_damaged_data_again_allocates_no_second_output_and_sound_data_nothing_to_read_it_again_with` | Yes |
 | The inflater's exceptions escaping | Only its complaints about the data (`InvalidDataException`, `IOException`) are faults; a preset-dictionary header is refused | `FilterDamageTests.Takes_only_the_inflater_s_complaints_about_its_data_as_faults`, `Reports_a_zlib_header_that_asks_for_a_preset_dictionary_instead_of_throwing` | Yes |
-| Image codecs | DCT, JPX, JBIG2 and CCITT data is never decoded: the chain stops and the data comes back as it is. An unknown filter is `filter.unsupported`, and the chain stops there too: no filter after it reads data it cannot read ([#159]) | Structural; `FilterTests.Stops_a_chain_at_the_first_filter_it_does_not_know_and_reports_it_once` | — |
+| Image codecs | DCT, JPX, JBIG2 and CCITT data is never decoded: the chain stops and the data comes back as it is. An unknown filter, or an element of `/Filter` that names none, is `filter.unsupported`, placed where the stream's data starts, and the chain stops there too: no filter after it reads data it cannot read ([#159], [#209]) | Structural; `FilterTests.Stops_a_chain_at_the_first_filter_it_does_not_know_and_reports_it_once`, `Ends_a_chain_at_an_element_that_names_no_filter_and_returns_what_the_filters_before_it_decoded` | — |
 
 Known gaps:
 
-- [#166] A `/Filter` array of any length decodes every step up to the bound: a 513-byte file allocates 3.3 GB as it
-  opens. Over damaged Flate data, every entry pays the replay again.
 - [#162] Predictors and filter parameters the reader does not apply decode to wrong bytes with no report.
 - [#141] ASCII85, ASCIIHex and RunLength data that cannot be decoded is skipped in silence.
 - [#146] A Flate reading allocates its output before the zlib header says it can go on.
@@ -677,6 +678,8 @@ The last column also names the questions they leave open, which that milestone s
 [#195]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/195
 [#196]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/196
 [#197]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/197
+[#199]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/199
+[#209]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/209
 [#212]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/212
 [#218]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/218
 [#220]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/220

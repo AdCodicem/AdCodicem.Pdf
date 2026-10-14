@@ -119,9 +119,9 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `syntax.key-repeated` | A dictionary gives a key more than once, which ISO 32000-1 (7.3.7) forbids: keys compare as they read, so a key written with `#xx` escapes repeats the one written without. The last value given is kept, and a null given last removes the key, as qpdf, pdf.js, PDFBox, MuPDF and pdfium read it; a key given with no value, before `>>` or `endobj`, is one given null, and a value a guard's cut leaves short removes nothing. Reported for each key given again, where it is given, unless a window's edge reaches the key itself, the key quoted in the message; inside an object an object stream holds, where the stream's data starts, the member and the byte in the message |
 | `object.redefined` | Rebuilding the index met more than one definition of an object number. Raised once for each rebuild, as `Information` with no position: how many definitions met a number already found, the first ten of those numbers, and which definition was kept — the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first |
 | `trailer.root-recovered` | The trailer's `/Root` does not lead to a document catalog, and the catalog was found among the file's objects — those its index holds when the index is sound, a rebuilt index's otherwise |
-| `filter.failed` | A filter's data is damaged: left encoded when nothing decoded before the byte the fault lies in, kept up to that byte or to the end otherwise, and a repair when nothing was lost |
+| `filter.failed` | A filter's data is damaged: left as the filters before it decoded it when nothing decoded before the byte the fault lies in — the filters after it are not tried —, kept up to that byte or to the end otherwise, and a repair when nothing was lost |
 | `filter.checksum-mismatch` | A Flate stream decoded to its end, but its zlib checksum disagrees with what it decoded to: all of it was kept, and some of it may be wrong |
-| `filter.unsupported` | The file names a filter the library does not implement; decoding stopped there, with what the filters before it decoded |
+| `filter.unsupported` | The file names a filter the library does not implement, or an element of `/Filter` names no filter at all, or `/Filter` is neither a name nor an array; decoding stopped there, with what the filters before it decoded. A `/Filter` that is null is one the stream does not have, and is not reported |
 | `limit.decoded-stream` | A stream decodes to more than `MaxDecodedStreamLength`; the part within it was kept |
 | `limit.object` | An object is longer than `MaxObjectLength`, its stream data aside; the part within it was parsed |
 | `limit.xref-section-length` | A classic cross-reference table is longer than `MaxXRefSectionLength`; the entries within it were read, and its trailer past them; the objects the rows past them place read as null, and the chain is not followed further |
@@ -189,7 +189,7 @@ Warning syntax.unexpected-token at 125: A token was found where a value was expe
 | LZW, uses a code it has not defined | `filter.failed`, Warning, naming the code | What decoded before the code |
 | LZW, no end-of-data code | — | All of it, taken as complete |
 | Flate or LZW, a predictor whose parameters describe rows longer than the decoded data | `filter.failed`, Warning | The data as decoded, the predictor not undone |
-| Nothing decodes before the fault | `filter.failed`, Warning | The data, still encoded |
+| Nothing decodes before the fault | `filter.failed`, Warning | The data as the filters before it left it — still encoded, when it is the first —, and the filters after it are not tried |
 | Decodes past `MaxDecodedStreamLength` | `limit.decoded-stream`, Warning | The data up to the bound |
 
 The byte counts in these reports are the Flate filter's own. The bytes kept are counted before any predictor
@@ -197,7 +197,11 @@ The byte counts in these reports are the Flate filter's own. The bytes kept are 
 each row. The byte where the fault was found counts from the start of the data the Flate filter was given, and the
 length the report gives is that data's: the stream's data when Flate is its only filter, what the filter before it
 decoded to otherwise. A stream the reader itself cut at one of its limits is reported as that limit, not as a lost
-tail; a fault in the part it did read is the file's, and is reported.
+tail; a fault in the part it did read is the file's, and is reported. That holds whoever cut it: the window the parser
+reads an object through, or a filter before this one that stopped at `MaxDecodedStreamLength`. Of data the reader cut,
+no lost tail or missing checksum is reported, a hexadecimal digit without its pair or an ASCII85 group short of five is
+dropped rather than completed, and a predictor undoes the part of its last row the data holds rather than report rows
+the parameters describe as longer than the data.
 
 ```text
 Warning filter.failed at 59534: A Flate stream ends before its data does; what decoded before the end was kept.

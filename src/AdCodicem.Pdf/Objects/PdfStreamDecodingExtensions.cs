@@ -26,7 +26,8 @@ public static class PdfStreamDecodingExtensions
     /// before, reported as <see cref="PdfDiagnosticCodes.FilterFailed"/>. A Flate stream that decodes to its end
     /// but whose zlib checksum disagrees comes back whole, reported as
     /// <see cref="PdfDiagnosticCodes.FilterChecksumMismatch"/>, since some of it may be wrong. Data that nothing
-    /// could decode comes back encoded, reported as <see cref="PdfDiagnosticCodes.FilterFailed"/>. Decoding stops
+    /// could decode comes back as the filters before it left it — encoded, when it is the first —, reported as
+    /// <see cref="PdfDiagnosticCodes.FilterFailed"/>, and the filters after it are not tried. Decoding stops
     /// at a filter the library does not recognize: the data comes back as the filters before it decoded it, reported
     /// as <see cref="PdfDiagnosticCodes.FilterUnsupported"/>, and the filters after it are not tried on data they
     /// could not read. An element of the <c>/Filter</c> array that names no filter ends decoding the same way, and a
@@ -37,7 +38,15 @@ public static class PdfStreamDecodingExtensions
     /// A stream read from a document decodes under that document's
     /// <see cref="Documents.PdfReaderOptions.Limits"/>; one built in memory, under
     /// <see cref="Documents.PdfReaderLimits.Default"/>. Data that decodes past the bound is kept up to it and
-    /// reported as <see cref="PdfDiagnosticCodes.LimitDecodedStream"/>.
+    /// reported once as <see cref="PdfDiagnosticCodes.LimitDecodedStream"/>; the filters before the last share the
+    /// bound for what they pass along together (<see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>). The
+    /// filters after one the bound stopped decode what it kept, as data the reader cut: that it runs out is not
+    /// reported as damage.
+    /// </para>
+    /// <para>
+    /// The filters and the values of their parameters are read before any of the data is: a parameter held in an
+    /// object stream decodes that stream first. The parameters of a filter are the element at its place of a
+    /// <c>/DecodeParms</c> array, the first for a single filter, or a <c>/DecodeParms</c> dictionary for every filter.
     /// </para>
     /// </remarks>
     /// <exception cref="PdfLimitExceededException">

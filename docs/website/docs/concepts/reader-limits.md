@@ -53,6 +53,23 @@ table's bound, the objects past the most the index holds — is no damage either
 rather than missing, until you raise the limit; the reader does not rebuild the index for them, as it would for a file
 whose index is broken, since a rebuild would report a sound file as damaged and could lose what the chain had read.
 
+## What decoding a stream may hold
+
+`MaxDecodedStreamLength` bounds what a stream decodes to, and a stream's data may pass through several filters, each
+decoding what the one before it gave. ISO 32000 sets no limit on how many: a sound stream can name thousands, and qpdf
+reads them. So the number of filters is not bounded; what they decode is. The filters before the last share one bound
+for what they pass along together, and the last has its own, so that a stream of one or two filters decodes as each
+filter alone would, and a chain however long holds, and fills, two bounds at most. When the filters before the last
+reach theirs, the stream comes back as what the last decoded of what they kept, and the report says decoding stopped.
+
+A filter's parameters can name an object, and that object can sit in an object stream that has to be decoded first,
+whose own parameters can name another. A stream therefore reads its filters and every parameter they need before it
+reads any of its data, and decodes once every object it needs is loaded: however deep such a chain of loads goes, no
+stream on it holds decoded data while the next one decodes. What decoding holds at once is the object streams the
+reader keeps, 32 MB together, the one it decoded last, whatever its size, and the decoding in progress. That one costs
+more than its output: a Flate filter allocates up to about five times what it decodes to, and holds two to three times
+that while it decodes.
+
 `PdfReaderLimits.Unbounded` takes every limit to the most the implementation can hold. It is for documents your own
 application produced, never for uploads: under it, a file can make the reader hold whatever it asks for, up to those
 maxima.
