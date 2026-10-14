@@ -2256,6 +2256,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 if (stray < 0)
                 {
                     stray = position;
+                    section.FaultPastLimit = true;
                     section.Fault ??= string.Create(
                         CultureInfo.InvariantCulture,
                         $"it holds {DescribeToken(new PdfLexer(head).Read())} at offset {position}, where a subsection or the trailer should start");

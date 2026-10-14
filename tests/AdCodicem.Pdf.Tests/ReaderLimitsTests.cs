@@ -607,15 +607,22 @@ public class ReaderLimitsTests
         var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
         section.TrailerPosition.Should().Be(end);
 
+        var findings = new PdfValidator().Validate(document).Findings;
+
         if (judged == "missing")
         {
             section.TrailerFault.Should().Be(XRefTrailerFault.Missing);
             section.Fault.Should().BeNull();
+            findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.FileTrailerMissing);
+            findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed);
         }
         else
         {
+            // Met past the cut, the fault is the file's, and was reported nowhere.
             section.TrailerFault.Should().Be(XRefTrailerFault.None);
             section.Fault.Should().Be($"it holds {judged} at offset {end}, where a subsection or the trailer should start");
+            findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefSectionMalformed)
+                .Which.Message.Should().EndWith($"is malformed: it holds {judged} at offset {end}, where a subsection or the trailer should start.");
         }
     }
 
