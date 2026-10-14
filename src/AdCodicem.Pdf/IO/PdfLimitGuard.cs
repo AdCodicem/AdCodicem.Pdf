@@ -29,6 +29,9 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     /// </summary>
     public PdfDiagnostics? DocumentDiagnostics => documentDiagnostics;
 
+    /// <summary>Gets a value indicating whether reaching a guard throws rather than warns.</summary>
+    public bool ThrowsOnLimit => throwOnLimit;
+
     /// <summary>Gets the bound <paramref name="limit"/> stands at.</summary>
     public int Bound(PdfLimit limit) => limit switch
     {

@@ -119,8 +119,9 @@ internal sealed class PageTreeWalk
         if (root is PdfNull)
         {
             // A /Pages that names an object the file lacks is object.reference-missing's to report; one the index holds
-            // and the reader could not produce is the index's, and leaves the tree unknown.
-            Partial = id.Number > 0 && _reader.GetPresence(id.Number) == ObjectPresence.Unproduced;
+            // and the reader could not produce is the index's, and one a guard left out of the index the guard's: either
+            // leaves the tree unknown.
+            Partial = id.Number > 0 && _reader.GetPresence(id.Number) is ObjectPresence.Unproduced or ObjectPresence.Unindexed;
             return;
         }
 
@@ -206,9 +207,9 @@ internal sealed class PageTreeWalk
             case PdfNull when reference is not null:
                 switch (_reader.GetPresence(id.Number))
                 {
-                    case ObjectPresence.Unproduced:
-                        // The entry's fault, which the cross-reference rules report: the kid may have been a node, and
-                        // the counts above it cannot be judged.
+                    case ObjectPresence.Unproduced or ObjectPresence.Unindexed:
+                        // The entry's fault, which the cross-reference rules report, or a guard's, which its report names:
+                        // the kid may have been a node, and the counts above it cannot be judged.
                         Partial = true;
                         frame.Uncountable = true;
                         _pages++;

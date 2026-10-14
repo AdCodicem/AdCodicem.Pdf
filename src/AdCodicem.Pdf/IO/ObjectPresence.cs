@@ -24,4 +24,11 @@ internal enum ObjectPresence : byte
     /// <c>/Length</c> asks then.
     /// </summary>
     Deferred,
+
+    /// <summary>
+    /// The index holds no entry for the object, and one of the reader's guards stopped it short: part of the
+    /// cross-reference chain went unread, or the index reached <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>.
+    /// Whether the file holds the object is unknown, and a reference to it reads as null until the guard is lifted.
+    /// </summary>
+    Unindexed,
 }

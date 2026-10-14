@@ -718,6 +718,7 @@ internal ref struct PdfObjectParser
                     {
                         ObjectPresence.Missing => StreamLengthForm.ObjectMissing,
                         ObjectPresence.Deferred => StreamLengthForm.Deferred,
+                        ObjectPresence.Unindexed => StreamLengthForm.ObjectUnindexed,
                         _ => StreamLengthForm.ObjectUnreadable,
                     },
                     Reference: reference);
@@ -815,8 +816,9 @@ internal ref struct PdfObjectParser
     /// </summary>
     private void ReportLengthFault(string code, string message, StreamLengthFault fault)
     {
-        // A /Length read once the cross-reference chain is: whether the data ends where it should is known then (#182).
-        if (fault.Form == StreamLengthForm.Deferred)
+        // A /Length read once the cross-reference chain is: whether the data ends where it should is known then (#182). One a
+        // guard left out of the index is unknown, and the guard's report says why.
+        if (fault.Form is StreamLengthForm.Deferred or StreamLengthForm.ObjectUnindexed)
         {
             return;
         }

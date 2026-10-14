@@ -917,6 +917,49 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
+    public void An_index_the_entry_bound_filled_is_said_once_to_be_checked_in_part()
+    {
+        // The index fills in the only section: the section is not said to be cut besides.
+        var builder = new TestPdfBuilder().WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>").WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        for (var number = 3; number < 300; number++)
+        {
+            builder.WithObject(number, "null");
+        }
+
+        var file = builder.BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 100 } });
+
+        var finding = new PdfValidator().Validate(document).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefCheckedInPart);
+        finding.Severity.Should().Be(PdfValidationSeverity.Information);
+        finding.Location.Position.Should().Be(PdfTemplate.OffsetOf(file, "xref\n"));
+        finding.Message.Should().Be(
+            $"At offset {PdfTemplate.OffsetOf(file, "xref\n")} the index reached the most entries PdfReaderLimits.MaxIndexEntries lets the reader hold: the objects past them were not indexed or checked.");
+    }
+
+    [Fact]
+    public void An_object_a_guard_left_out_of_the_index_is_no_reference_the_file_lacks()
+    {
+        // The update indexes the catalog alone, and the chain is read no further: the page tree it names is past the guard.
+        // Whether the file holds it is unknown, so neither the object graph nor the page tree blames the file for it.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>")
+            .BuildClassic(rootNumber: 1);
+        var file = TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, [(1, "<< /Type /Catalog /Pages 2 0 R /Lang (en) >>")]);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } });
+
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        document.WasRepaired.Should().BeFalse();
+        findings.Should().NotContain(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing);
+        findings.Should().NotContain(finding => finding.Message.Contains("which the file lacks", StringComparison.Ordinal));
+        findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart);
+    }
+
+    [Fact]
     public void A_startxref_naming_the_line_feed_before_a_cross_reference_stream_is_imprecise()
     {
         var file = XRefStreamFile();
