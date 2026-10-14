@@ -738,9 +738,13 @@ internal ref struct PdfObjectParser
             integer is >= 0 and <= int.MaxValue ? StreamLengthForm.Integer : StreamLengthForm.OutOfRange, integer, reference);
     }
 
-    /// <summary>Says what kind of value a <c>/Length</c> that is not an integer holds: <c>a real number</c>, <c>a dictionary</c>.</summary>
-    private static string KindOf(PdfObject value) => value switch
+    /// <summary>
+    /// Says what kind of value <paramref name="value"/> is, in words that quote nothing of the file: <c>an integer</c>,
+    /// <c>a real number</c>, <c>a dictionary</c>; <c>null</c> for null, or for a value that resolves to none.
+    /// </summary>
+    internal static string KindOf(PdfObject? value) => value switch
     {
+        PdfInteger => "an integer",
         PdfReal => "a real number",
         PdfName => "a name",
         PdfBoolean => "a boolean",

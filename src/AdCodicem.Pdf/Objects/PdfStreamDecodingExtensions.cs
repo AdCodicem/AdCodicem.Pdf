@@ -29,8 +29,9 @@ public static class PdfStreamDecodingExtensions
     /// could decode comes back encoded, reported as <see cref="PdfDiagnosticCodes.FilterFailed"/>. Decoding stops
     /// at a filter the library does not recognize: the data comes back as the filters before it decoded it, reported
     /// as <see cref="PdfDiagnosticCodes.FilterUnsupported"/>, and the filters after it are not tried on data they
-    /// could not read. A <c>/Filter</c> entry that is neither a name nor an array leaves the data as it found it,
-    /// reported the same way.
+    /// could not read. An element of the <c>/Filter</c> array that names no filter ends decoding the same way, and a
+    /// <c>/Filter</c> entry that is neither a name nor an array leaves the data as it found it, reported the same way.
+    /// A <c>/Filter</c> that is null is one the stream does not have.
     /// </para>
     /// <para>
     /// A stream read from a document decodes under that document's
