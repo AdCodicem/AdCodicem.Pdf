@@ -41,10 +41,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal const int XRefProbeLength = 32;
 
     /// <summary>
-    /// The length of a classic table's row, its end of line included (ISO 32000-1, 7.5.4): the index makes room for no
-    /// more rows than a table's bytes hold at this length. A row written shorter takes room as the map grows.
+    /// The length of a classic table's row as producers write it short, its end of line a single byte where ISO 32000-1
+    /// (7.5.4) asks for two: the index makes room for no more rows than a table's bytes hold at this length, nor than they
+    /// hold lines. A row written shorter still takes room as the map grows.
     /// </summary>
-    private const int XRefRowLength = 20;
+    private const int ShortRowLength = 19;
 
     /// <summary>
     /// How much of the file's start is searched for <c>%PDF-</c>. Not a guard a valid file reaches: ISO 32000-1
@@ -353,6 +354,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>Whether the index filled as the chain was read, before any rebuild: the chain's index stops short of it.</summary>
     private bool _chainFilledIndex;
+
+    /// <summary>
+    /// The highest object number a row of the chain's sections read so far gave, or -1: a <c>/Size</c> an update did not
+    /// raise numbers fewer objects than the sections give, and the index makes room for these too.
+    /// </summary>
+    private int _highestRead = -1;
 
     public PdfFileReader(
         PdfFileSource source, PdfDiagnostics diagnostics, PdfLimitGuard guard, int cacheCapacity, bool ownsSource)
@@ -1697,6 +1704,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
             }
 
+            _highestRead = Math.Max(_highestRead, section.HighestNumber);
+
             if (section.TrailerCutByLimit)
             {
                 // A trailer a limit cut may have named an older section past the cut, and given keys the older trailers
@@ -1730,6 +1739,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
                 }
+
+                _highestRead = Math.Max(_highestRead, stream.HighestNumber);
 
                 if (_indexFullAt >= 0 || _cutByGuard != cut)
                 {
@@ -2044,7 +2055,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         hybrid = -1;
         var maxWindow = _guard.Bound(PdfLimit.XRefSectionLength);
         var windowSize = Math.Min(XRefWindow, maxWindow);
-
+        var reserved = false;
 
         while (true)
         {
@@ -2066,21 +2077,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return false;
             }
 
-            if (!truncated)
+            if (!truncated && !reserved)
             {
                 // The rows are read in the window that holds their end, rather than read again in each larger one: until
-                // a window holds it, the window grows. The index makes room for as many rows as their bytes hold, at 20
-                // bytes a row, before they are read: a subsection's count is the file's claim, and room made for each
-                // subsection in turn would double the map at each.
-                var rowsEnd = span[keyword.End..].IndexOfAnyExcept(TableBytes);
+                // a window holds it, or more rows than the index has room for, the window grows. The index makes room for
+                // as many rows as their bytes hold before they are read, once: a subsection's count is the file's claim,
+                // and room made for each subsection in turn, or for rows read again, would double the map each time.
+                var rows = span[keyword.End..];
+                var rowsEnd = rows.IndexOfAnyExcept(TableBytes);
+                var held = RowsHeld(rowsEnd < 0 ? rows : rows[..rowsEnd]);
 
-                if (rowsEnd < 0 && canGrow)
+                if (rowsEnd < 0 && canGrow && held <= IndexRoomLeft)
                 {
                     windowSize = (int)Math.Min((long)windowSize * 4, maxWindow);
                     continue;
                 }
 
-                ReserveIndex((rowsEnd < 0 ? span.Length - keyword.End : rowsEnd) / XRefRowLength);
+                ReserveIndex(held);
+                reserved = true;
             }
 
             while (!truncated)
@@ -3203,7 +3217,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Gets a value indicating whether the index has room for one more object number, the numbers the chain refused counted
     /// with it: no number is in both. A row or a header for a number the index holds already takes no room.
     /// </summary>
-    private bool IndexHasRoom => _xref.Count + (_refusedNumbers?.Count ?? 0) < _guard.Bound(PdfLimit.IndexEntries);
+    private bool IndexHasRoom => IndexRoomLeft > 0;
+
+    /// <summary>Gets how many object numbers more the index has room for, the numbers the chain refused counted with it.</summary>
+    private int IndexRoomLeft => _guard.Bound(PdfLimit.IndexEntries) - _xref.Count - (_refusedNumbers?.Count ?? 0);
+
+    /// <summary>
+    /// Gets how many rows a classic table's <paramref name="rows"/> hold at most, as the index sizes itself: a line each,
+    /// each line of <see cref="ShortRowLength"/> bytes at least. Lines are counted by their ends, a line feed or a carriage
+    /// return alone ending one as both together do; a subsection's header is a line too, and is counted as a row.
+    /// </summary>
+    private static int RowsHeld(ReadOnlySpan<byte> rows) =>
+        Math.Min(Math.Max(rows.Count((byte)'\n'), rows.Count((byte)'\r')), rows.Length / ShortRowLength);
 
     /// <summary>
     /// Makes room in the index for the <paramref name="rows"/> a section is about to give, so that the map is sized once
@@ -3226,8 +3251,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (_xref.Trailer.GetInteger(PdfName.Size) is { } size)
         {
             // A size the index holds as many entries as already asks for no room, nor does one below zero, which is not
-            // narrowed to an int that would.
-            most = (int)Math.Min(most, Math.Max(size, 0));
+            // narrowed to an int that would. One the sections read so far number past is stale, and they stand for it.
+            most = (int)Math.Min(most, Math.Max(size, _highestRead + 1L));
 
             if ((long)_xref.Count + room > _xref.Capacity && 4L * _xref.Capacity >= most)
             {

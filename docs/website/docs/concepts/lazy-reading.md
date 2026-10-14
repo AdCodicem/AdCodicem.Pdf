@@ -34,8 +34,9 @@ for numbers a newer one gave add nothing. A count the file declares is its claim
 a stream's data holds, or than a classic table's bytes hold at 20 bytes a row up to the first byte no row holds, which
 the table is read in a window large enough to reach. A chain of many like sections makes room section after section,
 doubling the map at least each time it must grow, and for the whole `/Size` once a doubling comes within a doubling of
-it. A map left to grow — by a rebuild, or rows written shorter than 20 bytes — doubles as it grows, and allocates 100 to
-210 bytes an object, by where the count falls against its steps.
+it. A table's rows are counted by their lines, so that rows written 19 bytes long, their end of line a single byte,
+take no more room than rows of 20. A map left to grow — by a rebuild, or rows written shorter still — doubles as it
+grows, and allocates 100 to 210 bytes an object, by where the count falls against its steps.
 A cross-reference stream adds the decoding of its rows: 7 bytes an object when they are written as they are, up to
 about 42 when Flate stores them without compressing, compressed rows in between. Opening also decodes the object
 stream that holds the catalog, when one does, and that costs what the stream holds: a producer that packs every object
@@ -127,5 +128,6 @@ hold.
 The first two rows are BenchmarkDotNet's. The last four are measured in the test suite, in Release, after a first
 reading — the journal's on 2026-10-02, the generated indexes' on 2026-10-14 —, and enforced as budgets in CI, so that
 an allocation regression past one fails the build: 4 MB for the journal, 17.7 MB, 31.0 MB and 32.1 MB for the generated
-indexes, 5 % over their figures. A map sized before it is filled allocates about half what growing it did: 31.1 MB,
-43.1 MB and 33.2 MB. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.
+indexes, 5 % over their figures. Growing the map allocated 31.1 MB, 43.1 MB and 33.2 MB: sizing it before it is
+filled allocates about half that for the table, two thirds for the stream, and a tenth less for the chain, whose map
+still doubles from section to section until it comes within a doubling of the newest `/Size`. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.
