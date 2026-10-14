@@ -1,9 +1,11 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -512,6 +514,98 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void An_object_only_a_section_past_a_cut_trailer_indexes_is_unknown_rather_than_missing()
+    {
+        // The update's trailer runs past MaxTrailerLength before its /Prev: the original section is left unread, which is
+        // the guard's, and the page tree it alone indexes was said to be missing, the validator blaming the file.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildClassic(rootNumber: 1);
+        var text = Encoding.Latin1.GetString(
+            TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, [(1, "<< /Type /Catalog /Pages 2 0 R >>")]));
+        var trailer = text.LastIndexOf("/Root 1 0 R /Prev", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(text.Insert(trailer + "/Root 1 0 R".Length, $" /Pad ({new string('x', 70 * 1024)})"));
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer);
+        document.Catalog.GetDictionary(PdfName.Pages).Should().BeNull();
+        document.Reader.GetPresence(2).Should().Be(ObjectPresence.Unindexed);
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId)
+            .Should().NotContain(PdfValidationRuleIds.ObjectReferenceMissing);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_whose_dictionary_a_guard_cut_before_it_declared_itself_is_no_section_missing()
+    {
+        // The original section is a cross-reference stream whose dictionary runs past MaxTrailerLength before its /Type and
+        // /W: it was taken for no section at all, reported missing, and the index rebuilt for what it alone indexes.
+        var written = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildWithXRefStream(rootNumber: 1);
+        var original = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(written)
+            .Replace("<< /Type /XRef", $"<< /Pad ({new string('x', 70 * 1024)}) /Type /XRef", StringComparison.Ordinal));
+        var file = TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: 1, [(1, "<< /Type /Catalog /Pages 2 0 R >>")]);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer);
+        document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.GetPresence(2).Should().Be(ObjectPresence.Unindexed);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_older_section_does_not_stand_for_what_a_cross_reference_stream_s_cut_rows_define(bool hybrid)
+    {
+        // The update redefines object 3 in a cross-reference stream whose rows MaxDecodedStreamLength cuts before 3's: the
+        // original section's row for it would serve the revision the update replaced. The chain ends at the cut, a hybrid
+        // file's stream included, and object 3 reads as null until the guard is lifted.
+        var file = UpdatedThroughAStream(hybrid);
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 7 } };
+
+        using (var document = PdfDocument.Open(file, options))
+        {
+            document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+            document.Reader.GetPresence(3).Should().Be(ObjectPresence.Unindexed);
+            document.WasRepaired.Should().BeFalse();
+        }
+
+        using var lifted = PdfDocument.Open(file);
+        Text(lifted, 3).Should().Be("new three");
+    }
+
+    [Fact]
+    public void A_rebuild_reports_a_full_index_once_though_an_object_stream_lies_before_the_header()
+    {
+        // The rebuild placed an object stream found before the header at an offset counted from it, negative, and the
+        // report at that offset: the next number with no room, the report seeming not made, was reported again.
+        static string Packed(int number, int first)
+        {
+            var header = string.Join(' ', Enumerable.Range(0, 50).Select(i => string.Create(CultureInfo.InvariantCulture, $"{first + i} {i * 4}")));
+            var members = string.Concat(Enumerable.Range(0, 50).Select(_ => "(m)\n"));
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"{number} 0 obj\n<< /Type /ObjStm /N 50 /First {header.Length + 1} /Length {header.Length + 1 + members.Length} >>\nstream\n{header}\n{members}\nendstream\nendobj\n");
+        }
+
+        var text = Packed(3, 100) + "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+            + Packed(4, 200) + "trailer\n<< /Root 1 0 R >>\n%%EOF\n";
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 20 } };
+
+        using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text), options);
+
+        document.WasRepaired.Should().BeTrue();
+        document.ObjectCount.Should().Be(20);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries)
+            .Which.Position.Should().Be(0);
+    }
+
+    [Fact]
     public void Reads_an_object_only_a_section_past_the_section_count_indexes_as_null_until_the_guard_is_lifted()
     {
         // Two saves on top of the original, and a chain read no further than two sections: the original section, which
@@ -818,6 +912,55 @@ public class CrossReferenceChainTests
             CultureInfo.InvariantCulture,
             $"xref\n0 1\n0000000000 65535 f\r\ntrailer\n<< /Size 3 /Root 1 0 R /Prev {older} >>\nstartxref\n{newest}\n%%EOF\n");
         return (Encoding.Latin1.GetBytes(text), newest, older);
+    }
+
+    /// <summary>
+    /// The catalog, an empty page tree and object 3, <c>(old three)</c>, in a classic table; then an update that redefines
+    /// object 3, <c>(new three)</c>, in a cross-reference stream, object 4, whose Flate rows are 4's and then 3's, seven
+    /// bytes each. The stream is the update's section, or, when <paramref name="hybrid"/>, the /XRefStm of a classic table
+    /// that holds only row 0.
+    /// </summary>
+    private static byte[] UpdatedThroughAStream(bool hybrid)
+    {
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "(old three)")
+            .BuildClassic(rootNumber: 1);
+        var previous = StartXRef(original);
+        var file = new List<byte>(original);
+
+        void Append(string text) => file.AddRange(Encoding.Latin1.GetBytes(text));
+
+        var three = file.Count;
+        Append("3 0 obj\n(new three)\nendobj\n");
+        var stream = file.Count;
+
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write([1, (byte)(stream >> 24), (byte)(stream >> 16), (byte)(stream >> 8), (byte)stream, 0, 0]);
+            zlib.Write([1, (byte)(three >> 24), (byte)(three >> 16), (byte)(three >> 8), (byte)three, 0, 0]);
+        }
+
+        var link = hybrid ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous} /Root 1 0 R");
+        Append(string.Create(
+            CultureInfo.InvariantCulture,
+            $"4 0 obj\n<< /Type /XRef /Size 5 /W [1 4 2] /Index [4 1 3 1]{link} /Filter /FlateDecode /Length {compressed.Length} >>\nstream\n"));
+        file.AddRange(compressed.ToArray());
+        Append("\nendstream\nendobj\n");
+
+        if (!hybrid)
+        {
+            Append(string.Create(CultureInfo.InvariantCulture, $"startxref\n{stream}\n%%EOF\n"));
+            return [.. file];
+        }
+
+        var table = file.Count;
+        Append(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\ntrailer\n<< /Size 5 /Root 1 0 R /Prev {previous} /XRefStm {stream} >>\nstartxref\n{table}\n%%EOF\n"));
+        return [.. file];
     }
 
     /// <summary>Checks the objects each section alone indexes: the update's catalog and object 4, the original's page tree.</summary>

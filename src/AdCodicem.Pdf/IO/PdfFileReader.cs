@@ -1685,6 +1685,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
             }
 
+            if (section.CutByLimit && previous < 0)
+            {
+                // A section, or its trailer, a limit cut may have named an older one past the cut: what only the older ones
+                // index is the guard's to hide, not the file's to lack.
+                _cutByGuard = true;
+            }
+
             if (_indexFullAt >= 0)
             {
                 // The index takes no more numbers: an older section could only add rows for numbers it lacks, which it
@@ -1701,6 +1708,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 // A hybrid-reference file keeps a classic table for old readers and a stream for the rest: without
                 // the stream, the objects it indexes are missing, and the chain goes on through /Prev.
+                var cut = _cutByGuard;
                 var stream = new XRefSectionRecord("/XRefStm", PositionOf(hybrid), section.Offset)
                 {
                     WrittenOffset = hybrid,
@@ -1714,9 +1722,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
                 }
 
-                if (_indexFullAt >= 0)
+                if (_indexFullAt >= 0 || _cutByGuard != cut)
                 {
-                    // Filled by the stream: an older section could add nothing either.
+                    // Filled by the stream, an older section could add nothing; the stream's rows, or the stream, cut by a
+                    // limit, an older section's rows would stand for the objects the rows left unread define.
                     break;
                 }
             }
@@ -2543,6 +2552,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 candidate ? DeclaresCrossReferenceStream : null) ||
             !DeclaresCrossReferenceStream(value))
         {
+            if (!candidate && number != 0 && _guardsReached != guards)
+            {
+                // An object whose dictionary MaxTrailerLength cut before it said what it is may be the section: unknown,
+                // and the guard's, which says so (ADR 34), rather than a section missing.
+                section.CutByLimit = true;
+                section.Fault = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"holds object {number}, whose dictionary one of the reader's limits cut before it declared a cross-reference stream");
+                return XRefSectionState.Malformed;
+            }
+
             section.Fault = number == 0
                 ? "holds neither the xref keyword nor an object"
                 : string.Create(CultureInfo.InvariantCulture, $"holds object {number}, which is not a cross-reference stream");
@@ -4395,7 +4415,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     redefinitions.Add(contents.NumberAt(index));
                 }
-                else if (HasRoomInRebuild(PositionOf(entry.Offset), ref reached))
+                else if (HasRoomInRebuild(PositionOf(entry), ref reached))
                 {
                     _xref.Set(contents.NumberAt(index), XRefEntry.Compressed(number, index));
                 }
