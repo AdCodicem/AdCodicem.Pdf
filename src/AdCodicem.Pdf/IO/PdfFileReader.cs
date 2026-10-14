@@ -2358,16 +2358,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Determines whether a token can start at <paramref name="position"/>: the byte before it, if any, is white space or a
-    /// delimiter, so that it is not the end of a longer one.
+    /// Determines whether a token can start at <paramref name="position"/>: the byte before it is white space or a
+    /// delimiter, so that it is not the end of a longer one. The search for a trailer asks where one of its windows
+    /// starts, past the table's own keyword: never the file's first byte.
     /// </summary>
     private bool StartsToken(long position)
     {
-        if (position == 0)
-        {
-            return true;
-        }
-
         using var window = _source.GetWindow(position - 1, 1);
         return !PdfCharacters.IsRegular(window.Memory.Span[0]);
     }
@@ -4305,7 +4301,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private ExceptionDispatchInfo? MergeChainIndex(PdfXRefTable chain)
     {
         ExceptionDispatchInfo? reached = null;
-        var position = _structure.Sections.Count > 0 ? _structure.Sections[0].Offset : 0;
+
+        // A chain a guard cut is kept only when it was read, its first section at least.
+        var position = _structure.Sections[0].Offset;
 
         foreach (var (number, entry) in chain.Entries)
         {

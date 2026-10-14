@@ -18,9 +18,9 @@ internal enum PdfLimit
     /// <summary>How many cross-reference sections a chain may hold.</summary>
     XRefSectionCount,
 
-    /// <summary>How long a trailer, or a cross-reference stream's dictionary, may be.</summary>
-    Trailer,
-
     /// <summary>How many object numbers the index may hold.</summary>
     IndexEntries,
+
+    /// <summary>How long a trailer, or a cross-reference stream's dictionary, may be.</summary>
+    Trailer,
 }
