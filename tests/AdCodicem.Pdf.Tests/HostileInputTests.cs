@@ -412,8 +412,54 @@ public class HostileInputTests
         report.Position.Should().Be(section);
         report.Message.Should().Be(
             "The index reached 1,000,000 entries; the objects past them were not indexed. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
-        // Measured at 675,532,296 and 675,531,848 bytes, 5 % above.
-        allocated.Should().BeLessThan(709_300_000, "the index holds the guard's entries, and the decoded rows are read once");
+        // Measured at 595,837,384 and 595,845,248 bytes, 5 % above: the map sized once for the guard's entries, where it
+        // grew to them by doubling at 675,532,296.
+        allocated.Should().BeLessThan(625_700_000, "the index holds the guard's entries, and the decoded rows are read once");
+    }
+
+    [Theory]
+    [InlineData(DeclaredSize.Stream, 8_000_000)]
+    [InlineData(DeclaredSize.Stream, 268_435_456)]
+    [InlineData(DeclaredSize.Table, 8_000_000)]
+    [InlineData(DeclaredSize.Chain, 8_000_000)]
+    public void A_declared_size_far_past_the_rows_a_file_holds_makes_room_for_no_more_than_they_hold(string shape, int declared)
+    {
+        // #164: the index makes room for a section's rows before it reads them, and for a chain's objects once its newest
+        // section is read. A count the file declares is its claim: a few hundred bytes claiming eight million objects made
+        // room for them, 416 MB, before anything was read. Room is made for no more rows than the data holds, or the bytes
+        // hold at a classic table's 20 bytes a row.
+        var file = SizeClaimed(shape, declared);
+        file.Length.Should().BeLessThan(1024);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        using var document = Measure(() => PdfDocument.Open(file));
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.ObjectCount.Should().BeLessThan(6);
+        allocated.Should().BeLessThan(64 * 1024, "room is made for the rows the file holds, not for those it claims");
+    }
+
+    [Fact]
+    public void Rows_that_index_nothing_make_room_for_no_more_entries_than_the_guard_allows()
+    {
+        // A reserved row type indexes nothing, and the room its rows ask for is reserved all the same, as the rows the data
+        // holds: the guard bounds it, as it bounds the rows of a type that index. Eight million rows of type 3 decode from 16
+        // KB; under a guard of a million entries, the map is sized for a million.
+        var file = ReservedTypeRows(8_000_000);
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 1_000_000 };
+        file.Length.Should().BeLessThan(32 * 1024);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        using var document = Measure(() => PdfDocument.Open(file, new PdfReaderOptions { Limits = limits }));
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        document.ObjectCount.Should().Be(4);
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
+        // Measured at 140,272,056 bytes twice, 5 % above: 16 MB of rows decoded, and the map sized for a million entries,
+        // where it would be for eight million past the guard.
+        allocated.Should().BeLessThan(147_290_000, "the room made for rows that index nothing is bounded by the guard");
     }
 
     [Fact]
@@ -1405,6 +1451,83 @@ public class HostileInputTests
         head.Append(string.Create(
             CultureInfo.InvariantCulture,
             $"3 0 obj\n<< /Type /XRef /Size {rows} /W [0 1 0] /Root 1 0 R /Filter [/FlateDecode /FlateDecode] /Length {data.Length} >>\nstream\n"));
+
+        return
+        [
+            .. Encoding.ASCII.GetBytes(head.ToString()),
+            .. data,
+            .. Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{section}\n%%EOF\n")),
+        ];
+    }
+
+    /// <summary>
+    /// The catalog and an empty page tree, indexed by a cross-reference stream whose <c>/Size</c> claims
+    /// <paramref name="declared"/> rows, a classic table whose subsection claims them, or a chain of two classic sections
+    /// whose newest trailer's <c>/Size</c> claims them; the file holds rows for the objects it has.
+    /// </summary>
+    private static byte[] SizeClaimed(string shape, int declared)
+    {
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var claim = declared.ToString(CultureInfo.InvariantCulture);
+
+        if (shape == DeclaredSize.Stream)
+        {
+            return Encoding.Latin1.GetBytes(
+                Encoding.Latin1.GetString(builder.BuildWithXRefStream(rootNumber: 1)).Replace("/Size 5 ", $"/Size {claim} ", StringComparison.Ordinal));
+        }
+
+        var classic = builder.BuildClassic(rootNumber: 1);
+
+        if (shape == DeclaredSize.Table)
+        {
+            return Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(classic).Replace("xref\n0 3\n", $"xref\n0 {claim}\n", StringComparison.Ordinal));
+        }
+
+        var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(classic, rootNumber: 1, [(1, "<< /Type /Catalog /Pages 2 0 R >>")]));
+        var newest = text.LastIndexOf("/Size 3 ", StringComparison.Ordinal);
+        return Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, newest), $"/Size {claim} ", text.AsSpan(newest + "/Size 3 ".Length)));
+    }
+
+    /// <summary>The ways <see cref="SizeClaimed"/> claims its rows.</summary>
+    private static class DeclaredSize
+    {
+        public const string Stream = "a cross-reference stream's /Size";
+        public const string Table = "a classic table's subsection";
+        public const string Chain = "a chain's newest /Size";
+    }
+
+    /// <summary>
+    /// The catalog, an empty page tree and a cross-reference stream of <paramref name="rows"/> rows of two bytes under one
+    /// Flate filter: rows 1 to 3 place objects 1 to 3, every other row is of type 3, which indexes nothing.
+    /// </summary>
+    private static byte[] ReservedTypeRows(int rows)
+    {
+        var head = new StringBuilder("%PDF-1.7\n");
+        var catalog = head.Length;
+        head.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = head.Length;
+        head.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var section = head.Length;
+
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write([0, 0, 1, (byte)catalog, 1, (byte)pages, 1, (byte)section]);
+            var reserved = new byte[64 * 1024];
+            reserved.AsSpan().Fill(3);
+
+            for (long written = 8; written < 2L * rows; written += reserved.Length)
+            {
+                zlib.Write(reserved, 0, (int)Math.Min(reserved.Length, (2L * rows) - written));
+            }
+        }
+
+        var data = compressed.ToArray();
+        head.Append(string.Create(
+            CultureInfo.InvariantCulture,
+            $"3 0 obj\n<< /Type /XRef /Size {rows} /W [1 1 0] /Root 1 0 R /Filter /FlateDecode /Length {data.Length} >>\nstream\n"));
 
         return
         [
