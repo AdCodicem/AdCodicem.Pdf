@@ -332,6 +332,31 @@ public class PageTreeRuleTests
         PageTreeWalk.Run(document).PageCount.Should().Be(3);
     }
 
+    [Fact]
+    public void A_kid_a_guard_left_out_of_the_index_is_no_kid_invalid_and_still_takes_a_page_s_place()
+    {
+        // The update rewrites the catalog and the page tree; the page lies only in the original section, which
+        // MaxXRefSectionCount leaves unread: the kid is unknown, not one the file lacks.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>")
+            .BuildClassic(rootNumber: 1);
+        var file = TestPdfBuilder.AppendIncrementalUpdate(
+            original,
+            rootNumber: 1,
+            [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")]);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } };
+
+        using var document = PdfDocument.Open(file, options);
+        var report = new PdfValidator().Validate(document);
+
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.PageTreeKidInvalid).Should().BeFalse("whether the file holds the kid is unknown");
+        report.Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse();
+        PageTreeWalk.Run(document).PageCount.Should().Be(1);
+    }
+
     [Theory]
     [InlineData("/Kids [3 0 R 4 0 R] /Count 3", "/Kids [3 0 R 4 0 R] /Count 9", 2, "Page tree node 2 gives /Count 9, and 3 pages lie below it.")]
     [InlineData("/Kids [3 0 R 4 0 R] /Count 3", "/Kids [3 0 R 4 0 R]", 2, "Page tree node 2 has no /Count; 3 pages lie below it.")]

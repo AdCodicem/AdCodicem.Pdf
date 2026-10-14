@@ -67,6 +67,12 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public bool CutByLimit { get; set; }
 
+    /// <summary>
+    /// Gets a value indicating whether <see cref="Fault"/> was met past where a limit stopped the reader reading a classic
+    /// table's rows, by its search for the trailer: the file's, though the section was cut.
+    /// </summary>
+    public bool FaultPastLimit { get; set; }
+
     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
     public PdfDictionary? Trailer { get; set; }
 

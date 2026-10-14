@@ -13,7 +13,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// index, to be found by scanning the file — the first section unreadable, the reader rebuilds the whole index —,
 /// after which it cannot vouch that it reads what was written: an error (ADR 45). A trailer at fault is <see cref="PdfValidationRuleIds.FileTrailerMissing"/>'s or
 /// <see cref="PdfValidationRuleIds.FileTrailerMalformed"/>'s, and a section one of the reader's limits cut is not
-/// malformed (ADR 34): <see cref="PdfValidationRuleIds.XRefCheckedInPart"/> says it was not checked whole.
+/// malformed (ADR 34): <see cref="PdfValidationRuleIds.XRefCheckedInPart"/> says it was not checked whole. What the reader
+/// met past such a cut, reading on to the table's trailer, is the file's all the same.
 /// </remarks>
 internal sealed class SectionMalformedRule : IValidationRule
 {
@@ -28,7 +29,8 @@ internal sealed class SectionMalformedRule : IValidationRule
     {
         foreach (var section in context.Structure.Sections)
         {
-            if (section.CutByLimit)
+            // What a limit cut is unknown, not malformed; what the reader met past the cut, looking for the trailer, it read.
+            if (section.CutByLimit && !section.FaultPastLimit)
             {
                 continue;
             }
