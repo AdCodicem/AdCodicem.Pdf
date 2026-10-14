@@ -470,6 +470,48 @@ public class CrossReferenceChainTests
     }
 
     [Fact]
+    public void A_full_index_ends_the_chain_at_the_stream_of_a_hybrid_section()
+    {
+        // The chain ended when a section filled the index, but not when a hybrid section's stream did: the original section
+        // was read on, a row of it refused, and the next lookup of an object past the bound rebuilt the index.
+        var (updated, _) = Updated(xrefStm: XRefStm.Present);
+        var text = Encoding.Latin1.GetString(updated);
+        var pages = text.IndexOf("2 0 obj", StringComparison.Ordinal);
+        var row = string.Create(CultureInfo.InvariantCulture, $"{pages:D10} 00000 n");
+        text.Should().Contain(row);
+        var file = Encoding.Latin1.GetBytes(text.Replace(row, string.Create(CultureInfo.InvariantCulture, $"{pages:D10} 70000 n"), StringComparison.Ordinal));
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 2 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        document.GetObject(new PdfObjectId(2)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.GetPresence(2).Should().Be(ObjectPresence.Unindexed);
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_section_found_near_where_prev_names_it_is_not_searched_past_the_rows_a_guard_left_unread(bool full)
+    {
+        // A place a section may have been moved to is a guess, and a guess cut by a guard was searched to the file's end for
+        // its trailer, each of the 32 the chain may try: the older section's trailer, whose keys the newest gives again,
+        // is not looked for past its rows.
+        var (file, original) = Updated(prevError: 3);
+        var limits = full
+            ? PdfReaderLimits.Default with { MaxIndexEntries = 4 }
+            : PdfReaderLimits.Default with { MaxXRefSectionLength = 80 };
+
+        using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { Limits = limits });
+
+        var older = document.Reader.Structure.Sections.Should().HaveCount(2).And.Subject.Last();
+        older.Offset.Should().Be(original);
+        older.CutByLimit.Should().BeTrue();
+        older.TrailerPosition.Should().Be(-1);
+    }
+
+    [Fact]
     public void Reads_an_object_only_a_section_past_the_section_count_indexes_as_null_until_the_guard_is_lifted()
     {
         // Two saves on top of the original, and a chain read no further than two sections: the original section, which
