@@ -927,6 +927,18 @@ public class FilterDamageTests
     }
 
     [Fact]
+    public void Decodes_no_flate_data_to_nothing_whole_and_sound()
+    {
+        // Decoding stops before a filter is given nothing to decode, so only a caller of the filter itself meets this:
+        // no data is no damage.
+        FlateFilter.TryDecode(ReadOnlyMemory<byte>.Empty, out var decoded, out var repaired, out var ending, out var faultAt, out var limited, 16)
+            .Should().BeTrue();
+
+        decoded.Should().BeEmpty();
+        (repaired, ending, faultAt, limited).Should().Be((false, FlateEnding.Whole, 0, false));
+    }
+
+    [Fact]
     public void Gives_a_dictionary_of_parameters_beside_a_chain_to_its_flate_and_its_lzw_steps_alike()
     {
         // [/FlateDecode /LZWDecode] beside one dictionary, which serves every step: the LZW step reads its /EarlyChange 0
