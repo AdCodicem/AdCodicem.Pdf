@@ -21,9 +21,12 @@ internal enum PdfLimit
     /// <summary>How many object numbers the index may hold.</summary>
     IndexEntries,
 
-    /// <summary>How long a trailer, or a cross-reference stream's dictionary, may be.</summary>
-    Trailer,
-
     /// <summary>How many filters a stream's data may pass through.</summary>
     FilterChain,
+
+    /// <summary>
+    /// How long a trailer, or a cross-reference stream's dictionary, may be: the last, which every switch over the guards
+    /// takes as its default arm.
+    /// </summary>
+    Trailer,
 }

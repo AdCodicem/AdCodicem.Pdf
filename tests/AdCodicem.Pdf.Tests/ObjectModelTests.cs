@@ -275,6 +275,13 @@ public class ObjectModelTests
     }
 
     [Fact]
+    public void Resolving_no_object_gives_none()
+    {
+        ((PdfObject?)null).Resolved().Should().BeNull();
+        PdfName.Crypt.Resolved().Should().BeSameAs(PdfName.Crypt);
+    }
+
+    [Fact]
     public void Typed_accessors_read_what_the_value_is_and_nothing_else()
     {
         var dictionary = new PdfDictionary();
