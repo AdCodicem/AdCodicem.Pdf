@@ -66,6 +66,6 @@ public static class PdfStreamDecodingExtensions
     public static bool HasImageFilter(this PdfStream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        return FilterChain.Resolve(stream.Dictionary, readParameters: false).End == FilterChainEnd.Image;
+        return FilterChain.EndOf(stream.Dictionary) == FilterChainEnd.Image;
     }
 }

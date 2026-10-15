@@ -37,7 +37,7 @@ internal static class PdfFilterPipeline
 
         // Every value the filters are decoded with is resolved before any of the data is read: one an object stream holds
         // decodes that stream while this one holds nothing decoded (#165).
-        var chain = FilterChain.Resolve(stream.Dictionary, readParameters: true);
+        var chain = FilterChain.Resolve(stream.Dictionary);
         var data = stream.GetRawBytes();
 
         // Whether the data a filter is given is data the reader cut at one of its limits: the parser's window cut the
@@ -52,13 +52,20 @@ internal static class PdfFilterPipeline
         var bound = guard.Bound(PdfLimit.DecodedStream);
         var shared = bound >= Array.MaxLength ? long.MaxValue : bound;
 
-        for (var index = 0; index < chain.Count; index++)
+        foreach (var step in chain)
         {
-            var last = index == chain.Count - 1;
+            // Every filter decodes nothing to nothing, and says nothing of it: the filters left would only cost their
+            // number, which the file chooses.
+            if (data.IsEmpty)
+            {
+                break;
+            }
+
+            var last = step.Index == chain.LastIndex;
             // The identity crypt filter passes its data along whole, whatever the bound, and can leave the others none.
             var maxLength = last ? bound : (int)Math.Clamp(shared, 0, bound);
             data = ApplyOne(
-                chain[index],
+                step,
                 data,
                 new Bounds(maxLength, Shared: maxLength < bound),
                 diagnostics,
@@ -148,7 +155,7 @@ internal static class PdfFilterPipeline
 
         if (name == PdfName.LZWDecode)
         {
-            var decoded = LzwFilter.Decode(data.Span, step.EarlyChange is 0 ? 0 : 1, out var limited, out var undefinedCode, maxLength);
+            var decoded = LzwFilter.Decode(data.Span, step.Parameters.EarlyChange, out var limited, out var undefinedCode, maxLength);
 
             if (undefinedCode >= 0)
             {
@@ -297,12 +304,15 @@ internal static class PdfFilterPipeline
     private static ReadOnlyMemory<byte> ApplyPredictor(
         byte[] decoded, in FilterStep step, PdfDiagnostics? diagnostics, long position, bool cut)
     {
-        if (step.Predictor <= 1)
+        var parameters = step.Parameters;
+
+        if (parameters.Predictor <= 1)
         {
             return decoded;
         }
 
-        if (!PredictorTransform.TryApply(decoded, step.Predictor, step.Colors, step.BitsPerComponent, step.Columns, cut, out var result))
+        if (!PredictorTransform.TryApply(
+                decoded, parameters.Predictor, parameters.Colors, parameters.BitsPerComponent, parameters.Columns, cut, out var result))
         {
             diagnostics?.Warn(
                 PdfDiagnosticCodes.FilterFailed,

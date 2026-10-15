@@ -1336,6 +1336,56 @@ public class HostileInputTests
         diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
     }
 
+    [Fact]
+    public void Decodes_a_stream_naming_a_million_filters_without_keeping_anything_for_the_names_its_array_holds()
+    {
+        // A million /Crypt named directly, read under every guard raised as far as it goes: an object stream's member can
+        // hold forty million in 256 MB of data. Keeping an entry for each filter cost about 80 bytes a name on every
+        // decode, and ran out of memory past two gigabytes; the array holds the names, and a chain keeps nothing more.
+        var chain = new PdfObject[1_000_000];
+        Array.Fill(chain, PdfName.Crypt);
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray(chain));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory("hello"u8.ToArray()));
+        var guard = new PdfLimitGuard(PdfReaderLimits.Unbounded, throwOnLimit: false);
+        var diagnostics = new PdfDiagnostics();
+        IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        var decoded = Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard));
+        var decoding = GC.GetAllocatedBytesForCurrentThread() - before;
+        var image = stream.HasImageFilter();
+        var telling = GC.GetAllocatedBytesForCurrentThread() - before - decoding;
+
+        decoding.Should().BeLessThan(4 * 1024);
+        telling.Should().BeLessThan(1024);
+        image.Should().BeFalse();
+        Encoding.ASCII.GetString(decoded.Span).Should().Be("hello");
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Decodes_nothing_further_once_a_filter_has_decoded_a_stream_to_nothing()
+    {
+        // A hundred thousand /LZWDecode over data the first decodes to nothing, read under every guard raised as far as
+        // it goes: each filter after it decoded nothing to nothing, and set up a code table of 42 KB to do it, 4 GB in
+        // all. Decoding stops at data that is empty.
+        var chain = new PdfObject[100_000];
+        Array.Fill(chain, PdfName.LZWDecode);
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray(chain));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(new byte[] { 0x80, 0x00 }));
+        var guard = new PdfLimitGuard(PdfReaderLimits.Unbounded, throwOnLimit: false);
+        var diagnostics = new PdfDiagnostics();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        var decoded = Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard));
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().BeLessThan(256 * 1024);
+        decoded.Length.Should().Be(0);
+        diagnostics.Should().BeEmpty();
+    }
+
     /// <summary>
     /// Adds <paramref name="streams"/> streams from object <paramref name="first"/> on, each taking its /Length
     /// from the next, the last from <paramref name="end"/>.

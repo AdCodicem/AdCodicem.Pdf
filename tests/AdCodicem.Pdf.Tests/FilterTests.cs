@@ -659,6 +659,32 @@ public class FilterTests
     }
 
     [Fact]
+    public void Reads_the_filters_a_chain_names_through_references_in_their_order_crypt_filters_among_them()
+    {
+        // The name each reference leads to is kept in the order the chain names them; a /Crypt filter named through one
+        // is passed over in its turn, and the hex filters after it read theirs.
+        var source = Substitute.For<IPdfObjectSource>();
+        source.GetObject(new PdfObjectId(9)).Returns(PdfName.Crypt);
+        source.GetObject(new PdfObjectId(10)).Returns(PdfName.ASCIIHexDecode);
+        var dictionary = new PdfObjectParser(
+            "<< /Filter [9 0 R 10 0 R /Crypt 9 0 R /ASCIIHexDecode 10 0 R 9 0 R] >>"u8.ToArray(),
+            source: source).ParseObject().AsDictionary().Required();
+        var encoded = "Hi"u8.ToArray();
+
+        for (var layer = 0; layer < 3; layer++)
+        {
+            encoded = Encoding.ASCII.GetBytes(Convert.ToHexString(encoded) + ">");
+        }
+
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(encoded)).Decode(diagnostics);
+
+        Text(decoded).Should().Be("Hi");
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Tells_a_corrupt_flate_stream_from_one_that_reaches_the_bound()
     {
         var corrupt = new PdfDiagnostics();
