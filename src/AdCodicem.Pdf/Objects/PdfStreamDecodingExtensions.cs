@@ -11,9 +11,10 @@ public static class PdfStreamDecodingExtensions
     /// </summary>
     /// <param name="stream">The stream to decode.</param>
     /// <param name="diagnostics">
-    /// Receives anomalies met while decoding. When none are supplied, a stream read from a document reports
-    /// them in the document's own <see cref="Documents.PdfDocument.Diagnostics"/>, and one built in memory
-    /// reports nothing.
+    /// Receives anomalies met while decoding: diagnostics of your own, each time the stream is decoded. A stream read from
+    /// a document reports, when none are supplied, in the document's own <see cref="Documents.PdfDocument.Diagnostics"/>,
+    /// which hold each report once, however often the stream is decoded, whether they are supplied or not; one built in
+    /// memory reports nothing.
     /// </param>
     /// <remarks>
     /// <para>

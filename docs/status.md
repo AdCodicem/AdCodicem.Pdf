@@ -8,39 +8,42 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 
 ## At a glance
 
-- **Current milestone**: M02 — Document validation (`docs/milestones/M02.md`), in progress. Slices 1 to 3 are done:
-  the engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object,
-  page tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two
-  batches of reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which,
-  [#117], [#187], [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the
-  fifth, [#157] and [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on
-  2026-10-03, the seventh, [#118], with [#226] that day, the eighth, [#119] and [#172], with [#231] on 2026-10-04,
-  the ninth, [#125] and [#126], with [#238] that day, and the tenth, [#190] and [#212], with [#248] on 2026-10-14;
-  the eleventh, [#164] and [#183], with [#249] that day; the twelfth, [#165] and [#166], filter chains, with [#199],
-  [#209], [#219] and [#247], is in [#252]; then slices 4 to 6 ([#60] to [#62]); then the milestone's
-  adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come
-  from the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after
-  the fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
-  [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]), its eighth ([#229],
-  [#230]), its ninth ([#237]), its tenth ([#241], [#247]) and its twelfth ([#250]); [#123] moved to M20.
+- **Current milestone**: M02 — Document validation (`docs/milestones/M02.md`), in progress. Slices 1 to 3 are done: the
+  engine and the report (ADR 36), twenty file and cross-reference rules under ADR 45's severities, and the object, page
+  tree and Arlington object-shape rules (ADR 44). What remains is *Next concrete step*: step 4's thirty-two batches of
+  reader and validation debts, settled with the maintainer on 2026-10-01, the first four of which, [#117], [#187],
+  [#159] and [#193], merged with [#203] and [#211] that day and [#213] and [#214] on 2026-10-02, the fifth, [#157] and
+  [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on 2026-10-03, the seventh,
+  [#118], with [#226] that day, the eighth, [#119] and [#172], with [#231] on 2026-10-04, the ninth, [#125] and [#126],
+  with [#238] that day, and the tenth, [#190] and [#212], with [#248] on 2026-10-14; the eleventh, [#164] and [#183],
+  with [#249] that day; the twelfth, [#165] and [#166], filter chains, with [#199], [#209], [#219] and [#247], with
+  [#252] on 2026-10-15. Slice 4's two blockers, [#141] and [#144] — batch 23 and half of batch 24 —, brought forward at
+  the maintainer's request on 2026-10-15, are in [#254]; batch 13 ([#128], [#237]) was measured that day, its questions
+  not yet put. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7
+  ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from the reader's own work, the
+  threat model's first version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136],
+  `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to [#210]), its third
+  ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]), its eighth ([#229], [#230]), its ninth ([#237]),
+  its tenth ([#241], [#247]), its twelfth ([#250]) and slice 4's blockers ([#253]); [#123] moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 3,687 unit on [#252]'s branch (18 skipped: 2 by design, the theory over the remote corpus's streams
-  whose length is wrong, and the fifteen remote documents of the theory over the corpus's filter chains, which have no
-  document without them) + 1,306 integration (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the
-  roadmap's mirror on GitHub. With the remote documents fetched, on [#252]'s branch: 5,592 unit with the 233 this
-  container holds, 3 skipped — the laziness test on the two documents recorded as unsupported until [#47], which every
-  other test holds to their expectations, and the private manifest this container lacks —; 3,266 integration against
-  qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages; and, with all
-  242, `Remote corpus` run 51's 5,649 acceptance tests and 3,329 referee checks, on [#252]'s branch.
+- **Tests**: 3,918 unit on [#254]'s branch (19 skipped: 2 by design, the theory over the remote corpus's streams whose
+  length is wrong, the fifteen remote documents of the theory over the corpus's filter chains, which have no document
+  without them, and the test held to PDFBox's remote report) + 1,327 integration (skipped without Docker) + 23 for the
+  remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the remote documents fetched, on [#254]'s
+  branch: 6,056 unit with the 233 this container holds, 3 skipped — the laziness test on the two documents recorded as
+  unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
+  lacks —; 3,287 integration against qpdf in its container, 3,281 passed and 6 skipped where qpdf cannot walk a damaged
+  document's pages; and, with all 242, `Remote corpus` run 54's 6,116 acceptance tests and 3,350 referee checks, on the
+  code [#254]'s second review changed; on its last code, run 55's 5,223 and 2,583 over the 154 documents the ipres2017
+  archive's timeout left it ([#204]), the 88 others passing on that code here.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.55 % of `src/` — 6,236 of 6,264 lines on [#252]'s branch, every one of its patch's
-  316 measurable lines among them, every branch taken. The 28 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`,
-  *Coverage*): the 29 left on `main` since [#249], at new line numbers, but `ArlingtonWalk.Resolve` (1045 on `main`),
-  whose other branch the batch's typing of `/DecodeParms` now takes. They are members that are private, or of a
+  Arlington tables left out), 99.56 % of `src/` — 6,383 of 6,411 lines on [#254]'s branch, every one of its patch's
+  166 measurable lines among them, every branch taken. The 28 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`,
+  *Coverage*), `main`'s since [#252], at the line numbers [#252] gave them. They are members that are private, or of a
   private type, which no input reaches —
   eight lines of `ArlingtonWalk` (194, 919, 1026, 1036, 1037, 1057, 1059, 1147) and three of a defensive branch of
   `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a switch's default arm
@@ -53,29 +56,35 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   `ObjectStreamDependencies.Location`'s arm without a Regular entry (223, batch 7), one of the six ways out of a
   cross-reference stream row's `switch` (3073) and `Repair`'s guard against a second rebuild (4114, 4116).
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `a930544` (CI run 540), [#248]'s last commit. `Remote corpus` passed on every document in
-  the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun
-  once after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in
-  run 22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
-  web.archive.org refused the download of ECan's scan (`Connection refused`, [#204]): every test over the 241 it
-  fetched passed. Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one
-  rerun; run 25, on [#225]'s branch, passed whole at its first attempt; run 26, on [#226]'s branch, lost ECan's scan
-  again at its first attempt and passed whole at its one rerun. The nightly run 27, on `main` at `2f26244`, lost the
-  CFIA's form, web.archive.org refusing the connection ([#204]), and passed every test over the 241 others. Runs 28
-  and 29, on [#231]'s branch, passed whole at their first attempt, the second on the code the branch ends with; CI run
-  473 is green on that code. The nightly run 30, on `main` at `78ff13b`, passed whole at its first attempt, and so did
-  runs 31 and 32, on [#238]'s branch, the second on the batch's last code; run 33, on that code rebased onto `main`,
-  lost ECan's scan at its first attempt, web.archive.org refusing the connection ([#204]), and passed whole at its one
-  rerun. CI run 509 is green on that code. The nightly runs 34 to 36 and 39 to 41, on `main` at `83d15a1`, passed
-  whole at their first attempt; runs 37 and 38 lost ECan's scan, web.archive.org refusing the connection, and run 42
-  the 88 documents of the ipres2017 archive, its host timing out ([#204]), every test over the others passing. Run 43,
-  on [#248]'s branch, and run 44, on its last code, lost the ipres2017 archive the same way at their first attempt,
-  every other test passing; run 44 passed whole at its one rerun. CI run 534 is green on that code. The nightly run 45,
-  on `main` at `a930544`, passed whole at its first attempt, and so did run 46, on [#249]'s branch, on the batch's
-  last code. Runs 47 and 48, on [#252]'s branch, each failed on a test the branch then fixed — the corpus manifest's
-  schema, which the new guard's commit had left out, then a test that took a cut cross-reference stream's rows as
-  read —, every other test over the 242 documents passing; runs 49 to 51 passed whole, run 51 on the batch's last
-  code.
+- **CI**: green on `main` at `2d7d5dc` (CI run 568), [#252]'s last commit. `Remote corpus` passed on every document in
+  the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
+  after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run 22,
+  on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
+  web.archive.org refused the download of ECan's scan (`Connection refused`, [#204]): every test over the 241 it fetched
+  passed. Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one rerun; run
+  25, on [#225]'s branch, passed whole at its first attempt; run 26, on [#226]'s branch, lost ECan's scan again at its
+  first attempt and passed whole at its one rerun. The nightly run 27, on `main` at `2f26244`, lost the CFIA's form,
+  web.archive.org refusing the connection ([#204]), and passed every test over the 241 others. Runs 28 and 29, on
+  [#231]'s branch, passed whole at their first attempt, the second on the code the branch ends with; CI run 473 is green
+  on that code. The nightly run 30, on `main` at `78ff13b`, passed whole at its first attempt, and so did runs 31 and
+  32, on [#238]'s branch, the second on the batch's last code; run 33, on that code rebased onto `main`, lost ECan's
+  scan at its first attempt, web.archive.org refusing the connection ([#204]), and passed whole at its one rerun. CI run
+  509 is green on that code. The nightly runs 34 to 36 and 39 to 41, on `main` at `83d15a1`, passed whole at their first
+  attempt; runs 37 and 38 lost ECan's scan, web.archive.org refusing the connection, and run 42 the 88 documents of the
+  ipres2017 archive, its host timing out ([#204]), every test over the others passing. Run 43, on [#248]'s branch, and
+  run 44, on its last code, lost the ipres2017 archive the same way at their first attempt, every other test passing;
+  run 44 passed whole at its one rerun. CI run 534 is green on that code. The nightly run 45, on `main` at `a930544`,
+  passed whole at its first attempt, and so did run 46, on [#249]'s branch, on the batch's last code. Runs 47 and 48, on
+  [#252]'s branch, each failed on a test the branch then fixed — the corpus manifest's schema, which the new guard's
+  commit had left out, then a test that took a cut cross-reference stream's rows as read —, every other test over the
+  242 documents passing; runs 49 to 51 passed whole, run 51 on the batch's last code. The nightly run 53, on `main` at
+  `2d7d5dc`, lost ECan's scan, web.archive.org refusing the connection, and failed one test, an allocation window that a
+  collection elsewhere counted 8 KB over ([#253]), every other test passing. On [#254]'s branch, run 52, on its first
+  code, and run 54, on the code its second review changed, passed whole at their first attempt; run 55, on its last
+  code, lost ECan's scan, web.archive.org refusing the connection, and the 88 documents of the ipres2017 archive, its
+  host timing out ([#204]), every test over the others passing; at its one rerun it lost the ipres2017 archive alone,
+  every test over the 154 others passing, and the 88 it lost pass on that code in this container, whose unit and
+  integration runs hold them.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
@@ -243,9 +252,10 @@ One pull request per batch, each design question put to the maintainer after mea
        44 green on its branch (journal of 2026-10-13).
    11. [#164] and [#183], the index's size, the first new guard — done, merged with [#249] on 2026-10-14, `Remote
        corpus` run 46 green on its branch (journal of 2026-10-14).
-   12. [#165] and [#166], filter chains, with [#199], [#209], [#219] and [#247] — in [#252], `Remote corpus` run 51
-       green on its branch (journal of 2026-10-15).
-   13. [#128], with [#237].
+   12. [#165] and [#166], filter chains, with [#199], [#209], [#219] and [#247] — done, merged with [#252] on
+       2026-10-15, `Remote corpus` run 51 green on its branch (journal of 2026-10-15).
+   13. [#128], with [#237] and [#253] — measured on 2026-10-15, its questions not yet put: the reports of its eight
+       measures are kept outside the repository, and are to be made again when the batch starts.
    14. [#129] and [#175].
    15. [#160] and [#161], object-stream members, with [#200] and [#202].
    16. [#174] and [#170], stream data, with [#220], [#224] and [#230].
@@ -255,8 +265,9 @@ One pull request per batch, each design question put to the maintainer after mea
    20. [#189].
    21. [#154] and [#171].
    22. [#132], with [#218] and [#229].
-   23. [#141].
-   24. [#144] and [#169].
+   23. [#141] — done in [#254], brought forward with [#144] at the maintainer's request on 2026-10-15 (journal of
+       2026-10-15).
+   24. [#169]; [#144], its batch's other half, done in [#254] with [#141].
    25. [#181].
    26. [#162], with [#250].
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided.
@@ -266,14 +277,15 @@ One pull request per batch, each design question put to the maintainer after mea
    31. [#107] and [#111], each a new public rule whose name and severity the maintainer gives.
    32. What remains of [#158], with [#223].
 
-   Slice 4 waits on [#141] and [#144]. The four defects the planning found outside every issue, [#199] to [#202], and
-   the four batch 2 found, [#207] to [#210], are filed under M02 and paid in the batches above (journal of 2026-10-01).
-   [#212], which batch 3 filed, is paid in batch 10, with [#190], as the maintainer placed it on 2026-10-02. The
-   seven batch 6 filed are placed above: [#218] with [#132], as the maintainer placed it on 2026-10-02, the others
-   with the batch whose code they share. The two batch 8 filed are placed likewise: [#229] with [#132], [#230] with
-   [#174]; the one batch 9 filed, [#237], with [#128]; of the three batch 10 filed, [#241] with [#188], [#247]
-   with [#165], and [#240] under M03, whose full rewrite it concerns; and of the two batch 12 filed, [#250] with
-   [#162], whose code it shares, and [#251] under M23, which sizes the decoding it concerns.
+   Slice 4's blockers, [#141] and [#144], are paid in [#254]; nothing else filed blocks it. The four defects the
+   planning found outside every issue, [#199] to [#202], and the four batch 2 found, [#207] to [#210], are filed under
+   M02 and paid in the batches above (journal of 2026-10-01). [#212], which batch 3 filed, is paid in batch 10, with
+   [#190], as the maintainer placed it on 2026-10-02. The seven batch 6 filed are placed above: [#218] with [#132], as
+   the maintainer placed it on 2026-10-02, the others with the batch whose code they share. The two batch 8 filed are
+   placed likewise: [#229] with [#132], [#230] with [#174]; the one batch 9 filed, [#237], with [#128]; of the three
+   batch 10 filed, [#241] with [#188], [#247] with [#165], and [#240] under M03, whose full rewrite it concerns; and of
+   the two batch 12 filed, [#250] with [#162], whose code it shares, and [#251] under M23, which sizes the decoding it
+   concerns.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -294,6 +306,101 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-15 — Slice 4's blockers, brought forward: [#141] and [#144]
+- **The question.** The maintainer asked for the issues of M02 that block slice 4 ([#60]) to be paid first, one commit
+  each, in one pull request: [#141] and [#144], batch 23 and half of batch 24. [#141]: ASCII85, ASCIIHex and
+  RunLength passed over what their format does not allow — a byte outside the alphabet, a `z` inside a group, a group
+  past 2^32 − 1, a `~` without its `>`, a missing end marker — in silence, and LZW took data without its end-of-data
+  code as whole. [#144]: a document's diagnostics held a stream's filter fault once for each decoding — the reader's,
+  a rebuild's, the validator's and a caller's —: PDFBox's object stream 417's fault three times after a full read and
+  four after a validation; with `MaxDecodedStreamLength` at 1 KB, 56 corpus documents held a guard's report two or
+  three times. Measured first, each claim twice, the ASCII85 classes against pikepdf as well: the corpus's 1,627
+  ASCII85 streams hold one anomaly, Distiller 1.0.2's thumbnail, object 1363, without its `~>` and ending on a single
+  digit; it holds no ASCIIHex or RunLength stream, and its 837 LZW streams all end on their end-of-data code. Five
+  questions followed.
+- **Settled with the maintainer**, each as recommended:
+  - every error ISO 32000 names in these formats is reported, with a missing end marker and a `<~` introducer;
+    nothing after the end marker (Q1);
+  - a missing end marker is a repair after a whole group, pair or run, a warning inside one; bytes passed over and
+    broken markers are warnings (Q2); LZW's missing end-of-data code follows the same rule, in [#141]'s commit (Q3);
+  - the document's own list holds each report a decoding makes once, whoever decodes the stream — the reader, the
+    validator, a caller passing that list or none —; a list a caller passes of its own gets every decoding's (Q4);
+  - a guard's report is held once too, the guard still counted each time it is reached, and `ThrowOnLimit` throwing
+    at each decoding; ADR 34 amended (Q5).
+- **Done**, in [#254], one commit per issue:
+  - [#141]: the four filters decode such data as other readers do and report it as `filter.failed`, once for each
+    kind and step. A byte that encodes nothing is passed over, a warning at the byte of the filter's data where the
+    first lies, where qpdf and MuPDF stop; an ASCII85 group past four bytes keeps its low-order bytes, a warning at its
+    byte; a `~` that something other than `>` follows ends the data, and a last group of one digit is dropped,
+    warnings; a `<~` introducer, or a last `~` with no `>`, is a repair. Data without its end marker decodes to its
+    end: a repair after a whole group, pair, run or code, a warning inside one. Nothing is reported for what follows
+    an end marker, nor for the end of data the reader cut or a filter stopped at the bound, and a count of what a
+    filter stopped at the bound passed over says so;
+  - [#144]: a decoding reports into a list the document's diagnostics keep (`PdfDiagnostics.Decodings`), whose
+    reports are then moved in only past the copies of each the document holds: a stream decoded again adds nothing,
+    two filters of one decoding that report alike are both held, a report the capacity left out is counted again, as
+    any is, and a guard is counted each time it is reached — the move made in a `finally`, so that a decoding a guard
+    ends by throwing holds what it met before. A list a caller passes of its own is reported to as before.
+
+  Docs: ADR 34 amended (the guard's report held once); `reference/diagnostics.md` (each filter's faults and their
+  severities), `reference/reader-limits.md`, `concepts/diagnostics.md`; the threat model's rows on a filter's data
+  read in silence and on a stream decoded again and again, its known gaps without [#141] and [#144];
+  `PdfDiagnosticCodes.FilterFailed` and `Decode`'s documentation; M02.
+- **Reviewed**, twice.
+  - The first review, over five lenses, gave 29 findings, each put to two refuters: 20 kept, 3 refuted, and 4 of the
+    6 left without a verdict weighed by hand and kept — 16 distinct, all fixed. ASCII85 reported a missing `>` on
+    data the reader cut; LZW data cut inside a code was a repair; two filters of one decoding that reported alike were
+    held as one; a repeat within one decoding took room under the capacity, so that a new report was dropped while
+    there was room; "a run of 1 bytes"; what a filter stopped at the bound passed over was counted as the stream's;
+    five texts; three defenses no test held, which mutants found; a test's name and a test's comment.
+  - The second, over five lenses aimed at the fixes, gave 9 findings: 6 put to a refuter, 4 kept, 2 refuted, and the
+    3 minor ones weighed by hand and kept — all fixed. `FilterFailed`'s documentation listed a last `~` among the
+    warnings and promised positions some messages do not give; no test held that the document marks as held only the
+    reports it kept; of two alike reports of one decoding, the copy the capacity dropped was not counted again when
+    the stream was decoded again; two comments; three of the four texts that say decoding stopped at the bound held by
+    no test.
+- **Tests**: 231 new unit tests, 3,687 to 3,918, and 21 integration, 1,306 to 1,327: `TextFilterRefereeTests`
+  holds each case to qpdf — every stream qpdf cannot decode past is reported, every stream it decodes to its end
+  decodes to the same bytes —, and a theory over the corpus holds every document to each report once however often
+  its streams are decoded. 31 mutants of the batch's defenses, each run against the suite: all failed a test, one once
+  a test held the count of what one decoding's capacity left out, and one rewritten to compile.
+- **Tracking.** Filed: [#253], under M02, placed with batch 13: the nightly run 53 failed on `main` on one test, a
+  window of `HostileInputTests` that holds 4 KB and counted 9,000 bytes — #247's excess of one allocation quantum, in a
+  window #247's fix did not reach. Alone, in 40 runs, the test never failed; beside two threads that allocate as
+  parallel tests do, 109 to 222 of 400 windows went over, each paused by a collection, in both runs. The one other
+  defect met outside the two issues, the Flate message's "the 1 bytes decoded", is [#241]'s.
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - each of the two commits builds with no warning and passes the full unit suite alone, with the remote documents
+    this container holds: 5,644 then 6,056 tests, 3 skipped;
+  - the unit tests, 3,918, 19 skipped; 6,056 with the 233 remote documents this container holds, 3 skipped;
+  - the patch's 166 measurable lines of `src/` covered, every branch taken; 99.56 % of `src/` in all, 6,383 of 6,411
+    lines, on the committed corpus alone;
+  - the corpus's 401 documents, each run twice and alike: `main`'s 1,489 findings, line for line, and `main`'s
+    diagnostics but for what the batch changes. Validation holds one report fewer, PDFBox's repeat. Each stream decoded
+    twice into a list of its own reports as on `main`, but for two reports on object 86 of the copyright office's RC4
+    summary, ciphertext the reader cannot decrypt before M16, as the measurement foresaw. Decoded twice into the
+    document's own list, the streams leave 2,311 reports where `main` left 3,391: none lost, the two new ones held once,
+    1,082 repeats gone in 43 documents, none held twice;
+  - the integration suite against qpdf in its container, twice: 3,287, 3,281 passed and 6 skipped where qpdf cannot
+    walk a damaged document's pages;
+  - `FilterBenchmarks` and `ReaderBenchmarks` (ShortRun), twice, `main` and the branch alternated, the times within the
+    runs' spread: a decode allocates 16 bytes more, the two fields each list of diagnostics gains (86.54 → 86.55 KB for
+    a Flate stream of 64 KB, 97.62 → 97.63 KB for a chain of ASCII85 and Flate); indexing a document 30 bytes more (5.45
+    → 5.48 KB), and reading its pages 130 bytes more, the list its decodings report into (62.45 → 62.58 KB for ten,
+    5,818.80 → 5,818.93 KB for a thousand). On a Flate stream that turns corrupt, BenchmarkDotNet counts 180 bytes more
+    (112.62 → 112.80 KB), where a count over a thousand warm decodings, taken twice on each side, finds 152 fewer
+    (115,248 → 115,096 bytes): the batch keeps nothing more on that path, whose cost is the exception the inflater
+    throws;
+  - the site builds, 262 pages;
+  - `Remote corpus`: run 52, on the branch's first code, and run 54, on the code its second review changed, passed whole
+    at their first attempt, run 54 with 6,116 acceptance tests and 3,350 referee checks; run 55, on its last code, lost
+    ECan's scan and the ipres2017 archive at its first attempt, and the archive alone at its one rerun ([#204]), every
+    test over the 154 others passing, 5,223 acceptance tests and 2,583 referee checks; the 88 it lost pass on that code
+    in this container's unit and integration runs;
+  - commitlint finds no problem.
+- **Next**: batch 13, [#128], with [#237] and [#253], measured on 2026-10-15 but [#253], its questions to put.
 
 ### 2026-10-15 — Batch 12: filter chains ([#165], [#166], [#199], [#209], [#219], [#247])
 - **The question.** [#165]: a filter's parameters can name an object an object stream holds, and decoding one stream
@@ -1796,3 +1903,5 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#250]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/250
 [#251]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/251
 [#252]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/252
+[#253]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/253
+[#254]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/254

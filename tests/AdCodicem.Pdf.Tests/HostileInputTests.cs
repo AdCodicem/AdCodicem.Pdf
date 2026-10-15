@@ -861,6 +861,186 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_fault_of_an_object_stream_is_held_once_by_its_document_however_often_the_stream_is_decoded()
+    {
+        // Object stream 7's hexadecimal data lacks its end marker. The reader decodes it to serve object 6, and again to
+        // serve object 10 once a stream of 33 MB has pushed it out of the budget; the validator decodes it once more, and
+        // a caller twice, passing no diagnostics and then the document's: the document holds the report once (#144).
+        // Diagnostics a caller passes of its own hold every decoding's.
+        var file = PackedFile(
+            [
+                new PackedStream(7, "/Filter /ASCIIHexDecode", [(6, "<< /Title (six) >>"), (10, "<< /Title (ten) >>")], PackedData.Hex),
+                new PackedStream(8, string.Empty, [(9, "<< /K (large) >>")], PackedData.Flate, Padding: 33 * 1024 * 1024),
+            ]);
+        file[file.AsSpan().IndexOf(">\nendstream"u8)] = (byte)' ';
+        var header = file.AsSpan().IndexOf("7 0 obj"u8);
+        var dataStart = header + file.AsSpan(header).IndexOf("stream\n"u8) + "stream\n".Length;
+        var report = $"Repair filter.failed at {dataStart}: An ASCIIHex stream ends without its > end marker; it decoded to the end of its data.";
+
+        using var document = PdfDocument.Open(file);
+        Title(document.GetObject(new PdfObjectId(6))).Should().Be("six");
+        document.GetObject(new PdfObjectId(9)).Should().BeOfType<PdfDictionary>();
+        Title(document.GetObject(new PdfObjectId(10))).Should().Be("ten");
+        new PdfValidator().Validate(document);
+        var stream = document.GetObject(new PdfObjectId(7)).AsStream().Required();
+        stream.Decode();
+        stream.Decode(document.Diagnostics);
+        var own = new PdfDiagnostics();
+        stream.Decode(own);
+        stream.Decode(own);
+
+        document.Diagnostics.Select(d => d.ToString()).Should().Equal(report);
+        own.Select(d => d.ToString()).Should().Equal(report, report);
+    }
+
+    [Fact]
+    public void A_document_holds_alike_reports_of_two_streams_and_of_two_filters_of_one_stream_each_once_a_decoding()
+    {
+        // Streams 3 and 4 lack their hexadecimal end markers alike, and each filter of stream 5 lacks it too: reports under
+        // the same code, of the same message for stream 5's two filters, which are not repeats of an earlier decoding.
+        // Decoded twice each into the document's diagnostics, they are held once a stream and once a filter (#144).
+        var inner = Convert.ToHexString("Hello"u8);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, "/Filter /ASCIIHexDecode", inner)
+            .Stream(4, "/Filter /ASCIIHexDecode", inner)
+            .Stream(5, "/Filter [/ASCIIHexDecode /ASCIIHexDecode]", Convert.ToHexString(Encoding.ASCII.GetBytes(inner)))
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file);
+
+        foreach (var number in (int[])[3, 4, 5, 3, 4, 5])
+        {
+            Encoding.ASCII.GetString(document.GetObject(new PdfObjectId(number)).AsStream().Required().Decode().Span).Should().Be("Hello");
+        }
+
+        document.Diagnostics.Select(d => d.Code).Should().Equal(Enumerable.Repeat(PdfDiagnosticCodes.FilterFailed, 4));
+        document.Diagnostics.Select(d => d.Position).Distinct().Should().HaveCount(3);
+        document.Diagnostics.Select(d => d.Message).Should().OnlyContain(
+            message => message == "An ASCIIHex stream ends without its > end marker; it decoded to the end of its data.");
+    }
+
+    [Fact]
+    public void What_a_decoding_met_before_a_guard_threw_is_held_once_though_each_decoding_throws()
+    {
+        // Stream 3's hexadecimal data passes over a byte that encodes nothing, then decodes past the bound: opened to
+        // throw, each decoding throws at the guard, and what it met before is moved into the document all the same, once.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, "/Filter /ASCIIHexDecode", "4G" + Convert.ToHexString(new byte[64]) + ">")
+            .BuildClassic(rootNumber: 1);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 16 }, ThrowOnLimit = true };
+
+        using var document = PdfDocument.Open(file, options);
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+
+        FluentActions.Invoking(() => stream.Decode()).Should().Throw<PdfLimitExceededException>();
+        FluentActions.Invoking(() => stream.Decode(document.Diagnostics)).Should().Throw<PdfLimitExceededException>();
+
+        document.Diagnostics.Select(d => d.Message).Should().Equal(
+            "An ASCIIHex stream holds a byte that encodes nothing before decoding stopped at the bound, at byte 2 of its 131; it was passed over.");
+    }
+
+    [Fact]
+    public void A_report_the_capacity_leaves_out_of_one_decoding_is_counted_by_its_document()
+    {
+        // One decoding reports two faults of stream 3 — a byte that encodes nothing, and no end marker — into a document
+        // that keeps one report: the second is counted among those it left out, as any report it has no room for is.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, "/Filter /ASCIIHexDecode", "4G8656C6C6F")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { DiagnosticCapacity = 1 });
+        document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode();
+
+        document.Diagnostics.Select(d => d.Message).Should().Equal(
+            "An ASCIIHex stream holds a byte that encodes nothing, at byte 2 of its 11; it was passed over.");
+        document.Diagnostics.SuppressedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void A_report_full_diagnostics_left_out_is_counted_again_each_time_its_stream_is_decoded()
+    {
+        // Stream 3 fills a document that keeps one report; stream 4's fault finds no room, and each decoding of stream 4
+        // meets it again: it is counted each time, as a report the document has no room for is.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, "/Filter /ASCIIHexDecode", "48656C6C6F")
+            .Stream(4, "/Filter /ASCIIHexDecode", "4G8656C6C6F>")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { DiagnosticCapacity = 1 });
+        document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode();
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+        var counts = new List<int>();
+
+        for (var decoding = 0; decoding < 3; decoding++)
+        {
+            stream.Decode();
+            counts.Add(document.Diagnostics.SuppressedCount);
+        }
+
+        counts.Should().Equal(1, 2, 3);
+        document.Diagnostics.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void A_report_its_document_holds_takes_no_room_when_a_stream_is_decoded_again_into_full_diagnostics()
+    {
+        // The document keeps one report: decoding the stream again repeats it, which is dropped before it can take room or
+        // be counted as one the capacity left out.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, "/Filter /ASCIIHexDecode", "48656C6C6F")
+            .BuildClassic(rootNumber: 1);
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { DiagnosticCapacity = 1 });
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+        stream.Decode();
+        stream.Decode();
+
+        document.Diagnostics.Should().ContainSingle();
+        document.Diagnostics.SuppressedCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void A_guard_an_object_stream_reaches_is_held_once_by_its_document_and_counted_each_time()
+    {
+        // Object stream 7 decodes past the bound: the reader, the validator and a caller each decode it, and each cut is
+        // the guard's, counted though its document holds its report once (#144): what the guard cut is never taken for
+        // damage. Opened to throw, each decoding throws.
+        var file = PackedFile([new PackedStream(7, string.Empty, [(6, "<< /Title (six) >>")], PackedData.Flate, Padding: 4096)]);
+        var limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1024 };
+
+        using (var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits }))
+        {
+            Title(document.GetObject(new PdfObjectId(6))).Should().Be("six");
+            new PdfValidator().Validate(document);
+            var stream = document.GetObject(new PdfObjectId(7)).AsStream().Required();
+            stream.Decode();
+            var own = new PdfDiagnostics();
+            stream.Decode(own);
+
+            document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+            document.Diagnostics.LimitsReached.Should().Be(3);
+            own.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        }
+
+        using var strict = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnLimit = true });
+        var data = strict.GetObject(new PdfObjectId(7)).AsStream().Required();
+
+        FluentActions.Invoking(() => data.Decode()).Should().Throw<PdfLimitExceededException>();
+        FluentActions.Invoking(() => data.Decode()).Should().Throw<PdfLimitExceededException>();
+        strict.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
     public void An_object_stream_that_needs_an_object_it_holds_reads_the_same_after_the_budget_lets_it_go()
     {
         // Object stream 7 names its own object 5 as its filter: decoded, it reads 5 as null, so its data is taken as

@@ -194,7 +194,7 @@ public class ReaderLimitsTests
     }
 
     [Theory]
-    [InlineData("object stream", "null | limit.filter-chain,limit.filter-chain | xref.checked-in-part:Information")]
+    [InlineData("object stream", "null | limit.filter-chain | xref.checked-in-part:Information")]
     [InlineData("cross-reference stream", "page | limit.filter-chain,xref.rebuilt | xref.checked-in-part:Information")]
     public void A_stream_the_reader_reads_whose_filters_pass_the_guard_is_cut_before_its_data(string which, string expected)
     {
@@ -202,8 +202,8 @@ public class ReaderLimitsTests
         // Flate filters. Past the guard on filters the data is still encoded, and none of it is rows or objects: the
         // stream is cut before them, as a guard that leaves nothing of a stream cuts it. The object stream's members are
         // unknown until the guard is raised, and a chain left with no section is rebuilt, as for any guard; nothing of
-        // the file is reported as damage — no section read from compressed bytes, no object stream judged unreadable,
-        // and each decode reports the guard.
+        // the file is reported as damage — no section read from compressed bytes, no object stream judged unreadable —, and
+        // the guard is reported once, though the reader and the validator each decode the object stream (#144).
         var file = FileOfLayeredStreams(which == "object stream" ? 65 : 1, which == "cross-reference stream" ? 65 : 1);
 
         Outcome(file, PdfReaderLimits.Default with { MaxFilterChainLength = 100 }).Should().Be("page |  | ");

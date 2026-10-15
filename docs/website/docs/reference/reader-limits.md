@@ -55,8 +55,10 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut: a `/Prev`,
   an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. A section a limit cut is
   where it was named, and is not looked for near there, as a section that is not there is.
-- A stream is reported each time it is decoded past the bound — in the diagnostics you pass to `Decode`, or in the
-  document's own when you pass none —, once, by the first of its filters that stopped there. The filters after it decode
+- A stream decoded past the bound is reported by the first of its filters that stopped there: each time it is decoded,
+  in the diagnostics you pass to `Decode`; once, in the document's own — when you pass none, or the document's —, however
+  often you, the reader or the validator decode it. The guard is counted each time all the same, and with `ThrowOnLimit`
+  each decoding throws. The filters after it decode
   what it kept as data the reader cut: that it runs out is not reported as damage.
 - A stream of one or two filters decodes as each filter alone would. Of a longer chain, once the filters before the
   last have passed along the bound together, the next decodes nothing more, and the stream comes back as what the last
@@ -69,9 +71,8 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 
 - A stream whose `/Filter` array names more filters than `MaxFilterChainLength` decodes through the first of them only,
   and comes back as they decoded it, as at a filter the library does not know; the elements past the bound are not
-  read, so an image filter there is not seen, and `HasImageFilter` says false. It is reported each time decoding
-  reaches the bound — a Flate filter within it that decodes nothing ends decoding first, reported as `filter.failed`
-  alone:
+  read, so an image filter there is not seen, and `HasImageFilter` says false. It is reported as the bound on decoded
+  data is — a Flate filter within it that decodes nothing ends decoding first, reported as `filter.failed` alone:
 
   ```text
   Warning limit.filter-chain at 1904: The /Filter entry names more than 64 filters; decoding stopped after the first

@@ -106,7 +106,9 @@ the byte with zero bits after its last code: a whole byte past it, or a bit that
 data the reader cut, the end is the reader's, and no marker is missing from it.
 
 Decoding is lazy like the rest of reading, so a stream's damage is reported when the stream is decoded, not when the
-document opens — and a stream you built in memory and decode without a `PdfDiagnostics` of your own has nowhere to
+document opens, and once in the document's diagnostics, however often it is decoded: the reader decodes an object stream
+again once it let it go, and the validator decodes it once more. Diagnostics you pass to `Decode` of your own hold each
+decoding's account — and a stream you built in memory and decode without a `PdfDiagnostics` of your own has nowhere to
 report, and reports nothing. A document's stream never decodes in silence.
 
 ## The reader's limits are not faults
