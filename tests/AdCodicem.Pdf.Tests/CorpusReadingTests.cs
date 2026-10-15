@@ -226,6 +226,44 @@ public class CorpusReadingTests
 
     [Theory]
     [MemberData(nameof(AllDocuments))]
+    public void A_document_holds_each_report_once_however_often_its_streams_are_decoded(string file)
+    {
+        // Every stream no image filter ends decoded twice into the document's diagnostics, and the document validated, which
+        // decodes its object streams again: what each decoding met is held once (#144), as what each parse met is (#55,
+        // #119).
+        var entry = Corpus.Get(file);
+        Assert.SkipWhen(
+            entry.Expect.IsUnsupportedIn(nameof(A_document_holds_each_report_once_however_often_its_streams_are_decoded)),
+            $"{entry.Name}: {entry.Expect.Unsupported}");
+        using var document = PdfDocument.Open(
+            Corpus.PathOf(entry.File), OptionsFor(entry) with { ThrowOnEncrypted = false, DiagnosticCapacity = int.MaxValue });
+
+        ReadEverything(document);
+        ReadEverything(document);
+        new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().OnlyHaveUniqueItems($"{entry.Name} holds each report once: {Describe(document.Diagnostics)}");
+    }
+
+    [Fact]
+    public void A_damaged_object_stream_s_fault_is_held_once_after_a_full_read_and_a_validation()
+    {
+        // Object stream 417 of the PDFBox report turns corrupt where a block of zeros erased its data. Reading it serves its
+        // objects; reading object 5922 rebuilds the index, which decodes it again; the full read decodes it a third time,
+        // and the validator a fourth: its fault was held four times, and is held once (#144).
+        const string File = "remote/pdfbox/distiller6-zeroed-object-stream-pdfbox3947.pdf";
+        Assert.SkipUnless(Corpus.Paths.Contains(File), $"{File} is a remote document this machine did not fetch");
+        using var document = PdfDocument.Open(Corpus.PathOf(File), OptionsFor(Corpus.Get(File)) with { DiagnosticCapacity = int.MaxValue });
+
+        ReadEverything(document);
+        new PdfValidator().Validate(document);
+
+        document.Diagnostics.Where(d => d.Position == 1670741 && d.Code == PdfDiagnosticCodes.FilterFailed).Select(d => d.ToString())
+            .Should().Equal("Warning filter.failed at 1670741: A Flate stream is corrupt at byte 33853 of its 34152; the 102785 bytes decoded before the fault was found were kept.");
+    }
+
+    [Theory]
+    [MemberData(nameof(AllDocuments))]
     public void Every_message_a_document_earns_is_printable_ascii_on_one_line_whatever_the_culture(string file)
     {
         // Persian writes a minus sign, a decimal and a group separator of its own, outside ASCII (#159): a message a

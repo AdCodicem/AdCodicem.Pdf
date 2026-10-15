@@ -74,6 +74,82 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void A_decoding_moves_in_only_what_no_decoding_moved_in_before_two_alike_of_its_own_included()
+    {
+        // The whole report is the key: another message under the same code and position is another report, and two filters
+        // of one decoding that report alike are each held (#144).
+        var target = new PdfDiagnostics();
+        var decodings = target.Decodings;
+
+        var first = decodings.GetMark();
+        decodings.Warn("filter.failed", "one", 5);
+        decodings.Repair("filter.failed", "two", 5);
+        decodings.Repair("filter.failed", "two", 5);
+        decodings.MoveDecodingReportsTo(target, first);
+
+        var second = decodings.GetMark();
+        decodings.Warn("filter.failed", "one", 5);
+        decodings.Warn("filter.failed", "three", 5);
+        decodings.Repair("filter.failed", "two", 5);
+        decodings.MoveDecodingReportsTo(target, second);
+
+        target.Select(d => $"{d.Severity} {d.Message}").Should().Equal("Warning one", "Repair two", "Repair two", "Warning three");
+        decodings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_report_a_decoding_moved_in_before_takes_no_room_once_the_diagnostics_are_full_and_a_guard_stays_counted()
+    {
+        var target = new PdfDiagnostics { Capacity = 1 };
+        var decodings = target.Decodings;
+
+        var first = decodings.GetMark();
+        decodings.ReachLimit("limit.decoded-stream", "bound", 5);
+        decodings.MoveDecodingReportsTo(target, first);
+
+        var second = decodings.GetMark();
+        decodings.ReachLimit("limit.decoded-stream", "bound", 5);
+        decodings.MoveDecodingReportsTo(target, second);
+
+        target.Select(d => d.Message).Should().Equal("bound");
+        target.SuppressedCount.Should().Be(0);
+        target.LimitsReached.Should().Be(2);
+
+        var third = decodings.GetMark();
+        decodings.Warn("filter.failed", "new", 5);
+        decodings.MoveDecodingReportsTo(target, third);
+
+        target.SuppressedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void A_copy_of_a_report_the_capacity_left_out_is_counted_again_each_time_a_decoding_meets_it()
+    {
+        // The target holds as many copies of a report as it had room for: a copy past them is new to it, whichever decoding
+        // meets it, and counted again among those it leaves out, as a repeat of any report it had no room for is.
+        var target = new PdfDiagnostics { Capacity = 2 };
+        var decodings = target.Decodings;
+
+        for (var decoding = 0; decoding < 2; decoding++)
+        {
+            var mark = decodings.GetMark();
+            decodings.Repair("filter.failed", "alike", 5);
+            decodings.Repair("filter.failed", "alike", 5);
+            decodings.Repair("filter.failed", "alike", 5);
+            decodings.MoveDecodingReportsTo(target, mark);
+        }
+
+        target.Select(d => d.Message).Should().Equal("alike", "alike");
+        target.SuppressedCount.Should().Be(2);
+
+        var last = decodings.GetMark();
+        decodings.Warn("filter.failed", "other", 9);
+        decodings.MoveDecodingReportsTo(target, last);
+
+        target.SuppressedCount.Should().Be(3);
+    }
+
+    [Fact]
     public void A_nested_mark_keeps_or_drops_only_what_came_after_it()
     {
         // A nested load parses while an outer parse holds entries of its own: it moves or drops its own,

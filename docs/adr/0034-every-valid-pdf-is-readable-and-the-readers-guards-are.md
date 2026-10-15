@@ -61,6 +61,14 @@ along as it is, is neither charged to the bound the filters before the last shar
 stream, whose first filter ISO 32000 makes `/Crypt`, decodes as its twin in the clear does. M16 takes it up again when
 `/Crypt` decrypts.
 
+Amended again on 2026-10-15, by the maintainer, while [#144](https://github.com/AdCodicem/AdCodicem.Pdf/issues/144) was
+fixed: a stream was reported each time it was decoded past the bound, and the reader decodes an object stream again once
+its budget let it go, a rebuild once more, and the validator once more: with `MaxDecodedStreamLength` at 1 KB, 56 corpus
+documents held a guard's report twice or three times, as a damaged object stream held its filter's fault. A document's
+own diagnostics now hold a stream's report once, however often the reader, the validator or a caller decodes it, as they
+hold an object's; diagnostics a caller passes to `Decode` hold every decoding's. The guard is still counted each time it is
+reached, so that what it cut is never taken for damage, and a document opened to throw throws each time.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -117,9 +125,9 @@ guard: active by default, reported when it is reached, and lifted by an option.
   under a code of its own — `limit.decoded-stream`, `limit.object`, `limit.xref-section-length`,
   `limit.xref-section-count`, `limit.trailer`, `limit.index-entries`, `limit.filter-chain` — whose message names the property that
   lifts it. What the parser met at the cut is the reader's, not the file's, and is dropped in favor of the guard. An
-  object, a section or a trailer is reported once, however often it is read again; a stream, each time it is
-  decoded past the bound, by the first of its filters that stopped there, and in its document's diagnostics when the
-  caller supplied none; a full index, once a document. The filters after one a guard stopped are given data the reader
+  object, a section or a trailer is reported once, however often it is read again; a stream, by the first of its filters
+  that stopped there, each time it is decoded past the bound into diagnostics a caller supplies, and once in its
+  document's own, however often it is decoded (amended on 2026-10-15); a full index, once a document. The filters after one a guard stopped are given data the reader
   cut: that it runs out — a lost tail, a missing checksum, a digit without its pair, a row the predictor cannot finish —
   is not reported, and a fault in what was read is. The code `filter.limit-exceeded`, added by T31 and never released, becomes `limit.decoded-stream`.
 - **What a guard leaves out of the index is not damage** (amended on 2026-10-14). The objects only a section past

@@ -52,12 +52,42 @@ internal static class PdfFilterPipeline
     private static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard, out bool leftEncoded)
     {
         diagnostics ??= guard.DocumentDiagnostics;
-        leftEncoded = false;
 
         // Every value the filters are decoded with is resolved before any of the data is read: one an object stream holds
         // decodes that stream while this one holds nothing decoded (#165).
         var chain = FilterChain.Resolve(stream.Dictionary, guard.Bound(PdfLimit.FilterChain));
         var data = stream.GetRawBytes();
+
+        // The document's own diagnostics hold what decoding a stream of the document met once, however often the stream is
+        // decoded: the reader decodes an object stream again once its budget let it go, a rebuild and the validator decode
+        // it once more, and a caller who passes those diagnostics, or none, as often as it likes (#144). The decoding reports
+        // apart, and what the document holds already is not moved in, so that a repeat takes no room there. Diagnostics a
+        // caller passes of its own hold every decoding's reports. The values the filters read decoded before, each moving
+        // its own reports in.
+        if (diagnostics is null || !ReferenceEquals(diagnostics, guard.DocumentDiagnostics))
+        {
+            return DecodeChain(stream, chain, data, diagnostics, guard, out leftEncoded);
+        }
+
+        var decodings = diagnostics.Decodings;
+        var mark = decodings.GetMark();
+
+        try
+        {
+            return DecodeChain(stream, chain, data, decodings, guard, out leftEncoded);
+        }
+        finally
+        {
+            // Thrown at a guard or not, what the decoding met before is moved in.
+            decodings.MoveDecodingReportsTo(diagnostics, mark);
+        }
+    }
+
+    /// <summary>Decodes <paramref name="data"/> through the filters of <paramref name="chain"/>, reporting into <paramref name="diagnostics"/>.</summary>
+    private static ReadOnlyMemory<byte> DecodeChain(
+        PdfStream stream, FilterChain chain, ReadOnlyMemory<byte> data, PdfDiagnostics? diagnostics, PdfLimitGuard guard, out bool leftEncoded)
+    {
+        leftEncoded = false;
 
         // Whether the data a filter is given is data the reader cut at one of its limits: the parser's window cut the
         // stream, or a filter before it stopped at MaxDecodedStreamLength. Every filter after a cut is given cut data,

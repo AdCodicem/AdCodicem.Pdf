@@ -17,6 +17,16 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     private int _limits;
 
     /// <summary>
+    /// The reports decoding a stream moved into this instance, each with how many copies of it this instance holds, so that a
+    /// stream decoded again adds none it holds already (#144); null until a decoding reports. They are entries held, so
+    /// they are at most <see cref="Capacity"/>.
+    /// </summary>
+    private Dictionary<PdfDiagnostic, int>? _decodingReports;
+
+    /// <summary>Where a decoding of a stream reports before its reports are moved here; null until a stream is decoded.</summary>
+    private PdfDiagnostics? _decodings;
+
+    /// <summary>
     /// Gets the largest number of entries kept. A pathological file can produce an unbounded
     /// number of observations; beyond this limit they are counted but not stored.
     /// </summary>
@@ -136,6 +146,52 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
             if (keep(entry, state))
             {
                 target.Add(entry.Severity, entry.Code, entry.Message, entry.Position);
+            }
+        }
+
+        target._suppressed += _suppressed - mark.Suppressed;
+        target._limits += _limits - mark.Limits;
+        RollBack(mark);
+    }
+
+    /// <summary>
+    /// Gets where a decoding of a stream reports first, its reports then moved into this instance by
+    /// <see cref="MoveDecodingReportsTo"/>: a report a decoding moved there already takes no room here while it is
+    /// dropped. It holds what one decoding reports, within the same capacity.
+    /// </summary>
+    internal PdfDiagnostics Decodings => _decodings ??= new PdfDiagnostics { Capacity = Capacity, KeptIn = this };
+
+    /// <summary>
+    /// Moves the entries a decoding of a stream recorded since <paramref name="mark"/> into <paramref name="target"/>, which
+    /// applies its own capacity, but those a decoding moved there already: <paramref name="target"/> holds each once,
+    /// however often the stream is decoded, and two filters of one decoding that report alike are each held (#144). A guard
+    /// reached stays counted in <see cref="LimitsReached"/>, its report moved or not, so that what it cut is still known as
+    /// its; an entry the capacity dropped was counted, and a repeat of it is counted again, as any report is.
+    /// </summary>
+    internal void MoveDecodingReportsTo(PdfDiagnostics target, PdfDiagnosticsMark mark)
+    {
+        Dictionary<PdfDiagnostic, int>? met = null;
+
+        for (var i = mark.Count; i < _entries.Count; i++)
+        {
+            // The copies of a report up to as many as the target holds are repeats; one past them is new, held if the target
+            // has room for it, and counted among those it left out otherwise, whichever decoding meets it.
+            var entry = _entries[i];
+            var held = target._decodingReports ??= [];
+            met ??= [];
+            var copy = met[entry] = met.GetValueOrDefault(entry) + 1;
+
+            if (copy <= held.GetValueOrDefault(entry))
+            {
+                continue;
+            }
+
+            var count = target._entries.Count;
+            target.Add(entry.Severity, entry.Code, entry.Message, entry.Position);
+
+            if (target._entries.Count > count)
+            {
+                held[entry] = held.GetValueOrDefault(entry) + 1;
             }
         }
 

@@ -207,13 +207,16 @@ The byte counts in these reports are the reporting filter's own. The bytes kept 
 row. The byte where the fault was found counts from 1 at the start of the data the filter was given, and the length the
 report gives is that data's: the stream's data when the filter is its only one, what the filter before it decoded to
 otherwise. Each kind of fault is reported once for each filter of the stream, however often its data repeats it; a
-filter stopped at `MaxDecodedStreamLength` counts the faults of the part it read, and says so. A stream the reader
-itself cut at one of its limits is reported as that limit, not as a lost tail; a fault in the part it did read is the
-file's, and is reported. That holds whoever cut it: the window the parser reads an object through, or a filter before
-this one that stopped at `MaxDecodedStreamLength`. Of data the reader cut, no lost tail, missing checksum or missing end
-marker is reported, a hexadecimal digit without its pair or an ASCII85 group short of five is dropped rather than
-completed, and a predictor undoes the part of its last row the data holds rather than report rows the parameters
-describe as longer than the data.
+filter stopped at `MaxDecodedStreamLength` counts the faults of the part it read, and says so. The document's
+diagnostics hold what decoding a stream met once, however often the stream is decoded — by you, passing no diagnostics
+or the document's, by the reader as it serves an object stream's objects again after its budget let them go or as it
+rebuilds the index, or by the validator —, as long as they have room for it; diagnostics you pass of your own hold every
+decoding's reports. A stream the reader itself cut at one of its limits is reported as that limit, not as a lost tail; a
+fault in the part it did read is the file's, and is reported. That holds whoever cut it: the window the parser reads an
+object through, or a filter before this one that stopped at `MaxDecodedStreamLength`. Of data the reader cut, no lost
+tail, missing checksum or missing end marker is reported, a hexadecimal digit without its pair or an ASCII85 group short
+of five is dropped rather than completed, and a predictor undoes the part of its last row the data holds rather than
+report rows the parameters describe as longer than the data.
 
 ```text
 Warning filter.failed at 59534: A Flate stream ends before its data does; what decoded before the end was kept.
