@@ -137,6 +137,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Decoding the same stream without its checksum, or without its last five bytes | 4 MB decoded | 11.7 ms | 13.1 MB |
 | Decoding the same stream under a wrong checksum, kept whole | 4 MB decoded | 12.1 ms | 13.1 MB |
 | Decoding a stream that turns corrupt halfway, the 2 MB before the fault kept | 4 MB of content | 8.1 ms | 6.6 MB |
+| Decoding a chain of ASCII85 and Flate | 4 MB decoded | 10.4 ms | 13.7 MB |
 | Indexing, then parsing every page's content stream, each past the reader's first window | synthetic, 1000 pages of 16 KB | 3.9 ms from memory, 7.1 ms from a file | 2.0 MB |
 | The same, each stream declared 2 bytes too long and searched for its `endstream` | synthetic, 1000 pages of 16 KB | 7.3 ms from memory, 12.5 ms from a file | 2.8 MB |
 | Parsing one object, a medium job | Word's page dictionary | 6.0 µs | 4.6 KB |
@@ -378,6 +379,11 @@ not a fault of the file: the rules on it report at most, as information, that it
   - the corpus's 401 documents give `main`'s findings and diagnostics, line for line;
   - the integration suite against qpdf in its container, twice: 3,266, 3,260 passed and 6 skipped where qpdf cannot
     walk a damaged document's pages;
+  - `FilterBenchmarks` (ShortRun), twice, `main` and the branch alternated: a decode allocates 112 bytes more, the
+    resolved chain — 86.43 → 86.54 KB for a Flate stream of 64 KB, 97.51 → 97.62 KB for a chain of ASCII85 and Flate —,
+    and takes as long, within the runs' spread: 86 to 88 µs on `main` and 88 to 104 µs on the branch for the 64 KB
+    stream, 9.6 to 10.2 ms and 10.4 to 10.6 ms for the 4 MB chain;
+  - the site builds;
   - `Remote corpus`: run 51, on the batch's last code, passed whole at its first attempt — all 242 documents, 5,649
     acceptance tests and 3,329 referee checks;
   - commitlint finds no problem.
