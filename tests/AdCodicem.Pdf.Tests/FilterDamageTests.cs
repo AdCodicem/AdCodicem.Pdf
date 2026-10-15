@@ -1010,17 +1010,33 @@ public class FilterDamageTests
         Describe(diagnostics).Should().Be(Report(PdfDiagnosticSeverity.Warning, LzwUndefined(code)));
     }
 
-    [Fact]
-    public void Decodes_an_lzw_stream_without_its_end_of_data_code_and_reports_nothing()
+    [Theory]
+    [InlineData("whole", "ABAB", PdfDiagnosticSeverity.Repair, "An LZW stream ends without its end-of-data code; it decoded to the end of its data.")]
+    [InlineData("set bits", "ABAB", PdfDiagnosticSeverity.Warning, "An LZW stream ends without its end-of-data code, inside a code, whose bits were dropped; data may have been lost.")]
+    [InlineData("whole byte", "ABCDEFG", PdfDiagnosticSeverity.Warning, "An LZW stream ends without its end-of-data code, inside a code, whose bits were dropped; data may have been lost.")]
+    public void Decodes_an_lzw_stream_without_its_end_of_data_code_to_its_end_and_says_whether_a_code_was_cut(
+        string tail, string expected, PdfDiagnosticSeverity severity, string message)
     {
-        // Without the end-of-data code, data that lost its tail cannot be told from data whose encoder left
-        // the code out; qpdf, like this reader, takes both as complete.
+        // Without the end-of-data code, data that lost its tail after a whole code cannot be told from data whose encoder
+        // left the code out; qpdf, like this reader, decodes both to their end. The format asks for the code all the same,
+        // as it asks ASCII85, ASCIIHex and RunLength for their end markers (#141): nothing decoded is known lost, a repair.
+        // An encoder pads the last code to the byte with zero bits, so a bit that is set past the last code, or a whole
+        // byte no code completes, is part of a code the data lost: a warning.
+        var data = tail switch
+        {
+            "whole" => NineBitCodes(256, 'A', 'B', 258),
+            "set bits" => NineBitCodes(256, 'A', 'B', 258, 'B')[..^1],
+            _ => [.. NineBitCodes(256, 'A', 'B', 'C', 'D', 'E', 'F', 'G'), 0x00],
+        };
         var diagnostics = new PdfDiagnostics();
 
-        var decoded = Decode(NineBitCodes(256, 'A', 'B', 258), PdfName.LZWDecode, diagnostics);
+        var decoded = Decode(data, PdfName.LZWDecode, diagnostics);
 
-        Encoding.ASCII.GetString(decoded.Span).Should().Be("ABAB");
-        diagnostics.Should().BeEmpty();
+        Encoding.ASCII.GetString(decoded.Span).Should().Be(expected);
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Severity.Should().Be(severity);
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+        report.Message.Should().Be(message);
     }
 
     [Fact]
@@ -1036,6 +1052,301 @@ public class FilterDamageTests
         Decode(encoded, PdfName.LZWDecode, sound).ToArray().Should().Equal(plain);
 
         sound.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("ASCII85Decode", "87cURD]i,\"Ebo7~>", "Hello World")]
+    [InlineData("ASCII85Decode", "87cUR D]i,\"\r\nEbo7 ~\n>\r\n", "Hello World")]
+    [InlineData("ASCII85Decode", "87cURD]i,\"Ebo7~>xyz{", "Hello World")]
+    [InlineData("ASCII85Decode", "8\07cURD]i,\"Ebo7~>", "Hello World")]
+    [InlineData("ASCIIHexDecode", "48 65\n6c\t6C 6F>", "Hello")]
+    [InlineData("ASCIIHexDecode", "48656C6C6F\0>", "Hello")]
+    [InlineData("ASCIIHexDecode", "48656C6C6F>GG", "Hello")]
+    [InlineData("ASCIIHexDecode", "48656C6C6>", "Hell`")]
+    public void Decodes_sound_text_data_and_what_follows_its_end_marker_in_silence(string filter, string encoded, string expected)
+    {
+        // White space, NUL among it, may stand anywhere, between the ~ and the > of the end marker too; an odd digit
+        // before the marker is completed with a 0, as the format says; and what follows the marker is no part of the data,
+        // as no other reader reports it either (#141).
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(Encoding.Latin1.GetBytes(encoded), PdfName.Get(filter), diagnostics);
+
+        Encoding.Latin1.GetString(decoded.Span).Should().Be(expected);
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Decodes_sound_run_length_data_and_what_follows_its_end_of_data_byte_in_silence()
+    {
+        // qpdf decodes past the end-of-data byte; this reader stops there, as MuPDF does, and says nothing of what follows.
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode([0x01, 0x48, 0x49, 0xFC, 0x41, 0x80, 0x6A, 0x75, 0x6E, 0x6B], PdfName.RunLengthDecode, diagnostics);
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be("HIAAAAA");
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("ASCII85Decode", "87cURD]{i,\"Ebo7~>", "Hello World", "An ASCII85 stream holds a byte that encodes nothing, at byte 8 of its 17; it was passed over.")]
+    [InlineData("ASCII85Decode", "87cUzRD]i,\"Ebo7~>", "Hello World", "An ASCII85 stream holds a byte that encodes nothing, at byte 5 of its 17; it was passed over.")]
+    [InlineData("ASCII85Decode", "87c{URD]i,v\"Ebo7~>", "Hello World", "An ASCII85 stream holds 2 bytes that encode nothing, the first at byte 4 of its 18; they were passed over.")]
+    [InlineData("ASCIIHexDecode", "4865G6C6C6F>", "Hello", "An ASCIIHex stream holds a byte that encodes nothing, at byte 5 of its 12; it was passed over.")]
+    public void Passes_over_the_bytes_that_encode_nothing_and_reports_where_the_first_lies(string filter, string encoded, string expected, string message)
+    {
+        // A byte outside the alphabet, or a z inside a group, which only a group's start may hold, encodes nothing where
+        // it stands. qpdf and MuPDF stop there and keep what decoded before; this reader passes over it, as it always did,
+        // and now says so (#141): what the rest decodes to may not be what was encoded.
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(Encoding.ASCII.GetBytes(encoded), PdfName.Get(filter), diagnostics);
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be(expected);
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+        report.Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("uuuuu~>", "08780EC4", "An ASCII85 stream holds a group whose value does not fit in four bytes, ending at byte 5 of its 7; it was decoded to the four low-order bytes of its value, which may be wrong.")]
+    [InlineData("uuuu~>", "08780E", "An ASCII85 stream holds a group whose value does not fit in four bytes, ending at byte 4 of its 6; it was decoded to the four low-order bytes of its value, which may be wrong.")]
+    [InlineData("uuuuuuuuuu~>", "08780EC408780EC4", "An ASCII85 stream holds 2 groups whose values do not fit in four bytes, the first ending at byte 5 of its 12; each was decoded to the four low-order bytes of its value, which may be wrong.")]
+    public void Reports_an_ascii85_group_whose_value_does_not_fit_in_four_bytes(string encoded, string expected, string message)
+    {
+        // Five digits reach 85^5 - 1, past 2^32 - 1, which ISO 32000-1 makes an error. Every reader measured decodes such a
+        // group to the four low-order bytes of its value, and so does this one; a last group short of five is completed
+        // with u, and may overflow too.
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(Encoding.ASCII.GetBytes(encoded), PdfName.ASCII85Decode, diagnostics);
+
+        Convert.ToHexString(decoded.Span).Should().Be(expected);
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
+        report.Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("87cUR~xD]i,\"Ebo7~>", "Hell", PdfDiagnosticSeverity.Warning, "An ASCII85 stream holds a ~ that no > follows, at byte 6 of its 18; decoding stopped there, and what follows was not decoded.")]
+    [InlineData("87cURD]i,\"Ebo7~", "Hello World", PdfDiagnosticSeverity.Repair, "An ASCII85 stream ends on a ~ that no > follows; it decoded to the end of its data.")]
+    [InlineData("<~87cURD]i,\"Ebo7~>", "Hello World", PdfDiagnosticSeverity.Repair, "An ASCII85 stream starts with the <~ PostScript writes and PDF does not; it was passed over.")]
+    [InlineData("87cURD]i,\"E~>", "Hello Wo", PdfDiagnosticSeverity.Warning, "An ASCII85 stream ends, before the ~ that closes it, with a group of a single digit, which encodes no byte; it was dropped.")]
+    public void Reads_an_ascii85_marker_out_of_place_as_other_readers_do_and_reports_it(
+        string encoded, string expected, PdfDiagnosticSeverity severity, string message)
+    {
+        // A ~ ends the data, whatever follows it, as qpdf and MuPDF end it: what came after it is lost, unless nothing did.
+        // The <~ PostScript opens its data with is passed over and the data read as meant, where qpdf and MuPDF read
+        // nothing. A single digit encodes no byte, and is dropped as every reader drops it.
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = Decode(Encoding.ASCII.GetBytes(encoded), PdfName.ASCII85Decode, diagnostics);
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be(expected);
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Severity.Should().Be(severity);
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+        report.Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("ASCII85Decode", "87cURD]i,\"", "48656C6C6F20576F", PdfDiagnosticSeverity.Repair, "An ASCII85 stream ends without its ~> end marker; it decoded to the end of its data.")]
+    [InlineData("ASCII85Decode", "87cURD]i,\"Ebo7", "48656C6C6F20576F726C64", PdfDiagnosticSeverity.Warning, "An ASCII85 stream ends without its ~> end marker, inside a group of 4 digits; the group was completed as a last one is, and data may have been lost.")]
+    [InlineData("ASCII85Decode", "87cURD]i,\"E", "48656C6C6F20576F", PdfDiagnosticSeverity.Warning, "An ASCII85 stream ends without its ~> end marker, after a group of a single digit, which encodes no byte; it was dropped, and data may have been lost.")]
+    [InlineData("ASCIIHexDecode", "48656C6C6F", "48656C6C6F", PdfDiagnosticSeverity.Repair, "An ASCIIHex stream ends without its > end marker; it decoded to the end of its data.")]
+    [InlineData("ASCIIHexDecode", "48656C6C6", "48656C6C60", PdfDiagnosticSeverity.Warning, "An ASCIIHex stream ends without its > end marker, after a digit without its pair; it was completed with a 0 as a last one is, and data may have been lost.")]
+    [InlineData("RunLengthDecode", "hex:014849", "4849", PdfDiagnosticSeverity.Repair, "A RunLength stream ends without its end-of-data byte; it decoded to the end of its data.")]
+    [InlineData("RunLengthDecode", "hex:044849", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends inside a run of 5 bytes, of which it holds 2; they were kept, and data may have been lost.")]
+    [InlineData("RunLengthDecode", "hex:01484902", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends after the length of a run of 3 bytes, without any of them; data may have been lost.")]
+    [InlineData("RunLengthDecode", "hex:014849FE", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends after the length of a run, without the byte the run repeats; data may have been lost.")]
+    [InlineData("RunLengthDecode", "hex:01484900", "4849", PdfDiagnosticSeverity.Warning, "A RunLength stream ends after the length of a run of 1 byte, without that byte; data may have been lost.")]
+    public void Decodes_data_without_its_end_marker_to_its_end_and_says_whether_any_may_be_lost(
+        string filter, string encoded, string expected, PdfDiagnosticSeverity severity, string message)
+    {
+        // No reader measured reports a missing end marker, and each decodes such data to its end, as this one does. The
+        // format asks for the marker all the same (#141): data that ends after a whole unit lost nothing anyone can tell,
+        // a repair; data that ends inside one was likely cut short, and the unit is completed, or dropped, as a last one
+        // is — a warning.
+        var diagnostics = new PdfDiagnostics();
+        var data = encoded.StartsWith("hex:", StringComparison.Ordinal) ? Convert.FromHexString(encoded[4..]) : Encoding.ASCII.GetBytes(encoded);
+
+        var decoded = Decode(data, PdfName.Get(filter), diagnostics);
+
+        Convert.ToHexString(decoded.Span).Should().Be(expected);
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Severity.Should().Be(severity);
+        report.Code.Should().Be(PdfDiagnosticCodes.FilterFailed);
+        report.Message.Should().Be(message);
+    }
+
+    [Fact]
+    public void Reports_each_kind_of_fault_of_ascii85_data_once_however_often_the_data_holds_it()
+    {
+        // An introducer, bytes passed over, a group past four bytes, and no end marker after a part of a group: each kind
+        // once, however often the data repeats it, the counts in its own report.
+        var diagnostics = new PdfDiagnostics();
+
+        Decode("<~87{cURuuuuu{D]i,\"Ebo7"u8.ToArray(), PdfName.ASCII85Decode, diagnostics);
+
+        diagnostics.Select(d => $"{d.Severity} {d.Message}").Should().Equal(
+            "Repair An ASCII85 stream starts with the <~ PostScript writes and PDF does not; it was passed over.",
+            "Warning An ASCII85 stream holds 2 bytes that encode nothing, the first at byte 5 of its 23; they were passed over.",
+            "Warning An ASCII85 stream holds a group whose value does not fit in four bytes, ending at byte 13 of its 23; it was decoded to the four low-order bytes of its value, which may be wrong.",
+            "Warning An ASCII85 stream ends without its ~> end marker, inside a group of 4 digits; the group was completed as a last one is, and data may have been lost.");
+    }
+
+    [Fact]
+    public void Counts_the_bytes_a_report_names_in_the_data_its_own_filter_was_given()
+    {
+        // The ASCII85 data travels in hex: the byte the report names is the ASCII85 filter's, in what the hex decoded to.
+        var diagnostics = new PdfDiagnostics();
+        var hex = Convert.ToHexString("87cURD]{i,\"Ebo7~>"u8) + ">";
+
+        var decoded = DecodeChainWithin(Encoding.ASCII.GetBytes(hex), 1 << 20, diagnostics, PdfName.ASCIIHexDecode, PdfName.ASCII85Decode);
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be("Hello World");
+        diagnostics.Select(d => d.Message).Should().Equal(
+            "An ASCII85 stream holds a byte that encodes nothing, at byte 8 of its 17; it was passed over.");
+    }
+
+    [Theory]
+    [InlineData("ASCII85Decode", "hex:3837635552445D692C2245626F37", 10, "Hello Worl")]
+    [InlineData("LZWDecode", "hex:8010485020", 2, "AB")]
+    public void Reports_no_missing_end_marker_where_a_filter_stopped_at_the_bound_completing_its_last_unit(
+        string filter, string encoded, int bound, string expected)
+    {
+        // ASCII85 data without its ~> reads to its end, and the group it completes there is what passes the bound; an LZW
+        // stream without its end-of-data code stops at the bound before its data runs out. Either way the end is the
+        // guard's.
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = DecodeChainWithin(Convert.FromHexString(encoded[4..]), bound, diagnostics, PdfName.Get(filter));
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be(expected);
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Theory]
+    [InlineData("window")]
+    [InlineData("filter before")]
+    [InlineData("own bound")]
+    public void Reports_no_missing_greater_than_sign_where_the_reader_cut_ascii85_data_after_its_tilde(string cut)
+    {
+        // The ~> closes the data, and the reader's cut falls between its two characters: the window MaxObjectLength allows
+        // ends on the ~, or the hex filter before stops at the bound there. Or the filter stops at its own bound in its
+        // last group, after the ~ was read. What lies past a cut is the guard's, and only the guard is reported (#199).
+        const string Encoded = "87cURD]i,\"Ebo7~>";
+        var diagnostics = new PdfDiagnostics();
+        string[] expected;
+
+        if (cut == "window")
+        {
+            var file = new TestPdfBuilder()
+                .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+                .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+                .WithObject(3, $"<< /Filter /ASCII85Decode /Length 2 >>\nstream\n{Encoded}{new string(' ', 400)}\nendstream")
+                .BuildClassic(rootNumber: 1);
+            var header = file.AsSpan().IndexOf("3 0 obj"u8);
+            var data = file.AsSpan().IndexOf(Encoding.ASCII.GetBytes(Encoded));
+            var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = data + Encoded.Length - 1 - header } };
+            using var document = PdfDocument.Open(file, options);
+
+            Encoding.ASCII.GetString(document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(diagnostics).Span).Should().Be("Hello World");
+            expected = [PdfDiagnosticCodes.LimitObject];
+            document.Diagnostics.Select(d => d.Code).Concat(diagnostics.Select(d => d.Code)).Should().Equal(expected);
+            return;
+        }
+
+        var decoded = cut == "filter before"
+            ? DecodeChainWithin(Encoding.ASCII.GetBytes(Convert.ToHexString(Encoding.ASCII.GetBytes(Encoded)) + ">"), Encoded.Length - 1, diagnostics, PdfName.ASCIIHexDecode, PdfName.ASCII85Decode)
+            : DecodeChainWithin(Encoding.ASCII.GetBytes(Encoded[..^1]), 10, diagnostics, PdfName.ASCII85Decode);
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be(cut == "filter before" ? "Hello World" : "Hello Worl");
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Theory]
+    [InlineData("ASCIIHexDecode", "4G1424344G4G5>", 2, "4142", "An ASCIIHex stream holds a byte that encodes nothing before decoding stopped at the bound, at byte 2 of its 14; it was passed over.")]
+    [InlineData("ASCIIHexDecode", "4G1G424344>", 2, "4142", "An ASCIIHex stream holds 2 bytes that encode nothing before decoding stopped at the bound, the first at byte 2 of its 11; they were passed over.")]
+    [InlineData("ASCII85Decode", "uuuuu87cUR~>", 4, "08780EC4", "An ASCII85 stream holds a group whose value does not fit in four bytes before decoding stopped at the bound, ending at byte 5 of its 12; it was decoded to the four low-order bytes of its value, which may be wrong.")]
+    [InlineData("ASCII85Decode", "uuuuuuuuuu87cUR~>", 8, "08780EC408780EC4", "An ASCII85 stream holds 2 groups whose values do not fit in four bytes before decoding stopped at the bound, the first ending at byte 5 of its 17; each was decoded to the four low-order bytes of its value, which may be wrong.")]
+    public void Says_the_faults_a_filter_stopped_at_the_bound_counted_are_those_of_the_part_it_read(
+        string filter, string encoded, int bound, string expected, string message)
+    {
+        // The bytes past the bound are not read: the count covers the part read, and the report says so, the guard's beside it.
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = DecodeChainWithin(Encoding.ASCII.GetBytes(encoded), bound, diagnostics, PdfName.Get(filter));
+
+        Convert.ToHexString(decoded.Span).Should().Be(expected);
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.LimitDecodedStream);
+        diagnostics[0].Message.Should().Be(message);
+    }
+
+    [Theory]
+    [InlineData("ASCII85Decode")]
+    [InlineData("ASCIIHexDecode")]
+    [InlineData("RunLengthDecode")]
+    [InlineData("LZWDecode")]
+    public void Reports_no_missing_end_marker_where_a_filter_stopped_decoding_at_the_bound(string filter)
+    {
+        // A filter stopped at MaxDecodedStreamLength reads no further: the end of its data is the guard's, which is
+        // reported, and the marker missing from it says nothing of the file.
+        var plain = Text(400);
+        var encoded = filter == "LZWDecode" ? LzwEncode(plain) : Encode(plain, filter);
+        var unmarked = filter switch
+        {
+            "ASCII85Decode" => encoded[..^2],
+            "ASCIIHexDecode" or "RunLengthDecode" => encoded[..^1],
+            _ => encoded,
+        };
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = DecodeChainWithin(unmarked, 100, diagnostics, PdfName.Get(filter));
+
+        decoded.ToArray().Should().Equal(plain.AsSpan(0, 100).ToArray());
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Theory]
+    [InlineData("RunLengthDecode", 41, false)]
+    [InlineData("LZWDecode", 41, false)]
+    [InlineData("ASCII85Decode", 41, false)]
+    [InlineData("ASCII85Decode", 41, true)]
+    [InlineData("RunLengthDecode", 41, true)]
+    public void Reports_no_end_marker_a_guard_of_the_reader_cut_off_and_a_fault_in_what_it_read(string filter, int characters, bool stray)
+    {
+        // The data travels in hex, the reader's guard cutting it after the given number of digits: the filter behind the
+        // hex is given data the reader cut, whose end, and whose missing marker, are the guard's. A byte that encodes
+        // nothing in the part the reader read is the file's, and is reported beside the guard.
+        var plain = Text(300);
+        var inner = filter == "LZWDecode" ? LzwEncode(plain) : Encode(plain, filter);
+
+        if (stray)
+        {
+            // A byte past every alphabet, early in the data the hex carries: ASCII85 passes over it; RunLength copies it
+            // into a run, which the format allows, and reports nothing.
+            inner = [.. inner[..3], 0x7B, .. inner[3..]];
+        }
+
+        var hex = Convert.ToHexString(inner) + ">";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, $"<< /Filter [/ASCIIHexDecode /{filter}] /Length 10 >>\nstream\n{hex}\nendstream")
+            .BuildClassic(rootNumber: 1);
+        var header = file.AsSpan().IndexOf("3 0 obj"u8);
+        var data = file.AsSpan().IndexOf(Encoding.ASCII.GetBytes(hex));
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = data + characters - header } };
+
+        using var document = PdfDocument.Open(file, options);
+        document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        string[] expected = stray && filter == "ASCII85Decode"
+            ? [PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.FilterFailed]
+            : [PdfDiagnosticCodes.LimitObject];
+        document.Diagnostics.Select(d => d.Code).Should().Equal(expected);
     }
 
     /// <summary>Damaged data a producer wrote whole, with a /Length that matches it: each report, its severity and message.</summary>

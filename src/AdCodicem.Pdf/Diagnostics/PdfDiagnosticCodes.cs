@@ -173,10 +173,15 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// A filter's data is not what the filter says. Flate data that nothing could decode was left as the filters before it
-    /// left it, and decoding stopped there; data that decoded in part — a Flate stream that lost its tail or turned corrupt, an LZW stream that uses a code it has
-    /// not defined — was kept as far as it went; data read despite a fault that lost nothing, such as a missing
-    /// zlib header or checksum, is reported as a repair. The message says which, and where a Flate stream's data
-    /// turned corrupt.
+    /// left it, and decoding stopped there; data that decoded in part — a Flate stream that lost its tail or turned corrupt,
+    /// an LZW stream that uses a code it has not defined, ASCII85 data a <c>~</c> ends that something other than
+    /// <c>&gt;</c> follows — was kept as far as it went; data that may have decoded wrong — a byte passed over that encodes
+    /// nothing, an ASCII85 group past four bytes or of a single digit, data that ends inside a group, a pair, a run or an
+    /// LZW code without its end marker — is a warning too; data read despite a fault that lost nothing, such as a missing
+    /// zlib header or checksum, an end marker missing after a whole unit or ending on a <c>~</c>, or the <c>&lt;~</c>
+    /// PostScript writes, is reported as a repair. The message says which; for a Flate stream turned corrupt, a byte that
+    /// encodes nothing, an ASCII85 group past four bytes and a <c>~</c> something other than <c>&gt;</c> follows, it says at
+    /// which byte of the filter's data the first lies.
     /// </summary>
     public const string FilterFailed = "filter.failed";
 

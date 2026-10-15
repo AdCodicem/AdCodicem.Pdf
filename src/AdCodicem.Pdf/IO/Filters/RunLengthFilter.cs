@@ -11,10 +11,20 @@ internal static class RunLengthFilter
     /// Decodes <paramref name="data"/>, keeping at most <paramref name="maxLength"/> bytes;
     /// <paramref name="limited"/> says whether it decodes to more.
     /// </summary>
+    /// <remarks>
+    /// Data without its end-of-data byte, 128, decodes to its end, and <paramref name="faults"/> says how it ended: after
+    /// a whole run; inside a run of bytes written as they are, those it holds kept; or after the length of a run that
+    /// repeats a byte, without that byte.
+    /// </remarks>
+    /// <param name="data">The encoded data.</param>
+    /// <param name="limited">Whether the data decodes to more than <paramref name="maxLength"/> bytes.</param>
+    /// <param name="faults">How the data ended, when it ended without its end-of-data byte.</param>
+    /// <param name="maxLength">The most the data may decode to.</param>
     public static byte[] Decode(
-        ReadOnlySpan<byte> data, out bool limited, int maxLength)
+        ReadOnlySpan<byte> data, out bool limited, out DataFaults faults, int maxLength)
     {
         limited = false;
+        faults = default;
         var output = new PdfBoundedOutput(data.Length * 2L, maxLength);
         var index = 0;
 
@@ -24,7 +34,7 @@ internal static class RunLengthFilter
 
             if (control == 128)
             {
-                break;
+                return output.ToArray();
             }
 
             if (control < 128)
@@ -35,16 +45,26 @@ internal static class RunLengthFilter
                 if (!output.TryWrite(data.Slice(index, available)))
                 {
                     limited = true;
-                    break;
+                    return output.ToArray();
                 }
 
                 index += available;
+
+                if (available < count)
+                {
+                    faults.Ending = DataEnding.UnmarkedInsideRun;
+                    faults.UnitLength = count;
+                    faults.UnitHeld = available;
+                    return output.ToArray();
+                }
+
                 continue;
             }
 
             if (index >= data.Length)
             {
-                break;
+                faults.Ending = DataEnding.UnmarkedBeforeRepeatedByte;
+                return output.ToArray();
             }
 
             var repeat = 257 - control;
@@ -52,10 +72,11 @@ internal static class RunLengthFilter
             if (!output.TryFill(data[index++], repeat))
             {
                 limited = true;
-                break;
+                return output.ToArray();
             }
         }
 
+        faults.Ending = DataEnding.Unmarked;
         return output.ToArray();
     }
 }
