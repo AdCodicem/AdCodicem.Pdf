@@ -25,7 +25,7 @@ public static class PdfStreamDecodingExtensions
     /// tail or turned corrupt, or an LZW stream that uses a code it has not defined, comes back as what came
     /// before, reported as <see cref="PdfDiagnosticCodes.FilterFailed"/>. A Flate stream that decodes to its end
     /// but whose zlib checksum disagrees comes back whole, reported as
-    /// <see cref="PdfDiagnosticCodes.FilterChecksumMismatch"/>, since some of it may be wrong. Data that nothing
+    /// <see cref="PdfDiagnosticCodes.FilterChecksumMismatch"/>, since some of it may be wrong. Flate data that nothing
     /// could decode comes back as the filters before it left it — encoded, when it is the first —, reported as
     /// <see cref="PdfDiagnosticCodes.FilterFailed"/>, and the filters after it are not tried. Decoding stops
     /// at a filter the library does not recognize: the data comes back as the filters before it decoded it, reported
@@ -65,8 +65,14 @@ public static class PdfStreamDecodingExtensions
 
     /// <summary>
     /// Determines whether the stream's data is an encoded image that <see cref="Decode"/> leaves alone: whether its
-    /// filters, decoded in order, reach an image filter before anything else ends them.
+    /// <c>/Filter</c> entry names an image filter before anything that ends decoding whatever the data holds — a filter
+    /// the library does not know, an element that names no filter, a filter past
+    /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/>.
     /// </summary>
+    /// <remarks>
+    /// None of the data is read: whether a filter before the image filter fails on it, or whether the image is sound,
+    /// takes decoding it, and <see cref="Decode"/> reports what it meets.
+    /// </remarks>
     public static bool HasImageFilter(this PdfStream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);

@@ -129,10 +129,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// parsing of the object it loads besides. No level holds decoded data while it loads the next: a stream resolves
     /// its filters and every parameter they read before its first filter runs (<see cref="Filters.FilterChain"/>), so
     /// that a chain of loads holds at once one stream's decoding, and the object streams
-    /// <see cref="ObjectStreamBudget"/> keeps. A stream an object stream holds, which ISO 32000-1 (7.5.7) forbids, is
-    /// the exception: its <c>/Length</c> is read while its object stream's data is held (#161). The count alone does
-    /// not bound the stack, since each load parses as deep as the parser allows: the stack is asked as well before each
-    /// load.
+    /// <see cref="ObjectStreamBudget"/> keeps. Two things remain. A stream an object stream holds, which ISO 32000-1
+    /// (7.5.7) forbids, is the exception: its <c>/Length</c> is read while its object stream's data is held (#161). And
+    /// each object stream loaded on the chain stays in the object cache with the raw data it read, until the cache lets
+    /// it go (#170). The count alone does not bound the stack, since each load parses as deep as the parser allows: the
+    /// stack is asked as well before each load.
     /// </summary>
     private const int MaxNestedLoads = 64;
 
