@@ -346,6 +346,13 @@ internal sealed class FilterChain
         name == PdfName.FlateDecode || name == PdfName.LZWDecode || name == PdfName.ASCII85Decode ||
         name == PdfName.ASCIIHexDecode || name == PdfName.RunLengthDecode || name == PdfName.Crypt;
 
+    /// <summary>
+    /// Gives the int nearest <paramref name="value"/>, or <paramref name="absent"/> when there is none: a value past what an
+    /// int holds is no other value its low bits would name.
+    /// </summary>
+    private static int Nearest(long? value, int absent) =>
+        value is { } read ? (int)Math.Clamp(read, int.MinValue, int.MaxValue) : absent;
+
     /// <summary>Reads the values of a Flate or LZW step's parameters that decoding it reads.</summary>
     private static bool TryReadParameters<TReader>(PdfName filter, PdfDictionary? parameters, ref TReader reader, out FilterParameters values)
         where TReader : struct, IFilterValueReader
@@ -364,7 +371,7 @@ internal sealed class FilterChain
                 return false;
             }
 
-            values = values with { EarlyChange = (int)(earlyChange.AsInteger() ?? 1) is 0 ? 0 : 1 };
+            values = values with { EarlyChange = earlyChange.AsInteger() is 0 ? 0 : 1 };
         }
 
         if (!reader.TryRead(PdfName.DecodeParms, parameters.GetRaw(PdfName.Predictor), entry: false, out var predictor))
@@ -372,7 +379,7 @@ internal sealed class FilterChain
             return false;
         }
 
-        values = values with { Predictor = (int)(predictor.AsInteger() ?? 1) };
+        values = values with { Predictor = Nearest(predictor.AsInteger(), 1) };
 
         // Without a predictor the other parameters mean nothing, and are not read.
         if (values.Predictor <= 1)
@@ -389,8 +396,8 @@ internal sealed class FilterChain
 
         values = values with
         {
-            Colors = (int)(colors.AsInteger() ?? 1),
-            BitsPerComponent = (int)(bitsPerComponent.AsInteger() ?? 8),
+            Colors = Nearest(colors.AsInteger(), 1),
+            BitsPerComponent = Nearest(bitsPerComponent.AsInteger(), 8),
             Columns = (int)Math.Clamp(columns.AsInteger() ?? 1, 1, int.MaxValue),
         };
         return true;

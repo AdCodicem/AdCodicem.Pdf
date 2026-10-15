@@ -14,7 +14,10 @@ internal readonly record struct FilterParameters
     /// <summary>Gets LZW's <c>/EarlyChange</c>: 0 when the parameters say 0, 1 otherwise.</summary>
     public int EarlyChange { get; init; } = 1;
 
-    /// <summary>Gets the step's <c>/Predictor</c>: 1, no predictor, unless the parameters say otherwise.</summary>
+    /// <summary>
+    /// Gets the step's <c>/Predictor</c>: 1, no predictor, unless the parameters say otherwise; a value past an int is the
+    /// int nearest it, as are <see cref="Colors"/> and <see cref="BitsPerComponent"/>.
+    /// </summary>
     public int Predictor { get; init; } = 1;
 
     /// <summary>Gets the predictor's <c>/Colors</c>, read only when the predictor is past 1.</summary>
