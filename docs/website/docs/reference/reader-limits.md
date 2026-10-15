@@ -69,12 +69,18 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 
 - A stream whose `/Filter` array names more filters than `MaxFilterChainLength` decodes through the first of them only,
   and comes back as they decoded it, as at a filter the library does not know; the elements past the bound are not
-  read, so an image filter there is not seen, and `HasImageFilter` says false. It is reported each time it is decoded:
+  read, so an image filter there is not seen, and `HasImageFilter` says false. It is reported each time decoding
+  reaches the bound — a Flate filter within it that decodes nothing ends decoding first, reported as `filter.failed`
+  alone:
 
   ```text
   Warning limit.filter-chain at 1904: The /Filter entry names more than 64 filters; decoding stopped after the first
   64. Raise PdfReaderLimits.MaxFilterChainLength to read past it.
   ```
+
+  What comes back is still encoded by the filters past the bound, and is no part of what the stream decodes to. A
+  cross-reference stream or an object stream the reader meets so is read as one a guard cut before its data: its rows,
+  or its objects, are unknown until you raise the limit, as what any limit leaves out is.
 
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
@@ -102,8 +108,8 @@ The exception comes from whichever operation reaches the limit:
 | Operation | When |
 |---|---|
 | `PdfDocument.Open` | While it indexes the file and reads its catalog |
-| `GetObject`, or resolving a reference | When an object is too long, or the object stream that holds it decodes too far; when the read rebuilds the index, at any limit the rebuild reaches, once the rebuild is finished; and each time it looks up an object a full index left out |
-| `Decode` | When a stream decodes too far, or names too many filters |
+| `GetObject`, or resolving a reference | When an object is too long, or the object stream that holds it decodes too far or names too many filters; when the read rebuilds the index, at any limit the rebuild reaches, once the rebuild is finished; and each time it looks up an object a full index left out |
+| `Decode` | When a stream decodes too far, or its decoding reaches the filter past `MaxFilterChainLength` |
 | `PdfValidator.Validate` | As it reads, like any other caller |
 
 A document whose index had to be rebuilt finishes the rebuild before throwing, so it stays usable afterwards.

@@ -43,7 +43,7 @@ public static class PdfStreamDecodingExtensions
     /// filters after one the bound stopped decode what it kept, as data the reader cut: that it runs out is not
     /// reported as damage. A <c>/Filter</c> array that names more filters than
     /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> ends decoding before the first past them, reported as
-    /// <see cref="PdfDiagnosticCodes.LimitFilterChain"/>.
+    /// <see cref="PdfDiagnosticCodes.LimitFilterChain"/> when decoding reaches it.
     /// </para>
     /// <para>
     /// The filters and the values of their parameters are read before any of the data is: a parameter held in an
@@ -53,7 +53,7 @@ public static class PdfStreamDecodingExtensions
     /// </remarks>
     /// <exception cref="PdfLimitExceededException">
     /// Decoding reaches one of its document's guards — the data decodes past
-    /// <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, or names more filters than
+    /// <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, or decoding reaches the filter past
     /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> —, and the document was opened with
     /// <see cref="Documents.PdfReaderOptions.ThrowOnLimit"/>.
     /// </exception>

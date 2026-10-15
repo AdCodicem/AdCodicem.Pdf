@@ -32,9 +32,27 @@ internal static class PdfFilterPipeline
     /// from a document is never decoded in silence.
     /// </param>
     /// <param name="guard">Bounds what each filter's output may be and how many filters run, and says what reaching either does.</param>
-    public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard)
+    public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard) =>
+        Decode(stream, diagnostics, guard, out _);
+
+    /// <summary>
+    /// Decodes a stream's data under its document's guards, and says whether the most filters the reader lets data pass
+    /// through ended decoding: what comes back is then the data still encoded by the filters past them, no part of what
+    /// the stream decodes to, as a reader of its rows or its objects must know.
+    /// </summary>
+    /// <param name="stream">The stream to decode.</param>
+    /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
+    /// <param name="leftEncoded">Whether <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> ended decoding.</param>
+    /// <exception cref="PdfLimitExceededException">
+    /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
+    /// </exception>
+    public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, out bool leftEncoded) =>
+        Decode(stream, diagnostics, stream.Data.LimitGuard, out leftEncoded);
+
+    private static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard, out bool leftEncoded)
     {
         diagnostics ??= guard.DocumentDiagnostics;
+        leftEncoded = false;
 
         // Every value the filters are decoded with is resolved before any of the data is read: one an object stream holds
         // decodes that stream while this one holds nothing decoded (#165).
@@ -87,6 +105,7 @@ internal static class PdfFilterPipeline
         }
 
         ReportEnd(chain, diagnostics, stream.Data.Position, guard);
+        leftEncoded = chain.End == FilterChainEnd.Limit;
         return data;
     }
 

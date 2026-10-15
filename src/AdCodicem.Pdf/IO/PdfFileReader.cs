@@ -2705,7 +2705,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         var decoding = _diagnostics.GetMark();
-        var data = xrefStream.Decode(_diagnostics).Span;
+        var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, out var leftEncoded);
+
+        // Data the guard on filters left encoded holds none of the section's rows: the section is cut before its first.
+        var data = leftEncoded ? default : decoded.Span;
         var decodedWhole = !LimitSince(_diagnostics, decoding) && !xrefStream.Data.CutByGuard;
         section.CutByLimit |= !decodedWhole;
 
@@ -3839,8 +3842,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         var mark = _diagnostics.GetMark();
-        var data = stream.Decode(_diagnostics);
+        var data = Filters.PdfFilterPipeline.Decode(stream, _diagnostics, out var leftEncoded);
         var cut = LimitSince(_diagnostics, mark) || stream.Data.CutByGuard;
+
+        // Data the guard on filters left encoded holds none of the stream's objects: what its header says is unknown.
+        if (leftEncoded)
+        {
+            return ObjectStreamHeaderResult.CutByLimit;
+        }
 
         if (first > data.Length)
         {
@@ -4690,7 +4699,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// <remarks>
         /// Each report is placed where the stream's data starts, and says which fault it met and how many of the
         /// stream's objects can still be read from it; it is made once for each stream, however often the stream is
-        /// decoded. A <c>/First</c> past data a guard cut is not reported: the guard was, under its own code.
+        /// decoded. A <c>/First</c> past data a guard cut is not reported, nor data the guard on filters left encoded:
+        /// the guard was, under its own code.
         /// </remarks>
         public static ObjectStreamContents? TryCreate(int number, PdfStream stream, PdfDiagnostics diagnostics, ObjectStreamReports reports)
         {
@@ -4734,8 +4744,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             var mark = diagnostics.GetMark();
-            var data = stream.Decode(diagnostics);
+            var data = Filters.PdfFilterPipeline.Decode(stream, diagnostics, out var leftEncoded);
             var cutByGuard = LimitSince(diagnostics, mark) || stream.Data.CutByGuard;
+
+            // Data the guard on filters left encoded holds none of the stream's objects, as data a guard cut before /First.
+            if (leftEncoded)
+            {
+                return null;
+            }
 
             if (first > data.Length)
             {

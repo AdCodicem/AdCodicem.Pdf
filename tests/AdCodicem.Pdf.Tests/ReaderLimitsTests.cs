@@ -1,4 +1,6 @@
+using System.Buffers.Binary;
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -188,6 +190,33 @@ public class ReaderLimitsTests
         finally
         {
             document?.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData("object stream", "null | limit.filter-chain,limit.filter-chain | xref.checked-in-part:Information")]
+    [InlineData("cross-reference stream", "page | limit.filter-chain,xref.rebuilt | xref.checked-in-part:Information")]
+    public void A_stream_the_reader_reads_whose_filters_pass_the_guard_is_cut_before_its_data(string which, string expected)
+    {
+        // A sound file whose object stream, holding the page, or whose cross-reference stream passes its data through 65
+        // Flate filters. Past the guard on filters the data is still encoded, and none of it is rows or objects: the
+        // stream is cut before them, as a guard that leaves nothing of a stream cuts it. The object stream's members are
+        // unknown until the guard is raised, and a chain left with no section is rebuilt, as for any guard; nothing of
+        // the file is reported as damage — no section read from compressed bytes, no object stream judged unreadable,
+        // and each decode reports the guard.
+        var file = FileOfLayeredStreams(which == "object stream" ? 65 : 1, which == "cross-reference stream" ? 65 : 1);
+
+        Outcome(file, PdfReaderLimits.Default with { MaxFilterChainLength = 100 }).Should().Be("page |  | ");
+        Outcome(file, PdfReaderLimits.Default).Should().Be(expected);
+
+        static string Outcome(byte[] file, PdfReaderLimits limits)
+        {
+            using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+            var page = document.GetObject(new PdfObjectId(3)) is PdfDictionary ? "page" : "null";
+            var findings = new PdfValidator().Validate(document).Findings
+                .Where(finding => finding.RuleId != PdfValidationRuleIds.PageTreeResourcesMissing)
+                .Select(finding => $"{finding.RuleId}:{finding.Severity}");
+            return $"{page} | {string.Join(",", document.Diagnostics.Select(d => d.Code))} | {string.Join(",", findings)}";
         }
     }
 
@@ -1311,6 +1340,65 @@ public class ReaderLimitsTests
     }
 
     private static string Hex(string text) => Convert.ToHexString(Encoding.ASCII.GetBytes(text)) + ">";
+
+    /// <summary>
+    /// A file whose page, object 3, object stream 4 holds, and whose index is cross-reference stream 5: the object stream's
+    /// data passes through <paramref name="objectStreamLayers"/> Flate filters, the rows through <paramref name="rowLayers"/>.
+    /// </summary>
+    private static byte[] FileOfLayeredStreams(int objectStreamLayers, int rowLayers)
+    {
+        using var output = new MemoryStream();
+        var offsets = new long[6];
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        void WriteStream(int number, string entries, byte[] data, int layers)
+        {
+            for (var layer = 0; layer < layers; layer++)
+            {
+                using var compressed = new MemoryStream();
+                using (var zlib = new ZLibStream(compressed, CompressionLevel.NoCompression, leaveOpen: true))
+                {
+                    zlib.Write(data);
+                }
+
+                data = compressed.ToArray();
+            }
+
+            var filters = string.Concat(Enumerable.Repeat("/FlateDecode ", layers));
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< {entries} /Filter [{filters}] /Length {data.Length} >>\nstream\n"));
+            output.Write(data);
+            Write("\nendstream\nendobj\n");
+        }
+
+        Write("%PDF-1.5\n");
+        offsets[1] = output.Position;
+        Write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        offsets[2] = output.Position;
+        Write("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+        const string Member = "3 0 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>";
+        WriteStream(4, "/Type /ObjStm /N 1 /First 4", Encoding.ASCII.GetBytes(Member), objectStreamLayers);
+        offsets[5] = output.Position;
+        var rows = new byte[6 * 7];
+
+        for (var number = 0; number < 6; number++)
+        {
+            var (type, field, index) = number switch
+            {
+                0 => (0, 0L, 65535),
+                3 => (2, 4L, 0),
+                _ => (1, offsets[number], 0),
+            };
+            rows[number * 7] = (byte)type;
+            BinaryPrimitives.WriteUInt32BigEndian(rows.AsSpan((number * 7) + 1), (uint)field);
+            BinaryPrimitives.WriteUInt16BigEndian(rows.AsSpan((number * 7) + 5), (ushort)index);
+        }
+
+        var xref = offsets[5];
+        WriteStream(5, "/Type /XRef /Size 6 /W [1 4 2] /Root 1 0 R", rows, rowLayers);
+        Write(string.Create(CultureInfo.InvariantCulture, $"startxref\n{xref}\n%%EOF\n"));
+        return output.ToArray();
+    }
 
     /// <summary>
     /// How the reader came by its index and its catalog: as the file wrote them, the catalog looked for among the
