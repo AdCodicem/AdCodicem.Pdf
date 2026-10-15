@@ -1351,7 +1351,9 @@ public class HostileInputTests
         dictionary.Set(PdfName.Filter, new PdfArray(chain));
         var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(new byte[] { 0xFF, 0xFF }));
         var diagnostics = new PdfDiagnostics();
-        stream.Decode(new PdfDiagnostics());
+
+        // Decoded once, and its time asserted, before the window: what a first assertion sets up is no part of decoding.
+        Measure(() => stream.Decode(new PdfDiagnostics()));
         var before = GC.GetAllocatedBytesForCurrentThread();
 
         var decoded = Measure(() => stream.Decode(diagnostics));
@@ -1374,7 +1376,11 @@ public class HostileInputTests
         var stream = new PdfStream(dictionary, PdfStreamData.FromMemory("hello"u8.ToArray()));
         var guard = new PdfLimitGuard(PdfReaderLimits.Unbounded, throwOnLimit: false);
         var diagnostics = new PdfDiagnostics();
-        IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard);
+
+        // Decoded and told once, and the time asserted, before the window: what a first assertion sets up is no part of
+        // decoding.
+        Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard));
+        stream.HasImageFilter();
         var before = GC.GetAllocatedBytesForCurrentThread();
 
         var decoded = Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard));
@@ -1402,6 +1408,9 @@ public class HostileInputTests
         var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(new byte[] { 0x80, 0x00 }));
         var guard = new PdfLimitGuard(PdfReaderLimits.Unbounded, throwOnLimit: false);
         var diagnostics = new PdfDiagnostics();
+
+        // Decoded once, and its time asserted, before the window: what a first assertion sets up is no part of decoding.
+        Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard));
         var before = GC.GetAllocatedBytesForCurrentThread();
 
         var decoded = Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard));
