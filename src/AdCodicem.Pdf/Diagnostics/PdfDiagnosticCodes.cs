@@ -229,4 +229,10 @@ public static class PdfDiagnosticCodes
     /// objects past them, in the order the reader met them, were not indexed, and read as null.
     /// </summary>
     public const string LimitIndexEntries = "limit.index-entries";
+
+    /// <summary>
+    /// A stream's <c>/Filter</c> array names more filters than <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/>,
+    /// and decoding stopped before the first past them: the data is what the filters within the bound decoded.
+    /// </summary>
+    public const string LimitFilterChain = "limit.filter-chain";
 }

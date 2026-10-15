@@ -124,6 +124,9 @@ public sealed record CorpusReaderLimits
 
     /// <summary>The most object numbers the index holds.</summary>
     public int? MaxIndexEntries { get; init; }
+
+    /// <summary>The most filters a stream's data passes through.</summary>
+    public int? MaxFilterChainLength { get; init; }
 }
 
 /// <summary>One entry of the corpus manifest.</summary>

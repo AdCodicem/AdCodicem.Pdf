@@ -20,7 +20,7 @@ public class ReaderLimitsTests
 
     /// <summary>A guard for each bound of <see cref="PdfReaderLimits"/>, the trailer's reached two ways.</summary>
     public static TheoryData<string> Guards =>
-        ["decoded stream", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries"];
+        ["decoded stream", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain"];
 
     [Fact]
     public void The_defaults_are_the_bounds_the_reader_kept_before_they_were_options()
@@ -33,6 +33,7 @@ public class ReaderLimitsTests
         limits.MaxXRefSectionCount.Should().Be(1024);
         limits.MaxTrailerLength.Should().Be(64 * 1024);
         limits.MaxIndexEntries.Should().Be(8_388_607);
+        limits.MaxFilterChainLength.Should().Be(64);
         PdfReaderOptions.Default.Limits.Should().BeSameAs(limits);
         PdfReaderOptions.Default.ThrowOnLimit.Should().BeFalse();
     }
@@ -48,6 +49,7 @@ public class ReaderLimitsTests
         limits.MaxXRefSectionCount.Should().Be(int.MaxValue);
         limits.MaxTrailerLength.Should().Be(Array.MaxLength);
         limits.MaxIndexEntries.Should().Be(int.MaxValue);
+        limits.MaxFilterChainLength.Should().Be(int.MaxValue);
     }
 
     [Theory]
@@ -57,6 +59,7 @@ public class ReaderLimitsTests
     [InlineData(nameof(PdfReaderLimits.MaxXRefSectionCount), 0)]
     [InlineData(nameof(PdfReaderLimits.MaxTrailerLength), -1)]
     [InlineData(nameof(PdfReaderLimits.MaxIndexEntries), 0)]
+    [InlineData(nameof(PdfReaderLimits.MaxFilterChainLength), -1)]
     public void A_limit_of_zero_or_less_is_refused_and_named(string limit, int value)
     {
         var setting = () => With(PdfReaderLimits.Default, limit, value);
@@ -75,6 +78,7 @@ public class ReaderLimitsTests
             MaxXRefSectionCount = int.MaxValue,
             MaxTrailerLength = int.MaxValue,
             MaxIndexEntries = int.MaxValue,
+            MaxFilterChainLength = int.MaxValue,
         };
 
         limits.Should().Be(PdfReaderLimits.Unbounded);
@@ -97,7 +101,12 @@ public class ReaderLimitsTests
         var diagnostics = new PdfDiagnostics();
         var unbounded = new PdfLimitGuard(PdfReaderLimits.Unbounded, throwOnLimit: false);
         var justBelow = new PdfLimitGuard(
-            PdfReaderLimits.Default with { MaxXRefSectionCount = int.MaxValue - 1, MaxIndexEntries = int.MaxValue - 1 },
+            PdfReaderLimits.Default with
+            {
+                MaxXRefSectionCount = int.MaxValue - 1,
+                MaxIndexEntries = int.MaxValue - 1,
+                MaxFilterChainLength = int.MaxValue - 1,
+            },
             throwOnLimit: false);
 
         unbounded.Reach(PdfLimit.DecodedStream, diagnostics, "Cut.", 7);
@@ -105,13 +114,17 @@ public class ReaderLimitsTests
         justBelow.Reach(PdfLimit.XRefSectionCount, diagnostics, "Cut.", 9);
         unbounded.Reach(PdfLimit.IndexEntries, diagnostics, "Cut.", 10);
         justBelow.Reach(PdfLimit.IndexEntries, diagnostics, "Cut.", 11);
+        unbounded.Reach(PdfLimit.FilterChain, diagnostics, "Cut.", 12);
+        justBelow.Reach(PdfLimit.FilterChain, diagnostics, "Cut.", 13);
 
         diagnostics.Select(entry => entry.Message).Should().Equal(
             "Cut. PdfReaderLimits.MaxDecodedStreamLength is already at the most the reader can hold.",
             "Cut. PdfReaderLimits.MaxXRefSectionCount is already at the most the reader can hold.",
             "Cut. Raise PdfReaderLimits.MaxXRefSectionCount to read past it.",
             "Cut. PdfReaderLimits.MaxIndexEntries is already at the most the reader can hold.",
-            "Cut. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
+            "Cut. Raise PdfReaderLimits.MaxIndexEntries to read past it.",
+            "Cut. PdfReaderLimits.MaxFilterChainLength is already at the most the reader can hold.",
+            "Cut. Raise PdfReaderLimits.MaxFilterChainLength to read past it.");
     }
 
     [Theory]
@@ -1246,6 +1259,7 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxXRefSectionCount) => limits with { MaxXRefSectionCount = value },
         nameof(PdfReaderLimits.MaxTrailerLength) => limits with { MaxTrailerLength = value },
         nameof(PdfReaderLimits.MaxIndexEntries) => limits with { MaxIndexEntries = value },
+        nameof(PdfReaderLimits.MaxFilterChainLength) => limits with { MaxFilterChainLength = value },
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
@@ -1257,6 +1271,7 @@ public class ReaderLimitsTests
         nameof(PdfReaderLimits.MaxXRefSectionCount) => limits.MaxXRefSectionCount,
         nameof(PdfReaderLimits.MaxTrailerLength) => limits.MaxTrailerLength,
         nameof(PdfReaderLimits.MaxIndexEntries) => limits.MaxIndexEntries,
+        nameof(PdfReaderLimits.MaxFilterChainLength) => limits.MaxFilterChainLength,
         _ => throw new ArgumentOutOfRangeException(nameof(limit), limit, "Not a reader limit."),
     };
 
@@ -1335,6 +1350,7 @@ public class ReaderLimitsTests
             "trailer" => LongTrailer(),
             "cross-reference stream" => LongXRefStreamDictionary(),
             "index entries" => ManyObjects(),
+            "filter chain" => LongFilterChain(),
             _ => throw new ArgumentOutOfRangeException(nameof(guard), guard, "Not a guard."),
         };
 
@@ -1362,6 +1378,29 @@ public class ReaderLimitsTests
 
             static int Decoded(PdfDocument document) =>
                 document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics).Length;
+        }
+
+        private static Case LongFilterChain()
+        {
+            // Three layers of hex around a word, which a bound of two filters leaves one layer of.
+            var file = new TestPdfBuilder()
+                .WithObject(1, Catalog)
+                .WithObject(2, Pages)
+                .Stream(3, "/Filter [/ASCIIHexDecode /ASCIIHexDecode /ASCIIHexDecode]", Hex(Hex(Hex("Hello"))))
+                .BuildClassic(rootNumber: 1);
+
+            return new Case(
+                nameof(PdfReaderLimits.MaxFilterChainLength),
+                PdfDiagnosticCodes.LimitFilterChain,
+                file,
+                PdfReaderLimits.Default with { MaxFilterChainLength = 2 },
+                PdfReaderLimits.Default,
+                document => Encoding.ASCII.GetString(document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics).Span),
+                "Hello",
+                "The /Filter entry names more than 2 filters; decoding stopped after the first 2.",
+                OffsetOf(file, "stream\n") + "stream\n".Length,
+                ThrowsOnOpening: false,
+                ReportsNothingElse: true);
         }
 
         private static Case LongObject()

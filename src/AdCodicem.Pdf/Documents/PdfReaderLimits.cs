@@ -38,6 +38,7 @@ public sealed record PdfReaderLimits
         MaxXRefSectionCount = int.MaxValue,
         MaxTrailerLength = int.MaxValue,
         MaxIndexEntries = int.MaxValue,
+        MaxFilterChainLength = int.MaxValue,
     };
 
     /// <summary>
@@ -137,6 +138,29 @@ public sealed record PdfReaderLimits
             field = value;
         }
     } = 8_388_607;
+
+    /// <summary>
+    /// Gets the most filters a stream's data passes through. Defaults to 64: real streams name one to three, a
+    /// <c>/Crypt</c> filter included, and ISO 32000 sets no bound, while each filter a <c>/Filter</c> array of millions
+    /// names costs decoding a few microseconds, and some of them a table of tens of kilobytes, whatever data it is given.
+    /// </summary>
+    /// <remarks>
+    /// The filters are counted as the <c>/Filter</c> array names them, from its first element. Reaching the bound ends
+    /// decoding before the element past it, as a filter the library does not know does: the data comes back as the
+    /// filters before it decoded it, and a filter past it is not read, an image filter included, so that
+    /// <see cref="Objects.PdfStreamDecodingExtensions.HasImageFilter"/> does not see one. Reaching it reports
+    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitFilterChain"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
+    public int MaxFilterChainLength
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(MaxFilterChainLength));
+            field = value;
+        }
+    } = 64;
 
     private static int Length(int value, [System.Runtime.CompilerServices.CallerMemberName] string? property = null)
     {
