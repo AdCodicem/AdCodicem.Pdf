@@ -13,7 +13,7 @@ saying which bounds a sound file could reach, and follows [8](0008-facade-immuta
 in making them options on an immutable record.
 
 Implemented by `PdfReaderLimits`, `PdfReaderOptions.Limits` and `PdfReaderOptions.ThrowOnLimit`,
-`PdfLimitExceededException`, the six `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
+`PdfLimitExceededException`, the seven `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
 `tests/corpus/manifest.json`, and `ReaderLimitsTests`.
 
 Amended on 2026-09-27, by the maintainer, while M08 was specified: one record bounds every hostile read, the
@@ -50,6 +50,14 @@ can name an object an object stream holds, and decoding one stream could decode 
 deep. A stream now resolves its filters and every parameter they read before any of its data, so that no level of a load
 chain holds decoded data while the next loads; that is what keeps the bound an internal constant.
 
+Amended on 2026-10-15, by the maintainer, during the review of the same change: no count of filters was a bound, yet
+each filter costs decoding something whatever its data — a few microseconds, and for LZW a table of 42 KB —, and a
+filter whose data decodes to itself never runs out of it. A `/Filter` array of forty million names, which an object
+stream's member holds in a file of 350 KB, cost 1.8 s on every decode, and filters that never run out of data could cost
+minutes. A seventh guard, `MaxFilterChainLength` (64, `limit.filter-chain`), bounds the filters a stream's data passes
+through, counted as its `/Filter` array names them: decoding stops before the first past it, as at a filter the library
+does not know, and nothing past it is read. Real streams name one to three.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -75,6 +83,7 @@ claims; neither bounded what it was said to, and the 2026-10-14 amendment made t
 | The number of cross-reference sections | 1,024 | A document saved incrementally more than a thousand times |
 | A trailer | 64 KB | A trailer is a few hundred bytes in practice; nothing forbids more. A cross-reference stream's dictionary is its trailer: its `/Index` holds two numbers per subsection, and a document updated in many scattered places has thousands |
 | The entries of the index | 8,388,607 | The informative annex C of ISO 32000-1 gives Acrobat's limit as 8,388,607 objects, and PDF/A-1 to 3 make it normative; PDF 2.0 sets none, and PDFium raised its own past it for documents of about six million. Each entry the index holds costs 52 to 108 bytes, so the default holds 436 to 906 MB of index |
+| The filters a stream's data passes through | 64 | ISO 32000 sets no limit on how many filters a `/Filter` array names; real streams name one to three, `/Crypt` among them, and qpdf reads three thousand |
 
 None of these was an option. Until T21, T23 and T31 some were not even reported, or were reported as damage
 in the file: the map's image came out as "a Flate stream was truncated".
@@ -92,9 +101,9 @@ hands its output out a piece at a time can read the stream (T28).
 We will read every PDF that is valid under ISO 32000, and treat each bound a valid file can exceed as a
 guard: active by default, reported when it is reached, and lifted by an option.
 
-- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the six bounds
+- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the seven bounds
   of the table: `MaxDecodedStreamLength`, `MaxObjectLength`, `MaxXRefSectionLength`, `MaxXRefSectionCount`,
-  `MaxTrailerLength` and `MaxIndexEntries`. `PdfReaderLimits.Default` keeps the values above;
+  `MaxTrailerLength`, `MaxIndexEntries` and `MaxFilterChainLength`. `PdfReaderLimits.Default` keeps the values above;
   `PdfReaderLimits.Unbounded` takes the implementation's maximums — `Array.MaxLength` for a length,
   `int.MaxValue` for a count. A value of zero or less is refused; a value above the implementation's maximum is
   taken as that maximum.
@@ -103,7 +112,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
   choosing `Unbounded`.
 - **Reaching a guard** keeps what fits within it, as the reader does today, and reports it as a warning
   under a code of its own — `limit.decoded-stream`, `limit.object`, `limit.xref-section-length`,
-  `limit.xref-section-count`, `limit.trailer`, `limit.index-entries` — whose message names the property that
+  `limit.xref-section-count`, `limit.trailer`, `limit.index-entries`, `limit.filter-chain` — whose message names the property that
   lifts it. What the parser met at the cut is the reader's, not the file's, and is dropped in favor of the guard. An
   object, a section or a trailer is reported once, however often it is read again; a stream, each time it is
   decoded past the bound, by the first of its filters that stopped there, and in its document's diagnostics when the

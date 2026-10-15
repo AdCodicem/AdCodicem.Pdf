@@ -428,6 +428,7 @@ public class CorpusReadingTests
             Raises(raised.MaxXRefSectionCount, limits.MaxXRefSectionCount, PdfReaderLimits.Default.MaxXRefSectionCount, file);
             Raises(raised.MaxTrailerLength, limits.MaxTrailerLength, PdfReaderLimits.Default.MaxTrailerLength, file);
             Raises(raised.MaxIndexEntries, limits.MaxIndexEntries, PdfReaderLimits.Default.MaxIndexEntries, file);
+            Raises(raised.MaxFilterChainLength, limits.MaxFilterChainLength, PdfReaderLimits.Default.MaxFilterChainLength, file);
             limits.Should().NotBe(PdfReaderLimits.Default, $"{file}: readerLimits raises at least one limit");
         }
 
@@ -494,6 +495,7 @@ public class CorpusReadingTests
             MaxXRefSectionCount = raised.MaxXRefSectionCount ?? limits.MaxXRefSectionCount,
             MaxTrailerLength = raised.MaxTrailerLength ?? limits.MaxTrailerLength,
             MaxIndexEntries = raised.MaxIndexEntries ?? limits.MaxIndexEntries,
+            MaxFilterChainLength = raised.MaxFilterChainLength ?? limits.MaxFilterChainLength,
         };
     }
 
@@ -506,7 +508,8 @@ public class CorpusReadingTests
             || (raised.MaxXRefSectionLength != defaults.MaxXRefSectionLength && message.Contains("PdfReaderLimits.MaxXRefSectionLength", StringComparison.Ordinal))
             || (raised.MaxXRefSectionCount != defaults.MaxXRefSectionCount && message.Contains("PdfReaderLimits.MaxXRefSectionCount", StringComparison.Ordinal))
             || (raised.MaxTrailerLength != defaults.MaxTrailerLength && message.Contains("PdfReaderLimits.MaxTrailerLength", StringComparison.Ordinal))
-            || (raised.MaxIndexEntries != defaults.MaxIndexEntries && message.Contains("PdfReaderLimits.MaxIndexEntries", StringComparison.Ordinal));
+            || (raised.MaxIndexEntries != defaults.MaxIndexEntries && message.Contains("PdfReaderLimits.MaxIndexEntries", StringComparison.Ordinal))
+            || (raised.MaxFilterChainLength != defaults.MaxFilterChainLength && message.Contains("PdfReaderLimits.MaxFilterChainLength", StringComparison.Ordinal));
     }
 
     /// <summary>

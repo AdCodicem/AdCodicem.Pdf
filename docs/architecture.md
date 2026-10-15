@@ -167,7 +167,8 @@ goes wrong. No intermediate layer may drop it.
   stream is still held whole, up to `PdfReaderLimits.MaxDecodedStreamLength` and at most `Array.MaxLength`,
   until M23 decodes a piece at a time ([#48]), in native memory if a measurement asks for it (ADR 35). Of a chain
   of filters, the filters before the last share that bound for what they pass along together, so that decoding a
-  stream holds two bounds at most however many filters it names; and a stream resolves its filters and their
+  stream holds two bounds at most however many filters it names, and `MaxFilterChainLength` (64) bounds how many it
+  runs; and a stream resolves its filters and their
   parameters before any of its data, so that a chain of loads — a parameter an object stream holds, that object
   stream's own parameters — holds no decoded output per level. What reading holds at once is the object streams
   the reader keeps (32 MB), the one it decoded last, and one decoding in progress, which costs up to about five

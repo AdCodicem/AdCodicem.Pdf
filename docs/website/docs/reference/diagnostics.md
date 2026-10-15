@@ -128,8 +128,9 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `limit.xref-section-count` | The chain of cross-reference sections is longer than `MaxXRefSectionCount`; the newest were read, and what only the older ones index reads as null. Reported where the chain goes on, or, when that lies outside the file, at the section whose `/Prev` names it, the offset in the message |
 | `limit.trailer` | A trailer, or a cross-reference stream's dictionary, is longer than `MaxTrailerLength`; the part within it was parsed, and the chain ends there: an older section, an `/XRefStm` or a `/Root` past the cut is unknown, what only the older sections index reading as null |
 | `limit.index-entries` | The index holds `MaxIndexEntries` object numbers — those in use, free or refused — and met another: the numbers it holds were indexed, and an object past them reads as null. Reported once a document, where the first number it had no room for was met: the section that gave it, the object header or object stream a rebuild read, or the chain's newest section for an entry the chain gave that a rebuild could not keep |
+| `limit.filter-chain` | A stream's `/Filter` array names more filters than `MaxFilterChainLength`, `/Crypt` among them; decoding stopped before the first past them, with what the filters within the bound decoded, and the elements past them were not read |
 
-The six `limit.*` codes report the reader's own limits, not faults of the file; each message names the property of
+The seven `limit.*` codes report the reader's own limits, not faults of the file; each message names the property of
 `PdfReaderLimits` that lifts it. They are listed with their defaults in [Reader limits](reader-limits.md).
 
 ### Faults of the syntax
@@ -191,6 +192,7 @@ Warning syntax.unexpected-token at 125: A token was found where a value was expe
 | Flate or LZW, a predictor whose parameters describe rows longer than the decoded data | `filter.failed`, Warning | The data as decoded, the predictor not undone |
 | Nothing decodes before the fault | `filter.failed`, Warning | The data as the filters before it left it — still encoded, when it is the first —, and the filters after it are not tried |
 | Decodes past `MaxDecodedStreamLength` | `limit.decoded-stream`, Warning | The data up to the bound |
+| Names more filters than `MaxFilterChainLength` | `limit.filter-chain`, Warning | The data as the filters within the bound decoded it |
 
 The byte counts in these reports are the Flate filter's own. The bytes kept are counted before any predictor
 (`/DecodeParms` `/Predictor`) is applied, so `Decode` may return another length — a PNG predictor takes a byte off

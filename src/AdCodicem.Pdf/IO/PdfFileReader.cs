@@ -2851,7 +2851,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         var following = new Following(this);
-        return Filters.FilterChain.TryFollow(dictionary, ref following) ? null : following.Fault;
+        return Filters.FilterChain.TryFollow(dictionary, _guard.Bound(PdfLimit.FilterChain), ref following) ? null : following.Fault;
     }
 
     /// <summary>

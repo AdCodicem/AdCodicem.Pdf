@@ -8,7 +8,8 @@ namespace AdCodicem.Pdf.IO.Filters;
 internal static class PdfFilterPipeline
 {
     /// <summary>
-    /// Decodes a stream's data, stopping at an image filter, and at a filter it does not know.
+    /// Decodes a stream's data, stopping at an image filter, at a filter it does not know, and past the most filters the
+    /// reader's guard lets data pass through.
     /// </summary>
     /// <remarks>
     /// Image filters are left in place on purpose: a JPEG inside a PDF is already a JPEG, and decoding it
@@ -19,7 +20,7 @@ internal static class PdfFilterPipeline
     /// <param name="stream">The stream to decode.</param>
     /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
     /// <exception cref="PdfLimitExceededException">
-    /// The data decodes past its document's bound, and the document was opened to throw when it does.
+    /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
     /// </exception>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics) =>
         Decode(stream, diagnostics, stream.Data.LimitGuard);
@@ -30,14 +31,14 @@ internal static class PdfFilterPipeline
     /// Receives what decoding met; when none are supplied, the guard's document does, so that a stream read
     /// from a document is never decoded in silence.
     /// </param>
-    /// <param name="guard">Bounds what each filter's output may be, and says what reaching it does.</param>
+    /// <param name="guard">Bounds what each filter's output may be and how many filters run, and says what reaching either does.</param>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard)
     {
         diagnostics ??= guard.DocumentDiagnostics;
 
         // Every value the filters are decoded with is resolved before any of the data is read: one an object stream holds
         // decodes that stream while this one holds nothing decoded (#165).
-        var chain = FilterChain.Resolve(stream.Dictionary);
+        var chain = FilterChain.Resolve(stream.Dictionary, guard.Bound(PdfLimit.FilterChain));
         var data = stream.GetRawBytes();
 
         // Whether the data a filter is given is data the reader cut at one of its limits: the parser's window cut the
@@ -85,7 +86,7 @@ internal static class PdfFilterPipeline
             shared -= data.Length;
         }
 
-        ReportEnd(chain, diagnostics, stream.Data.Position);
+        ReportEnd(chain, diagnostics, stream.Data.Position, guard);
         return data;
     }
 
@@ -197,8 +198,23 @@ internal static class PdfFilterPipeline
     }
 
     /// <summary>Reports what ended the chain before its last element, when it is no image filter.</summary>
-    private static void ReportEnd(FilterChain chain, PdfDiagnostics? diagnostics, long position)
+    /// <exception cref="PdfLimitExceededException">
+    /// The guard ended the chain, and the document was opened to throw when it does.
+    /// </exception>
+    private static void ReportEnd(FilterChain chain, PdfDiagnostics? diagnostics, long position, PdfLimitGuard guard)
     {
+        if (chain.End == FilterChainEnd.Limit)
+        {
+            guard.Reach(
+                PdfLimit.FilterChain,
+                diagnostics,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The /Filter entry names more than {chain.EndIndex:N0} filters; decoding stopped after the first {chain.EndIndex:N0}."),
+                position);
+            return;
+        }
+
         var message = chain.End switch
         {
             FilterChainEnd.Unsupported => $"The filter {FileQuote.Name((PdfName)chain.EndValue!)} is not supported; decoding stopped there.",

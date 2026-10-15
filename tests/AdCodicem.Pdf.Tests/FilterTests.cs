@@ -685,6 +685,50 @@ public class FilterTests
     }
 
     [Fact]
+    public void Reads_nothing_past_the_most_filters_the_guard_lets_a_stream_pass_through()
+    {
+        // Three hex layers under a guard of two: the third element, a reference, is not read, and the data comes back as
+        // the two decoded it, with the guard reported.
+        var source = Substitute.For<IPdfObjectSource>();
+        var dictionary = new PdfObjectParser("<< /Filter [/ASCIIHexDecode /ASCIIHexDecode 9 0 R] /DecodeParms [null null 9 0 R] >>"u8.ToArray(), source: source)
+            .ParseObject().AsDictionary().Required();
+        var encoded = "Hi"u8.ToArray();
+
+        for (var layer = 0; layer < 3; layer++)
+        {
+            encoded = Encoding.ASCII.GetBytes(Convert.ToHexString(encoded) + ">");
+        }
+
+        var guard = new PdfLimitGuard(PdfReaderLimits.Default with { MaxFilterChainLength = 2 }, throwOnLimit: false);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = PdfFilterPipeline.Decode(new PdfStream(dictionary, PdfStreamData.FromMemory(encoded)), diagnostics, guard);
+
+        Text(decoded).Should().Be("4869>");
+        source.ReceivedCalls().Should().BeEmpty();
+        var report = diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.LimitFilterChain);
+        report.Message.Should().Be(
+            "The /Filter entry names more than 2 filters; decoding stopped after the first 2. " +
+            "Raise PdfReaderLimits.MaxFilterChainLength to read past it.");
+    }
+
+    [Theory]
+    [InlineData(63, true)]
+    [InlineData(64, false)]
+    public void Says_a_stream_is_an_image_only_when_its_image_filter_stands_within_the_guard(int crypts, bool image)
+    {
+        // The guard counts every filter the array names, /Crypt among them: an image filter past the 64th is never
+        // reached, and decoding would stop before it.
+        var dictionary = new PdfObjectParser(
+            Encoding.ASCII.GetBytes("<< /Filter [" + string.Concat(Enumerable.Repeat("/Crypt ", crypts)) + "/DCTDecode] >>"))
+            .ParseObject().AsDictionary().Required();
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(new byte[] { 0xFF, 0xD8 }));
+
+        stream.HasImageFilter().Should().Be(image);
+    }
+
+    [Fact]
     public void Tells_a_corrupt_flate_stream_from_one_that_reaches_the_bound()
     {
         var corrupt = new PdfDiagnostics();

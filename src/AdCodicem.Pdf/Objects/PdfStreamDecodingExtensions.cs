@@ -41,7 +41,9 @@ public static class PdfStreamDecodingExtensions
     /// reported once as <see cref="PdfDiagnosticCodes.LimitDecodedStream"/>; the filters before the last share the
     /// bound for what they pass along together (<see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>). The
     /// filters after one the bound stopped decode what it kept, as data the reader cut: that it runs out is not
-    /// reported as damage.
+    /// reported as damage. A <c>/Filter</c> array that names more filters than
+    /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> ends decoding before the first past them, reported as
+    /// <see cref="PdfDiagnosticCodes.LimitFilterChain"/>.
     /// </para>
     /// <para>
     /// The filters and the values of their parameters are read before any of the data is: a parameter held in an
@@ -50,7 +52,9 @@ public static class PdfStreamDecodingExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="PdfLimitExceededException">
-    /// The data decodes past its document's bound, and the document was opened with
+    /// Decoding reaches one of its document's guards — the data decodes past
+    /// <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, or names more filters than
+    /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> —, and the document was opened with
     /// <see cref="Documents.PdfReaderOptions.ThrowOnLimit"/>.
     /// </exception>
     public static ReadOnlyMemory<byte> Decode(this PdfStream stream, PdfDiagnostics? diagnostics = null)
@@ -66,6 +70,6 @@ public static class PdfStreamDecodingExtensions
     public static bool HasImageFilter(this PdfStream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        return FilterChain.EndOf(stream.Dictionary) == FilterChainEnd.Image;
+        return FilterChain.EndOf(stream.Dictionary, stream.Data.LimitGuard.Bound(IO.PdfLimit.FilterChain)) == FilterChainEnd.Image;
     }
 }

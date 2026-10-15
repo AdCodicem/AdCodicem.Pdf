@@ -259,6 +259,19 @@ public class CrossReferenceRuleTests
         document.WasRepaired.Should().Be(repaired);
     }
 
+    [Fact]
+    public void A_cross_reference_stream_s_filters_past_the_guard_are_not_followed()
+    {
+        // Sixty-four /Crypt filters, then a reference no section places: decoding stops at the guard before it, so the
+        // section is read without it, and the guard alone is reported.
+        var layout = "/Size 6 /W [1 4 2] /Filter [" + string.Concat(Enumerable.Repeat("/Crypt ", 64)) + "1 0 R]";
+        using var document = PdfDocument.Open(Replace(XRefStreamFile(), "/Size 6 /W [1 4 2]", layout));
+
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitFilterChain);
+    }
+
     [Theory]
     [InlineData("2147483648")]
     [InlineData("9223372036854775807")]

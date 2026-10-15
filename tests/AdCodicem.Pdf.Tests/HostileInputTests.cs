@@ -1303,9 +1303,10 @@ public class HostileInputTests
     public void Decodes_a_long_chain_of_sound_flate_layers_within_twice_the_bound()
     {
         // Two thousand layers of zlib, each storing the one inside it, around two bytes: a sound stream whose layers
-        // grow by a few bytes each, about 23 MB together. Each filter was bounded alone, so that a few hundred kilobytes
+        // grow by a few bytes each, about 22 MB together. Each filter was bounded alone, so that a few hundred kilobytes
         // of file decoded every layer, gigabytes for twenty thousand. The filters before the last share the bound: they
-        // stop once they have passed along a megabyte together, and the chain allocates a few bounds' worth.
+        // stop once they have passed along a megabyte together, and the chain allocates a few bounds' worth, under a
+        // guard raised to let every filter run.
         const int Bound = 1024 * 1024;
         var data = "ok"u8.ToArray();
 
@@ -1325,7 +1326,8 @@ public class HostileInputTests
         var dictionary = new PdfDictionary();
         dictionary.Set(PdfName.Filter, new PdfArray(chain));
         var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(data));
-        var guard = new PdfLimitGuard(PdfReaderLimits.Default with { MaxDecodedStreamLength = Bound }, throwOnLimit: false);
+        var guard = new PdfLimitGuard(
+            PdfReaderLimits.Default with { MaxDecodedStreamLength = Bound, MaxFilterChainLength = 2_000 }, throwOnLimit: false);
         var diagnostics = new PdfDiagnostics();
         var before = GC.GetAllocatedBytesForCurrentThread();
 
@@ -1334,6 +1336,29 @@ public class HostileInputTests
         (GC.GetAllocatedBytesForCurrentThread() - before).Should().BeLessThan(8L * Bound);
         decoded.Length.Should().Be(0);
         diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Fact]
+    public void Decodes_a_stream_naming_a_million_filters_at_the_cost_of_as_many_as_the_guard_lets_run()
+    {
+        // A million /RunLengthDecode over FF FF, which each decodes to itself: every filter has data to decode, whatever
+        // the bound, and each cost about a hundred bytes and a tenth of a microsecond, seconds for an array an object
+        // stream holds, and a filter whose data never empties can cost tens of kilobytes. The guard ends the chain after
+        // the 64th, and the elements past it are not even read.
+        var chain = new PdfObject[1_000_000];
+        Array.Fill(chain, PdfName.RunLengthDecode);
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, new PdfArray(chain));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(new byte[] { 0xFF, 0xFF }));
+        var diagnostics = new PdfDiagnostics();
+        stream.Decode(new PdfDiagnostics());
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        var decoded = Measure(() => stream.Decode(diagnostics));
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().BeLessThan(64 * 1024);
+        decoded.ToArray().Should().Equal(0xFF, 0xFF);
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitFilterChain);
     }
 
     [Fact]

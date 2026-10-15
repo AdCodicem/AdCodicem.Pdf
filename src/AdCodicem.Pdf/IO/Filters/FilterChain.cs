@@ -26,6 +26,11 @@ namespace AdCodicem.Pdf.IO.Filters;
 /// first, beside a single name —, or a <c>/DecodeParms</c> dictionary for every step of the chain.
 /// </para>
 /// <para>
+/// The chain ends, too, at the element past <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/>, the reader's
+/// guard: ISO 32000 sets no bound, and each filter of a <c>/Filter</c> array of millions costs decoding a few
+/// microseconds, some of them a table of tens of kilobytes, whatever data it is given.
+/// </para>
+/// <para>
 /// What was resolved is kept in less room than the file wrote it in. The <c>/Filter</c> array is read again as the steps
 /// run, so a name it holds costs nothing more; only the name an element written as a reference led to is kept. A
 /// dictionary that serves every step is read once for Flate and once for LZW, and of an array of parameters, only the
@@ -87,7 +92,8 @@ internal sealed class FilterChain
 
     /// <summary>
     /// Gets the value that ends the chain: the name of a filter the library does not know, the element that names no
-    /// filter, or the <c>/Filter</c> entry that is neither a name nor an array; null when nothing ends it, or an image filter does.
+    /// filter, or the <c>/Filter</c> entry that is neither a name nor an array; null when nothing ends it, an image filter
+    /// or the guard does.
     /// </summary>
     public PdfObject? EndValue { get; }
 
@@ -96,10 +102,11 @@ internal sealed class FilterChain
     /// parameters decoding reads.
     /// </summary>
     /// <param name="dictionary">The stream's dictionary.</param>
-    public static FilterChain Resolve(PdfDictionary dictionary)
+    /// <param name="maxFilters">The most filters the stream's data may pass through: the chain ends at the element past them.</param>
+    public static FilterChain Resolve(PdfDictionary dictionary, int maxFilters)
     {
         var reader = default(Resolving);
-        TryRead(dictionary, ref reader, readParameters: true, keep: true, out var reading);
+        TryRead(dictionary, maxFilters, ref reader, readParameters: true, keep: true, out var reading);
         return reading.Filters is null ? NoFilter : new FilterChain(reading);
     }
 
@@ -108,10 +115,11 @@ internal sealed class FilterChain
     /// parameters and keeping nothing.
     /// </summary>
     /// <param name="dictionary">The stream's dictionary.</param>
-    public static FilterChainEnd EndOf(PdfDictionary dictionary)
+    /// <param name="maxFilters">The most filters the stream's data may pass through: the chain ends at the element past them.</param>
+    public static FilterChainEnd EndOf(PdfDictionary dictionary, int maxFilters)
     {
         var reader = default(Resolving);
-        TryRead(dictionary, ref reader, readParameters: false, keep: false, out var reading);
+        TryRead(dictionary, maxFilters, ref reader, readParameters: false, keep: false, out var reading);
         return reading.End;
     }
 
@@ -120,11 +128,12 @@ internal sealed class FilterChain
     /// reads before any of its data, in the order decoding reads them, and keeps nothing.
     /// </summary>
     /// <param name="dictionary">The stream's dictionary.</param>
+    /// <param name="maxFilters">The most filters the stream's data may pass through: the chain ends at the element past them.</param>
     /// <param name="reader">Follows each value to what it leads to, and can end the reading.</param>
     /// <returns>False when <paramref name="reader"/> ended the reading.</returns>
-    public static bool TryFollow<TReader>(PdfDictionary dictionary, ref TReader reader)
+    public static bool TryFollow<TReader>(PdfDictionary dictionary, int maxFilters, ref TReader reader)
         where TReader : struct, IFilterValueReader =>
-        TryRead(dictionary, ref reader, readParameters: true, keep: false, out _);
+        TryRead(dictionary, maxFilters, ref reader, readParameters: true, keep: false, out _);
 
     /// <summary>Gets the steps decoding runs, in order.</summary>
     public Steps GetEnumerator() => new(this);
@@ -174,12 +183,14 @@ internal sealed class FilterChain
     /// and the values of their parameters decoding reads, in the order decoding needs them.
     /// </summary>
     /// <param name="dictionary">The stream's dictionary.</param>
+    /// <param name="maxFilters">The most filters the stream's data may pass through: the chain ends at the element past them.</param>
     /// <param name="reader">Follows each value to what it leads to, and can end the reading.</param>
     /// <param name="readParameters">Whether the parameters are read, or only the names of the filters.</param>
     /// <param name="keep">Whether what decoding needs again is kept, or only what ends the chain.</param>
     /// <param name="reading">What was read.</param>
     /// <returns>False when <paramref name="reader"/> ended the reading.</returns>
-    private static bool TryRead<TReader>(PdfDictionary dictionary, ref TReader reader, bool readParameters, bool keep, out Reading reading)
+    private static bool TryRead<TReader>(
+        PdfDictionary dictionary, int maxFilters, ref TReader reader, bool readParameters, bool keep, out Reading reading)
         where TReader : struct, IFilterValueReader
     {
         reading = new Reading();
@@ -214,6 +225,14 @@ internal sealed class FilterChain
 
         for (var index = 0; index < length; index++)
         {
+            // Past the guard, nothing is read: the element there ends the chain as a filter the library does not know does.
+            if (index == maxFilters)
+            {
+                reading.End = FilterChainEnd.Limit;
+                reading.EndIndex = index;
+                return true;
+            }
+
             var written = array is null ? filters : array[index];
             var element = written;
 

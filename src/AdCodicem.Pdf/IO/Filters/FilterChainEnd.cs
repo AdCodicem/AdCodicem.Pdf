@@ -17,4 +17,7 @@ internal enum FilterChainEnd
 
     /// <summary>A <c>/Filter</c> entry that is neither a name nor an array.</summary>
     NotAFilterEntry,
+
+    /// <summary>An element past the most filters the reader's guard lets a stream's data pass through.</summary>
+    Limit,
 }

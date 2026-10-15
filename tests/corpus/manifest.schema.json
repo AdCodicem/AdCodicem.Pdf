@@ -276,7 +276,8 @@
               "limit.xref-section-length",
               "limit.xref-section-count",
               "limit.trailer",
-              "limit.index-entries"
+              "limit.index-entries",
+              "limit.filter-chain"
             ]
           },
           "uniqueItems": true
@@ -466,6 +467,12 @@
           "type": "integer",
           "description": "The most object numbers the index holds.",
           "exclusiveMinimum": 8388607,
+          "maximum": 2147483647
+        },
+        "maxFilterChainLength": {
+          "type": "integer",
+          "description": "The most filters a stream's data passes through.",
+          "exclusiveMinimum": 64,
           "maximum": 2147483647
         }
       }

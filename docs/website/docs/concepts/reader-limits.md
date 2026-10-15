@@ -56,11 +56,19 @@ whose index is broken, since a rebuild would report a sound file as damaged and 
 ## What decoding a stream may hold
 
 `MaxDecodedStreamLength` bounds what a stream decodes to, and a stream's data may pass through several filters, each
-decoding what the one before it gave. ISO 32000 sets no limit on how many: a sound stream can name thousands, and qpdf
-reads them. So the number of filters is not bounded; what they decode is. The filters before the last share one bound
-for what they pass along together, and the last has its own, so that a stream of one or two filters decodes as each
-filter alone would, and a chain however long holds, and fills, two bounds at most. When the filters before the last
-reach theirs, the stream comes back as what the last decoded of what they kept, and the report says decoding stopped.
+decoding what the one before it gave. The filters before the last share one bound for what they pass along together,
+and the last has its own, so that a stream of one or two filters decodes as each filter alone would, and a chain however
+long holds, and fills, two bounds at most. When the filters before the last reach theirs, the stream comes back as what
+the last decoded of what they kept, and the report says decoding stopped.
+
+ISO 32000 sets no limit on how many filters a stream names, and real streams name one to three. Each filter costs
+decoding something whatever its data — a few microseconds, and for LZW a table of tens of kilobytes —, and a filter
+whose data decodes to itself never runs out of it: a `/Filter` array of millions, which an object stream's member can
+hold in a file of a few hundred kilobytes, cost seconds on every decode, more for filters that never run out of data.
+`MaxFilterChainLength` bounds how many filters a stream's data passes through, 64 by default: decoding stops before the
+first past it, as at a filter the library does not know, and nothing past it is read. Data a filter decodes to nothing
+ends decoding too, since every filter after it would decode nothing to nothing. Of the filters it read, decoding keeps
+less than the `/Filter` array holds: nothing for a name the array holds itself.
 
 A filter's parameters can name an object, and that object can sit in an object stream that has to be decoded first,
 whose own parameters can name another. A stream therefore reads its filters and every parameter they need before it

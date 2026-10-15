@@ -19,11 +19,12 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 | `MaxXRefSectionCount` | 1,024 | A document saved incrementally more than a thousand times | The newest sections | `limit.xref-section-count` |
 | `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary: its `/Index` grows with every scattered update | The trailer as far as the bound | `limit.trailer` |
 | `MaxIndexEntries` | 8,388,607 | A document of more objects than ISO 32000-1's Annex C advises; or a cross-reference stream of one-byte rows, of which 256 MB decode from a few hundred bytes | The object numbers indexed first: the newest sections', a rebuild's first | `limit.index-entries` |
+| `MaxFilterChainLength` | 64 | A `/Filter` array naming more filters, `/Crypt` among them: real streams name one to three, and a hostile array of millions costs decoding a few microseconds a filter, and some filters a table of tens of kilobytes, whatever their data | The data as the filters within the bound decoded it; the elements past it are not read | `limit.filter-chain` |
 
 | Member | Value |
 |---|---|
 | `PdfReaderLimits.Default` | Every limit at the default above; what `PdfReaderOptions.Limits` holds unless you set it |
-| `PdfReaderLimits.Unbounded` | Every length at `Array.MaxLength`, about 2 GB, and `MaxXRefSectionCount` and `MaxIndexEntries` at `int.MaxValue` |
+| `PdfReaderLimits.Unbounded` | Every length at `Array.MaxLength`, about 2 GB, and `MaxXRefSectionCount`, `MaxIndexEntries` and `MaxFilterChainLength` at `int.MaxValue` |
 
 `MaxIndexEntries` bounds what a document costs after opening too. The index holds 52 to 63 bytes an object, up to 108
 when a rebuild grew it, so 436 MB or more at the default bound; and validating a document costs about 3 µs and 350
@@ -66,6 +67,15 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   stopped in the /RunLengthDecode data. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   ```
 
+- A stream whose `/Filter` array names more filters than `MaxFilterChainLength` decodes through the first of them only,
+  and comes back as they decoded it, as at a filter the library does not know; the elements past the bound are not
+  read, so an image filter there is not seen, and `HasImageFilter` says false. It is reported each time it is decoded:
+
+  ```text
+  Warning limit.filter-chain at 1904: The /Filter entry names more than 64 filters; decoding stopped after the first
+  64. Raise PdfReaderLimits.MaxFilterChainLength to read past it.
+  ```
+
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever
@@ -93,7 +103,7 @@ The exception comes from whichever operation reaches the limit:
 |---|---|
 | `PdfDocument.Open` | While it indexes the file and reads its catalog |
 | `GetObject`, or resolving a reference | When an object is too long, or the object stream that holds it decodes too far; when the read rebuilds the index, at any limit the rebuild reaches, once the rebuild is finished; and each time it looks up an object a full index left out |
-| `Decode` | When a stream decodes too far |
+| `Decode` | When a stream decodes too far, or names too many filters |
 | `PdfValidator.Validate` | As it reads, like any other caller |
 
 A document whose index had to be rebuilt finishes the rebuild before throwing, so it stays usable afterwards.

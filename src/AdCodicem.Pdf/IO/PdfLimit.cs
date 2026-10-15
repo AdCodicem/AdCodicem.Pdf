@@ -23,4 +23,7 @@ internal enum PdfLimit
 
     /// <summary>How long a trailer, or a cross-reference stream's dictionary, may be.</summary>
     Trailer,
+
+    /// <summary>How many filters a stream's data may pass through.</summary>
+    FilterChain,
 }

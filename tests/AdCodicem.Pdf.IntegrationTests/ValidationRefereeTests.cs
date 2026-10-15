@@ -173,6 +173,7 @@ public class ValidationRefereeTests(RefereeContainer referee)
                 MaxXRefSectionCount = raised.MaxXRefSectionCount ?? limits.MaxXRefSectionCount,
                 MaxTrailerLength = raised.MaxTrailerLength ?? limits.MaxTrailerLength,
                 MaxIndexEntries = raised.MaxIndexEntries ?? limits.MaxIndexEntries,
+                MaxFilterChainLength = raised.MaxFilterChainLength ?? limits.MaxFilterChainLength,
             };
         }
 
