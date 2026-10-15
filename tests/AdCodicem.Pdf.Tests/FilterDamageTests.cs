@@ -1205,6 +1205,71 @@ public class FilterDamageTests
         document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
     }
 
+    [Theory]
+    [InlineData("ASCIIHexDecode", "4142434>", "ABC@")]
+    [InlineData("ASCII85Decode", "87cURD]i,\"Ebo7~>", "Hello World")]
+    public void Completes_the_unit_its_end_marker_closes_however_the_reader_cut_the_data_after_it(string filter, string encoded, string expected)
+    {
+        // The window MaxObjectLength allows ends a few characters past the end marker: the digit, or the short group,
+        // before the marker is the file's last, which the marker closes, and is completed as in data nothing cut.
+        var data = encoded + new string(' ', 400);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, $"<< /Filter /{filter} /Length 2 >>\nstream\n{data}\nendstream")
+            .BuildClassic(rootNumber: 1);
+        var header = file.AsSpan().IndexOf("3 0 obj"u8);
+        var start = file.AsSpan().IndexOf(Encoding.ASCII.GetBytes(data));
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = start + encoded.Length + 5 - header } };
+
+        using var document = PdfDocument.Open(file, options);
+        var decoded = document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics);
+
+        Encoding.ASCII.GetString(decoded.Span).Should().Be(expected);
+        document.Diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void Undoes_a_predictor_over_the_rows_of_a_bounded_lzw_output_and_the_part_of_the_last_it_holds()
+    {
+        // Ten PNG-up rows of four bytes, LZW-encoded: the bound cuts LZW's output as it cuts Flate's, and the predictor
+        // undoes the whole rows and, of the row cut, what follows its tag byte, with the guard alone reported.
+        var predicted = new byte[50];
+        for (var row = 0; row < 10; row++)
+        {
+            predicted[row * 5] = 2;
+            for (var column = 1; column < 5; column++)
+            {
+                predicted[(row * 5) + column] = (byte)column;
+            }
+        }
+
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(12));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(4));
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfName.LZWDecode);
+        dictionary.Set(PdfName.DecodeParms, parameters);
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(LzwEncode(predicted)));
+        var failures = new List<string>();
+
+        for (var bound = 1; bound <= 50; bound++)
+        {
+            var diagnostics = new PdfDiagnostics();
+            var guard = new PdfLimitGuard(PdfReaderLimits.Default with { MaxDecodedStreamLength = bound }, throwOnLimit: false);
+            var output = PdfFilterPipeline.Decode(stream, diagnostics, guard).ToArray();
+            var expected = Enumerable.Range(0, bound).Where(at => at % 5 != 0).Select(at => (byte)(((at / 5) + 1) * (at % 5))).ToArray();
+
+            if (!output.SequenceEqual(expected) ||
+                !diagnostics.Select(d => d.Code).SequenceEqual(bound < 50 ? [PdfDiagnosticCodes.LimitDecodedStream] : []))
+            {
+                failures.Add($"bound {bound}: [{string.Join(",", output)}], [{string.Join(";", diagnostics.Select(d => d.Code))}]");
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
     [Fact]
     public void Says_nothing_of_the_end_of_data_a_filter_before_it_stopped_at_the_bound_in_a_document()
     {

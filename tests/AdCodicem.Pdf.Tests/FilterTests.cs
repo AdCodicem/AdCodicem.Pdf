@@ -753,6 +753,53 @@ public class FilterTests
     }
 
     [Fact]
+    public void Leaves_the_partial_last_row_of_data_the_reader_did_not_cut_as_the_predictor_left_it()
+    {
+        // Two PNG-up rows and two bytes of a third, whole as the file wrote them: the rows are undone, and the bytes
+        // that make no row are left out, as before predictors learned to undo the part of a row a cut left (#162).
+        byte[] rows = [2, 1, 2, 3, 4, 2, 1, 1, 1, 1, 2, 9, 9];
+        var parameters = new PdfDictionary();
+        parameters.Set(PdfName.Predictor, PdfInteger.Create(12));
+        parameters.Set(PdfName.Columns, PdfInteger.Create(4));
+        var dictionary = new PdfDictionary();
+        dictionary.Set(PdfName.Filter, PdfName.FlateDecode);
+        dictionary.Set(PdfName.DecodeParms, parameters);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(Compress(rows))).Decode(diagnostics);
+
+        decoded.ToArray().Should().Equal(1, 2, 3, 4, 2, 3, 4, 5);
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Reads_a_stream_s_data_from_the_file_once_every_value_its_filters_read_is_loaded()
+    {
+        // A stream whose Flate step takes its parameters from an object an object stream holds: decoding loads that
+        // object stream, and reads the stream's own data from the file only once it has, so that the data is not held
+        // while the object stream decodes (#165).
+        byte[] rows = [2, 1, 2, 3, 4, 2, 1, 1, 1, 1];
+        var hex = Convert.ToHexString(Compress(rows)) + ">";
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(5, "/Filter [/ASCIIHexDecode /FlateDecode] /DecodeParms [null 12 0 R]", hex)
+            .WithObject(12, "<< /Predictor 12 /Columns 4 >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [12], compressObjectStream: true);
+        var source = new RecordingSource(file);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default, ownsSource: true);
+        var stream = document.GetObject(new PdfObjectId(5)).AsStream().Required();
+        source.Reads.Clear();
+
+        var decoded = stream.Decode(document.Diagnostics);
+
+        decoded.ToArray().Should().Equal(1, 2, 3, 4, 2, 3, 4, 5);
+        document.Diagnostics.Should().BeEmpty();
+        source.Reads.Should().HaveCountGreaterThan(1, "the object stream is read from the file too").And.EndWith(stream.Data.Position);
+        source.Reads.Count(offset => offset == stream.Data.Position).Should().Be(1);
+    }
+
+    [Fact]
     public void Tells_a_corrupt_flate_stream_from_one_that_reaches_the_bound()
     {
         var corrupt = new PdfDiagnostics();
@@ -1296,6 +1343,23 @@ public class FilterTests
     }
 
     private static string Text(ReadOnlyMemory<byte> data) => Encoding.ASCII.GetString(data.Span);
+
+    /// <summary>A file in memory that records where each read starts.</summary>
+    private sealed class RecordingSource(byte[] data) : PdfFileSource
+    {
+        /// <summary>Gets where each read started, in order.</summary>
+        public List<long> Reads { get; } = [];
+
+        public override long Length => data.Length;
+
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            Reads.Add(offset);
+            var count = (int)Math.Min(buffer.Length, data.Length - offset);
+            data.AsSpan((int)offset, count).CopyTo(buffer);
+            return count;
+        }
+    }
 
     /// <summary>Data that counts how often a decoder looks at it.</summary>
     private sealed class LookCountingMemory(byte[] contents) : MemoryManager<byte>
