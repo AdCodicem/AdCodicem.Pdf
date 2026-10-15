@@ -32,12 +32,13 @@ namespace AdCodicem.Pdf.IO.Filters;
 /// towards it, though decoding runs no step for it.
 /// </para>
 /// <para>
-/// What was resolved is kept in less room than the file wrote it in. The <c>/Filter</c> array is read again as the steps
-/// run, so a name it holds costs nothing more; only the name an element written as a reference led to is kept. A
-/// dictionary that serves every step is read once for Flate and once for LZW, and of an array of parameters, only the
-/// values that are not those of no parameters at all are kept, each with its step's place. The array can hold millions
-/// of elements — an object stream's member is read from as much data as the stream decodes to —, and a chain that kept
-/// an entry for each would cost several times the array on every decode.
+/// What was resolved is kept only where the file did not write it plainly. The <c>/Filter</c> array is read again as the
+/// steps run, so a name it holds costs nothing more; the name an element written as a reference led to is kept, a slot
+/// each. A dictionary that serves every step is read once for Flate and once for LZW, and of an array of parameters, only
+/// the values that are not those of no parameters at all are kept, each with its step's place. The array can hold
+/// millions of elements — an object stream's member is read from as much data as the stream decodes to —, and a chain
+/// that kept an entry for each would cost several times the array on every decode. What it keeps for references stays
+/// within what the guard lets run, 64 entries by default.
 /// </para>
 /// </remarks>
 internal sealed class FilterChain
