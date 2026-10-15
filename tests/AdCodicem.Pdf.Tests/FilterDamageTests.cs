@@ -926,6 +926,23 @@ public class FilterDamageTests
         early.Should().NotEqual(plain);
     }
 
+    [Fact]
+    public void Gives_a_dictionary_of_parameters_beside_a_chain_to_its_flate_and_its_lzw_steps_alike()
+    {
+        // [/FlateDecode /LZWDecode] beside one dictionary, which serves every step: the LZW step reads its /EarlyChange 0
+        // from it though a Flate step read the dictionary first, and the data decodes whole.
+        var plain = ContentStream(40);
+        var dictionary = new PdfObjectParser("<< /Filter [/FlateDecode /LZWDecode] /DecodeParms << /EarlyChange 0 >> >>"u8.ToArray())
+            .ParseObject().AsDictionary().Required();
+        var encoded = Compress(LzwEncode(plain, earlyChange: 0), CompressionLevel.Optimal);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(encoded)).Decode(diagnostics);
+
+        decoded.ToArray().Should().Equal(plain);
+        diagnostics.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData("/EarlyChange 4294967296", "lzw")]
     [InlineData("/EarlyChange -4294967296.0", "lzw")]
