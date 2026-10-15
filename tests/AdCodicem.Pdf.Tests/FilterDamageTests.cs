@@ -927,6 +927,28 @@ public class FilterDamageTests
     }
 
     [Theory]
+    [InlineData("/EarlyChange 4294967296", "lzw")]
+    [InlineData("/EarlyChange -4294967296.0", "lzw")]
+    [InlineData("/Predictor 4294967297 /Columns 4", "png")]
+    public void Reads_a_parameter_past_an_int_as_the_int_nearest_it_rather_than_its_low_bits(string entries, string data)
+    {
+        // A multiple of 2^32 narrowed to an int is 0, and 2^32 + 1 is 1: /EarlyChange 4294967296 read as 0, and a
+        // /Predictor of 4294967297 as no predictor. Neither value is the one its low bits name: an /EarlyChange that is
+        // not 0 is 1, and a predictor past an int is a PNG one, whose rows are undone.
+        byte[] rows = [2, 1, 2, 3, 4, 2, 1, 1, 1, 1];
+        var plain = ContentStream(40);
+        var dictionary = new PdfObjectParser(Encoding.ASCII.GetBytes($"<< /Filter /{(data == "lzw" ? "LZWDecode" : "FlateDecode")} /DecodeParms << {entries} >> >>"))
+            .ParseObject().AsDictionary().Required();
+        var encoded = data == "lzw" ? LzwEncode(plain) : Compress(rows, CompressionLevel.Optimal);
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(encoded)).Decode(diagnostics);
+
+        decoded.ToArray().Should().Equal(data == "lzw" ? plain : [1, 2, 3, 4, 2, 3, 4, 5]);
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData(258)]
     [InlineData(300)]
     public void Stops_at_an_lzw_code_used_with_nothing_before_it_to_define_it_from(int code)
