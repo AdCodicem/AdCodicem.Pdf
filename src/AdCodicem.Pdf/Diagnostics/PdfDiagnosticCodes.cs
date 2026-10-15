@@ -172,8 +172,8 @@ public static class PdfDiagnosticCodes
     public const string TrailerRootRecovered = "trailer.root-recovered";
 
     /// <summary>
-    /// A filter's data is not what the filter says. Data that nothing could decode was left encoded; data that
-    /// decoded in part — a Flate stream that lost its tail or turned corrupt, an LZW stream that uses a code it has
+    /// A filter's data is not what the filter says. Flate data that nothing could decode was left as the filters before it
+    /// left it, and decoding stopped there; data that decoded in part — a Flate stream that lost its tail or turned corrupt, an LZW stream that uses a code it has
     /// not defined — was kept as far as it went; data read despite a fault that lost nothing, such as a missing
     /// zlib header or checksum, is reported as a repair. The message says which, and where a Flate stream's data
     /// turned corrupt.
@@ -194,9 +194,10 @@ public static class PdfDiagnosticCodes
     public const string FilterUnsupported = "filter.unsupported";
 
     /// <summary>
-    /// A stream decodes to more than <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, and only
-    /// the part within it was kept. Like every <c>limit.*</c> code, the guard is the reader's, not damage in
-    /// the file.
+    /// A filter of a stream decodes to more than <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, or the
+    /// filters before the last pass along more than it together, and decoding stopped there: the data comes back as the
+    /// filters after the cut decode what was kept within the bound. Like every <c>limit.*</c> code, the guard is the
+    /// reader's, not damage in the file.
     /// </summary>
     public const string LimitDecodedStream = "limit.decoded-stream";
 
