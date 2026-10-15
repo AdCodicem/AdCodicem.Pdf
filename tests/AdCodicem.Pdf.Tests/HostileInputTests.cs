@@ -1344,7 +1344,8 @@ public class HostileInputTests
         // A million /RunLengthDecode over FF FF, which each decodes to itself: every filter has data to decode, whatever
         // the bound, and each cost about a hundred bytes and a tenth of a microsecond, seconds for an array an object
         // stream holds, and a filter whose data never empties can cost tens of kilobytes. The guard ends the chain after
-        // the 64th, and the elements past it are not even read.
+        // the 64th, and the elements past it are not even read; each of the 64 reports the end-of-data byte its data
+        // lacks (#141), a cost the guard bounds too.
         var chain = new PdfObject[1_000_000];
         Array.Fill(chain, PdfName.RunLengthDecode);
         var dictionary = new PdfDictionary();
@@ -1360,7 +1361,8 @@ public class HostileInputTests
 
         (GC.GetAllocatedBytesForCurrentThread() - before).Should().BeLessThan(64 * 1024);
         decoded.ToArray().Should().Equal(0xFF, 0xFF);
-        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.LimitFilterChain);
+        diagnostics.Select(d => d.Code).Should().Equal([.. Enumerable.Repeat(PdfDiagnosticCodes.FilterFailed, 64), PdfDiagnosticCodes.LimitFilterChain]);
+        diagnostics.Take(64).Should().OnlyContain(d => d.Severity == PdfDiagnosticSeverity.Repair);
     }
 
     [Fact]
@@ -1398,14 +1400,14 @@ public class HostileInputTests
     [Fact]
     public void Decodes_nothing_further_once_a_filter_has_decoded_a_stream_to_nothing()
     {
-        // A hundred thousand /LZWDecode over data the first decodes to nothing, read under every guard raised as far as
-        // it goes: each filter after it decoded nothing to nothing, and set up a code table of 42 KB to do it, 4 GB in
-        // all. Decoding stops at data that is empty.
+        // A hundred thousand /LZWDecode over data the first decodes to nothing — a clear code, then the end-of-data code —,
+        // read under every guard raised as far as it goes: each filter after it decoded nothing to nothing, and set up a
+        // code table of 42 KB to do it, 4 GB in all. Decoding stops at data that is empty.
         var chain = new PdfObject[100_000];
         Array.Fill(chain, PdfName.LZWDecode);
         var dictionary = new PdfDictionary();
         dictionary.Set(PdfName.Filter, new PdfArray(chain));
-        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(new byte[] { 0x80, 0x00 }));
+        var stream = new PdfStream(dictionary, PdfStreamData.FromMemory(new byte[] { 0x80, 0x40, 0x40 }));
         var guard = new PdfLimitGuard(PdfReaderLimits.Unbounded, throwOnLimit: false);
         var diagnostics = new PdfDiagnostics();
 

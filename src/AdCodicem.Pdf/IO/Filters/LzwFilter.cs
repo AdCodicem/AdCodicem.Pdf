@@ -25,19 +25,22 @@ internal static class LzwFilter
     /// <remarks>
     /// Data that uses a code it has not defined is corrupt from there on: decoding stops, what came before is
     /// kept, and <paramref name="undefinedCode"/> says which code it was. Data that ends without the
-    /// end-of-data code is taken as complete, as other readers take it — qpdf among them —, since nothing
-    /// tells it from data whose encoder left the code out.
+    /// end-of-data code decodes to its end, as other readers decode it — qpdf among them —, and
+    /// <paramref name="ending"/> says so, and whether it ends inside a code: on a whole byte past the last code, or on
+    /// bits a padding to the byte would leave zero.
     /// </remarks>
     /// <param name="data">The encoded data.</param>
     /// <param name="earlyChange">1 when the code width grows one code early, as by default; 0 otherwise.</param>
     /// <param name="limited">Whether the data decodes to more than <paramref name="maxLength"/> bytes.</param>
     /// <param name="undefinedCode">The code decoding stopped at because the data had not defined it, or -1.</param>
+    /// <param name="ending">How the data ended, when it ran out before its end-of-data code.</param>
     /// <param name="maxLength">The most the data may decode to.</param>
     public static byte[] Decode(
-        ReadOnlySpan<byte> data, int earlyChange, out bool limited, out int undefinedCode, int maxLength)
+        ReadOnlySpan<byte> data, int earlyChange, out bool limited, out int undefinedCode, out DataEnding ending, int maxLength)
     {
         limited = false;
         undefinedCode = -1;
+        ending = DataEnding.Marked;
 
         var table = new byte[MaxCodes][];
         for (var i = 0; i < 256; i++)
@@ -116,6 +119,9 @@ internal static class LzwFilter
             }
         }
 
+        // What is left is fewer bits than a code: an encoder pads the last code to the byte with zero bits, so a whole byte,
+        // or a bit that is set, is part of a code the data lost.
+        ending = bitCount >= 8 || bitBuffer != 0 ? DataEnding.UnmarkedInsideCode : DataEnding.Unmarked;
         return output.ToArray();
     }
 }

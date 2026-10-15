@@ -87,8 +87,23 @@ it may be wrong — the checksum does not say where. In the project's test corpu
 could be shown intact, and 39 were shown damaged, 28 of them by a change of line endings that, undone, makes
 the checksum agree.
 
-An LZW stream that uses a code it has not defined stops there, since what follows cannot be read reliably. An LZW
-stream without its end-of-data code is taken as complete, as other readers take it.
+An LZW stream that uses a code it has not defined stops there, since what follows cannot be read reliably.
+
+ASCII85, ASCIIHex and RunLength data that breaks its format is decoded as other readers decode it, and reported. A byte
+that encodes nothing where it stands — outside the alphabet, or a `z` inside an ASCII85 group — is passed over and the
+rest decoded: a warning, since what the rest decodes to may not be what was encoded, where qpdf and MuPDF stop at that
+byte. An ASCII85 group whose value does not fit in four bytes decodes to its four low-order bytes, as every reader
+measured decodes it, and is a warning too; a `~` that something other than `>` follows ends the data, what follows lost.
+The `<~` PostScript writes before ASCII85 data is passed over, and the data read as meant: a repair, where qpdf and MuPDF
+read nothing.
+
+Data whose end marker is missing — ASCII85's `~>`, ASCIIHex's `>`, RunLength's end-of-data byte, LZW's end-of-data
+code — is decoded to its end, as every reader measured decodes it, and reported, since the format asks for the marker.
+Data that ends after a whole group, pair or run lost nothing anyone can tell: a repair. Data that ends inside one was
+likely cut short: the unit is completed as a last one is, or kept as far as it goes, or, for a single ASCII85 digit,
+which encodes no byte, and for an LZW code the data holds only part of, dropped — a warning. An LZW stream is padded to
+the byte with zero bits after its last code: a whole byte past it, or a bit that is set, is part of a code. What follows an end marker is no part of the data, and is not reported. Of
+data the reader cut, the end is the reader's, and no marker is missing from it.
 
 Decoding is lazy like the rest of reading, so a stream's damage is reported when the stream is decoded, not when the
 document opens — and a stream you built in memory and decode without a `PdfDiagnostics` of your own has nowhere to

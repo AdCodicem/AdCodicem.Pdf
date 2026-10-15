@@ -175,7 +175,8 @@ internal static class PdfFilterPipeline
 
         if (name == PdfName.LZWDecode)
         {
-            var decoded = LzwFilter.Decode(data.Span, step.Parameters.EarlyChange, out var limited, out var undefinedCode, maxLength);
+            var decoded = LzwFilter.Decode(
+                data.Span, step.Parameters.EarlyChange, out var limited, out var undefinedCode, out var ending, maxLength);
 
             if (undefinedCode >= 0)
             {
@@ -186,30 +187,169 @@ internal static class PdfFilterPipeline
                         $"An LZW stream uses code {undefinedCode}, which it has not defined; what decoded before it was kept."),
                     position);
             }
+            else if (ending == DataEnding.Unmarked && !given)
+            {
+                // Data the reader cut ends early because the reader stopped reading it: that no code ends it says nothing
+                // of the file.
+                diagnostics?.Repair(
+                    PdfDiagnosticCodes.FilterFailed,
+                    "An LZW stream ends without its end-of-data code; it decoded to the end of its data.",
+                    position);
+            }
+            else if (ending == DataEnding.UnmarkedInsideCode && !given)
+            {
+                diagnostics?.Warn(
+                    PdfDiagnosticCodes.FilterFailed,
+                    "An LZW stream ends without its end-of-data code, inside a code, whose bits were dropped; data may have been lost.",
+                    position);
+            }
 
             Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
             return ApplyPredictor(decoded, step, diagnostics, position, cut);
         }
 
+        byte[] text;
+        bool textLimited;
+        DataFaults faults;
+
         if (name == PdfName.ASCII85Decode)
         {
-            var decoded = Ascii85Filter.Decode(data.Span, out var limited, maxLength, given);
-            Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
-            return decoded;
+            text = Ascii85Filter.Decode(data.Span, out textLimited, out faults, maxLength, given);
         }
-
-        if (name == PdfName.ASCIIHexDecode)
+        else if (name == PdfName.ASCIIHexDecode)
         {
-            var decoded = AsciiHexFilter.Decode(data.Span, out var limited, maxLength, given);
-            Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
-            return decoded;
+            text = AsciiHexFilter.Decode(data.Span, out textLimited, out faults, maxLength, given);
+        }
+        else
+        {
+            // The chain runs no other step (FilterChain.Steps).
+            text = RunLengthFilter.Decode(data.Span, out textLimited, out faults, maxLength);
         }
 
-        // The chain runs no other step (FilterChain.Steps).
-        var runs = RunLengthFilter.Decode(data.Span, out var runsLimited, maxLength);
-        Reached(runsLimited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
-        return runs;
+        // The end of data the reader cut, or of data the filter stopped decoding at the bound, is the reader's: only what
+        // the filter read is the file's.
+        ReportFaults(faults, name, data.Length, textLimited, ended: !given && !textLimited, diagnostics, position);
+        Reached(textLimited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
+        return text;
     }
+
+    /// <summary>
+    /// Reports what an ASCII85, ASCIIHex or RunLength filter met that its format does not allow: a fault of the data the
+    /// filter read once for each kind, at the byte where the first lies, and how the data ended when it ended without its
+    /// end marker. Nothing lost is a repair, and data that may have been lost or decoded wrong a warning.
+    /// </summary>
+    /// <param name="faults">What the filter met.</param>
+    /// <param name="name">The filter.</param>
+    /// <param name="encoded">How many bytes the filter was given.</param>
+    /// <param name="stopped">Whether the filter stopped at the bound, the faults it counts being those of the part it read.</param>
+    /// <param name="ended">
+    /// Whether the filter read its data to the end the file gave it, which its end then says something of: an end marker
+    /// missing, or a <c>~</c> no <c>&gt;</c> follows, where the reader cut the data or the filter stopped is the cut's.
+    /// </param>
+    /// <param name="diagnostics">Receives the reports.</param>
+    /// <param name="position">Where the stream's data starts.</param>
+    private static void ReportFaults(
+        in DataFaults faults, PdfName name, int encoded, bool stopped, bool ended, PdfDiagnostics? diagnostics, long position)
+    {
+        if (diagnostics is null)
+        {
+            return;
+        }
+
+        var subject = name == PdfName.ASCII85Decode ? "An ASCII85 stream" : name == PdfName.ASCIIHexDecode ? "An ASCIIHex stream" : "A RunLength stream";
+        var read = stopped ? " before decoding stopped at the bound" : string.Empty;
+
+        if (faults.Introducer)
+        {
+            diagnostics.Repair(
+                PdfDiagnosticCodes.FilterFailed,
+                $"{subject} starts with the <~ PostScript writes and PDF does not; it was passed over.",
+                position);
+        }
+
+        if (faults.Passed > 0)
+        {
+            diagnostics.Warn(
+                PdfDiagnosticCodes.FilterFailed,
+                faults.Passed == 1
+                    ? Invariant($"{subject} holds a byte that encodes nothing{read}, at byte {faults.FirstPassed} of its {encoded}; it was passed over.")
+                    : Invariant($"{subject} holds {faults.Passed} bytes that encode nothing{read}, the first at byte {faults.FirstPassed} of its {encoded}; they were passed over."),
+                position);
+        }
+
+        if (faults.Overflowing > 0)
+        {
+            diagnostics.Warn(
+                PdfDiagnosticCodes.FilterFailed,
+                faults.Overflowing == 1
+                    ? Invariant($"{subject} holds a group whose value does not fit in four bytes{read}, ending at byte {faults.FirstOverflowing} of its {encoded}; it was decoded to the four low-order bytes of its value, which may be wrong.")
+                    : Invariant($"{subject} holds {faults.Overflowing} groups whose values do not fit in four bytes{read}, the first ending at byte {faults.FirstOverflowing} of its {encoded}; each was decoded to the four low-order bytes of its value, which may be wrong."),
+                position);
+        }
+
+        if (faults.BrokenMarker > 0)
+        {
+            diagnostics.Warn(
+                PdfDiagnosticCodes.FilterFailed,
+                Invariant($"{subject} holds a ~ that no > follows, at byte {faults.BrokenMarker} of its {encoded}; decoding stopped there, and what follows was not decoded."),
+                position);
+        }
+
+        if (faults.LoneDigit)
+        {
+            diagnostics.Warn(
+                PdfDiagnosticCodes.FilterFailed,
+                $"{subject} ends, before the ~ that closes it, with a group of a single digit, which encodes no byte; it was dropped.",
+                position);
+        }
+
+        if (!ended)
+        {
+            return;
+        }
+
+        if (faults.UnfinishedMarker)
+        {
+            diagnostics.Repair(
+                PdfDiagnosticCodes.FilterFailed,
+                $"{subject} ends on a ~ that no > follows; it decoded to the end of its data.",
+                position);
+        }
+
+        if (faults.Ending == DataEnding.Marked)
+        {
+            return;
+        }
+
+        var marker = name == PdfName.ASCII85Decode ? "its ~> end marker" : name == PdfName.ASCIIHexDecode ? "its > end marker" : "its end-of-data byte";
+
+        if (faults.Ending == DataEnding.Unmarked)
+        {
+            diagnostics.Repair(PdfDiagnosticCodes.FilterFailed, $"{subject} ends without {marker}; it decoded to the end of its data.", position);
+            return;
+        }
+
+        var message = faults.Ending switch
+        {
+            DataEnding.UnmarkedInsideUnit when name == PdfName.ASCII85Decode =>
+                Invariant($"{subject} ends without {marker}, inside a group of {faults.UnitLength} digits; the group was completed as a last one is, and data may have been lost."),
+            DataEnding.UnmarkedInsideUnit =>
+                $"{subject} ends without {marker}, after a digit without its pair; it was completed with a 0 as a last one is, and data may have been lost.",
+            DataEnding.UnmarkedAfterLoneDigit =>
+                $"{subject} ends without {marker}, after a group of a single digit, which encodes no byte; it was dropped, and data may have been lost.",
+            DataEnding.UnmarkedInsideRun when faults.UnitLength == 1 =>
+                $"{subject} ends after the length of a run of 1 byte, without that byte; data may have been lost.",
+            DataEnding.UnmarkedInsideRun when faults.UnitHeld == 0 =>
+                Invariant($"{subject} ends after the length of a run of {faults.UnitLength} bytes, without any of them; data may have been lost."),
+            DataEnding.UnmarkedInsideRun =>
+                Invariant($"{subject} ends inside a run of {faults.UnitLength} bytes, of which it holds {faults.UnitHeld}; they were kept, and data may have been lost."),
+            _ => $"{subject} ends after the length of a run, without the byte the run repeats; data may have been lost.",
+        };
+
+        diagnostics.Warn(PdfDiagnosticCodes.FilterFailed, message, position);
+    }
+
+    private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>Reports what ended the chain before its last element, when it is no image filter.</summary>
     /// <exception cref="PdfLimitExceededException">

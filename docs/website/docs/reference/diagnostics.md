@@ -119,7 +119,7 @@ Codes are stable: they are part of the public contract, because callers filter o
 | `syntax.key-repeated` | A dictionary gives a key more than once, which ISO 32000-1 (7.3.7) forbids: keys compare as they read, so a key written with `#xx` escapes repeats the one written without. The last value given is kept, and a null given last removes the key, as qpdf, pdf.js, PDFBox, MuPDF and pdfium read it; a key given with no value, before `>>` or `endobj`, is one given null, and a value a guard's cut leaves short removes nothing. Reported for each key given again, where it is given, unless a window's edge reaches the key itself, the key quoted in the message; inside an object an object stream holds, where the stream's data starts, the member and the byte in the message |
 | `object.redefined` | Rebuilding the index met more than one definition of an object number. Raised once for each rebuild, as `Information` with no position: how many definitions met a number already found, the first ten of those numbers, and which definition was kept — the last written directly in the file, or, for a number written only inside object streams, the first listed in the object stream read first |
 | `trailer.root-recovered` | The trailer's `/Root` does not lead to a document catalog, and the catalog was found among the file's objects — those its index holds when the index is sound, a rebuilt index's otherwise |
-| `filter.failed` | A filter's data is damaged: Flate data of which nothing decoded before the byte the fault lies in is left as the filters before it decoded it, and the filters after it are not tried; otherwise what decoded is kept, up to that byte or to the end — nothing, for LZW data whose first code is undefined, and the filters after it decode that —, and a repair when nothing was lost |
+| `filter.failed` | A filter's data is damaged: Flate data of which nothing decoded before the byte the fault lies in is left as the filters before it decoded it, and the filters after it are not tried; otherwise what decoded is kept, up to that byte or to the end — nothing, for LZW data whose first code is undefined, and the filters after it decode that —, and a repair when nothing was lost. ASCII85, ASCIIHex, RunLength and LZW data that breaks its format — a byte that encodes nothing, an end marker missing or out of place — is decoded as other readers decode it (*Damaged stream data*, below) |
 | `filter.checksum-mismatch` | A Flate stream decoded to its end, but its zlib checksum disagrees with what it decoded to: all of it was kept, and some of it may be wrong |
 | `filter.unsupported` | The file names a filter the library does not implement, or an element of `/Filter` names no filter at all, or `/Filter` is neither a name nor an array; decoding stopped there, with what the filters before it decoded. A `/Filter` that is null is one the stream does not have, and is not reported |
 | `limit.decoded-stream` | A filter decodes to more than `MaxDecodedStreamLength`, or the filters before the last pass along more than it together; decoding stopped there, and the stream comes back as the filters after the cut decode what was kept within the bound |
@@ -188,28 +188,40 @@ Warning syntax.unexpected-token at 125: A token was found where a value was expe
 | Flate, turns corrupt | `filter.failed`, Warning | What decoded before the byte the fault lies in |
 | Flate, checksum disagrees with what decoded to its end | `filter.checksum-mismatch`, Warning | All of it; some may be wrong |
 | LZW, uses a code it has not defined | `filter.failed`, Warning, naming the code | What decoded before the code |
-| LZW, no end-of-data code | — | All of it, taken as complete |
+| LZW, no end-of-data code, after a whole code | `filter.failed`, Repair | All of it, decoded to its end |
+| LZW, no end-of-data code, inside a code — a whole byte no code completes, or a bit a padding leaves zero | `filter.failed`, Warning | All of it but the code's bits |
+| ASCII85 or ASCIIHex, a byte that encodes nothing — outside the alphabet, or a `z` inside an ASCII85 group —, at the byte where the first lies | `filter.failed`, Warning | All of it, the byte passed over |
+| ASCII85, a group whose value does not fit in four bytes | `filter.failed`, Warning | All of it, the group as its four low-order bytes |
+| ASCII85, a `~` that something other than `>` follows | `filter.failed`, Warning | What decoded before the `~` |
+| ASCII85, ends on a `~` with no `>`, or starts with the `<~` PostScript writes | `filter.failed`, Repair | All of it |
+| ASCII85, a last group of a single digit before the `~` that closes the data, which encodes no byte | `filter.failed`, Warning | All of it but the digit |
+| ASCII85, ASCIIHex or RunLength, no end marker after a whole group, pair or run | `filter.failed`, Repair | All of it, decoded to its end |
+| ASCII85, ASCIIHex or RunLength, no end marker, inside a group, a pair or a run | `filter.failed`, Warning | All of it: the group completed with `u`, the digit with `0`, as a last one is; the run's bytes it holds; a lone ASCII85 digit dropped |
 | Flate or LZW, a predictor whose parameters describe rows longer than the decoded data | `filter.failed`, Warning | The data as decoded, the predictor not undone |
 | Flate, nothing decodes before the fault | `filter.failed`, Warning | The data as the filters before it left it — still encoded, when it is the first —, and the filters after it are not tried |
 | A filter decodes past `MaxDecodedStreamLength`, or the filters before the last pass along more than it together | `limit.decoded-stream`, Warning | What the filters after the cut decode of the data up to the bound |
 | Names more filters than `MaxFilterChainLength` | `limit.filter-chain`, Warning | The data as the filters within the bound decoded it |
 
-The byte counts in these reports are the Flate filter's own. The bytes kept are counted before any predictor
-(`/DecodeParms` `/Predictor`) is applied, so `Decode` may return another length — a PNG predictor takes a byte off
-each row. The byte where the fault was found counts from the start of the data the Flate filter was given, and the
-length the report gives is that data's: the stream's data when Flate is its only filter, what the filter before it
-decoded to otherwise. A stream the reader itself cut at one of its limits is reported as that limit, not as a lost
-tail; a fault in the part it did read is the file's, and is reported. That holds whoever cut it: the window the parser
-reads an object through, or a filter before this one that stopped at `MaxDecodedStreamLength`. Of data the reader cut,
-no lost tail or missing checksum is reported, a hexadecimal digit without its pair or an ASCII85 group short of five is
-dropped rather than completed, and a predictor undoes the part of its last row the data holds rather than report rows
-the parameters describe as longer than the data.
+The byte counts in these reports are the reporting filter's own. The bytes kept are counted before any predictor
+(`/DecodeParms` `/Predictor`) is applied, so `Decode` may return another length — a PNG predictor takes a byte off each
+row. The byte where the fault was found counts from 1 at the start of the data the filter was given, and the length the
+report gives is that data's: the stream's data when the filter is its only one, what the filter before it decoded to
+otherwise. Each kind of fault is reported once for each filter of the stream, however often its data repeats it; a
+filter stopped at `MaxDecodedStreamLength` counts the faults of the part it read, and says so. A stream the reader
+itself cut at one of its limits is reported as that limit, not as a lost tail; a fault in the part it did read is the
+file's, and is reported. That holds whoever cut it: the window the parser reads an object through, or a filter before
+this one that stopped at `MaxDecodedStreamLength`. Of data the reader cut, no lost tail, missing checksum or missing end
+marker is reported, a hexadecimal digit without its pair or an ASCII85 group short of five is dropped rather than
+completed, and a predictor undoes the part of its last row the data holds rather than report rows the parameters
+describe as longer than the data.
 
 ```text
 Warning filter.failed at 59534: A Flate stream ends before its data does; what decoded before the end was kept.
 Repair filter.failed at 63982: A Flate stream ends before its checksum does; its data decoded whole, unchecked.
 Warning filter.failed at 2102: A Flate stream is corrupt at byte 889 of its 20624; the 847 bytes decoded before the fault was found were kept.
 Warning filter.checksum-mismatch at 3278: A Flate stream's checksum disagrees with the 174803 bytes its data decoded to; all were kept, and some may be wrong.
+Warning filter.failed at 4336336: An ASCII85 stream ends without its ~> end marker, after a group of a single digit, which encodes no byte; it was dropped, and data may have been lost.
+Warning filter.failed at 812: An ASCIIHex stream holds a byte that encodes nothing, at byte 5 of its 12; it was passed over.
 ```
 
 ## Exceptions

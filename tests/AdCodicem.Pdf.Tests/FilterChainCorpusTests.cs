@@ -8,8 +8,8 @@ namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
 /// The corpus's documents whose streams name a chain of filters, or read their filters or their parameters through a
-/// reference, held to what decoding those streams gives, byte for byte, and to what it reports: nothing (#165, #166,
-/// #199, #209).
+/// reference, held to what decoding those streams gives, byte for byte, and to what it reports (#165, #166, #199, #209):
+/// nothing, but the one stream whose ASCII85 data lacks its end marker (#141).
 /// </summary>
 /// <remarks>
 /// The digests were taken before the filter chains were resolved first and bounded together, and again after: they
@@ -18,6 +18,19 @@ namespace AdCodicem.Pdf.Tests;
 /// </remarks>
 public class FilterChainCorpusTests
 {
+    /// <summary>
+    /// What decoding a document's streams reports, by document; nothing for the others. Acrobat Distiller 1.0.2's page
+    /// thumbnail, object 1363, is ASCII85 data without its <c>~&gt;</c> that ends on a single digit, which qpdf, pikepdf
+    /// and MuPDF decode to the same 3,652 bytes, in silence; the JPEG behind it is cut short, which no filter decodes.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> Reports = new(StringComparer.Ordinal)
+    {
+        ["remote/opf-format-corpus/distiller102-mac-bts-transportation-statistics-1994.pdf"] =
+        [
+            "Warning filter.failed at 4336336: An ASCII85 stream ends without its ~> end marker, after a group of a single digit, which encodes no byte; it was dropped, and data may have been lost.",
+        ],
+    };
+
     /// <summary>Each document, how many of its streams chain filters or read them through a reference, and the digest.</summary>
     public static TheoryData<string, int, string> Documents => new()
     {
@@ -69,7 +82,7 @@ public class FilterChainCorpusTests
         }
 
         decoded.Should().Be(streams);
-        diagnostics.Should().BeEmpty();
+        diagnostics.Select(d => d.ToString()).Should().Equal(Reports.GetValueOrDefault(file, []));
         Convert.ToHexString(hash.GetHashAndReset()).Should().Be(digest);
     }
 
