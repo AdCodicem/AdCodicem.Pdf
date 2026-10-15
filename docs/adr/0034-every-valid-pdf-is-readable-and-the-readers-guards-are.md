@@ -56,7 +56,10 @@ filter whose data decodes to itself never runs out of it. A `/Filter` array of f
 stream's member holds in a file of 350 KB, cost 1.8 s on every decode, and filters that never run out of data could cost
 minutes. A seventh guard, `MaxFilterChainLength` (64, `limit.filter-chain`), bounds the filters a stream's data passes
 through, counted as its `/Filter` array names them: decoding stops before the first past it, as at a filter the library
-does not know, and nothing past it is read. Real streams name one to three.
+does not know, and nothing past it is read. Real streams name one to three. And a `/Crypt` filter, which passes its data
+along as it is, is neither charged to the bound the filters before the last share nor the last of them: an encrypted
+stream, whose first filter ISO 32000 makes `/Crypt`, decodes as its twin in the clear does. M16 takes it up again when
+`/Crypt` decrypts.
 
 ## Context
 
@@ -77,7 +80,7 @@ claims; neither bounded what it was said to, and the 2026-10-14 amendment made t
 
 | Bound | Value | What a valid file can do |
 |---|---|---|
-| A stream's decoded length, its filters before the last sharing one bound for what they pass along together | 256 MB | The USGS topographic map in the remote corpus holds one image, 9,600 × 11,410 RGB, that decodes to 313 MB; qpdf reads it whole. A chain of filters whose outputs together pass the bound is valid too, and qpdf reads three thousand of them |
+| A stream's decoded length, its filters before the last sharing one bound for what they pass along together, a `/Crypt` filter neither charged nor the last | 256 MB | The USGS topographic map in the remote corpus holds one image, 9,600 × 11,410 RGB, that decodes to 313 MB; qpdf reads it whole. A chain of filters whose outputs together pass the bound is valid too, and qpdf reads three thousand of them |
 | An object's length, streams' data aside | 16 MB | A direct array or dictionary of that size: a page-tree node with a million kids |
 | A classic cross-reference section | 64 MB | About 3.3 million entries; the informative annex C of ISO 32000-1 gives Acrobat's own limit as 8,388,607 objects |
 | The number of cross-reference sections | 1,024 | A document saved incrementally more than a thousand times |

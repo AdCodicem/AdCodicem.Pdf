@@ -658,6 +658,30 @@ public class FilterTests
             });
     }
 
+    [Theory]
+    [InlineData("/ASCIIHexDecode /FlateDecode")]
+    [InlineData("/Crypt /ASCIIHexDecode /FlateDecode")]
+    [InlineData("/Crypt /Crypt /ASCIIHexDecode /FlateDecode")]
+    [InlineData("/ASCIIHexDecode /FlateDecode /Crypt")]
+    [InlineData("/ASCIIHexDecode /Crypt /FlateDecode")]
+    public void A_crypt_filter_is_neither_charged_to_the_bound_the_filters_share_nor_the_last(string filters)
+    {
+        // Nine hundred bytes compressed to about as many and hex-encoded, under a bound of a thousand: the hex step
+        // passes along what the Flate step decodes alone. A /Crypt filter passes its data along as it is, and holds
+        // nothing more: charged, the 1,800 hex digits it passes would leave the hex step nothing, and as the last, it
+        // would leave the Flate step what the hex step left of the shared bound.
+        var plain = new byte[900];
+        new Random(12).NextBytes(plain);
+        var hex = Encoding.ASCII.GetBytes(Convert.ToHexString(Compress(plain)) + ">");
+        var dictionary = new PdfObjectParser(Encoding.ASCII.GetBytes($"<< /Filter [{filters}] >>")).ParseObject().AsDictionary().Required();
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = PdfFilterPipeline.Decode(new PdfStream(dictionary, PdfStreamData.FromMemory(hex)), diagnostics, Within(1_000));
+
+        decoded.ToArray().Should().Equal(plain);
+        diagnostics.Should().BeEmpty();
+    }
+
     [Fact]
     public void Reads_the_filters_a_chain_names_through_references_in_their_order_crypt_filters_among_them()
     {

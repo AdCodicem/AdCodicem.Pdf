@@ -49,7 +49,8 @@ internal static class PdfFilterPipeline
 
         // The filters before the last share one bound for what they pass along together, and the last keeps its own: a
         // stream of one or two filters decodes as each filter alone would, and a chain however long holds, and fills, no
-        // more than twice the bound (#166). Under a bound the reader cannot raise, they share none either.
+        // more than twice the bound (#166). A /Crypt filter is no step: it passes its data along as it is, holds nothing
+        // more, and is never the last. Under a bound the reader cannot raise, the filters share none either.
         var bound = guard.Bound(PdfLimit.DecodedStream);
         var shared = bound >= Array.MaxLength ? long.MaxValue : bound;
 
@@ -63,7 +64,6 @@ internal static class PdfFilterPipeline
             }
 
             var last = step.Index == chain.LastIndex;
-            // The identity crypt filter passes its data along whole, whatever the bound, and can leave the others none.
             var maxLength = last ? bound : (int)Math.Clamp(shared, 0, bound);
             data = ApplyOne(
                 step,
@@ -186,15 +186,10 @@ internal static class PdfFilterPipeline
             return decoded;
         }
 
-        if (name == PdfName.RunLengthDecode)
-        {
-            var decoded = RunLengthFilter.Decode(data.Span, out var limited, maxLength);
-            Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
-            return decoded;
-        }
-
-        // The identity crypt filter is a no-op; anything else needs the security handler (M16).
-        return data;
+        // The chain runs no other step (FilterChain.Steps).
+        var runs = RunLengthFilter.Decode(data.Span, out var runsLimited, maxLength);
+        Reached(runsLimited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
+        return runs;
     }
 
     /// <summary>Reports what ended the chain before its last element, when it is no image filter.</summary>

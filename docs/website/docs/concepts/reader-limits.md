@@ -58,8 +58,10 @@ whose index is broken, since a rebuild would report a sound file as damaged and 
 `MaxDecodedStreamLength` bounds what a stream decodes to, and a stream's data may pass through several filters, each
 decoding what the one before it gave. The filters before the last share one bound for what they pass along together,
 and the last has its own, so that a stream of one or two filters decodes as each filter alone would, and a chain however
-long holds, and fills, two bounds at most. When the filters before the last reach theirs, the stream comes back as what
-the last decoded of what they kept, and the report says decoding stopped.
+long holds, and fills, two bounds at most. A `/Crypt` filter passes its data along as it is: it holds nothing more, and
+is neither charged nor the last, so that an encrypted stream, whose first filter ISO 32000 makes `/Crypt`, decodes as
+its twin in the clear does. When the filters before the last reach theirs, the stream comes back as what the last
+decoded of what they kept, and the report says decoding stopped.
 
 ISO 32000 sets no limit on how many filters a stream names, and real streams name one to three. Each filter costs
 decoding something whatever its data — a few microseconds, and for LZW a table of tens of kilobytes —, and a filter
