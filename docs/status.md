@@ -16,41 +16,42 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   fifth, [#157] and [#186], with [#217] that day, and the sixth, [#182] with [#215] and [#216], with [#225] on
   2026-10-03, the seventh, [#118], with [#226] that day, the eighth, [#119] and [#172], with [#231] on 2026-10-04,
   the ninth, [#125] and [#126], with [#238] that day, and the tenth, [#190] and [#212], with [#248] on 2026-10-14;
-  the eleventh, [#164] and [#183], is in [#249]; then slices 4 to 6 ([#60] to [#62]); then the milestone's
+  the eleventh, [#164] and [#183], with [#249] that day; the twelfth, [#165] and [#166], filter chains, with [#199],
+  [#209], [#219] and [#247], is in [#252]; then slices 4 to 6 ([#60] to [#62]); then the milestone's
   adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come
   from the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after
   the fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
   [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]), its eighth ([#229],
-  [#230]), its ninth ([#237]) and its tenth ([#241], [#247]); [#123] moved to M20.
+  [#230]), its ninth ([#237]), its tenth ([#241], [#247]) and its twelfth ([#250]); [#123] moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 3,543 unit on [#249]'s branch (3 skipped: 2 by design, and the theory
-  over the remote corpus's streams whose length is wrong, which has no document without it) + 1,306 integration
-  (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the
-  remote documents fetched, on [#249]'s branch: 5,448 unit with the 233 this container holds, 3 skipped — the
-  laziness test on the two documents recorded as unsupported until [#47], which every other test holds to their
-  expectations, and the private manifest this container lacks —; 3,266 integration against qpdf in its container,
-  3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run
-  46's 5,505 acceptance tests and 3,329 referee checks, on [#249]'s branch.
+- **Tests**: 3,687 unit on [#252]'s branch (18 skipped: 2 by design, the theory over the remote corpus's streams
+  whose length is wrong, and the fifteen remote documents of the theory over the corpus's filter chains, which have no
+  document without them) + 1,306 integration (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the
+  roadmap's mirror on GitHub. With the remote documents fetched, on [#252]'s branch: 5,592 unit with the 233 this
+  container holds, 3 skipped — the laziness test on the two documents recorded as unsupported until [#47], which every
+  other test holds to their expectations, and the private manifest this container lacks —; 3,266 integration against
+  qpdf in its container, 3,260 passed and 6 skipped where qpdf cannot walk a damaged document's pages; and, with all
+  242, `Remote corpus` run 51's 5,649 acceptance tests and 3,329 referee checks, on [#252]'s branch.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.5 % of `src/` — 6,051 of 6,080 lines on [#249]'s branch, every one of its patch's
-  278 measurable lines among them, every branch taken but one partial before it, on a line it changes (`PdfFileReader`
-  3040, below). The 29 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*): the 28 left on `main`
-  since [#238], at new line numbers, and one the compiler adds to the switch over a `/Length`'s presence, whose every
-  arm is taken (`PdfObjectParser` 716, batch 11). They are members that are private, or of a private type, which no
-  input reaches — nine lines of `ArlingtonWalk` (177, 833, 940, 950, 951, 971, 973, 1045, 1061) and three of a
-  defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a switch's
-  default arm (`CrossReferenceProbe` 86 and 231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 96 and 105), a line
-  the compiler puts after a call that never returns (`PdfFileReader` 1487), two branches the compiler adds that no
-  input takes (`FileQuote` 145, an interpolation's buffer too small; `PdfObjectParser` 792, a concatenation's null
-  check); `EndStreamAfter`'s two defensive arms (`PdfFileReader` 1455, 1459, journal of batch 6), the `HasValue` checks
-  the compiler adds on a `long?` (3040, batch 5) and a defensive arm of the real's expansion, moved from the reader
-  into `PdfReal.ToString` by batch 10 (`PdfReal` 66, batch 5), `ObjectStreamDependencies.Location`'s arm without a
-  Regular entry (223, batch 7), one of the six ways out of a cross-reference stream row's `switch` (3136) and `Repair`'s
-  guard against a second rebuild (4171, 4173).
+  Arlington tables left out), 99.55 % of `src/` — 6,236 of 6,264 lines on [#252]'s branch, every one of its patch's
+  316 measurable lines among them, every branch taken. The 28 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`,
+  *Coverage*): the 29 left on `main` since [#249], at new line numbers, but `ArlingtonWalk.Resolve` (1045 on `main`),
+  whose other branch the batch's typing of `/DecodeParms` now takes. They are members that are private, or of a
+  private type, which no input reaches —
+  eight lines of `ArlingtonWalk` (194, 919, 1026, 1036, 1037, 1057, 1059, 1147) and three of a defensive branch of
+  `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a switch's default arm
+  (`CrossReferenceProbe` 86 and 231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 96 and 105), a line the compiler
+  puts after a call that never returns (`PdfFileReader` 1493), three branches the compiler adds that no input takes
+  (`FileQuote` 145, an interpolation's buffer too small; `PdfObjectParser` 796, a concatenation's null check;
+  `PdfObjectParser` 716, the switch over a `/Length`'s presence, whose every arm is taken); `EndStreamAfter`'s two
+  defensive arms (`PdfFileReader` 1461, 1465, journal of batch 6), the `HasValue` checks the compiler adds on a `long?`
+  (2977, batch 5) and a defensive arm of the real's expansion (`PdfReal` 66, batch 5),
+  `ObjectStreamDependencies.Location`'s arm without a Regular entry (223, batch 7), one of the six ways out of a
+  cross-reference stream row's `switch` (3073) and `Repair`'s guard against a second rebuild (4114, 4116).
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
 - **CI**: green on `main` at `a930544` (CI run 540), [#248]'s last commit. `Remote corpus` passed on every document in
   the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun
@@ -71,7 +72,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   on [#248]'s branch, and run 44, on its last code, lost the ipres2017 archive the same way at their first attempt,
   every other test passing; run 44 passed whole at its one rerun. CI run 534 is green on that code. The nightly run 45,
   on `main` at `a930544`, passed whole at its first attempt, and so did run 46, on [#249]'s branch, on the batch's
-  last code.
+  last code. Runs 47 and 48, on [#252]'s branch, each failed on a test the branch then fixed — the corpus manifest's
+  schema, which the new guard's commit had left out, then a test that took a cut cross-reference stream's rows as
+  read —, every other test over the 242 documents passing; runs 49 to 51 passed whole, run 51 on the batch's last
+  code.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
@@ -236,9 +240,10 @@ One pull request per batch, each design question put to the maintainer after mea
       on 2026-10-04, `Remote corpus` run 31 green on its branch (journal of 2026-10-04).
    10. [#190] and [#212], the reader's public surface — done, merged with [#248] on 2026-10-14, `Remote corpus` run
        44 green on its branch (journal of 2026-10-13).
-   11. [#164] and [#183], the index's size, the first new guard — in [#249], `Remote corpus` run 46 green on its
-       branch (journal of 2026-10-14).
-   12. [#165] and [#166], filter chains, with [#199], [#209], [#219] and [#247].
+   11. [#164] and [#183], the index's size, the first new guard — done, merged with [#249] on 2026-10-14, `Remote
+       corpus` run 46 green on its branch (journal of 2026-10-14).
+   12. [#165] and [#166], filter chains, with [#199], [#209], [#219] and [#247] — in [#252], `Remote corpus` run 51
+       green on its branch (journal of 2026-10-15).
    13. [#128], with [#237].
    14. [#129] and [#175].
    15. [#160] and [#161], object-stream members, with [#200] and [#202].
@@ -252,7 +257,7 @@ One pull request per batch, each design question put to the maintainer after mea
    23. [#141].
    24. [#144] and [#169].
    25. [#181].
-   26. [#162].
+   26. [#162], with [#250].
    27. [#163], `MaxDepth` and `MaxNestedLoads` made guards, as the maintainer decided.
    28. [#185].
    29. [#173].
@@ -265,8 +270,9 @@ One pull request per batch, each design question put to the maintainer after mea
    [#212], which batch 3 filed, is paid in batch 10, with [#190], as the maintainer placed it on 2026-10-02. The
    seven batch 6 filed are placed above: [#218] with [#132], as the maintainer placed it on 2026-10-02, the others
    with the batch whose code they share. The two batch 8 filed are placed likewise: [#229] with [#132], [#230] with
-   [#174]; the one batch 9 filed, [#237], with [#128]; and of the three batch 10 filed, [#241] with [#188], [#247]
-   with [#165], and [#240] under M03, whose full rewrite it concerns.
+   [#174]; the one batch 9 filed, [#237], with [#128]; of the three batch 10 filed, [#241] with [#188], [#247]
+   with [#165], and [#240] under M03, whose full rewrite it concerns; and of the two batch 12 filed, [#250] with
+   [#162], whose code it shares, and [#251] under M23, which sizes the decoding it concerns.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -287,6 +293,95 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-15 — Batch 12: filter chains ([#165], [#166], [#199], [#209], [#219], [#247])
+- **The question.** [#165]: a filter's parameters can name an object an object stream holds, and decoding one stream
+  decoded another while holding its own output, 64 deep: about 250 MB live for a chain of 4 MB object streams, where
+  `MaxNestedLoads`' reason said no level held decoded data. [#166]: `MaxDecodedStreamLength` bounded each filter of a
+  chain alone, so that a 513-byte cross-reference stream naming `/RunLengthDecode` sixteen times allocated 3.3 GB as
+  it opened, and a sound chain of stored Flate layers 14.9 GB, nothing reported. [#199]: what a filter before the bound
+  kept was handed on as whole data, and the filters after it reported a lost tail, a missing checksum, a digit without
+  its pair — the guard's cut as the file's damage. [#209]: an element of `/Filter` that names no filter was skipped,
+  and the filters after it read data they could not. [#219]: the Arlington walk typed `/DecodeParms` by nothing, and
+  tied. [#247]: the allocation windows of four tests paused for a collection now and then, and failed. Measured first,
+  each claim twice; thirteen questions followed, and two more after the review.
+- **Settled with the maintainer**, each as recommended:
+  - after a cut, the filters after it decode what was kept, as data the reader cut, under one report (Q1);
+  - the filters before the last share one `MaxDecodedStreamLength` for what they pass along together, and the last
+    keeps its own: a stream of one or two filters decodes as before; no new property (Q2);
+  - a Flate step that decodes nothing ends the chain (Q3); an element that names no filter ends it, reported with its
+    place and kind, and a `/Filter` that resolves to null is one the stream does not have (Q4);
+  - parameters paired as qpdf pairs them (Q5); every value a step reads resolved before any data, and nothing more
+    (Q6); a hex digit or ASCII85 group a cut parted is dropped, a predictor over cut data undoes the part of its last
+    row (Q7);
+  - Arlington types `/DecodeParms` by the filter at the same place (Q8);
+  - the tests and the docs: GC sampling for the nested chain, the measured factor of a Flate decode, real shapes,
+    hostile ones and a property, three pause-free windows (Q9 to Q12); `HasImageFilter` through the same resolver,
+    abbreviated names filed as debt (Q13);
+  - after the review: a seventh guard, `MaxFilterChainLength`, 64 by default, `limit.filter-chain` (Q14); `/Crypt`
+    neither charged nor the last (Q15).
+- **Done**, in [#252]:
+  - a stream resolves its filters and every value its steps read before any of its data (`FilterChain`): the chain of
+    64 object streams of 4 MB, each needing the next's parameters, holds 32 MB and three bounds at most, where it held
+    about 250 MB; only what a step reads is resolved — LZW's `/EarlyChange`, a Flate or LZW step's predictor
+    values —, and a parameter past an int is the int nearest it, not its low bits;
+  - the filters before the last share `MaxDecodedStreamLength` for what they pass along together, the last keeping
+    its own; the 513-byte cross-reference stream of sixteen `/RunLengthDecode` opens in a few bounds' worth, the same
+    with sixty-four. `/Crypt`, which passes its data along as it is, is neither charged nor the last;
+  - a Flate step that decodes nothing ends the chain, read once rather than once an entry: a hundred thousand
+    `/FlateDecode` over bad data took 424 MB and two seconds;
+  - after a cut, the filters decode what was kept as data the reader cut, under one report; a fault or a checksum in
+    what was read stays the file's. A hex digit or ASCII85 group the cut parted is dropped, one its end marker closes
+    completed; a predictor over cut data undoes the part of its last row it holds;
+  - an element of `/Filter` that names no filter ends decoding, `filter.unsupported` with its place and kind;
+    `HasImageFilter` answers from the same chain;
+  - `PdfReaderLimits.MaxFilterChainLength`, 64, `limit.filter-chain`, `int.MaxValue` under `Unbounded`: decoding,
+    `HasImageFilter` and the cross-reference stream's check read nothing past it, and a cross-reference stream or an
+    object stream it ends is read as cut before its data. Forty million `/Crypt` in a 350 KB file cost 1.8 s a decode;
+  - the chain keeps nothing for a name its `/Filter` array holds, and decoding stops at data a filter decoded to
+    nothing: that array ran `Decode` and `HasImageFilter` out of memory under 2 GB, the chain keeping 32 bytes a name,
+    and a hundred thousand LZW steps over nothing allocated 4 GB;
+  - Arlington types `/DecodeParms` by the filter at its place, and `/FDecodeParms` by `/FFilter`: the corpus's ties
+    fall from 4,497 to 3,364, its findings and diagnostics unchanged;
+  - the four allocation tests [#247] names measure the least of three windows no collection paused.
+
+  Docs: ADR 34 amended twice, the second time for the seventh guard and `/Crypt`; `reference/reader-limits.md`,
+  `reference/diagnostics.md`, `reference/validation-rules.md`, `concepts/reader-limits.md` (*What decoding a stream may
+  hold*); the threat model's rows on filter chains, nested loads and cuts; `architecture.md`, `corpus.md`,
+  `corpus-contributions.md` (a real chain of three filters wanted), M23.
+- **Reviewed**, twice.
+  - The first review, over five lenses, gave 19 findings, each put to two refuters: 12 kept, all fixed. The chain
+    kept 32 bytes for every element of `/Filter` on every decode and every `HasImageFilter`, and forty million
+    `/Crypt` in an object stream's member ran both out of memory; `/Crypt` was charged to the shared bound; a filter
+    with no data to decode still set up its work; four texts described the chain as it was before; four choices no
+    test held. The figures it brought — a chain's cost linear in its length, seconds for an array an object stream
+    holds — were put to the maintainer, who chose the seventh guard and `/Crypt` out of the bound (Q14, Q15).
+  - The second, over five lenses aimed at the fixes, gave 12 findings, 11 kept, all fixed: the corpus manifest's
+    schema left without the new guard, two unit tests red from the guard's commit, which was rewritten so that every
+    commit passes alone; a cross-reference stream or object stream the guard ended read as decoded, so that a sound
+    file was rebuilt, or its object stream judged unreadable, an Error; `/EarlyChange` 2^32 read as 0; three
+    allocation windows that measured the first assertion of a process; a dictionary serving a Flate and an LZW step
+    no test held; and three texts.
+- **Tests**: 144 new, 3,543 to 3,687; each case the fixes exist for fails on the code before them. 55 mutants of the
+  batch's defenses, each run against the suite: 53 failed a test, one more once a test held `/Columns` past an int;
+  the last, which makes the filters before the last share a bound already at `Array.MaxLength`, differs only once
+  they pass along more than about 2 GB together, which no test can hold here.
+- **Tracking.** Filed: [#250], abbreviated filter names in a stream's `/Filter`, under M02, placed with [#162]; [#251],
+  a Flate decode allocating about three times its output, under M23. Commented: [#162] (an uncut ragged row left as the
+  predictor left it, and what of its reports this batch paid).
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - each of the batch's 21 commits builds with no warning and passes the full unit suite alone;
+  - the unit tests, 3,687, 18 skipped; 5,592 with the 233 remote documents this container holds, 3 skipped;
+  - the patch's 316 measurable lines of `src/` covered, every branch taken; 99.55 % of `src/` in all, 6,236 of 6,264
+    lines, on the committed corpus alone;
+  - the corpus's 401 documents give `main`'s findings and diagnostics, line for line;
+  - the integration suite against qpdf in its container, twice: 3,266, 3,260 passed and 6 skipped where qpdf cannot
+    walk a damaged document's pages;
+  - `Remote corpus`: run 51, on the batch's last code, passed whole at its first attempt — all 242 documents, 5,649
+    acceptance tests and 3,329 referee checks;
+  - commitlint finds no problem.
+- **Next**: batch 13, [#128], with [#237].
 
 ### 2026-10-14 — Batch 11: the index's size, the first new guard ([#164], [#183])
 - **The question.** [#164]: nothing bounded how many entries the index held. A cross-reference stream of one-byte
@@ -1692,3 +1787,6 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#247]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/247
 [#248]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/248
 [#249]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/249
+[#250]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/250
+[#251]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/251
+[#252]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/252
