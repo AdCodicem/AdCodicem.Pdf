@@ -966,6 +966,24 @@ public class FilterDamageTests
     }
 
     [Theory]
+    [InlineData("4294967300")]
+    [InlineData("4294967300.0")]
+    public void Reads_columns_past_an_int_as_the_most_an_int_holds_rather_than_their_low_bits(string columns)
+    {
+        // /Columns 2^32 + 4 narrowed to an int is 4, and the rows would be undone as rows of four: the parameters describe
+        // rows wider than the data holds, which is said, and the data is left as decoded.
+        byte[] rows = [2, 1, 2, 3, 4, 2, 1, 1, 1, 1];
+        var dictionary = new PdfObjectParser(Encoding.ASCII.GetBytes($"<< /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns {columns} >> >>"))
+            .ParseObject().AsDictionary().Required();
+        var diagnostics = new PdfDiagnostics();
+
+        var decoded = new PdfStream(dictionary, PdfStreamData.FromMemory(Compress(rows, CompressionLevel.Optimal))).Decode(diagnostics);
+
+        decoded.ToArray().Should().Equal(rows);
+        diagnostics.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed);
+    }
+
+    [Theory]
     [InlineData(258)]
     [InlineData(300)]
     public void Stops_at_an_lzw_code_used_with_nothing_before_it_to_define_it_from(int code)
