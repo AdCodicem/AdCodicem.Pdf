@@ -28,7 +28,8 @@ namespace AdCodicem.Pdf.IO.Filters;
 /// <para>
 /// The chain ends, too, at the element past <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/>, the reader's
 /// guard: ISO 32000 sets no bound, and each filter of a <c>/Filter</c> array of millions costs decoding a few
-/// microseconds, some of them a table of tens of kilobytes, whatever data it is given.
+/// microseconds, some of them a table of tens of kilobytes, whatever data it is given. A <c>/Crypt</c> filter counts
+/// towards it, though decoding runs no step for it.
 /// </para>
 /// <para>
 /// What was resolved is kept in less room than the file wrote it in. The <c>/Filter</c> array is read again as the steps
@@ -138,7 +139,11 @@ internal sealed class FilterChain
     /// <summary>Gets the steps decoding runs, in order.</summary>
     public Steps GetEnumerator() => new(this);
 
-    /// <summary>The steps of a chain, each with the values of its parameters, as decoding runs them.</summary>
+    /// <summary>
+    /// The steps of a chain, each with the values of its parameters, as decoding runs them: every filter before the end
+    /// of the chain but <c>/Crypt</c>, which passes its data along as it is — the identity crypt filter's, and any other's
+    /// until the security handler decrypts (M16).
+    /// </summary>
     /// <param name="chain">The chain.</param>
     public struct Steps(FilterChain chain)
     {
@@ -152,29 +157,33 @@ internal sealed class FilterChain
         /// <summary>Moves to the next step, if there is one.</summary>
         public bool MoveNext()
         {
-            if (_index + 1 >= chain._length)
+            while (++_index < chain._length)
             {
-                return false;
+                // Every element before the end is a name, or a reference that led to one, which was kept in order.
+                var element = chain._filters is PdfArray array ? array[_index] : chain._filters;
+                var name = element as PdfName ?? chain._names![_name++];
+
+                if (name == PdfName.Crypt)
+                {
+                    continue;
+                }
+
+                FilterParameters parameters;
+
+                if (_placed < chain._placedCount && chain._placed![_placed].Index == _index)
+                {
+                    parameters = chain._placed[_placed++].Parameters;
+                }
+                else
+                {
+                    parameters = name == PdfName.LZWDecode ? chain._lzw : chain._flate;
+                }
+
+                Current = new FilterStep(_index, name, parameters);
+                return true;
             }
 
-            _index++;
-
-            // Every element before the end is a name, or a reference that led to one, which was kept in order.
-            var element = chain._filters is PdfArray array ? array[_index] : chain._filters;
-            var name = element as PdfName ?? chain._names![_name++];
-            FilterParameters parameters;
-
-            if (_placed < chain._placedCount && chain._placed![_placed].Index == _index)
-            {
-                parameters = chain._placed[_placed++].Parameters;
-            }
-            else
-            {
-                parameters = name == PdfName.LZWDecode ? chain._lzw : chain._flate;
-            }
-
-            Current = new FilterStep(_index, name, parameters);
-            return true;
+            return false;
         }
     }
 
@@ -310,7 +319,7 @@ internal sealed class FilterChain
                 }
             }
 
-            reading.LastIndex = index;
+            reading.LastIndex = filter == PdfName.Crypt ? reading.LastIndex : index;
             reading.Length++;
         }
 

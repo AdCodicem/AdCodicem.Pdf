@@ -53,8 +53,9 @@ public sealed record PdfReaderLimits
     /// <para>
     /// Of a stream whose data passes through several filters, the last filter's output is bounded alone, and the filters
     /// before it share the bound for what they pass along together: a stream of one or two filters decodes as each filter
-    /// alone would, and a chain however long holds two bounds at most. Under a bound of <see cref="Array.MaxLength"/>,
-    /// the filters before the last share none.
+    /// alone would, and a chain however long holds two bounds at most. A <c>/Crypt</c> filter, which passes its data along
+    /// as it is, is neither charged nor the last. Under a bound of <see cref="Array.MaxLength"/>, the filters before the
+    /// last share none.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
