@@ -20,8 +20,10 @@ namespace AdCodicem.Pdf.Validation;
 /// circular.
 /// </para>
 /// <para>
-/// It resolves each stream's dictionary and the few objects its keys name, and decodes nothing. As it holds each
-/// dictionary, it also notes the integers of its header written as reals.
+/// It reads each stream's dictionary, and the few objects written directly in the file its keys name, where the chain's
+/// index places them — not through the index the reader reads with now, which a rebuild may have made another —, and
+/// decodes nothing. The chain's index is read again for each lookup: until the reader first changes its own, the two are
+/// one table (#128). As it holds each dictionary, it also notes the integers of its header written as reals.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
@@ -54,10 +56,9 @@ internal sealed class ObjectStreamDependencies
     {
         var result = new ObjectStreamDependencies();
         var reader = document.Reader;
-        var index = reader.ChainIndex ?? reader.Index;
         var streams = new SortedSet<int>();
 
-        foreach (var (_, entry) in index.Entries)
+        foreach (var (_, entry) in IndexOf(reader).Entries)
         {
             if (entry.Kind == XRefEntryKind.Compressed)
             {
@@ -70,22 +71,25 @@ internal sealed class ObjectStreamDependencies
             return result;
         }
 
-        // What each stream needs: the first object of another stream, or of itself, found under each decoding key.
+        // What each stream needs: the first object of another stream, or of itself, found under each decoding key; and where
+        // the chain's row places each stream read.
         var needs = new Dictionary<int, List<Need>>();
+        var locations = new Dictionary<int, PdfValidationLocation>();
 
         foreach (var stream in streams)
         {
-            if (index.TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular &&
-                document.GetObject(new PdfObjectId(stream, entry.Generation)) is PdfStream objectStream)
+            if (IndexOf(reader).TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular &&
+                Read(document, new PdfObjectId(stream, entry.Generation), entry) is PdfStream objectStream)
             {
-                needs[stream] = Needs(document, index, objectStream.Dictionary);
+                locations[stream] = Location(reader, stream, entry);
+                needs[stream] = Needs(document, objectStream.Dictionary);
 
                 foreach (var key in IntegerKeys)
                 {
                     if (objectStream.Dictionary.GetRaw(key)?.Resolve() is PdfReal real && real.AsInteger() is not null)
                     {
                         result.IntegersWrittenAsReals.Add(new ProbeFinding(
-                            Location(reader, stream),
+                            locations[stream],
                             Invariant($"Object stream {stream} gives its {FileQuote.Name(key)} as a real number, where Table {(key == PdfName.Length ? 5 : 16)} of ISO 32000-1 asks for an integer; the reader read it as the integer it equals.")));
                     }
                 }
@@ -98,7 +102,7 @@ internal sealed class ObjectStreamDependencies
             {
                 result.CircularStreams.Add(stream);
                 result.Circular.Add(new ProbeFinding(
-                    Location(reader, stream),
+                    locations[stream],
                     need.Stream == stream
                         ? Invariant($"Object stream {stream} needs object {need.Object}, which it holds, to be read: its {need.Key} names it, and the object cannot be read before the stream is.")
                         : Invariant($"Object stream {stream} needs object {need.Object}, which object stream {need.Stream} holds, to be read: its {need.Key} names it, and reading object stream {need.Stream} needs object stream {stream} in turn.")));
@@ -109,7 +113,7 @@ internal sealed class ObjectStreamDependencies
     }
 
     /// <summary>Lists the objects, held in object streams, that the decoding keys of <paramref name="dictionary"/> lead to.</summary>
-    private static List<Need> Needs(PdfDocument document, PdfXRefTable index, PdfDictionary dictionary)
+    private static List<Need> Needs(PdfDocument document, PdfDictionary dictionary)
     {
         var found = new List<Need>();
         var seen = new HashSet<int>();
@@ -130,14 +134,15 @@ internal sealed class ObjectStreamDependencies
                 {
                     // Object 0 heads the free list and is never in use (ISO 32000-1, 7.5.4): the reader never reads it,
                     // whatever the index's first entry says, so no stream needs it.
-                    case PdfReference reference when reference.Id.Number > 0 && seen.Add(reference.Id.Number) && index.TryGet(reference.Id.Number, out var entry):
+                    case PdfReference reference when reference.Id.Number > 0 && seen.Add(reference.Id.Number) &&
+                        IndexOf(document.Reader).TryGet(reference.Id.Number, out var entry):
                         if (entry.Kind == XRefEntryKind.Compressed)
                         {
                             found.Add(new Need(entry.ObjectStreamNumber, reference.Id.Number, FileQuote.Name(key)));
                         }
                         else if (entry.Kind == XRefEntryKind.Regular)
                         {
-                            work.Push(document.GetObject(reference.Id));
+                            work.Push(Read(document, reference.Id, entry));
                         }
 
                         break;
@@ -209,20 +214,30 @@ internal sealed class ObjectStreamDependencies
     }
 
     /// <summary>
-    /// Locates object stream <paramref name="stream"/> where the chain's index places it, read again here: loading the
-    /// stream may have relocated it or rebuilt the index since the walk began, and the live entry then gives the header
-    /// found, not the file's row (#118, #128).
+    /// Gives the index the walk judges: the chain's, read again for each lookup, since the reader copies it before it first
+    /// changes its own; or the one rebuilt as the document opened, when the chain gave none.
     /// </summary>
-    /// <remarks>
-    /// A stream the walk locates was loaded through a regular entry of that index, which the reader copies before it
-    /// first changes it; when the chain gave none, the rebuilt index keeps the stream's entry, regular, once made. The
-    /// location without an entry is defensive. A row that places the stream outside the file, which the reader found
-    /// elsewhere, places it nowhere: the finding is located at the object alone (#125).
-    /// </remarks>
-    private static PdfValidationLocation Location(IO.PdfFileReader reader, int stream) =>
-        (reader.ChainIndex ?? reader.Index).TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular
-            ? At(reader, new PdfObjectId(stream, entry.Generation), reader.PositionOf(entry))
-            : PdfValidationLocation.OfObject(new PdfObjectId(stream));
+    private static PdfXRefTable IndexOf(IO.PdfFileReader reader) => reader.ChainIndex ?? reader.Index;
+
+    /// <summary>
+    /// Reads the object a regular <paramref name="entry"/> of the chain's index places, where it places it: a rebuild since
+    /// may serve another definition of the number, or none (#128). Where the chain places nothing of that number — a row
+    /// outside the file, or one with nothing at or near it —, and when the chain gave no index, the object is loaded as any
+    /// read loads it, through the index the reader reads with now.
+    /// </summary>
+    private static PdfObject Read(PdfDocument document, PdfObjectId id, XRefEntry entry) =>
+        (document.Reader.ChainIndex is null ? null : document.Reader.ReadWhereChainPlaces(id.Number, entry)) ??
+        document.GetObject(id);
+
+    /// <summary>
+    /// Locates object stream <paramref name="stream"/> where <paramref name="entry"/>, the chain's row the walk read it
+    /// through, places it — the row as the file wrote it, which the reader copies before it first changes its own: a load
+    /// that relocates the stream, or rebuilds the index, changes the live entry, not the row (#118, #128). A row that
+    /// places the stream outside the file, which the reader found elsewhere, places it nowhere: the finding is located at
+    /// the object alone (#125).
+    /// </summary>
+    private static PdfValidationLocation Location(IO.PdfFileReader reader, int stream, XRefEntry entry) =>
+        At(reader, new PdfObjectId(stream, entry.Generation), reader.PositionOf(entry));
 
     /// <summary>Locates object <paramref name="id"/> at <paramref name="position"/>, or at the object alone outside the file.</summary>
     private static PdfValidationLocation At(IO.PdfFileReader reader, PdfObjectId id, long position) =>

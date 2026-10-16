@@ -548,19 +548,36 @@ public class ObjectRuleTests
         report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue("object 7's stream is not in the file");
     }
 
-    [Fact]
-    public void Object_streams_a_rebuild_during_the_walk_no_longer_places_are_still_reported_circular()
+    [Theory]
+    [InlineData("nothing", 30, false)]
+    [InlineData("the broken stream", 30, false)]
+    [InlineData("a validation", 30, false)]
+    [InlineData("nothing", 3, false)]
+    [InlineData("nothing", 30, true)]
+    [InlineData("the broken stream", 30, true)]
+    public void Object_streams_are_judged_where_the_chain_places_them_whatever_was_read_before(string before, int broken, bool throughObject)
     {
-        // Reading object stream 30, which is not where its entry says, rebuilds the index once 7 and 8 were read: the
-        // rebuild cannot find 7, whose header has a comment in it, and places 8 in object stream 20. The walk's lookups
-        // still read the index the rebuild changed under it (#128), but a finding is located where the chain's index,
-        // read again, places the stream (#118): 7 and 8 keep the positions their rows give, which they once lost.
-        var file = RebuiltAfterTwoObjectStreams();
+        // An object stream is not where its entry says: reading it rebuilds the index, which cannot find 7, whose header has
+        // a comment in it, and places 8 in object stream 20. The walk reads each stream, and each object written directly
+        // in the file its keys lead through, where the chain's row places it, the chain's index read again for each lookup
+        // (#128): 7 and 8 are circular, at the positions their rows give, whatever was read before the walk. Once, reading
+        // the broken stream first, validating once, or a broken stream the walk read first, 3, lost both; so did an object
+        // 7's key leads through that the rebuild cannot find either.
+        var file = RebuiltAfterTwoObjectStreams(broken, throughObject);
         using var document = PdfDocument.Open(file);
+
+        if (before == "the broken stream")
+        {
+            document.GetObject(new PdfObjectId(broken)).Should().Be(PdfNull.Instance);
+        }
+        else if (before == "a validation")
+        {
+            new PdfValidator().Validate(document);
+        }
 
         var dependencies = ObjectStreamDependencies.Run(document);
 
-        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefRebuilt);
+        document.WasRepaired.Should().BeTrue("the walk reads the broken stream too, through the index the reader reads with, which rebuilds it");
         dependencies.CircularStreams.Should().BeEquivalentTo([7, 8]);
         dependencies.Circular.Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(7), new PdfObjectId(8));
         dependencies.Circular.Select(finding => finding.Location.Position)
@@ -751,10 +768,14 @@ public class ObjectRuleTests
     /// <summary>
     /// Object streams 7 and 8, each needing the first object it holds, their headers written <c>7 0 %x</c> then
     /// <c>obj</c> on the next line — which the reader reads where the index places them, and a rebuild does not find —;
-    /// object stream 20, which no entry names and which lists object 8; and object stream 30, whose entry leads nowhere.
-    /// The index is a cross-reference stream, object 32.
+    /// object stream 20, which no entry names and which lists object 8; and object stream <paramref name="broken"/>, whose
+    /// entry leads nowhere, holding the object numbered after it. The index is a cross-reference stream, object 32.
     /// </summary>
-    private static byte[] RebuiltAfterTwoObjectStreams()
+    /// <param name="broken">The number of the object stream whose entry leads nowhere: 30, or 3, which a walk in the order
+    /// of numbers reads first.</param>
+    /// <param name="throughObject">Whether 7's <c>/DecodeParms</c> leads to object 5 through object 12, written directly in
+    /// the file with a header a rebuild does not find either.</param>
+    private static byte[] RebuiltAfterTwoObjectStreams(int broken = 30, bool throughObject = false)
     {
         using var file = new MemoryStream();
         var offsets = new Dictionary<int, long>();
@@ -773,9 +794,11 @@ public class ObjectRuleTests
         Write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
         offsets[2] = file.Position;
         Write("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
-        WriteObjectStream(7, "5 0 6 19 ", "<< /Predictor 1 >> << /Title (six) >>", "/DecodeParms 5 0 R");
+        WriteObjectStream(7, "5 0 6 19 ", "<< /Predictor 1 >> << /Title (six) >>", throughObject ? "/DecodeParms 12 0 R" : "/DecodeParms 5 0 R");
         WriteObjectStream(8, "15 0 16 19 ", "<< /Predictor 1 >> << /Title (sixteen) >>", "/DecodeParms 15 0 R");
         Write("20 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 9 >>\nstream\n8 0 << >>\nendstream\nendobj\n");
+        offsets[12] = file.Position;
+        Write("12 0 %x\nobj\n[5 0 R]\nendobj\n");
 
         var xref = file.Position;
         var rows = new List<byte>();
@@ -784,11 +807,11 @@ public class ObjectRuleTests
         {
             var (type, field2, field3) = number switch
             {
-                1 or 2 or 7 or 8 => (1, offsets[number], 0),
+                1 or 2 or 7 or 8 or 12 => (1, offsets[number], 0),
                 5 or 15 => (2, number == 5 ? 7L : 8L, 0),
                 6 or 16 => (2, number == 6 ? 7L : 8L, 1),
-                30 => (1, 1L, 0),
-                31 => (2, 30L, 0),
+                _ when number == broken => (1, 1L, 0),
+                _ when number == broken + 1 => (2, broken, 0),
                 32 => (1, xref, 0),
                 0 => (0, 0L, 65535),
                 _ => (0, 0L, 0),

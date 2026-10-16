@@ -3789,6 +3789,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
+    /// Reads object <paramref name="number"/> where an entry of the chain's index places it — at the offset it gives, or
+    /// near it —, neither through the index the reader reads with now nor from its cache: what the file's own index gives,
+    /// whatever a rebuild made of the number since. Null when nothing of that number is there.
+    /// </summary>
+    /// <remarks>
+    /// It parses as a load parses, and notes what a load notes of the object, as <see cref="ReadObjectStreamHeader"/> does;
+    /// it neither relocates the entry nor rebuilds the index. A stream's indirect <c>/Length</c> is still loaded as any
+    /// object is.
+    /// </remarks>
+    /// <param name="number">The object's number.</param>
+    /// <param name="entry">The regular entry of the chain's index that places it.</param>
+    internal PdfObject? ReadWhereChainPlaces(int number, XRefEntry entry)
+    {
+        var offset = PositionOf(entry);
+
+        return TryParseObjectAt(number, offset, out var value) ||
+            (TryFindObjectHeader(number, offset, out var nearby, out _) && TryParseObjectAt(number, nearby, out value))
+            ? value
+            : null;
+    }
+
+    /// <summary>
     /// Reads which objects the object stream <paramref name="number"/> holds, in order, from the header its data
     /// starts with — without keeping the stream, nor what it decodes to: the validation rules read each once, and
     /// memory follows the largest of them rather than their sum.
