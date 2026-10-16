@@ -16,10 +16,10 @@ namespace AdCodicem.Pdf.Documents;
 /// take in those its object streams hold, then looks for the catalog the same way if <c>/Root</c> still leads to
 /// none. It happens as the document opens when its sections cannot be read or lead to no catalog, and, as it opens or
 /// later, when an object it reads is neither where its entry places it nor near it, or is missing from an index the
-/// sections did not give whole: <see cref="WasRepaired"/> can turn true after opening. Anything else is read when
-/// something asks for it. A document is not thread-safe: it caches what it parses, so one document belongs to one
-/// thread at a time. Several documents can of course be processed in parallel, and the reader holds no shared
-/// mutable state to make that unsafe.
+/// sections did not give whole, or when a validation starts and such a read could still happen: <see cref="WasRepaired"/>
+/// can turn true after opening. Anything else is read when something asks for it. A document is not thread-safe: it
+/// caches what it parses, so one document belongs to one thread at a time. Several documents can of course be processed
+/// in parallel, and the reader holds no shared mutable state to make that unsafe.
 /// <para>
 /// Once disposed, a document answers nothing but its <see cref="Diagnostics"/>, the record of its reading, and
 /// <see cref="Dispose"/>: every other member throws <see cref="ObjectDisposedException"/>, and so does whatever reaches
@@ -95,7 +95,9 @@ public sealed class PdfDocument : IDisposable
     /// <remarks>
     /// The index is rebuilt as the document opens, or later, when something read asks for it: an object that is
     /// neither where the index places it nor near it, or one missing from an index the file's sections did not give
-    /// whole. It can therefore turn true after the document has opened, as more of the document is read.
+    /// whole. It can therefore turn true after the document has opened, as more of the document is read — or when a
+    /// validation starts, which rebuilds the index before its first rule when a later read still could
+    /// (<see cref="Validation.PdfValidator.Validate"/>).
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public bool WasRepaired

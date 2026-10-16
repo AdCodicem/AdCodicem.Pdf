@@ -47,8 +47,10 @@ Microsoft Print to PDF names the line feed before each object as its offset, and
 ## A report you can rely on
 
 Rules run in the profile's order, and findings are kept in the order they were found, so two validations of the same
-document give the same report: it can be stored, compared and asserted on. Each rule reports at one severity,
-always, and its identifier is public API, so that a filter written against it keeps working.
+document give the same report, whatever was read in between (see [Reading, limits and
+exceptions](#reading-limits-and-exceptions) for the two exceptions): it can be stored, compared and asserted on. Each
+rule reports at one severity, always, and its identifier is public API, so that a filter written against it keeps
+working.
 
 The report is bounded. A hostile file can have a fault in every object; a report that kept every finding would let
 the file decide how much memory validating it takes. It keeps a fixed number, and still counts every one.
@@ -90,23 +92,34 @@ cost no allocation to look up. Its notice, under the Apache License 2.0, travels
 
 ## Reading, limits and exceptions
 
-The validator reads through the document you give it, lazily, like any other caller: it reads only what
-its rules inspect, what it resolves joins the document's cache, and anything the reader notices on the way
-joins `document.Diagnostics`.
+The validator reads through the document you give it, lazily: it reads only what its rules inspect, what it
+resolves joins the document's cache, and anything the reader notices on the way joins `document.Diagnostics`.
+
+It does one thing first, before any rule. A read can make the reader rebuild its index: when the index is
+incomplete because the file is damaged, or when an entry places its object where neither its offset nor the bytes
+around it hold it. If some read still could, the validator has the reader rebuild the index then, as that read would
+have; to find out, it reads the header each entry places, and nothing more. No rule then reads part of the document
+before a rebuild and part after it, and a document gives the same report whatever you read before validating it —
+nothing, every object, or a previous validation.
+
+Two things change the report from one validation to the next. One is changing the document yourself: the validator
+validates it as you changed it. The other is a document opened to throw on a limit
+([`ThrowOnLimit`](reader-limits.md)) whose rebuild before the first rule reaches one: the first validation throws,
+once the index is rebuilt whole, and the next one reads that index.
 
 The cross-reference rules read a few dozen bytes where each entry of the file's index places its object —
-its header, never its body — and each object stream once, without keeping it. They judge the index as the
-file wrote it, not as the reader corrected it: reading objects between two validations does not change the
-report, and nothing the reader does while it reads the chain changes the index either.
+its header, never its body — and each object stream once, without keeping it. They judge the rows as the file
+wrote them, not as the reader corrected them, and read each object stream where the file's own index places it.
+A value written elsewhere that a row's object needs — a stream's `/Length` written as a reference, a decoding
+parameter the trailer names — is read as any read reads it, through the index the reader settled on.
 
 The object and page tree rules walk what the trailer reaches, once: the page tree through its `/Kids`, and every
 object a reference leads to, each resolved a single time and read through the document's cache — stream
 dictionaries, never stream data. They keep what they found wrong and a set of the object numbers they met; on a
-thousand-page document, opening it and validating it allocates about 2.6 MB. Pages are counted as the tree lists
+thousand-page document, opening it and validating it allocates about 3.8 MB. Pages are counted as the tree lists
 them, as qpdf counts them: a kid that is null, or that names an object the file lacks, takes the place of a page
-with nothing on it. Walking a damaged file can make the reader rebuild its index, as reading it would; the
-cross-reference rules still judge the index the file wrote. Where the index is sound and whole, one rule also looks
-at every object it holds, to name the pages the tree leaves out.
+with nothing on it. Where the index is sound and whole — the reader rebuilt it neither as the document opened nor
+before the first rule —, one rule also looks at every object it holds, to name the pages the tree leaves out.
 
 The document's [reader limits](reader-limits.md) apply to validation too. An object the reader cut at a
 limit is not a fault of the file, so a rule meeting one says, as information, that it could not check it whole
