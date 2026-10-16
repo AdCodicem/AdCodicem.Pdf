@@ -72,4 +72,57 @@ internal sealed class HandWrittenFile
         _text.Append("startxref").Append(_eol).Append(at.ToString(CultureInfo.InvariantCulture)).Append(_eol).Append("%%EOF").Append(_eol);
         return at;
     }
+
+    /// <summary>
+    /// Writes object stream <paramref name="number"/>, holding <paramref name="members"/> uncompressed, its dictionary
+    /// holding <paramref name="entries"/> besides its own, and gives where its header starts.
+    /// </summary>
+    public long ObjectStream(int number, (int Number, string Body)[] members, string entries = "")
+    {
+        var header = new StringBuilder();
+        var contents = new StringBuilder();
+
+        foreach (var (member, body) in members)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{member} {contents.Length} ");
+            contents.Append(body).Append(' ');
+        }
+
+        var data = header.ToString() + contents;
+        return Object(
+            number,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /ObjStm /N {members.Length} /First {header.Length} /Length {data.Length} {entries}>>{_eol}stream{_eol}{data}{_eol}endstream"));
+    }
+
+    /// <summary>
+    /// Writes cross-reference stream <paramref name="number"/> of the numbers below <paramref name="size"/>, <c>/W [1 4 2]</c>,
+    /// one row each from <paramref name="rows"/> — its own aside, a number it lacks is free —, its dictionary holding
+    /// <paramref name="entries"/>, and the <c>startxref</c> naming it.
+    /// </summary>
+    public long CrossReferenceStream(int number, int size, Dictionary<int, (int Type, long Field2, int Field3)> rows, string entries)
+    {
+        var at = Position;
+        var data = new StringBuilder();
+
+        for (var row = 0; row < size; row++)
+        {
+            var (type, field2, field3) = row == number ? (1, at, 0)
+                : row == 0 ? (0, 0L, 65535)
+                : rows.TryGetValue(row, out var given) ? given : (0, 0L, 0);
+            data.Append((char)type);
+            data.Append((char)((field2 >> 24) & 0xFF)).Append((char)((field2 >> 16) & 0xFF))
+                .Append((char)((field2 >> 8) & 0xFF)).Append((char)(field2 & 0xFF));
+            data.Append((char)((field3 >> 8) & 0xFF)).Append((char)(field3 & 0xFF));
+        }
+
+        Object(
+            number,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /XRef /Size {size} /W [1 4 2] {entries} /Length {data.Length} >>{_eol}stream{_eol}{data}{_eol}endstream"));
+        _text.Append("startxref").Append(_eol).Append(at.ToString(CultureInfo.InvariantCulture)).Append(_eol).Append("%%EOF").Append(_eol);
+        return at;
+    }
 }

@@ -188,4 +188,60 @@ public class ReadOrderTests
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.FileRootInvalid)
             .Should().BeFalse("whether the file held 1 was unknown as the document opened, and the trailer judged is that one's");
     }
+
+    [Fact]
+    public void An_object_whose_own_load_rebuilt_the_index_is_read_from_the_rebuilt_index_next()
+    {
+        // Object 4 is a stream whose /Length is object 5, whose row leads nowhere: reading 4 rebuilds the index, as its length
+        // is resolved. The rebuilt index serves a later definition of 4, which is no stream.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 4 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Object(4, "<< /Length 5 0 R >>\nstream\n0123456789\nendstream"),
+            [5] = 9,
+        };
+        rows[6] = file.Padding(6);
+        file.Object(5, "10");
+        file.Object(4, "<< /Kind (later) >>");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>("it was read where the chain's row places it");
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfDictionary>()
+            .Which.ContainsKey(PdfName.Get("Kind")).Should().BeTrue("the rebuilt index serves the later definition, as it would had it been rebuilt before");
+    }
+
+    [Fact]
+    public void An_object_stream_whose_own_load_rebuilt_the_index_is_decoded_from_the_rebuilt_index_next()
+    {
+        // Object stream 6, which holds object 7, has its /Filter in object 5, whose row leads nowhere: reading 7 decodes 6,
+        // which rebuilds the index. The rebuilt index serves a later definition of 6, holding another 7, which the rebuild
+        // decodes as it takes in what its object streams hold.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [6] = (1, file.ObjectStream(6, [(7, "(chain)")], "/Filter 5 0 R "), 0),
+            [5] = (1, 9, 0),
+            [7] = (2, 6, 0),
+        };
+        rows[8] = (1, file.Padding(8), 0);
+        file.Object(5, "null");
+        file.ObjectStream(6, [(7, "(later)")]);
+        file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("chain");
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>()
+            .Which.ToText().Should().Be("later", "the rebuilt index serves the later stream");
+    }
 }

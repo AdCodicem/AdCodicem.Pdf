@@ -528,11 +528,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             var reentries = _reentries;
+            var repaired = _repaired;
             var value = LoadObject(id);
 
             // A null a guard against re-entry produced on the way is not the object's: it is read again when asked
-            // again, rather than kept for good (#51).
-            if (value is not PdfNull || reentries == _reentries)
+            // again, rather than kept for good (#51). Nor is what was read through an index its own load had rebuilt — an
+            // indirect /Length whose entry leads nowhere —: the next read takes the rebuilt index's definition of the
+            // number, as it would had the rebuild run before.
+            if ((value is not PdfNull || reentries == _reentries) && repaired == _repaired)
             {
                 Cache(id.Number, value);
             }
@@ -4091,6 +4094,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         try
         {
             var reentries = _reentries;
+            var repaired = _repaired;
             var loaded = GetObject(new PdfObjectId(number));
 
             // The stream itself could not be loaded from here — too deep, or needed by what is being loaded —: that
@@ -4105,7 +4109,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // again once the budget let it go, the stream reads the same objects as null, and gives the same.
             var contents = loaded is PdfStream stream ? ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports) : null;
 
-            KeepObjectStream(number, contents);
+            // A stream read through an index its own load had rebuilt is decoded again when next asked for, from the
+            // rebuilt index's definition.
+            if (repaired == _repaired)
+            {
+                KeepObjectStream(number, contents);
+            }
+
             return contents;
         }
         finally
