@@ -1,5 +1,6 @@
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -71,5 +72,120 @@ public class ReadOrderTests
         document.GetObject(new PdfObjectId(5)).Should().BeOfType<PdfDictionary>()
             .Which.Get(PdfName.Get("Count")).Should().BeOfType<PdfString>("the rebuilt index serves the later 5");
         document.Reader.IsCutAtLimit(5).Should().BeFalse("the guard cut the definition the rebuilt index no longer serves");
+    }
+
+    [Fact]
+    public void A_rebuild_run_after_opening_leaves_where_the_index_filled_as_the_document_opened()
+    {
+        // The table indexes six numbers, under a MaxIndexEntries of 8; the file also defines ten objects the table does not
+        // index, 10 to 19. Object 5's row leads nowhere: reading it rebuilds the index, which fills on the ninth number it
+        // meets, 15.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [5] = 9,
+        };
+        var orphans = new Dictionary<int, long>();
+
+        for (var number = 10; number < 20; number++)
+        {
+            orphans[number] = file.Object(number, "(orphan)");
+        }
+
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes,
+            new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } });
+
+        document.GetObject(new PdfObjectId(5));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.IndexFullAt.Should().Be(orphans[15]);
+        document.Reader.Structure.IndexFullAt.Should().Be(-1, "the index had room for every number as the document opened");
+        new PdfValidator().Validate(document).Findings
+            .Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart)
+            .Select(finding => finding.Location.Position).Should().Equal(orphans[15]);
+    }
+
+    [Fact]
+    public void A_rebuild_run_after_opening_leaves_the_catalog_found_as_the_document_opened()
+    {
+        // /Root names object 1, no catalog: opening takes catalog 20. Later in the file come catalog 30, and 20 again as an
+        // annotation. Object 40's row leads nowhere: reading it rebuilds the index, which serves the later 20, so that the
+        // reader takes 30.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Foo >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>"),
+        };
+        rows[6] = file.Padding(6);
+        rows[40] = rows[6] + 600;
+        file.Object(40, "<< /Title (info) >>");
+        rows[30] = file.Object(30, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(20, "<< /Type /Annot /Subtype /Text /Rect [0 0 1 1] >>");
+        file.Table(41, rows, "/Size 41 /Info 40 0 R /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Reader.CatalogFoundAs.Should().Be(20);
+        document.GetObject(new PdfObjectId(40));
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(30);
+        document.Reader.Structure.CatalogFoundAs.Should().Be(20, "the reader took 20 as the document opened");
+        new PdfValidator().Validate(document).Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid)
+            .Message.Should().Be(
+                "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. The reader took object 30, which is one, for the catalog.");
+    }
+
+    [Fact]
+    public void A_root_a_guard_hid_as_the_document_opened_is_not_judged_once_a_rebuild_finds_it()
+    {
+        // /Root names object 1, which only the oldest of three sections indexes, and MaxXRefSectionCount 2 leaves that section
+        // unread: whether the file holds 1 is unknown. The newest section indexes catalog 7, which the reader takes, and gives
+        // object 5 a row that leads nowhere: reading it rebuilds the index, which finds 1.
+        var file = PdfTemplate.Build(PdfTemplate.Sound + """
+            4 0 obj
+            (update)
+            endobj
+            xref
+            4 1
+            {row:4}
+            trailer
+            << /Size 5 /Root 1 0 R /Prev {xref:1} >>
+            startxref
+            {xref:2}
+            %%EOF
+            7 0 obj
+            << /Type /Catalog >>
+            endobj
+            xref
+            7 1
+            {row:7}
+            5 1
+            0000000009 00000 n 
+            trailer
+            << /Size 8 /Root 1 0 R /Prev {xref:2} >>
+            startxref
+            {xref:3}
+            %%EOF
+
+            """);
+        using var document = PdfDocument.Open(
+            file,
+            new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2 } });
+
+        document.Reader.Structure.RootHiddenByGuard.Should().BeTrue();
+        document.GetObject(new PdfObjectId(5));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>("the rebuilt index holds 1");
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.FileRootInvalid)
+            .Should().BeFalse("whether the file held 1 was unknown as the document opened, and the trailer judged is that one's");
     }
 }
