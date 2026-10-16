@@ -1,3 +1,4 @@
+using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
@@ -12,6 +13,51 @@ namespace AdCodicem.Pdf.Tests;
 public class ReadOrderTests
 {
     private const string Page = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>";
+
+    /// <summary>
+    /// The shape of #237: an update whose table indexes objects 1 to 3, whose trailer names object 4 under <c>/Bar</c> and a
+    /// <c>/Prev</c> nothing is at; and an older section, which the chain does not reach, indexing 1 to 4, whose trailer names
+    /// object 99, which the file lacks, under <c>/Foo</c>.
+    /// </summary>
+    private const string UpdateWithoutItsPrevious = """
+        %PDF-1.7
+        1 0 obj
+        << /Type /Catalog /Pages 2 0 R >>
+        endobj
+        2 0 obj
+        << /Type /Pages /Kids [3 0 R] /Count 1 >>
+        endobj
+        3 0 obj
+        << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+        endobj
+        4 0 obj
+        (four)
+        endobj
+        xref
+        0 5
+        {free}
+        {row:1}
+        {row:2}
+        {row:3}
+        {row:4}
+        trailer
+        << /Size 5 /Root 1 0 R /Foo 99 0 R /Info << /Title 5 >> >>
+        startxref
+        {xref:1}
+        %%EOF
+        xref
+        0 4
+        {free}
+        {row:1}
+        {row:2}
+        {row:3}
+        trailer
+        << /Size 5 /Root 1 0 R /Prev 999999 /Bar 4 0 R >>
+        startxref
+        {xref:2}
+        %%EOF
+
+        """;
 
     [Fact]
     public void A_rebuild_forgets_that_an_object_it_no_longer_indexes_lacked_its_endobj()
@@ -243,5 +289,167 @@ public class ReadOrderTests
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>()
             .Which.ToText().Should().Be("later", "the rebuilt index serves the later stream");
+    }
+
+    [Theory]
+    [InlineData("nothing")]
+    [InlineData("a validation")]
+    [InlineData("the object the update's trailer names")]
+    public void Validation_finds_the_same_whatever_was_read_before_it(string before)
+    {
+        // #237: the update's trailer names a /Prev nothing is at, which leaves the index incomplete; the older trailer, which
+        // only a rebuild reads, adds /Foo, naming an object the file lacks. Reading object 4 under the update's /Bar rebuilt
+        // the index, which merged /Foo into the trailer: a validation that read it first found /Foo, one whose walk read it
+        // after taking the trailer's entries did not.
+        var file = PdfTemplate.Build(UpdateWithoutItsPrevious);
+        var expected = Findings(PdfDocument.Open(file), validations: 2);
+        using var document = PdfDocument.Open(file);
+
+        if (before == "a validation")
+        {
+            new PdfValidator().Validate(document);
+        }
+        else if (before != "nothing")
+        {
+            document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>();
+        }
+
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString()).Should().Equal(expected);
+        expected.Should().Contain(finding => finding.Contains(PdfValidationRuleIds.ObjectReferenceMissing, StringComparison.Ordinal) &&
+            finding.Contains("/Foo", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("inside another object")]
+    [InlineData("outside the file")]
+    public void An_entry_whose_object_a_read_would_not_find_has_the_index_rebuilt_before_the_first_rule(string where)
+    {
+        // Object 4's row places it in the middle of object 6, more than the neighborhood a read searches away from its header,
+        // or past the file's end; nothing refers to it. Reading it would rebuild the index: the validator does so first.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+        };
+        rows[6] = file.Padding(6);
+        rows[4] = where == "outside the file" ? 99999 : rows[6] + 600;
+        file.Object(4, "(four)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeFalse();
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Message.StartsWith(
+            "The entry of object 4 ", StringComparison.Ordinal), "the rules judge the row as the file wrote it");
+        new PdfValidator().Validate(document).Findings.Should().Equal(report.Findings);
+    }
+
+    [Theory]
+    [InlineData("a few bytes off")]
+    [InlineData("cut by the object guard")]
+    [InlineData("after a long comment")]
+    [InlineData("after a comment longer than the object guard")]
+    public void An_object_a_read_finds_sets_off_no_rebuild_before_the_first_rule(string shape)
+    {
+        // A read finds object 4 where its row places it, or near: a few bytes off; past the 256 bytes MaxObjectLength lets it
+        // read, which cuts its body, not its header; after a comment longer than the first bytes the validator reads of a
+        // header; or after one longer than the guard, which the neighborhood search passes over.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 4 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Position,
+        };
+
+        switch (shape)
+        {
+            case "a few bytes off":
+                rows[4] += 3;
+                file.Object(4, "(four)");
+                break;
+            case "cut by the object guard":
+                file.Object(4, "(" + new string('y', 400) + ")");
+                break;
+            default:
+                file.Raw("%" + new string('c', shape == "after a long comment" ? 100 : 300) + "\n");
+                file.Object(4, "(four)");
+                break;
+        }
+
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes,
+            new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 256 } });
+
+        new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>();
+        document.WasRepaired.Should().BeFalse("a read finds what the validator found a read finds");
+    }
+
+    [Fact]
+    public void A_guard_the_rebuild_before_the_first_rule_reaches_throws_in_the_first_validation_only()
+    {
+        // Object 5's row leads nowhere, and the file defines ten objects the table does not index: the rebuild the validator
+        // runs first fills the index under a MaxIndexEntries of 8, and a document opened to throw on a guard throws, its index
+        // whole. The next validation reads it so.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [5] = 9,
+        };
+
+        for (var number = 10; number < 20; number++)
+        {
+            file.Object(number, "(orphan)");
+        }
+
+        file.Table(6, rows, "/Size 6 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes,
+            new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } });
+        var validator = new PdfValidator();
+
+        FluentActions.Invoking(() => validator.Validate(document)).Should().Throw<PdfLimitExceededException>()
+            .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
+
+        document.WasRepaired.Should().BeTrue();
+        validator.Validate(document).Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Settling_the_index_of_a_disposed_document_is_refused()
+    {
+        var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));
+        var reader = document.Reader;
+        document.Dispose();
+
+        FluentActions.Invoking(reader.SettleIndex).Should().Throw<ObjectDisposedException>();
+    }
+
+    /// <summary>Validates <paramref name="document"/> as many times as asked, checks each finds what the first did, and disposes it.</summary>
+    private static List<string> Findings(PdfDocument document, int validations)
+    {
+        using (document)
+        {
+            var first = new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString()).ToList();
+
+            for (var count = 1; count < validations; count++)
+            {
+                new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString()).Should().Equal(first);
+            }
+
+            return first;
+        }
     }
 }

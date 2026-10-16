@@ -70,6 +70,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal const int NearbySearchRadius = 512;
 
     /// <summary>
+    /// How many bytes <see cref="HeaderNumberAt"/> reads first where an entry places its object: enough for a header after
+    /// some white space; a header that runs past them is read again in a window eight times larger, as a load reads it.
+    /// </summary>
+    private const int HeaderCheckWindow = 64;
+
+    /// <summary>
     /// The most places near missing cross-reference sections that are tried as one, over a whole document. Real
     /// files miss by a few bytes, with the section the nearest candidate; a file packed with object headers
     /// there, or with sections that all miss, gets no more attempts. Not a guard a valid file can reach: a valid
@@ -317,6 +323,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// finds afterward — a rebuild run later — is kept apart from it.
     /// </summary>
     private readonly bool _opened;
+
+    /// <summary>
+    /// Whether <see cref="SettleIndex"/> ran: it rebuilt the index, or found that no load can; either way no later load
+    /// rebuilds it, and it does not look again.
+    /// </summary>
+    private bool _settled;
 
     /// <summary>The object the reader last took for the catalog, <c>/Root</c> leading to none; 0 while it took none.</summary>
     private int _catalogFoundAs;
@@ -665,6 +677,116 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// document opened.
     /// </summary>
     internal int CatalogFoundAs => _catalogFoundAs;
+
+    /// <summary>
+    /// Brings the index to the state no later load can change: rebuilds it now, once, when a load could still rebuild it,
+    /// and otherwise leaves it as it is. The validator calls it before its first rule, so that what every rule reads was
+    /// read after any rebuild, however much or little was read before (#237).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A load rebuilds the index in two cases: the index is known to be incomplete through damage and lacks the object; or
+    /// the object is neither where its entry places it, nor near it. The first is known without reading anything. The
+    /// second is decided here without loading anything: for each entry in use that places an object in the file, the header
+    /// a load would parse there is read alone, as a load reads it — after white space and comments, in a window grown while
+    /// the header runs past it —, and the neighborhood is searched as a load searches it. An object a load would find so is
+    /// one it finds, whatever its body holds; an entry that places an object in an object stream rebuilds nothing of its own,
+    /// the stream's entry aside, which is one of the others.
+    /// </para>
+    /// <para>
+    /// Once settled, the index changes only where a load relocates an object found near its entry, which changes neither
+    /// the entry's kind nor any other entry. A rebuild that reaches a guard, the document opened to throw on one, throws
+    /// here once, with the index whole: the next call finds it settled.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+    /// <exception cref="PdfLimitExceededException">
+    /// The rebuild reached one of the reader's guards, and the document was opened to throw on one.
+    /// </exception>
+    internal void SettleIndex()
+    {
+        ObjectDisposedException.ThrowIf(_closed, typeof(PdfDocument));
+
+        if (_settled)
+        {
+            return;
+        }
+
+        _settled = true;
+
+        if (!_repaired && (_indexIncomplete || AnyLoadWouldRebuild()))
+        {
+            Repair();
+        }
+    }
+
+    /// <summary>Determines whether loading some object the index holds in use, where it places it, would rebuild the index.</summary>
+    private bool AnyLoadWouldRebuild()
+    {
+        foreach (var (number, entry) in _xref.Entries)
+        {
+            if (number > 0 && entry.Kind == XRefEntryKind.Regular && !LoadFindsWhereEntryPlaces(number, entry))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether a load of object <paramref name="number"/> finds it where <paramref name="entry"/> places it, or
+    /// near it, as <see cref="LoadRegularObject"/> looks: what it would parse there is an object of that number.
+    /// </summary>
+    private bool LoadFindsWhereEntryPlaces(int number, XRefEntry entry)
+    {
+        var offset = PositionOf(entry);
+
+        if (IsInFile(offset) && HeaderNumberAt(offset) == number)
+        {
+            return true;
+        }
+
+        return TryFindObjectHeader(number, offset, out var nearby, out _) && HeaderNumberAt(nearby) == number;
+    }
+
+    /// <summary>
+    /// Gives the number of the object whose header starts at <paramref name="offset"/>, read as <see cref="TryParseNumberedAt"/>
+    /// reads it — after white space and comments, in a window grown while the header runs past it, up to
+    /// <see cref="PdfReaderLimits.MaxObjectLength"/> —, or 0 where no header is. Nothing is parsed past the header, reported
+    /// or recorded.
+    /// </summary>
+    private long HeaderNumberAt(long offset)
+    {
+        var maxWindow = _guard.Bound(PdfLimit.Object);
+        var windowSize = Math.Min(HeaderCheckWindow, maxWindow);
+
+        while (true)
+        {
+            using var window = _source.GetWindow(offset, windowSize);
+            var cut = window.Length == windowSize && offset + window.Length < _source.Length;
+            var lexer = new PdfLexer(window.Memory.Span);
+            var number = lexer.Read();
+            var generation = lexer.Read();
+            var keyword = lexer.Read();
+
+            if (number.Kind == PdfTokenKind.Integer && generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword("obj"u8) &&
+                number.Integer is > 0 and <= PdfObjectId.MaxNumber && generation.Integer is >= 0 and <= PdfObjectId.MaxGeneration)
+            {
+                return number.Integer;
+            }
+
+            // A header the window's edge may have cut is read again in a larger one, as the parser reads it.
+            var truncated = keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= window.Length;
+
+            if (!truncated || !cut || windowSize >= maxWindow)
+            {
+                return 0;
+            }
+
+            windowSize = (int)Math.Min((long)windowSize * 8, maxWindow);
+        }
+    }
 
     /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, is not followed by <c>endobj</c>, and
