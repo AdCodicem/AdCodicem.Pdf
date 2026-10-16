@@ -1288,6 +1288,36 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Settling_the_index_reads_of_each_entry_no_more_than_a_load_reads_before_its_body()
+    {
+        // Two thousand objects, each three bytes past where its row places it. Settling the index, as the validator does
+        // before its first rule, reads at each row the first bytes of a header and the 512 bytes either side, as a load
+        // does before it relocates the object, then the header found: no more, and nothing is rebuilt (#237).
+        const int Count = 2000;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < Count + 3; number++)
+        {
+            rows[number] = file.Object(number, "null") + 3;
+        }
+
+        file.Table(Count + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Count + 3} /Root 1 0 R"));
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeFalse();
+        (source.BytesRead - opened).Should().BeLessThanOrEqualTo((Count + 2) * (64L + 1024 + 64));
+    }
+
+    [Fact]
     public void Opening_a_chain_of_trailers_that_never_close_reads_a_bounded_amount()
     {
         // Each section's trailer opens an array that never closes, so it runs past the window's edge and on

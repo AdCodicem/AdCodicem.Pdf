@@ -1,4 +1,5 @@
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
@@ -223,6 +224,25 @@ public class CorpusValidationTests
 
         second.Findings.Should().Equal(first.Findings, $"{entry.Name} is validated twice from scratch");
         second.ToString().Should().Be(first.ToString());
+    }
+
+    [Theory]
+    [MemberData(nameof(AllDocuments))]
+    public void No_read_rebuilds_the_index_after_a_validation(string file)
+    {
+        // The validator rebuilds the index before its first rule when some read could still do so (#237): once it has, or
+        // found that none could, reading every object the index holds rebuilds nothing.
+        var entry = Corpus.Get(file);
+        using var document = PdfDocument.Open(Corpus.PathOf(entry.File), CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false });
+        new PdfValidator().Validate(document);
+        var repaired = document.WasRepaired;
+
+        foreach (var number in document.ObjectNumbers.ToList())
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.WasRepaired.Should().Be(repaired, $"{entry.Name} was validated, and its index settled, before it was read");
     }
 
     [Fact]

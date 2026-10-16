@@ -161,23 +161,7 @@ public class ValidationRefereeTests(RefereeContainer referee)
     /// </summary>
     private static PdfValidationReport Validate(CorpusDocument entry)
     {
-        var limits = PdfReaderLimits.Default;
-
-        if (entry.ReaderLimits is { } raised)
-        {
-            limits = limits with
-            {
-                MaxDecodedStreamLength = raised.MaxDecodedStreamLength ?? limits.MaxDecodedStreamLength,
-                MaxObjectLength = raised.MaxObjectLength ?? limits.MaxObjectLength,
-                MaxXRefSectionLength = raised.MaxXRefSectionLength ?? limits.MaxXRefSectionLength,
-                MaxXRefSectionCount = raised.MaxXRefSectionCount ?? limits.MaxXRefSectionCount,
-                MaxTrailerLength = raised.MaxTrailerLength ?? limits.MaxTrailerLength,
-                MaxIndexEntries = raised.MaxIndexEntries ?? limits.MaxIndexEntries,
-                MaxFilterChainLength = raised.MaxFilterChainLength ?? limits.MaxFilterChainLength,
-            };
-        }
-
-        using var document = PdfDocument.Open(Corpus.Read(entry.File), new PdfReaderOptions { Limits = limits, ThrowOnEncrypted = false });
+        using var document = PdfDocument.Open(Corpus.Read(entry.File), CorpusOptions.For(entry));
         return new PdfValidator().Validate(document);
     }
 
