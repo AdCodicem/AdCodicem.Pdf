@@ -1055,18 +1055,20 @@ public class CrossReferenceRuleTests
     }
 
     [Fact]
-    public void A_trailer_followed_by_stream_whose_length_the_chain_cannot_read_leaves_the_index_as_the_file_wrote_it()
+    public void A_trailer_followed_by_stream_whose_length_the_chain_cannot_read_has_its_entry_judged_as_the_file_wrote_it()
     {
         // #182: the parser takes the trailer for a stream's dictionary, whose /Length, object 5, the table places outside
         // the file. Loading it as the chain was read rebuilt the index, and the entry went unjudged. The chain reads nothing
         // it cannot read where the index places it: the data is taken up to its endstream, and the entry judged as written.
+        // The validator rebuilds the index before its first rule, as a load of object 5 would (#237): the rules judge the
+        // chain's index all the same.
         var file = PdfTemplate.Build(PdfTemplate.Sound
             .Replace("{row:3}\n", "{row:3}\n5 1\n0000099999 00000 n \n", StringComparison.Ordinal)
             .Replace("<< /Size 4 /Root 1 0 R >>", "<< /Size 6 /Root 1 0 R /Length 5 0 R >>\nstream\nabcd\nendstream", StringComparison.Ordinal));
         using var document = PdfDocument.Open(file);
         var report = new PdfValidator().Validate(document);
 
-        document.WasRepaired.Should().BeFalse();
+        document.WasRepaired.Should().BeTrue();
         Single(report, PdfValidationRuleIds.XRefEntryBroken).Message.Should().Be("The entry of object 5 gives offset 99999, outside the file.");
         report.Contains(PdfValidationRuleIds.FileTrailerMalformed).Should().BeTrue();
     }

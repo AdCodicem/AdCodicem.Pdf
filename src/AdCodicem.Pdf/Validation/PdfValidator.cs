@@ -17,6 +17,15 @@ namespace AdCodicem.Pdf.Validation;
 /// limits: what it resolves joins the document's cache, and what the reader notices on the way joins
 /// <see cref="PdfDocument.Diagnostics"/>. Opening the document with raised limits lets it check more.
 /// </para>
+/// <para>
+/// Before its first rule, it rebuilds the document's index when a read could still set off that rebuild — the index is
+/// incomplete through damage, or an entry places its object where neither its offset nor the bytes near it hold it —, as
+/// reading that object would. No rule then reads part of the document before a rebuild and part after it, and two
+/// validations of the same document give the same report, whatever the caller read before them (#237). Two things change
+/// that: the caller changing the document between them; and a rebuild that reaches a guard of a document opened with
+/// <see cref="PdfReaderOptions.ThrowOnLimit"/>, which throws in the first validation only — the index is rebuilt whole
+/// before it throws, and the next validation reads it so.
+/// </para>
 /// </remarks>
 public sealed class PdfValidator
 {
@@ -37,14 +46,18 @@ public sealed class PdfValidator
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
     /// <exception cref="ObjectDisposedException"><paramref name="document"/> was disposed.</exception>
     /// <exception cref="Diagnostics.PdfLimitExceededException">
-    /// Validation reached one of the document's reader limits, and the document was opened with
-    /// <see cref="PdfReaderOptions.ThrowOnLimit"/>. Without it, a rule reports at most that what the reader cut
-    /// was not checked whole.
+    /// Validation reached one of the document's reader limits — in a rule, or in the rebuild it runs before the first —, and
+    /// the document was opened with <see cref="PdfReaderOptions.ThrowOnLimit"/>. Without it, a rule reports at most that
+    /// what the reader cut was not checked whole.
     /// </exception>
     public PdfValidationReport Validate(PdfDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
         document.ThrowIfDisposed();
+
+        // A rebuild a read could still set off runs now, before the first rule: every rule then reads the document as it
+        // stays, whatever was read before this validation and whatever the rules read (#237).
+        document.Reader.SettleIndex();
 
         var profile = Options.Profile;
         var context = new ValidationContext(document, Options.FindingCapacity);
