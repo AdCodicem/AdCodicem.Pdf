@@ -437,6 +437,35 @@ public class ReadOrderTests
         FluentActions.Invoking(reader.SettleIndex).Should().Throw<ObjectDisposedException>();
     }
 
+    [Theory]
+    [InlineData("/Bad /A#00B", "/Good 1", "Object 5 holds the name /A#00B, under /Bad, and a name cannot contain a null character.")]
+    [InlineData("/Ref 99 0 R", "/Ref 3 0 R", "Object 5 refers to object 99 0 under /Ref, which the file lacks: the reference reads as null.")]
+    public void The_object_graph_describes_an_object_from_the_value_it_walked(string fault, string later, string message)
+    {
+        // Object 5 holds a fault and object 7, whose row leads nowhere; a later definition of 5 holds no fault. Walked without
+        // the validator settling the index first, following 7 rebuilds it while 5 is being walked: describing 5 by reading it
+        // again read the later 5, and found no fault in it — a reference to "object 0 0", or a crash on the name.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 5 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [5] = file.Object(5, "<< " + fault + " /Info 7 0 R >>"),
+        };
+        rows[6] = file.Padding(6);
+        rows[7] = rows[6] + 600;
+        file.Object(7, "<< /Title (info) >>");
+        file.Object(5, "<< " + later + " >>");
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var graph = ObjectGraph.Run(document, PageTreeWalk.Run(document));
+
+        document.WasRepaired.Should().BeTrue();
+        graph.MissingReferences.Concat(graph.NullCharacterNames).Should().ContainSingle().Which.Message.Should().Be(message);
+    }
+
     /// <summary>Validates <paramref name="document"/> as many times as asked, checks each finds what the first did, and disposes it.</summary>
     private static List<string> Findings(PdfDocument document, int validations)
     {
