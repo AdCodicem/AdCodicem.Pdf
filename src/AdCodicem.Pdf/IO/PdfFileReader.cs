@@ -4156,6 +4156,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _objectStreamBytes = 0;
         _nullWhileDecoding.Clear();
 
+        // What was noted of each object as it was read is noted again as each is read from the rebuilt index — every object
+        // written directly in the file is, below —: kept, a note of a definition the rebuilt index no longer serves, or of a
+        // number it no longer holds, would be read as the note of the one it serves.
+        _unproduced.Clear();
+        _cutAtLimit.Clear();
+        _endObjMissing.Clear();
+        _streamLengthFaults.Clear();
+
         var redefinitions = new Redefinitions();
 
         // Indexing and loading objects can reach a guard. A document opened to throw on one throws once the index is
