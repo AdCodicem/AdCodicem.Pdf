@@ -1880,8 +1880,8 @@ public class FilterDamageTests
 
     /// <summary>What decoding zlib data allocates at the least: its output, and one inflater's own objects.</summary>
     private static long LeastAllocation(byte[] compressed, int length) =>
-        LeastAllocated(
-            _ =>
+        Allocations.Least(
+            () =>
             {
                 var output = new byte[length];
 
@@ -1892,12 +1892,11 @@ public class FilterDamageTests
 
                 return output;
             },
-            out _,
             out _);
 
     /// <summary>
-    /// What <paramref name="decode"/> allocates on this thread: the least of three measures that no collection paused,
-    /// or, past thirty measures, the least of all. Each measure is given diagnostics of its own, made before it starts.
+    /// What <paramref name="decode"/> allocates on this thread, as <see cref="Allocations"/> measures it: the least of
+    /// three measures that no collection paused. Each measure is given diagnostics of its own, made before it starts.
     /// </summary>
     /// <remarks>
     /// One measure is not enough when the work allocates on the large-object heap: a collection that runs during it now
@@ -1906,34 +1905,8 @@ public class FilterDamageTests
     /// and the margins kept below it still catch a buffer that is no longer pooled.
     /// </remarks>
     private static long LeastAllocated(
-        Func<PdfDiagnostics, ReadOnlyMemory<byte>> decode, out ReadOnlyMemory<byte> decoded, out PdfDiagnostics diagnostics)
-    {
-        const int Measures = 3;
-        const int Attempts = 30;
-        var least = long.MaxValue;
-        var leastUnpaused = long.MaxValue;
-        var unpaused = 0;
-        decoded = default;
-        diagnostics = new PdfDiagnostics();
-
-        for (var attempt = 0; attempt < Attempts && unpaused < Measures; attempt++)
-        {
-            diagnostics = new PdfDiagnostics();
-            var paused = GC.GetTotalPauseDuration();
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            decoded = decode(diagnostics);
-            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-            least = Math.Min(least, allocated);
-
-            if (GC.GetTotalPauseDuration() == paused)
-            {
-                leastUnpaused = Math.Min(leastUnpaused, allocated);
-                unpaused++;
-            }
-        }
-
-        return unpaused > 0 ? leastUnpaused : least;
-    }
+        Func<PdfDiagnostics, ReadOnlyMemory<byte>> decode, out ReadOnlyMemory<byte> decoded, out PdfDiagnostics diagnostics) =>
+        Allocations.Least(static () => new PdfDiagnostics(), decode, out diagnostics, out decoded);
 
     private static byte[] WithWrongChecksum(byte[] compressed)
     {

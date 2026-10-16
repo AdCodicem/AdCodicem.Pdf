@@ -98,11 +98,13 @@ public class ObjectModelTests
         var stream = new PdfStream(new PdfDictionary { [PdfName.Subtype] = name }, PdfStreamData.FromMemory(new byte[1]));
         var quote = "/" + new string('A', 127) + " (the first 127 of 4,194,304 bytes)";
 
-        // Warmed up first: what is measured is the describing, not the first call's own costs.
+        // Warmed up first: what is measured is the describing, not the first call's own costs. Measured as the least of three
+        // measures no collection paused, as every budget of a few kilobytes is: a collection another test triggers can fall in
+        // the window and have the thread's count take an allocation quantum it never used, some 8 KB (#253).
         _ = (name.ToString(), dictionary.ToString(), stream.ToString());
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var described = (Name: name.ToString(), Dictionary: dictionary.ToString(), Stream: stream.ToString());
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = Allocations.Least(
+            () => (Name: name.ToString(), Dictionary: dictionary.ToString(), Stream: stream.ToString()),
+            out var described);
 
         described.Name.Should().Be(quote);
         described.Dictionary.Should().Be("<</Type " + quote + " ... 1 entry>>");
@@ -154,10 +156,11 @@ public class ObjectModelTests
 
         var text = new PdfString(bytes);
 
+        // Measured as the least of three measures no collection paused: counting two megabytes lasts long enough for a
+        // collection another test triggers to fall in the window, and have the thread's count take an allocation quantum it
+        // never used, some 8 KB, which the budget has no room for above a description of 10 KB (#253).
         _ = text.ToString();
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var described = text.ToString();
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = Allocations.Least(text.ToString, out var described);
 
         described.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"\" (the first 127 of {text.ToText().Length:N0} characters)"));
         allocated.Should().BeLessThan(16 * 1024, "the whole is counted, not decoded");
@@ -178,10 +181,11 @@ public class ObjectModelTests
         var latin = new PdfString(System.Text.Encoding.ASCII.GetBytes(new string('A', 4 * 1024 * 1024)));
         var utf16 = PdfString.FromText(new string('a', 126) + "\U0001F600b");
 
+        // Measured as the least of three measures no collection paused, as every budget of a few kilobytes is: a collection
+        // another test triggers can fall in the window and have the thread's count take an allocation quantum it never used,
+        // some 8 KB (#253).
         _ = latin.ToString();
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var described = latin.ToString();
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = Allocations.Least(latin.ToString, out var described);
 
         described.Should().Be("\"" + new string('A', 127) + "\" (the first 127 of 4,194,304 characters)");
         allocated.Should().BeLessThan(4096, "a description decodes no more of the text than it shows");

@@ -168,9 +168,10 @@ public class FileQuoteTests
         var name = PdfName.Get(new string('A', 64 * 1024 * 1024));
         _ = FileQuote.Name(name);
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread();
-        var quote = FileQuote.Name(name);
-        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        // Measured as the least of three measures no collection paused, as every budget of a few kilobytes is: a collection
+        // another test triggers can fall in the window and have the thread's count take an allocation quantum it never used,
+        // some 8 KB (#253).
+        var allocated = Allocations.Least(() => FileQuote.Name(name), out var quote);
 
         quote.Should().EndWith(" (the first 127 of 67,108,864 bytes)");
         allocated.Should().BeLessThan(1024, "the quote is written through a buffer on the stack, and only it is allocated");
