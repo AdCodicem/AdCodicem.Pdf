@@ -160,24 +160,23 @@ public class LexerTests
     {
         // A million digits, read once as an integer past a long and once as a real, both through the framework's parse.
         // The least of a few runs, after a first one: the framework's first parse in a process allocates once, 1,344
-        // bytes, as the runtime can on this thread outside the parse.
+        // bytes, as the runtime can on this thread outside the parse. Of runs no collection paused: a collection another
+        // test triggers falls in a run often enough, and can have it count bytes the thread never used (#253).
         var integer = Encoding.ASCII.GetBytes(new string('7', 1_000_000));
         var real = Encoding.ASCII.GetBytes("0." + new string('7', 1_000_000));
-        var least = long.MaxValue;
 
-        for (var run = 0; run < 5 && least > 0; run++)
-        {
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var parsed = PdfNumberParser.TryParse(integer, out _, out var large, out _) &
-                PdfNumberParser.TryParse(real, out _, out var small, out _);
-            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var least = Allocations.Least(
+            () =>
+            {
+                var parsed = PdfNumberParser.TryParse(integer, out _, out var large, out _) &
+                    PdfNumberParser.TryParse(real, out _, out var small, out _);
+                return (Parsed: parsed, Large: large, Small: small);
+            },
+            out var read);
 
-            parsed.Should().BeTrue();
-            large.Should().Be(double.PositiveInfinity);
-            small.Should().Be(0.7777777777777778);
-            least = Math.Min(least, allocated);
-        }
-
+        read.Parsed.Should().BeTrue();
+        read.Large.Should().Be(double.PositiveInfinity);
+        read.Small.Should().Be(0.7777777777777778);
         least.Should().Be(0);
     }
 

@@ -1560,15 +1560,15 @@ public class HostileInputTests
         var diagnostics = new PdfDiagnostics();
 
         // Decoded and told once, and the time asserted, before the window: what a first assertion sets up is no part of
-        // decoding.
+        // decoding. Decoding walks the million names, long enough for a collection another test triggers to fall in the
+        // window and have the thread's count take an allocation quantum it never used: each budget holds the least of three
+        // measures no collection paused (#253).
         Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard));
         stream.HasImageFilter();
-        var before = GC.GetAllocatedBytesForCurrentThread();
 
-        var decoded = Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard));
-        var decoding = GC.GetAllocatedBytesForCurrentThread() - before;
-        var image = stream.HasImageFilter();
-        var telling = GC.GetAllocatedBytesForCurrentThread() - before - decoding;
+        var decoding = Allocations.Least(
+            () => Measure(() => IO.Filters.PdfFilterPipeline.Decode(stream, diagnostics, guard)), out var decoded);
+        var telling = Allocations.Least(stream.HasImageFilter, out var image);
 
         decoding.Should().BeLessThan(4 * 1024);
         telling.Should().BeLessThan(1024);

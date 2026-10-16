@@ -323,19 +323,11 @@ public class ArlingtonModelTests
         LookRowsUp(page).Should().Be(2000);
 
         // The least of a few runs, after a first one: a lookup that allocates does so on every run, whereas the runtime
-        // can allocate on this thread once, outside the lookups, as it did on one CI run under coverage (3,352 bytes).
-        var least = long.MaxValue;
+        // can allocate on this thread once, outside the lookups, as it did on one CI run under coverage (3,352 bytes). Of
+        // runs no collection paused: one that falls in a run can have it count bytes the thread never used (#253).
+        var least = Allocations.Least(() => LookRowsUp(page), out var found);
 
-        for (var run = 0; run < 5 && least > 0; run++)
-        {
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var found = LookRowsUp(page);
-            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-            found.Should().Be(2000);
-            least = Math.Min(least, allocated);
-        }
-
+        found.Should().Be(2000);
         least.Should().Be(0);
     }
 
