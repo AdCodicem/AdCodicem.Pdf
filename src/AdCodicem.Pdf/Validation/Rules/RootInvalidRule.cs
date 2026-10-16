@@ -40,16 +40,18 @@ internal sealed class RootInvalidRule : IValidationRule
             return;
         }
 
-        // A catalog a guard left out of the index is unknown, not lacking: xref.checked-in-part says the index was stopped
-        // short of it, and raising the guard reads it.
-        if (structure.RootAsWritten is PdfReference hidden &&
-            context.Document.Reader.GetPresence(hidden.Id.Number) == ObjectPresence.Unindexed)
+        // A catalog a guard left out of the index as the document opened is unknown, not lacking: xref.checked-in-part says
+        // the index was stopped short of it, and raising the guard reads it. It stays so once a rebuild finds it, as the
+        // trailer judged is the one the document opened with, and /Root as it resolved then.
+        if (structure.RootHiddenByGuard)
         {
             return;
         }
 
-        var found = structure.CatalogFoundAs > 0
-            ? string.Create(CultureInfo.InvariantCulture, $" The reader took object {structure.CatalogFoundAs}, which is one, for the catalog.")
+        // The reader's, not the structure's: a rebuild run after the document opened may have taken another.
+        var catalog = context.Document.Reader.CatalogFoundAs;
+        var found = catalog > 0
+            ? string.Create(CultureInfo.InvariantCulture, $" The reader took object {catalog}, which is one, for the catalog.")
             : " No object of the file is a catalog.";
         var trailer = structure.Sections.Count > 0
             ? PdfValidationLocation.AtPosition(structure.Sections[0].TrailerLocation)

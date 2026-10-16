@@ -44,21 +44,24 @@ internal sealed class CheckedInPartRule : IValidationRule
                 remedy: null);
         }
 
-        if (structure.IndexFullAt >= 0)
+        // The reader's, not the structure's: the index may have filled in a rebuild run after the document opened.
+        var indexFullAt = context.Document.Reader.IndexFullAt;
+
+        if (indexFullAt >= 0)
         {
             context.Report(
                 this,
-                PdfValidationLocation.AtPosition(structure.IndexFullAt),
+                PdfValidationLocation.AtPosition(indexFullAt),
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"At offset {structure.IndexFullAt} the index reached the most entries PdfReaderLimits.MaxIndexEntries lets the reader hold: the objects past them were not indexed or checked."),
+                    $"At offset {indexFullAt} the index reached the most entries PdfReaderLimits.MaxIndexEntries lets the reader hold: the objects past them were not indexed or checked."),
                 remedy: null);
         }
 
         foreach (var section in structure.Sections)
         {
             // The section the index filled in is said so above, once.
-            if (section.CutByLimit && section.Offset != structure.IndexFullAt)
+            if (section.CutByLimit && section.Offset != indexFullAt)
             {
                 context.Report(
                     this,

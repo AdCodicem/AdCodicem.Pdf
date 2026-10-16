@@ -313,6 +313,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private bool _nestingReported;
 
     /// <summary>
+    /// Whether the document finished opening: <see cref="Structure"/> holds what the file showed then, and what the reader
+    /// finds afterward — a rebuild run later — is kept apart from it.
+    /// </summary>
+    private readonly bool _opened;
+
+    /// <summary>The object the reader last took for the catalog, <c>/Root</c> leading to none; 0 while it took none.</summary>
+    private int _catalogFoundAs;
+
+    /// <summary>
     /// Where the newest dictionary a rebuild merged into the trailer starts, at its <c>trailer</c> keyword; -1 while no
     /// rebuild merged one.
     /// </summary>
@@ -379,6 +388,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         Initialize();
         Version = DeclaredVersion();
+        _opened = true;
     }
 
     /// <summary>Gets the trailer of the document, merged across the whole cross-reference chain.</summary>
@@ -638,6 +648,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// whatever a rebuild found since.
     /// </summary>
     internal bool ChainStoppedByGuard => _chainFilledIndex || _cutByGuard;
+
+    /// <summary>
+    /// Gets where the index first had no room for an object number, <see cref="PdfReaderLimits.MaxIndexEntries"/> reached —
+    /// as the document opened, or in a rebuild run since —, or -1 while it had room for every number it met.
+    /// <see cref="FileStructure.IndexFullAt"/> keeps what it was when the document opened.
+    /// </summary>
+    internal long IndexFullAt => _indexFullAt;
+
+    /// <summary>
+    /// Gets the object the reader took for the catalog, <c>/Root</c> leading to none — as the document opened, or in a
+    /// rebuild run since —, or 0 while it took none. <see cref="FileStructure.CatalogFoundAs"/> keeps what it was when the
+    /// document opened.
+    /// </summary>
+    internal int CatalogFoundAs => _catalogFoundAs;
 
     /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, is not followed by <c>endobj</c>, and
@@ -1372,6 +1396,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             _structure.RootUsable = false;
             _structure.RootResolved = _structure.RootAsWritten is PdfReference root ? root.Resolve() : null;
+            _structure.RootHiddenByGuard = _structure.RootAsWritten is PdfReference hidden &&
+                GetPresence(hidden.Id.Number) == ObjectPresence.Unindexed;
 
             // Resolving /Root may itself have rebuilt the index — its object was neither where its entry said nor
             // near it —, and the rebuild looked for the catalog in the rebuilt index.
@@ -3215,7 +3241,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         _indexFullAt = position;
-        _structure.IndexFullAt = position;
+
+        // The file's structure is what the document opened with: where a rebuild run since filled the index is the reader's.
+        if (!_opened)
+        {
+            _structure.IndexFullAt = position;
+        }
+
         ReachLimit(PdfLimit.IndexEntries, IndexFullMessage(), position);
     }
 
@@ -4498,7 +4530,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // gives the header's generation —: an entry of 1 1 makes 1 1 R, not 1 0 R (#118).
                 var generation = _xref.TryGet(number, out var entry) && entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0;
                 Trailer.Set(PdfName.Root, new PdfReference(new PdfObjectId(number, generation), this));
-                _structure.CatalogFoundAs = number;
+                _catalogFoundAs = number;
+
+                // The file's structure is what the document opened with: the catalog a rebuild run since took is the reader's.
+                if (!_opened)
+                {
+                    _structure.CatalogFoundAs = number;
+                }
+
                 _diagnostics.Repair(
                     PdfDiagnosticCodes.TrailerRootRecovered,
                     string.Create(

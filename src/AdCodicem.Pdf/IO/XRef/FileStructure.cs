@@ -95,10 +95,11 @@ internal sealed class FileStructure
     public long ChainCutNamedFrom { get; set; } = -1;
 
     /// <summary>
-    /// Gets where the index first had no room for an object number, <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/>
-    /// reached — the section whose row it was, the header or object stream a rebuild found it in, or the chain's newest
-    /// section for an entry the chain gave that a rebuild could not keep, since the index it keeps no longer knows which
-    /// section gave it —, or -1 while it had room for every number it met.
+    /// Gets where the index first had no room for an object number as the document opened,
+    /// <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/> reached — the section whose row it was, the header or object
+    /// stream a rebuild run at opening found it in, or the chain's newest section for an entry the chain gave that such a
+    /// rebuild could not keep, since the index it keeps no longer knows which section gave it —, or -1 while it had room for
+    /// every number it met. Where a rebuild run later filled it is the reader's (<see cref="PdfFileReader.IndexFullAt"/>).
     /// </summary>
     public long IndexFullAt { get; set; } = -1;
 
@@ -114,7 +115,16 @@ internal sealed class FileStructure
     /// <summary>Gets a value indicating whether <see cref="RootAsWritten"/> led to a catalog when the document opened.</summary>
     public bool RootUsable { get; set; } = true;
 
-    /// <summary>Gets the object the reader found to be the catalog when <c>/Root</c> did not lead to one; 0 when it did not look, or found none.</summary>
+    /// <summary>
+    /// Gets a value indicating whether <see cref="RootAsWritten"/>, which led to no catalog, names an object a guard left out
+    /// of the index when the document opened: whether the file holds it was unknown then, whatever a rebuild run since found.
+    /// </summary>
+    public bool RootHiddenByGuard { get; set; }
+
+    /// <summary>
+    /// Gets the object the reader found to be the catalog as the document opened, <c>/Root</c> leading to none; 0 when it
+    /// did not look, or found none. The one a rebuild run later took is the reader's (<see cref="PdfFileReader.CatalogFoundAs"/>).
+    /// </summary>
     public int CatalogFoundAs { get; set; }
 
     /// <summary>Gets the trailer's <c>/Size</c> as the chain gave it.</summary>
