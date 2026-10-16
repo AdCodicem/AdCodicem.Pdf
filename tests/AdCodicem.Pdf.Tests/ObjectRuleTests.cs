@@ -137,6 +137,18 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_reference_to_nothing_in_a_kid_written_in_its_node_is_described_where_it_lies()
+    {
+        // The kids a node lists are page-tree.kid-invalid's, which reports a dictionary written there; the references that
+        // dictionary holds are this rule's. Describing them once passed over the node's whole /Kids, and found nothing.
+        var finding = Single(
+            Validate(PdfTemplate.SoundWith("/Kids [3 0 R]", "/Kids [3 0 R << /A 9 0 R >>]")),
+            PdfValidationRuleIds.ObjectReferenceMissing);
+
+        finding.Message.Should().Be("Object 2 refers to object 9 0 under /Kids[1]/A, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
     public void A_reference_to_a_literal_null_is_sound()
     {
         var template = PdfTemplate.Sound
