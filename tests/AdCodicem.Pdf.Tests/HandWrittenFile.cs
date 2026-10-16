@@ -99,9 +99,11 @@ internal sealed class HandWrittenFile
     /// <summary>
     /// Writes cross-reference stream <paramref name="number"/> of the numbers below <paramref name="size"/>, <c>/W [1 4 2]</c>,
     /// one row each from <paramref name="rows"/> — its own aside, a number it lacks is free —, its dictionary holding
-    /// <paramref name="entries"/>, and the <c>startxref</c> naming it.
+    /// <paramref name="entries"/> and, unless <paramref name="length"/> says not to, the <c>/Length</c> of its data, and the
+    /// <c>startxref</c> naming it.
     /// </summary>
-    public long CrossReferenceStream(int number, int size, Dictionary<int, (int Type, long Field2, int Field3)> rows, string entries)
+    public long CrossReferenceStream(
+        int number, int size, Dictionary<int, (int Type, long Field2, int Field3)> rows, string entries, bool length = true)
     {
         var at = Position;
         var data = new StringBuilder();
@@ -121,7 +123,7 @@ internal sealed class HandWrittenFile
             number,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"<< /Type /XRef /Size {size} /W [1 4 2] {entries} /Length {data.Length} >>{_eol}stream{_eol}{data}{_eol}endstream"));
+                $"<< /Type /XRef /Size {size} /W [1 4 2] {entries}{(length ? $" /Length {data.Length}" : "")} >>{_eol}stream{_eol}{data}{_eol}endstream"));
         _text.Append("startxref").Append(_eol).Append(at.ToString(CultureInfo.InvariantCulture)).Append(_eol).Append("%%EOF").Append(_eol);
         return at;
     }
