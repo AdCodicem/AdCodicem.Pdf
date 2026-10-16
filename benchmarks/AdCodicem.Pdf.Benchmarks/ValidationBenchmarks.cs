@@ -14,7 +14,8 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// object read for the first time — what a caller validating a file it has not read pays, from slice 3 on, since
 /// the object and page tree rules resolve what the trailer reaches. The third measures the walk the rules generated
 /// from the Arlington model share alone — every object and value the trailer reaches typed and checked —, on the
-/// cached document and its page tree walked beforehand.
+/// cached document and its page tree walked beforehand. The last two say what settling the index costs, which validation
+/// does once per document before its first rule (#237): the header each entry places read alone, against opening alone.
 /// </remarks>
 [MemoryDiagnoser]
 public class ValidationBenchmarks
@@ -49,5 +50,20 @@ public class ValidationBenchmarks
     {
         using var document = PdfDocument.Open(_bytes);
         return _validator.Validate(document).Findings.Count;
+    }
+
+    [Benchmark(Description = "Open")]
+    public int Open()
+    {
+        using var document = PdfDocument.Open(_bytes);
+        return document.ObjectCount;
+    }
+
+    [Benchmark(Description = "Open and settle the index")]
+    public int OpenAndSettle()
+    {
+        using var document = PdfDocument.Open(_bytes);
+        document.Reader.SettleIndex();
+        return document.ObjectCount;
     }
 }
