@@ -56,6 +56,7 @@ A settled decision is not reopened without new evidence — that is what writing
 | [47](0047-the-user-documentation-follows-diataxis.md) | The user documentation follows Diátaxis | — |
 | [48](0048-one-version-for-every-package-independent-of-dotnet.md) | One version for every package, independent of .NET | — |
 | [49](0049-previews-weekly-when-a-package-input-changed.md) | Previews weekly, when a package input changed | — |
+| [50](0050-validation-settles-the-reader-before-its-rules.md) | Validation settles the reader before its rules | — |
 
 ## Decisions too small for a record of their own
 

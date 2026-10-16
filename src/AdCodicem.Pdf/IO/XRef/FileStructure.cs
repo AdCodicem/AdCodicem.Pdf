@@ -10,8 +10,9 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// <remarks>
 /// <para>
 /// The validation rules judge the file as it was written, not as the reader repaired it, and this is where they
-/// find it. It is filled while the document opens and never changes afterwards, so two validations of the same
-/// document see the same structure, whatever was read in between.
+/// find it. It is filled while the document opens and never changes afterwards — a rebuild run later, set off by a read
+/// or before a validation's first rule, keeps what it finds to the reader —, so two validations of the same document
+/// see the same structure, whatever was read in between.
 /// </para>
 /// <para>
 /// It costs a record per section of the chain — at most <see cref="Documents.PdfReaderLimits.MaxXRefSectionCount"/>

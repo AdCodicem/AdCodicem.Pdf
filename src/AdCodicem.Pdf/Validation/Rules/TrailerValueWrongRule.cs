@@ -27,6 +27,11 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// the stream's; a <c>/Size</c> is <see cref="PdfValidationRuleIds.FileSizeWrong"/>'s. Only the sections the reader read
 /// are judged.
 /// </para>
+/// <para>
+/// Each trailer is judged as the file wrote it; a reference it holds is followed as any read follows it, through the index
+/// the validator had the reader settle on before its first rule — the chain's own, unless a read could still have rebuilt
+/// it, in which case it was rebuilt then (#237) —, so that what was read before validating changes nothing.
+/// </para>
 /// </remarks>
 internal sealed class TrailerValueWrongRule : IValidationRule
 {
