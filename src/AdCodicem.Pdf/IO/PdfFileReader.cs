@@ -316,6 +316,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private string? _headerVersion;
 
     private bool _repaired;
+
+    /// <summary>
+    /// A rebuild a load set off, which runs with that load and those it is part of still in flight, and is finished once the
+    /// outermost returns; null when no rebuild waits to be finished.
+    /// </summary>
+    private UnfinishedRebuild? _unfinishedRebuild;
     private bool _nestingReported;
 
     /// <summary>
@@ -493,6 +499,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return ReadWithoutLoading(id) ?? PdfNull.Instance;
         }
 
+        // A rebuild a load set off and could not finish, the load having thrown, is finished before anything is read.
+        if (_unfinishedRebuild is not null && _loading.Count == 0 && _objectStreamsLoading.Count == 0)
+        {
+            FinishUnfinishedRebuild();
+        }
+
         // Asked before the cache: an object stream decoded again, once the budget let it go, must read as null what
         // it read as null the first time, whatever was read and kept since.
         if (_objectStreamsLoading.Count > 0)
@@ -524,6 +536,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return NullWhileDecoding(id.Number);
         }
 
+        PdfObject value;
+
         try
         {
             // Loading an object can load another — an indirect /Length is resolved while its stream is
@@ -541,7 +555,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var reentries = _reentries;
             var repaired = _repaired;
-            var value = LoadObject(id);
+            value = LoadObject(id);
 
             // A null a guard against re-entry produced on the way is not the object's: it is read again when asked
             // again, rather than kept for good (#51). Nor is what was read through an index its own load had rebuilt — an
@@ -551,13 +565,38 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 Cache(id.Number, value);
             }
+        }
+        catch (PdfLimitExceededException) when (_unfinishedRebuild is not null && _loading.Count == 1 && _objectStreamsLoading.Count == 0)
+        {
+            // The outermost load threw on a guard, for a document opened to throw on one: the rebuild it set off is finished
+            // before the exception leaves, and a guard the rebuild reaches is this read's to tell, which it does.
+            _loading.Remove(id.Number);
 
-            return value;
+            try
+            {
+                FinishUnfinishedRebuild();
+            }
+            catch (PdfLimitExceededException)
+            {
+                // Reported as it was reached; the exception this read throws stands for it.
+            }
+
+            throw;
         }
         finally
         {
             _loading.Remove(id.Number);
         }
+
+        // A rebuild this load set off is finished once no load is in flight, as it would have been had it run before them;
+        // the object is then read as the finished index serves it.
+        if (_unfinishedRebuild is not null && _loading.Count == 0 && _objectStreamsLoading.Count == 0)
+        {
+            FinishUnfinishedRebuild();
+            return GetObject(id);
+        }
+
+        return value;
     }
 
     /// <summary>
@@ -706,6 +745,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal void SettleIndex()
     {
         ObjectDisposedException.ThrowIf(_closed, typeof(PdfDocument));
+
+        // A rebuild a load set off and could not finish, the load having thrown, is finished first.
+        if (_unfinishedRebuild is not null)
+        {
+            FinishUnfinishedRebuild();
+        }
 
         if (_settled)
         {
@@ -4335,6 +4380,33 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // the document unable to find the objects it had not reached. The first guard reached is the one thrown.
         var reached = ScanForObjects(redefinitions);
         ScanForTrailers();
+
+        // A rebuild a load sets off runs with that load, and those it is part of, still in flight: the objects they are
+        // loading read as null meanwhile, and so do the values an object stream among them needs, so that such a stream
+        // is expanded without them, or not at all. The index is expanded for the loads in flight to read through, and
+        // finished from the scan once the outermost returns, as a rebuild run before them would have been: a member is not
+        // lost to the load that set the rebuild off, nor read otherwise than had the rebuild run first.
+        if (_loading.Count > 0 || _objectStreamsLoading.Count > 0)
+        {
+            _unfinishedRebuild = new UnfinishedRebuild(
+                new Dictionary<int, XRefEntry>(_xref.Entries), redefinitions.Copy(), kept, reached, _indexFull, _indexFullAt);
+            ExpandObjectStreams(redefinitions);
+            return;
+        }
+
+        FinishRebuild(redefinitions, kept, reached);
+    }
+
+    /// <summary>
+    /// Finishes a rebuild from the index its scan made: takes in what the object streams hold, keeps the entries a chain a
+    /// guard cut gave that the scan did not find, reports the definitions met again, and looks for a catalog when
+    /// <c>/Root</c> leads to none.
+    /// </summary>
+    /// <exception cref="PdfLimitExceededException">
+    /// A guard was reached, by the scan or here, and the document was opened to throw on one: the first reached.
+    /// </exception>
+    private void FinishRebuild(Redefinitions redefinitions, PdfXRefTable? kept, ExceptionDispatchInfo? reached)
+    {
         var expanding = ExpandObjectStreams(redefinitions);
         reached ??= expanding;
 
@@ -4359,6 +4431,44 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         reached?.Throw();
+    }
+
+    /// <summary>
+    /// Finishes the rebuild a load set off, now that no load is in flight: the index is brought back to what the scan
+    /// made, what was read meanwhile let go, and the rebuild finished as one run before the load would have been.
+    /// </summary>
+    /// <exception cref="PdfLimitExceededException">
+    /// A guard was reached, by the scan or in finishing, and the document was opened to throw on one.
+    /// </exception>
+    private void FinishUnfinishedRebuild()
+    {
+        var unfinished = _unfinishedRebuild!;
+        _unfinishedRebuild = null;
+
+        _xref.Clear();
+
+        foreach (var (number, entry) in unfinished.Scanned)
+        {
+            _xref.Set(number, entry);
+        }
+
+        _indexFull = unfinished.IndexFull;
+        _indexFullAt = unfinished.IndexFullAt;
+        _cache.Clear();
+        _cacheOrder.Clear();
+        _objectStreams.Clear();
+        _objectStreamOrder.Clear();
+        _objectStreamBytes = 0;
+
+        // What read as null while the loads were in flight was theirs, not the file's; and what was noted of each object is
+        // noted again as each is read from the finished index.
+        _nullWhileDecoding.Clear();
+        _unproduced.Clear();
+        _cutAtLimit.Clear();
+        _endObjMissing.Clear();
+        _streamLengthFaults.Clear();
+
+        FinishRebuild(unfinished.Redefinitions, unfinished.Kept, unfinished.Reached);
     }
 
     /// <summary>
@@ -4756,6 +4866,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
     }
 
+    /// <summary>What a rebuild a load set off needs to be finished once no load is in flight.</summary>
+    /// <param name="Scanned">The entries the scan made, before the object streams were expanded.</param>
+    /// <param name="Redefinitions">The definitions the scan met again.</param>
+    /// <param name="Kept">The entries a chain a guard cut gave, kept through the rebuild; null when no guard cut it.</param>
+    /// <param name="Reached">The guard the scan reached, for a document opened to throw on one; null when it reached none.</param>
+    /// <param name="IndexFull">Whether the scan filled the index.</param>
+    /// <param name="IndexFullAt">Where the index first had no room for a number, or -1.</param>
+    private sealed record UnfinishedRebuild(
+        Dictionary<int, XRefEntry> Scanned,
+        Redefinitions Redefinitions,
+        PdfXRefTable? Kept,
+        ExceptionDispatchInfo? Reached,
+        bool IndexFull,
+        long IndexFullAt);
+
     /// <summary>
     /// The definitions a rebuild met of object numbers it had already found: how many, and the first few numbers, kept
     /// without allocating for each.
@@ -4774,6 +4899,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// list more members than an int counts.
         /// </summary>
         public long Count { get; private set; }
+
+        /// <summary>Gives a copy of what was recorded so far, which records apart from this one from now on.</summary>
+        public Redefinitions Copy()
+        {
+            var copy = new Redefinitions { Count = Count, _listed = _listed, _unlisted = _unlisted };
+            _numbers.CopyTo(copy._numbers, 0);
+            return copy;
+        }
 
         /// <summary>Records a definition of <paramref name="number"/>, which was already found.</summary>
         public void Add(int number)
