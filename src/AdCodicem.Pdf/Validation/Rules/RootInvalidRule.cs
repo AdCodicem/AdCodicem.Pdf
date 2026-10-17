@@ -19,7 +19,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// It judges the trailer the file's chain gave, merged across its sections as readers merge them, and <c>/Root</c>
 /// as it was before the reader looked for a catalog. A trailer that could not be read at all, or an index the chain
 /// did not give, is another rule's to report, and a catalog one of the reader's limits left out of the index
-/// <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>'s.
+/// <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>'s. A catalog one of them cut is not judged: what it lacks may lie
+/// past the cut, and the reader's report names the limit.
 /// </para>
 /// </remarks>
 internal sealed class RootInvalidRule : IValidationRule
@@ -44,6 +45,13 @@ internal sealed class RootInvalidRule : IValidationRule
         // the index was stopped short of it, and raising the guard reads it. It stays so once a rebuild finds it, as the
         // trailer judged is the one the document opened with, and /Root as it resolved then.
         if (structure.RootHiddenByGuard)
+        {
+            return;
+        }
+
+        // Nor is a catalog a guard cut as the document opened: what it lacks may lie past the cut — its /Type, its /Pages —,
+        // and the reader took it as read. Its limit.object names the guard, and raising it reads the catalog whole.
+        if (structure.RootCutByGuard)
         {
             return;
         }

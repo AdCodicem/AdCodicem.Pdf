@@ -1654,10 +1654,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             _structure.RootResolved = _structure.RootAsWritten is PdfReference root ? root.Resolve() : null;
             _structure.RootHiddenByGuard = _structure.RootAsWritten is PdfReference hidden &&
                 GetPresence(hidden.Id.Number) == ObjectPresence.Unindexed;
+            _structure.RootCutByGuard = RootCutByGuard();
 
             // Resolving /Root may itself have rebuilt the index — its object was neither where its entry said nor
-            // near it —, and the rebuild looked for the catalog in the rebuilt index.
-            if (!_repaired)
+            // near it —, and the rebuild looked for the catalog in the rebuilt index. A catalog a guard cut is taken as
+            // read: what it lacks may lie past the cut, and another found for it would be the reader's guess (#175).
+            if (!_repaired && !_structure.RootCutByGuard)
             {
                 RecoverCatalog();
             }
@@ -1780,6 +1782,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// object the index holds, or none, says the file is damaged.
     /// </summary>
     private bool RootHiddenByGuard() => Trailer.GetRaw(PdfName.Root) is PdfReference root && HiddenByGuard(root.Id.Number);
+
+    /// <summary>
+    /// Determines whether <c>/Root</c>, resolved, names an object a guard cut: it may be the catalog, its <c>/Type</c> or its
+    /// <c>/Pages</c> past the cut, and it is taken for the catalog as read, until the guard is lifted, rather than looked
+    /// for elsewhere — a search could take a catalog an update superseded, and a rebuild would scan the file for what the
+    /// guard's report already names (ADR 34).
+    /// </summary>
+    private bool RootCutByGuard() => Trailer.GetRaw(PdfName.Root) is PdfReference root && IsCutAtLimit(root.Id.Number);
 
     /// <summary>
     /// Determines whether a guard keeps object <paramref name="number"/> from the reader: it stopped the index short of
@@ -4515,10 +4525,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (!HasUsableRoot())
         {
             // A catalog a search took earlier is none the rebuilt index serves: the reader takes none until this one finds
-            // one. Searched even when the expansion reached a guard; the first guard reached is the one thrown.
+            // one. Searched even when the expansion reached a guard; the first guard reached is the one thrown. A /Root a
+            // guard cut is taken as read, and no other is looked for.
             _catalogFoundAs = 0;
-            var searching = FindCatalog();
-            reached ??= searching;
+
+            if (!RootCutByGuard())
+            {
+                var searching = FindCatalog();
+                reached ??= searching;
+            }
         }
 
         reached?.Throw();

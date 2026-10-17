@@ -987,6 +987,63 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_catalog_a_guard_cut_is_taken_as_read_and_no_other_is_looked_for_even_by_a_later_rebuild()
+    {
+        // The catalog, object 1, runs past 128 bytes before its /Type; object 5 is an older catalog. Object 4's row leads
+        // nowhere, so that reading it rebuilds the index, which then looks at /Root again.
+        var file = PdfTemplate.Build($$"""
+            %PDF-1.7
+            1 0 obj
+            <<{{new string(' ', 200)}}/Type /Catalog /Pages 2 0 R >>
+            endobj
+            2 0 obj
+            << /Type /Pages /Kids [3 0 R] /Count 1 >>
+            endobj
+            3 0 obj
+            << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+            endobj
+            5 0 obj
+            << /Type /Catalog /Pages 2 0 R >>
+            endobj
+            6 0 obj
+            ({{new string('x', 600)}})
+            endobj
+            4 0 obj
+            (four)
+            endobj
+            xref
+            0 7
+            {free}
+            {row:1}
+            {row:2}
+            {row:3}
+            0000000003 00000 n 
+            {row:5}
+            {row:6}
+            trailer
+            << /Size 7 /Root 1 0 R >>
+            startxref
+            {xref:1}
+            %%EOF
+
+            """);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.WasRepaired.Should().BeFalse("a catalog a guard cut is no damage to rebuild the index for");
+        document.Reader.Structure.RootCutByGuard.Should().BeTrue();
+        document.Catalog.Required().ContainsKey(PdfName.Type).Should().BeFalse("its /Type lies past the cut");
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0);
+        document.Catalog.Required().ContainsKey(PdfName.Type).Should().BeFalse("the rebuild took /Root as read too, not object 5");
+        document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered).Should().BeFalse();
+    }
+
+    [Fact]
     public void An_object_cut_by_its_bound_is_not_reported_as_damage()
     {
         // The bound falls just after a key, where the parser, finding no value, reports an object the file
