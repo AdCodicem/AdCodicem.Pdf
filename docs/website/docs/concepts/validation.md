@@ -102,10 +102,11 @@ either side of it hold its header. If some read still could, the validator has t
 that read would have; to find out, it reads the header each entry written directly in the file places, or looks for
 it nearby as a load would, and nothing of any object's body. A header that runs past the reader's
 [object limit](reader-limits.md) is taken as a read takes it: reported under `limit.object` and looked for nearby, or,
-for a document opened to throw on a limit, left to the read that reaches it. It reads no more than twice the file's
-length past the first windows of each header, and rebuilds the index rather than read on; a run of white space it crosses
-once, the entries placed inside it reading on from its end, as a block of zeros a fault left would otherwise be read
-again for each. A rebuild costs a whole read of
+for a document opened to throw on a limit, left to the read that reaches it. What reading the headers consumes — the
+bytes crossed up to each decision, past the first 64 of each — is twice the file's length at most, which a valid file's
+headers, distinct bytes, never reach: past it, the validator rebuilds the index rather than read on. A run of white space
+is crossed once, the entries placed inside it, or that reach it, reading on from its end, as a block of zeros a fault
+left would otherwise be read again for each. A rebuild costs a whole read of
 the file, even when no rule would have reached the damage. No rule then reads part of the document before a rebuild and part
 after it, and a document gives the same report whatever you read before validating it — nothing, every object, or a
 previous validation.
@@ -120,9 +121,9 @@ can still depend on which stream was read first
 
 The cross-reference rules read where each entry of the file's index places its object as a load reads it, and decide
 what a load would find there as settling decides it, through one function of the reader — a few dozen bytes of its
-header in a sound file, never its body —, and each object stream once, without keeping it. An entry whose header runs
-past the reader's object limit, or that they had not decided once they had read twice the file's length, is said not
-checked rather than broken. They judge the rows as the file
+header in a sound file, never its body —, and each object stream once, without keeping it. An entry outside the file is looked
+for near its offset, as a load looks for it. An entry whose header runs past the reader's object limit, or that they had
+not decided once reading the headers had consumed twice the file's length, is said not checked rather than broken. They judge the rows as the file
 wrote them, not as the reader corrected them, and read each object stream where the file's own index places it,
 outside the document's cache. Working out which object streams need one another, they read there too each object
 written directly in the file that a stream's decoding keys lead through, once a validation for as many of them as the
