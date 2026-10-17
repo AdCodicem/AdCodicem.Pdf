@@ -696,13 +696,14 @@ public class ReadOrderTests
     }
 
     [Theory]
-    [InlineData("/Bad /A#00B", "/Good 1", "Object 5 holds the name /A#00B, under /Bad, and a name cannot contain a null character.")]
-    [InlineData("/Ref 99 0 R", "/Ref 3 0 R", "Object 5 refers to object 99 0 under /Ref, which the file lacks: the reference reads as null.")]
-    public void The_object_graph_describes_an_object_from_the_value_it_walked(string fault, string later, string message)
+    [InlineData("/Bad /A#00B", "/Good 1", "Object 5 holds a name with a null character, which a name cannot contain.")]
+    [InlineData("/Ref 99 0 R", "/Ref 3 0 R", "Object 5 refers to an object the file lacks: the reference reads as null.")]
+    public void The_object_graph_says_what_it_counted_of_an_object_a_rebuild_redefined_since(string fault, string later, string message)
     {
         // Object 5 holds a fault and object 7, whose row leads nowhere; a later definition of 5 holds no fault. Walked without
-        // the validator settling the index first, following 7 rebuilds it while 5 is being walked: describing 5 by reading it
-        // again read the later 5, and found no fault in it — a reference to "object 0 0", or a crash on the name.
+        // the validator settling the index first, following 7 rebuilds it while 5 is being walked, and reading 5 again to
+        // describe it reads the later 5, which holds no fault: the finding says what the walk counted, without where — not a
+        // reference to "object 0 0", nor a crash on the name.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {

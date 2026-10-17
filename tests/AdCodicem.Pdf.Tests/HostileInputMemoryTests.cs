@@ -36,6 +36,39 @@ public class HostileInputMemoryTests
         held.Should().BeLessThan((32L * 1024 * 1024) + (3L * Bound), $"memory was sampled {source.Samples} times");
     }
 
+    [Fact]
+    public void Walking_a_chain_of_references_holds_what_the_reader_keeps_whatever_its_length()
+    {
+        // Two hundred objects, each naming the next under /Next, its first key, and holding a string of 200,000 bytes, opened
+        // with a cache of eight objects. The object graph described each object from the value it walked, which held every
+        // link of the chain at once until the chain's end: 41 MB, growing with the chain. It reads an object again to
+        // describe it, so that what stays live is what the reader keeps — its cache, the windows it reads through —: 14 MB,
+        // the same for a chain of a hundred.
+        const int Links = 200;
+        var pad = new string('x', 200_000);
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Chain 3 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var link = 3; link < Links + 3; link++)
+        {
+            builder.WithObject(link, string.Create(CultureInfo.InvariantCulture, $"<< /Next {link + 1} 0 R /Pad ({pad}) >>"));
+        }
+
+        builder.WithObject(Links + 3, "null");
+        var source = new SamplingSource(builder.BuildClassic(rootNumber: 1));
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 8 }, ownsSource: true);
+        var pages = Validation.PageTreeWalk.Run(document);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        Validation.ObjectGraph.Run(document, pages);
+
+        source.Sampling = false;
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(20L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
     private static byte[] Compress(byte[] data)
     {
         using var compressed = new MemoryStream();

@@ -21,9 +21,10 @@ namespace AdCodicem.Pdf.Validation;
 /// </para>
 /// <para>
 /// It keeps what it found wrong, counted by the object that holds it, and works out where in that object the first
-/// fault lies only for the objects that have one — once the walk has visited all of the object's value, from the value it
-/// read rather than by reading the object again, which a rebuild of the index since could make another (#237). It holds an
-/// object's value only while values of it are still to visit, and keeps what it found of it as text.
+/// fault lies only for the objects that have one, once the walk is done, by reading each of them again: what is held
+/// meanwhile is the reader's cache and the counts. Validation settles the index before its first rule, so that no read in
+/// the walk rebuilds it, and the object read again is the one the walk read (#237); were it another, read through an index
+/// rebuilt since, the finding would say what the walk counted without saying where.
 /// </para>
 /// </remarks>
 internal sealed class ObjectGraph
@@ -34,17 +35,8 @@ internal sealed class ObjectGraph
     private readonly Stack<Item> _work = new();
     private readonly HashSet<int> _visited = [];
     private readonly HashSet<int> _missing = [];
-    private readonly Dictionary<int, int> _missingReferences = [];
-    private readonly Dictionary<int, int> _nullCharacterNames = [];
-
-    /// <summary>
-    /// The objects whose values the walk is visiting, the innermost on top: an object's are the values above where the work
-    /// stood when the walk took it in, so that it is visited whole once the work is back there.
-    /// </summary>
-    private readonly Stack<Visit> _visiting = new();
-
-    private readonly SortedDictionary<int, ProbeFinding> _missingReferenceFindings = [];
-    private readonly SortedDictionary<int, ProbeFinding> _nullCharacterFindings = [];
+    private readonly SortedDictionary<int, int> _missingReferences = [];
+    private readonly SortedDictionary<int, int> _nullCharacterNames = [];
 
     private ObjectGraph(PdfDocument document, PageTreeWalk pages)
     {
@@ -67,18 +59,13 @@ internal sealed class ObjectGraph
     {
         var graph = new ObjectGraph(document, pages);
         graph.Walk();
-        graph.Finish();
+        graph.Describe();
         return graph;
     }
 
     private void Walk()
     {
-        // A rebuild merges the trailers it finds into this dictionary, after the keys it holds: what the walk takes of it
-        // now comes first in it, and is what describing it finds.
-        var trailer = _document.Trailer;
-        _visiting.Push(new Visit(0, trailer, Below: 0));
-        PushDictionary(trailer, owner: 0, isNode: false);
-        DescribeVisited();
+        PushDictionary(_document.Trailer, owner: 0, isNode: false);
 
         while (_work.TryPop(out var item))
         {
@@ -108,21 +95,6 @@ internal sealed class ObjectGraph
                     Tally(_nullCharacterNames, item.Owner);
                     break;
             }
-
-            DescribeVisited();
-        }
-    }
-
-    /// <summary>
-    /// Describes what is wrong with each object visited whole, from the value the walk read: every reference it holds has
-    /// then been followed, and every name in it seen.
-    /// </summary>
-    private void DescribeVisited()
-    {
-        while (_visiting.TryPeek(out var visit) && _work.Count == visit.Below)
-        {
-            _visiting.Pop();
-            Describe(visit.Owner, visit.Value);
         }
     }
 
@@ -156,7 +128,6 @@ internal sealed class ObjectGraph
             return;
         }
 
-        _visiting.Push(new Visit(number, value, _work.Count));
         _work.Push(new Item(value, number, TopLevel: true, Uncounted: false));
     }
 
@@ -194,30 +165,30 @@ internal sealed class ObjectGraph
     private static bool IsUncounted(PdfName key, PdfObject value, int owner, bool isNode) =>
         (isNode && key == PdfName.Kids && value is PdfArray) || (owner == 0 && key == PdfName.Root);
 
-    /// <summary>
-    /// Describes what is wrong with object <paramref name="owner"/>, the trailer for 0, from <paramref name="value"/>, its
-    /// value as the walk read it: where the first reference to an object the file lacks lies, and the first name with a
-    /// null character.
-    /// </summary>
-    private void Describe(int owner, PdfObject value)
+    private void Describe()
     {
-        if (_missingReferences.TryGetValue(owner, out var count))
+        foreach (var (owner, count) in _missingReferences)
         {
+            var value = ValueOf(owner);
             var first = new StringBuilder();
-            TryFindMissing(value, owner, isNode: _pages.Nodes.Contains(owner), uncounted: false, first, out var target);
+            var found = TryFindMissing(value, owner, isNode: _pages.Nodes.Contains(owner), uncounted: false, first, out var target);
             var holder = Holder(owner);
 
-            _missingReferenceFindings[owner] = new ProbeFinding(
+            MissingReferences.Add(new ProbeFinding(
                 LocationOf(owner),
-                count == 1
-                    ? Invariant($"{holder} refers to object {target.Number} {target.Generation} under {Path(first)}, which the file lacks: the reference reads as null.")
-                    : Invariant($"{holder} holds {count} references to objects the file lacks, which read as null; the first refers to object {target.Number} {target.Generation} under {Path(first)}."));
+                (count, found) switch
+                {
+                    (1, true) => Invariant($"{holder} refers to object {target.Number} {target.Generation} under {Path(first)}, which the file lacks: the reference reads as null."),
+                    (_, true) => Invariant($"{holder} holds {count} references to objects the file lacks, which read as null; the first refers to object {target.Number} {target.Generation} under {Path(first)}."),
+                    (1, false) => $"{holder} refers to an object the file lacks: the reference reads as null.",
+                    _ => Invariant($"{holder} holds {count} references to objects the file lacks, which read as null."),
+                }));
         }
 
-        if (_nullCharacterNames.TryGetValue(owner, out count))
+        foreach (var (owner, count) in _nullCharacterNames)
         {
             var first = new StringBuilder();
-            var name = FindNullCharacter(value, owner, first, out var isKey);
+            var name = FindNullCharacter(ValueOf(owner), owner, first, out var isKey);
             var holder = Holder(owner);
             var where = (isKey, first.Length) switch
             {
@@ -227,19 +198,16 @@ internal sealed class ObjectGraph
                 _ => $"under {RuleText.Path(first)}",
             };
 
-            _nullCharacterFindings[owner] = new ProbeFinding(
+            NullCharacterNames.Add(new ProbeFinding(
                 LocationOf(owner),
-                count == 1
-                    ? $"{holder} holds the name {FileQuote.Name(name!)}, {where}, and a name cannot contain a null character."
-                    : Invariant($"{holder} holds {count} names with a null character, which a name cannot contain; the first is {FileQuote.Name(name!)}, {where}."));
+                (count, name) switch
+                {
+                    (1, not null) => $"{holder} holds the name {FileQuote.Name(name)}, {where}, and a name cannot contain a null character.",
+                    (_, not null) => Invariant($"{holder} holds {count} names with a null character, which a name cannot contain; the first is {FileQuote.Name(name)}, {where}."),
+                    (1, null) => $"{holder} holds a name with a null character, which a name cannot contain.",
+                    _ => Invariant($"{holder} holds {count} names with a null character, which a name cannot contain."),
+                }));
         }
-    }
-
-    /// <summary>Lists what was described, by the number of the object that holds it, and the objects not ended by <c>endobj</c>.</summary>
-    private void Finish()
-    {
-        MissingReferences.AddRange(_missingReferenceFindings.Values);
-        NullCharacterNames.AddRange(_nullCharacterFindings.Values);
 
         var visited = new int[_visited.Count];
         _visited.CopyTo(visited);
@@ -389,6 +357,9 @@ internal sealed class ObjectGraph
         }
     }
 
+    private PdfObject ValueOf(int owner) =>
+        owner == 0 ? _document.Trailer : _reader.GetObject(IdOf(owner));
+
     /// <summary>
     /// Names object <paramref name="number"/> with the generation the reader's index gives it: its row's, or, once a
     /// rebuild or a relocation has placed it, its header's (#118).
@@ -419,7 +390,7 @@ internal sealed class ObjectGraph
 
     private static bool HasNullCharacter(PdfName name) => name.Value.Contains('\0', StringComparison.Ordinal);
 
-    private static void Tally(Dictionary<int, int> tally, int owner) =>
+    private static void Tally(SortedDictionary<int, int> tally, int owner) =>
         tally[owner] = tally.TryGetValue(owner, out var count) ? count + 1 : 1;
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
@@ -430,10 +401,4 @@ internal sealed class ObjectGraph
     /// <param name="TopLevel">Whether the value is the owner's own value, not one nested in it.</param>
     /// <param name="Uncounted">Whether a reference to nothing in the value is another rule's to report.</param>
     private readonly record struct Item(PdfObject Value, int Owner, bool TopLevel, bool Uncounted);
-
-    /// <summary>An object whose values the walk is visiting.</summary>
-    /// <param name="Owner">Its number, or 0 for the trailer.</param>
-    /// <param name="Value">Its value, as the walk read it.</param>
-    /// <param name="Below">How many values the work held before the walk took the object in.</param>
-    private readonly record struct Visit(int Owner, PdfObject Value, int Below);
 }
