@@ -722,8 +722,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal int CatalogFoundAs => _catalogFoundAs;
 
     /// <summary>
-    /// Brings the index to the state no later load can change: rebuilds it now, once, when a load could still rebuild it,
-    /// and otherwise leaves it as it is. The validator calls it before its first rule, so that what every rule reads was
+    /// Brings the index to where no later load rebuilds it: rebuilds it now, once, when a load could still rebuild it, and
+    /// otherwise leaves it as it is. The validator calls it before its first rule, so that what every rule reads was
     /// read after any rebuild, however much or little was read before (#237).
     /// </summary>
     /// <remarks>
@@ -731,8 +731,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// A load rebuilds the index in two cases: the index is known to be incomplete through damage and lacks the object; or
     /// the object is neither where its entry places it, nor near it. The first is known without reading anything. The
     /// second is decided here without loading anything: for each entry in use that places an object in the file, the header
-    /// a load would parse there is read alone, as a load reads it — after white space and comments, in a window grown while
-    /// the header runs past it —, and the 512 bytes either side are searched as a load searches them. An object a load
+    /// a load would parse there is read alone, as a load reads it — after white space and comments, in a window of
+    /// <see cref="HeaderCheckWindow"/> bytes, then grown as a load grows its own while the header runs past it —, and the 512
+    /// bytes either side are searched as a load searches them. An object a load
     /// would find so is one it finds, whatever its body holds; an entry that places an object in an object stream rebuilds
     /// nothing of its own, the stream's entry aside, which is one of the others. The checks stop at the first entry a load
     /// would rebuild for.
@@ -4414,7 +4415,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // What was noted of each object as it was read is noted again as each is read from the rebuilt index — every object
         // written directly in the file is, below —: kept, a note of a definition the rebuilt index no longer serves, or of a
-        // number it no longer holds, would be read as the note of the one it serves.
+        // number it no longer holds, would be read as the note of the one it serves. What could not be produced is noted again
+        // as each number is resolved, which every caller of GetPresence does first: cleared, the note is true before that too.
         _unproduced.Clear();
         _cutAtLimit.Clear();
         _endObjMissing.Clear();
