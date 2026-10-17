@@ -80,6 +80,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private const long HeaderPastGuard = -1;
 
     /// <summary>
+    /// What <see cref="HeaderNumberAt"/> gives where reading a header further would read past what settling may read in
+    /// all, <see cref="SettlingReadingFactor"/> times the file's length.
+    /// </summary>
+    private const long SettlingReadingSpent = -2;
+
+    /// <summary>
+    /// How many times the file's length <see cref="SettleIndex"/> reads at most, over all the headers it reads, in windows
+    /// past the first two of each: past that, it rebuilds the index, in one pass over the file, rather than read on. Each
+    /// header is read through at most what a load reads, but entries can place their objects in one long run of blanks or
+    /// comment, each read again to its end. An internal bound (ADR 34): in a valid file, each entry places its object's
+    /// header at its offset, and no window grows past the first; a window larger than the file reads the file.
+    /// </summary>
+    private const int SettlingReadingFactor = 2;
+
+    /// <summary>
     /// The most places near missing cross-reference sections that are tried as one, over a whole document. Real
     /// files miss by a few bytes, with the section the nearest candidate; a file packed with object headers
     /// there, or with sections that all miss, gets no more attempts. Not a guard a valid file can reach: a valid
@@ -339,6 +354,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// rebuilds it, and it does not look again.
     /// </summary>
     private bool _settled;
+
+    /// <summary>What <see cref="SettleIndex"/> may still read in windows past the first two of each header.</summary>
+    private long _settlingReading;
 
     /// <summary>The object the reader last took for the catalog, <c>/Root</c> leading to none; 0 while it took none.</summary>
     private int _catalogFoundAs;
@@ -732,7 +750,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// bytes either side are searched as a load searches them. An object a load
     /// would find so is one it finds, whatever its body holds; an entry that places an object in an object stream rebuilds
     /// nothing of its own, the stream's entry aside, which is one of the others. The checks stop at the first entry a load
-    /// would rebuild for.
+    /// would rebuild for, and at the first header whose reading would take settling past twice the file's length in windows
+    /// larger than the first two of each: the index is then rebuilt, in one pass, rather than read on.
     /// </para>
     /// <para>
     /// A header that still runs past <see cref="PdfReaderLimits.MaxObjectLength"/> is where a load reaches that guard: one
@@ -766,6 +785,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         _settled = true;
+        _settlingReading = SettlingReadingFactor * _source.Length;
 
         if (!_repaired && (_indexIncomplete || AnyLoadWouldRebuild()))
         {
@@ -799,6 +819,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (IsInFile(offset))
         {
             var found = HeaderNumberAt(offset);
+
+            if (found == SettlingReadingSpent)
+            {
+                return false;
+            }
 
             if (found == number || (found == HeaderPastGuard && !LoadLooksOnPastGuard(number, offset)))
             {
@@ -835,8 +860,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Gives the number of the object whose header starts at <paramref name="offset"/>, read as <see cref="TryParseNumberedAt"/>
     /// reads it — after white space and comments, in a window grown while the header runs past it or may have been cut at
     /// its edge, up to <see cref="PdfReaderLimits.MaxObjectLength"/> —; 0 where no header is; or
-    /// <see cref="HeaderPastGuard"/> where the header still runs past the largest window, where a load reaches that guard.
-    /// Nothing is parsed past the header, reported or recorded.
+    /// <see cref="HeaderPastGuard"/> where the header still runs past the largest window, where a load reaches that guard; or
+    /// <see cref="SettlingReadingSpent"/> where reading it further would read more than settling may. Nothing is parsed past
+    /// the header, reported or recorded.
     /// </summary>
     /// <remarks>
     /// The first window is <see cref="HeaderCheckWindow"/> bytes, which holds the headers of real files; the next is the one a
@@ -870,6 +896,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
 
                 windowSize = (int)Math.Min(windowSize < InitialObjectWindow ? InitialObjectWindow : (long)windowSize * 8, maxWindow);
+
+                if (windowSize > InitialObjectWindow)
+                {
+                    var reading = Math.Min(windowSize, _source.Length - offset);
+
+                    if (reading > _settlingReading)
+                    {
+                        return SettlingReadingSpent;
+                    }
+
+                    _settlingReading -= reading;
+                }
+
                 continue;
             }
 

@@ -1402,6 +1402,41 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Validating_reads_no_more_than_a_few_times_the_file_however_many_rows_lead_into_one_run_of_blanks()
+    {
+        // Forty rows place their objects a byte apart at the start of a run of blanks longer than the object guard, of a
+        // document opened to throw on a limit. A load of any of them would throw there, and rebuild nothing; settling read
+        // each to the guard and went on, 1.6 MB a row. It reads at most twice the file's length past each header's first two
+        // windows, and then rebuilds the index, in one pass.
+        const int Rows = 40;
+        const int Guard = 1024 * 1024;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < Rows + 3; number++)
+        {
+            rows[number] = file.Position + number;
+        }
+
+        file.Raw(new string(' ', Guard + 4096) + "\n");
+        file.Table(Rows + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Rows + 3} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = Guard } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var opened = source.BytesRead;
+
+        new PdfValidator().Validate(document);
+
+        (source.BytesRead - opened).Should().BeLessThan(6L * bytes.Length);
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
     public void Opening_a_chain_of_trailers_that_never_close_reads_a_bounded_amount()
     {
         // Each section's trailer opens an array that never closes, so it runs past the window's edge and on
