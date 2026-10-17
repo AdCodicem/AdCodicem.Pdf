@@ -12,8 +12,8 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// </summary>
 /// <remarks>
 /// The walk reads what each stream's decoding keys lead through where the chain's index places it, outside the reader's
-/// cache (#128): an object many streams lead through is read once a walk, not once a stream. The document is opened
-/// outside the measurement.
+/// cache (#128): an object many streams lead through is read once a walk, not once a stream, while the walk keeps no more
+/// objects than the reader's cache holds. The document is opened outside the measurement.
 /// </remarks>
 [MemoryDiagnoser]
 public class ObjectStreamDependencyBenchmarks

@@ -25,7 +25,7 @@ crafted files in which a fresh validation, a second one and one after a read dis
 `ObjectGraph` among them, and #128 the same through the walk of the object streams' dependencies. The documentation
 promised the opposite: two validations give the same report, and reading objects between them changes nothing.
 
-Three designs were measured on the 96 crafted files and the 401 documents of the corpus:
+Three designs were measured on 96 crafted files — 90 shapes and 6 controls — and the 401 documents of the corpus:
 
 - **Settle before the rules.** Before its first rule, the validator has the reader rebuild the index once when some read
   still could, found by reading the header each entry places, and nothing more. The reader forgets, on a rebuild, what it
@@ -44,16 +44,20 @@ load would find neither it nor its header nearby. Whether a load would is decide
 alone — after white space and comments, in a window of 64 bytes, then grown as a load grows its own while the header
 runs past it —, without parsing the object or recording anything. A header that runs past the object guard is taken as
 a load takes it: reported, looked for nearby, and rebuilt for when none is found there; for a document opened to throw
-on a limit, left to the read that reaches it, which throws.
+on a limit, left to the read that reaches it, which throws. Settling reads at most twice the file's length in windows
+past the first two of each header, and rebuilds once it would read more: in a valid file each header is at its offset,
+and no window grows.
 
 With it: a rebuild forgets what the reader noted of each object as it read it; `FileStructure` is filled while the
 document opens and never changes afterwards, a later rebuild keeping what it finds to the reader; a rebuild a load sets
-off while loads are in flight expands the index for them to read through, and is finished from its scan once the
-outermost returns, what they read meanwhile let go, as a rebuild run before them would have been — the object is then
-read again from the finished index, and none read through the unfinished one is cached; the object graph reads an object
-again to describe it, which settling makes the one it walked, and says what it counted without where should it not be;
-the walk of the object streams' dependencies reads the chain's index, and each stream, and each object written directly
-in the file its decoding keys lead through, where that index places it, the latter once a validation.
+off while loads are in flight scans the file and stops, the loads reading through the scan's index, and is finished
+from its scan once the outermost returns or throws, what they read meanwhile let go, as a rebuild run before them would
+have been — the object is then read again from the finished index, and none read through the unfinished one is cached;
+a guard the scan reaches is thrown at once, the first the read reaches, and a finish the source fails is left to the
+next read; the object graph reads an object again to describe it, which settling makes the one it walked, and says what
+it counted without where should it not be; the walk of the object streams' dependencies reads the chain's index, and
+each stream, and each object written directly in the file its decoding keys lead through, where that index places it,
+the latter once a validation, under whatever generation, as many as the reader's cache keeps.
 
 The review of the implementation weighed three of these against what they replaced. Caching nothing a load read
 through a rebuild it set off, alone, lost an object stream's members to the load that set the rebuild off — the
@@ -64,12 +68,23 @@ for two hundred objects of 200 KB under a cache of eight: reading the object aga
 runs past the object guard would have rebuilt where a read reports the guard and goes on: settling takes it as the read
 does.
 
+A second review, on 2026-10-17, measured what the first round's fixes cost, and the maintainer chose again. Expanding the
+object streams for the loads in flight, as the first round had, read every object twice, and its reports outlived the
+finish — a sound stream's `/Length` called unreadable, another's true fault left unreported —: the rebuild expands once,
+when finished, a departure from the letter of that choice. A header past the object guard, under a document opened to
+throw, had settling read each such row to the guard and go on — 8.6 GB for 400 rows into one run of blanks —: settling's
+reading is bounded by the file's length, past which it rebuilds. The walk's memo of what each object holds grew with the
+file — 80 MB for a file of 60 MB — and a generation per stream got around it: it is keyed by number and holds what the
+reader's cache holds. And the catch that finished a rebuild before a guard's exception left the read was decided in its
+filter, before the loads it was part of had let go: a guard reached a load deep left the rebuild unfinished, and the next
+read threw it. The outermost load finishes the rebuild for any exception, before it lets it go.
+
 The rules judge the rows of the index as the file wrote them. A value written elsewhere that a row's object needs is read
 as any read reads it, through the index the reader settled on.
 
 ## Consequences
 
-- A document gives the same report whatever was read before validating it: the 96 crafted files and the 401 documents
+- A document gives the same report whatever was read before validating it: the 90 crafted files and the 401 documents
   of the corpus do, which `ReadOrderConvergenceTests` and the integration suite's `ReadOrderSweepTests` hold. No read
   rebuilds the index once a validation has settled it, which `CorpusValidationTests` holds over the corpus.
 - The corpus's reports did not change: 0 of 401 documents. Three documents whose damage no rule reaches — Quartz files
@@ -77,10 +92,11 @@ as any read reads it, through the index the reader settled on.
 - Settling costs a header read per regular entry: under a microsecond an entry, about 2 % of a validation, and no
   allocation an entry. On a hostile file it reads, per entry, at most 64 bytes more than a load reads before the
   object's body, over the entries `MaxIndexEntries` bounds, and stops at the first entry a load would rebuild for.
-- A rebuild a load sets off while loads are in flight expands the object streams twice, once for those loads and once
-  finished. The object graph reads again each object it has a finding for. The walk of the object streams'
-  dependencies reads outside the reader's cache, and keeps, for the validation, the references each object it reads
-  holds.
+- A rebuild a load sets off while loads are in flight costs what one run first costs: the loads read through the scan's
+  index meanwhile, and the object they read is read again once it is finished. The object graph reads again each object
+  it has a finding for. The walk of the object streams' dependencies reads outside the reader's cache, and keeps the
+  references of as many objects as that cache holds; past that, it reads an object again for each stream it meets it
+  from.
 - `WasRepaired`, `ObjectCount`, `ObjectNumbers`, the merged `Trailer` and `IsEncrypted` can change when a validation
   starts, on a damaged file, as they could on any read.
 - Two exceptions remain, named in the documentation besides the one below: a document opened with `ThrowOnLimit` whose

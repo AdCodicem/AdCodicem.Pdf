@@ -232,8 +232,8 @@ public class CorpusValidationTests
     {
         // The validator rebuilds the index before its first rule when some read could still do so (#237): once it has, or
         // found that none could, reading every object the index holds rebuilds nothing. No committed document has an index
-        // a later read would rebuild, so these hold it against a regression; three of the remote corpus do, and the nightly
-        // run holds it on them.
+        // a later read would rebuild, so these hold it against a regression; eight of the remote corpus do, three of them
+        // Quartz files whose damage no rule reaches, and the nightly run holds it on them.
         var entry = Corpus.Get(file);
         using var document = PdfDocument.Open(Corpus.PathOf(entry.File), CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false });
         new PdfValidator().Validate(document);
