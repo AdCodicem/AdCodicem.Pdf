@@ -34,8 +34,8 @@ singleton. The document stays open, and belongs to one thread at a time, validat
 | `ObjectDisposedException` | The document was disposed |
 | `PdfLimitExceededException` | Validation reached one of the document's [reader limits](reader-limits.md), and the document was opened with `ThrowOnLimit` |
 
-Without `ThrowOnLimit`, a rule that meets an object the reader cut at a limit reports at most, as information, that it
-could not check it whole. What the reader notices while validation reads joins `document.Diagnostics`.
+Without `ThrowOnLimit`, a rule that meets an object the reader cut at a limit judges nothing of what it lacks or holds,
+or reports at most, as information, that it could not check it whole. What the reader notices while validation reads joins `document.Diagnostics`.
 
 Before its first rule, `Validate` has the reader rebuild the document's index when a later read still could — the
 index is incomplete through damage, or an entry places its object neither at its offset nor near it —, so that a

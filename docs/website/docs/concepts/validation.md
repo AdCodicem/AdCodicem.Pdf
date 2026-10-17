@@ -103,7 +103,9 @@ that read would have; to find out, it reads the header each entry written direct
 it nearby as a load would, and nothing of any object's body. A header that runs past the reader's
 [object limit](reader-limits.md) is taken as a read takes it: reported under `limit.object` and looked for nearby, or,
 for a document opened to throw on a limit, left to the read that reaches it. It reads no more than twice the file's
-length past the first windows of each header, and rebuilds the index rather than read on. A rebuild costs a whole read of
+length past the first windows of each header, and rebuilds the index rather than read on; a run of white space it crosses
+once, the entries placed inside it reading on from its end, as a block of zeros a fault left would otherwise be read
+again for each. A rebuild costs a whole read of
 the file, even when no rule would have reached the damage. No rule then reads part of the document before a rebuild and part
 after it, and a document gives the same report whatever you read before validating it — nothing, every object, or a
 previous validation.
@@ -116,8 +118,11 @@ any read under `ThrowOnLimit` does. The last is a file crafted for it: where a d
 can still depend on which stream was read first
 ([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)).
 
-The cross-reference rules read a few dozen bytes where each entry of the file's index places its object —
-its header, never its body — and each object stream once, without keeping it. They judge the rows as the file
+The cross-reference rules read where each entry of the file's index places its object as a load reads it, and decide
+what a load would find there as settling decides it, through one function of the reader — a few dozen bytes of its
+header in a sound file, never its body —, and each object stream once, without keeping it. An entry whose header runs
+past the reader's object limit, or that they had not decided once they had read twice the file's length, is said not
+checked rather than broken. They judge the rows as the file
 wrote them, not as the reader corrected them, and read each object stream where the file's own index places it,
 outside the document's cache. Working out which object streams need one another, they read there too each object
 written directly in the file that a stream's decoding keys lead through, once a validation for as many of them as the
@@ -137,6 +142,9 @@ with nothing on it. Where the index is sound and whole — the reader rebuilt it
 before the first rule —, one rule also looks at every object it holds, to name the pages the tree leaves out.
 
 The document's [reader limits](reader-limits.md) apply to validation too. An object the reader cut at a
-limit is not a fault of the file, so a rule meeting one says, as information, that it could not check it whole
-rather than calling the file broken; opening the document with a raised limit lets it check the rest. Validation
+limit is not a fault of the file, so a rule meeting one judges nothing of what it lacks or holds, or says, as
+information, that it could not check it whole, rather than calling the file broken; opening the document with a raised
+limit lets it check the rest. The page tree rules take a node so cut to give what its pages inherit, and leave its
+`/Count`, those above it and the pages the tree may leave out unjudged; the reader takes a catalog so cut for the
+catalog, as it read it, rather than look for another. Validation
 throws only for the caller's own mistakes, and for a limit when the document was opened to throw on one.
