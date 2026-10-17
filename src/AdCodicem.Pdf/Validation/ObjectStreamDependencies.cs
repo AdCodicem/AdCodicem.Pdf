@@ -23,7 +23,9 @@ namespace AdCodicem.Pdf.Validation;
 /// It reads each stream's dictionary, and the few objects written directly in the file its keys name, where the chain's
 /// index places them — not through the index the reader reads with now, which a rebuild may have made another —, and
 /// decodes nothing. The chain's index is read again for each lookup: until the reader first changes its own, the two are
-/// one table (#128). As it holds each dictionary, it also notes the integers of its header written as reals.
+/// one table (#128). An object written directly in the file is read once, however many streams lead through it, and what
+/// is kept of it is the references it holds. As it holds each dictionary, it also notes the integers of its header written
+/// as reals.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
@@ -76,13 +78,17 @@ internal sealed class ObjectStreamDependencies
         var needs = new Dictionary<int, List<Need>>();
         var locations = new Dictionary<int, PdfValidationLocation>();
 
+        // The references each object written in the file holds, which the decoding keys lead through: read once for every
+        // stream they lead from, and nothing of the object kept past its reading.
+        var references = new Dictionary<PdfObjectId, PdfObjectId[]>();
+
         foreach (var stream in streams)
         {
             if (IndexOf(reader).TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular &&
                 Read(document, new PdfObjectId(stream, entry.Generation), entry) is PdfStream objectStream)
             {
                 locations[stream] = Location(reader, stream, entry);
-                needs[stream] = Needs(document, objectStream.Dictionary);
+                needs[stream] = Needs(document, objectStream.Dictionary, references);
 
                 foreach (var key in IntegerKeys)
                 {
@@ -112,12 +118,15 @@ internal sealed class ObjectStreamDependencies
         return result;
     }
 
-    /// <summary>Lists the objects, held in object streams, that the decoding keys of <paramref name="dictionary"/> lead to.</summary>
-    private static List<Need> Needs(PdfDocument document, PdfDictionary dictionary)
+    /// <summary>
+    /// Lists the objects, held in object streams, that the decoding keys of <paramref name="dictionary"/> lead to, through
+    /// the objects written in the file whose references <paramref name="references"/> holds, or which it reads and holds.
+    /// </summary>
+    private static List<Need> Needs(PdfDocument document, PdfDictionary dictionary, Dictionary<PdfObjectId, PdfObjectId[]> references)
     {
         var found = new List<Need>();
         var seen = new HashSet<int>();
-        var work = new Stack<PdfObject>();
+        var work = new Stack<PdfObjectId>();
 
         foreach (var key in DecodingKeys)
         {
@@ -126,47 +135,83 @@ internal sealed class ObjectStreamDependencies
                 continue;
             }
 
-            work.Push(value);
+            Push(work, ReferencesIn(value));
 
-            while (work.TryPop(out var item))
+            while (work.TryPop(out var id))
             {
-                switch (item)
+                // Object 0 heads the free list and is never in use (ISO 32000-1, 7.5.4): the reader never reads it,
+                // whatever the index's first entry says, so no stream needs it.
+                if (id.Number <= 0 || !seen.Add(id.Number) || !IndexOf(document.Reader).TryGet(id.Number, out var entry))
                 {
-                    // Object 0 heads the free list and is never in use (ISO 32000-1, 7.5.4): the reader never reads it,
-                    // whatever the index's first entry says, so no stream needs it.
-                    case PdfReference reference when reference.Id.Number > 0 && seen.Add(reference.Id.Number) &&
-                        IndexOf(document.Reader).TryGet(reference.Id.Number, out var entry):
-                        if (entry.Kind == XRefEntryKind.Compressed)
-                        {
-                            found.Add(new Need(entry.ObjectStreamNumber, reference.Id.Number, FileQuote.Name(key)));
-                        }
-                        else if (entry.Kind == XRefEntryKind.Regular)
-                        {
-                            work.Push(Read(document, reference.Id, entry));
-                        }
+                    continue;
+                }
 
-                        break;
+                if (entry.Kind == XRefEntryKind.Compressed)
+                {
+                    found.Add(new Need(entry.ObjectStreamNumber, id.Number, FileQuote.Name(key)));
+                }
+                else if (entry.Kind == XRefEntryKind.Regular)
+                {
+                    if (!references.TryGetValue(id, out var held))
+                    {
+                        held = ReferencesIn(Read(document, id, entry));
+                        references[id] = held;
+                    }
 
-                    case PdfArray array:
-                        foreach (var element in array)
-                        {
-                            work.Push(element);
-                        }
-
-                        break;
-
-                    case PdfDictionary nested:
-                        foreach (var (_, element) in nested)
-                        {
-                            work.Push(element);
-                        }
-
-                        break;
+                    Push(work, held);
                 }
             }
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// Gives the references <paramref name="value"/> holds, in its arrays and dictionaries, in the order a walk taking the
+    /// last value it met first meets them; the objects they name are not read.
+    /// </summary>
+    private static PdfObjectId[] ReferencesIn(PdfObject value)
+    {
+        var found = new List<PdfObjectId>();
+        var work = new Stack<PdfObject>();
+        work.Push(value);
+
+        while (work.TryPop(out var item))
+        {
+            switch (item)
+            {
+                case PdfReference reference:
+                    found.Add(reference.Id);
+                    break;
+
+                case PdfArray array:
+                    foreach (var element in array)
+                    {
+                        work.Push(element);
+                    }
+
+                    break;
+
+                case PdfDictionary dictionary:
+                    foreach (var (_, element) in dictionary)
+                    {
+                        work.Push(element);
+                    }
+
+                    break;
+            }
+        }
+
+        return [.. found];
+    }
+
+    /// <summary>Pushes <paramref name="references"/> so that the first of them is the next taken.</summary>
+    private static void Push(Stack<PdfObjectId> work, PdfObjectId[] references)
+    {
+        for (var index = references.Length - 1; index >= 0; index--)
+        {
+            work.Push(references[index]);
+        }
     }
 
     /// <summary>Gives the need of <paramref name="stream"/> that leads back to it, directly or through other streams, if any.</summary>
