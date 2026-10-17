@@ -280,16 +280,15 @@ public class PageTreeRuleTests
     [Fact]
     public void A_page_given_a_stream_body_in_the_array_is_reported_at_the_node_listing_it()
     {
-        // The message names such a kid oddly (#129): only its start and its end are checked.
         var file = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R << /Type /Page /Length 0 >>\nstream\n\nendstream] /Count 2");
 
         using var document = PdfDocument.Open(file);
         var report = new PdfValidator().Validate(document);
 
         var finding = Single(report, PdfValidationRuleIds.PageTreeKidInvalid);
-        finding.Location.Object.Should().Be(new PdfObjectId(4), "the stream has no number of its own to be located by");
-        finding.Message.Should().StartWith("The kid at index 1 of page tree node 4 ").And.EndWith(
-            "a stream rather than a dictionary: the reader reads the stream's dictionary in its place.");
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4)), "the stream has no number of its own to be located by");
+        finding.Message.Should().Be(
+            "The kid at index 1 of page tree node 4 is a stream written in the array, where the tree wants an indirect reference to a dictionary: the reader reads the stream's dictionary in its place.");
         PageTreeWalk.Run(document).PageCount.Should().Be(3);
     }
 
@@ -308,12 +307,175 @@ public class PageTreeRuleTests
     [Fact]
     public void A_node_written_in_the_array_without_kids_is_named_by_where_it_is_written()
     {
-        // Neither the message's start nor where the finding is located is settled yet (#129): only the end is checked.
         var file = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R << /Type /Pages /Count 0 >>] /Count 2");
 
         var finding = Single(Validate(file), PdfValidationRuleIds.PageTreeKidsMissing);
 
-        finding.Message.Should().EndWith("page tree node written in its parent's /Kids has no /Kids: it lists no page.");
+        finding.Message.Should().Be("The page tree node under /Kids[1] of page tree node 4 has no /Kids: it lists no page.");
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4)), "it is written in node 4");
+    }
+
+    [Fact]
+    public void A_page_written_in_the_array_is_named_and_located_by_the_node_it_is_written_in()
+    {
+        // Batch 13's shape (#129): the page was located at "object 0 0".
+        var file = PdfTemplate.SoundWith("/Kids [3 0 R]", "/Kids [3 0 R << /A 9 0 R >>]");
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.PageTreeMediaBoxInvalid).Message.Should().Be(
+            "The page object under /Kids[1] of page tree node 2 has no /MediaBox, and no page tree node above it gives one: the page's size is unknown.");
+        Single(report, PdfValidationRuleIds.PageTreeMediaBoxInvalid).Location.Should().Be(PdfValidationLocation.OnPage(1, new PdfObjectId(2)));
+        Single(report, PdfValidationRuleIds.PageTreeResourcesMissing).Message.Should().Be(
+            "The page object under /Kids[1] of page tree node 2 has no /Resources, and no page tree node above it gives any.");
+        Single(report, PdfValidationRuleIds.PageTreeResourcesMissing).Location.Should().Be(PdfValidationLocation.OnPage(1, new PdfObjectId(2)));
+    }
+
+    [Theory]
+    [InlineData("/MediaBox 5", "The /MediaBox of the page object under /Kids[1] of page tree node 4 is a number, not a rectangle.")]
+    [InlineData("/MediaBox [0 0 5]", "The /MediaBox of the page object under /Kids[1] of page tree node 4 is an array of 3 values, not a rectangle.")]
+    [InlineData("/MediaBox [0 0 5 (x)]", "The /MediaBox of the page object under /Kids[1] of page tree node 4 holds a string among its corners, not a rectangle of four numbers.")]
+    [InlineData("/MediaBox [0 0 0 0]", "The /MediaBox of the page object under /Kids[1] of page tree node 4, [0 0 0 0], encloses no area.")]
+    public void The_media_box_of_a_page_written_in_the_array_is_that_page_s(string box, string message)
+    {
+        var file = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", $"/Kids [5 0 R << /Type /Page {box} >>] /Count 2");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.PageTreeMediaBoxInvalid);
+
+        finding.Message.Should().Be(message);
+        finding.Location.Should().Be(PdfValidationLocation.OnPage(2, new PdfObjectId(4)));
+    }
+
+    [Fact]
+    public void A_node_written_in_the_array_is_named_by_its_path_in_every_finding_on_it()
+    {
+        // After pages 5 and 6, a node in node 4's array, itself listing a null and a page in its own, with a media box of
+        // three values and a /Count of 3; the page's media box is a number. The root's /Count is 5, as are the pages the
+        // tree lists.
+        var file = PdfTemplate.Build(Tree
+            .Replace("/Kids [3 0 R 4 0 R] /Count 3", "/Kids [3 0 R 4 0 R] /Count 5", StringComparison.Ordinal)
+            .Replace(
+                "/Kids [5 0 R 6 0 R] /Count 2",
+                "/Kids [5 0 R 6 0 R << /Type /Pages /Kids [null << /Type /Page /MediaBox 7 >>] /Count 3 /MediaBox [0 0 5] >>] /Count 4",
+                StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+        var report = new PdfValidator().Validate(document);
+        var node = PdfValidationLocation.OfObject(new PdfObjectId(4));
+
+        Single(report, PdfValidationRuleIds.PageTreeCountMismatch).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message == "The page tree node under /Kids[2] of page tree node 4 gives /Count 3, and 2 pages lie below it." &&
+            finding.Location == node);
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreeMediaBoxInvalid).Select(finding => (finding.Location, finding.Message))
+            .Should().Equal(
+                (node, "The /MediaBox of the page tree node under /Kids[2] of page tree node 4 is an array of 3 values, not a rectangle."),
+                (PdfValidationLocation.OnPage(4, new PdfObjectId(4)), "The /MediaBox of the page object under /Kids[2]/Kids[1] of page tree node 4 is a number, not a rectangle."));
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreeKidInvalid).Select(finding => (finding.Location, finding.Message))
+            .Should().Equal(
+                (node, "The kid at index 2 of page tree node 4 is a dictionary written in the array, where the tree wants an indirect reference to one."),
+                (PdfValidationLocation.OnPage(3, new PdfObjectId(4)), "The kid at index 0 of the page tree node under /Kids[2] of page tree node 4 is null: it counts as a page with nothing on it."),
+                (node, "The kid at index 1 of the page tree node under /Kids[2] of page tree node 4 is a dictionary written in the array, where the tree wants an indirect reference to one."));
+        report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
+        PageTreeWalk.Run(document).PageCount.Should().Be(5);
+    }
+
+    [Fact]
+    public void A_kid_of_a_node_written_in_the_array_that_loops_back_or_repeats_is_named_by_that_node_s_path()
+    {
+        var looping = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R << /Type /Pages /Kids [2 0 R] /Count 0 >> 6 0 R] /Count 2");
+        var repeating = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R << /Type /Pages /Kids [5 0 R] /Count 1 >> 6 0 R] /Count 3");
+
+        var cycle = Single(Validate(looping), PdfValidationRuleIds.PageTreeCycle);
+        var repeated = Single(Validate(repeating), PdfValidationRuleIds.PageTreeNodeRepeated);
+
+        cycle.Message.Should().Be(
+            "The kid at index 0 of the page tree node under /Kids[1] of page tree node 4 names object 2, a node above it: the tree loops back on itself there, and what it should have listed is unknown.");
+        cycle.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4)));
+        repeated.Message.Should().Be(
+            "The kid at index 0 of the page tree node under /Kids[1] of page tree node 4 names object 5, which the tree already lists: its page is counted again.");
+        repeated.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4)));
+    }
+
+    [Fact]
+    public void A_root_written_in_the_catalog_is_named_under_the_catalog_s_pages_not_a_parent_s_kids()
+    {
+        var file = PdfTemplate.SoundWith(
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Catalog /Pages << /Type /Pages /Kids [3 0 R] /Count 2 /Parent 3 0 R >> >>");
+
+        var report = Validate(file);
+        var catalog = PdfValidationLocation.OfObject(new PdfObjectId(1));
+
+        Single(report, PdfValidationRuleIds.PageTreeCountMismatch).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message == "The page tree node under /Pages of object 1 gives /Count 2, and 1 page lies below it." &&
+            finding.Location == catalog);
+        Single(report, PdfValidationRuleIds.PageTreeParentWrong).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message == "The root of the page tree, under /Pages of object 1, has a /Parent, which only the nodes below it may have." &&
+            finding.Location == catalog);
+    }
+
+    [Fact]
+    public void A_root_written_in_the_catalog_that_is_a_page_is_located_on_its_page_at_the_catalog()
+    {
+        var file = PdfTemplate.SoundWith(
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Catalog /Pages << /Type /Page /Kids 5 /MediaBox [0 0 0 0] >> >>");
+
+        var report = Validate(file);
+
+        report.Findings.Where(finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal) && finding.RuleId != PdfValidationRuleIds.PageTreePageOrphaned)
+            .Select(finding => (finding.Location, finding.Message))
+            .Should().Equal(
+                (PdfValidationLocation.OnPage(0, new PdfObjectId(1)), "The /MediaBox of the page object under /Pages of object 1, [0 0 0 0], encloses no area."),
+                (PdfValidationLocation.OnPage(0, new PdfObjectId(1)), "The page object under /Pages of object 1 has no /Resources, and no page tree node above it gives any."));
+    }
+
+    [Fact]
+    public void A_root_written_in_a_catalog_written_in_the_trailer_is_located_at_the_trailer()
+    {
+        var file = PdfTemplate.SoundWith(
+            "<< /Size 4 /Root 1 0 R >>",
+            "<< /Size 4 /Root << /Type /Catalog /Pages << /Type /Pages /Kids [3 0 R] /Count 2 >> >> >>");
+
+        using var document = PdfDocument.Open(file);
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.PageTreeCountMismatch);
+
+        finding.Message.Should().Be("The page tree node under /Root/Pages of the trailer gives /Count 2, and 1 page lies below it.");
+        finding.Location.Should().Be(PdfValidationLocation.AtPosition(document.Reader.TrailerLocation));
+        document.Reader.TrailerLocation.Should().Be(PdfTemplate.OffsetOf(file, "trailer"));
+    }
+
+    [Fact]
+    public void A_kid_written_in_an_array_of_kids_of_its_own_is_located_at_that_array()
+    {
+        var file = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids 7 0 R /Count 2", "[5 0 R << /Type /Page /MediaBox 5 >>]");
+
+        var report = Validate(file);
+        var array = new PdfObjectId(7);
+
+        Single(report, PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().Match<PdfValidationFinding>(finding =>
+            finding.Message == "The /MediaBox of the page object at [1] in object 7 is a number, not a rectangle." &&
+            finding.Location == PdfValidationLocation.OnPage(2, array));
+        Single(report, PdfValidationRuleIds.PageTreeKidInvalid).Location.Should().Be(
+            PdfValidationLocation.OfObject(new PdfObjectId(4)), "the kid is node 4's, whichever object its array is");
+    }
+
+    [Fact]
+    public void A_long_path_to_a_node_written_in_the_array_is_shortened_as_any_path_is()
+    {
+        // Six nodes, each written in the one above, the last without /Kids: a path of twelve steps, the four past the first
+        // four and before the last four counted rather than written.
+        var nested = "<< /Type /Pages /Count 0 >>";
+
+        for (var level = 0; level < 5; level++)
+        {
+            nested = $"<< /Type /Pages /Kids [{nested}] /Count 0 >>";
+        }
+
+        var file = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", $"/Kids [{nested}] /Count 0");
+
+        Single(Validate(file), PdfValidationRuleIds.PageTreeKidsMissing).Message.Should().Be(
+            "The page tree node under /Kids[0]/Kids[0] (4 steps) /Kids[0]/Kids[0] of page tree node 4 has no /Kids: it lists no page.");
     }
 
     [Fact]

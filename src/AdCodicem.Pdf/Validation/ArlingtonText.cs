@@ -25,7 +25,7 @@ internal static class ArlingtonText
         var type = tally.Row.Object.ToString();
         var key = Key(tally);
         var single = tally.Count == 1;
-        var subject = single ? $"{Capitalize(where)}, {Article(type)} {type} in the Arlington model," : $"{Capitalize(Article(type))} {type}";
+        var subject = single ? $"{RuleText.Capitalize(where)}, {Article(type)} {type} in the Arlington model," : $"{RuleText.Capitalize(Article(type))} {type}";
         var model = single ? "the model" : "the Arlington model";
         var objects = tally.Row.Object.IsArray ? "arrays" : "objects";
         var count = tally.Count.ToString(CultureInfo.InvariantCulture);
@@ -173,7 +173,4 @@ internal static class ArlingtonText
     /// <summary>The article of a type's name: <c>an</c> before a vowel or an X (<c>an XObjectFormType1</c>).</summary>
     private static string Article(string name) =>
         name.Length > 0 && "AEIOUX".Contains(name[0], StringComparison.Ordinal) ? "an" : "a";
-
-    private static string Capitalize(string text) =>
-        text.Length == 0 || char.IsUpper(text[0]) ? text : char.ToUpperInvariant(text[0]) + text[1..];
 }

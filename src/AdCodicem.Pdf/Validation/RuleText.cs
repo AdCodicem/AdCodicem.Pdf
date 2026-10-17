@@ -49,6 +49,10 @@ internal static class RuleText
         _ => "null",
     };
 
+    /// <summary>Starts <paramref name="text"/> with a capital letter, to open a sentence with it.</summary>
+    public static string Capitalize(string text) =>
+        text.Length == 0 || char.IsUpper(text[0]) ? text : char.ToUpperInvariant(text[0]) + text[1..];
+
     /// <summary>
     /// Writes a path of keys and indexes, <c>/Resources/Font/F1</c> or <c>[2]/Next</c>, whole up to
     /// <c>2 × <see cref="PathEnds"/></c> steps, and past that its first and last <see cref="PathEnds"/> steps, with how
