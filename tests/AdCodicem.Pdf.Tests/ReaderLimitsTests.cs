@@ -1075,6 +1075,123 @@ public class ReaderLimitsTests
             "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. The reader took object 9, which is one, for the catalog.");
     }
 
+    [Theory]
+    [InlineData("a catalog a limit cuts")]
+    [InlineData("a whole catalog")]
+    [InlineData("no catalog")]
+    public void A_rebuild_after_a_search_reads_the_file_s_own_root_again(string later)
+    {
+        // Review of #175's fixes (M2-02): /Root names object 1, no catalog, and the search takes object 5. Settling rebuilds
+        // the index, which serves a later object 1 and a later object 5, a font. The rebuild kept the search's guess in place
+        // of the file's /Root: a later 1 the guard cut was looked past, a whole one ignored, and with none the guess stayed.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Outlines >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+            [5] = file.Object(5, "<< /Type /Catalog /Pages 2 0 R /Lang (older) >>"),
+        };
+
+        switch (later)
+        {
+            case "a catalog a limit cuts":
+                file.Object(1, "<<" + new string(' ', 200) + "/Type /Catalog /Pages 2 0 R >>");
+                break;
+            case "a whole catalog":
+                file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Lang (file) >>");
+                break;
+        }
+
+        file.Object(5, "<< /Type /Font >>");
+        rows[7] = file.Object(7, "<< /Type /Catalog /Pages 2 0 R /Lang (seventh) >>");
+        file.Raw("%" + new string('c', 1200) + "\n");
+        file.Object(6, "(six)");
+        rows[6] = 3;
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } });
+        document.Reader.CatalogFoundAs.Should().Be(5);
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeTrue();
+
+        switch (later)
+        {
+            case "a catalog a limit cuts":
+                document.Reader.CatalogFoundAs.Should().Be(0, "a /Root a guard cut is taken as read");
+                document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Number.Should().Be(1);
+                break;
+            case "a whole catalog":
+                document.Reader.CatalogFoundAs.Should().Be(0);
+                document.Catalog.Required()[PdfName.Lang].Should().BeOfType<PdfString>().Which.ToText().Should().Be("file");
+                break;
+            default:
+                document.Reader.CatalogFoundAs.Should().Be(7, "the rebuilt index serves no catalog as object 5");
+                document.Catalog.Required()[PdfName.Lang].Should().BeOfType<PdfString>().Which.ToText().Should().Be("seventh");
+                break;
+        }
+    }
+
+    [Fact]
+    public void A_rebuild_reaching_a_guard_on_a_catalog_a_search_took_still_looks_for_another_when_opened_to_throw()
+    {
+        // M2-03: as in L3-01, under ThrowOnLimit. The rebuild read the search's guess, object 4, cut, and threw before it
+        // looked again: the reader kept its guess, and every later read of the catalog threw.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Outlines >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+            [4] = file.Object(4, "<< /Type /Catalog /Pages 2 0 R >>"),
+        };
+        file.Object(4, "<<" + new string(' ', 200) + "/Type /Catalog /Pages 2 0 R >>");
+        rows[9] = file.Object(9, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Raw("%" + new string('c', 1200) + "\n");
+        file.Object(6, "(six)");
+        rows[6] = 3;
+        file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } });
+        document.Reader.CatalogFoundAs.Should().Be(4);
+
+        FluentActions.Invoking(document.Reader.SettleIndex).Should().Throw<PdfLimitExceededException>();
+
+        document.Reader.CatalogFoundAs.Should().Be(9);
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_root_that_leads_through_a_chain_to_a_catalog_a_guard_cut_is_taken_as_read(bool older)
+    {
+        // M2-04: /Root names object 7, whose value is 1 0 R, a catalog cut before its /Type. The cut was looked for on
+        // object 7: the reader looked for another catalog, or rebuilt the index, and file.root-invalid judged the cut one.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<<" + new string(' ', 200) + "/Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+            [7] = file.Object(7, "1 0 R"),
+        };
+
+        if (older)
+        {
+            rows[5] = file.Object(5, "<< /Type /Catalog /Pages 2 0 R >>");
+        }
+
+        file.Table(8, rows, "/Size 8 /Root 7 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } });
+
+        document.Reader.Structure.RootCutByGuard.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0);
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse();
+    }
+
     [Fact]
     public void A_cross_reference_stream_a_guard_cut_does_not_make_an_object_of_its_number_a_cut_catalog()
     {

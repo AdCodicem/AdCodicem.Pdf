@@ -1968,7 +1968,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// for elsewhere — a search could take a catalog an update superseded, and a rebuild would scan the file for what the
     /// guard's report already names (ADR 34).
     /// </summary>
-    private bool RootCutByGuard() => Trailer.GetRaw(PdfName.Root) is PdfReference root && IsCutAtLimit(root.Id.Number);
+    private bool RootCutByGuard() => Trailer.GetRaw(PdfName.Root) is PdfReference root && IsCutAtLimit(root.Target().Number);
 
     /// <summary>
     /// Determines whether a guard keeps object <paramref name="number"/> from the reader: it stopped the index short of
@@ -4651,6 +4651,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _endObjMissing.Clear();
         _streamLengthFaults.Clear();
 
+        // A catalog a search took is the reader's guess, which the trailer's /Root holds in place of the file's own: the
+        // rebuilt index is read with the file's, which it may now serve as a catalog — whole, or cut by a guard and taken
+        // as read —, and searched again only when it does not (#175).
+        if (_catalogFoundAs != 0 && Trailer.GetRaw(PdfName.Root) is PdfReference guess && guess.Id.Number == _catalogFoundAs)
+        {
+            if (_structure.RootAsWritten is { } written)
+            {
+                Trailer.Set(PdfName.Root, written);
+            }
+            else
+            {
+                Trailer.Remove(PdfName.Root);
+            }
+
+            _catalogFoundAs = 0;
+        }
+
         var redefinitions = new Redefinitions();
 
         // Indexing and loading objects can reach a guard. A document opened to throw on one throws once the index is
@@ -4703,19 +4720,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             _diagnostics.Add(PdfDiagnosticSeverity.Information, PdfDiagnosticCodes.ObjectRedefined, redefinitions.Describe());
         }
 
-        if (!HasUsableRoot())
-        {
-            // A catalog a search took earlier is none the rebuilt index serves: the reader takes none until this one finds
-            // one. Searched even when the expansion reached a guard; the first guard reached is the one thrown. A /Root a
-            // guard cut is taken as read, and no other is looked for — the file's /Root, not one a search set in its place.
-            var searchedRoot = _catalogFoundAs != 0 && Trailer.GetRaw(PdfName.Root) is PdfReference taken && taken.Id.Number == _catalogFoundAs;
-            _catalogFoundAs = 0;
+        // The file's /Root, a search's guess having been set aside as the rebuild began, is read through the rebuilt index;
+        // a guard reached reading it is held, as any reached in a rebuild, and it is then a /Root a guard cut.
+        bool usable;
 
-            if (searchedRoot || !RootCutByGuard())
-            {
-                var searching = FindCatalog();
-                reached ??= searching;
-            }
+        try
+        {
+            usable = HasUsableRoot();
+        }
+        catch (PdfLimitExceededException exception)
+        {
+            reached ??= ExceptionDispatchInfo.Capture(exception);
+            usable = true;
+        }
+
+        // A /Root a guard cut is taken as read, and no other is looked for. Searched even when the expansion reached a
+        // guard; the first guard reached is the one thrown.
+        if (!usable && !RootCutByGuard())
+        {
+            var searching = FindCatalog();
+            reached ??= searching;
         }
 
         reached?.Throw();
