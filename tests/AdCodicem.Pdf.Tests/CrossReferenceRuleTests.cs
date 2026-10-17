@@ -1427,6 +1427,99 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("seventy zeros leading its number")]
+    [InlineData("sixty zeros leading its number")]
+    [InlineData("a comment between its number and its generation")]
+    [InlineData("a comment of eighty bytes between its number and its generation")]
+    [InlineData("eighty blanks before its generation")]
+    [InlineData("seventy zeros for its generation")]
+    public void A_valid_header_longer_than_a_first_read_is_found_where_its_entry_places_it(string shape)
+    {
+        // #175: the probe read 64 bytes where the entry places object 4, and called entry-shifted, "0 bytes after it", or
+        // entry-broken a header any read takes there (ISO 32000-1, 7.3.3, 7.2.3).
+        var file = WithFourWritten(LongHeader(shape) + "\n(four)\nendobj\n", out _);
+        using var document = PdfDocument.Open(file);
+
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("                                                         4 0 objx\n(not an object)\n")]
+    [InlineData("4 0 objection\n(not an object)\n")]
+    public void A_header_a_read_refuses_is_an_entry_that_leads_nowhere(string written)
+    {
+        // #256: the probe took a keyword its 64 bytes cut for obj, 57 bytes after the offset, and the search near the row
+        // read "4 0 obj" at the start of "4 0 objection"; a read refuses both, and rebuilds the index.
+        var file = WithFourWritten(written, out var row);
+        using var document = PdfDocument.Open(file);
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefEntryBroken);
+
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4), row));
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The entry of object 4 gives offset {row}, where there is no object header, and the object is not within 512 bytes of it."));
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("seventy zeros leading its number")]
+    [InlineData("a comment of eighty bytes between its number and its generation")]
+    [InlineData("eighty blanks before its generation")]
+    [InlineData("seventy zeros for its generation")]
+    [InlineData("an obj keyword the first bytes read cut, which runs on")]
+    [InlineData("a keyword that runs on, which the search near the row takes for a header")]
+    [InlineData("a generation past 65535")]
+    [InlineData("object 0")]
+    [InlineData("its header three bytes past the row")]
+    [InlineData("a comment between its number and its generation, three bytes past the row")]
+    public void The_probe_judges_an_entry_as_settling_does(string shape)
+    {
+        // One decision for both (#256): an entry the probe calls broken is one settling rebuilds the index for, and the probe
+        // takes every other where a load takes it.
+        var written = shape switch
+        {
+            "an obj keyword the first bytes read cut, which runs on" => new string(' ', 57) + "4 0 objx\n(not an object)\n",
+            "a keyword that runs on, which the search near the row takes for a header" => "4 0 objection\n(not an object)\n",
+            "a generation past 65535" => "4 70000 obj\n(not an object)\nendobj\n",
+            "object 0" => "0 0 obj\n(not an object)\nendobj\n",
+            "its header three bytes past the row" => "   4 0 obj\n(four)\nendobj\n",
+            "a comment between its number and its generation, three bytes past the row" => "   4 %c\n0 obj\n(four)\nendobj\n",
+            _ => LongHeader(shape) + "\n(four)\nendobj\n",
+        };
+        var file = WithFourWritten(written, out _);
+
+        using var settled = PdfDocument.Open(file);
+        settled.Reader.SettleIndex();
+        using var probed = PdfDocument.Open(file);
+        var probe = CrossReferenceProbe.Run(probed);
+
+        probe.Broken.Any(finding => finding.Location.Object == new PdfObjectId(4)).Should().Be(settled.WasRepaired);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_header_that_runs_past_the_object_guard_where_its_entry_places_it_is_said_to_be_unchecked(bool throwOnLimit)
+    {
+        // Two hundred zeros lead object 4's number, a header of 207 bytes; the reader reads no object past 128. A load reaches
+        // the guard on it, and looks no further when opened to throw on one.
+        var file = WithFourWritten(new string('0', 200) + "4 0 obj\n(four)\nendobj\n", out var row);
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        findings.Select(finding => (finding.RuleId, finding.Location, finding.Message)).Should().Equal((
+            PdfValidationRuleIds.XRefCheckedInPart,
+            PdfValidationLocation.OfObject(new PdfObjectId(4), row),
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Reading the header of object 4 where its entry places it, at offset {row}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
+    }
+
+    [Theory]
     [InlineData(-3, false)]
     [InlineData(-3, true)]
     [InlineData(9999, false)]
@@ -1682,6 +1775,40 @@ public class CrossReferenceRuleTests
         var swapped = "3" + text[(start + 1)..(start + 4)] + "2" + text[(start + 5)..];
         return Encoding.Latin1.GetBytes(text[..start] + swapped);
     }
+
+    /// <summary>
+    /// The sound one-page document with <paramref name="written"/> where object 4's row places it, which nothing names, then
+    /// a padding object of 1,200 bytes and a later object 4, <c>(four)</c>: a rebuild finds that one.
+    /// </summary>
+    private static byte[] WithFourWritten(string written, out long row)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+            [4] = file.Position,
+        };
+        file.Raw(written);
+        rows[6] = file.Padding(6);
+        file.Object(4, "(four)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        row = rows[4];
+        return file.Bytes;
+    }
+
+    /// <summary>A valid header of object 4, generation 0, longer than 64 bytes or with a comment inside it.</summary>
+    private static string LongHeader(string shape) => shape switch
+    {
+        "seventy zeros leading its number" => new string('0', 70) + "4 0 obj",
+        "sixty zeros leading its number" => new string('0', 60) + "4 0 obj",
+        "a comment between its number and its generation" => "4 % a comment\n0 obj",
+        "a comment of eighty bytes between its number and its generation" => "4 %" + new string('c', 80) + "\n0 obj",
+        "eighty blanks before its generation" => "4" + new string(' ', 80) + "0 obj",
+        "seventy zeros for its generation" => "4 " + new string('0', 70) + " obj",
+        _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, null),
+    };
 
     private static PdfValidationFinding Single(PdfValidationReport report, string ruleId)
     {

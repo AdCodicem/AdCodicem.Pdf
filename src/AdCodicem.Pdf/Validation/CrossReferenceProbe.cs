@@ -13,11 +13,15 @@ namespace AdCodicem.Pdf.Validation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// It reads each object's header, a few dozen bytes, and nothing of its body; and each object stream once,
-/// without keeping it, so that memory follows the largest of them rather than their sum. It probes the index the
-/// file's chain gave, as the reader first read it — not one the reader has corrected or rebuilt since —, and
-/// nothing when the chain gave none: the file rules have then said the index is unusable, and every entry would
-/// only say it again.
+/// It reads each object's header as a load reads it, and nothing of its body: what the reader decides of each entry as it
+/// settles its index (<see cref="PdfFileReader.PlaceHeader"/>), so that an entry a load takes is never called broken, and
+/// one a load gives up on never taken. A header is read in a few dozen bytes, then in windows grown as a load grows its
+/// own, up to <see cref="Documents.PdfReaderLimits.MaxObjectLength"/>; over all the headers, the windows past the first two
+/// of each read at most twice the file's length, and an entry left undecided past that is said not checked, as one whose
+/// header runs past the limit is. It reads each object stream once, without keeping it, so that memory follows the
+/// largest of them rather than their sum. It probes the index the file's chain gave, as the reader first read it — not
+/// one the reader has corrected or rebuilt since —, and nothing when the chain gave none: the file rules have then said
+/// the index is unusable, and every entry would only say it again.
 /// </para>
 /// <para>
 /// Several rules read it, so the validation context works it out once. What it keeps is what it found wrong,
@@ -26,12 +30,16 @@ namespace AdCodicem.Pdf.Validation;
 /// </remarks>
 internal sealed class CrossReferenceProbe
 {
-    /// <summary>How many bytes are read where an entry places its object: enough for its header after some white space.</summary>
-    private const int HeaderProbeLength = 64;
+    /// <summary>What may still be read of the headers past the first windows of each, and the run of white space last crossed.</summary>
+    private readonly HeaderReading _reading;
 
-    private CrossReferenceProbe()
-    {
-    }
+    /// <summary>How many entries the probe left undecided, its reading spent.</summary>
+    private int _undecidedCount;
+
+    /// <summary>The first of those entries, in the order of object numbers.</summary>
+    private ProbeFinding? _firstUndecided;
+
+    private CrossReferenceProbe(long allowance) => _reading = new HeaderReading(allowance);
 
     /// <summary>Gets the entries whose object is neither where they place it nor near it.</summary>
     public List<ProbeFinding> Broken { get; } = [];
@@ -45,7 +53,10 @@ internal sealed class CrossReferenceProbe
     /// <summary>Gets the object streams, one finding each, that cannot serve the objects the index places in them.</summary>
     public List<ProbeFinding> BrokenObjectStreams { get; } = [];
 
-    /// <summary>Gets what could not be checked: object streams a limit cut, or all of them in an encrypted document.</summary>
+    /// <summary>
+    /// Gets what could not be checked: an entry whose header runs past a limit, entries left undecided past what the probe
+    /// may read, object streams a limit cut, or all of them in an encrypted document.
+    /// </summary>
     public List<ProbeFinding> NotChecked { get; } = [];
 
     /// <summary>Gets how many entries place their object on the white space before its header.</summary>
@@ -63,8 +74,8 @@ internal sealed class CrossReferenceProbe
     /// <summary>Probes the index the document's chain gave.</summary>
     public static CrossReferenceProbe Run(PdfDocument document)
     {
-        var probe = new CrossReferenceProbe();
         var reader = document.Reader;
+        var probe = new CrossReferenceProbe(reader.HeaderReadingAllowance);
 
         if (reader.ChainIndex is not { } index)
         {
@@ -77,7 +88,6 @@ internal sealed class CrossReferenceProbe
 
         var size = reader.Structure.SizeAsWritten is PdfInteger { Value: >= 0 } written ? written.Value : -1;
         var packed = new SortedDictionary<int, List<(int Number, int Index)>>();
-        Span<byte> buffer = stackalloc byte[HeaderProbeLength];
 
         foreach (var number in numbers)
         {
@@ -97,7 +107,7 @@ internal sealed class CrossReferenceProbe
 
             if (entry.Kind == XRefEntryKind.Regular)
             {
-                probe.ProbeObjectHeader(reader, number, entry, buffer);
+                probe.ProbeObjectHeader(reader, number, entry);
             }
             else
             {
@@ -111,6 +121,13 @@ internal sealed class CrossReferenceProbe
             }
         }
 
+        if (probe._firstUndecided is { } first)
+        {
+            probe.NotChecked.Add(new ProbeFinding(
+                first.Location,
+                Invariant($"The validator stopped reading object headers where entries place them at twice the file's length: the entries of {RuleText.Objects(probe._undecidedCount)} it had not decided by then, the first {first.Message}, were not checked.")));
+        }
+
         if (packed.Count > 0)
         {
             probe.CheckObjectStreams(document, reader, packed);
@@ -119,9 +136,8 @@ internal sealed class CrossReferenceProbe
         return probe;
     }
 
-    private void ProbeObjectHeader(PdfFileReader reader, int number, XRefEntry entry, Span<byte> buffer)
+    private void ProbeObjectHeader(PdfFileReader reader, int number, XRefEntry entry)
     {
-        var source = reader.Source;
         var id = new PdfObjectId(number, entry.Generation);
         var offset = reader.PositionOf(entry);
 
@@ -133,38 +149,57 @@ internal sealed class CrossReferenceProbe
             return;
         }
 
-        var header = ReadHeader(source, offset, buffer);
+        var placement = reader.PlaceHeader(number, entry, _reading);
 
-        if (header.Number == number)
+        switch (placement.Place)
         {
-            if (header.Start > 0 && ImpreciseCount++ == 0)
-            {
-                FirstImprecise = new ProbeFinding(
+            case HeaderPlace.AtOffset:
+                if (placement.Position > offset && ImpreciseCount++ == 0)
+                {
+                    FirstImprecise = new ProbeFinding(
+                        PdfValidationLocation.OfObject(id, offset),
+                        Invariant($"the entry of object {number} gives offset {offset}, {RuleText.Bytes(placement.Position - offset)} before its header"));
+                }
+
+                CheckGeneration(number, entry, placement.Position, placement.Generation);
+                return;
+
+            case HeaderPlace.Nearby when !placement.GuardAtOffset:
+                // The generation is the one the reader records for the object it relocates, read as a load reads it: a
+                // header longer than a first read is judged all the same (#118).
+                var found = placement.NumberAtOffset > 0 ? Invariant($"the header of object {placement.NumberAtOffset}") : "no object header";
+
+                Shifted.Add(new ProbeFinding(
                     PdfValidationLocation.OfObject(id, offset),
-                    Invariant($"the entry of object {number} gives offset {offset}, {RuleText.Bytes(header.Start)} before its header"));
-            }
+                    Invariant($"The entry of object {number} gives offset {offset}, where there is {found}; the object starts {RuleText.Distance(placement.Position - offset)}, at offset {placement.Position}.")));
 
-            CheckGeneration(number, entry, offset + header.Start, header.Generation);
-            return;
+                CheckGeneration(number, entry, placement.Position, placement.Generation);
+                return;
+
+            case HeaderPlace.NotFound:
+                var there = placement.NumberAtOffset > 0 ? Invariant($"the header of object {placement.NumberAtOffset}") : "no object header";
+
+                Broken.Add(new ProbeFinding(
+                    PdfValidationLocation.OfObject(id, offset),
+                    Invariant($"The entry of object {number} gives offset {offset}, where there is {there}, and the object is not within {PdfFileReader.NearbySearchRadius} bytes of it.")));
+                return;
+
+            case HeaderPlace.Undecided:
+                if (_undecidedCount++ == 0)
+                {
+                    _firstUndecided = new ProbeFinding(PdfValidationLocation.OfObject(id, offset), Invariant($"object {number}'s"));
+                }
+
+                return;
+
+            default:
+                // A header that runs past the object guard, where the entry places the object or near it: what a load finds
+                // there is the limit's to say, and raising it lets the entry be checked.
+                NotChecked.Add(new ProbeFinding(
+                    PdfValidationLocation.OfObject(id, offset),
+                    Invariant($"Reading the header of object {number} where its entry places it, at offset {offset}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
+                return;
         }
-
-        var found = header.Number > 0 ? Invariant($"the header of object {header.Number}") : "no object header";
-
-        // The generation is the one the reader records for the object it relocates, read as the search reads it: a header
-        // longer than the probe's own read is judged all the same (#118).
-        if (PdfFileReader.TryFindObjectHeader(source, number, offset, out var actual, out var generation))
-        {
-            Shifted.Add(new ProbeFinding(
-                PdfValidationLocation.OfObject(id, offset),
-                Invariant($"The entry of object {number} gives offset {offset}, where there is {found}; the object starts {RuleText.Distance(actual - offset)}, at offset {actual}.")));
-
-            CheckGeneration(number, entry, actual, generation);
-            return;
-        }
-
-        Broken.Add(new ProbeFinding(
-            PdfValidationLocation.OfObject(id, offset),
-            Invariant($"The entry of object {number} gives offset {offset}, where there is {found}, and the object is not within {PdfFileReader.NearbySearchRadius} bytes of it.")));
     }
 
     private void CheckGeneration(int number, XRefEntry entry, long position, long generation)
@@ -175,28 +210,6 @@ internal sealed class CrossReferenceProbe
                 PdfValidationLocation.OfObject(new PdfObjectId(number, entry.Generation), position),
                 Invariant($"The entry of object {number} gives generation {entry.Generation}, and the object is written as {number} {generation} obj.")));
         }
-    }
-
-    /// <summary>
-    /// Reads the object header at <paramref name="offset"/>, after any white space or comment: its number — 0 when
-    /// there is none —, its generation, and how far into the bytes read it starts.
-    /// </summary>
-    /// <remarks>
-    /// A header the reader's parser refuses — a number or a generation no object can have — is none: no read can serve an
-    /// object there.
-    /// </remarks>
-    private static (long Number, long Generation, int Start) ReadHeader(PdfFileSource source, long offset, Span<byte> buffer)
-    {
-        var read = source.Read(offset, buffer);
-        var lexer = new PdfLexer(buffer[..read]);
-        var number = lexer.Read();
-        var generation = lexer.Read();
-        var keyword = lexer.Read();
-
-        return number.Kind == PdfTokenKind.Integer && generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword("obj"u8) &&
-            number.Integer is > 0 and <= PdfObjectId.MaxNumber && generation.Integer is >= 0 and <= PdfObjectId.MaxGeneration
-            ? (number.Integer, generation.Integer, number.Start)
-            : (0, -1, 0);
     }
 
     private void CheckObjectStreams(
