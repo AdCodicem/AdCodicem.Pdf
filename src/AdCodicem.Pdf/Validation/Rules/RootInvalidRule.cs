@@ -50,7 +50,8 @@ internal sealed class RootInvalidRule : IValidationRule
         }
 
         // Nor is a catalog a guard cut as the document opened: what it lacks may lie past the cut — its /Type, its /Pages —,
-        // and the reader took it as read. Its limit.object names the guard, and raising it reads the catalog whole.
+        // and the reader took it as read. The reader's report names the guard — limit.object, or limit.decoded-stream for a
+        // catalog in an object stream —, and raising it reads the catalog whole.
         if (structure.RootCutByGuard)
         {
             return;
