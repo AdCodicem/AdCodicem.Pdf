@@ -18,45 +18,50 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   with [#238] that day, and the tenth, [#190] and [#212], with [#248] on 2026-10-14; the eleventh, [#164] and [#183],
   with [#249] that day; the twelfth, [#165] and [#166], filter chains, with [#199], [#209], [#219] and [#247], with
   [#252] on 2026-10-15. Slice 4's two blockers, [#141] and [#144] — batch 23 and half of batch 24 —, brought forward at
-  the maintainer's request on 2026-10-15, are in [#254]; batch 13 ([#128], [#237]) was measured that day, its questions
-  not yet put. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice 7
-  ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from the reader's own work, the
+  the maintainer's request on 2026-10-15, merged with [#254] on 2026-10-16; the thirteenth, [#128] and [#237], with
+  [#253], is in [#258], under review. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's
+  adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from
+  the reader's own work, the
   threat model's first version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136],
   `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to [#210]), its third
   ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]), its eighth ([#229], [#230]), its ninth ([#237]),
-  its tenth ([#241], [#247]), its twelfth ([#250]) and slice 4's blockers ([#253]); [#123] moved to M20.
+  its tenth ([#241], [#247]), its twelfth ([#250]), slice 4's blockers ([#253]) and its thirteenth ([#255] to [#257]);
+  [#123] moved to M20.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 3,918 unit on [#254]'s branch (19 skipped: 2 by design, the theory over the remote corpus's streams whose
+- **Tests**: 4,253 unit on [#258]'s branch (19 skipped: 2 by design, the theory over the remote corpus's streams whose
   length is wrong, the fifteen remote documents of the theory over the corpus's filter chains, which have no document
-  without them, and the test held to PDFBox's remote report) + 1,327 integration (skipped without Docker) + 23 for the
-  remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the remote documents fetched, on [#254]'s
-  branch: 6,056 unit with the 233 this container holds, 3 skipped — the laziness test on the two documents recorded as
+  without them, and the test held to PDFBox's remote report) + 1,495 integration (skipped without Docker) + 23 for the
+  remote corpus's fetcher + 43 for the roadmap's mirror on GitHub. With the remote documents fetched, on [#258]'s
+  branch: 6,624 unit with the 233 this container holds, 3 skipped — the laziness test on the two documents recorded as
   unsupported until [#47], which every other test holds to their expectations, and the private manifest this container
-  lacks —; 3,287 integration against qpdf in its container, 3,281 passed and 6 skipped where qpdf cannot walk a damaged
-  document's pages; and, with all 242, `Remote corpus` run 54's 6,116 acceptance tests and 3,350 referee checks, on the
-  code [#254]'s second review changed; on its last code, run 55's 5,223 and 2,583 over the 154 documents the ipres2017
-  archive's timeout left it ([#204]), the 88 others passing on that code here.
+  lacks —; 3,688 integration against qpdf in its container, 3,682 passed and 6 skipped where qpdf cannot walk a damaged
+  document's pages; and, with all 242, `Remote corpus` run 60's 6,699 acceptance tests and 3,760 referee checks, on the
+  code [#258] ends with.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.56 % of `src/` — 6,383 of 6,411 lines on [#254]'s branch, every one of its patch's
-  166 measurable lines among them, every branch taken. The 28 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`,
-  *Coverage*), `main`'s since [#252], at the line numbers [#252] gave them. They are members that are private, or of a
-  private type, which no input reaches —
+  Arlington tables left out), 99.54 % of `src/` — 6,543 of 6,573 lines on [#258]'s branch, every one of its patch's
+  211 measurable lines among them, every branch taken. The 30 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`,
+  *Coverage*): `main`'s 28 since [#252], at the line numbers [#258] gives them, less
+  `ObjectStreamDependencies.Location`'s arm, which [#258] removes, and three more. They are members that are private, or
+  of a private type, which no input reaches —
   eight lines of `ArlingtonWalk` (194, 919, 1026, 1036, 1037, 1057, 1059, 1147) and three of a defensive branch of
   `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a switch's default arm
-  (`CrossReferenceProbe` 86 and 231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 96 and 105), a line the compiler
-  puts after a call that never returns (`PdfFileReader` 1493), three branches the compiler adds that no input takes
+  (`CrossReferenceProbe` 86 and 231, `PageTreePageOrphanedRule` 51, `RootInvalidRule` 98 and 107), a line the compiler
+  puts after a call that never returns (`PdfFileReader` 1775), three branches the compiler adds that no input takes
   (`FileQuote` 145, an interpolation's buffer too small; `PdfObjectParser` 796, a concatenation's null check;
   `PdfObjectParser` 716, the switch over a `/Length`'s presence, whose every arm is taken); `EndStreamAfter`'s two
-  defensive arms (`PdfFileReader` 1461, 1465, journal of batch 6), the `HasValue` checks the compiler adds on a `long?`
-  (2977, batch 5) and a defensive arm of the real's expansion (`PdfReal` 66, batch 5),
-  `ObjectStreamDependencies.Location`'s arm without a Regular entry (223, batch 7), one of the six ways out of a
-  cross-reference stream row's `switch` (3073) and `Repair`'s guard against a second rebuild (4114, 4116).
+  defensive arms (`PdfFileReader` 1743, 1747, journal of batch 6), the `HasValue` checks the compiler adds on a `long?`
+  (3259, batch 5) and a defensive arm of the real's expansion (`PdfReal` 66, batch 5), one of the six ways out of a
+  cross-reference stream row's `switch` (3355) and `Repair`'s guard against a second rebuild (4431, 4433). Batch 13 adds
+  three defensive lines no test or document reaches any longer: `KeepObjectStream`'s release of the contents it
+  replaces (4386, 4388), a rebuild now letting go of every object stream kept before any is decoded again; and
+  `PageTreePageOrphanedRule`'s check of a section's state (91), settling having rebuilt the index of a damaged section,
+  which the check before it answers.
   `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the aim is 100 %.
-- **CI**: green on `main` at `2d7d5dc` (CI run 568), [#252]'s last commit. `Remote corpus` passed on every document in
+- **CI**: green on `main` at `8385c81` (CI run 575), [#254]'s last commit. `Remote corpus` passed on every document in
   the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
   after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run 22,
   on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
@@ -84,12 +89,16 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   code, lost ECan's scan, web.archive.org refusing the connection, and the 88 documents of the ipres2017 archive, its
   host timing out ([#204]), every test over the others passing; at its one rerun it lost the ipres2017 archive alone,
   every test over the 154 others passing, and the 88 it lost pass on that code in this container, whose unit and
-  integration runs hold them.
+  integration runs hold them. The nightly run 56, on `main` at `2d7d5dc`, and run 57, on [#254]'s last code, lost
+  documents their hosts refused or timed out on ([#204]) — run 57 ECan's scan and the ipres2017 archive —, every test
+  over the others passing, run 57's 5,216 acceptance tests and 2,575 referee checks over 153 documents. The nightly run
+  58, on `main` at `8385c81`, passed whole at its first attempt, and so did runs 59 and 60, on [#258]'s branch, run 60
+  on the code it ends with.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in the nightly run 45 on 2026-10-14. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in the nightly run 58 on 2026-10-17. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.57`, one per push to `main` until [#227], through trusted publishing, 1,141 downloads on 2026-10-02.
   The `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified. With [#227] merged, previews come
@@ -139,9 +148,11 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | Indexing a classic table (xUnit, after a first reading) | generated, 300,000 objects | — | 16.9 MB |
 | Indexing a cross-reference stream whose rows Flate stores (xUnit, after a first reading) | generated, 300,000 objects | — | 29.5 MB |
 | Indexing a chain of a thousand classic sections (xUnit, after a first reading) | generated, 300,000 objects | — | 30.6 MB |
-| Validating under the structural profile, the document already open and read | synthetic, 1000 pages | 2.5 ms | 588 KB |
-| Typing and checking the objects the trailer reaches against the Arlington model, alone | synthetic, 1000 pages | 1.7 ms | 280 KB |
-| Opening and validating under the structural profile | synthetic, 1000 pages | 6.2 ms | 2.6 MB |
+| Validating under the structural profile, the document already open and read | synthetic, 1000 pages | 3.5 ms | 620 KB |
+| Typing and checking the objects the trailer reaches against the Arlington model, alone | synthetic, 1000 pages | 2.3 ms | 312 KB |
+| Opening and validating under the structural profile | synthetic, 1000 pages | 9.4 ms | 2.4 MB |
+| Settling the index of a sound document, after opening it | synthetic, 1000 pages | 0.27 ms | 50 B |
+| Walking the object streams' dependencies | generated, 1000 object streams sharing a 16 KB `/DecodeParms` | 4.2 ms | 2.3 MB |
 | Decoding a whole Flate content stream | 4 MB decoded, about 330 KB encoded | 8.3 ms | 13.1 MB |
 | Decoding the same stream without its checksum, or without its last five bytes | 4 MB decoded | 11.7 ms | 13.1 MB |
 | Decoding the same stream under a wrong checksum, kept whole | 4 MB decoded | 12.1 ms | 13.1 MB |
@@ -159,7 +170,15 @@ leaves out — the allocation is the sets of object numbers met, each page's ind
 tallies. The second is that walk alone, which the four rules generated from the model share. The third is what a
 caller validating a file it has not read pays: every object parsed for the first time, about 2.7 KB a page, no
 stream's data read. Slice 3's first thirty-four rules took 716 µs and 308 KB on the first row, slice 2's twenty-one
-214 µs and 8.9 KB, slice 1's one rule 86 ns and 232 B; the rows grow with each slice of M02.
+214 µs and 8.9 KB, slice 1's one rule 86 ns and 232 B; the rows grow with each slice of M02. Since batch 13 ([#258])
+the validator settles the index first: on a sound document, that is reading the header each regular entry places, 0.25
+to 0.28 ms and about 50 bytes for a thousand pages, which the third row includes; the first, whose document is settled
+already, pays nothing more. The three validation rows allocate what they did on `main` before the batch, to 40 bytes;
+under a medium job, twice, alternated, the first took 3.0 and 3.7 ms there, 3.4 and 3.6 ms on the branch, and the
+third 8.4 and 9.3 ms there, 9.2 and 9.7 ms on the branch, settling within a gap the runs' spread covers. The walk of
+the object streams' dependencies reads once an object their decoding keys share: a thousand streams sharing a 16 KB
+`/DecodeParms` took 118 to 128 ms and 125.6 MB on `main`, each stream parsing it again, and take 4.1 to 4.3 ms and
+2.3 MB (`ObjectStreamDependencyBenchmarks`, ShortRun, twice).
 Indexing costs the map, 52 to 63 bytes an object, whatever the objects weigh, since a section makes room for its rows
 before reading them ([#164]); a map a rebuild grows costs 100 to 210, by where the count falls against its growth steps.
 A cross-reference stream adds 7 to about 42 bytes an object for its rows, and the object stream holding the catalog,
@@ -254,14 +273,14 @@ One pull request per batch, each design question put to the maintainer after mea
        corpus` run 46 green on its branch (journal of 2026-10-14).
    12. [#165] and [#166], filter chains, with [#199], [#209], [#219] and [#247] — done, merged with [#252] on
        2026-10-15, `Remote corpus` run 51 green on its branch (journal of 2026-10-15).
-   13. [#128], with [#237] and [#253] — measured on 2026-10-15, its questions not yet put: the reports of its eight
-       measures are kept outside the repository, and are to be made again when the batch starts.
+   13. [#128], with [#237] and [#253], a report that does not depend on what was read before it — done, in [#258],
+       `Remote corpus` runs 59 and 60 green on its branch (journal of 2026-10-17).
    14. [#129] and [#175].
-   15. [#160] and [#161], object-stream members, with [#200] and [#202].
+   15. [#160] and [#161], object-stream members, with [#200], [#202], [#255] and [#257].
    16. [#174] and [#170], stream data, with [#220], [#224] and [#230].
    17. [#155].
    18. [#167] and [#168], with [#201].
-   19. [#188], [#197] and [#156], with [#207], [#208], [#210], [#221], [#222] and [#241].
+   19. [#188], [#197] and [#156], with [#207], [#208], [#210], [#221], [#222], [#241] and [#256].
    20. [#189].
    21. [#154] and [#171].
    22. [#132], with [#218] and [#229].
@@ -285,7 +304,8 @@ One pull request per batch, each design question put to the maintainer after mea
    placed likewise: [#229] with [#132], [#230] with [#174]; the one batch 9 filed, [#237], with [#128]; of the three
    batch 10 filed, [#241] with [#188], [#247] with [#165], and [#240] under M03, whose full rewrite it concerns; and of
    the two batch 12 filed, [#250] with [#162], whose code it shares, and [#251] under M23, which sizes the decoding it
-   concerns.
+   concerns. Of the three batch 13 filed, [#255] and [#257] go with [#160] and [#161], the reads of object streams they
+   concern, and [#256] with [#197], whose search near a row it shares.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -306,6 +326,114 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-17 — Batch 13: a report that does not depend on what was read before it ([#128], [#237], [#253])
+- **The question.** [#237]: a read could make the reader rebuild its index halfway through a validation — the index
+  incomplete through damage, or an entry placing its object where a load finds neither it nor its header nearby —, and
+  a rebuild merges the trailers it finds, serves the last definition of each number and may take another catalog: the
+  rules before it read the document as the chain gave it, those after it as the rebuild did. [#128]: the walk of the
+  object streams' dependencies read an index such a rebuild changes. Measured on 8385c81 over 96 crafted files — 90
+  shapes and 6 controls — and the 401 documents of the corpus: a fresh validation, a second one and one after a read
+  disagreed in 72 of the 90 shapes, `Validate` crashed on two (`ObjectGraph.Describe`), and a caller resolving the
+  trailer's values inside a `foreach` over it threw. Three designs were prototyped: settling the index before the first
+  rule; validating the document as it stood at opening (two corpus reports changed, 23 % more time, over three times the
+  memory, a guard only validation reaches left unreported); fixing the two issues alone (38 shapes still disagreed with
+  themselves). [#253]: an allocation window of `HostileInputTests` that a collection paused counted 9,000 bytes for
+  4,096. Ten questions followed.
+- **Settled with the maintainer**, each as recommended but one (Q9, the maintainer's own):
+  - settle before the rules: `PdfValidator.Validate` calls `PdfFileReader.SettleIndex`, which rebuilds once when a later
+    read still could; a rebuild forgets what the reader noted of the definitions it replaces; `FileStructure` is the
+    document as it opened (Q1); an object whose own load set off a rebuild is not cached, for every caller (Q2);
+  - a limit that rebuild reaches throws, under `ThrowOnLimit`, before any rule (Q3); `file.root-invalid` is not judged
+    when a guard hid `/Root` as the document opened, whatever a rebuild found since (Q4);
+  - the rows are judged as the file wrote them, an indirect value a row's object needs read through the settled index
+    (Q5); the exceptions named — a document changed between two validations, a limit under `ThrowOnLimit` — and the
+    lazy-reading wording qualified (Q6); `WasRepaired` changes as on any rebuild (Q7);
+  - the object graph described each object from the value it walked (Q8, replaced by R2 below);
+  - tests per mechanism, a theory over the crafted shapes in the unit suite, a corpus check that no read rebuilds after
+    a validation, and a corpus sweep — fresh, second, after reading everything — in the integration suite, the one test
+    there that runs no independent tool (Q9);
+  - [#253]: every allocation window under 16 KB measured as the least of unpaused windows (Q10).
+- **Reviewed**, twice, and settled again each time with the maintainer, each as recommended.
+  - The first review, over five lenses, gave 36 findings, 2 blocking; each was put to a refuter and to a reproducer: 31
+    held by both, the 5 others weighed by hand — 3 fixed all the same, 1 moot once the convergence theory landed, 1 a
+    note with nothing to do. Blocking: an object stream on the load stack was not expanded by the rebuild its load set
+    off, and its members were lost — the catalog read as null right after opening —; the settling check took an `obj`
+    keyword its window cut for a header. Then: the object graph's walked values held every object along a chain of
+    references (41 MB for two hundred objects of 200 KB); the dependency walk parsed a shared object once per stream (93
+    MB for 400 streams); `file.root-invalid` named a catalog the rebuilt index no longer served; settling rebuilt where
+    a read reports the object guard and goes on; documentation that promised more than the code; mutants no test killed.
+    Decided: R1, a rebuild a load sets off is finished from its scan once no load is in flight, the object read again;
+    R2, the object graph reads an object again to describe it, and says what it counted without where when that read
+    does not find the fault; R3, settling takes a header past the object guard as a read does.
+  - The second, over the same five lenses aimed at the fixes, gave 25 findings, 3 blocking, each put to two refuters:
+    all 25 held by both. Blocking: under `ThrowOnLimit`, rows leading into one run of blanks longer than the object
+    guard had settling read each to the guard (8.6 GB for 400 rows of a 17 MB file); the dependency walk's memo grew
+    with the file (80 MB for a file of 60 MB); a generation per stream got around it (93 MB again). Then: the expansion
+    R1 made for the loads in flight read every object twice, and its reports outlived the finish; the catch that
+    finished a rebuild before a guard's exception left the read was decided in its filter, before the loads it was part
+    of had let go, so that a guard reached a load deep left the rebuild unfinished and the next read threw it; a finish
+    the source failed lost the rebuild for good; the scan's guard was swallowed when the read threw its own; eleven
+    mutants no test killed; three texts. Decided: R4, the rebuild expands once, when finished; R5, settling reads at
+    most twice the file's length in windows past the first two of each header, then rebuilds; R6, the memo is keyed by
+    number and holds what the reader's cache holds; R7, the outermost load finishes the rebuild for any exception, the
+    scan's guard thrown first, a failed finish left to the next read.
+- **Done**, in [#258], 25 commits:
+  - [#253]: every window under 16 KB measured as the least of unpaused ones;
+  - [#128]: the walk judges each object stream, and each object written directly in the file its decoding keys lead
+    through, where the chain's index places it — read once a validation under whatever generation, as many kept as the
+    reader's cache holds —; `ObjectStreamDependencyBenchmarks` measures it;
+  - [#237]: `SettleIndex`, before the first rule — the header each regular entry places read as a load reads it, in a
+    window of 64 bytes then grown as a load grows its own, or looked for nearby, a header past the object guard taken as
+    a read takes it, at most twice the file's length read past the first two windows of each —; a rebuild forgets what
+    was noted of the definitions it replaces; `FileStructure` as the document opened; nothing a load read through an
+    index its own rebuild replaced is cached; a rebuild a load sets off is finished, once, from its scan, when no load
+    is in flight or before an exception leaves the read, the scan's guard first, a failed finish left to the next read;
+    no catalog a rebuild no longer serves named as the reader's; the object graph reads an object again to describe it.
+
+  Docs: ADR 50 (*Validation settles the reader before its rules*), amending ADR 36; `concepts/validation.md`,
+  `concepts/lazy-reading.md`, `reference/validation.md`, `reference/validation-rules.md`, `reference/reader-limits.md`;
+  the threat model's rows on settling, on a rebuild run again, on a report that depends on what was read, on the walk's
+  reads and on the graph's memory, and the validator's own reads; M02; `ARCHITECTURE.md`; a wanted document in
+  `corpus-contributions.md`, the corpus holding none whose index a read rebuilds after opening.
+- **Tests**: 335 new unit tests, 3,918 to 4,253, and 168 integration, 1,327 to 1,495: `ReadOrderTests`, the
+  convergence theory over the 90 shapes, `CorpusValidationTests.No_read_rebuilds_the_index_after_a_validation`, and
+  `ReadOrderSweepTests` over the corpus in the integration suite. 40 mutants of the fixes, each run against the classes
+  that hold the reader and the validator, and the four an earlier round left alive again against the whole unit suite:
+  39 failed a test, several once a test was added for them, and one by never finishing, a window that grows past the
+  guard; one lived on, the clearing, at a rebuild's finish, of what read as null while the loads were in flight, two
+  files built to reach it reading alike with and without it ([#257]).
+- **Tracking.** Filed: [#256], under M02, placed with batch 19 beside [#197], whose search near a row it shares: the
+  cross-reference probe takes for a header what a read refuses — an `obj` its 64-byte read cuts, or one that runs on —,
+  reproduced twice; [#257], under M02, placed with batch 15, the one mutant no test kills, with the two probes that did
+  not reach it. [#255], which the batch's measurement filed on 2026-10-16, under M02, is placed with batch 15 too, the
+  reads of object streams it concerns. [#168] was told what the batch measured of the walk's per-stream pass and of the
+  graph's retention.
+- **Checked**:
+  - the solution builds with no warning, and `dotnet format` finds nothing;
+  - each of the 25 commits builds with no warning and passes the full unit suite alone, with the remote documents this
+    container holds: 6,056 to 6,624 tests, 3 skipped;
+  - the patch's 211 measurable lines of `src/` covered, every branch taken; 99.54 % of `src/` in all, 6,543 of
+    6,573 lines, on the committed corpus alone;
+  - the corpus's 401 documents, each run twice on `main` and twice on the branch, alike each time: `main`'s 1,489
+    findings, line for line, and the same again after every object was read first; three Quartz files of the remote
+    corpus rebuilt when a validation starts, their damage one no rule reaches; one document's `xref.rebuilt` earlier in
+    its list; every other diagnostic as on `main`;
+  - the integration suite against qpdf in its container, twice, with the remote documents this container holds: 3,688,
+    3,682 passed and 6 skipped where qpdf cannot walk a damaged document's pages;
+  - `ObjectStreamDependencyBenchmarks`, `ValidationBenchmarks` and `ReaderBenchmarks` (ShortRun), twice, `main` and the
+    branch alternated, and the validation rows again under a medium job: the walk of a thousand object streams sharing a
+    16 KB `/DecodeParms` took 118 to 128 ms and 125.6 MB on `main`, and takes 4.1 to 4.3 ms and 2.3 MB (a hundred, 12.7
+    to 15.3 ms and 12.6 MB, then 1.4 to 1.5 ms and 521 KB); settling a sound document's index, a thousand pages, takes
+    0.25 to 0.28 ms and about 50 bytes, beside the 0.30 to 0.35 ms of opening it; validating allocates what it did on
+    `main`, to 40 bytes, and took 3.0 and 3.7 ms there, 3.4 and 3.6 ms on the branch, opening and validating 8.4 and 9.3
+    ms, then 9.2 and 9.7 ms, settling within a gap the runs' spread covers; opening allocates about 20 bytes more, the
+    reader's new fields (5.48 → 5.50 KB), its times within the runs' spread;
+  - the site builds, 263 pages;
+  - `Remote corpus` runs 59 and 60 passed whole at their first attempt, run 59 on the branch's code but its last two
+    tests, run 60 on the code it ends with: 242 documents, 6,699 acceptance tests and 3,760 referee checks;
+  - commitlint finds no problem.
+- **Next**: batch 14, [#129] and [#175].
 
 ### 2026-10-15 — Slice 4's blockers, brought forward: [#141] and [#144]
 - **The question.** The maintainer asked for the issues of M02 that block slice 4 ([#60]) to be paid first, one commit
@@ -1905,3 +2033,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#252]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/252
 [#253]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/253
 [#254]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/254
+[#255]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/255
+[#256]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/256
+[#257]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/257
+[#258]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/258
