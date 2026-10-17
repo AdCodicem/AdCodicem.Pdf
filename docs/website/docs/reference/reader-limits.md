@@ -55,6 +55,12 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut: a `/Prev`,
   an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. A section a limit cut is
   where it was named, and is not looked for near there, as a section that is not there is.
+- An object cut at `MaxObjectLength` is kept as far as the bound, and the catalog among them: the reader takes the
+  object `/Root` names for the catalog as it read it, rather than look for another or rebuild the index, until you raise
+  the limit ([#175](https://github.com/AdCodicem/AdCodicem.Pdf/issues/175)). The validator judges nothing of what an
+  object so cut lacks or holds, and takes a page tree node so cut to give what its pages inherit. An object header that
+  runs past the bound, where a cross-reference entry places it, is where a read reaches the limit, and the validator says
+  that entry was not checked.
 - A stream decoded past the bound is reported by the first of its filters that stopped there: each time it is decoded,
   in the diagnostics you pass to `Decode`; once, in the document's own — when you pass none, or the document's —, however
   often you, the reader or the validator decode it. The guard is counted each time all the same, and with `ThrowOnLimit`
