@@ -1202,6 +1202,30 @@ public class HostileInputTests
         document.GetObject(new PdfObjectId(5)).Should().Be(PdfInteger.Create(1));
     }
 
+    [Fact]
+    public void The_walk_of_the_object_streams_dependencies_reads_an_object_many_streams_need_once()
+    {
+        // Four hundred object streams take their /DecodeParms from object 3, written directly in the file and 100 KB long.
+        // The walk reads what each stream needs where the chain's index places it, outside the reader's cache: it read
+        // object 3 again for every stream, 93 MB in all. It reads it once a validation, and each stream's dictionary
+        // through one window (#128).
+        const int Streams = 400;
+        var streams = new List<PackedStream>();
+        for (var k = 0; k < Streams; k++)
+        {
+            streams.Add(new PackedStream(10 + (2 * k), "/DecodeParms 3 0 R", [(11 + (2 * k), "<< >>")], PackedData.Plain));
+        }
+
+        var file = PackedFile(streams, [(3, "<< /Pad [" + new StringBuilder().Insert(0, "0 ", 50_000) + "] >>")]);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
+
+        ObjectStreamDependencies.Run(document).Circular.Should().BeEmpty();
+
+        (source.BytesRead - opened).Should().BeLessThan((Streams * (long)PdfFileReader.InitialObjectWindow) + (4L * file.Length));
+    }
+
     [Theory]
     [InlineData("free")]
     [InlineData("unlisted")]
