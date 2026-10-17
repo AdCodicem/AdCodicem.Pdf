@@ -70,29 +70,37 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal const int NearbySearchRadius = 512;
 
     /// <summary>
-    /// How many bytes <see cref="HeaderNumberAt"/> reads first where an entry places its object: enough for a header after
-    /// some white space. A header that runs past them, or that their edge may have cut, is read again in the window a load
-    /// starts with, <see cref="InitialObjectWindow"/>, then in windows eight times larger, as a load grows its own.
+    /// How many bytes <see cref="HeaderAt"/> reads first where an entry places its object: enough for a header after some
+    /// white space. A header that runs past them, or that their edge may have cut, is read again in the window a load starts
+    /// with, <see cref="InitialObjectWindow"/>, then in windows eight times larger, as a load grows its own. Not a bound: the
+    /// size of a first read, which holds the headers of real files.
     /// </summary>
     private const int HeaderCheckWindow = 64;
 
-    /// <summary>What <see cref="HeaderNumberAt"/> gives where a header still runs past <see cref="PdfReaderLimits.MaxObjectLength"/>.</summary>
+    /// <summary>What <see cref="HeaderAt"/> gives where a header still runs past <see cref="PdfReaderLimits.MaxObjectLength"/>.</summary>
     private const long HeaderPastGuard = -1;
 
     /// <summary>
-    /// What <see cref="HeaderNumberAt"/> gives where reading a header further would read past what settling may read in
-    /// all, <see cref="SettlingReadingFactor"/> times the file's length.
+    /// What <see cref="HeaderAt"/> gives where reading a header further would read past the allowance its caller has left.
     /// </summary>
-    private const long SettlingReadingSpent = -2;
+    private const long HeaderReadingSpent = -2;
 
     /// <summary>
-    /// How many times the file's length <see cref="SettleIndex"/> reads at most, over all the headers it reads, in windows
-    /// past the first two of each: past that, it rebuilds the index, in one pass over the file, rather than read on. Each
-    /// header is read through at most what a load reads, but entries can place their objects in one long run of blanks or
-    /// comment, each read again to its end. An internal bound (ADR 34): in a valid file, each entry places its object's
-    /// header at its offset, and no window grows past the first; a window larger than the file reads the file.
+    /// How many times the file's length a pass that reads the header of every entry of an index reads at most, over all the
+    /// headers it reads, in windows past the first two of each: <see cref="SettleIndex"/>'s, which rebuilds the index past
+    /// it, in one pass over the file, rather than read on; and each validation's probe of the cross-reference entries, which
+    /// says the entries it did not decide were not checked. Each header is read through at most what a load reads, but
+    /// entries can place their objects in one long run of blanks or comment, each read again to its end. An internal bound
+    /// (ADR 34): in a valid file, each entry places its object's header at its offset, and no window grows past the first; a
+    /// window larger than the file reads the file.
     /// </summary>
-    private const int SettlingReadingFactor = 2;
+    private const int HeaderReadingFactor = 2;
+
+    /// <summary>
+    /// The most <see cref="HeaderAt"/> reads at once of a run of white space it crosses. Not a bound: what it reads of a run in
+    /// one window, the run being read to its end, or to where a load stops, in as many as it takes.
+    /// </summary>
+    private const int BlankCrossingWindow = 64 * 1024;
 
     /// <summary>
     /// The most places near missing cross-reference sections that are tried as one, over a whole document. Real
@@ -355,8 +363,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     private bool _settled;
 
-    /// <summary>What <see cref="SettleIndex"/> may still read in windows past the first two of each header.</summary>
-    private long _settlingReading;
+    /// <summary>What <see cref="SettleIndex"/> may still read of the headers, and the run of white space it last crossed.</summary>
+    private HeaderReading? _settlingReading;
 
     /// <summary>The object the reader last took for the catalog, <c>/Root</c> leading to none; 0 while it took none.</summary>
     private int _catalogFoundAs;
@@ -788,7 +796,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         _settled = true;
-        _settlingReading = SettlingReadingFactor * _source.Length;
+        _settlingReading = new HeaderReading(HeaderReadingAllowance);
 
         if (!_repaired && (_indexIncomplete || AnyLoadWouldRebuild()))
         {
@@ -813,105 +821,209 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Determines whether a load of object <paramref name="number"/> finds it where <paramref name="entry"/> places it, or
     /// near it, as <see cref="LoadRegularObject"/> looks — what it would parse there is an object of that number —, or would
-    /// not rebuild the index for it all the same, a guard thrown first.
+    /// not rebuild the index for it all the same, a guard thrown first. A guard a load reaches on the way and reports is
+    /// reported here as it would be.
     /// </summary>
     private bool LoadFindsWhereEntryPlaces(int number, XRefEntry entry)
     {
+        var placement = PlaceHeader(number, entry, _settlingReading!);
+
+        // A load that reaches the guard on a header reports it and looks on; one opened to throw on a guard throws there,
+        // and rebuilds nothing, which settling leaves to a load that asks for the object.
+        if (!_guard.ThrowsOnLimit)
+        {
+            var offset = PositionOf(entry);
+            var subject = LimitSubject(number, _guard.Bound(PdfLimit.Object));
+
+            if (placement.GuardAtOffset)
+            {
+                ReachLimit(PdfLimit.Object, subject, offset);
+            }
+
+            if (placement.Place == HeaderPlace.PastGuard && placement.Position != offset)
+            {
+                ReachLimit(PdfLimit.Object, subject, placement.Position);
+            }
+        }
+
+        return placement.Place switch
+        {
+            HeaderPlace.AtOffset or HeaderPlace.Nearby => true,
+            HeaderPlace.PastGuard => _guard.ThrowsOnLimit,
+            _ => false,
+        };
+    }
+
+    /// <summary>Gets how much a pass that reads the header of every entry of an index may read past the first windows of each.</summary>
+    internal long HeaderReadingAllowance => HeaderReadingFactor * _source.Length;
+
+    /// <summary>
+    /// Says what a load of object <paramref name="number"/> finds where <paramref name="entry"/> places it, as
+    /// <see cref="LoadRegularObject"/> looks: its header at the offset the entry gives, read as <see cref="TryParseNumberedAt"/>
+    /// reads it; else the first header of that number near the offset, which what a load parses there must confirm; else
+    /// none. Nothing is parsed past a header, reported or recorded: the guard a load would reach on the way is said, not
+    /// reported. Settling and the validator's probe of the cross-reference entries decide each entry through it, alike.
+    /// </summary>
+    /// <param name="number">The object's number.</param>
+    /// <param name="entry">The regular entry that places it.</param>
+    /// <param name="reading">
+    /// What the pass may still read past the first windows of each header, which what they read is taken from — a header
+    /// that would need more is <see cref="HeaderPlace.Undecided"/> —, and the run of white space it last crossed.
+    /// </param>
+    internal HeaderPlacement PlaceHeader(int number, XRefEntry entry, HeaderReading reading)
+    {
         var offset = PositionOf(entry);
+        long atOffset = 0;
+        var guardAtOffset = false;
 
         if (IsInFile(offset))
         {
-            var found = HeaderNumberAt(offset);
+            var found = HeaderAt(offset, reading, out var generation, out var start);
 
-            if (found == SettlingReadingSpent)
+            if (found == HeaderReadingSpent)
             {
-                return false;
+                return new HeaderPlacement(HeaderPlace.Undecided, offset, -1, 0, GuardAtOffset: false);
             }
 
-            if (found == number || (found == HeaderPastGuard && !LoadLooksOnPastGuard(number, offset)))
+            if (found == number)
             {
-                return true;
+                return new HeaderPlacement(HeaderPlace.AtOffset, start, generation, number, GuardAtOffset: false);
+            }
+
+            if (found == HeaderPastGuard)
+            {
+                // A document opened to throw on a guard throws there, and looks no further.
+                if (_guard.ThrowsOnLimit)
+                {
+                    return new HeaderPlacement(HeaderPlace.PastGuard, offset, -1, 0, GuardAtOffset: true);
+                }
+
+                guardAtOffset = true;
+            }
+            else
+            {
+                atOffset = found;
             }
         }
+
+        var nowhere = new HeaderPlacement(
+            guardAtOffset ? HeaderPlace.PastGuard : HeaderPlace.NotFound, offset, -1, atOffset, guardAtOffset);
 
         if (!TryFindObjectHeader(number, offset, out var nearby, out _))
         {
-            return false;
+            return nowhere;
         }
 
-        var near = HeaderNumberAt(nearby);
-        return near == number || (near == HeaderPastGuard && !LoadLooksOnPastGuard(number, nearby));
-    }
+        // The search reads a header backwards from an "obj"; a load parses forwards from where it starts, and refuses what
+        // the search took — "4 0 objection" —, or reaches the guard on it.
+        var near = HeaderAt(nearby, reading, out var nearGeneration, out _);
 
-    /// <summary>
-    /// Says what a load does where an object's header still runs past <see cref="PdfReaderLimits.MaxObjectLength"/>, at
-    /// <paramref name="offset"/>: a document opened to throw on a guard throws there, and rebuilds nothing, which settling
-    /// leaves to a load that asks for the object; another reports the guard, as the load would, and looks on.
-    /// </summary>
-    private bool LoadLooksOnPastGuard(int number, long offset)
-    {
-        if (_guard.ThrowsOnLimit)
+        return near switch
         {
-            return false;
-        }
-
-        ReachLimit(PdfLimit.Object, LimitSubject(number, _guard.Bound(PdfLimit.Object)), offset);
-        return true;
+            HeaderReadingSpent => new HeaderPlacement(HeaderPlace.Undecided, offset, -1, atOffset, guardAtOffset),
+            HeaderPastGuard => new HeaderPlacement(HeaderPlace.PastGuard, nearby, -1, atOffset, guardAtOffset),
+            _ when near == number => new HeaderPlacement(HeaderPlace.Nearby, nearby, nearGeneration, atOffset, guardAtOffset),
+            _ => nowhere,
+        };
     }
 
     /// <summary>
     /// Gives the number of the object whose header starts at <paramref name="offset"/>, read as <see cref="TryParseNumberedAt"/>
     /// reads it — after white space and comments, in a window grown while the header runs past it or may have been cut at
-    /// its edge, up to <see cref="PdfReaderLimits.MaxObjectLength"/> —; 0 where no header is; or
-    /// <see cref="HeaderPastGuard"/> where the header still runs past the largest window, where a load reaches that guard; or
-    /// <see cref="SettlingReadingSpent"/> where reading it further would read more than settling may. Nothing is parsed past
-    /// the header, reported or recorded.
+    /// its edge, up to <see cref="PdfReaderLimits.MaxObjectLength"/> —, with its generation and where it starts; 0 where no
+    /// header is; or <see cref="HeaderPastGuard"/> where the header still runs past the largest window, where a load reaches
+    /// that guard; or <see cref="HeaderReadingSpent"/> where reading it further would read more than
+    /// <paramref name="reading"/> has left. Nothing is parsed past the header, reported or recorded.
     /// </summary>
     /// <remarks>
-    /// The first window is <see cref="HeaderCheckWindow"/> bytes, which holds the headers of real files; the next is the one a
-    /// load starts with, and each after it eight times larger, as a load grows it: a header is never read through more than
-    /// a load reads to reach it, and that first window.
+    /// <para>
+    /// It decides as a load does, and reads no more: a first window of <see cref="HeaderCheckWindow"/> bytes, which holds the
+    /// headers of real files; then the one a load starts with, and each after it eight times larger, as a load grows it, no
+    /// further than a load reads from the offset.
+    /// </para>
+    /// <para>
+    /// White space, which the lexer skips, is crossed in one pass rather than read again in each larger window, and the run
+    /// last crossed is remembered: an offset inside it reads on from its end, where a load from the offset would find what it
+    /// finds. Past <see cref="HeaderCheckWindow"/> and <see cref="InitialObjectWindow"/> bytes from the offset, what is read is
+    /// taken from <paramref name="reading"/>.
+    /// </para>
     /// </remarks>
-    private long HeaderNumberAt(long offset)
+    private long HeaderAt(long offset, HeaderReading reading, out long generation, out long start)
     {
-        var maxWindow = _guard.Bound(PdfLimit.Object);
-        var windowSize = Math.Min(HeaderCheckWindow, maxWindow);
+        generation = -1;
+        start = offset;
+
+        // What a load reads from the offset at most: its largest window, or the rest of the file.
+        var reach = Math.Min(offset + _guard.Bound(PdfLimit.Object), _source.Length);
+        var free = offset + HeaderCheckWindow + InitialObjectWindow;
+        var origin = reading.PastBlanks(offset);
+        var blanksFrom = origin == offset ? offset : reading.BlankStart;
+        var windowSize = (long)HeaderCheckWindow;
 
         while (true)
         {
-            using var window = _source.GetWindow(offset, windowSize);
-            var cut = window.Length == windowSize && offset + window.Length < _source.Length;
-            var lexer = new PdfLexer(window.Memory.Span);
+            if (origin >= reach)
+            {
+                // White space up to where a load stops reading: the file's end, or the guard's.
+                return reach < _source.Length ? HeaderPastGuard : 0;
+            }
+
+            var length = (int)Math.Min(windowSize, reach - origin);
+
+            if (origin + length > free)
+            {
+                if (length > reading.Remaining)
+                {
+                    return HeaderReadingSpent;
+                }
+
+                reading.Remaining -= length;
+            }
+
+            using var window = _source.GetWindow(origin, length);
+            var span = window.Memory.Span;
+
+            // A window of nothing but white space is crossed whole: what decides lies past it, and so does what a load reads
+            // in the larger windows it grows to.
+            if (span.Length > 0 && span.IndexOfAnyExcept(PdfCharacters.Whitespace) < 0)
+            {
+                var crossed = origin + span.Length;
+
+                // A run longer than the window a load starts with is worth remembering: a load from inside it reads it again.
+                if (crossed - blanksFrom > InitialObjectWindow)
+                {
+                    reading.Crossed(blanksFrom, crossed);
+                }
+
+                origin = crossed;
+                windowSize = Math.Min(windowSize * 8, BlankCrossingWindow);
+                continue;
+            }
+
+            // The window ends where the file does, or where a load's largest does: past it a load reads nothing.
+            var cut = span.Length == length && origin + length < _source.Length;
+            var atReach = origin + length >= reach;
+            var lexer = new PdfLexer(span);
             var number = lexer.Read();
-            var generation = lexer.Read();
+            var written = lexer.Read();
             var keyword = lexer.Read();
-            var header = number.Kind == PdfTokenKind.Integer && generation.Kind == PdfTokenKind.Integer && keyword.IsKeyword("obj"u8) &&
-                number.Integer is > 0 and <= PdfObjectId.MaxNumber && generation.Integer is >= 0 and <= PdfObjectId.MaxGeneration;
+            var header = number.Kind == PdfTokenKind.Integer && written.Kind == PdfTokenKind.Integer && keyword.IsKeyword("obj"u8) &&
+                number.Integer is > 0 and <= PdfObjectId.MaxNumber && written.Integer is >= 0 and <= PdfObjectId.MaxGeneration;
+
+            generation = header ? written.Integer : -1;
+            start = header ? origin + number.Start : offset;
 
             // A header the window's edge may have cut — "5 0 o", or the "obj" of "5 0 objx" — is read again in a larger
-            // window, as the parser reads it. Past the largest, a load keeps a header it read whole, and reaches the guard on
-            // one it did not.
-            if (cut && (keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= window.Length))
+            // window, as the parser reads it. At a load's largest, a load keeps a header it read whole, and reaches the guard
+            // on one it did not.
+            if (cut && (keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= span.Length))
             {
-                if (windowSize >= maxWindow)
+                if (atReach)
                 {
                     return header ? number.Integer : HeaderPastGuard;
                 }
 
-                windowSize = (int)Math.Min(windowSize < InitialObjectWindow ? InitialObjectWindow : (long)windowSize * 8, maxWindow);
-
-                if (windowSize > InitialObjectWindow)
-                {
-                    var reading = Math.Min(windowSize, _source.Length - offset);
-
-                    if (reading > _settlingReading)
-                    {
-                        return SettlingReadingSpent;
-                    }
-
-                    _settlingReading -= reading;
-                }
-
+                windowSize = windowSize < InitialObjectWindow ? InitialObjectWindow : windowSize * 8;
                 continue;
             }
 
