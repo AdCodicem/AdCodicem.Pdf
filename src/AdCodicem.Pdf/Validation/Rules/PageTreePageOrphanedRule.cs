@@ -17,7 +17,7 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// one.
 /// </para>
 /// <para>
-/// It inspects every object the file's index holds in use, and reads no content. It does so only where that index is
+/// It inspects every object the file's index holds in use, but those one of the reader's limits cut, and reads no content. It does so only where that index is
 /// sound and whole — the chain read to its end, every entry leading to its object, every object stream readable, the
 /// page tree read whole —: elsewhere loading an object may rebuild the index and bring back what an update deleted,
 /// and a page the tree seems not to list may lie below a node the reader could not produce.
@@ -57,8 +57,9 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
 
             var id = new PdfObjectId(number, entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0);
 
-            if (context.Document.GetObject(id).AsDictionary() is not { } page || !page.IsOfType(PdfName.Page) ||
-                (!page.ContainsKey(PdfName.Parent) && !page.ContainsKey(PdfName.Contents)))
+            // An object a limit cut is not judged: its /Type may be what the cut left of /Pages.
+            if (context.Document.GetObject(id).AsDictionary() is not { } page || context.Document.Reader.IsCutAtLimit(number) ||
+                !page.IsOfType(PdfName.Page) || (!page.ContainsKey(PdfName.Parent) && !page.ContainsKey(PdfName.Contents)))
             {
                 continue;
             }

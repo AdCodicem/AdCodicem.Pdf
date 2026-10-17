@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.Objects;
@@ -922,6 +924,249 @@ public class PageTreeRuleTests
 
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
         Validate(file).Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeTrue("read whole, page 3 lists no kid");
+    }
+
+    [Fact]
+    public void An_array_of_kids_that_holds_a_node_naming_it_again_is_a_loop()
+    {
+        // Review of #129 (L1-01): object 7, node 2's array of kids, holds a node written in it whose /Kids is object 7
+        // again. Neither has a number the walk could see on its path, and it entered them without end.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Kids 7 0 R /Count 1 >>", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", "7 0 obj\n[3 0 R << /Type /Pages /Kids 7 0 R /Count 0 >>]\nendobj\nxref\n0 8\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{free}\n{free}\n{free}\n{row:7}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 8", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+        var report = new PdfValidator().Validate(document);
+
+        var cycle = Single(report, PdfValidationRuleIds.PageTreeCycle);
+        cycle.Message.Should().Be(
+            "The page tree node at [1] in object 7 gives /Kids 7 0 R, an array of kids above it: the tree loops back on itself there, and what it should have listed is unknown.");
+        cycle.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(7)));
+        report.Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse("the count above a loop is not judged");
+        PageTreeWalk.Run(document).PageCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void Arrays_of_kids_shared_by_nodes_written_in_them_are_walked_once_each()
+    {
+        // Thirty arrays, each holding two nodes written in it that both name the next array: walked again for each node,
+        // they made 2^30 visits of 4 KB; each array is walked once, and counted again where it is named again.
+        const int Arrays = 30;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids 10 0 R /Count 1 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R >>"),
+        };
+
+        for (var array = 10; array < 10 + Arrays; array++)
+        {
+            var next = array + 1 < 10 + Arrays ? array + 1 : 0;
+            rows[array] = file.Object(array, next == 0
+                ? "[3 0 R]"
+                : string.Create(CultureInfo.InvariantCulture, $"[<< /Type /Pages /Count 1 /Kids {next} 0 R >> << /Type /Pages /Count 1 /Kids {next} 0 R >>]"));
+        }
+
+        file.Table(10 + Arrays, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {10 + Arrays} /Root 1 0 R"));
+        using var document = PdfDocument.Open(file.Bytes);
+        var stopwatch = Stopwatch.StartNew();
+
+        var report = new PdfValidator().Validate(document);
+
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
+        report.Findings.Count(finding => finding.RuleId == PdfValidationRuleIds.PageTreeNodeRepeated).Should().Be(Arrays - 1);
+        report.Contains(PdfValidationRuleIds.PageTreeCycle).Should().BeFalse("no array lies on its own path");
+    }
+
+    [Fact]
+    public void A_kid_reached_through_a_chain_of_references_is_named_and_judged_as_the_object_the_chain_leads_to()
+    {
+        // Review of #129 and #175 (L1-02, L2-06): object 5's value is 8 0 R. Node 8 was named and located as page tree node
+        // 5, and a limit that cut node 8 went unseen, its /Count judged and its pages called orphaned.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [5 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 8 0 R >>"),
+            [5] = file.Object(5, "8 0 R"),
+            [6] = file.Object(6, "<< /Type /Page /Parent 8 0 R >>"),
+            [8] = file.Object(8, "<< /Type /Pages /Parent 2 0 R /Kids [3 0 R" + new string(' ', 200) + "6 0 R] /Count 2 >>"),
+        };
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+
+        var whole = Validate(file.Bytes);
+        using var document = PdfDocument.Open(file.Bytes, CutAt(128));
+        var cut = new PdfValidator().Validate(document);
+
+        whole.Findings.Should().BeEmpty("node 8 lists pages 3 and 6, whose /Parent names it");
+        cut.Findings.Should().BeEmpty("node 8 is cut, and what lies past the cut is unknown");
+        PageTreeWalk.Run(document).Partial.Should().BeTrue();
+    }
+
+    [Fact]
+    public void An_object_a_limit_cut_read_as_a_page_leaves_the_count_of_the_node_listing_it_unjudged()
+    {
+        // Review of #175 (L2-01): node 3 writes its /Type and /Kids past the cut, and reads as a page; the root's /Count of 3
+        // was judged against the 2 pages that made.
+        var file = PdfTemplate.Build(Tree.Replace(
+            "<< /Type /Pages /Parent 2 0 R /Kids [5 0 R 6 0 R] /Count 2 >>",
+            "<< /Parent 2 0 R" + new string(' ', 200) + "/Type /Pages /Kids [5 0 R 6 0 R] /Count 2 >>",
+            StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_reference_to_nothing_written_in_a_cut_node_s_kids_is_the_object_graph_s()
+    {
+        // Review of #175 (L2-02): the walk judges nothing of a cut node's kids, and the object graph left them to it.
+        var file = PdfTemplate.SoundWith(
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Pages /Kids [3 0 R 9 0 R] /Count 2" + new string(' ', 200) + ">>");
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+        var report = new PdfValidator().Validate(document);
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "Object 2 refers to object 9 0 under /Kids[1], which the file lacks: the reference reads as null.");
+        report.Contains(PdfValidationRuleIds.PageTreeKidInvalid).Should().BeFalse();
+        Validate(file).Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse("read whole, it is the walk's");
+    }
+
+    [Fact]
+    public void A_node_listed_again_whose_pages_could_not_be_counted_leaves_the_count_above_it_unjudged()
+    {
+        // Review of #175 (L2-03): node 4, which a limit cuts inside its /Kids, is listed by the root and again by node 5,
+        // whose /Count was judged against the one page read of node 4.
+        var file = PdfTemplate.Build(Tree
+            .Replace("/Kids [3 0 R 4 0 R] /Count 3", "/Kids [4 0 R 7 0 R] /Count 4", StringComparison.Ordinal)
+            .Replace("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R" + new string(' ', 200) + "6 0 R] /Count 2", StringComparison.Ordinal)
+            .Replace("xref\n0 7\n", "7 0 obj\n<< /Type /Pages /Parent 2 0 R /Kids [4 0 R] /Count 2 >>\nendobj\nxref\n0 8\n", StringComparison.Ordinal)
+            .Replace("{row:6}\n", "{row:6}\n{row:7}\n", StringComparison.Ordinal)
+            .Replace("/Size 7", "/Size 8", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+        var report = new PdfValidator().Validate(document);
+
+        Single(report, PdfValidationRuleIds.PageTreeNodeRepeated).Message.Should().Be(
+            "The kid at index 0 of page tree node 7 names object 4, which the tree already lists: what lies below it is counted again, how many pages that is being unknown.");
+        report.Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Values_of_a_cut_kids_array_before_its_last_reference_are_counted_as_read_whole()
+    {
+        // Review of #175 (L2-04): the null at index 1 is followed by 5 0 R, and cannot be what the cut left of a reference;
+        // dropping it moved page 5's findings from page 3 to page 2.
+        var file = PdfTemplate.Build(Tree
+            .Replace("/Kids [3 0 R 4 0 R] /Count 3", "/Kids 7 0 R /Count 3", StringComparison.Ordinal)
+            .Replace("<< /Type /Page /Parent 4 0 R >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 0 0] >>", StringComparison.Ordinal)
+            .Replace("xref\n0 7\n", "7 0 obj\n[3 0 R null 5 0 R" + new string(' ', 200) + "3 0 R]\nendobj\nxref\n0 8\n", StringComparison.Ordinal)
+            .Replace("{row:6}\n", "{row:6}\n{row:7}\n", StringComparison.Ordinal)
+            .Replace("/Size 7", "/Size 8", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+        var report = new PdfValidator().Validate(document);
+
+        Single(report, PdfValidationRuleIds.PageTreeMediaBoxInvalid).Location.Should().Be(PdfValidationLocation.OnPage(2, new PdfObjectId(5)));
+        report.Contains(PdfValidationRuleIds.PageTreeKidInvalid).Should().BeFalse("what a cut array holds is not judged");
+        PageTreeWalk.Run(document).PageCount.Should().Be(3);
+    }
+
+    [Fact]
+    public void An_object_whose_type_a_limit_cut_short_is_no_orphaned_page()
+    {
+        // Review of #175 (L2-05): the cut falls inside /Pages, and the parser keeps /Page.
+        var file = WithObject(7, "<< /Parent 2 0 R /Foo (" + new string('x', 150) + ") /Type /Pages" + new string(' ', 200) + "/Kids [] /Count 0 >>");
+        var pages = Encoding.Latin1.GetString(file).IndexOf("/Pages" + new string(' ', 200), StringComparison.Ordinal);
+        var header = Encoding.Latin1.GetString(file).IndexOf("7 0 obj", StringComparison.Ordinal);
+
+        using var document = PdfDocument.Open(file, CutAt(pages - header + "/Page".Length));
+        var report = new PdfValidator().Validate(document);
+
+        document.GetObject(new PdfObjectId(7)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue("the cut left /Page of /Pages");
+        report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_page_or_node_written_in_a_cut_node_is_judged_on_nothing()
+    {
+        // Review of #175 (L2-07): a page with a box that is a number, and a node without /Count, written in a node a limit
+        // cuts: neither is judged, though each would be read whole.
+        var page = PdfTemplate.SoundWith(
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Pages /Count 2 /Kids [3 0 R << /Type /Page /MediaBox 5 >>]" + new string(' ', 200) + ">>");
+        var node = PdfTemplate.SoundWith(
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Pages /Count 2 /Kids [3 0 R << /Type /Pages /Kids [] >>]" + new string(' ', 200) + ">>");
+
+        using var pageDocument = PdfDocument.Open(page, CutAt(128));
+        using var nodeDocument = PdfDocument.Open(node, CutAt(128));
+
+        new PdfValidator().Validate(pageDocument).Findings.Should().BeEmpty();
+        new PdfValidator().Validate(nodeDocument).Findings.Should().BeEmpty();
+        Validate(page).Contains(PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().BeTrue("read whole, the box is judged");
+        Validate(node).Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeTrue("read whole, the count is judged");
+    }
+
+    [Theory]
+    [InlineData("[3 0 R 2 0 R 3 0 R{0}]")]
+    [InlineData("[3 0 R 5 0 R 6 0 R{0}]")]
+    public void What_a_kids_array_a_limit_cut_holds_is_not_judged(string array)
+    {
+        // Review of #175 (L5-04): a loop and a repeat, then a stream and a number named as kids, in an array of kids a limit
+        // cuts: none is judged, though each is reported read whole.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Kids 4 0 R /Count 3 >>", StringComparison.Ordinal)
+            .Replace(
+                "xref\n0 4\n",
+                "4 0 obj\n" + string.Format(CultureInfo.InvariantCulture, array, new string(' ', 200)) + "\nendobj\n" +
+                "5 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> /Length 0 >>\nstream\n\nendstream\nendobj\n6 0 obj\n12\nendobj\nxref\n0 7\n",
+                StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n{row:5}\n{row:6}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 7", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+        var findings = new PdfValidator().Validate(document).Findings.Where(finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal));
+
+        findings.Select(finding => finding.Message).Should().BeSubsetOf(
+            ["The kid at index 1 of page tree node 2 names object 5, a stream rather than a dictionary: the reader reads the stream's dictionary in its place."],
+            "a kid's own finding is located at the kid, and only the slot's are the cut array's");
+        Validate(file).Findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.PageTreeCycle || finding.RuleId == PdfValidationRuleIds.PageTreeKidInvalid);
+    }
+
+    [Fact]
+    public void A_node_a_limit_cut_whose_kids_are_an_array_read_whole_leaves_its_count_unjudged()
+    {
+        // Review of #175 (L5-04): node 2's /Count lies past the cut; its kids, in object 4, are read whole.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Kids 4 0 R" + new string(' ', 200) + "/Count 1 >>", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", "4 0 obj\n[3 0 R]\nendobj\nxref\n0 5\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 5", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_catalog_a_limit_cut_whose_pages_names_nothing_leaves_the_walk_partial()
+    {
+        // Review of #175 (L5-04): the /Pages read before the cut names an object the file lacks; past the cut may lie more.
+        var file = PdfTemplate.SoundWith("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Catalog /Pages 9 0 R" + new string(' ', 200) + "/Lang (en) >>");
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+        var report = new PdfValidator().Validate(document);
+
+        PageTreeWalk.Run(document).Partial.Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
     }
 
     [Fact]

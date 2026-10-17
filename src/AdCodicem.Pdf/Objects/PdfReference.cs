@@ -47,4 +47,25 @@ public sealed class PdfReference : PdfObject
 
     /// <inheritdoc/>
     public override string ToString() => Id.ToString();
+
+    /// <summary>
+    /// Gives the object whose value <see cref="Resolve"/> gives: this reference's, or the last one a chain of objects whose
+    /// values are references leads to, as far as <see cref="Resolve"/> follows it.
+    /// </summary>
+    internal PdfObjectId Target()
+    {
+        var reference = this;
+
+        for (var depth = 1; depth < MaxChainLength; depth++)
+        {
+            if (reference.Source?.GetObject(reference.Id) is not PdfReference next)
+            {
+                break;
+            }
+
+            reference = next;
+        }
+
+        return reference.Id;
+    }
 }

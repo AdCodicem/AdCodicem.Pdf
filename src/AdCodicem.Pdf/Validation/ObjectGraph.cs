@@ -76,11 +76,11 @@ internal sealed class ObjectGraph
                     break;
 
                 case PdfStream stream:
-                    PushDictionary(stream.Dictionary, item.Owner, item.TopLevel && _pages.Nodes.Contains(item.Owner));
+                    PushDictionary(stream.Dictionary, item.Owner, item.TopLevel && _pages.JudgedKidsOf(item.Owner));
                     break;
 
                 case PdfDictionary dictionary:
-                    PushDictionary(dictionary, item.Owner, item.TopLevel && _pages.Nodes.Contains(item.Owner));
+                    PushDictionary(dictionary, item.Owner, item.TopLevel && _pages.JudgedKidsOf(item.Owner));
                     break;
 
                 case PdfArray array:
@@ -171,7 +171,7 @@ internal sealed class ObjectGraph
         {
             var value = ValueOf(owner);
             var first = new StringBuilder();
-            var found = TryFindMissing(value, owner, isNode: _pages.Nodes.Contains(owner), uncounted: false, first, out var target);
+            var found = TryFindMissing(value, owner, isNode: _pages.JudgedKidsOf(owner), uncounted: false, first, out var target);
             var holder = Holder(owner);
 
             MissingReferences.Add(new ProbeFinding(
