@@ -57,8 +57,11 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
 
             var id = new PdfObjectId(number, entry.Kind == XRefEntryKind.Regular ? entry.Generation : 0);
 
-            // An object a limit cut is not judged: its /Type may be what the cut left of /Pages.
-            if (context.Document.GetObject(id).AsDictionary() is not { } page || context.Document.Reader.IsCutAtLimit(number) ||
+            // An object a limit cut is not judged: its /Type may be what the cut left of /Pages. Nor is one whose value is a
+            // reference: a link of a chain the tree may list its page through, which is the page (the object it leads to).
+            var value = context.Document.GetObject(id);
+
+            if (value is PdfReference || value.AsDictionary() is not { } page || context.Document.Reader.IsCutAtLimit(number) ||
                 !page.IsOfType(PdfName.Page) || (!page.ContainsKey(PdfName.Parent) && !page.ContainsKey(PdfName.Contents)))
             {
                 continue;
