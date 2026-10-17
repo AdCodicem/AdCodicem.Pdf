@@ -25,6 +25,14 @@ namespace AdCodicem.Pdf.Validation;
 /// says the walk is partial.
 /// </para>
 /// <para>
+/// Nothing is judged of what is written in an object one of the reader's limits cut, as the Arlington walk leaves it:
+/// neither what it lacks — that may lie past the cut — nor what it holds, the value at the cut being perhaps cut itself.
+/// A node so cut is taken to give what the pages below it inherit, its <c>/Count</c> and those above it are not judged,
+/// and the walk is partial; the references its <c>/Kids</c> holds, as read, are walked, each page or node judged as any
+/// other, and a kid of its that is neither a reference nor a dictionary is not counted, being perhaps what the cut left of
+/// a reference. A catalog so cut leaves the walk partial too: its <c>/Pages</c> may lie past the cut.
+/// </para>
+/// <para>
 /// A node or a page written inside another object rather than as an object of its own is named by where it is
 /// written, as the Arlington walk and the object graph name such a value: by its path from that object, <c>the page
 /// object under /Kids[1] of page tree node 2</c>, and located at that object.
@@ -79,7 +87,8 @@ internal sealed class PageTreeWalk
 
     /// <summary>
     /// Gets a value indicating whether part of the tree could not be read for the reader's own reasons: its root, or a
-    /// kid, the index holds in use and the reader could not produce.
+    /// kid, the index holds in use and the reader could not produce; or a node, a page, an array of kids or the catalog
+    /// one of the reader's limits cut.
     /// </summary>
     public bool Partial { get; private set; }
 
@@ -109,13 +118,21 @@ internal sealed class PageTreeWalk
     {
         var walk = new PageTreeWalk(document.Reader);
 
-        if (document.Catalog is { } catalog && catalog.GetRaw(PdfName.Pages) is { } root)
+        if (document.Catalog is not { } catalog)
         {
-            // The catalog is an object of its own, or a dictionary written in the trailer, which file.root-invalid reports.
-            var catalogPlace = document.Trailer.GetRaw(PdfName.Root) is PdfReference reference
-                ? Place.Of(reference.Id)
-                : new Place(default, default, "/Root");
+            return walk;
+        }
 
+        // The catalog is an object of its own, or a dictionary written in the trailer, which file.root-invalid reports.
+        var catalogPlace = document.Trailer.GetRaw(PdfName.Root) is PdfReference reference
+            ? Place.Of(reference.Id)
+            : new Place(default, default, "/Root");
+
+        // A catalog a limit cut may give its /Pages past the cut: the tree read, if any, may not be the whole of it.
+        walk.Partial = walk.IsCut(catalogPlace);
+
+        if (catalog.GetRaw(PdfName.Pages) is { } root)
+        {
             walk.Walk(root, catalogPlace);
         }
 
@@ -139,7 +156,7 @@ internal sealed class PageTreeWalk
             // A /Pages that names an object the file lacks is object.reference-missing's to report; one the index holds
             // and the reader could not produce is the index's, and one a guard left out of the index the guard's: either
             // leaves the tree unknown.
-            Partial = id.Number > 0 && _reader.GetPresence(id.Number) is ObjectPresence.Unproduced or ObjectPresence.Unindexed;
+            Partial |= id.Number > 0 && _reader.GetPresence(id.Number) is ObjectPresence.Unproduced or ObjectPresence.Unindexed;
             return;
         }
 
@@ -160,7 +177,7 @@ internal sealed class PageTreeWalk
             _visited.Add(id.Number);
         }
 
-        if (Given(node, PdfName.Parent) is not null)
+        if (!IsCut(place) && Given(node, PdfName.Parent) is not null)
         {
             ParentFaults.Add(new ProbeFinding(
                 Location(place),
@@ -199,14 +216,23 @@ internal sealed class PageTreeWalk
         var place = reference is not null ? Place.Of(reference.Id) : frame.KidPlace(index);
         var id = place.Id;
 
+        // What a node's /Kids holds is not judged where a limit cut the array: the findings on the kid itself are, located
+        // at the object it is.
+        var judged = !frame.KidsCut;
+
         if (reference is not null)
         {
             if (_onPath.Contains(id.Number))
             {
                 frame.Uncountable = true;
-                Cycles.Add(new ProbeFinding(
-                    Location(frame.Place),
-                    Invariant($"{Kid(frame, index)} names object {id.Number}, {(id.Number == frame.Id.Number ? "which is that node itself" : "a node above it")}: the tree loops back on itself there, and what it should have listed is unknown.")));
+
+                if (judged)
+                {
+                    Cycles.Add(new ProbeFinding(
+                        Location(frame.Place),
+                        Invariant($"{Kid(frame, index)} names object {id.Number}, {(id.Number == frame.Id.Number ? "which is that node itself" : "a node above it")}: the tree loops back on itself there, and what it should have listed is unknown.")));
+                }
+
                 return;
             }
 
@@ -214,11 +240,22 @@ internal sealed class PageTreeWalk
             {
                 var counted = _pagesBelow.TryGetValue(id.Number, out var below) ? below : 1;
                 _pages += counted;
-                RepeatedNodes.Add(new ProbeFinding(
-                    Location(frame.Place),
-                    Invariant($"{Kid(frame, index)} names object {id.Number}, which the tree already lists: {(counted == 1 ? "its page is" : $"its {RuleText.Pages(counted)} are")} counted again.")));
+
+                if (judged)
+                {
+                    RepeatedNodes.Add(new ProbeFinding(
+                        Location(frame.Place),
+                        Invariant($"{Kid(frame, index)} names object {id.Number}, which the tree already lists: {(counted == 1 ? "its page is" : $"its {RuleText.Pages(counted)} are")} counted again.")));
+                }
+
                 return;
             }
+        }
+        else if (!judged && kid is not PdfDictionary)
+        {
+            // A value written in an array a limit cut, neither a reference nor a dictionary, may be what the cut left of a
+            // reference — "12 0" of "12 0 R" —: it is not taken for a kid.
+            return;
         }
 
         switch (kid.Resolve())
@@ -248,16 +285,20 @@ internal sealed class PageTreeWalk
                 return;
 
             case PdfStream stream:
-                InvalidKids.Add(new ProbeFinding(
-                    Location(reference is not null ? place : frame.Place),
-                    reference is not null
-                        ? Invariant($"{Kid(frame, index)} names object {id.Number}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")
-                        : $"{Kid(frame, index)} is a stream written in the array, where the tree wants an indirect reference to a dictionary: the reader reads the stream's dictionary in its place."));
+                if (reference is not null || judged)
+                {
+                    InvalidKids.Add(new ProbeFinding(
+                        Location(reference is not null ? place : frame.Place),
+                        reference is not null
+                            ? Invariant($"{Kid(frame, index)} names object {id.Number}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")
+                            : $"{Kid(frame, index)} is a stream written in the array, where the tree wants an indirect reference to a dictionary: the reader reads the stream's dictionary in its place."));
+                }
+
                 Enter(stream.Dictionary, place, frame);
                 return;
 
             case PdfDictionary dictionary:
-                if (reference is null)
+                if (reference is null && judged)
                 {
                     InvalidKids.Add(new ProbeFinding(
                         Location(frame.Place),
@@ -278,14 +319,20 @@ internal sealed class PageTreeWalk
         }
     }
 
-    /// <summary>Records a kid that stands for a page the tree cannot read, and counts it as one with nothing on it.</summary>
+    /// <summary>
+    /// Records a kid that stands for a page the tree cannot read, and counts it as one with nothing on it; the record is
+    /// not kept where a limit cut the array.
+    /// </summary>
     private void InvalidSlot(Frame frame, int index, string what)
     {
         var page = _pages++;
 
-        InvalidKids.Add(new ProbeFinding(
-            PageLocation(page, frame.Place),
-            $"{Kid(frame, index)} {what}: it counts as a page with nothing on it."));
+        if (!frame.KidsCut)
+        {
+            InvalidKids.Add(new ProbeFinding(
+                PageLocation(page, frame.Place),
+                $"{Kid(frame, index)} {what}: it counts as a page with nothing on it."));
+        }
     }
 
     private void Enter(PdfDictionary dictionary, Place place, Frame parent)
@@ -304,15 +351,18 @@ internal sealed class PageTreeWalk
     private void EnterNode(PdfDictionary node, Place place, Frame? parent)
     {
         var id = place.Id;
+        var cut = IsCut(place);
 
         if (id.Number > 0)
         {
             Nodes.Add(id.Number);
         }
 
+        Partial |= cut;
+
         var ownBox = Given(node, PdfName.MediaBox);
 
-        if (ownBox is not null)
+        if (ownBox is not null && !cut)
         {
             CheckMediaBox(ownBox, Location(place), place, NodeKind);
         }
@@ -323,7 +373,7 @@ internal sealed class PageTreeWalk
         {
             // A /Kids that names an object the file lacks is object.reference-missing's, and one the reader could not
             // produce the index's; either way, nothing below this node can be counted, nor the nodes above it judged.
-            if (kidsValue is null || kidsValue.Resolve() is not PdfNull)
+            if (!cut && (kidsValue is null || kidsValue.Resolve() is not PdfNull))
             {
                 NodesWithoutKids.Add(new ProbeFinding(
                     Location(place),
@@ -343,7 +393,7 @@ internal sealed class PageTreeWalk
             }
 
             // It lists no page, and its /Count is still required (ISO 32000-1, 7.7.3.2).
-            if (Given(node, PdfName.Count) is null)
+            if (!cut && Given(node, PdfName.Count) is null)
             {
                 CountMissing(place, below: 0, countable: true);
             }
@@ -359,11 +409,19 @@ internal sealed class PageTreeWalk
             kidsArray = kidsReference.Id;
         }
 
+        // The kids lie in the node, or in their array when it is an object of its own, which a limit may have cut alone.
+        var kidsCut = kidsArray.Number > 0 ? _reader.IsCutAtLimit(kidsArray.Number) : cut;
+        Partial |= kidsCut;
+
+        // A node a limit cut may give past the cut what its pages inherit, and a /Count of what lies below it.
         _stack.Add(new Frame(node, place, kids, kidsArray)
         {
             PagesBefore = _pages,
-            MediaBox = ownBox ?? parent?.MediaBox,
-            HasResources = Given(node, PdfName.Resources) is not null || parent?.HasResources == true,
+            GivesMediaBox = ownBox is not null || parent?.GivesMediaBox == true || cut,
+            HasResources = Given(node, PdfName.Resources) is not null || parent?.HasResources == true || cut,
+            Cut = cut,
+            KidsCut = kidsCut,
+            Uncountable = cut || kidsCut,
         });
 
         if (id.Number > 0)
@@ -392,8 +450,12 @@ internal sealed class PageTreeWalk
         switch (Given(frame.Node, PdfName.Count))
         {
             case null:
-                // Missing whether or not the pages below can be counted.
-                CountMissing(frame.Place, below, countable: !frame.Uncountable);
+                // Missing whether or not the pages below can be counted; unknown where a limit cut the node.
+                if (!frame.Cut)
+                {
+                    CountMissing(frame.Place, below, countable: !frame.Uncountable);
+                }
+
                 break;
 
             case var count when !frame.Uncountable && count.Resolve() is PdfInteger { Value: var declared } && declared != below:
@@ -415,7 +477,11 @@ internal sealed class PageTreeWalk
     private void EnterPage(PdfDictionary page, Place place, Frame? parent)
     {
         var id = place.Id;
+        var cut = IsCut(place);
         var index = _pages++;
+
+        // A page a limit cut may be a node whose /Kids lies past the cut: what lies below it is unknown.
+        Partial |= cut;
 
         if (index <= int.MaxValue && id.Number > 0)
         {
@@ -429,13 +495,18 @@ internal sealed class PageTreeWalk
             CheckParent(page, place, parent, PageKind);
         }
 
+        if (cut)
+        {
+            return;
+        }
+
         var ownBox = Given(page, PdfName.MediaBox);
 
         if (ownBox is not null)
         {
             CheckMediaBox(ownBox, location, place, PageKind);
         }
-        else if (parent?.MediaBox is null)
+        else if (parent?.GivesMediaBox != true)
         {
             MediaBoxFaults.Add(new ProbeFinding(
                 location,
@@ -454,8 +525,9 @@ internal sealed class PageTreeWalk
     {
         var id = place.Id;
 
-        // A kid written in the array, or a node written in its own parent's, has no number to be named by.
-        if (id.Number <= 0 || parent.Id.Number <= 0)
+        // A kid written in the array, or a node written in its own parent's, has no number to be named by; and one a limit
+        // cut may give its /Parent past the cut.
+        if (id.Number <= 0 || parent.Id.Number <= 0 || IsCut(place))
         {
             if (id.Number > 0)
             {
@@ -547,6 +619,12 @@ internal sealed class PageTreeWalk
                 Invariant($"{MediaBoxOf(place, what)}, [{array.Resolved(0)} {array.Resolved(1)} {array.Resolved(2)} {array.Resolved(3)}], encloses no area.")));
         }
     }
+
+    /// <summary>
+    /// Determines whether what lies at <paramref name="place"/> was read only as far as one of the reader's limits let it
+    /// be: the object it is, or the one it is written in, was cut.
+    /// </summary>
+    private bool IsCut(Place place) => place.Holder.Number > 0 && _reader.IsCutAtLimit(place.Holder.Number);
 
     /// <summary>Gives the location of what lies at <paramref name="place"/>: the object it is, or the one it is written in.</summary>
     private PdfValidationLocation Location(Place place) =>
@@ -662,13 +740,28 @@ internal sealed class PageTreeWalk
         /// <summary>Gets or sets how many pages the walk had counted when it entered the node.</summary>
         public long PagesBefore { get; init; }
 
-        /// <summary>Gets the media box the node gives the pages below it, its own or inherited.</summary>
-        public PdfObject? MediaBox { get; init; }
+        /// <summary>
+        /// Gets a value indicating whether the node gives the pages below it a media box, its own or inherited, or may give
+        /// one past a limit's cut.
+        /// </summary>
+        public bool GivesMediaBox { get; init; }
 
-        /// <summary>Gets a value indicating whether the node gives the pages below it resources, its own or inherited.</summary>
+        /// <summary>
+        /// Gets a value indicating whether the node gives the pages below it resources, its own or inherited, or may give
+        /// them past a limit's cut.
+        /// </summary>
         public bool HasResources { get; init; }
 
-        /// <summary>Gets or sets a value indicating whether what lies below the node cannot be counted with confidence.</summary>
+        /// <summary>Gets a value indicating whether a limit cut the object the node is written in.</summary>
+        public bool Cut { get; init; }
+
+        /// <summary>Gets a value indicating whether a limit cut the object the node's <c>/Kids</c> is written in.</summary>
+        public bool KidsCut { get; init; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether what lies below the node cannot be counted with confidence, or its
+        /// <c>/Count</c> is not judged.
+        /// </summary>
         public bool Uncountable { get; set; }
     }
 }
