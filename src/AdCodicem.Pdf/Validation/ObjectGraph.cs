@@ -76,17 +76,21 @@ internal sealed class ObjectGraph
                     break;
 
                 case PdfStream stream:
-                    PushDictionary(stream.Dictionary, item.Owner, item.TopLevel && _pages.JudgedKidsOf(item.Owner));
+                    PushDictionary(stream.Dictionary, item.Owner, IsJudgedNode(item));
                     break;
 
                 case PdfDictionary dictionary:
-                    PushDictionary(dictionary, item.Owner, item.TopLevel && _pages.JudgedKidsOf(item.Owner));
+                    PushDictionary(dictionary, item.Owner, IsJudgedNode(item));
                     break;
 
                 case PdfArray array:
+                    // An array of kids of its own the page tree walk judged holds kids, which are page-tree.kid-invalid's, as
+                    // a node's /Kids array does.
+                    var uncounted = item.Uncounted || (item.TopLevel && _pages.JudgedKidsArrays.Contains(item.Owner));
+
                     foreach (var element in array)
                     {
-                        _work.Push(new Item(element, item.Owner, TopLevel: false, item.Uncounted));
+                        _work.Push(new Item(element, item.Owner, TopLevel: false, uncounted));
                     }
 
                     break;
@@ -131,6 +135,12 @@ internal sealed class ObjectGraph
         _work.Push(new Item(value, number, TopLevel: true, Uncounted: false));
     }
 
+    /// <summary>
+    /// Determines whether the dictionary <paramref name="item"/> holds is a node whose kids the page tree walk judged: a
+    /// node of its own it read whole, or one written among kids it judged — a node it entered, its kids judged with them.
+    /// </summary>
+    private bool IsJudgedNode(Item item) => item.Uncounted || (item.TopLevel && _pages.JudgedKidsOf(item.Owner));
+
     private void CountMissing(Item item)
     {
         if (!item.Uncounted)
@@ -159,8 +169,9 @@ internal sealed class ObjectGraph
 
     /// <summary>
     /// Determines whether a reference to nothing in <paramref name="value"/>, under <paramref name="key"/>, is another
-    /// rule's: the kids a node of the page tree lists are page-tree.kid-invalid's, and the trailer's <c>/Root</c>
-    /// file.root-invalid's. A <c>/Kids</c> that is itself a reference to nothing is this walk's.
+    /// rule's: the kids a node of the page tree lists are page-tree.kid-invalid's — those of an array of kids of its own the
+    /// walk judged too, which the array's own case leaves —, and the trailer's <c>/Root</c> file.root-invalid's. A
+    /// <c>/Kids</c> that is itself a reference to nothing is this walk's.
     /// </summary>
     private static bool IsUncounted(PdfName key, PdfObject value, int owner, bool isNode) =>
         (isNode && key == PdfName.Kids && value is PdfArray) || (owner == 0 && key == PdfName.Root);
@@ -262,7 +273,7 @@ internal sealed class ObjectGraph
                     var length = path.Length;
                     FileQuote.AppendName(path, key);
 
-                    if (TryFindMissing(entry, owner, isNode: false, IsUncounted(key, entry, owner, isNode), path, out target))
+                    if (TryFindMissing(entry, owner, isNode: false, IsUncounted(key, entry, owner, isNode || uncounted), path, out target))
                     {
                         return true;
                     }

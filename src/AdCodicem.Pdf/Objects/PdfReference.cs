@@ -50,13 +50,15 @@ public sealed class PdfReference : PdfObject
 
     /// <summary>
     /// Gives the object whose value <see cref="Resolve"/> gives: this reference's, or the last one a chain of objects whose
-    /// values are references leads to, as far as <see cref="Resolve"/> follows it.
+    /// values are references leads to, as far as <see cref="Resolve"/> follows it: a chain too long for it ends at its
+    /// 31st object, the last whose value <see cref="Resolve"/> takes, so that no object past it is taken for the target.
     /// </summary>
     internal PdfObjectId Target()
     {
         var reference = this;
 
-        for (var depth = 1; depth < MaxChainLength; depth++)
+        // Resolve gives the value of a chain's 31st object at most: that object is the furthest a chain is followed to.
+        for (var depth = 1; depth < MaxChainLength - 1; depth++)
         {
             if (reference.Source?.GetObject(reference.Id) is not PdfReference next)
             {

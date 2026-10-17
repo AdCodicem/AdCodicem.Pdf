@@ -1239,6 +1239,222 @@ public class PageTreeRuleTests
         PageTreeWalk.Run(document).PageCount.Should().Be(int.MaxValue, "the count saturates rather than overflowing");
     }
 
+    [Theory]
+    [InlineData("[7 0 R 3 0 R]", 0)]
+    [InlineData("[3 0 R 7 0 R]", 1)]
+    public void An_array_of_kids_a_kid_names_is_walked_under_the_node_whose_kids_it_is(string kids, int index)
+    {
+        // Review of #129's fixes (M1-01): arrays of kids and kids shared one set of objects walked. Named first by a kid,
+        // array 7 was taken for walked, and node 3's pages were never entered — orphaned, and counted for nothing; walked
+        // first, the kid naming it was a node listed again, its pages counted twice.
+        var file = Objects(
+            (2, "<< /Type /Pages /Kids " + kids + " /Count 3 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 2 >>"),
+            (5, "<< /Type /Page /Parent 3 0 R >>"),
+            (6, "<< /Type /Page /Parent 3 0 R >>"),
+            (7, "[5 0 R 6 0 R]"));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.PageTreeKidInvalid);
+        report.Findings[0].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The kid at index {index} of page tree node 2 names object 7, which is an array, neither a page nor a node: it counts as a page with nothing on it."));
+        PageTreeWalk.Run(document).PageCount.Should().Be(3);
+    }
+
+    [Fact]
+    public void A_kid_naming_the_array_of_kids_it_is_written_in_is_no_loop()
+    {
+        // An array of kids is no node: the kid at [1] in object 7 names an array, and was called a node above it.
+        var file = Objects(
+            (2, "<< /Type /Pages /Kids 7 0 R /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+            (7, "[3 0 R 7 0 R]"));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Select(finding => finding.RuleId).Should().Equal(PdfValidationRuleIds.PageTreeKidInvalid);
+        report.Findings[0].Message.Should().Contain("names object 7, which is an array, neither a page nor a node");
+        PageTreeWalk.Run(document).PageCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void A_node_whose_array_of_kids_was_walked_already_is_counted_for_its_pages_where_listed_again()
+    {
+        // M1-02: node 4 found array 7 walked, and was left without being entered: listed again, it counted for one page,
+        // and node 2's /Count of 6 was said to be wrong.
+        var file = Objects(
+            (2, "<< /Type /Pages /Kids [3 0 R 4 0 R 4 0 R] /Count 6 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 2 >>"),
+            (4, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 2 >>"),
+            (5, "<< /Type /Page /Parent 3 0 R >>"),
+            (6, "<< /Type /Page /Parent 3 0 R >>"),
+            (7, "[5 0 R 6 0 R]"));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Select(finding => (finding.RuleId, finding.Message)).Should().BeEquivalentTo(
+        [
+            (PdfValidationRuleIds.PageTreeNodeRepeated, "Page tree node 4 gives /Kids 7 0 R, an array of kids the tree already lists: its 2 pages are counted again."),
+            (PdfValidationRuleIds.PageTreeNodeRepeated, "The kid at index 2 of page tree node 2 names object 4, which the tree already lists: its 2 pages are counted again."),
+        ]);
+        PageTreeWalk.Run(document).PageCount.Should().Be(6);
+    }
+
+    [Fact]
+    public void A_node_whose_array_of_kids_loops_is_counted_again_as_unknown_where_listed_again()
+    {
+        // Node 3's array of kids, 7, is node 4's, above it: where node 5 lists node 3 again, what lies below it is unknown,
+        // and node 5's /Count is not judged against one page.
+        var file = Objects(
+            (2, "<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 1 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Pages /Parent 4 0 R /Kids 7 0 R /Count 0 >>"),
+            (4, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 0 >>"),
+            (5, "<< /Type /Pages /Parent 2 0 R /Kids [3 0 R] /Count 0 >>"),
+            (7, "[3 0 R]"));
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse(string.Join("; ", report.Findings));
+        Single(report, PdfValidationRuleIds.PageTreeCycle).Message.Should().Be(
+            "Page tree node 3 gives /Kids 7 0 R, an array of kids above it: the tree loops back on itself there, and what it should have listed is unknown.");
+        Single(report, PdfValidationRuleIds.PageTreeNodeRepeated).Message.Should().Be(
+            "The kid at index 0 of page tree node 5 names object 3, which the tree already lists: what lies below it is counted again, how many pages that is being unknown.");
+    }
+
+    [Theory]
+    [InlineData("walked already", "Page tree node 6 has no /Count; 1 page lies below it.")]
+    [InlineData("above it", "Page tree node 6 has no /Count, and how many pages lie below it is unknown.")]
+    public void A_node_whose_array_of_kids_is_not_walked_again_still_has_its_missing_count_reported(string array, string message)
+    {
+        // M1-03: a node returned before it was entered, and the /Count it lacks went unreported by any rule, the Arlington
+        // walk leaving a node's keys to this one.
+        var file = array == "walked already"
+            ? Objects(
+                (2, "<< /Type /Pages /Kids [5 0 R 6 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+                (3, "<< /Type /Page /Parent 5 0 R >>"),
+                (5, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 1 >>"),
+                (6, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R >>"),
+                (7, "[3 0 R]"))
+            : Objects(
+                (2, "<< /Type /Pages /Kids 7 0 R /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+                (3, "<< /Type /Page /Parent 2 0 R >>"),
+                (6, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R >>"),
+                (7, "[3 0 R 6 0 R]"));
+
+        var report = Validate(file);
+
+        report.Findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.PageTreeCountMismatch && finding.Message == message);
+    }
+
+    [Fact]
+    public void A_page_a_limit_cut_listed_again_is_counted_again_as_unknown()
+    {
+        // M1-04: object 3, a cut "page" that is a node past the cut, made node 4's count unknown, and node 5's, listing it
+        // again, was judged against one page.
+        var file = Objects(
+            (2, "<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 4 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Parent 4 0 R" + new string(' ', 200) + "/Type /Pages /Kids [6 0 R 7 0 R] /Count 2 >>"),
+            (4, "<< /Type /Pages /Parent 2 0 R /Kids [3 0 R] /Count 2 >>"),
+            (5, "<< /Type /Pages /Parent 2 0 R /Kids [3 0 R] /Count 2 >>"),
+            (6, "<< /Type /Page /Parent 3 0 R >>"),
+            (7, "<< /Type /Page /Parent 3 0 R >>"));
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse(string.Join("; ", report.Findings));
+        Single(report, PdfValidationRuleIds.PageTreeNodeRepeated).Message.Should().Be(
+            "The kid at index 0 of page tree node 5 names object 3, which the tree already lists: what lies below it is counted again, how many pages that is being unknown.");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(30)]
+    public void An_object_whose_value_is_a_reference_to_a_listed_page_is_no_orphaned_page(int links)
+    {
+        // M1-05: the tree lists page 3 through a chain of references; each link resolves to the page's dictionary, and was
+        // called a page the tree does not list.
+        var objects = new List<(int Number, string Body)>
+        {
+            (2, "<< /Type /Pages /Kids [10 0 R] /Count 1 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+        };
+
+        for (var link = 0; link < links; link++)
+        {
+            objects.Add((10 + link, link + 1 < links ? string.Create(CultureInfo.InvariantCulture, $"{11 + link} 0 R") : "3 0 R"));
+        }
+
+        var report = Validate(Objects([.. objects]));
+
+        report.Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_chain_of_references_too_long_to_resolve_leads_to_no_page()
+    {
+        // M1-06: thirty-one references lead to page 3, one more than a reference resolves through: the kid reads as null,
+        // and the walk took page 3 for listed, then called it listed again at index 1 and orphaned at once.
+        var objects = new List<(int Number, string Body)>
+        {
+            (2, "<< /Type /Pages /Kids [10 0 R 3 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+        };
+
+        for (var link = 10; link <= 40; link++)
+        {
+            objects.Add((link, string.Create(CultureInfo.InvariantCulture, $"{(link < 40 ? link + 1 : 3)} 0 R")));
+        }
+
+        using var document = PdfDocument.Open(Objects([.. objects]));
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Select(finding => (finding.RuleId, finding.Message)).Should().Equal((
+            PdfValidationRuleIds.PageTreeKidInvalid,
+            "The kid at index 0 of page tree node 2 names object 10, which is null: it counts as a page with nothing on it."));
+        PageTreeWalk.Run(document).PageIndexes.Should().ContainKey(3).WhoseValue.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("[3 0 R 9 0 R]")]
+    [InlineData("[3 0 R << /Type /Pages /Kids [12 0 R] /Count 0 >>]")]
+    public void A_kid_to_nothing_in_an_array_of_kids_of_its_own_is_reported_once(string array)
+    {
+        // M1-07: a kid naming an object the file lacks, in node 2's array of kids 8, was page-tree.kid-invalid's and the object
+        // graph's object.reference-missing's at once.
+        var report = Validate(Objects(
+            (2, "<< /Type /Pages /Kids 8 0 R /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+            (8, array)));
+
+        report.Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse(string.Join("; ", report.Findings));
+        report.Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.PageTreeKidInvalid && finding.Message.Contains("which the file lacks", StringComparison.Ordinal));
+    }
+
+    /// <summary>A document whose catalog, object 1, names node 2 as the root of its page tree, with <paramref name="objects"/>.</summary>
+    private static byte[] Objects(params (int Number, string Body)[] objects)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>") };
+        var size = 2;
+
+        foreach (var (number, body) in objects)
+        {
+            rows[number] = file.Object(number, body);
+            size = Math.Max(size, number + 1);
+        }
+
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
+        return file.Bytes;
+    }
+
     private static byte[] TreeWith(string text, string replacement)
     {
         Tree.Should().Contain(text);
