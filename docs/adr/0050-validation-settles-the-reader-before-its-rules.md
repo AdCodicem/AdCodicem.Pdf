@@ -41,12 +41,13 @@ Three designs were measured on 96 crafted files — 90 shapes and 6 controls —
 We settle the reader before the validator's first rule. `Validate` calls `PdfFileReader.SettleIndex`, which rebuilds the
 index, once per document, when the index is incomplete through damage or a regular entry places its object where a
 load would find neither it nor its header nearby. Whether a load would is decided as a load decides it, the header read
-alone — after white space and comments, in a window of 64 bytes, then grown as a load grows its own while the header
-runs past it —, without parsing the object or recording anything. A header that runs past the object guard is taken as
-a load takes it: reported, looked for nearby, and rebuilt for when none is found there; for a document opened to throw
-on a limit, left to the read that reaches it, which throws. Settling reads at most twice the file's length in windows
-past the first two of each header, and rebuilds once it would read more: in a valid file each header is at its offset,
-and no window grows.
+alone — after white space and comments, in a window of 64 bytes, then in windows eight times larger while the header
+runs past it, no further than a load reads —, without parsing the object or recording anything. A header that runs past
+the object guard is taken as a load takes it: reported, looked for nearby, and rebuilt for when none is found there; for
+a document opened to throw on a limit, left to the read that reaches it, which throws. What settling consumes past the
+first 64 bytes of each header — the bytes it crossed up to each decision, a run of white space several entries lead into
+once — is at most twice the file's length, and it rebuilds once it would consume more: a valid file's headers, each at
+its own offset, are distinct bytes, which consume the file's length at most together (#175).
 
 With it: a rebuild forgets what the reader noted of each object as it read it; `FileStructure` is filled while the
 document opens and never changes afterwards, a later rebuild keeping what it finds to the reader; a rebuild a load sets
@@ -90,8 +91,9 @@ as any read reads it, through the index the reader settled on.
 - The corpus's reports did not change: 0 of 401 documents. Three documents whose damage no rule reaches — Quartz files
   of the remote corpus — are now rebuilt when a validation starts, a few milliseconds each.
 - Settling costs a header read per regular entry: under a microsecond an entry, about 2 % of a validation, and no
-  allocation an entry. On a hostile file it reads, per entry, at most 64 bytes more than a load reads before the
-  object's body, over the entries `MaxIndexEntries` bounds, and stops at the first entry a load would rebuild for.
+  allocation an entry. On a hostile file it reads, per entry, at most its first windows of 64, 512 and 4,096 bytes more
+  than a load reads to decide the header, over the entries `MaxIndexEntries` bounds; consumes twice the file's length at
+  most past the first 64 bytes of each; and stops at the first entry a load would rebuild for.
 - A rebuild a load sets off while loads are in flight costs what one run first costs: the loads read through the scan's
   index meanwhile, and the object they read is read again once it is finished. The object graph reads again each object
   it has a finding for. The walk of the object streams' dependencies reads outside the reader's cache, and keeps the
