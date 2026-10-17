@@ -1106,7 +1106,7 @@ public class ReadOrderTests
         var thousand = Settling(1_000);
         var fourThousand = Settling(4_000);
 
-        thousand.Should().BeLessThan(256);
+        thousand.Should().BeLessThan(512);
         fourThousand.Should().Be(thousand);
     }
 
