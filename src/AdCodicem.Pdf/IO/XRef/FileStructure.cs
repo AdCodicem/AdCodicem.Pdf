@@ -123,6 +123,13 @@ internal sealed class FileStructure
     public bool RootHiddenByGuard { get; set; }
 
     /// <summary>
+    /// Gets a value indicating whether <see cref="RootAsWritten"/>, which led to no catalog, names an object a guard cut when
+    /// the document opened: what it would have said past the cut was unknown then, and the reader took it for the catalog as
+    /// read, looking for no other.
+    /// </summary>
+    public bool RootCutByGuard { get; set; }
+
+    /// <summary>
     /// Gets the object the reader found to be the catalog as the document opened, <c>/Root</c> leading to none; 0 when it
     /// did not look, or found none. The one a rebuild run later took is the reader's (<see cref="PdfFileReader.CatalogFoundAs"/>).
     /// </summary>

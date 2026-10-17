@@ -515,6 +515,58 @@ public class FileRuleTests
         Single(report, PdfValidationRuleIds.XRefEntryBroken).Location.Object.Should().Be(new PdfObjectId(1));
     }
 
+    [Theory]
+    [InlineData(22, "/Type /Cata")]
+    [InlineData(24, "/Type /Catalo")]
+    public void A_catalog_a_limit_cut_inside_its_type_is_not_judged(int maxObjectLength, string read)
+    {
+        // #175: the rule took the prefix of /Catalog for another type, and the rebuild that followed found no catalog.
+        var file = PdfTemplate.Build(PdfTemplate.Sound);
+        using var document = PdfDocument.Open(file, CutAt(maxObjectLength));
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Should().BeEmpty("what the catalog lacks may lie past the cut");
+        document.Catalog.Required().ToString().Should().Contain(read);
+        document.Reader.Structure.RootCutByGuard.Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void A_catalog_a_limit_cut_before_its_type_is_taken_as_read_rather_than_an_older_one()
+    {
+        // An older catalog, object 5, with a tree of its own, which the reader took for the catalog and walked.
+        var file = OlderCatalogBeside(cut: true);
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.CatalogFoundAs.Should().Be(0);
+        PageTreeWalk.Run(document).PageCount.Should().Be(0, "the tree lies past the cut");
+
+        // Read whole, object 1 is the catalog, and the older tree's page one no reader shows.
+        using var whole = PdfDocument.Open(file);
+        new PdfValidator().Validate(whole).Findings.Select(finding => (finding.RuleId, finding.Location.Object)).Should().Equal(
+            (PdfValidationRuleIds.PageTreePageOrphaned, new PdfObjectId(7)));
+    }
+
+    [Fact]
+    public void A_catalog_that_is_none_is_still_judged_beside_one_a_limit_cut_elsewhere()
+    {
+        // Object 1 is read whole and is no catalog; object 8, which nothing names, is the one a limit cuts.
+        var file = PdfTemplate.Build(OlderCatalogBesideTemplate(cut: false)
+            .Replace("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Outlines >>", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileRootInvalid);
+
+        finding.Message.Should().Be(
+            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Outlines, not a document catalog. The reader took object 5, which is one, for the catalog.");
+        document.Reader.Structure.RootCutByGuard.Should().BeFalse();
+    }
+
     [Fact]
     public void A_root_invalid_in_a_cross_reference_stream_is_reported_at_the_stream()
     {
@@ -709,6 +761,57 @@ public class FileRuleTests
             $"one finding of {ruleId}, among: {string.Join("; ", report.Findings)}");
         return report.Findings.First(finding => finding.RuleId == ruleId);
     }
+
+    /// <summary>
+    /// A sound file whose catalog, object 1, a limit of 128 bytes cuts before its <c>/Type</c> when <paramref name="cut"/>
+    /// says so; beside it an older catalog, object 5, with a tree of its own, and object 8, a long string nothing names.
+    /// </summary>
+    private static byte[] OlderCatalogBeside(bool cut) => PdfTemplate.Build(OlderCatalogBesideTemplate(cut));
+
+    private static string OlderCatalogBesideTemplate(bool cut) => $$"""
+        %PDF-1.7
+        1 0 obj
+        <<{{(cut ? new string(' ', 200) : " ")}}/Type /Catalog /Pages 2 0 R >>
+        endobj
+        2 0 obj
+        << /Type /Pages /Kids [3 0 R] /Count 1 >>
+        endobj
+        3 0 obj
+        << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>
+        endobj
+        5 0 obj
+        << /Type /Catalog /Pages 6 0 R >>
+        endobj
+        6 0 obj
+        << /Type /Pages /Kids [7 0 R] /Count 1 >>
+        endobj
+        7 0 obj
+        << /Type /Page /Parent 6 0 R /MediaBox [0 0 1 1] /Resources << >> >>
+        endobj
+        8 0 obj
+        ({{new string('x', 200)}})
+        endobj
+        xref
+        0 9
+        {free}
+        {row:1}
+        {row:2}
+        {row:3}
+        {free}
+        {row:5}
+        {row:6}
+        {row:7}
+        {row:8}
+        trailer
+        << /Size 9 /Root 1 0 R >>
+        startxref
+        {xref:1}
+        %%EOF
+
+        """;
+
+    private static PdfReaderOptions CutAt(int maxObjectLength) =>
+        new() { Limits = PdfReaderLimits.Default with { MaxObjectLength = maxObjectLength } };
 
     private static PdfValidationReport Validate(byte[] file)
     {
