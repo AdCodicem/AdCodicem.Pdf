@@ -12,7 +12,8 @@ namespace AdCodicem.Pdf.IntegrationTests;
 /// This suite asserts what an independent tool says, and this class is its one exception, by the maintainer's choice when
 /// #237 was settled: it runs no tool, and validates every document three times over. The unit suite holds the same property
 /// over the files crafted while measuring #128 and #237, and checks over the corpus that no read rebuilds the index once a
-/// validation has settled it.
+/// validation has settled it. No committed document has an index a read rebuilds after opening, so that over them this
+/// guards against a regression; three documents of the remote corpus do, and the nightly run holds it on them.
 /// </remarks>
 public class ReadOrderSweepTests
 {

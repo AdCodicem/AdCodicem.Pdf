@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -89,6 +90,82 @@ public class ReadOrderTests
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(5)).Should().Be(PdfNull.Instance, "the rebuilt index holds no 5");
         document.Reader.IsEndObjMissing(5, out _).Should().BeFalse("the note was of a definition the rebuilt index no longer holds");
+    }
+
+    [Fact]
+    public void A_member_whose_load_rebuilt_the_index_is_served_as_a_rebuild_run_first_serves_it()
+    {
+        // Object 5 is in object streams 7 and 10, and the first one listed wins: 7. Stream 7 takes its /Length from object
+        // 8, whose row leads nowhere: reading 5 rebuilds the index while 7 is being decoded, which reads 7 as null and places
+        // 5 in 10 meanwhile. Finished once no load is in flight, the index places 5 in 7 again; stream 12, which decodes to
+        // more than the reader keeps of object streams, lets 7 go, and 7, decoded again, reads as the file wrote it, not as
+        // the null the loads in flight read it as.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+            [13] = (2, 12, 0),
+        };
+        const string Seven = "5 0 6 13 (from seven) (six)";
+        rows[7] = (1, file.Object(7, $"<< /Type /ObjStm /N 2 /First 9 /Length 8 0 R >>\nstream\n{Seven}\nendstream"), 0);
+        rows[9] = (1, file.Padding(9), 0);
+        rows[8] = (1, rows[9].Field2 + 600, 0);
+        file.Object(8, Seven.Length.ToString(CultureInfo.InvariantCulture));
+        rows[10] = (1, file.ObjectStream(10, [(5, "(from ten)")]), 0);
+        var twelve = new byte[33 * 1024 * 1024];
+        twelve.AsSpan().Fill((byte)' ');
+        Encoding.ASCII.GetBytes("13 0 (thirteen)").CopyTo(twelve, 0);
+        var data = Encoding.Latin1.GetString(Compress(twelve));
+        rows[12] = (1, file.Object(12, $"<< /Type /ObjStm /N 1 /First 5 /Filter /FlateDecode /Length {data.Length} >>\nstream\n{data}\nendstream"), 0);
+        file.CrossReferenceStream(14, 15, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var five = document.GetObject(new PdfObjectId(5));
+
+        document.WasRepaired.Should().BeTrue();
+        five.Should().BeOfType<PdfString>().Which.ToText().Should().Be("from seven");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_rebuild_forgets_that_a_stream_it_no_longer_indexes_gave_a_wrong_length(bool settling)
+    {
+        // Stream 5's header is written "5 0 % lost" then "obj" on the next line, which the parser reads where the row places it
+        // and a rebuild's scan does not find; its /Length is short of its data. Object 4's row leads nowhere: reading it
+        // rebuilds the index once its load is done, settling rebuilds it at once, and the rebuilt index holds no 5.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [5] = file.Position,
+        };
+        file.Raw("5 0 % lost\nobj\n<< /Length 3 >>\nstream\n0123456789\nendstream\nendobj\n");
+        rows[6] = file.Padding(6);
+        rows[4] = rows[6] + 600;
+        file.Object(4, "(four)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(5)).Should().BeOfType<PdfStream>();
+        document.Reader.TryGetStreamLengthFault(5, out _).Should().BeTrue();
+
+        if (settling)
+        {
+            document.Reader.SettleIndex();
+        }
+        else
+        {
+            document.GetObject(new PdfObjectId(4));
+        }
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.TryGetStreamLengthFault(5, out _).Should().BeFalse("the note was of a definition the rebuilt index no longer holds");
     }
 
     [Fact]
@@ -444,7 +521,8 @@ public class ReadOrderTests
 
         if (next == "a validation")
         {
-            new PdfValidator().Validate(document);
+            new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString())
+                .Should().Equal(Findings(PdfDocument.Open(file.Bytes), validations: 1), "the rebuild is finished before the first rule");
         }
         else
         {
@@ -479,8 +557,8 @@ public class ReadOrderTests
         }
 
         new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString()).Should().Equal(expected);
-        expected.Should().Contain(finding => finding.Contains(PdfValidationRuleIds.ObjectReferenceMissing, StringComparison.Ordinal) &&
-            finding.Contains("/Foo", StringComparison.Ordinal));
+        expected.Should().Contain(
+            "Warning object.reference-missing at offset 510: The trailer refers to object 99 0 under /Foo, which the file lacks: the reference reads as null.");
     }
 
     [Theory]
@@ -507,8 +585,11 @@ public class ReadOrderTests
         var report = new PdfValidator().Validate(document);
 
         document.WasRepaired.Should().BeTrue();
-        report.Findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Message.StartsWith(
-            "The entry of object 4 ", StringComparison.Ordinal), "the rules judge the row as the file wrote it");
+        var finding = report.Findings.Should().ContainSingle("the rules judge the row as the file wrote it").Which;
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
+        finding.Message.Should().Be(where == "outside the file"
+            ? "The entry of object 4 gives offset 99999, outside the file."
+            : string.Create(CultureInfo.InvariantCulture, $"The entry of object 4 gives offset {rows[4]}, where there is no object header, and the object is not within 512 bytes of it."));
         new PdfValidator().Validate(document).Findings.Should().Equal(report.Findings);
     }
 
@@ -758,6 +839,18 @@ public class ReadOrderTests
 
             base.Dispose(disposing);
         }
+    }
+
+    /// <summary>Compresses <paramref name="data"/> as <c>/FlateDecode</c> decodes it.</summary>
+    private static byte[] Compress(byte[] data)
+    {
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            zlib.Write(data);
+        }
+
+        return compressed.ToArray();
     }
 
     /// <summary>Validates <paramref name="document"/> as many times as asked, checks each finds what the first did, and disposes it.</summary>

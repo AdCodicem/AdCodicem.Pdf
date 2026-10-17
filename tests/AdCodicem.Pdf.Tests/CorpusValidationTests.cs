@@ -204,7 +204,7 @@ public class CorpusValidationTests
         // Opening the thousand-page journal and validating it — every entry of its index probed, its page tree
         // walked, every object reachable from its trailer resolved once, every object of its index inspected for a
         // page the tree leaves out, the 6,008 objects and values the trailer reaches typed and checked against the
-        // Arlington model — measured 3.9 MB, about 2 KB for each of its 2,006 objects, of which the Arlington walk takes
+        // Arlington model — measured 3.8 MB, about 2 KB for each of its 2,006 objects, of which the Arlington walk takes
         // 0.5 MB: proportional to the objects, not to their content, since no stream's data is read. The budget leaves
         // headroom and fails loudly on a regression.
         report.Findings.Should().BeEmpty();
@@ -231,7 +231,9 @@ public class CorpusValidationTests
     public void No_read_rebuilds_the_index_after_a_validation(string file)
     {
         // The validator rebuilds the index before its first rule when some read could still do so (#237): once it has, or
-        // found that none could, reading every object the index holds rebuilds nothing.
+        // found that none could, reading every object the index holds rebuilds nothing. No committed document has an index
+        // a later read would rebuild, so these hold it against a regression; three of the remote corpus do, and the nightly
+        // run holds it on them.
         var entry = Corpus.Get(file);
         using var document = PdfDocument.Open(Corpus.PathOf(entry.File), CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false });
         new PdfValidator().Validate(document);
