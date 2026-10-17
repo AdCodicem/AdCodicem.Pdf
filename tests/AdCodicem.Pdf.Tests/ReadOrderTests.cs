@@ -196,6 +196,32 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void A_rebuild_forgets_that_the_read_which_set_it_off_found_a_wrong_length()
+    {
+        // As above, stream 5's /Length, object 4, gives 3 bytes of its 10: the load notes the wrong length once the rebuild
+        // has begun. The finished index holds no 5, and nothing is noted of it.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [5] = file.Position,
+        };
+        file.Raw("5 0 % lost\nobj\n<< /Length 4 0 R >>\nstream\n0123456789\nendstream\nendobj\n");
+        rows[6] = file.Padding(6);
+        rows[4] = rows[6] + 600;
+        file.Object(4, "3");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(5)).Should().Be(PdfNull.Instance, "the rebuilt index holds no 5");
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.TryGetStreamLengthFault(5, out _).Should().BeFalse("the note was of a definition the rebuilt index no longer holds");
+    }
+
+    [Fact]
     public void A_rebuild_forgets_that_the_read_which_set_it_off_cut_a_member_at_a_limit()
     {
         // Object stream 6 holds 7 as a string of 300 bytes, past a decoded bound of 128, and takes its /Filter from object 5,
