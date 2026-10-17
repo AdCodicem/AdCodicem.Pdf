@@ -828,6 +828,9 @@ public class ReadOrderTests
     [Theory]
     [InlineData("an obj keyword the first bytes read cut, which runs on", "                                                         4 0 objx\n(not an object)\n")]
     [InlineData("a generation past 65535", "4 70000 obj\n(not an object)\nendobj\n")]
+    [InlineData("a negative generation", "4 -1 obj\n(not an object)\nendobj\n")]
+    [InlineData("object 0", "0 0 obj\n(not an object)\nendobj\n")]
+    [InlineData("a number past the largest", "99999999999 0 obj\n(not an object)\nendobj\n")]
     [InlineData("a keyword that runs on, which the search near the row takes for a header", "4 0 objection\n(not an object)\n")]
     public void A_header_a_read_refuses_has_the_index_rebuilt_by_settling(string refused, string written)
     {
