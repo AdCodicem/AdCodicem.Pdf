@@ -4425,7 +4425,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (!HasUsableRoot())
         {
-            // Searched even when the expansion reached a guard; the first guard reached is the one thrown.
+            // A catalog a search took earlier is none the rebuilt index serves: the reader takes none until this one finds
+            // one. Searched even when the expansion reached a guard; the first guard reached is the one thrown.
+            _catalogFoundAs = 0;
             var searching = FindCatalog();
             reached ??= searching;
         }

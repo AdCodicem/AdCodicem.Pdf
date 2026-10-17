@@ -193,6 +193,37 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void A_catalog_the_rebuilt_index_no_longer_serves_is_not_named_as_the_one_the_reader_took()
+    {
+        // /Root names object 1, no catalog: opening takes catalog 20. Later in the file, 20 is defined again as an
+        // annotation, and no object is a catalog. Object 40's row leads nowhere: the validator rebuilds the index before its
+        // first rule, which serves the later 20, and finds no catalog.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Foo >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>"),
+        };
+        rows[6] = file.Padding(6);
+        rows[40] = rows[6] + 600;
+        file.Object(40, "<< /Title (info) >>");
+        file.Object(20, "<< /Type /Annot /Subtype /Text /Rect [0 0 1 1] >>");
+        file.Table(41, rows, "/Size 41 /Info 40 0 R /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Reader.CatalogFoundAs.Should().Be(20);
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0);
+        document.Reader.Structure.CatalogFoundAs.Should().Be(20, "the reader took 20 as the document opened");
+        report.Findings.Single(finding => finding.RuleId == PdfValidationRuleIds.FileRootInvalid).Message.Should().Be(
+            "The trailer's /Root names object 1 0, which is a dictionary of /Type /Foo, not a document catalog. No object of the file is a catalog.");
+    }
+
+    [Fact]
     public void A_root_a_guard_hid_as_the_document_opened_is_not_judged_once_a_rebuild_finds_it()
     {
         // /Root names object 1, which only the oldest of three sections indexes, and MaxXRefSectionCount 2 leaves that section
