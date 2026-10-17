@@ -1315,6 +1315,43 @@ public class HostileInputTests
 
         document.WasRepaired.Should().BeFalse();
         (source.BytesRead - opened).Should().BeLessThanOrEqualTo((Count + 2) * (64L + 1024 + 64));
+
+        // Settled once, the index is not looked at again.
+        var settled = source.BytesRead;
+        document.Reader.SettleIndex();
+        source.BytesRead.Should().Be(settled);
+    }
+
+    [Fact]
+    public void Settling_the_index_reads_no_more_of_a_header_after_a_long_comment_than_a_load_reads()
+    {
+        // Two hundred objects, each after a comment line of 5,000 bytes, which its row names. Settling reads the first 64 bytes
+        // at each row, which the comment fills, then the window a load starts with, which holds the header: no larger window,
+        // and no more than a load reads to reach the header, those 64 bytes aside.
+        const int Count = 200;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < Count + 3; number++)
+        {
+            rows[number] = file.Position;
+            file.Raw("%" + new string('c', 4999) + "\n");
+            file.Object(number, "null");
+        }
+
+        file.Table(Count + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Count + 3} /Root 1 0 R"));
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeFalse();
+        (source.BytesRead - opened).Should().BeLessThanOrEqualTo((Count + 2) * (64L + PdfFileReader.InitialObjectWindow));
     }
 
     [Fact]
