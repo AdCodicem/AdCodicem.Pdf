@@ -48,6 +48,9 @@ internal sealed class PageTreeWalk
     private readonly HashSet<int> _visited = [];
     private readonly HashSet<int> _onPath = [];
     private readonly Dictionary<int, long> _pagesBelow = [];
+
+    /// <summary>The nodes and arrays of kids, by number, below which the pages could not be counted with confidence.</summary>
+    private readonly HashSet<int> _uncountable = [];
     private long _pages;
 
     /// <summary>What a node is called in the findings.</summary>
@@ -99,10 +102,22 @@ internal sealed class PageTreeWalk
     public HashSet<int> KidsArrays { get; } = [];
 
     /// <summary>
-    /// Gets the object numbers of the nodes and pages whose <c>/Parent</c> the walk could not judge, for the node listing
-    /// them was written in its own parent's <c>/Kids</c> and has no number to be named by. The walk judges the
-    /// <c>/Parent</c> of every other node and page it entered, the root's included; the exceptions are kept rather than
-    /// the rule, so that memory does not grow with the pages.
+    /// Gets the object numbers of the nodes one of the reader's limits cut: the walk judged nothing of what they hold, the
+    /// kids written in them included.
+    /// </summary>
+    public HashSet<int> CutNodes { get; } = [];
+
+    /// <summary>
+    /// Determines whether the walk judged the kids written in object <paramref name="number"/>'s <c>/Kids</c>: a node it
+    /// read whole. Another rule judges the references to nothing written in a node a limit cut.
+    /// </summary>
+    public bool JudgedKidsOf(int number) => Nodes.Contains(number) && !CutNodes.Contains(number);
+
+    /// <summary>
+    /// Gets the object numbers of the nodes and pages whose <c>/Parent</c> the walk could not judge: the node listing them
+    /// has no number to be named by — written inside another object, in a <c>/Kids</c> or in the catalog's <c>/Pages</c> —,
+    /// or one of the reader's limits cut them. The walk judges the <c>/Parent</c> of every other node and page it entered,
+    /// the root's included; the exceptions are kept rather than the rule, so that memory does not grow with the pages.
     /// </summary>
     public HashSet<int> ParentsUnjudged { get; } = [];
 
@@ -125,7 +140,7 @@ internal sealed class PageTreeWalk
 
         // The catalog is an object of its own, or a dictionary written in the trailer, which file.root-invalid reports.
         var catalogPlace = document.Trailer.GetRaw(PdfName.Root) is PdfReference reference
-            ? Place.Of(reference.Id)
+            ? Place.Of(reference.Target())
             : new Place(default, default, "/Root");
 
         // A catalog a limit cut may give its /Pages past the cut: the tree read, if any, may not be the whole of it.
@@ -147,7 +162,7 @@ internal sealed class PageTreeWalk
 
     private void Walk(PdfObject rootValue, Place catalog)
     {
-        var place = rootValue is PdfReference reference ? Place.Of(reference.Id) : catalog.Inside("/Pages");
+        var place = rootValue is PdfReference reference ? Place.Of(reference.Target()) : catalog.Inside("/Pages");
         var id = place.Id;
         var root = rootValue.Resolve();
 
@@ -211,10 +226,11 @@ internal sealed class PageTreeWalk
     private void Visit(Frame frame, int index, PdfObject kid)
     {
         // A kid is told from one written in the array by being a reference, not by its number: "0 0 R" names object 0,
-        // which heads the free list, and reads as null as any object the file lacks does.
+        // which heads the free list, and reads as null as any object the file lacks does. Through a chain of references,
+        // the kid is the object the chain leads to, whose value is read.
         var reference = kid as PdfReference;
-        var place = reference is not null ? Place.Of(reference.Id) : frame.KidPlace(index);
-        var id = place.Id;
+        var id = reference?.Target() ?? default;
+        var named = reference?.Id.Number ?? 0;
 
         // What a node's /Kids holds is not judged where a limit cut the array: the findings on the kid itself are, located
         // at the object it is.
@@ -230,7 +246,7 @@ internal sealed class PageTreeWalk
                 {
                     Cycles.Add(new ProbeFinding(
                         Location(frame.Place),
-                        Invariant($"{Kid(frame, index)} names object {id.Number}, {(id.Number == frame.Id.Number ? "which is that node itself" : "a node above it")}: the tree loops back on itself there, and what it should have listed is unknown.")));
+                        Invariant($"{Kid(frame, index)} names object {named}, {(id.Number == frame.Id.Number ? "which is that node itself" : "a node above it")}: the tree loops back on itself there, and what it should have listed is unknown.")));
                 }
 
                 return;
@@ -238,23 +254,24 @@ internal sealed class PageTreeWalk
 
             if (!_visited.Add(id.Number))
             {
-                var counted = _pagesBelow.TryGetValue(id.Number, out var below) ? below : 1;
-                _pages += counted;
-
                 if (judged)
                 {
                     RepeatedNodes.Add(new ProbeFinding(
                         Location(frame.Place),
-                        Invariant($"{Kid(frame, index)} names object {id.Number}, which the tree already lists: {(counted == 1 ? "its page is" : $"its {RuleText.Pages(counted)} are")} counted again.")));
+                        Invariant($"{Kid(frame, index)} names object {named}, which the tree already lists: {CountedAgain(frame, id.Number)}.")));
+                }
+                else
+                {
+                    CountAgain(frame, id.Number);
                 }
 
                 return;
             }
         }
-        else if (!judged && kid is not PdfDictionary)
+        else if (!judged && index >= frame.FragmentsFrom)
         {
-            // A value written in an array a limit cut, neither a reference nor a dictionary, may be what the cut left of a
-            // reference — "12 0" of "12 0 R" —: it is not taken for a kid.
+            // A value written in an array a limit cut, after its last reference, dictionary or stream, may be what the cut
+            // left of a reference — "12 0" of "12 0 R" —: it is not taken for a kid.
             return;
         }
 
@@ -272,11 +289,11 @@ internal sealed class PageTreeWalk
                         return;
 
                     case ObjectPresence.Missing:
-                        InvalidSlot(frame, index, Invariant($"names object {id.Number}, which the file lacks"));
+                        InvalidSlot(frame, index, Invariant($"names object {named}, which the file lacks"));
                         return;
 
                     default:
-                        InvalidSlot(frame, index, Invariant($"names object {id.Number}, which is null"));
+                        InvalidSlot(frame, index, Invariant($"names object {named}, which is null"));
                         return;
                 }
 
@@ -285,16 +302,18 @@ internal sealed class PageTreeWalk
                 return;
 
             case PdfStream stream:
+                var streamPlace = reference is not null ? Place.Of(id) : frame.KidPlace(index);
+
                 if (reference is not null || judged)
                 {
                     InvalidKids.Add(new ProbeFinding(
-                        Location(reference is not null ? place : frame.Place),
+                        Location(reference is not null ? streamPlace : frame.Place),
                         reference is not null
-                            ? Invariant($"{Kid(frame, index)} names object {id.Number}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")
+                            ? Invariant($"{Kid(frame, index)} names object {named}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")
                             : $"{Kid(frame, index)} is a stream written in the array, where the tree wants an indirect reference to a dictionary: the reader reads the stream's dictionary in its place."));
                 }
 
-                Enter(stream.Dictionary, place, frame);
+                Enter(stream.Dictionary, streamPlace, frame);
                 return;
 
             case PdfDictionary dictionary:
@@ -305,7 +324,7 @@ internal sealed class PageTreeWalk
                         $"{Kid(frame, index)} is a dictionary written in the array, where the tree wants an indirect reference to one."));
                 }
 
-                Enter(dictionary, place, frame);
+                Enter(dictionary, reference is not null ? Place.Of(id) : frame.KidPlace(index), frame);
                 return;
 
             case var other:
@@ -313,11 +332,39 @@ internal sealed class PageTreeWalk
                     frame,
                     index,
                     reference is not null
-                        ? Invariant($"names object {id.Number}, which is {RuleText.Kind(other)}, neither a page nor a node")
+                        ? Invariant($"names object {named}, which is {RuleText.Kind(other)}, neither a page nor a node")
                         : $"is {RuleText.Kind(other)}, neither a page nor a node");
                 return;
         }
     }
+
+    /// <summary>
+    /// Counts again what lies below object <paramref name="number"/>, a page, a node or an array of kids the tree already
+    /// walked, under <paramref name="frame"/>: one page, or the pages counted below it, which a count that could not be
+    /// trusted leaves the frame's uncountable.
+    /// </summary>
+    /// <returns>How many pages were counted, or -1 when they could not be counted with confidence.</returns>
+    private long CountAgain(Frame frame, int number)
+    {
+        var counted = _pagesBelow.TryGetValue(number, out var below) ? below : 1;
+        _pages += counted;
+
+        if (_uncountable.Contains(number))
+        {
+            frame.Uncountable = true;
+            return -1;
+        }
+
+        return counted;
+    }
+
+    /// <summary>Counts again what lies below object <paramref name="number"/>, and says what was counted, for a finding.</summary>
+    private string CountedAgain(Frame frame, int number) => CountAgain(frame, number) switch
+    {
+        -1 => "what lies below it is counted again, how many pages that is being unknown",
+        1 => "its page is counted again",
+        var counted => Invariant($"its {RuleText.Pages(counted)} are counted again"),
+    };
 
     /// <summary>
     /// Records a kid that stands for a page the tree cannot read, and counts it as one with nothing on it; the record is
@@ -405,13 +452,56 @@ internal sealed class PageTreeWalk
 
         if (kidsValue is PdfReference kidsReference)
         {
-            KidsArrays.Add(kidsReference.Id.Number);
-            kidsArray = kidsReference.Id;
+            kidsArray = kidsReference.Target();
+            KidsArrays.Add(kidsArray.Number);
+
+            // An array of kids that is an object of its own is walked once, as a node is: one on the path loops back, and
+            // one walked already is counted again, not walked — nodes written in it cannot be told apart by number.
+            if (_onPath.Contains(kidsArray.Number))
+            {
+                parent?.Uncountable = true;
+
+                if (!cut)
+                {
+                    Cycles.Add(new ProbeFinding(
+                        Location(place),
+                        Invariant($"{Subject(place, NodeKind)} gives /Kids {kidsReference.Id.Number} {kidsReference.Id.Generation} R, an array of kids above it: the tree loops back on itself there, and what it should have listed is unknown.")));
+                }
+
+                return;
+            }
+
+            if (!_visited.Add(kidsArray.Number))
+            {
+                if (parent is null)
+                {
+                    // The root's own array cannot have been walked before it: nothing is.
+                    return;
+                }
+
+                if (!cut)
+                {
+                    RepeatedNodes.Add(new ProbeFinding(
+                        Location(place),
+                        Invariant($"{Subject(place, NodeKind)} gives /Kids {kidsReference.Id.Number} {kidsReference.Id.Generation} R, an array of kids the tree already lists: {CountedAgain(parent, kidsArray.Number)}.")));
+                }
+                else
+                {
+                    CountAgain(parent, kidsArray.Number);
+                }
+
+                return;
+            }
         }
 
         // The kids lie in the node, or in their array when it is an object of its own, which a limit may have cut alone.
         var kidsCut = kidsArray.Number > 0 ? _reader.IsCutAtLimit(kidsArray.Number) : cut;
         Partial |= kidsCut;
+
+        if (cut && id.Number > 0)
+        {
+            CutNodes.Add(id.Number);
+        }
 
         // A node a limit cut may give past the cut what its pages inherit, and a /Count of what lies below it.
         _stack.Add(new Frame(node, place, kids, kidsArray)
@@ -421,6 +511,7 @@ internal sealed class PageTreeWalk
             HasResources = Given(node, PdfName.Resources) is not null || parent?.HasResources == true || cut,
             Cut = cut,
             KidsCut = kidsCut,
+            FragmentsFrom = kidsCut ? FragmentsFrom(kids) : kids.Count,
             Uncountable = cut || kidsCut,
         });
 
@@ -428,18 +519,32 @@ internal sealed class PageTreeWalk
         {
             _onPath.Add(id.Number);
         }
+
+        if (kidsArray.Number > 0)
+        {
+            _onPath.Add(kidsArray.Number);
+        }
     }
 
     private void Leave(Frame frame)
     {
         _stack.RemoveAt(_stack.Count - 1);
         _onPath.Remove(frame.Id.Number);
+        _onPath.Remove(frame.KidsArray.Number);
 
         var below = _pages - frame.PagesBefore;
 
-        if (frame.Id.Number > 0)
+        foreach (var number in (ReadOnlySpan<int>)[frame.Id.Number, frame.KidsArray.Number])
         {
-            _pagesBelow[frame.Id.Number] = below;
+            if (number > 0)
+            {
+                _pagesBelow[number] = below;
+
+                if (frame.Uncountable)
+                {
+                    _uncountable.Add(number);
+                }
+            }
         }
 
         if (frame.Uncountable && _stack.Count > 0)
@@ -480,8 +585,14 @@ internal sealed class PageTreeWalk
         var cut = IsCut(place);
         var index = _pages++;
 
-        // A page a limit cut may be a node whose /Kids lies past the cut: what lies below it is unknown.
+        // A page a limit cut may be a node whose /Kids lies past the cut: what lies below it is unknown, and so is the count
+        // of the node listing it.
         Partial |= cut;
+
+        if (cut)
+        {
+            parent?.Uncountable = true;
+        }
 
         if (index <= int.MaxValue && id.Number > 0)
         {
@@ -692,6 +803,23 @@ internal sealed class PageTreeWalk
 
     private static string Lie(long count) => count == 1 ? "lies" : "lie";
 
+    /// <summary>
+    /// Gives the index past the last reference, dictionary or stream of <paramref name="kids"/>: what follows it in an array
+    /// a limit cut may be what the cut left of a reference.
+    /// </summary>
+    private static int FragmentsFrom(PdfArray kids)
+    {
+        for (var index = kids.Count - 1; index >= 0; index--)
+        {
+            if (kids[index] is PdfReference or PdfDictionary or PdfStream)
+            {
+                return index + 1;
+            }
+        }
+
+        return 0;
+    }
+
     private static bool IsNode(PdfDictionary dictionary) =>
         dictionary.GetRaw(PdfName.Kids)?.Resolve() is PdfArray || dictionary.GetName(PdfName.Type) == PdfName.Pages;
 
@@ -724,14 +852,17 @@ internal sealed class PageTreeWalk
 
         public PdfArray Kids { get; } = kids;
 
+        /// <summary>Gets the node's array of kids when it is an object of its own, or a number 0.</summary>
+        public PdfObjectId KidsArray { get; } = kidsArray;
+
         /// <summary>Gives the place of the kid written at <paramref name="index"/> of the node's <c>/Kids</c>.</summary>
         /// <remarks>
         /// In an array that is an object of its own, the kid is written in that object; otherwise in the node, under its
         /// <c>/Kids</c>.
         /// </remarks>
         public Place KidPlace(int index) =>
-            kidsArray.Number > 0
-                ? new Place(default, kidsArray, Invariant($"[{index}]"))
+            KidsArray.Number > 0
+                ? new Place(default, KidsArray, Invariant($"[{index}]"))
                 : Place.Inside(Invariant($"/Kids[{index}]"));
 
         /// <summary>Gets or sets the index of the next kid to visit.</summary>
@@ -757,6 +888,12 @@ internal sealed class PageTreeWalk
 
         /// <summary>Gets a value indicating whether a limit cut the object the node's <c>/Kids</c> is written in.</summary>
         public bool KidsCut { get; init; }
+
+        /// <summary>
+        /// Gets the index from which a value of the node's kids is not taken for a kid, being perhaps what a limit's cut left
+        /// of a reference: past the last reference, dictionary or stream of an array a limit cut, else past its end.
+        /// </summary>
+        public int FragmentsFrom { get; init; }
 
         /// <summary>
         /// Gets or sets a value indicating whether what lies below the node cannot be counted with confidence, or its
