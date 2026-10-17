@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
@@ -23,9 +24,10 @@ namespace AdCodicem.Pdf.Validation;
 /// It reads each stream's dictionary, and the few objects written directly in the file its keys name, where the chain's
 /// index places them — not through the index the reader reads with now, which a rebuild may have made another —, and
 /// decodes nothing. The chain's index is read again for each lookup: until the reader first changes its own, the two are
-/// one table (#128). An object written directly in the file is read once, however many streams lead through it, and what
-/// is kept of it is the references it holds. As it holds each dictionary, it also notes the integers of its header written
-/// as reals.
+/// one table (#128). An object written directly in the file is read once, however many streams lead through it, under
+/// whatever generation, and what is kept of it is the references it holds — of as many objects as the reader keeps in its
+/// cache, an object let go read again when met again. As it holds each dictionary, it also notes the integers of its header
+/// written as reals.
 /// </para>
 /// </remarks>
 internal sealed class ObjectStreamDependencies
@@ -79,8 +81,8 @@ internal sealed class ObjectStreamDependencies
         var locations = new Dictionary<int, PdfValidationLocation>();
 
         // The references each object written in the file holds, which the decoding keys lead through: read once for every
-        // stream they lead from, and nothing of the object kept past its reading.
-        var references = new Dictionary<PdfObjectId, PdfObjectId[]>();
+        // stream they lead from, as many objects kept as the reader keeps in its cache, and nothing else of them.
+        var references = new ReferenceMemo(reader.CacheCapacity);
 
         foreach (var stream in streams)
         {
@@ -122,7 +124,7 @@ internal sealed class ObjectStreamDependencies
     /// Lists the objects, held in object streams, that the decoding keys of <paramref name="dictionary"/> lead to, through
     /// the objects written in the file whose references <paramref name="references"/> holds, or which it reads and holds.
     /// </summary>
-    private static List<Need> Needs(PdfDocument document, PdfDictionary dictionary, Dictionary<PdfObjectId, PdfObjectId[]> references)
+    private static List<Need> Needs(PdfDocument document, PdfDictionary dictionary, ReferenceMemo references)
     {
         var found = new List<Need>();
         var seen = new HashSet<int>();
@@ -152,10 +154,10 @@ internal sealed class ObjectStreamDependencies
                 }
                 else if (entry.Kind == XRefEntryKind.Regular)
                 {
-                    if (!references.TryGetValue(id, out var held))
+                    if (!references.TryGet(id.Number, out var held))
                     {
                         held = ReferencesIn(Read(document, id, entry));
-                        references[id] = held;
+                        references.Add(id.Number, held);
                     }
 
                     Push(work, held);
@@ -292,4 +294,30 @@ internal sealed class ObjectStreamDependencies
 
     /// <summary>An object a stream needs to be read, the object stream holding it, and the key that leads to it.</summary>
     private readonly record struct Need(int Stream, int Object, string Key);
+
+    /// <summary>
+    /// The references held by objects the walk read, by object number — a reference's generation leads the reader to no
+    /// other object —: as many objects as <paramref name="capacity"/> says, the oldest let go first, and read again when met
+    /// again, so that what the walk keeps follows the reader's cache rather than the file.
+    /// </summary>
+    private sealed class ReferenceMemo(int capacity)
+    {
+        private readonly Dictionary<int, PdfObjectId[]> _held = [];
+        private readonly Queue<int> _order = new();
+
+        /// <summary>Gives the references object <paramref name="number"/> holds, if they are kept.</summary>
+        public bool TryGet(int number, [MaybeNullWhen(false)] out PdfObjectId[] references) => _held.TryGetValue(number, out references);
+
+        /// <summary>Keeps the references object <paramref name="number"/>, which is not kept yet, holds.</summary>
+        public void Add(int number, PdfObjectId[] references)
+        {
+            if (_held.Count >= capacity && _order.TryDequeue(out var oldest))
+            {
+                _held.Remove(oldest);
+            }
+
+            _held[number] = references;
+            _order.Enqueue(number);
+        }
+    }
 }
