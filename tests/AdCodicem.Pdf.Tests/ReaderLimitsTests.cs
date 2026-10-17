@@ -643,6 +643,60 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_rebuild_a_read_sets_off_keeps_the_entries_a_chain_a_guard_cut_gave_that_the_scan_cannot_find()
+    {
+        // As above, the rebuild set off by a read: object 4's row leads into padding, and reading 4 rebuilds the index while
+        // 4 is being loaded. The cross-reference stream decodes no further than its first ten rows; object 6, which holds 7,
+        // has no /Type /ObjStm: once the rebuild is finished, only the chain's entry for 7, kept through it, places 7.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, Catalog),
+            [2] = file.Object(2, Pages),
+            [6] = file.Object(6, "<< /Kind /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream"),
+            [8] = file.Padding(8),
+        };
+        rows[4] = rows[8] + 600;
+        file.Object(4, "(four)");
+
+        for (var number = 10; number < 30; number++)
+        {
+            rows[number] = file.Object(number, "null");
+        }
+
+        var data = new byte[31 * 7];
+        data[0] = 0;
+        BinaryPrimitives.WriteUInt16BigEndian(data.AsSpan(5), 65535);
+
+        foreach (var (number, offset) in rows)
+        {
+            data[number * 7] = 1;
+            BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan((number * 7) + 1), (uint)offset);
+        }
+
+        data[7 * 7] = 2;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan((7 * 7) + 1), 6);
+        var xref = file.Position;
+        data[30 * 7] = 1;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan((30 * 7) + 1), (uint)xref);
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            zlib.Write(data);
+        }
+
+        var stream = Encoding.Latin1.GetString(compressed.ToArray());
+        file.Object(30, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 31 /W [1 4 2] /Root 1 0 R /Filter /FlateDecode /Length {stream.Length} >>\nstream\n{stream}\nendstream"));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{xref}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 70 } });
+
+        document.GetObject(new PdfObjectId(4)).AsText().Should().Be("four");
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be("packed seven");
+    }
+
+    [Fact]
     public void A_rebuild_takes_in_the_members_of_object_streams_no_further_than_the_entry_guard()
     {
         // ADR 34 said a rebuild indexed at most two million objects: it counted the headers the scan read, and the object

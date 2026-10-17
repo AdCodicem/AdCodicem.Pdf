@@ -133,6 +133,7 @@ public class ReadOrderTests
     [InlineData("a stream its length names soundly")]
     [InlineData("a stream shorter than its length")]
     [InlineData("an index full past an object stream")]
+    [InlineData("a number defined twice")]
     public void A_rebuild_a_read_sets_off_reports_what_a_rebuild_run_first_reports(string shape)
     {
         // The rebuild is set off by a load in flight — 5's row leads to the catalog's header — or run first, by settling.
@@ -146,6 +147,7 @@ public class ReadOrderTests
         {
             "a stream its length names soundly" => TwoStreamsOfOneLength("abcdefghij"),
             "a stream shorter than its length" => TwoStreamsOfOneLength("abcdefgh"),
+            "a number defined twice" => TwoStreamsOfOneLength("abcdefghij", redefined: true),
             _ => TwoObjectStreamsPastAFullIndex(),
         };
         var read = shape == "an index full past an object stream" ? new[] { 6 } : [4, 6];
@@ -163,6 +165,64 @@ public class ReadOrderTests
         inFlight.WasRepaired.Should().BeTrue();
         inFlight.Diagnostics.Select(diagnostic => diagnostic.ToString())
             .Should().Equal(first.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+    }
+
+    [Fact]
+    public void A_rebuild_forgets_that_the_read_which_set_it_off_found_no_endobj()
+    {
+        // Stream 5's header is written "5 0 % lost" then "obj" on the next line, which the parser reads where the row places it
+        // and a rebuild's scan does not find; no endobj follows it. Its /Length is object 4, whose row leads nowhere: reading
+        // 5 rebuilds the index while 5 is being loaded, and the load notes the missing endobj once the rebuild has begun. The
+        // finished index holds no 5, and nothing is noted of it.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [5] = file.Position,
+        };
+        file.Raw("5 0 % lost\nobj\n<< /Length 4 0 R >>\nstream\n0123456789\nendstream\n");
+        rows[6] = file.Padding(6);
+        rows[4] = rows[6] + 600;
+        file.Object(4, "10");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(5)).Should().Be(PdfNull.Instance, "the rebuilt index holds no 5");
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.IsEndObjMissing(5, out _).Should().BeFalse("the note was of a definition the rebuilt index no longer holds");
+    }
+
+    [Fact]
+    public void A_rebuild_forgets_that_the_read_which_set_it_off_cut_a_member_at_a_limit()
+    {
+        // Object stream 6 holds 7 as a string of 300 bytes, past a decoded bound of 128, and takes its /Filter from object 5,
+        // whose row leads to the catalog's header; a later 6 holds 7 as "later". Reading 7 rebuilds the index while 6 is being
+        // loaded, and the load cuts 7 at the bound once the rebuild has begun. The finished index serves the later 7, which no
+        // limit cut.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+        };
+        var hex = Convert.ToHexString(Encoding.ASCII.GetBytes("7 0 (" + new string('a', 300) + ")")) + ">";
+        rows[6] = (1, file.Object(6, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 4 /Filter 5 0 R /Length {hex.Length} >>\nstream\n{hex}\nendstream")), 0);
+        rows[7] = (2, 6, 0);
+        rows[5] = (1, 9, 0);
+        rows[8] = (1, file.Padding(8), 0);
+        file.Object(5, "/ASCIIHexDecode");
+        file.ObjectStream(6, [(7, "(later)")]);
+        file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 128 } });
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("later");
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.IsCutAtLimit(7).Should().BeFalse("the note was of a definition the rebuilt index no longer serves");
     }
 
     [Theory]
@@ -828,9 +888,117 @@ public class ReadOrderTests
         else
         {
             document.WasRepaired.Should().BeTrue();
-            document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitObject && entry.Position == rows[4]);
+            document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitObject && entry.Position == rows[4])
+                .Select(entry => entry.ToString()).Should().Equal(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Warning limit.object at {rows[4]}: Object 4 runs past 1 KB, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it."));
             document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
         }
+    }
+
+    [Fact]
+    public void A_header_whose_keyword_ends_at_the_object_guard_is_one_a_read_finds()
+    {
+        // Object 4's row places it at a comment, its header after it, whose obj ends at the 1,024th byte, the object guard: a
+        // read takes the header, whole, and reaches the guard in the object's body, rebuilding nothing. Settling takes it too.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [6] = file.Padding(6),
+            [4] = file.Position,
+        };
+        file.Raw("%" + new string('c', 1015) + "\n");
+        file.Object(4, "(four)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeFalse("a read finds the header there");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_header_found_near_its_row_past_the_object_guard_is_settled_as_a_read_takes_it(bool throwOnLimit)
+    {
+        // Object 4's row places it inside object 6's array; 30 bytes on, 4's header runs on past the 256 bytes of the object
+        // guard, 400 blanks between its generation and obj. A read finds it there and reaches the guard: it reports it, finds
+        // no object, and rebuilds the index; opened to throw on a guard, it throws, and rebuilds nothing. Settling does what
+        // the read would, short of throwing.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+        };
+        rows[6] = file.Object(6, "[1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20]\n%\n4 0" + new string(' ', 400) + "obj (four) endobj");
+        rows[4] = rows[6] + 12;
+        file.Padding(7);
+        file.Object(4, "(four)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes,
+            new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxObjectLength = 256 } });
+
+        document.Reader.SettleIndex();
+
+        if (throwOnLimit)
+        {
+            document.WasRepaired.Should().BeFalse("a read throws there, and rebuilds nothing");
+            FluentActions.Invoking(() => document.GetObject(new PdfObjectId(4))).Should().Throw<PdfLimitExceededException>()
+                .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        }
+        else
+        {
+            document.WasRepaired.Should().BeTrue();
+            document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        }
+    }
+
+    [Fact]
+    public void A_comment_ending_the_file_where_a_row_leads_is_no_header_the_object_guard_cut()
+    {
+        // Object 4's row places it at a comment of 128 bytes that ends the file, the object guard's size; 4 is written more
+        // than 512 bytes earlier, before six small objects. The window that reads the comment ends where the file does, which
+        // cuts nothing: a read finds no header there, nor near, and rebuilds the index, though it was opened to throw on a
+        // guard. Settling does so.
+        static HandWrittenFile Write(long row, out Dictionary<int, long> rows)
+        {
+            var file = new HandWrittenFile();
+            rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+                [3] = file.Object(3, Page),
+            };
+            file.Object(4, "(four)");
+
+            for (var number = 6; number < 12; number++)
+            {
+                file.Padding(number, 100);
+            }
+
+            rows[4] = row;
+            file.Table(7, rows, "/Size 7 /Root 1 0 R");
+            return file;
+        }
+
+        var row = Write(0, out _).Position;
+        var file = Write(row, out _);
+        file.Raw("% " + new string('c', 125) + "\n");
+        var bytes = file.Bytes;
+        bytes.Length.Should().Be((int)row + 128);
+        using var document = PdfDocument.Open(bytes, new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } });
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
     }
 
     [Fact]
@@ -879,6 +1047,8 @@ public class ReadOrderTests
     [Theory]
     [InlineData("/Bad /A#00B", "/Good 1", "Object 5 holds a name with a null character, which a name cannot contain.")]
     [InlineData("/Ref 99 0 R", "/Ref 3 0 R", "Object 5 refers to an object the file lacks: the reference reads as null.")]
+    [InlineData("/Bad /A#00B /Worse /C#00D", "/Good 1", "Object 5 holds 2 names with a null character, which a name cannot contain.")]
+    [InlineData("/Ref 99 0 R /Ref2 98 0 R", "/Ref 3 0 R", "Object 5 holds 2 references to objects the file lacks, which read as null.")]
     public void The_object_graph_says_what_it_counted_of_an_object_a_rebuild_redefined_since(string fault, string later, string message)
     {
         // Object 5 holds a fault and object 7, whose row leads nowhere; a later definition of 5 holds no fault. Walked without
@@ -1007,9 +1177,9 @@ public class ReadOrderTests
 
     /// <summary>
     /// A file whose streams 4 and 6 both take their /Length from object 5, whose row leads to the catalog's header; 4's data
-    /// is 10 bytes long, 6's is <paramref name="six"/>.
+    /// is 10 bytes long, 6's is <paramref name="six"/>; object 7 is defined again when <paramref name="redefined"/> says so.
     /// </summary>
-    private static byte[] TwoStreamsOfOneLength(string six)
+    private static byte[] TwoStreamsOfOneLength(string six, bool redefined = false)
     {
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -1023,6 +1193,12 @@ public class ReadOrderTests
         };
         rows[7] = file.Padding(7);
         file.Object(5, "10");
+
+        if (redefined)
+        {
+            file.Object(7, "(seven again)");
+        }
+
         file.Table(8, rows, "/Size 8 /Root 1 0 R");
         return file.Bytes;
     }
