@@ -558,6 +558,100 @@ public class ReadOrderTests
         document.WasRepaired.Should().BeFalse("a read finds what the validator found a read finds");
     }
 
+    [Theory]
+    [InlineData("an obj keyword the first bytes read cut, which runs on", "                                                         4 0 objx\n(not an object)\n")]
+    [InlineData("a generation past 65535", "4 70000 obj\n(not an object)\nendobj\n")]
+    [InlineData("a keyword that runs on, which the search near the row takes for a header", "4 0 objection\n(not an object)\n")]
+    public void A_header_a_read_refuses_has_the_index_rebuilt_by_settling(string refused, string written)
+    {
+        // Object 4's row places it at bytes a read does not take for its header, and nothing near them is one: a read of 4
+        // would rebuild the index, which finds the later 4. Settling does so first.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Position,
+        };
+        file.Raw(written);
+        rows[6] = file.Padding(6);
+        file.Object(4, "(four)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeTrue($"a read refuses {refused}");
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+    }
+
+    [Fact]
+    public void A_header_after_a_comment_longer_than_the_neighborhood_sets_off_no_rebuild()
+    {
+        // Object 4's row places it at a comment of 2,000 bytes, its header after it: a read finds it there, though nothing near
+        // the row is a header, and so does settling, which reads past the comment as a read does.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [6] = file.Padding(6),
+            [4] = file.Position,
+        };
+        file.Raw("%" + new string('c', 1999) + "\n");
+        file.Object(4, "(four)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_header_past_the_object_guard_is_settled_as_a_read_takes_it(bool throwOnLimit)
+    {
+        // Object 4's row places it at a comment of 2,000 bytes, its header after it, under a MaxObjectLength of 1,024 bytes,
+        // and nothing near the row is a header. A read there reports the guard and rebuilds the index; opened to throw on a
+        // guard, it throws, and rebuilds nothing. Settling does what the read would, short of throwing.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [6] = file.Padding(6),
+            [4] = file.Position,
+        };
+        file.Raw("%" + new string('c', 1999) + "\n");
+        file.Object(4, "(four)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes,
+            new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        document.Reader.SettleIndex();
+
+        if (throwOnLimit)
+        {
+            document.WasRepaired.Should().BeFalse("a read throws there, and rebuilds nothing");
+            FluentActions.Invoking(() => document.GetObject(new PdfObjectId(4))).Should().Throw<PdfLimitExceededException>()
+                .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        }
+        else
+        {
+            document.WasRepaired.Should().BeTrue();
+            document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitObject && entry.Position == rows[4]);
+            document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        }
+    }
+
     [Fact]
     public void A_guard_the_rebuild_before_the_first_rule_reaches_throws_in_the_first_validation_only()
     {
