@@ -149,6 +149,18 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_reference_to_nothing_after_a_kid_to_nothing_is_the_one_described()
+    {
+        // A kid naming nothing is page-tree.kid-invalid's, and the walk does not count it: describing the node's one counted
+        // reference passes over it, to /Foo.
+        var finding = Single(
+            Validate(PdfTemplate.SoundWith("/Kids [3 0 R]", "/Kids [9 0 R 3 0 R] /Foo 8 0 R")),
+            PdfValidationRuleIds.ObjectReferenceMissing);
+
+        finding.Message.Should().Be("Object 2 refers to object 8 0 under /Foo, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
     public void A_reference_to_a_literal_null_is_sound()
     {
         var template = PdfTemplate.Sound
@@ -570,11 +582,13 @@ public class ObjectRuleTests
     public void Object_streams_are_judged_where_the_chain_places_them_whatever_was_read_before(string before, int broken, bool throughObject)
     {
         // An object stream is not where its entry says: reading it rebuilds the index, which cannot find 7, whose header has
-        // a comment in it, and places 8 in object stream 20. The walk reads each stream, and each object written directly
-        // in the file its keys lead through, where the chain's row places it, the chain's index read again for each lookup
-        // (#128): 7 and 8 are circular, at the positions their rows give, whatever was read before the walk. Once, reading
-        // the broken stream first, validating once, or a broken stream the walk read first, 3, lost both; so did an object
-        // 7's key leads through that the rebuild cannot find either.
+        // a comment in it, and places 8 in object stream 20. The rebuild runs before the walk — the caller reads the broken
+        // stream, or a validation settles the index — or during it, as the walk reads the broken stream. The walk reads each
+        // stream, and each object written directly in the file its keys lead through, where the chain's row places it, the
+        // chain's index read again for each lookup (#128): 7 and 8 are circular, at the positions their rows give, whatever
+        // was read before the walk. Once, a rebuild before the walk, or during it from a broken stream the walk read first,
+        // 3, lost both; and with the broken stream read first, so did an object 7's key leads through, which the rebuild
+        // cannot find either.
         var file = RebuiltAfterTwoObjectStreams(broken, throughObject);
         using var document = PdfDocument.Open(file);
 
@@ -589,7 +603,7 @@ public class ObjectRuleTests
 
         var dependencies = ObjectStreamDependencies.Run(document);
 
-        document.WasRepaired.Should().BeTrue("the walk reads the broken stream too, through the index the reader reads with, which rebuilds it");
+        document.WasRepaired.Should().BeTrue("the caller, the validation's settling or the walk's own read of the broken stream rebuilt the index");
         dependencies.CircularStreams.Should().BeEquivalentTo([7, 8]);
         dependencies.Circular.Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(7), new PdfObjectId(8));
         dependencies.Circular.Select(finding => finding.Location.Position)
@@ -597,6 +611,35 @@ public class ObjectRuleTests
         dependencies.Circular.Select(finding => finding.Message).Should().Equal(
             "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.",
             "Object stream 8 needs object 15, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+    }
+
+    [Fact]
+    public void An_object_stream_a_few_bytes_off_its_row_is_judged_as_the_chain_wrote_it_once_a_rebuild_redefines_it()
+    {
+        // Object stream 7, which needs object 5 it holds, starts three bytes before where its row says; a later definition of
+        // 7 is a string. Reading the broken stream 30 rebuilds the index, which serves the string: the walk reads the
+        // stream near where the chain's row places it, as a load finds an object a few bytes off (#128).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, file.ObjectStream(7, [(5, "<< /Predictor 1 >>")], "/DecodeParms 5 0 R ") + 3, 0),
+            [5] = (2, 7, 0),
+            [30] = (1, 9, 0),
+            [31] = (2, 30, 0),
+        };
+        rows[6] = (1, file.Padding(6), 0);
+        file.Object(7, "(later)");
+        file.CrossReferenceStream(32, 33, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        document.GetObject(new PdfObjectId(30)).Should().Be(PdfNull.Instance);
+        document.WasRepaired.Should().BeTrue();
+
+        var dependencies = ObjectStreamDependencies.Run(document);
+
+        dependencies.Circular.Select(finding => finding.Message).Should().Equal(
+            "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
     }
 
     [Theory]
