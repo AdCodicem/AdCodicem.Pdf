@@ -1,5 +1,8 @@
+using System.Globalization;
+using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -236,10 +239,11 @@ public class ReadOrderTests
     }
 
     [Fact]
-    public void An_object_whose_own_load_rebuilt_the_index_is_read_from_the_rebuilt_index_next()
+    public void An_object_whose_own_load_rebuilt_the_index_is_read_as_the_rebuilt_index_serves_it()
     {
         // Object 4 is a stream whose /Length is object 5, whose row leads nowhere: reading 4 rebuilds the index, as its length
-        // is resolved. The rebuilt index serves a later definition of 4, which is no stream.
+        // is resolved. The rebuilt index serves a later definition of 4, which is no stream: the read that set the rebuild off
+        // gives it, as every read after it does, and as a read after validating, which rebuilds first, does.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -255,19 +259,20 @@ public class ReadOrderTests
         file.Table(7, rows, "/Size 7 /Root 1 0 R");
         using var document = PdfDocument.Open(file.Bytes);
 
-        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfStream>("it was read where the chain's row places it");
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfDictionary>()
+            .Which.ContainsKey(PdfName.Get("Kind")).Should().BeTrue("the rebuild is finished before the read gives what it read");
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfDictionary>()
-            .Which.ContainsKey(PdfName.Get("Kind")).Should().BeTrue("the rebuilt index serves the later definition, as it would had it been rebuilt before");
+            .Which.ContainsKey(PdfName.Get("Kind")).Should().BeTrue("the rebuilt index serves the later definition");
     }
 
     [Fact]
-    public void An_object_stream_whose_own_load_rebuilt_the_index_is_decoded_from_the_rebuilt_index_next()
+    public void An_object_stream_whose_own_load_rebuilt_the_index_is_decoded_as_the_rebuilt_index_serves_it()
     {
         // Object stream 6, which holds object 7, has its /Filter in object 5, whose row leads nowhere: reading 7 decodes 6,
         // which rebuilds the index. The rebuilt index serves a later definition of 6, holding another 7, which the rebuild
-        // decodes as it takes in what its object streams hold.
+        // decodes as it takes in what its object streams hold, once the read that set it off no longer holds 6.
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
         {
@@ -284,11 +289,139 @@ public class ReadOrderTests
         file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
         using var document = PdfDocument.Open(file.Bytes);
 
-        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("chain");
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>()
+            .Which.ToText().Should().Be("later", "the rebuild is finished before the read gives what it read");
 
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>()
             .Which.ToText().Should().Be("later", "the rebuilt index serves the later stream");
+    }
+
+    [Theory]
+    [InlineData("its row")]
+    [InlineData("its /Length")]
+    public void A_catalog_in_an_object_stream_whose_load_rebuilds_the_index_is_served_from_the_rebuilt_index(string leadsNowhere)
+    {
+        // Object stream 6 holds catalog 1, which /Root names, and object 4, which nothing reads as the document opens; 6's row
+        // lies 700 bytes before its header, or its /Length is object 5, whose row leads nowhere. Opening reads 1, which
+        // decodes 6, which rebuilds the index while 6 is being loaded: the rebuild could not take in what 6 holds, and the
+        // index lost both 1 and 4 for good. It is finished once the load returns, and takes them in.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+        };
+        rows[8] = (1, file.Padding(8), 0);
+        const string Catalog = "<< /Type /Catalog /Pages 2 0 R /Extra 4 0 R >> ";
+        var header = string.Create(CultureInfo.InvariantCulture, $"1 0 4 {Catalog.Length} ");
+        var data = header + Catalog + "(four) ";
+        var length = leadsNowhere == "its row" ? data.Length.ToString(CultureInfo.InvariantCulture) : "5 0 R";
+        var at = file.Object(
+            6,
+            string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 2 /First {header.Length} /Length {length} >>\nstream\n{data}\nendstream"));
+        rows[6] = (1, leadsNowhere == "its row" ? at - 700 : at, 0);
+        rows[1] = (2, 6, 0);
+        rows[4] = (2, 6, 1);
+
+        if (leadsNowhere != "its row")
+        {
+            rows[5] = (1, 9, 0);
+            file.Object(5, data.Length.ToString(CultureInfo.InvariantCulture));
+        }
+
+        file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Catalog.Should().NotBeNull();
+        document.ObjectNumbers.Should().Contain([1, 4]);
+        document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>().Which.IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+    }
+
+    [Theory]
+    [InlineData("/Length")]
+    [InlineData("/Filter")]
+    public void A_member_whose_load_rebuilds_the_index_is_read_alike_first_and_after_settling(string key)
+    {
+        // Object stream 6 holds object 7; its /Length or its /Filter is object 5, whose row leads nowhere. Reading 7 decodes 6,
+        // which rebuilds the index while 6, and 5, are being loaded: 7 was read once, then lost to every later read. It is
+        // read as the index rebuilt before any read serves it, from the first read on.
+        byte[] Build()
+        {
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
+                [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+                [3] = (1, file.Object(3, Page), 0),
+            };
+            const string Data = "7 0 (member) ";
+            var hex = Convert.ToHexString(Encoding.Latin1.GetBytes(Data)) + ">";
+            rows[6] = (1, file.Object(
+                6,
+                key == "/Length"
+                    ? "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"
+                    : string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 4 /Filter 5 0 R /Length {hex.Length} >>\nstream\n{hex}\nendstream")), 0);
+            rows[5] = (1, 9, 0);
+            rows[7] = (2, 6, 0);
+            rows[8] = (1, file.Padding(8), 0);
+            file.Object(5, key == "/Length" ? Data.Length.ToString(CultureInfo.InvariantCulture) : "/ASCIIHexDecode");
+            file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
+            return file.Bytes;
+        }
+
+        using var settled = PdfDocument.Open(Build());
+        settled.Reader.SettleIndex();
+        using var document = PdfDocument.Open(Build());
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("member");
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("member");
+        document.ObjectNumbers.Should().Equal(settled.ObjectNumbers);
+        new PdfValidator().Validate(document).Findings.Should().Equal(new PdfValidator().Validate(settled).Findings);
+    }
+
+    [Theory]
+    [InlineData("a read")]
+    [InlineData("a validation")]
+    public void A_rebuild_a_failed_load_set_off_is_finished_before_the_next_read_or_validation(string next)
+    {
+        // Object stream 6 holds object 7, and its /Length is object 5, whose row leads nowhere: reading 7 rebuilds the index
+        // while 6 is being loaded, then reads 5 where the rebuild found it, which the source fails to give once. The rebuild
+        // is left unfinished by the failed read, and finished by the next: a validation, or a read of the catalog, which the
+        // unfinished rebuild had kept as it looked for object streams.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+        };
+        const string Data = "7 0 (member) ";
+        rows[6] = (1, file.Object(6, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
+        rows[5] = (1, 9, 0);
+        rows[7] = (2, 6, 0);
+        rows[8] = (1, file.Padding(8), 0);
+        var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+        file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
+        using var source = new FailingOnceSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.FailAt = five;
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+
+        if (next == "a validation")
+        {
+            new PdfValidator().Validate(document);
+        }
+        else
+        {
+            document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>();
+        }
+
+        document.ObjectNumbers.Should().Contain(7);
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("member");
     }
 
     [Theory]
@@ -464,6 +597,41 @@ public class ReadOrderTests
 
         document.WasRepaired.Should().BeTrue();
         graph.MissingReferences.Concat(graph.NullCharacterNames).Should().ContainSingle().Which.Message.Should().Be(message);
+    }
+
+    /// <summary>A file read from memory, whose one read starting at <see cref="FailAt"/> fails with an I/O error.</summary>
+    private sealed class FailingOnceSource(byte[] data) : PdfFileSource
+    {
+        private readonly PdfFileSource _inner = FromMemory(data);
+
+        /// <summary>Gets or sets where the next read to fail starts; -1 while none is to.</summary>
+        public long FailAt { get; set; } = -1;
+
+        /// <inheritdoc/>
+        public override long Length => _inner.Length;
+
+        /// <inheritdoc/>
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            if (offset == FailAt)
+            {
+                FailAt = -1;
+                throw new IOException("The source failed to give the bytes asked for.");
+            }
+
+            return _inner.Read(offset, buffer);
+        }
+
+        /// <inheritdoc/>
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 
     /// <summary>Validates <paramref name="document"/> as many times as asked, checks each finds what the first did, and disposes it.</summary>
