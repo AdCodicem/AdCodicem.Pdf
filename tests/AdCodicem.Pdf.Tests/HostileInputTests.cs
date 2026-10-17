@@ -1203,6 +1203,29 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_rebuild_a_read_sets_off_reads_the_file_no_more_than_one_run_first()
+    {
+        // Object 6, which the catalog names, is held by object stream 7, and 2,000 objects are written directly in the file.
+        // With 7's row outside the file, reading 6 rebuilds the index while 7 is being loaded; with an unreferenced row
+        // outside the file instead, settling rebuilds it first. Expanded once for the loads in flight and again when the
+        // rebuild was finished, the objects were read twice over; they are read once.
+        var (underALoad, first) = (ObjectsAndAMember(brokenRow: 7), ObjectsAndAMember(brokenRow: 8));
+        using var inFlightSource = new StrictCountingSource(underALoad);
+        using var firstSource = new StrictCountingSource(first);
+        using var inFlight = PdfDocument.Open(inFlightSource, options: null, ownsSource: false);
+        using var settled = PdfDocument.Open(firstSource, options: null, ownsSource: false);
+        var (inFlightOpened, firstOpened) = (inFlightSource.BytesRead, firstSource.BytesRead);
+
+        inFlight.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>();
+        settled.Reader.SettleIndex();
+        settled.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>();
+
+        inFlight.WasRepaired.Should().BeTrue();
+        settled.WasRepaired.Should().BeTrue();
+        (inFlightSource.BytesRead - inFlightOpened).Should().BeLessThan((firstSource.BytesRead - firstOpened) * 5 / 4);
+    }
+
+    [Fact]
     public void The_walk_of_the_object_streams_dependencies_reads_an_object_many_streams_need_once()
     {
         // Four hundred object streams take their /DecodeParms from object 3, written directly in the file and 100 KB long.
@@ -1715,6 +1738,32 @@ public class HostileInputTests
     /// describes and the objects <paramref name="direct"/> gives written directly; objects 1 and 2 are a catalog and
     /// an empty page tree.
     /// </summary>
+    /// <summary>
+    /// Writes a file indexed by a cross-reference stream whose catalog names object 6, which object stream 7 holds, with
+    /// 2,000 objects written directly in the file, and the row of <paramref name="brokenRow"/> outside the file.
+    /// </summary>
+    private static byte[] ObjectsAndAMember(int brokenRow)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 6 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [6] = (2, 7, 0),
+            [7] = (1, file.ObjectStream(7, [(6, "(six)")]), 0),
+            [8] = (1, file.Object(8, "<< /Eight 8 >>"), 0),
+        };
+
+        for (var number = 10; number < 2010; number++)
+        {
+            rows[number] = (1, file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Number {number} >>")), 0);
+        }
+
+        rows[brokenRow] = (1, 99_999_999, 0);
+        file.CrossReferenceStream(2010, 2011, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
     private static byte[] PackedFile(IReadOnlyList<PackedStream> streams, IReadOnlyList<(int Number, string Body)>? direct = null)
     {
         using var output = new MemoryStream();

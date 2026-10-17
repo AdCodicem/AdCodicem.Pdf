@@ -130,6 +130,42 @@ public class ReadOrderTests
     }
 
     [Theory]
+    [InlineData("a stream its length names soundly")]
+    [InlineData("a stream shorter than its length")]
+    [InlineData("an index full past an object stream")]
+    public void A_rebuild_a_read_sets_off_reports_what_a_rebuild_run_first_reports(string shape)
+    {
+        // The rebuild is set off by a load in flight — 5's row leads to the catalog's header — or run first, by settling.
+        // Expanded while the load was in flight, the object streams read 5 as null: they reported a sound stream's /Length
+        // as unreadable, which kept that stream's true fault from being reported, and filled the index at another object
+        // stream. The rebuild expands them once, when no load is in flight.
+        var options = shape == "an index full past an object stream"
+            ? PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 10 } }
+            : PdfReaderOptions.Default;
+        var file = shape switch
+        {
+            "a stream its length names soundly" => TwoStreamsOfOneLength("abcdefghij"),
+            "a stream shorter than its length" => TwoStreamsOfOneLength("abcdefgh"),
+            _ => TwoObjectStreamsPastAFullIndex(),
+        };
+        var read = shape == "an index full past an object stream" ? new[] { 6 } : [4, 6];
+        using var first = PdfDocument.Open(file, options);
+        using var inFlight = PdfDocument.Open(file, options);
+
+        first.Reader.SettleIndex();
+
+        foreach (var number in read)
+        {
+            first.GetObject(new PdfObjectId(number));
+            inFlight.GetObject(new PdfObjectId(number));
+        }
+
+        inFlight.WasRepaired.Should().BeTrue();
+        inFlight.Diagnostics.Select(diagnostic => diagnostic.ToString())
+            .Should().Equal(first.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void A_rebuild_forgets_that_a_stream_it_no_longer_indexes_gave_a_wrong_length(bool settling)
@@ -839,6 +875,51 @@ public class ReadOrderTests
 
             base.Dispose(disposing);
         }
+    }
+
+    /// <summary>
+    /// A file whose streams 4 and 6 both take their /Length from object 5, whose row leads to the catalog's header; 4's data
+    /// is 10 bytes long, 6's is <paramref name="six"/>.
+    /// </summary>
+    private static byte[] TwoStreamsOfOneLength(string six)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Object(4, "<< /Length 5 0 R >>\nstream\n0123456789\nendstream"),
+            [6] = file.Object(6, "<< /Length 5 0 R >>\nstream\n" + six + "\nendstream"),
+            [5] = 9,
+        };
+        rows[7] = file.Padding(7);
+        file.Object(5, "10");
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// A file whose index of ten numbers fills as a rebuild expands object stream 6, which takes its /Length from object 5,
+    /// whose row leads to the catalog's header, and then object stream 8.
+    /// </summary>
+    private static byte[] TwoObjectStreamsPastAFullIndex()
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+        };
+        const string Data = "10 0 11 4 12 8 13 12 (a) (b) (c) (d) ";
+        rows[6] = file.Object(6, "<< /Type /ObjStm /N 4 /First 20 /Length 5 0 R >>\nstream\n" + Data + "\nendstream");
+        rows[8] = file.ObjectStream(8, [(20, "(w)"), (21, "(x)"), (22, "(y)"), (23, "(z)")]);
+        rows[7] = file.Padding(7);
+        rows[5] = 9;
+        file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+        file.Table(10, rows, "/Size 10 /Root 1 0 R");
+        return file.Bytes;
     }
 
     /// <summary>Compresses <paramref name="data"/> as <c>/FlateDecode</c> decodes it.</summary>
