@@ -4431,15 +4431,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         ScanForTrailers();
 
         // A rebuild a load sets off runs with that load, and those it is part of, still in flight: the objects they are
-        // loading read as null meanwhile, and so do the values an object stream among them needs, so that such a stream
-        // is expanded without them, or not at all. The index is expanded for the loads in flight to read through, and
-        // finished from the scan once the outermost returns, as a rebuild run before them would have been: a member is not
-        // lost to the load that set the rebuild off, nor read otherwise than had the rebuild run first.
+        // loading read as null meanwhile, and so would the values an object stream among them needs, so that expanding the
+        // object streams now would expand such a stream without them, or not at all. The loads in flight read through the
+        // scan's index, and the rebuild is finished from it once the outermost returns, as a rebuild run before them would
+        // have been: a member is not lost to the load that set the rebuild off, nor read otherwise than had the rebuild run
+        // first, and the object streams are expanded once.
         if (_loading.Count > 0 || _objectStreamsLoading.Count > 0)
         {
             _unfinishedRebuild = new UnfinishedRebuild(
-                new Dictionary<int, XRefEntry>(_xref.Entries), redefinitions.Copy(), kept, reached, _indexFull, _indexFullAt);
-            ExpandObjectStreams(redefinitions);
+                new Dictionary<int, XRefEntry>(_xref.Entries), redefinitions, kept, reached, _indexFull, _indexFullAt);
             return;
         }
 
@@ -4950,14 +4950,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// list more members than an int counts.
         /// </summary>
         public long Count { get; private set; }
-
-        /// <summary>Gives a copy of what was recorded so far, which records apart from this one from now on.</summary>
-        public Redefinitions Copy()
-        {
-            var copy = new Redefinitions { Count = Count, _listed = _listed, _unlisted = _unlisted };
-            _numbers.CopyTo(copy._numbers, 0);
-            return copy;
-        }
 
         /// <summary>Records a definition of <paramref name="number"/>, which was already found.</summary>
         public void Add(int number)
