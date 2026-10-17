@@ -70,7 +70,8 @@ for it. The map is rebuilt by scanning the whole file, once at most, and never w
 - before a validation's first rule, when one of the two cases above could still happen — the map may have lost
   entries, or one of them places its object neither where it says nor near —: the validator has the map rebuilt
   then, as that read would, rather than let one of its rules' reads rebuild it halfway through. It finds out by
-  reading the header each entry places, and nothing more.
+  reading the header each entry written directly in the file places, or looking for it nearby as a read would, and
+  nothing of any object's body.
 
 An object, or a section a `/Prev` or a `/XRefStm` names, that lies a few bytes from where it is said to be is
 found nearby (`xref.offset-adjusted`), and the map is not rebuilt for it. The section `startxref` names is not
@@ -86,8 +87,9 @@ name it as the file's row does, and the page tree and object-shape rules as the 
 
 What the reader noted of an object as it read it — that no `endobj` followed it, that a limit cut it, that its
 stream's `/Length` was wrong — is forgotten by a rebuild, and noted again as the rebuilt map's definitions are read.
-An object whose own read set off the rebuild, through a `/Length` or a filter it names, is not kept as it was read:
-the next read takes the rebuilt map's definition, as it would had the map been rebuilt first.
+A rebuild a read sets off while that read is still under way — an object's `/Length` or filter names an object the
+map misplaces — is finished once no read is: the object is then read again from the rebuilt map, and what was read
+meanwhile, with the read unfinished, is let go, so that it reads as it would had the map been rebuilt first.
 
 A rebuild reads the file to its end, and holds no more numbers than the map may: a header for a number it holds already
 takes no room, so that a million copies of one object hide nothing behind them, and the first number past

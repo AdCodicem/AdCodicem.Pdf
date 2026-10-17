@@ -13,18 +13,21 @@ namespace AdCodicem.Pdf.Validation;
 /// validation included.
 /// </para>
 /// <para>
-/// Validation reads through the document like any other caller, lazily and within the document's reader
-/// limits: what it resolves joins the document's cache, and what the reader notices on the way joins
-/// <see cref="PdfDocument.Diagnostics"/>. Opening the document with raised limits lets it check more.
+/// Validation reads through the document lazily, once it has settled the index as the next paragraph says, and within
+/// the document's reader limits: what its rules resolve joins the document's cache — the cross-reference rules read each
+/// object stream, and the objects its decoding keys lead through, where the file's own index places them, outside it —,
+/// and what the reader notices on the way joins <see cref="PdfDocument.Diagnostics"/>. Opening the document with raised
+/// limits lets it check more.
 /// </para>
 /// <para>
 /// Before its first rule, it rebuilds the document's index when a read could still set off that rebuild — the index is
-/// incomplete through damage, or an entry places its object where neither its offset nor the bytes near it hold it —, as
-/// reading that object would. No rule then reads part of the document before a rebuild and part after it, and two
-/// validations of the same document give the same report, whatever the caller read before them (#237). Two things change
-/// that: the caller changing the document between them; and a rebuild that reaches a guard of a document opened with
-/// <see cref="PdfReaderOptions.ThrowOnLimit"/>, which throws in the first validation only — the index is rebuilt whole
-/// before it throws, and the next validation reads it so.
+/// incomplete through damage, or an entry places its object where neither its offset nor the 512 bytes either side of it
+/// hold its header —, as reading that object would. No rule then reads part of the document before a rebuild and part
+/// after it, and two validations of the same document give the same report, whatever the caller read before them (#237).
+/// Three things change that: the caller changing the document between them; a rebuild that reaches a guard of a
+/// document opened with <see cref="PdfReaderOptions.ThrowOnLimit"/>, which throws once, in the first validation, the
+/// index rebuilt whole — a later validation throws only where its rules read what the guard cut or left out, as any read
+/// does —; and a file crafted so that where a damaged stream's data ends depends on which stream was read first (#138).
 /// </para>
 /// </remarks>
 public sealed class PdfValidator

@@ -111,7 +111,7 @@ The exception comes from whichever operation reaches the limit:
 | `PdfDocument.Open` | While it indexes the file and reads its catalog |
 | `GetObject`, or resolving a reference | When an object is too long, or the object stream that holds it decodes too far or names too many filters; when the read rebuilds the index, at any limit the rebuild reaches, once the rebuild is finished; and each time it looks up an object a full index left out |
 | `Decode` | When a stream decodes too far, or its decoding reaches the filter past `MaxFilterChainLength` |
-| `PdfValidator.Validate` | As it reads, like any other caller |
+| `PdfValidator.Validate` | As it reads, like any other caller; and before its first rule, at any limit the rebuild it may run then reaches, once that rebuild is finished |
 
 A document whose index had to be rebuilt finishes the rebuild before throwing, so it stays usable afterwards.
 

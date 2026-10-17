@@ -39,9 +39,12 @@ could not check it whole. What the reader notices while validation reads joins `
 
 Before its first rule, `Validate` has the reader rebuild the document's index when a later read still could — the
 index is incomplete through damage, or an entry places its object neither at its offset nor near it —, so that a
-document gives the same report whatever was read before validating it. A limit that rebuild reaches throws in the first
-validation only, the index rebuilt whole; the next validation reads that index. A document you changed between two
-validations is validated as changed. [Validation](../concepts/validation.md#reading-limits-and-exceptions) explains why.
+document gives the same report whatever was read before validating it. A limit that rebuild reaches throws once, in the
+first validation, the index rebuilt whole; a later validation reads that index, and throws only where its rules read
+what the limit cut or left out. A document you changed between two validations is validated as changed, and a file
+crafted for it can still make where a damaged stream's data ends depend on which stream was read first
+([#138](https://github.com/AdCodicem/AdCodicem.Pdf/issues/138)).
+[Validation](../concepts/validation.md#reading-limits-and-exceptions) explains why.
 
 ## `PdfValidatorOptions`
 

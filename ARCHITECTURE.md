@@ -11,7 +11,8 @@ src/
   AdCodicem.Pdf/            the core: object model, reader, writer, pages, fonts. No dependencies at all.
 tests/
   AdCodicem.Pdf.Tests/              unit tests — our own behavior
-  AdCodicem.Pdf.IntegrationTests/   integration tests — what independent tools say about it, in containers
+  AdCodicem.Pdf.IntegrationTests/   integration tests — what independent tools say about it, in containers, and one
+                                    corpus sweep of the validator's independence from read order (ADR 50)
   AdCodicem.Pdf.TestSupport/        shared fixtures, the corpus manifest reader
   corpus/                           168 committed documents from many producers, five copies damaged on purpose
                                     among them, and 242 remote ones fetched by a script, never committed

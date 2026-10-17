@@ -68,11 +68,13 @@ References are to ISO 32000-1:2008.
 The entries the `xref.entry-*`, `xref.generation-mismatch`, `xref.object-stream-*`, `xref.offset-imprecise`
 and `xref.object-past-size` rules check are those of the index the file's chain gave, as the reader first read
 it — not one it has corrected or rebuilt since —, and the object streams are read where that index places them
-([#128]). A value written elsewhere that an entry's object needs — a stream's `/Length` or `/Filter` written as a
-reference, a trailer value written as one — is read as any read reads it, through the index the validator had the
-reader settle on before its first rule: the chain's own, unless a read could still have made the reader rebuild it,
-in which case it was rebuilt then ([#237]). What was read before validating changes nothing. When the chain gave no
-index, the file rules have said why, and no entry is checked.
+([#128]); so are the objects written directly in the file that `xref.object-stream-circular` follows from a stream's
+decoding keys, each read once a validation. Any other value written elsewhere that an entry's object needs — a stream's
+own `/Length` written as a reference, a value `xref.object-stream-value-wrong` reports, a trailer value written as one —
+is read as any read reads it, through the index the validator had the reader settle on before its first rule: the
+chain's own, unless a read could still have made the reader rebuild it, in which case it was rebuilt then ([#237]). What
+was read before validating changes nothing. When the chain gave no index, the file rules have said why, and no entry is
+checked.
 
 ### Objects
 

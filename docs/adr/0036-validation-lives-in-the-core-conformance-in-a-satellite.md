@@ -15,6 +15,11 @@ Amended by [45](0045-a-findings-severity-says-whether-the-file-reads-as-written.
 `Error` is no longer "readers will disagree about the document" but whether the reader can vouch that it reads
 the file as written.
 
+Amended by [50](0050-validation-settles-the-reader-before-its-rules.md) on 2026-10-16: validation reads through the
+document lazily once it has settled the index — before its first rule, it reads the header each entry places and may
+have the reader rebuild the index —, and the walk of the object streams' dependencies reads each stream, and the objects
+its decoding keys lead through, where the file's own index places them, outside the document's cache.
+
 Implemented by the `AdCodicem.Pdf.Validation` namespace of the core — `PdfValidator`, `PdfValidatorOptions`,
 `ValidationProfile`, `PdfValidationReport`, `PdfValidationFinding`, `PdfValidationSeverity`,
 `PdfValidationLocation`, `PdfValidationRuleIds` —, `docs/website/docs/reference/validation-rules.md`, and `CorpusValidationTests`.
