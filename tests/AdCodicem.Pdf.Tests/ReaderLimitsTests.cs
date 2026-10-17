@@ -394,6 +394,55 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_read_whose_rebuild_fills_the_index_throws_that_guard_before_any_it_reaches_after()
+    {
+        // Object stream 6 holds the catalog's object 7, decodes to 10,000 bytes past a bound of 4,096, and takes its /Length
+        // from object 5, whose row leads to the catalog's header; ten objects are written outside the index. Reading 7
+        // rebuilds the index while 6 is being loaded, and the scan fills it: that guard is the first the read reaches, and
+        // the one it throws, rather than the bound 6's decoding reaches afterward, which went unreported.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var decoded = new byte[10_000];
+        decoded.AsSpan().Fill((byte)' ');
+        "7 0 (member)"u8.CopyTo(decoded);
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            zlib.Write(decoded);
+        }
+
+        var data = Encoding.Latin1.GetString(compressed.ToArray());
+        rows[6] = (1, file.Object(6, $"<< /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /Length 5 0 R >>\nstream\n{data}\nendstream"), 0);
+        rows[7] = (2, 6, 0);
+        rows[5] = (1, 9, 0);
+        rows[8] = (1, file.Padding(8), 0);
+        file.Object(5, data.Length.ToString(CultureInfo.InvariantCulture));
+
+        for (var number = 20; number < 30; number++)
+        {
+            file.Object(number, "null");
+        }
+
+        file.CrossReferenceStream(10, 11, rows, "/Root 1 0 R");
+        var options = new PdfReaderOptions
+        {
+            Limits = PdfReaderLimits.Default with { MaxIndexEntries = 12, MaxDecodedStreamLength = 4096 },
+            ThrowOnLimit = true,
+        };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<PdfLimitExceededException>()
+            .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>();
+    }
+
+    [Fact]
     public void A_lookup_past_a_full_index_reads_null_and_rebuilds_nothing()
     {
         // #164, #183: a rebuild would scan the whole file to refill an index already at its bound, and could add nothing.

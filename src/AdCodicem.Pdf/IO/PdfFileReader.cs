@@ -570,19 +570,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 Cache(id.Number, value);
             }
         }
-        catch (PdfLimitExceededException) when (_unfinishedRebuild is not null && _loading.Count == 1 && _objectStreamsLoading.Count == 0)
+        catch (Exception) when (_unfinishedRebuild is not null)
         {
-            // The outermost load threw on a guard, for a document opened to throw on one: the rebuild it set off is finished
-            // before the exception leaves, and a guard the rebuild reaches is this read's to tell, which it does.
-            _loading.Remove(id.Number);
-
-            try
+            // A load threw while a rebuild a load set off is unfinished: the outermost finishes it before the exception
+            // leaves, so that the index stays the one a rebuild run first gives. Decided here, not in the filter, which runs
+            // before the loads this one is part of have let go of their numbers.
+            if (_loading.Count == 1 && _objectStreamsLoading.Count == 0)
             {
-                FinishUnfinishedRebuild();
-            }
-            catch (PdfLimitExceededException)
-            {
-                // Reported as it was reached; the exception this read throws stands for it.
+                _loading.Remove(id.Number);
+                FinishUnfinishedRebuildAfterFailure();
             }
 
             throw;
@@ -4433,13 +4429,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // A rebuild a load sets off runs with that load, and those it is part of, still in flight: the objects they are
         // loading read as null meanwhile, and so would the values an object stream among them needs, so that expanding the
         // object streams now would expand such a stream without them, or not at all. The loads in flight read through the
-        // scan's index, and the rebuild is finished from it once the outermost returns, as a rebuild run before them would
-        // have been: a member is not lost to the load that set the rebuild off, nor read otherwise than had the rebuild run
-        // first, and the object streams are expanded once.
+        // scan's index, and the rebuild is finished from it once the outermost returns, or throws, as a rebuild run before
+        // them would have been: a member is not lost to the load that set the rebuild off, nor read otherwise than had the
+        // rebuild run first, and the object streams are expanded once. A guard the scan reached is the first this read
+        // reaches: it is thrown now, and the outermost load finishes the index before it lets the exception go.
         if (_loading.Count > 0 || _objectStreamsLoading.Count > 0)
         {
             _unfinishedRebuild = new UnfinishedRebuild(
-                new Dictionary<int, XRefEntry>(_xref.Entries), redefinitions, kept, reached, _indexFull, _indexFullAt);
+                new Dictionary<int, XRefEntry>(_xref.Entries), redefinitions, kept, _indexFull, _indexFullAt);
+            reached?.Throw();
             return;
         }
 
@@ -4486,10 +4484,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Finishes the rebuild a load set off, now that no load is in flight: the index is brought back to what the scan
-    /// made, what was read meanwhile let go, and the rebuild finished as one run before the load would have been.
+    /// made, what was read meanwhile let go, and the rebuild finished as one run before the load would have been. A finish
+    /// that fails — the source failing to give its bytes — leaves the rebuild to be finished again, from the scan, by the
+    /// next read.
     /// </summary>
     /// <exception cref="PdfLimitExceededException">
-    /// A guard was reached, by the scan or in finishing, and the document was opened to throw on one.
+    /// A guard was reached in finishing, and the document was opened to throw on one; the index is finished.
     /// </exception>
     private void FinishUnfinishedRebuild()
     {
@@ -4519,7 +4519,36 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _endObjMissing.Clear();
         _streamLengthFaults.Clear();
 
-        FinishRebuild(unfinished.Redefinitions, unfinished.Kept, unfinished.Reached);
+        try
+        {
+            FinishRebuild(unfinished.Redefinitions, unfinished.Kept, reached: null);
+        }
+        catch (Exception exception) when (exception is not PdfLimitExceededException)
+        {
+            _unfinishedRebuild = unfinished;
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Finishes the rebuild a load set off while that load's exception leaves it, which stands for the read: a guard the
+    /// finish reaches afterward is left, the first guard reached being the one thrown, and a finish the source fails leaves
+    /// the rebuild to the next read.
+    /// </summary>
+    private void FinishUnfinishedRebuildAfterFailure()
+    {
+        try
+        {
+            FinishUnfinishedRebuild();
+        }
+        catch (PdfLimitExceededException)
+        {
+            // Reached after the read's own exception, which is the one thrown.
+        }
+        catch (IOException)
+        {
+            // The rebuild is left unfinished, and finished by the next read.
+        }
     }
 
     /// <summary>
@@ -4921,14 +4950,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="Scanned">The entries the scan made, before the object streams were expanded.</param>
     /// <param name="Redefinitions">The definitions the scan met again.</param>
     /// <param name="Kept">The entries a chain a guard cut gave, kept through the rebuild; null when no guard cut it.</param>
-    /// <param name="Reached">The guard the scan reached, for a document opened to throw on one; null when it reached none.</param>
     /// <param name="IndexFull">Whether the scan filled the index.</param>
     /// <param name="IndexFullAt">Where the index first had no room for a number, or -1.</param>
     private sealed record UnfinishedRebuild(
         Dictionary<int, XRefEntry> Scanned,
         Redefinitions Redefinitions,
         PdfXRefTable? Kept,
-        ExceptionDispatchInfo? Reached,
         bool IndexFull,
         long IndexFullAt);
 

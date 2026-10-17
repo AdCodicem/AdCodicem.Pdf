@@ -527,46 +527,110 @@ public class ReadOrderTests
     }
 
     [Theory]
-    [InlineData("a read")]
-    [InlineData("a validation")]
-    public void A_rebuild_a_failed_load_set_off_is_finished_before_the_next_read_or_validation(string next)
+    [InlineData(1, "nothing")]
+    [InlineData(2, "a read")]
+    [InlineData(2, "a validation")]
+    [InlineData(2, "settling")]
+    public void A_rebuild_a_failed_load_set_off_is_finished_before_its_exception_leaves_or_by_what_comes_next(int failures, string next)
     {
         // Object stream 6 holds object 7, and its /Length is object 5, whose row leads nowhere: reading 7 rebuilds the index
-        // while 6 is being loaded, then reads 5 where the rebuild found it, which the source fails to give once. The rebuild
-        // is left unfinished by the failed read, and finished by the next: a validation, or a read of the catalog, which the
-        // unfinished rebuild had kept as it looked for object streams.
-        var file = new HandWrittenFile(version: "1.5");
-        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
-        {
-            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
-            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
-            [3] = (1, file.Object(3, Page), 0),
-        };
-        const string Data = "7 0 (member) ";
-        rows[6] = (1, file.Object(6, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
-        rows[5] = (1, 9, 0);
-        rows[7] = (2, 6, 0);
-        rows[8] = (1, file.Padding(8), 0);
-        var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
-        file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
-        using var source = new FailingOnceSource(file.Bytes);
+        // while 6 is being loaded, then reads 5 where the rebuild found it, which the source fails to give. The read that
+        // failed finishes the rebuild before its exception leaves; when the source fails that too, what comes next — a read,
+        // a validation, settling — finishes it first: the index serves 7 before 7 is read again.
+        var (bytes, five) = MemberWhoseLengthLeadsNowhere();
+        using var source = new FailingSource(bytes);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
-        source.FailAt = five;
+        source.Fail(five, [.. Enumerable.Range(1, failures)]);
 
         FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
 
-        if (next == "a validation")
+        switch (next)
         {
-            new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString())
-                .Should().Equal(Findings(PdfDocument.Open(file.Bytes), validations: 1), "the rebuild is finished before the first rule");
-        }
-        else
-        {
-            document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>();
+            case "a read":
+                document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>();
+                break;
+
+            case "a validation":
+                new PdfValidator().Validate(document).Findings.Select(finding => finding.ToString())
+                    .Should().Equal(Findings(PdfDocument.Open(bytes), validations: 1), "the rebuild is finished before the first rule");
+                break;
+
+            case "settling":
+                document.Reader.SettleIndex();
+                break;
         }
 
         document.ObjectNumbers.Should().Contain(7);
         document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("member");
+    }
+
+    [Fact]
+    public void A_rebuild_whose_finish_the_source_fails_is_finished_whole_by_the_next_read()
+    {
+        // Object stream 6 holds objects 10 and 11; object stream 8 holds 7, and its /Length is object 5, whose row leads
+        // nowhere. Reading 7 rebuilds the index while 8 is being loaded; finishing it expands 6, then fails to read 5 for 8.
+        // The next read finishes it again from the scan: 6's members are not met a second time, as redefinitions.
+        var (bytes, five) = TwoObjectStreamsTheSecondOfWhichLeadsNowhere(unindexed: 0);
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.Fail(five, 2);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+        var seven = document.GetObject(new PdfObjectId(7));
+
+        seven.Should().BeOfType<PdfString>().Which.ToText().Should().Be("member");
+        document.ObjectNumbers.Should().Contain([7, 10, 11]);
+        document.Diagnostics.Contains(PdfDiagnosticCodes.ObjectRedefined).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_rebuild_whose_finish_the_source_fails_throws_the_guard_the_next_finish_reaches()
+    {
+        // As above, with an index of thirteen numbers, which the scan fills to the brim with five objects written outside it,
+        // opened to throw on a limit: the first finish fills the index as it expands 6, then fails; the next, which a read of
+        // the catalog sets off, reaches the index's guard again, and throws it.
+        var (bytes, five) = TwoObjectStreamsTheSecondOfWhichLeadsNowhere(unindexed: 5);
+        using var source = new FailingSource(bytes);
+        var options = PdfReaderOptions.Default with { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxIndexEntries = 13 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        source.Fail(five, 2);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(1))).Should().Throw<PdfLimitExceededException>()
+            .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxIndexEntries));
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void A_guard_a_read_reaches_after_setting_off_a_rebuild_leaves_the_next_read_free(int first)
+    {
+        // Stream 4 takes its /Length from object 5, whose row leads to the catalog's header, and 5 runs past the object guard
+        // of a document opened to throw on one. Reading 4 rebuilds the index while 5 is being loaded, and 5 throws there,
+        // a load deep; reading 5 first throws a load deep too. Either way the rebuild is finished before the exception
+        // leaves: the next read, of the catalog, throws nothing.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Object(4, "<< /Length 5 0 R >>\nstream\n0123456789\nendstream"),
+            [5] = 9,
+        };
+        rows[6] = file.Padding(6, 600);
+        rows[7] = file.Padding(7, 600);
+        file.Object(5, "10" + new string(' ', 2000));
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        var options = PdfReaderOptions.Default with { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(first))).Should().Throw<PdfLimitExceededException>()
+            .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>();
     }
 
     [Theory]
@@ -842,23 +906,31 @@ public class ReadOrderTests
         graph.MissingReferences.Concat(graph.NullCharacterNames).Should().ContainSingle().Which.Message.Should().Be(message);
     }
 
-    /// <summary>A file read from memory, whose one read starting at <see cref="FailAt"/> fails with an I/O error.</summary>
-    private sealed class FailingOnceSource(byte[] data) : PdfFileSource
+    /// <summary>A file read from memory, some of whose reads starting at one offset fail with an I/O error.</summary>
+    private sealed class FailingSource(byte[] data) : PdfFileSource
     {
         private readonly PdfFileSource _inner = FromMemory(data);
-
-        /// <summary>Gets or sets where the next read to fail starts; -1 while none is to.</summary>
-        public long FailAt { get; set; } = -1;
+        private readonly HashSet<int> _failing = [];
+        private long _at = -1;
+        private int _reads;
 
         /// <inheritdoc/>
         public override long Length => _inner.Length;
 
+        /// <summary>Makes the reads starting at <paramref name="at"/> whose ordinals <paramref name="reads"/> gives, from 1, fail.</summary>
+        public void Fail(long at, params int[] reads)
+        {
+            _at = at;
+            _reads = 0;
+            _failing.Clear();
+            _failing.UnionWith(reads);
+        }
+
         /// <inheritdoc/>
         public override int Read(long offset, Span<byte> buffer)
         {
-            if (offset == FailAt)
+            if (offset == _at && _failing.Contains(++_reads))
             {
-                FailAt = -1;
                 throw new IOException("The source failed to give the bytes asked for.");
             }
 
@@ -875,6 +947,62 @@ public class ReadOrderTests
 
             base.Dispose(disposing);
         }
+    }
+
+    /// <summary>
+    /// A file whose catalog names object 7, which object stream 6 holds; 6's /Length is object 5, whose row leads to the
+    /// catalog's header. Gives the file and where 5 is.
+    /// </summary>
+    private static (byte[] Bytes, long Five) MemberWhoseLengthLeadsNowhere()
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+        };
+        const string Data = "7 0 (member) ";
+        rows[6] = (1, file.Object(6, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
+        rows[5] = (1, 9, 0);
+        rows[7] = (2, 6, 0);
+        rows[8] = (1, file.Padding(8), 0);
+        var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+        file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
+        return (file.Bytes, five);
+    }
+
+    /// <summary>
+    /// A file whose catalog names object 7, which object stream 8 holds, after object stream 6, which holds 10 and 11; 8's
+    /// /Length is object 5, whose row leads to the catalog's header; <paramref name="unindexed"/> objects are written with no
+    /// row. Gives the file and where 5 is.
+    /// </summary>
+    private static (byte[] Bytes, long Five) TwoObjectStreamsTheSecondOfWhichLeadsNowhere(int unindexed)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [6] = (1, file.ObjectStream(6, [(10, "(ten)"), (11, "(eleven)")]), 0),
+            [10] = (2, 6, 0),
+            [11] = (2, 6, 1),
+        };
+        const string Data = "7 0 (member) ";
+        rows[8] = (1, file.Object(8, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
+        rows[7] = (2, 8, 0);
+        rows[5] = (1, 9, 0);
+        rows[9] = (1, file.Padding(9), 0);
+        var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+
+        for (var number = 20; number < 20 + unindexed; number++)
+        {
+            file.Object(number, "null");
+        }
+
+        file.CrossReferenceStream(12, 13, rows, "/Root 1 0 R");
+        return (file.Bytes, five);
     }
 
     /// <summary>
