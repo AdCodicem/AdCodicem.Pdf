@@ -1519,6 +1519,73 @@ public class CrossReferenceRuleTests
                 $"Reading the header of object 4 where its entry places it, at offset {row}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
     }
 
+    [Fact]
+    public void An_object_found_near_a_row_whose_white_space_runs_past_the_object_guard_is_said_to_be_unchecked()
+    {
+        // Two hundred blanks, then object 4, where its row places it; the reader reads no object past 128 bytes. A load reaches
+        // the guard on the blanks before it finds the object near the row: what the row leads to is the limit's to say.
+        var file = WithFourWritten(new string(' ', 200) + "4 0 obj\n(four)\nendobj\n", out var row);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var findings = new PdfValidator().Validate(document).Findings;
+
+        findings.Select(finding => (finding.RuleId, finding.Location, finding.Message)).Should().Equal((
+            PdfValidationRuleIds.XRefCheckedInPart,
+            PdfValidationLocation.OfObject(new PdfObjectId(4), row),
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Reading the header of object 4 where its entry places it, at offset {row}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject && diagnostic.Position == row);
+    }
+
+    [Fact]
+    public void Settling_reports_the_object_guard_where_the_header_found_near_a_row_reaches_it()
+    {
+        // Nothing of object 4 is where its row places it; two bytes on, its header holds two hundred blanks before obj, which
+        // the search near the row reads back over, and a load reaches the guard on (#175).
+        var file = WithFourWritten("x\n4 0" + new string(' ', 200) + "obj\n(four)\nendobj\n", out var row);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        document.Reader.SettleIndex();
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject && diagnostic.Position == row + 2);
+        document.WasRepaired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_row_in_white_space_that_runs_to_the_file_s_end_leads_nowhere()
+    {
+        // The row places object 4 in blanks after the end-of-file marker, which run to the file's end: a load reads them to
+        // the end and finds nothing, which is no guard reached.
+        static byte[] Build(long row)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+                [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+                [4] = row,
+            };
+            file.Table(5, rows, "/Size 5 /Root 1 0 R");
+            file.Raw(new string(' ', 1000));
+            return file.Bytes;
+        }
+
+        var row = Build(0).Length - 500L;
+        using var document = PdfDocument.Open(Build(row));
+
+        var report = new PdfValidator().Validate(document);
+
+        Single(report, PdfValidationRuleIds.XRefEntryBroken).Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The entry of object 4 gives offset {row}, where there is no object header, and the object is not within 512 bytes of it."));
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+    }
+
     [Theory]
     [InlineData("x %", false)]
     [InlineData("x %", true)]
@@ -1543,6 +1610,125 @@ public class CrossReferenceRuleTests
             CultureInfo.InvariantCulture,
             $"The entry of object 4 gives offset {row}, where there is no object header, and the object is not within 512 bytes of it."));
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("a comment of 9,000 bytes between its number and its generation")]
+    [InlineData("9,000 blanks before its obj keyword")]
+    [InlineData("9,000 zeros leading its number")]
+    public void Valid_headers_longer_than_any_first_read_never_spend_what_validation_reads(string shape)
+    {
+        // Thirty objects whose valid headers run 9,000 bytes each (ISO 32000-1, 7.2.3, 7.3.3): settling ran out of what it may
+        // read and rebuilt the index, which cannot read a header with a comment inside it, and the probe said 21 entries were
+        // not checked. A header's reading consumes the header's own bytes, the file's length in all (#175).
+        const int Count = 30;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+        };
+
+        for (var number = 4; number < Count + 4; number++)
+        {
+            rows[number] = file.Position;
+            var header = shape switch
+            {
+                "a comment of 9,000 bytes between its number and its generation" => $"{number} %{new string('c', 9000)}\n0 obj",
+                "9,000 blanks before its obj keyword" => $"{number} 0{new string(' ', 9000)}obj",
+                _ => $"{new string('0', 9000)}{number} 0 obj",
+            };
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"{header}\n({number})\nendobj\n"));
+        }
+
+        file.Table(Count + 4, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Count + 4} /Root 1 0 R"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+
+        document.WasRepaired.Should().BeFalse();
+        for (var number = 4; number < Count + 4; number++)
+        {
+            document.GetObject(new PdfObjectId(number)).Should().BeOfType<PdfString>()
+                .Which.ToText().Should().Be(number.ToString(CultureInfo.InvariantCulture));
+        }
+    }
+
+    [Fact]
+    public void An_entry_past_the_file_s_end_whose_object_a_load_finds_near_it_is_shifted()
+    {
+        // Object 4 is written last, and its row places it ten bytes past the file's end: a load looks near the offset all the
+        // same, finds it, and keeps the index. The probe called the entry broken (#175).
+        static byte[] Build(long row)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+                [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"),
+            };
+            file.Object(4, "(four)");
+            rows[4] = row;
+            file.Table(5, rows, "/Size 5 /Root 1 0 R");
+            return file.Bytes;
+        }
+
+        var row = Build(0).Length + 10L;
+        var bytes = Build(row);
+        var four = PdfTemplate.OffsetOf(bytes, "4 0 obj");
+        using var document = PdfDocument.Open(bytes);
+
+        var report = new PdfValidator().Validate(document);
+
+        var finding = Single(report, PdfValidationRuleIds.XRefEntryShifted);
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4)));
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The entry of object 4 gives offset {row}, outside the file; the object starts {row - four} bytes before it, at offset {four}."));
+        report.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeFalse();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Entries_left_undecided_once_the_probe_has_read_its_fill_are_said_not_checked_in_one_finding(bool nearby)
+    {
+        // Rows 3, 4 and 5 place their objects in one comment of 100 KB, which each reads to its end: the first two read twice
+        // the file's length, and the third is left undecided. Row 6 places its object two bytes before a header that runs
+        // past a first read: the search near the row finds it, and reading it would read more (#175).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var comment = file.Position;
+        file.Raw("%" + new string('c', 100 * 1024) + "\n");
+        rows[3] = rows[4] = rows[5] = comment;
+
+        if (nearby)
+        {
+            rows[6] = file.Position;
+            file.Raw("x\n6 0" + new string(' ', 100) + "obj\n(six)\nendobj\n");
+        }
+
+        var size = nearby ? 7 : 6;
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var probe = CrossReferenceProbe.Run(document);
+
+        probe.Broken.Select(finding => finding.Location.Object).Should().Equal(new PdfObjectId(3), new PdfObjectId(4));
+        var notChecked = probe.NotChecked.Should().ContainSingle().Which;
+        notChecked.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(5), comment));
+        notChecked.Message.Should().Be(
+            "The validator stopped reading object headers where entries place them once it had read twice the file's length of them, past the first bytes of each: " +
+            (nearby
+                ? "the entries of 2 objects it had not decided by then, the first object 5's, were not checked."
+                : "the entry of object 5, which it had not decided by then, was not checked."));
     }
 
     [Theory]

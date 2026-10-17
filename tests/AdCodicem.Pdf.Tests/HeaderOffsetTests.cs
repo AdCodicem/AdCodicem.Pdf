@@ -222,7 +222,11 @@ public sealed class HeaderOffsetTests
         prev.NamedFrom.Should().Be(update);
         var report = new PdfValidator().Validate(document);
         Single(report, PdfValidationRuleIds.XRefSectionNotFound).Location.Position.Should().Be(update);
-        Single(report, PdfValidationRuleIds.XRefEntryBroken).Message.Should().Be("The entry of object 9 gives offset -19, outside the file.");
+
+        // A load looks near the offset all the same, and finds object 9 in the bytes before the header (#175).
+        var shifted = Single(report, PdfValidationRuleIds.XRefEntryShifted);
+        shifted.Message.Should().Be("The entry of object 9 gives offset -19, outside the file; the object starts 19 bytes after it, at offset 0.");
+        shifted.Location.Position.Should().BeNull();
     }
 
     [Theory]
@@ -261,16 +265,21 @@ public sealed class HeaderOffsetTests
     [InlineData(9)]
     public void A_negative_entry_places_its_object_outside_the_file_whatever_precedes_the_header(int junk)
     {
-        // With nine bytes before the header, -3 counted from it fell inside those bytes, and the entry was judged shifted.
+        // With nine bytes before the header, -3 counted from it fell inside those bytes, and the entry was judged shifted
+        // from there. It is outside the file: a load looks near it all the same, and finds the object, which is shifted
+        // from -3, whatever precedes the header (#175).
         var file = Shifted(PdfTemplate.Sound.Replace("{row:3}", "-3 00000 n", StringComparison.Ordinal), junk);
+        var three = PdfTemplate.OffsetOf(file, "3 0 obj");
         using var document = PdfDocument.Open(file);
 
         var report = new PdfValidator().Validate(document);
 
-        var finding = Single(report, PdfValidationRuleIds.XRefEntryBroken);
-        finding.Severity.Should().Be(PdfValidationSeverity.Error);
-        finding.Message.Should().Be("The entry of object 3 gives offset -3, outside the file.");
-        report.Contains(PdfValidationRuleIds.XRefEntryShifted).Should().BeFalse();
+        var finding = Single(report, PdfValidationRuleIds.XRefEntryShifted);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The entry of object 3 gives offset -3, outside the file; the object starts {three + 3} bytes after it, at offset {three}."));
+        finding.Location.Position.Should().BeNull();
+        report.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeFalse();
     }
 
     [Theory]

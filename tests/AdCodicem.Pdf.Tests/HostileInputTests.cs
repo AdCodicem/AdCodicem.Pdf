@@ -1373,11 +1373,12 @@ public class HostileInputTests
     }
 
     [Fact]
-    public void Settling_the_index_reads_no_more_of_a_header_after_a_long_comment_than_a_load_reads()
+    public void Settling_the_index_reads_a_header_after_a_long_comment_in_no_larger_window_than_a_load_reads()
     {
         // Two hundred objects, each after a comment line of 5,000 bytes, which its row names. Settling reads the first 64 bytes
-        // at each row, which the comment fills, then the window a load starts with, which holds the header: no larger window,
-        // and no more than a load reads to reach the header, those 64 bytes aside.
+        // at each row, which the comment fills, then windows eight times larger up to the one a load starts with, which holds
+        // the header: no larger window, and no more than a load reads to reach the header, the small windows aside. What each
+        // consumes, its comment, is the file's length in all, within settling's allowance.
         const int Count = 200;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -1401,16 +1402,16 @@ public class HostileInputTests
         document.Reader.SettleIndex();
 
         document.WasRepaired.Should().BeFalse();
-        (source.BytesRead - opened).Should().BeLessThanOrEqualTo((Count + 2) * (64L + PdfFileReader.InitialObjectWindow));
+        (source.BytesRead - opened).Should().BeLessThanOrEqualTo((Count + 2) * (64L + 512 + 4096 + PdfFileReader.InitialObjectWindow));
     }
 
     [Fact]
-    public void Probing_the_entries_reads_no_more_than_twice_the_file_past_the_first_windows_of_each_header()
+    public void Probing_the_entries_consumes_no_more_than_twice_the_file_past_the_first_bytes_of_each_header()
     {
         // Two hundred rows place their objects in two runs of 100 KB of blanks, past which no header lies, each row in the
-        // other run than the row before: the probe crosses a run for each row, the one it remembers being the other, and
-        // takes what it reads past the first 8 KB of each from twice the file's length; once that is spent, it says the
-        // entries it had not decided were not checked (#175).
+        // other run than the row before: the probe remembers one run, and crosses the other again for each row that leads
+        // into it, taking what it consumes past the first 64 bytes of each from twice the file's length; once that is
+        // spent, it says the entries it had not decided were not checked (#175).
         const int Rows = 200;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -1438,11 +1439,11 @@ public class HostileInputTests
         var probe = CrossReferenceProbe.Run(document);
 
         (source.BytesRead - settled).Should().BeLessThanOrEqualTo(
-            (Rows * (64L + PdfFileReader.InitialObjectWindow + (2 * PdfFileReader.NearbySearchRadius))) + (2L * bytes.Length));
+            (Rows * (64L + (2 * PdfFileReader.NearbySearchRadius))) + (2L * bytes.Length) + (64 * 1024));
         probe.Broken.Should().NotBeEmpty("the rows decided before the reading was spent lead nowhere");
         probe.NotChecked.Should().ContainSingle().Which.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The validator stopped reading object headers where entries place them at twice the file's length: the entries of {Rows - probe.Broken.Count} objects it had not decided by then, the first object {3 + probe.Broken.Count}'s, were not checked."));
+            $"The validator stopped reading object headers where entries place them once it had read twice the file's length of them, past the first bytes of each: the entries of {Rows - probe.Broken.Count} objects it had not decided by then, the first object {3 + probe.Broken.Count}'s, were not checked."));
     }
 
     [Fact]
@@ -1475,7 +1476,45 @@ public class HostileInputTests
 
         var probe = CrossReferenceProbe.Run(document);
 
-        (source.BytesRead - settled).Should().BeLessThan(bytes.Length + (Rows * (64L + PdfFileReader.InitialObjectWindow + (2 * PdfFileReader.NearbySearchRadius))));
+        (source.BytesRead - settled).Should().BeLessThan(bytes.Length + (Rows * (64L + (2 * PdfFileReader.NearbySearchRadius))));
+        probe.Broken.Should().HaveCount(Rows);
+        probe.NotChecked.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Probing_rows_that_lead_into_one_run_of_blanks_crosses_it_once_whatever_their_order(bool descending)
+    {
+        // Forty rows place their objects 20,000 bytes apart in one run of 1 MB of null bytes, past which no header lies. Taken
+        // in the order of their numbers, the rows' offsets went up or down: going down, each row crossed again the part of
+        // the run the row before had crossed, and paid for it, and the probe said 34 entries were not checked. A crossing
+        // that meets the run remembered joins it, and reads on from its end (#175).
+        const int Rows = 40;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var run = file.Position;
+        file.Raw(new string('\0', 1024 * 1024) + "x\n");
+
+        for (var number = 3; number < Rows + 3; number++)
+        {
+            rows[number] = run + ((descending ? Rows + 2 - number : number - 3) * 20_000L);
+        }
+
+        file.Table(Rows + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Rows + 3} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.SettleIndex();
+        var settled = source.BytesRead;
+
+        var probe = CrossReferenceProbe.Run(document);
+
+        (source.BytesRead - settled).Should().BeLessThan(bytes.Length + (Rows * (64L + (2 * PdfFileReader.NearbySearchRadius))));
         probe.Broken.Should().HaveCount(Rows);
         probe.NotChecked.Should().BeEmpty();
     }
@@ -1515,6 +1554,115 @@ public class HostileInputTests
         (source.BytesRead - opened).Should().BeLessThan(3L * bytes.Length);
         document.WasRepaired.Should().BeFalse();
         report.Findings.Should().HaveCount(Rows).And.OnlyContain(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart);
+    }
+
+    [Fact]
+    public void Probing_rows_whose_header_runs_through_a_run_of_blanks_already_crossed_reads_it_within_its_fill()
+    {
+        // Object 4's header holds 1 MB of blanks between its generation and obj. Row 3 places its object inside them, and
+        // crosses them; a thousand rows place theirs at the header, which each reads through the blanks again, lexing them:
+        // what each consumes is the whole header, however much of it a row crossed before, and once twice the file's length
+        // is consumed, the rows left are said not checked rather than read (#175).
+        const int Rows = 1000;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var header = file.Position;
+        file.Raw("4 0" + new string(' ', 1024 * 1024) + "obj\n(four)\nendobj\n");
+        rows[3] = header + 10;
+
+        for (var number = 5; number < Rows + 5; number++)
+        {
+            rows[number] = header;
+        }
+
+        file.Table(Rows + 5, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Rows + 5} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.SettleIndex();
+        var settled = source.BytesRead;
+
+        var probe = CrossReferenceProbe.Run(document);
+
+        (source.BytesRead - settled).Should().BeLessThan((Rows * (64L + (2 * PdfFileReader.NearbySearchRadius))) + (20L * bytes.Length));
+        probe.NotChecked.Should().ContainSingle().Which.Message.Should().EndWith(" were not checked.");
+    }
+
+    [Fact]
+    public void Settling_rows_that_lead_into_one_long_comment_reads_no_more_than_twice_the_file_of_them_before_it_rebuilds()
+    {
+        // Forty rows place their objects a byte apart at the start of one comment longer than the object guard, of a
+        // document opened to throw on a limit: a load of any of them would throw there, and rebuild nothing, and settling
+        // reads each to the guard. What it consumes past the first bytes of each is twice the file's length at most, past
+        // which it rebuilds the index in one pass: without that bound it read the file 62 times (#175).
+        const int Rows = 40;
+        const int Guard = 1024 * 1024;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < Rows + 3; number++)
+        {
+            rows[number] = file.Position + number;
+        }
+
+        file.Raw("%" + new string('c', Guard + 4096) + "\n");
+        file.Table(Rows + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Rows + 3} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = Guard } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var opened = source.BytesRead;
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeTrue();
+        (source.BytesRead - opened).Should().BeLessThan(6L * bytes.Length);
+    }
+
+    [Fact]
+    public void Validating_rows_that_all_lead_into_one_long_comment_reads_the_first_bytes_of_each_once_its_fill_is_read()
+    {
+        // Twenty thousand rows place their objects at one comment of 8,000 bytes: the first window and the one a load starts
+        // with were read free of the probe's allowance, 9 KB a row, and the file was read hundreds of times. What a header's
+        // reading consumes is taken from twice the file's length, past the first 64 bytes; once that is spent, each row
+        // reads those 64 bytes, and its entry is said not checked (#175).
+        const int Count = 20_000;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw("%" + new string('c', 8000) + "\n9 0 obj null endobj\n");
+
+        for (var number = 3; number < Count + 3; number++)
+        {
+            rows[number] = at;
+        }
+
+        file.Table(Count + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Count + 3} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
+
+        var report = new PdfValidator().Validate(document);
+
+        // The first bytes of each row; before the allowance is spent, a few times what the rows read consumed, twice the
+        // file's length in all; and the rebuild settling sets off, once over the file.
+        (source.BytesRead - opened).Should().BeLessThan((Count * 64L) + (20L * bytes.Length));
+        report.Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart)
+            .Which.Message.Should().EndWith(" were not checked.");
+        report.Findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken);
     }
 
     [Fact]

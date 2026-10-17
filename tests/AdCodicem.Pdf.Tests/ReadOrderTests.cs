@@ -1064,6 +1064,53 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void Settling_a_sound_index_allocates_nothing_an_entry()
+    {
+        // Settling built the message of the object guard for every entry, about 230 bytes each, before it knew whether the
+        // guard was reached (#175): what it allocates is the same for a thousand entries as for four thousand.
+        static long Settling(int padding)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+                [3] = file.Object(3, Page),
+            };
+
+            for (var number = 4; number < padding + 4; number++)
+            {
+                rows[number] = file.Padding(number, 10);
+            }
+
+            file.Table(padding + 4, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {padding + 4} /Root 1 0 R"));
+            var bytes = file.Bytes;
+
+            return Allocations.Least(
+                () => PdfDocument.Open(bytes),
+                document =>
+                {
+                    document.Reader.SettleIndex();
+                    return document.WasRepaired;
+                },
+                out var settled,
+                out var repaired) + (repaired ? 1 : 0) + Dispose(settled);
+        }
+
+        static long Dispose(PdfDocument document)
+        {
+            document.Dispose();
+            return 0;
+        }
+
+        var thousand = Settling(1_000);
+        var fourThousand = Settling(4_000);
+
+        thousand.Should().BeLessThan(256);
+        fourThousand.Should().Be(thousand);
+    }
+
+    [Fact]
     public void Settling_the_index_of_a_disposed_document_is_refused()
     {
         var document = PdfDocument.Open(PdfTemplate.Build(PdfTemplate.Sound));

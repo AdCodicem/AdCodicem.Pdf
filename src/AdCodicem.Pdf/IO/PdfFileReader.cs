@@ -70,10 +70,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal const int NearbySearchRadius = 512;
 
     /// <summary>
-    /// How many bytes <see cref="HeaderAt"/> reads first where an entry places its object: enough for a header after some
-    /// white space. A header that runs past them, or that their edge may have cut, is read again in the window a load starts
-    /// with, <see cref="InitialObjectWindow"/>, then in windows eight times larger, as a load grows its own. Not a bound: the
-    /// size of a first read, which holds the headers of real files.
+    /// How many bytes <see cref="HeaderAt"/> reads first where an entry places its object, free of what a pass that reads
+    /// every entry's header may consume: enough for a header after some white space. A header that runs past them, or that
+    /// their edge may have cut, is read again in a window eight times larger, and so on, the window a load starts with
+    /// taken on the way, no further than a load reads. Not a bound: the size of a first read, which holds the headers of
+    /// real files.
     /// </summary>
     private const int HeaderCheckWindow = 64;
 
@@ -81,18 +82,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private const long HeaderPastGuard = -1;
 
     /// <summary>
-    /// What <see cref="HeaderAt"/> gives where reading a header further would read past the allowance its caller has left.
+    /// What <see cref="HeaderAt"/> gives where reading a header further would consume more than its caller has left.
     /// </summary>
     private const long HeaderReadingSpent = -2;
 
     /// <summary>
-    /// How many times the file's length a pass that reads the header of every entry of an index reads at most, over all the
-    /// headers it reads, in windows past the first two of each: <see cref="SettleIndex"/>'s, which rebuilds the index past
-    /// it, in one pass over the file, rather than read on; and each validation's probe of the cross-reference entries, which
-    /// says the entries it did not decide were not checked. Each header is read through at most what a load reads, but
-    /// entries can place their objects in one long run of blanks or comment, each read again to its end. An internal bound
-    /// (ADR 34): in a valid file, each entry places its object's header at its offset, and no window grows past the first; a
-    /// window larger than the file reads the file.
+    /// How many times the file's length a pass that reads the header of every entry of an index consumes at most, over all
+    /// the headers it reads, past the first <see cref="HeaderCheckWindow"/> bytes of each: <see cref="SettleIndex"/>'s, which
+    /// rebuilds the index past it, in one pass over the file, rather than read on; and each validation's probe of the
+    /// cross-reference entries, which says the entries it did not decide were not checked. A header's reading consumes the
+    /// bytes it crossed up to its decision — white space, comments, the header's tokens —, and reads a few times that at
+    /// most, its windows grown eightfold; a run of white space several entries lead into is consumed once. Entries can
+    /// place their objects in one long comment, each read again to its end, which is what the bound stops. An internal
+    /// bound (ADR 34): a valid file's entries place their objects' headers each at its own offset, and its headers, distinct
+    /// bytes, consume at most the file's length together.
     /// </summary>
     private const int HeaderReadingFactor = 2;
 
@@ -363,7 +366,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     private bool _settled;
 
-    /// <summary>What <see cref="SettleIndex"/> may still read of the headers, and the run of white space it last crossed.</summary>
+    /// <summary>What <see cref="SettleIndex"/>'s reading of the headers may still consume, and the run of white space it crossed.</summary>
     private HeaderReading? _settlingReading;
 
     /// <summary>The object the reader last took for the catalog, <c>/Root</c> leading to none; 0 while it took none.</summary>
@@ -757,12 +760,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// the object is neither where its entry places it, nor near it. The first is known without reading anything. The
     /// second is decided here without loading anything: for each entry in use that places an object in the file, the header
     /// a load would parse there is read alone, as a load reads it — after white space and comments, in a window of
-    /// <see cref="HeaderCheckWindow"/> bytes, then grown as a load grows its own while the header runs past it —, and the 512
-    /// bytes either side are searched as a load searches them. An object a load
+    /// <see cref="HeaderCheckWindow"/> bytes, then in windows eight times larger while the header runs past it, no further
+    /// than a load reads —, and the 512 bytes either side are searched as a load searches them. An object a load
     /// would find so is one it finds, whatever its body holds; an entry that places an object in an object stream rebuilds
     /// nothing of its own, the stream's entry aside, which is one of the others. The checks stop at the first entry a load
-    /// would rebuild for, and at the first header whose reading would take settling past twice the file's length in windows
-    /// larger than the first two of each: the index is then rebuilt, in one pass, rather than read on.
+    /// would rebuild for, and at the first header whose reading would take what settling consumed past twice the file's
+    /// length, past the first bytes of each header — what a valid file's headers never take —: the index is then rebuilt,
+    /// in one pass, rather than read on.
     /// </para>
     /// <para>
     /// A header that still runs past <see cref="PdfReaderLimits.MaxObjectLength"/> is where a load reaches that guard: one
@@ -833,16 +837,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (!_guard.ThrowsOnLimit)
         {
             var offset = PositionOf(entry);
-            var subject = LimitSubject(number, _guard.Bound(PdfLimit.Object));
 
+            // The guard's message is built only where the guard was reached: settling allocates nothing an entry.
             if (placement.GuardAtOffset)
             {
-                ReachLimit(PdfLimit.Object, subject, offset);
+                ReachLimit(PdfLimit.Object, LimitSubject(number, _guard.Bound(PdfLimit.Object)), offset);
             }
 
             if (placement.Place == HeaderPlace.PastGuard && placement.Position != offset)
             {
-                ReachLimit(PdfLimit.Object, subject, placement.Position);
+                ReachLimit(PdfLimit.Object, LimitSubject(number, _guard.Bound(PdfLimit.Object)), placement.Position);
             }
         }
 
@@ -854,7 +858,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         };
     }
 
-    /// <summary>Gets how much a pass that reads the header of every entry of an index may read past the first windows of each.</summary>
+    /// <summary>Gets how much a pass that reads the header of every entry of an index may consume past the first window of each.</summary>
     internal long HeaderReadingAllowance => HeaderReadingFactor * _source.Length;
 
     /// <summary>
@@ -867,8 +871,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="number">The object's number.</param>
     /// <param name="entry">The regular entry that places it.</param>
     /// <param name="reading">
-    /// What the pass may still read past the first windows of each header, which what they read is taken from — a header
-    /// that would need more is <see cref="HeaderPlace.Undecided"/> —, and the run of white space it last crossed.
+    /// What the pass may still consume past the first window of each header, which what they consume is taken from — a
+    /// header that would need more is <see cref="HeaderPlace.Undecided"/> —, and the run of white space it crossed.
     /// </param>
     internal HeaderPlacement PlaceHeader(int number, XRefEntry entry, HeaderReading reading)
     {
@@ -932,20 +936,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// reads it — after white space and comments, in a window grown while the header runs past it or may have been cut at
     /// its edge, up to <see cref="PdfReaderLimits.MaxObjectLength"/> —, with its generation and where it starts; 0 where no
     /// header is; or <see cref="HeaderPastGuard"/> where the header still runs past the largest window, where a load reaches
-    /// that guard; or <see cref="HeaderReadingSpent"/> where reading it further would read more than
+    /// that guard; or <see cref="HeaderReadingSpent"/> where reading it further would consume more than
     /// <paramref name="reading"/> has left. Nothing is parsed past the header, reported or recorded.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// It decides as a load does, and reads no more: a first window of <see cref="HeaderCheckWindow"/> bytes, which holds the
-    /// headers of real files; then the one a load starts with, and each after it eight times larger, as a load grows it, no
-    /// further than a load reads from the offset.
+    /// It decides as a load does, and reads no further: a first window of <see cref="HeaderCheckWindow"/> bytes, which holds
+    /// the headers of real files; then, while the header runs past the last or may have been cut at its edge, windows eight
+    /// times larger each, the one a load starts with, <see cref="InitialObjectWindow"/>, taken on the way, no further than a
+    /// load reads from the offset. Past the few small ones, each window is one a load reads; what decides is the first whole
+    /// token that rules a header out, or the header's three, which any window long enough reads alike.
     /// </para>
     /// <para>
-    /// White space, which the lexer skips, is crossed in one pass rather than read again in each larger window, and the run
-    /// last crossed is remembered: an offset inside it reads on from its end, where a load from the offset would find what it
-    /// finds. Past <see cref="HeaderCheckWindow"/> and <see cref="InitialObjectWindow"/> bytes from the offset, what is read is
-    /// taken from <paramref name="reading"/>.
+    /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it crossed up to its
+    /// decision, which its windows read a few times at most. White space, which the lexer skips, is crossed in one pass
+    /// rather than read again in each larger window, and the run crossed is remembered: an offset inside it, or a crossing
+    /// that reaches it, reads on from its end, where a load would find what it finds, and what it holds is consumed once.
+    /// Bytes a window lexes are consumed each time, white space of the run among them.
     /// </para>
     /// </remarks>
     private long HeaderAt(long offset, HeaderReading reading, out long generation, out long start)
@@ -955,13 +962,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // What a load reads from the offset at most: its largest window, or the rest of the file.
         var reach = Math.Min(offset + _guard.Bound(PdfLimit.Object), _source.Length);
-        var free = offset + HeaderCheckWindow + InitialObjectWindow;
-        var origin = reading.PastBlanks(offset);
-        var blanksFrom = origin == offset ? offset : reading.BlankStart;
+
+        // How far the reading has consumed: the first window is read free of the pass's allowance.
+        var consumed = offset + HeaderCheckWindow;
+        var origin = offset;
         var windowSize = (long)HeaderCheckWindow;
+        var crossing = true;
 
         while (true)
         {
+            // White space a reading crossed already is not read again, from the offset or on the way: what lies past it
+            // decides, read from a first window again, and what it holds was consumed then.
+            var past = reading.PastBlanks(origin);
+
+            if (past != origin)
+            {
+                origin = past;
+                consumed = Math.Max(consumed, origin);
+                windowSize = HeaderCheckWindow;
+            }
+
             if (origin >= reach)
             {
                 // White space up to where a load stops reading: the file's end, or the guard's.
@@ -970,34 +990,53 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var length = (int)Math.Min(windowSize, reach - origin);
 
-            if (origin + length > free)
+            // While white space is crossed, a window stops where the run remembered starts: the crossing joins it there.
+            if (crossing && origin < reading.BlankStart && origin + length > reading.BlankStart)
             {
-                if (length > reading.Remaining)
-                {
-                    return HeaderReadingSpent;
-                }
+                length = (int)(reading.BlankStart - origin);
+            }
 
-                reading.Remaining -= length;
+            // A pass that has spent its allowance reads no more than the first window of each header.
+            if (origin + length > consumed && reading.Remaining == 0)
+            {
+                return HeaderReadingSpent;
             }
 
             using var window = _source.GetWindow(origin, length);
             var span = window.Memory.Span;
 
             // A window of nothing but white space is crossed whole: what decides lies past it, and so does what a load reads
-            // in the larger windows it grows to.
-            if (span.Length > 0 && span.IndexOfAnyExcept(PdfCharacters.Whitespace) < 0)
+            // in the larger windows it grows to. It never reaches into the run remembered, which it stops at or reads on from.
+            var firstToken = span.IndexOfAnyExcept(PdfCharacters.Whitespace);
+
+            if (span.Length > 0 && firstToken < 0)
             {
                 var crossed = origin + span.Length;
 
-                // A run longer than the window a load starts with is worth remembering: a load from inside it reads it again.
-                if (crossed - blanksFrom > InitialObjectWindow)
+                if (!Consume(reading, ref consumed, crossed))
                 {
-                    reading.Crossed(blanksFrom, crossed);
+                    return HeaderReadingSpent;
                 }
 
+                // From the offset to here is white space: crossed, or a run an earlier reading crossed.
+                reading.Crossed(offset, crossed);
                 origin = crossed;
                 windowSize = Math.Min(windowSize * 8, BlankCrossingWindow);
                 continue;
+            }
+
+            // The white space the window starts with ends the run crossed: it is consumed, and remembered with the run.
+            if (crossing)
+            {
+                var lead = origin + firstToken;
+
+                if (!Consume(reading, ref consumed, lead))
+                {
+                    return HeaderReadingSpent;
+                }
+
+                reading.Crossed(offset, lead);
+                crossing = false;
             }
 
             // The window ends where the file does, or where a load's largest does: past it a load reads nothing.
@@ -1014,22 +1053,49 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             start = header ? origin + number.Start : offset;
 
             // A header the window's edge may have cut — "5 0 o", or the "obj" of "5 0 objx" — is read again in a larger
-            // window, as the parser reads it. At a load's largest, a load keeps a header it read whole, and reaches the guard
-            // on one it did not.
+            // window, as the parser reads it; one a whole token already rules out is not. At a load's largest, a load keeps
+            // a header it read whole, and reaches the guard on one it did not.
             if (cut && (keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= span.Length) &&
                 PdfObjectParser.MayBeginHeader(number, written, span.Length))
             {
-                if (atReach)
+                if (!atReach)
                 {
-                    return header ? number.Integer : HeaderPastGuard;
+                    if (!Consume(reading, ref consumed, origin + span.Length))
+                    {
+                        return HeaderReadingSpent;
+                    }
+
+                    // Eight times larger, the window a load starts with taken on the way: no window is larger than the one
+                    // a load reads the same bytes in.
+                    windowSize = windowSize < InitialObjectWindow ? Math.Min(windowSize * 8, InitialObjectWindow) : windowSize * 8;
+                    continue;
                 }
 
-                windowSize = windowSize < InitialObjectWindow ? InitialObjectWindow : windowSize * 8;
-                continue;
+                Consume(reading, ref consumed, origin + span.Length);
+                return header ? number.Integer : HeaderPastGuard;
             }
 
+            // Decided: what the reading crossed up to its decision is consumed, however little the pass has left.
+            Consume(reading, ref consumed, origin + Math.Min(keyword.End, span.Length));
             return header ? number.Integer : 0;
         }
+    }
+
+    /// <summary>
+    /// Takes from <paramref name="reading"/> what a header's reading consumed from <paramref name="consumed"/> to
+    /// <paramref name="end"/>, and moves <paramref name="consumed"/> there.
+    /// </summary>
+    /// <returns><see langword="false"/> when the pass had less left, and is now spent.</returns>
+    private static bool Consume(HeaderReading reading, ref long consumed, long end)
+    {
+        if (end <= consumed)
+        {
+            return true;
+        }
+
+        var taken = reading.Consume(end - consumed);
+        consumed = end;
+        return taken;
     }
 
     /// <summary>
