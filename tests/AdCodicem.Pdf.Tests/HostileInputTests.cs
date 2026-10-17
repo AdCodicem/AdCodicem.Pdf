@@ -1225,18 +1225,21 @@ public class HostileInputTests
         (inFlightSource.BytesRead - inFlightOpened).Should().BeLessThan((firstSource.BytesRead - firstOpened) * 5 / 4);
     }
 
-    [Fact]
-    public void The_walk_of_the_object_streams_dependencies_reads_an_object_many_streams_need_once()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_walk_of_the_object_streams_dependencies_reads_an_object_many_streams_need_once(bool generations)
     {
-        // Four hundred object streams take their /DecodeParms from object 3, written directly in the file and 100 KB long.
-        // The walk reads what each stream needs where the chain's index places it, outside the reader's cache: it read
-        // object 3 again for every stream, 93 MB in all. It reads it once a validation, and each stream's dictionary
-        // through one window (#128).
+        // Four hundred object streams take their /DecodeParms from object 3, written directly in the file and 100 KB long —
+        // as 3 0 R, or each under a generation of its own, which leads the reader to the same object. The walk reads what
+        // each stream needs where the chain's index places it, outside the reader's cache: it read object 3 again for every
+        // stream, 93 MB in all. It reads it once a validation, and each stream's dictionary through one window (#128).
         const int Streams = 400;
         var streams = new List<PackedStream>();
         for (var k = 0; k < Streams; k++)
         {
-            streams.Add(new PackedStream(10 + (2 * k), "/DecodeParms 3 0 R", [(11 + (2 * k), "<< >>")], PackedData.Plain));
+            var parameters = string.Create(CultureInfo.InvariantCulture, $"/DecodeParms 3 {(generations ? k : 0)} R");
+            streams.Add(new PackedStream(10 + (2 * k), parameters, [(11 + (2 * k), "<< >>")], PackedData.Plain));
         }
 
         var file = PackedFile(streams, [(3, "<< /Pad [" + new StringBuilder().Insert(0, "0 ", 50_000) + "] >>")]);

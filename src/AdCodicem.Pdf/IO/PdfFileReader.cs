@@ -735,6 +735,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     internal int CatalogFoundAs => _catalogFoundAs;
 
+    /// <summary>Gets how many objects the reader keeps in its cache, at most.</summary>
+    internal int CacheCapacity => _cacheCapacity;
+
     /// <summary>
     /// Brings the index to where no later load rebuilds it: rebuilds it now, once, when a load could still rebuild it, and
     /// otherwise leaves it as it is. The validator calls it before its first rule, so that what every rule reads was

@@ -423,6 +423,23 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void Of_two_objects_an_object_stream_holds_and_needs_the_one_its_walk_meets_first_is_named()
+    {
+        // Object 3, which the stream's /DecodeParms names, is an array of 5 and 6, both in the stream. The walk takes the last
+        // value it met first, so meets 6 before 5, as it did before it kept what each object read holds.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "[5 0 R 6 0 R]")
+            .WithObject(5, "1")
+            .WithObject(6, "<< /Title (six) >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], compressObjectStream: true, objectStreamEntries: "/DecodeParms 3 0 R");
+
+        Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            "Object stream 7 needs object 6, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
+    }
+
+    [Fact]
     public void An_object_stream_whose_count_it_holds_is_circular_and_not_also_broken()
     {
         var file = ObjectStream("/N 5 0 R", "2", compress: false);

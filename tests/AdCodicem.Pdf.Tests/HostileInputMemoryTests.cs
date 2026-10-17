@@ -69,6 +69,44 @@ public class HostileInputMemoryTests
         held.Should().BeLessThan(20L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
+    [Fact]
+    public void The_walk_of_the_object_streams_dependencies_holds_what_the_reader_keeps_whatever_it_reaches()
+    {
+        // An object stream takes its /DecodeParms from object 3, an array of references to 2,000 arrays, each of a thousand
+        // references, opened with a cache of 64 objects. The walk kept the references of every object it read, to read each
+        // once: 16 MB, growing with what the decoding keys reach. It keeps as many objects as the reader keeps in its cache.
+        const int Arrays = 2000;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [5] = (1, file.ObjectStream(5, [(6, "<< >>")], "/DecodeParms 3 0 R "), 0),
+            [6] = (2, 5, 0),
+        };
+        var all = new StringBuilder("[");
+        var thousand = "[" + new StringBuilder().Insert(0, "1 0 R ", 1000) + "]";
+
+        for (var number = 10; number < Arrays + 10; number++)
+        {
+            all.Append(CultureInfo.InvariantCulture, $"{number} 0 R ");
+            rows[number] = (1, file.Object(number, thousand), 0);
+        }
+
+        rows[3] = (1, file.Object(3, all.Append(']').ToString()), 0);
+        file.CrossReferenceStream(Arrays + 10, Arrays + 11, rows, "/Root 1 0 R");
+        var source = new SamplingSource(file.Bytes) { Every = 16 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        Validation.ObjectStreamDependencies.Run(document).Circular.Should().BeEmpty();
+
+        source.Sampling = false;
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(6L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
     private static byte[] Compress(byte[] data)
     {
         using var compressed = new MemoryStream();
@@ -176,8 +214,13 @@ public class HostileInputMemoryTests
     /// <summary>A file in memory that samples the memory live at once, every object collected first, at each read.</summary>
     private sealed class SamplingSource(byte[] data) : PdfFileSource
     {
+        private int _reads;
+
         /// <summary>Gets or sets a value indicating whether reads sample the memory live at once.</summary>
         public bool Sampling { get; set; }
+
+        /// <summary>Gets or sets how many reads one sample is taken for: every read by default.</summary>
+        public int Every { get; init; } = 1;
 
         /// <summary>Gets the most memory a sample found live at once.</summary>
         public long MostLive { get; private set; }
@@ -189,7 +232,7 @@ public class HostileInputMemoryTests
 
         public override int Read(long offset, Span<byte> buffer)
         {
-            if (Sampling)
+            if (Sampling && _reads++ % Every == 0)
             {
                 Samples++;
                 MostLive = Math.Max(MostLive, GC.GetTotalMemory(forceFullCollection: true));
