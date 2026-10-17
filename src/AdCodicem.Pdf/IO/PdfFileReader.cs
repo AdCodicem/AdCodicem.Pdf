@@ -3970,7 +3970,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     ReachLimit(limit, LimitSubject(number, maxWindow), offset);
                     MarkCutByGuard(parsed, offset + window.Length);
 
-                    if (foundNumber > 0)
+                    // What the chain reads of a cross-reference stream is the section's, which records its cut: the object of that
+                    // number a load reads is noted when it is read (#175).
+                    if (foundNumber > 0 && number != AnyObject)
                     {
                         _cutAtLimit.Add(foundNumber);
                     }
@@ -4638,10 +4640,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             // A catalog a search took earlier is none the rebuilt index serves: the reader takes none until this one finds
             // one. Searched even when the expansion reached a guard; the first guard reached is the one thrown. A /Root a
-            // guard cut is taken as read, and no other is looked for.
+            // guard cut is taken as read, and no other is looked for — the file's /Root, not one a search set in its place.
+            var searchedRoot = _catalogFoundAs != 0 && Trailer.GetRaw(PdfName.Root) is PdfReference taken && taken.Id.Number == _catalogFoundAs;
             _catalogFoundAs = 0;
 
-            if (!RootCutByGuard())
+            if (searchedRoot || !RootCutByGuard())
             {
                 var searching = FindCatalog();
                 reached ??= searching;
