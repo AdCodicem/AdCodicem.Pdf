@@ -147,11 +147,10 @@ internal sealed class CrossReferenceProbe
         var id = new PdfObjectId(number, entry.Generation);
         var offset = reader.PositionOf(entry);
 
-        // An offset outside the file is no place to locate a finding at, and a load looks near it all the same: an object
-        // within 512 bytes of it, before the file's end, is one it relocates.
+        // An offset outside the file is no place to locate a finding at, and a load looks near it all the same: an object it
+        // finds there, in the file, is one it relocates.
         var inFile = reader.IsInFile(offset);
         var at = inFile ? PdfValidationLocation.OfObject(id, offset) : PdfValidationLocation.OfObject(id);
-        var named = inFile ? offset.ToString(CultureInfo.InvariantCulture) : reader.DescribeOffset(entry.Offset);
         var placement = reader.PlaceHeader(number, entry, _reading);
 
         switch (placement.Place)
@@ -176,7 +175,7 @@ internal sealed class CrossReferenceProbe
 
                 Shifted.Add(new ProbeFinding(
                     at,
-                    Invariant($"The entry of object {number} gives offset {named}, {found}; the object starts {RuleText.Distance(placement.Position - offset)}, at offset {placement.Position}.")));
+                    Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {found}; the object starts {RuleText.Distance(placement.Position - offset)}, at offset {placement.Position}.")));
 
                 CheckGeneration(number, entry, placement.Position, placement.Generation);
                 return;
@@ -184,7 +183,7 @@ internal sealed class CrossReferenceProbe
             case HeaderPlace.NotFound when !inFile:
                 Broken.Add(new ProbeFinding(
                     at,
-                    Invariant($"The entry of object {number} gives offset {named}, outside the file.")));
+                    Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, outside the file.")));
                 return;
 
             case HeaderPlace.NotFound:
@@ -208,10 +207,14 @@ internal sealed class CrossReferenceProbe
                 // there is the limit's to say, and raising it lets the entry be checked.
                 NotChecked.Add(new ProbeFinding(
                     at,
-                    Invariant($"Reading the header of object {number} where its entry places it, at offset {named}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
+                    Invariant($"Reading the header of object {number} where its entry places it, at offset {Named(reader, entry, offset, inFile)}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
                 return;
         }
     }
+
+    /// <summary>Writes the offset an entry gives, as a finding names it: built only for a finding.</summary>
+    private static string Named(PdfFileReader reader, XRefEntry entry, long offset, bool inFile) =>
+        inFile ? offset.ToString(CultureInfo.InvariantCulture) : reader.DescribeOffset(entry.Offset);
 
     private void CheckGeneration(int number, XRefEntry entry, long position, long generation)
     {
