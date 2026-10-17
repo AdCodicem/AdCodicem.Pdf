@@ -182,6 +182,31 @@ internal ref struct PdfObjectParser
     public PdfObject ParseObject() => ParseValue(_lexer.Read(), 0);
 
     /// <summary>
+    /// Determines whether an object header may still begin with <paramref name="number"/> and <paramref name="generation"/>,
+    /// the first two tokens read from bytes <paramref name="length"/> long whose third reached their end: neither is a whole
+    /// token no header begins with — a number that is no object number, a generation that is none.
+    /// </summary>
+    /// <remarks>
+    /// A token the bytes' end reached may go on past it, and rules nothing out: <c>0000</c> may be the start of
+    /// <c>00004</c>. The reader's loads and its check of the header each entry places decide alike through it.
+    /// </remarks>
+    internal static bool MayBeginHeader(PdfToken number, PdfToken generation, int length)
+    {
+        if (number.Kind == PdfTokenKind.EndOfInput || number.End >= length)
+        {
+            return true;
+        }
+
+        if (number.Kind != PdfTokenKind.Integer || number.Integer is <= 0 or > PdfObjectId.MaxNumber)
+        {
+            return false;
+        }
+
+        return generation.Kind == PdfTokenKind.EndOfInput || generation.End >= length ||
+            (generation.Kind == PdfTokenKind.Integer && generation.Integer is >= 0 and <= PdfObjectId.MaxGeneration);
+    }
+
+    /// <summary>
     /// Reads an indirect object definition — <c>N G obj … endobj</c> — at the current position.
     /// </summary>
     public bool TryReadIndirectObject(out PdfObjectId id, out PdfObject value)
@@ -201,8 +226,10 @@ internal ref struct PdfObjectParser
             generation.Integer is < 0 or > PdfObjectId.MaxGeneration)
         {
             // A header the end of the buffer reached — white space up to it, "5 0 o" — may be whole in a
-            // larger one.
-            if (keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= _memory.Length)
+            // larger one; one a whole token already rules out is no header however large the buffer, and no larger one
+            // is asked for (#175).
+            if ((keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= _memory.Length) &&
+                MayBeginHeader(number, generation, _memory.Length))
             {
                 _truncated = true;
             }

@@ -1520,6 +1520,32 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("x %", false)]
+    [InlineData("x %", true)]
+    [InlineData("4 x %", false)]
+    [InlineData("4 70000 %", true)]
+    public void A_whole_token_no_header_begins_with_rules_one_out_however_long_what_follows(string start, bool throwOnLimit)
+    {
+        // Where object 4's row places it, a token no header begins with, then a comment longer than the reader reads an
+        // object in: a load grew its window to the guard and reported limit.object, or threw, for bytes that hold no object,
+        // and the probe said the entry was not checked. A whole token rules a header out, however large a window (#175).
+        var file = WithFourWritten(start + new string('c', 4000) + "\n(not an object)\n", out var row);
+        var options = new PdfReaderOptions { ThrowOnLimit = throwOnLimit, Limits = PdfReaderLimits.Default with { MaxObjectLength = 2048 } };
+        using var document = PdfDocument.Open(file, options);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("four");
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+        var report = new PdfValidator().Validate(document);
+
+        var finding = Single(report, PdfValidationRuleIds.XRefEntryBroken);
+        finding.Location.Should().Be(PdfValidationLocation.OfObject(new PdfObjectId(4), row));
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The entry of object 4 gives offset {row}, where there is no object header, and the object is not within 512 bytes of it."));
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(-3, false)]
     [InlineData(-3, true)]
     [InlineData(9999, false)]
