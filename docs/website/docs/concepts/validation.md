@@ -102,8 +102,9 @@ either side of it hold its header. If some read still could, the validator has t
 that read would have; to find out, it reads the header each entry written directly in the file places, or looks for
 it nearby as a load would, and nothing of any object's body. A header that runs past the reader's
 [object limit](reader-limits.md) is taken as a read takes it: reported under `limit.object` and looked for nearby, or,
-for a document opened to throw on a limit, left to the read that reaches it. A rebuild costs a whole read of the file,
-even when no rule would have reached the damage. No rule then reads part of the document before a rebuild and part
+for a document opened to throw on a limit, left to the read that reaches it. It reads no more than twice the file's
+length past the first windows of each header, and rebuilds the index rather than read on. A rebuild costs a whole read of
+the file, even when no rule would have reached the damage. No rule then reads part of the document before a rebuild and part
 after it, and a document gives the same report whatever you read before validating it — nothing, every object, or a
 previous validation.
 
@@ -119,7 +120,8 @@ The cross-reference rules read a few dozen bytes where each entry of the file's 
 its header, never its body — and each object stream once, without keeping it. They judge the rows as the file
 wrote them, not as the reader corrected them, and read each object stream where the file's own index places it,
 outside the document's cache. Working out which object streams need one another, they read there too each object
-written directly in the file that a stream's decoding keys lead through, once a validation. The other values written
+written directly in the file that a stream's decoding keys lead through, once a validation for as many of them as the
+document's cache holds. The other values written
 elsewhere that a row's object needs — a stream's own `/Length` written as a reference, the values an object stream's
 header gives as reals, a decoding parameter the trailer names — are read as any read reads them, through the index the
 reader settled on.

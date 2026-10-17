@@ -88,8 +88,10 @@ name it as the file's row does, and the page tree and object-shape rules as the 
 What the reader noted of an object as it read it — that no `endobj` followed it, that a limit cut it, that its
 stream's `/Length` was wrong — is forgotten by a rebuild, and noted again as the rebuilt map's definitions are read.
 A rebuild a read sets off while that read is still under way — an object's `/Length` or filter names an object the
-map misplaces — is finished once no read is: the object is then read again from the rebuilt map, and what was read
-meanwhile, with the read unfinished, is let go, so that it reads as it would had the map been rebuilt first.
+map misplaces — scans the file, and is finished once no read is under way, or once the read throws, before its exception
+leaves: the object is then read again from the rebuilt map, and what was read meanwhile, with the read unfinished, is
+let go, so that it reads, and reports, as it would had the map been rebuilt first, at the same cost. If the source fails
+while the rebuild is being finished, the next read finishes it.
 
 A rebuild reads the file to its end, and holds no more numbers than the map may: a header for a number it holds already
 takes no room, so that a million copies of one object hide nothing behind them, and the first number past

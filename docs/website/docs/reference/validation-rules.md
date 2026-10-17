@@ -69,7 +69,8 @@ The entries the `xref.entry-*`, `xref.generation-mismatch`, `xref.object-stream-
 and `xref.object-past-size` rules check are those of the index the file's chain gave, as the reader first read
 it — not one it has corrected or rebuilt since —, and the object streams are read where that index places them
 ([#128]); so are the objects written directly in the file that `xref.object-stream-circular` follows from a stream's
-decoding keys, each read once a validation. Any other value written elsewhere that an entry's object needs — a stream's
+decoding keys, each read once a validation, for as many of them as the document's cache holds. Any other value written
+elsewhere that an entry's object needs — a stream's
 own `/Length` written as a reference, a value `xref.object-stream-value-wrong` reports, a trailer value written as one —
 is read as any read reads it, through the index the validator had the reader settle on before its first rule: the
 chain's own, unless a read could still have made the reader rebuild it, in which case it was rebuilt then ([#237]). What
