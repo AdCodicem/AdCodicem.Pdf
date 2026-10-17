@@ -1016,7 +1016,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // A header the window's edge may have cut — "5 0 o", or the "obj" of "5 0 objx" — is read again in a larger
             // window, as the parser reads it. At a load's largest, a load keeps a header it read whole, and reaches the guard
             // on one it did not.
-            if (cut && (keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= span.Length))
+            if (cut && (keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= span.Length) &&
+                PdfObjectParser.MayBeginHeader(number, written, span.Length))
             {
                 if (atReach)
                 {
