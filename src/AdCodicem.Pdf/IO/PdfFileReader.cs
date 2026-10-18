@@ -259,6 +259,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// and the bytes their data holds, which <see cref="ObjectStreamBudget"/> bounds.
     /// </summary>
     private readonly Dictionary<int, ObjectStreamContents?> _objectStreams = [];
+
+    /// <summary>
+    /// The object streams, by number, that a guard left unable to serve their objects — their own dictionary cut, their
+    /// data cut before <c>/First</c> or left encoded —: an object they hold is unread for the guard's reasons, not the
+    /// file's, as one a guard cut is (#259).
+    /// </summary>
+    private readonly HashSet<int> _objectStreamsHiddenByGuard = [];
     private readonly Queue<int> _objectStreamOrder = new();
     private long _objectStreamBytes;
 
@@ -1778,6 +1785,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _cacheOrder.Clear();
         _cacheOrder.TrimExcess();
         _objectStreams.Clear();
+        _objectStreamsHiddenByGuard.Clear();
         _objectStreams.TrimExcess();
         _objectStreamOrder.Clear();
         _objectStreamOrder.TrimExcess();
@@ -4489,7 +4497,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             // A stream that cannot be read yet, because its own dictionary is being read, says nothing of the
             // object: it is read again when asked again.
-            return notYet ? PdfNull.Instance : null;
+            if (notYet)
+            {
+                return PdfNull.Instance;
+            }
+
+            // One a guard left unable to serve its objects leaves the object unread for the guard's reasons, which its
+            // report names: the object is one a guard cut, read as far as it was — not at all (#259).
+            if (_objectStreamsHiddenByGuard.Contains(entry.ObjectStreamNumber))
+            {
+                _cutAtLimit.Add(id.Number);
+            }
+
+            return null;
         }
 
         var mark = _pending.GetMark();
@@ -4563,7 +4583,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             // What decoding without an object the stream holds gives is all the stream can give, and is kept; decoded
             // again once the budget let it go, the stream reads the same objects as null, and gives the same.
-            var contents = loaded is PdfStream stream ? ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports) : null;
+            ObjectStreamContents? contents = null;
+            var hidden = IsCutAtLimit(number);
+
+            if (loaded is PdfStream stream)
+            {
+                contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out var cut);
+                hidden |= cut;
+            }
+
+            if (contents is null && hidden)
+            {
+                _objectStreamsHiddenByGuard.Add(number);
+            }
 
             // A stream read through an index its own load had rebuilt is decoded again when next asked for, from the
             // rebuilt index's definition.
@@ -4650,6 +4682,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _cache.Clear();
         _cacheOrder.Clear();
         _objectStreams.Clear();
+        _objectStreamsHiddenByGuard.Clear();
         _objectStreamOrder.Clear();
         _objectStreamBytes = 0;
         _nullWhileDecoding.Clear();
@@ -4783,6 +4816,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _cache.Clear();
         _cacheOrder.Clear();
         _objectStreams.Clear();
+        _objectStreamsHiddenByGuard.Clear();
         _objectStreamOrder.Clear();
         _objectStreamBytes = 0;
 
@@ -5049,7 +5083,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     continue;
                 }
 
-                contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports);
+                contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out var cut);
+
+                if (contents is null && (cut || IsCutAtLimit(number)))
+                {
+                    _objectStreamsHiddenByGuard.Add(number);
+                }
             }
             catch (PdfLimitExceededException exception)
             {
@@ -5381,8 +5420,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// decoded. A <c>/First</c> past data a guard cut is not reported, nor data the guard on filters left encoded:
         /// the guard was, under its own code.
         /// </remarks>
-        public static ObjectStreamContents? TryCreate(int number, PdfStream stream, PdfDiagnostics diagnostics, ObjectStreamReports reports)
+        /// <param name="number">The object stream's number.</param>
+        /// <param name="stream">The object stream.</param>
+        /// <param name="diagnostics">Receives what is wrong with the stream.</param>
+        /// <param name="reports">Says which streams were reported already.</param>
+        /// <param name="hiddenByGuard">Whether a guard, not the file, left the stream unable to serve its objects.</param>
+        public static ObjectStreamContents? TryCreate(
+            int number, PdfStream stream, PdfDiagnostics diagnostics, ObjectStreamReports reports, out bool hiddenByGuard)
         {
+            hiddenByGuard = false;
             var position = stream.Data.Position;
             var count = stream.Dictionary.GetInteger(PdfName.N, -1);
             var first = stream.Dictionary.GetInteger(PdfName.First, -1);
@@ -5429,11 +5475,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // Data the guard on filters left encoded holds none of the stream's objects, as data a guard cut before /First.
             if (leftEncoded)
             {
+                hiddenByGuard = true;
                 return null;
             }
 
             if (first > data.Length)
             {
+                hiddenByGuard = cutByGuard;
+
                 if (!cutByGuard)
                 {
                     ReportUnreadable(
@@ -5510,7 +5559,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// <param name="source">Resolves what the object refers to.</param>
         /// <param name="diagnostics">Receives what the index got wrong of the object's place.</param>
         /// <param name="parsing">Receives what parsing met, for the caller to keep or drop.</param>
-        /// <param name="cut">Whether the object runs into the end of data a guard cut, and was read only as far as it.</param>
+        /// <param name="cut">
+        /// Whether the object runs into the end of data a guard cut, and was read only as far as it, or starts past it, and was
+        /// not read.
+        /// </param>
         public PdfObject? Parse(
             int index, int expectedNumber, IPdfObjectSource source, PdfDiagnostics diagnostics, PdfDiagnostics parsing, out bool cut)
         {
@@ -5543,8 +5595,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // Both are at most int.MaxValue, so their sum is computed as a long, where it cannot wrap.
             var start = (long)_first + _offsets[index];
 
+            // Past data a guard cut, the object is unread for the guard's reasons, not the file's (#259).
             if (start >= _data.Length)
             {
+                cut = _cutByGuard;
                 return null;
             }
 

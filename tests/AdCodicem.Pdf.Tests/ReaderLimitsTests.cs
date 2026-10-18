@@ -1190,6 +1190,64 @@ public class ReaderLimitsTests
         document.Reader.CatalogFoundAs.Should().Be(0);
         document.WasRepaired.Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse();
+        PageTreeWalk.Run(document).Partial.Should().BeTrue("the catalog the chain leads to may give its /Pages past the cut");
+    }
+
+    [Theory]
+    [InlineData("past the decoded data")]
+    [InlineData("past the decoded data, an older catalog beside")]
+    [InlineData("in a stream whose dictionary a guard cut")]
+    public void A_catalog_an_object_stream_s_cut_leaves_unread_is_taken_as_read(string shape)
+    {
+        // #259: the catalog is a member of an object stream a guard left unable to serve it — its decoded data cut before
+        // the member starts, or its own dictionary cut. It read as missing: the reader looked for another catalog, taking an
+        // older one and orphaning the real tree's page, or rebuilt the index for nothing, and file.root-invalid said the
+        // file does not hold it.
+        // The object stream holds its members in the order they are written: object 4, then the catalog.
+        var builder = new TestPdfBuilder();
+
+        if (shape != "in a stream whose dictionary a guard cut")
+        {
+            builder.WithObject(4, "(" + new string('x', 300) + ")");
+        }
+
+        builder
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        PdfReaderLimits limits;
+        byte[] file;
+
+        if (shape == "in a stream whose dictionary a guard cut")
+        {
+            file = builder.BuildWithXRefStream(
+                rootNumber: 1, compressedObjects: [1], objectStreamEntries: "/Pad (" + new string('x', 300) + ")");
+            limits = PdfReaderLimits.Default with { MaxObjectLength = 128 };
+        }
+        else
+        {
+            if (shape.EndsWith("beside", StringComparison.Ordinal))
+            {
+                builder
+                    .WithObject(5, "<< /Type /Catalog /Pages 6 0 R >>")
+                    .WithObject(6, "<< /Type /Pages /Kids [7 0 R] /Count 1 >>")
+                    .WithObject(7, "<< /Type /Page /Parent 6 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+            }
+
+            file = builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [4, 1], compressObjectStream: true);
+            limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 100 };
+        }
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Reader.IsCutAtLimit(1).Should().BeTrue();
+        document.Reader.Structure.RootCutByGuard.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0, "no other catalog is looked for");
+        var report = new PdfValidator().Validate(document);
+        document.WasRepaired.Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+        report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code.StartsWith("limit.", StringComparison.Ordinal));
     }
 
     [Fact]

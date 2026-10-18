@@ -156,18 +156,19 @@ internal sealed class PageTreeWalk
     {
         var walk = new PageTreeWalk(document.Reader);
 
-        if (document.Catalog is not { } catalog)
-        {
-            return walk;
-        }
-
         // The catalog is an object of its own, or a dictionary written in the trailer, which file.root-invalid reports.
         var catalogPlace = document.Trailer.GetRaw(PdfName.Root) is PdfReference reference
             ? Place.Of(reference.Target())
             : new Place(default, default, "/Root");
 
-        // A catalog a limit cut may give its /Pages past the cut: the tree read, if any, may not be the whole of it.
+        // A catalog a limit cut may give its /Pages past the cut, or be past the cut whole, unread: the tree read, if any,
+        // may not be the whole of it (#259).
         walk.Partial = walk.IsCut(catalogPlace);
+
+        if (document.Catalog is not { } catalog)
+        {
+            return walk;
+        }
 
         if (catalog.GetRaw(PdfName.Pages) is { } root)
         {
