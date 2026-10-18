@@ -284,13 +284,6 @@ internal sealed class PageTreeWalk
         var reference = kid as PdfReference;
         var id = reference?.Target() ?? default;
 
-        // A kid that is a link of a chain is named with the object the chain leads to, which is what the finding is about.
-        var named = reference is null
-            ? string.Empty
-            : reference.Id.Number == id.Number
-                ? Invariant($"object {id.Number}")
-                : Invariant($"object {reference.Id.Number}, which leads to object {id.Number}");
-
         // What a node's /Kids holds is not judged where a limit cut the array: the findings on the kid itself are, located
         // at the object it is.
         var judged = !frame.KidsCut;
@@ -316,7 +309,7 @@ internal sealed class PageTreeWalk
                 {
                     Cycles.Add(new ProbeFinding(
                         Location(frame.Place),
-                        Invariant($"{Kid(frame, index)} names {named}, {(id.Number == frame.Id.Number ? "which is that node itself" : "a node above it")}: the tree loops back on itself there, and what it should have listed is unknown.")));
+                        Invariant($"{Kid(frame, index)} names {Named(reference, id)}, {(id.Number == frame.Id.Number ? "which is that node itself" : "a node above it")}: the tree loops back on itself there, and what it should have listed is unknown.")));
                 }
 
                 return;
@@ -328,7 +321,7 @@ internal sealed class PageTreeWalk
                 {
                     RepeatedNodes.Add(new ProbeFinding(
                         Location(frame.Place),
-                        Invariant($"{Kid(frame, index)} names {named}, which the tree already lists: {CountedAgain(frame, id.Number)}.")));
+                        Invariant($"{Kid(frame, index)} names {Named(reference, id)}, which the tree already lists: {CountedAgain(frame, id.Number)}.")));
                 }
                 else
                 {
@@ -359,11 +352,11 @@ internal sealed class PageTreeWalk
                         return;
 
                     case ObjectPresence.Missing:
-                        InvalidSlot(frame, index, Invariant($"names {named}, which the file lacks"));
+                        InvalidSlot(frame, index, Invariant($"names {Named(reference, id)}, which the file lacks"));
                         return;
 
                     default:
-                        InvalidSlot(frame, index, Invariant($"names {named}, which is null"));
+                        InvalidSlot(frame, index, Invariant($"names {Named(reference, id)}, which is null"));
                         return;
                 }
 
@@ -379,7 +372,7 @@ internal sealed class PageTreeWalk
                     InvalidKids.Add(new ProbeFinding(
                         Location(reference is not null ? streamPlace : frame.Place),
                         reference is not null
-                            ? Invariant($"{Kid(frame, index)} names {named}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")
+                            ? Invariant($"{Kid(frame, index)} names {Named(reference, id)}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")
                             : $"{Kid(frame, index)} is a stream written in the array, where the tree wants an indirect reference to a dictionary: the reader reads the stream's dictionary in its place."));
                 }
 
@@ -408,10 +401,17 @@ internal sealed class PageTreeWalk
                     frame,
                     index,
                     reference is not null
-                        ? Invariant($"names {named}, which is {RuleText.Kind(other)}, neither a page nor a node")
+                        ? Invariant($"names {Named(reference, id)}, which is {RuleText.Kind(other)}, neither a page nor a node")
                         : $"is {RuleText.Kind(other)}, neither a page nor a node");
                 return;
         }
+
+        // A kid that is a link of a chain is named with the object the chain leads to, which is what the finding is about;
+        // the name is written for a finding only, which most kids give none of.
+        static string Named(PdfReference reference, PdfObjectId id) =>
+            reference.Id.Number == id.Number
+                ? Invariant($"object {id.Number}")
+                : Invariant($"object {reference.Id.Number}, which leads to object {id.Number}");
     }
 
     /// <summary>
