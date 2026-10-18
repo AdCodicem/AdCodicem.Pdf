@@ -1931,8 +1931,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             _structure.RootUsable = false;
             _structure.RootResolved = _structure.RootAsWritten is PdfReference root ? root.Resolve() : null;
-            _structure.RootHiddenByGuard = _structure.RootAsWritten is PdfReference hidden &&
-                GetPresence(hidden.Id.Number) == ObjectPresence.Unindexed;
+            _structure.RootHiddenByGuard = RootHiddenByGuard();
             _structure.RootCutByGuard = RootCutByGuard();
 
             // Resolving /Root may itself have rebuilt the index — its object was neither where its entry said nor
@@ -2060,7 +2059,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// past the cut, and reads as null until the guard is lifted, as any object there does. A <c>/Root</c> that names an
     /// object the index holds, or none, says the file is damaged.
     /// </summary>
-    private bool RootHiddenByGuard() => Trailer.GetRaw(PdfName.Root) is PdfReference root && HiddenByGuard(root.Id.Number);
+    /// <remarks>
+    /// So is a <c>/Root</c> the trailers lack where a guard kept one of them from being read whole: it may lie past the cut, or
+    /// in an older trailer the chain stopped short of.
+    /// </remarks>
+    private bool RootHiddenByGuard() => Trailer.GetRaw(PdfName.Root) switch
+    {
+        PdfReference root => HiddenByGuard(root.Id.Number),
+        null => _structure.TrailersHiddenByGuard,
+        _ => false,
+    };
 
     /// <summary>
     /// Determines whether <c>/Root</c>, resolved, names an object a guard cut: it may be the catalog, its <c>/Type</c> or its
@@ -2266,6 +2274,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // Placed where the chain goes on, a position in the file; one named outside the file is placed at what
                 // named it, the offset in the message, as a section that is missing is (#125).
                 _cutByGuard = true;
+                _structure.TrailersHiddenByGuard = true;
                 var cut = PositionOf(offset);
                 var inFile = IsInFile(cut);
                 _structure.ChainCutAt = cut;
@@ -2308,6 +2317,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             _highestRead = Math.Max(_highestRead, section.HighestNumber);
 
+            // A section whose rows a guard cut before its trailer was read names no older one the chain knows of.
+            if (section.TrailerCutByLimit || (section.CutByLimit && section.Trailer is null))
+            {
+                _structure.TrailersHiddenByGuard = true;
+            }
+
             if (section.TrailerCutByLimit)
             {
                 // A trailer a limit cut may have named an older section past the cut, and given keys the older trailers
@@ -2321,6 +2336,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 // The index takes no more numbers: an older section could only add rows for numbers it lacks, which it
                 // has no room for, or for numbers a newer section gave already.
+                _structure.TrailersHiddenByGuard |= previous >= 0 || hybrid >= 0;
                 break;
             }
 
@@ -2348,6 +2364,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     // Filled by the stream, an older section could add nothing; the stream's rows, or the stream, cut by a
                     // limit, an older section's rows would stand for the objects the rows left unread define.
+                    _structure.TrailersHiddenByGuard |= previous >= 0;
                     break;
                 }
             }
@@ -2448,6 +2465,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (section.CutByLimit)
         {
             _cutByGuard = true;
+            _structure.TrailersHiddenByGuard = true;
             return;
         }
 
@@ -3390,6 +3408,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         _xref.MergeTrailer(dictionary);
         previous = rowsCut ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute);
+
+        // Rows a guard cut end the chain here: an older section's trailer, which the stream's names, is left unread.
+        if (rowsCut && dictionary.ContainsKey(PdfName.Prev))
+        {
+            _structure.TrailersHiddenByGuard = true;
+        }
+
         return XRefSectionState.Read;
     }
 

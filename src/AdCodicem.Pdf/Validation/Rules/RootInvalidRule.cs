@@ -1,6 +1,5 @@
 using System.Globalization;
 using AdCodicem.Pdf.IO;
-using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.Validation.Rules;
@@ -21,8 +20,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// as it was before the reader looked for a catalog. A trailer that could not be read at all, or an index the chain
 /// did not give, is another rule's to report, and a catalog one of the reader's limits left out of the index
 /// <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>'s. A catalog one of them cut is not judged: what it lacks may lie
-/// past the cut, and the reader's report names the limit. Nor is a <c>/Root</c> the trailers lack where the chain ends at a
-/// trailer one of them cut: it may lie past the cut.
+/// past the cut, and the reader's report names the limit. Nor is a <c>/Root</c> the trailers lack where one of them kept a
+/// trailer from being read whole: it may lie past the cut, or in an older trailer the chain stopped short of.
 /// </para>
 /// </remarks>
 internal sealed class RootInvalidRule : IValidationRule
@@ -44,8 +43,10 @@ internal sealed class RootInvalidRule : IValidationRule
         }
 
         // A catalog a guard left out of the index as the document opened is unknown, not lacking: xref.checked-in-part says
-        // the index was stopped short of it, and raising the guard reads it. It stays so once a rebuild finds it, as the
-        // trailer judged is the one the document opened with, and /Root as it resolved then.
+        // the index was stopped short of it, and raising the guard reads it. So is a /Root the trailers lack where a guard
+        // kept one of them from being read whole: it may lie past the cut, or in an older trailer the chain stopped short
+        // of. It stays so once a rebuild finds it, as the trailer judged is the one the document opened with, and /Root as
+        // it resolved then.
         if (structure.RootHiddenByGuard)
         {
             return;
@@ -56,13 +57,6 @@ internal sealed class RootInvalidRule : IValidationRule
         // catalog in an object stream, cut through or left unread past the cut data (#259) —, and raising it reads the
         // catalog whole.
         if (structure.RootCutByGuard)
-        {
-            return;
-        }
-
-        // Nor a /Root the trailers lack where the chain ends at a trailer a guard cut: it may lie past the cut, which
-        // xref.checked-in-part says was not checked, and the reader looked for the catalog among the objects it indexed.
-        if (structure.RootAsWritten is null && EndsAtCutTrailer(structure))
         {
             return;
         }
@@ -99,19 +93,6 @@ internal sealed class RootInvalidRule : IValidationRule
                     $"The trailer's /Root is {Kind(structure.RootAsWritten)}, not a reference to the document catalog.{found}");
                 break;
         }
-    }
-
-    private static bool EndsAtCutTrailer(FileStructure structure)
-    {
-        foreach (var section in structure.Sections)
-        {
-            if (section.TrailerCutByLimit)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private void Report(ValidationContext context, PdfValidationLocation location, string message) =>
