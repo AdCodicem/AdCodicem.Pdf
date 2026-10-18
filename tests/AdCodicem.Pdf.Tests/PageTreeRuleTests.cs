@@ -1801,7 +1801,7 @@ public class PageTreeRuleTests
         var report = new PdfValidator().Validate(document);
 
         document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer);
-        report.Findings.Should().NotContain(finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal), string.Join("; ", report.Findings));
+        report.Findings.Select(finding => finding.RuleId).Should().Equal([PdfValidationRuleIds.XRefCheckedInPart], string.Join("; ", report.Findings));
         PageTreeWalk.Run(document).Partial.Should().BeTrue();
         Validate(file).Findings.Should().BeEmpty("read whole, the root gives what page 3 inherits, and its /Count");
     }

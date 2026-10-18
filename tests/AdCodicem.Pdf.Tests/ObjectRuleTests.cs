@@ -671,6 +671,17 @@ public class ObjectRuleTests
             .Should().Be(message);
     }
 
+    [Fact]
+    public void A_name_with_a_null_character_under_a_prev_written_deeper_in_the_trailer_is_located_there()
+    {
+        // P1-04: only the trailer's own /Prev and /XRefStm name sections; one written in its /Info is a value as any other.
+        var finding = Single(
+            Validate(PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "<< /Size 4 /Root 1 0 R /Info << /Prev /A#00B >> >>")),
+            PdfValidationRuleIds.ObjectNameNullCharacter);
+
+        finding.Message.Should().Be("The trailer holds the name /A#00B, under /Info/Prev, and a name cannot contain a null character.");
+    }
+
     [Theory]
     [InlineData("/O#0At#1B 9 0 R", "Object 1 refers to object 9 0 under /O#0At#1B, which the file lacks: the reference reads as null.")]
     [InlineData("/A << /B << /C << /D << /E << /F << /G << /H << /I << /J 9 0 R >> >> >> >> >> >> >> >> >>", "Object 1 refers to object 9 0 under /A/B/C/D (2 steps) /G/H/I/J, which the file lacks: the reference reads as null.")]
