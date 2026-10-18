@@ -1569,6 +1569,35 @@ public class PageTreeRuleTests
         }
     }
 
+    [Theory]
+    [InlineData("[3 0 R]")]
+    [InlineData("[3 0 R 4 0 R]")]
+    public void A_node_a_limit_cut_leaves_the_counts_above_it_unjudged_though_its_array_of_kids_was_read_whole(string kids)
+    {
+        // N1-F4: the array a cut node walks keeps none of its doubt, the node keeps all of it: the root above node 3, and
+        // node 4 listing it again, are not judged, their /Count wrong or not.
+        var pad = " /Pad (" + new string('x', 300) + ")";
+        var file = Objects(
+            (2, "<< /Type /Pages /Kids " + kids + " /Count 9 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Pages /Parent 2 0 R /Kids 8 0 R /Count 2" + pad + " >>"),
+            (4, "<< /Type /Pages /Parent 2 0 R /Kids [3 0 R] /Count 7 >>"),
+            (5, "<< /Type /Page /Parent 3 0 R >>"),
+            (6, "<< /Type /Page /Parent 3 0 R >>"),
+            (8, "[5 0 R 6 0 R]"));
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.IsCutAtLimit(3).Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse(string.Join("; ", report.Findings));
+
+        if (kids == "[3 0 R 4 0 R]")
+        {
+            Single(report, PdfValidationRuleIds.PageTreeNodeRepeated).Message.Should().Be(
+                "The kid at index 0 of page tree node 4 names object 3, which the tree already lists: what lies below it is counted again, how many pages that is being unknown.");
+        }
+    }
+
     [Fact]
     public void A_kid_the_reader_cannot_produce_listed_again_is_counted_again_as_unknown()
     {
@@ -1657,6 +1686,19 @@ public class PageTreeRuleTests
 
         report.Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse(string.Join("; ", report.Findings));
         Single(report, PdfValidationRuleIds.PageTreeKidInvalid).Message.Should().Contain("names object 98, which the file lacks");
+    }
+
+    [Fact]
+    public void A_reference_to_nothing_in_a_trailer_beside_a_root_it_holds_is_the_one_described()
+    {
+        // N1-F8: the trailer's finding names the reference the object graph counted, under /Info, not the kid of the root
+        // written in its catalog, which is page-tree.kid-invalid's.
+        var report = Validate(PdfTemplate.SoundWith(
+            "<< /Size 4 /Root 1 0 R >>",
+            "<< /Size 4 /Root << /Type /Catalog /Pages << /Type /Pages /Kids [98 0 R 3 0 R] /Count 2 >> >> /Info 8 0 R >>"));
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "The trailer refers to object 8 0 under /Info, which the file lacks: the reference reads as null.");
     }
 
     [Fact]
