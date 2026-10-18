@@ -1769,28 +1769,36 @@ public class ReaderLimitsTests
     [InlineData("a stream", "/Prev 21 0 R")]
     [InlineData("another object's", "/Prev 21 0 R")]
     [InlineData("refused", "/Prev 21 0 R")]
+    [InlineData("another object's, past the object guard", "/Prev 21 0 R")]
+    [InlineData("another generation's, past the object guard", "/Prev 21 0 R")]
     [InlineData("a chain past the cut", "/Prev 21 0 R")]
     [InlineData("an object past the object guard", "/Prev 21 0 R")]
     public void A_prev_written_as_a_reference_reads_past_a_guard_as_a_whole_read_reads_it(string row21, string prev)
     {
         // V2-1, V2-3, W1-5: the newest table's rows run past what MaxXRefSectionLength reads, its trailer gives no /Root, and
         // its /Prev is a reference whose row the guard read: a free one, of another generation, object 0, a stream, the row
-        // of another object — which a whole read reads as no section, and rebuilds for the /Root the file lacks —; or a
-        // chain to an object whose row lies past the cut, or an object that runs past MaxObjectLength, unknown. Each read as
-        // unknown, or as no section, alike.
+        // of another object, whose body may run past MaxObjectLength (X1-2) — which a whole read reads as no section, and
+        // rebuilds for the /Root the file lacks —; or a chain to an object whose row lies past the cut, or an object that
+        // runs past MaxObjectLength, unknown. Each read as unknown, or as no section, alike.
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
         var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
         var oldest = older.ToString(CultureInfo.InvariantCulture);
-        var twentyOne = file.Object(21, row21 switch
+        var longBody = "%" + new string('c', 3_000) + "\n" + oldest;
+        var twentyOne = row21 switch
         {
-            "a stream" => "<< /Length 3 >>\nstream\n123\nendstream",
-            "a chain past the cut" => "22 0 R",
-            "an object past the object guard" => "%" + new string('c', 3_000) + "\n" + oldest,
-            _ => oldest,
-        });
+            "another object's, past the object guard" => file.Object(30, longBody),
+            "another generation's, past the object guard" => file.Object(21, longBody, generation: 1),
+            _ => file.Object(21, row21 switch
+            {
+                "a stream" => "<< /Length 3 >>\nstream\n123\nendstream",
+                "a chain past the cut" => "22 0 R",
+                "an object past the object guard" => longBody,
+                _ => oldest,
+            }),
+        };
         var twentyTwo = row21 == "a chain past the cut" ? file.Object(22, oldest) : -1;
         var table = file.Position;
         var placed = row21 switch
@@ -1808,7 +1816,7 @@ public class ReaderLimitsTests
         var limits = PdfReaderLimits.Default with
         {
             MaxXRefSectionLength = 128,
-            MaxObjectLength = row21 == "an object past the object guard" ? 1_024 : PdfReaderLimits.Default.MaxObjectLength,
+            MaxObjectLength = row21.EndsWith("past the object guard", StringComparison.Ordinal) ? 1_024 : PdfReaderLimits.Default.MaxObjectLength,
         };
         using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
 
@@ -1914,17 +1922,21 @@ public class ReaderLimitsTests
     [InlineData("one past the last row declared", "23 0 R", false)]
     [InlineData("a row of a later subsection", "31 0 R", true)]
     [InlineData("a row past the data a guard cut", "21 0 R", true)]
+    [InlineData("a row its data, decoded whole, does not hold", "25 0 R", false)]
     public void A_prev_a_stream_a_guard_stopped_writes_as_a_reference_is_unknown_only_for_a_row_it_left_unread(string shape, string prev, bool hidden)
     {
         // The newest section, a cross-reference stream with no /Root, holds rows for 0 and 2 to 22 — or, for the later
         // subsection, 2 to 21 then 30 to 32 —, and MaxIndexEntries fills at the row for object 9; or MaxDecodedStreamLength
         // leaves it the data of ten rows. Its /Prev names an object whose row the guard left unread, which may place the
         // older section: the trailers are hidden. One past the rows the stream declares is the file's to lack, as a whole
-        // read finds: reported, and the index rebuilt for the /Root.
-        var later = shape == "a row of a later subsection";
-        var file = later
-            ? NewestStreamNaming("[0 1 2 20 30 3]", [0, .. Numbers(2, 20), 30, 31, 32], prev, refused: -1, size: 33)
-            : NewestStreamNaming("[0 1 2 21]", [0, .. Numbers(2, 21)], prev, refused: -1);
+        // read finds: reported, and the index rebuilt for the /Root; and so is one it declares but its data, decoded whole,
+        // does not hold (X1-1).
+        var file = shape switch
+        {
+            "a row of a later subsection" => NewestStreamNaming("[0 1 2 20 30 3]", [0, .. Numbers(2, 20), 30, 31, 32], prev, refused: -1, size: 33),
+            "a row its data, decoded whole, does not hold" => NewestStreamNaming("[0 1 2 21 25 1]", [0, .. Numbers(2, 21)], prev, refused: -1, size: 26),
+            _ => NewestStreamNaming("[0 1 2 21]", [0, .. Numbers(2, 21)], prev, refused: -1),
+        };
         var limits = shape == "a row past the data a guard cut"
             ? PdfReaderLimits.Default with { MaxDecodedStreamLength = 70 }
             : PdfReaderLimits.Default with { MaxIndexEntries = 8 };
@@ -2625,17 +2637,11 @@ public class ReaderLimitsTests
     }
 
     /// <summary>
-    /// A document whose object <paramref name="member"/> — its catalog, 1, or the root of its page tree, 2 — a guard keeps
-    /// its object stream from serving, <paramref name="shape"/> saying how, with an older catalog 5 beside it, and object
-    /// 9's row of its cross-reference stream placed inside object 8's string, where no header lies: settling rebuilds the
-    /// index.
-    /// </summary>
-    /// <summary>
     /// Writes catalog 1, pages 2 and page 3, an older table indexing them with <c>/Root</c>, object 21 —
     /// <paramref name="twentyOne"/> then the older table's offset —, and a newest cross-reference stream, object 22, whose
     /// <c>/Index</c> is <paramref name="index"/>, holding a row for each of <paramref name="rows"/> in its order, and whose
     /// dictionary gives <c>/Prev</c> <paramref name="prev"/> and no <c>/Root</c>. The row of <paramref name="refused"/> places
-    /// it in object stream 0, which no row may.
+    /// it in object stream 0, which no row may. The stream's <c>/Size</c> is <paramref name="size"/>.
     /// </summary>
     private static byte[] NewestStreamNaming(string index, int[] rows, string prev, int refused, string twentyOne = "", int size = 23)
     {
@@ -2711,6 +2717,12 @@ public class ReaderLimitsTests
         return file.Bytes;
     }
 
+    /// <summary>
+    /// A document whose object <paramref name="member"/> — its catalog, 1, or the root of its page tree, 2 — a guard keeps
+    /// its object stream from serving, <paramref name="shape"/> saying how, with an older catalog 5 beside it, and object
+    /// 9's row of its cross-reference stream placed inside object 8's string, where no header lies: settling rebuilds the
+    /// index.
+    /// </summary>
     private static byte[] HiddenMemberRebuilt(string shape, int member, out PdfReaderLimits limits)
     {
         var builder = new TestPdfBuilder();
