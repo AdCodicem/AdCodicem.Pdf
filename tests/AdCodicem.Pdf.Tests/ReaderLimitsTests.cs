@@ -1477,6 +1477,95 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("/Prev {self}", "rows")]
+    [InlineData("/Prev {self}", "index")]
+    [InlineData("/Prev 99999999", "count")]
+    public void A_trailer_past_a_guard_whose_older_section_is_read_or_nowhere_hides_no_root(string older, string guard)
+    {
+        // U3-2, U3-3: the one table's trailer gives no /Root and names, through /Prev, the table itself, which the chain has
+        // read, or an offset outside the file, past the section count. No older trailer is there for the guard to have kept
+        // unread: the reader rebuilds for the /Root the file lacks, as a read of the whole file does.
+        var file = new HandWrittenFile();
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var catalog = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>");
+        var table = file.Position;
+        var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 16));
+        var prev = older.Replace("{self}", table.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 21\n0000000000 65535 f \n0000000000 00000 f \n{pages:D10} 00000 n \n{page:D10} 00000 n \n{free}{catalog:D10} 00000 n \ntrailer\n<< /Size 21 {prev} >>\nstartxref\n{table}\n%%EOF\n"));
+        var limits = guard switch
+        {
+            "rows" => PdfReaderLimits.Default with { MaxXRefSectionLength = 128 },
+            "index" => PdfReaderLimits.Default with { MaxIndexEntries = 4 },
+            _ => PdfReaderLimits.Default with { MaxXRefSectionCount = 1 },
+        };
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+        document.Reader.CatalogFoundAs.Should().Be(20);
+    }
+
+    [Fact]
+    public void A_hybrid_stream_that_fills_the_index_hides_no_trailer_a_prev_outside_the_file_would_name()
+    {
+        // U3-2: a hybrid table's /XRefStm stream fills the index, and its trailer, which gives no /Root, names through /Prev
+        // an offset past the file's end. The trailers were taken as hidden, and the document opened with no catalog.
+        var file = new HandWrittenFile();
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var catalog = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>");
+        var stream = file.Position;
+        var data = new StringBuilder();
+
+        for (var number = 0; number < 21; number++)
+        {
+            data.Append(number == 20 ? Row(1, catalog, 0) : number == 10 ? Row(1, stream, 0) : Row(0, 0, 0));
+        }
+
+        data.Append('>');
+        file.Object(10, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 21 /W [1 4 2] /Filter /ASCIIHexDecode /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        var table = file.Position;
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 4\n0000000000 65535 f \n0000000000 00000 f \n{pages:D10} 00000 n \n{page:D10} 00000 n \ntrailer\n<< /Size 21 /XRefStm {stream} /Prev 99999999 >>\nstartxref\n{table}\n%%EOF\n"));
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 } });
+
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+        document.Reader.CatalogFoundAs.Should().Be(20);
+
+        static string Row(int type, long offset, int generation) =>
+            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+    }
+
+    [Theory]
+    [InlineData("rows")]
+    [InlineData("index")]
+    public void A_prev_written_as_a_reference_a_guard_kept_unread_hides_the_trailers(string guard)
+    {
+        // U3-1: the newest table's trailer gives no /Root, and its /Prev is a reference to object 21, an integer naming the
+        // older table, whose row lies past what the guard read. The reference was taken to name no section: the reader
+        // rebuilt the index past the guard, and file.root-invalid blamed the file. It is unknown, as the trailer it names.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
+        var prev = file.Object(21, older.ToString(CultureInfo.InvariantCulture));
+        var table = file.Position;
+        var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 17));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n2 2\n{pages:D10} 00000 n \n{page:D10} 00000 n \n4 17\n{free}21 1\n{prev:D10} 00000 n \ntrailer\n<< /Size 22 /Prev 21 0 R >>\nstartxref\n{table}\n%%EOF\n"));
+        var limits = guard == "rows" ? PdfReaderLimits.Default with { MaxXRefSectionLength = 128 } : PdfReaderLimits.Default with { MaxIndexEntries = 4 };
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Theory]
     [InlineData("an older section's catalog")]
     [InlineData("no catalog indexed")]
     public void A_cross_reference_stream_a_limit_cut_past_its_rows_hides_no_trailer(string shape)

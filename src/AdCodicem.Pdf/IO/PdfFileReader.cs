@@ -2222,15 +2222,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Determines whether <paramref name="trailer"/> names an older section of the chain — through <c>/Prev</c>, or a
     /// hybrid table's stream through <c>/XRefStm</c>, which a cross-reference stream's dictionary does not name —, whose
-    /// trailer a chain that ends at it leaves unread: an offset in the file, read as <see cref="SectionOffset"/> reads it.
+    /// trailer a chain that ends at it leaves unread: an offset in the file the chain has not <paramref name="visited"/>,
+    /// read as <see cref="SectionOffset"/> reads it.
     /// </summary>
-    private bool NamesOlderSection(PdfDictionary trailer, bool stream) =>
-        NamesSection(trailer.GetRaw(PdfName.Prev)) || (!stream && NamesSection(trailer.GetRaw(PdfName.XRefStm)));
+    private bool NamesOlderSection(PdfDictionary trailer, bool stream, HashSet<long> visited) =>
+        NamesSection(trailer.GetRaw(PdfName.Prev), visited) ||
+        (!stream && NamesSection(trailer.GetRaw(PdfName.XRefStm), visited));
 
-    /// <summary>Determines whether <paramref name="value"/>, a <c>/Prev</c> or an <c>/XRefStm</c>, is an offset in the file.</summary>
-    private bool NamesSection(PdfObject? value) =>
-        (value is PdfReference reference ? ReadWithoutLoading(reference.Id) : value)?.AsInteger() is { } offset and >= 0 &&
-        IsInFile(PositionOf(offset));
+    /// <summary>
+    /// Determines whether <paramref name="value"/>, a <c>/Prev</c> or an <c>/XRefStm</c>, names a section the chain has
+    /// not read: an offset in the file it has not <paramref name="visited"/>; or a reference the index read so far cannot
+    /// place, its row perhaps among those the guard that ended the chain left unread.
+    /// </summary>
+    private bool NamesSection(PdfObject? value, HashSet<long> visited)
+    {
+        if (value is PdfReference reference)
+        {
+            value = ReadWithoutLoading(reference.Id);
+
+            if (value is null)
+            {
+                return true;
+            }
+        }
+
+        return value?.AsInteger() is { } offset and >= 0 && IsInFile(PositionOf(offset)) && !visited.Contains(offset);
+    }
 
     /// <summary>
     /// Determines whether a guard keeps object <paramref name="number"/> from the reader: it stopped the index short of
@@ -2403,9 +2420,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // Placed where the chain goes on, a position in the file; one named outside the file is placed at what
                 // named it, the offset in the message, as a section that is missing is (#125).
                 _cutByGuard = true;
-                _structure.TrailersHiddenByGuard = true;
                 var cut = PositionOf(offset);
                 var inFile = IsInFile(cut);
+
+                // An older section the file can hold may give what the trailers read lack; one outside the file gives
+                // nothing.
+                _structure.TrailersHiddenByGuard |= inFile;
                 _structure.ChainCutAt = cut;
                 _structure.ChainCutWrittenOffset = offset;
                 _structure.ChainCutNamedFrom = namedFrom;
@@ -2456,7 +2476,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (section.TrailerCutByLimit ||
                 (endedByGuard &&
                     (section.Trailer is { } trailer
-                        ? NamesOlderSection(trailer, section.Kind == XRefSectionKind.Stream)
+                        ? NamesOlderSection(trailer, section.Kind == XRefSectionKind.Stream, visited)
                         : section.State == XRefSectionState.Relocated)))
             {
                 _structure.TrailersHiddenByGuard = true;
@@ -2501,8 +2521,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 if (_indexFullAt >= 0 || _cutByGuard != cut)
                 {
                     // Filled by the stream, an older section could add nothing; the stream's rows, or the stream, cut by a
-                    // limit, an older section's rows would stand for the objects the rows left unread define.
-                    _structure.TrailersHiddenByGuard |= previous >= 0;
+                    // limit, an older section's rows would stand for the objects the rows left unread define. Its trailer,
+                    // unread, may give what the read ones lack, where the file can hold it and the chain has not read it.
+                    _structure.TrailersHiddenByGuard |= previous >= 0 && IsInFile(PositionOf(previous)) && !visited.Contains(previous);
                     break;
                 }
             }
