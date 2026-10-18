@@ -65,7 +65,7 @@ internal sealed class ObjectGraph
 
     private void Walk()
     {
-        PushDictionary(_document.Trailer, owner: 0, isNode: false);
+        PushDictionary(_document.Trailer, owner: 0, Role.Trailer);
 
         while (_work.TryPop(out var item))
         {
@@ -76,21 +76,19 @@ internal sealed class ObjectGraph
                     break;
 
                 case PdfStream stream:
-                    PushDictionary(stream.Dictionary, item.Owner, IsJudgedNode(item));
+                    PushDictionary(stream.Dictionary, item.Owner, item.Role);
                     break;
 
                 case PdfDictionary dictionary:
-                    PushDictionary(dictionary, item.Owner, IsJudgedNode(item));
+                    PushDictionary(dictionary, item.Owner, item.Role);
                     break;
 
                 case PdfArray array:
-                    // An array of kids of its own the page tree walk judged holds kids, which are page-tree.kid-invalid's, as
-                    // a node's /Kids array does.
-                    var uncounted = item.Uncounted || (item.TopLevel && _pages.JudgedKidsArrays.Contains(item.Owner));
+                    var role = ElementRole(item.Role);
 
                     foreach (var element in array)
                     {
-                        _work.Push(new Item(element, item.Owner, TopLevel: false, uncounted));
+                        _work.Push(new Item(element, item.Owner, role));
                     }
 
                     break;
@@ -132,24 +130,18 @@ internal sealed class ObjectGraph
             return;
         }
 
-        _work.Push(new Item(value, number, TopLevel: true, Uncounted: false));
+        _work.Push(new Item(value, number, RoleOf(number)));
     }
-
-    /// <summary>
-    /// Determines whether the dictionary <paramref name="item"/> holds is a node whose kids the page tree walk judged: a
-    /// node of its own it read whole, or one written among kids it judged — a node it entered, its kids judged with them.
-    /// </summary>
-    private bool IsJudgedNode(Item item) => item.Uncounted || (item.TopLevel && _pages.JudgedKidsOf(item.Owner));
 
     private void CountMissing(Item item)
     {
-        if (!item.Uncounted)
+        if ((item.Role & Role.Uncounted) == 0)
         {
             Tally(_missingReferences, item.Owner);
         }
     }
 
-    private void PushDictionary(PdfDictionary dictionary, int owner, bool isNode)
+    private void PushDictionary(PdfDictionary dictionary, int owner, Role role)
     {
         foreach (var (key, value) in dictionary)
         {
@@ -163,18 +155,36 @@ internal sealed class ObjectGraph
                 continue;
             }
 
-            _work.Push(new Item(value, owner, TopLevel: false, Uncounted: IsUncounted(key, value, owner, isNode)));
+            _work.Push(new Item(value, owner, EntryRole(key, value, role)));
         }
     }
 
     /// <summary>
-    /// Determines whether a reference to nothing in <paramref name="value"/>, under <paramref name="key"/>, is another
-    /// rule's: the kids a node of the page tree lists are page-tree.kid-invalid's — those of an array of kids of its own the
-    /// walk judged too, which the array's own case leaves —, and the trailer's <c>/Root</c> file.root-invalid's. A
-    /// <c>/Kids</c> that is itself a reference to nothing is this walk's.
+    /// Gives what the page tree walk made of object <paramref name="number"/>: an array of kids of its own whose kids it
+    /// judged, a node whose kids it judged, or the catalog a root of the tree it judged is written in.
     /// </summary>
-    private static bool IsUncounted(PdfName key, PdfObject value, int owner, bool isNode) =>
-        (isNode && key == PdfName.Kids && value is PdfArray) || (owner == 0 && key == PdfName.Root);
+    private Role RoleOf(int number) =>
+        (_pages.JudgedKidsArrays.Contains(number) ? Role.Kids : Role.None)
+        | (_pages.JudgedKidsOf(number) ? Role.Node : Role.None)
+        | (_pages.JudgedRootIn == number ? Role.Catalog : Role.None);
+
+    /// <summary>
+    /// Gives the role of the value under <paramref name="key"/> of a dictionary whose role is <paramref name="role"/>: the
+    /// <c>/Kids</c> array written in a node the walk judged holds kids it judged, the <c>/Pages</c> written in the catalog
+    /// a root it judged, and a reference to nothing under the trailer's <c>/Root</c> is file.root-invalid's.
+    /// </summary>
+    private Role EntryRole(PdfName key, PdfObject value, Role role) =>
+        (role & Role.Node) != 0 && key == PdfName.Kids && value is PdfArray ? Role.Kids
+        : (role & Role.Catalog) != 0 && key == PdfName.Pages && value is PdfDictionary or PdfStream ? Role.Node
+        : (role & Role.Trailer) != 0 && key == PdfName.Root ? Role.Uncounted | (_pages.JudgedRootIn == 0 ? Role.Catalog : Role.None)
+        : Role.None;
+
+    /// <summary>
+    /// Gives the role of an element of an array whose role is <paramref name="role"/>: in an array of kids the walk judged,
+    /// a kid — a reference to nothing page-tree.kid-invalid's, a dictionary a node or a page the walk entered —; elsewhere,
+    /// a value as any other, an array nested among kids included, which the walk judges as a kid and not what it holds.
+    /// </summary>
+    private static Role ElementRole(Role role) => (role & Role.Kids) != 0 ? Role.Uncounted | Role.Node : Role.None;
 
     private void Describe()
     {
@@ -182,7 +192,7 @@ internal sealed class ObjectGraph
         {
             var value = ValueOf(owner);
             var first = new StringBuilder();
-            var found = TryFindMissing(value, owner, isNode: _pages.JudgedKidsOf(owner), uncounted: false, first, out var target);
+            var found = TryFindMissing(value, owner, owner == 0 ? Role.Trailer : RoleOf(owner), first, out var target);
             var holder = Holder(owner);
 
             MissingReferences.Add(new ProbeFinding(
@@ -242,25 +252,24 @@ internal sealed class ObjectGraph
     /// </summary>
     /// <remarks>
     /// <para>
-    /// What it counts is what the walk counts: a reference <paramref name="uncounted"/> says is another rule's is passed
-    /// over, an array passing that on to its elements and a dictionary deciding it again for each key — a dictionary
-    /// written in a node's <c>/Kids</c> is the walk's, as are the references it holds.
+    /// What it counts is what the walk counts: each value takes its <paramref name="role"/> as the walk gives it, a
+    /// reference another rule's passed over.
     /// </para>
     /// <para>
     /// Whether one was found is said apart from what it names: a reference to object 0, which heads the free list and
     /// is never in use, is one to an object the file lacks like any other.
     /// </para>
     /// </remarks>
-    private bool TryFindMissing(PdfObject value, int owner, bool isNode, bool uncounted, StringBuilder path, out PdfObjectId target)
+    private bool TryFindMissing(PdfObject value, int owner, Role role, StringBuilder path, out PdfObjectId target)
     {
         switch (value)
         {
-            case PdfReference reference when !uncounted && _missing.Contains(reference.Id.Number):
+            case PdfReference reference when (role & Role.Uncounted) == 0 && _missing.Contains(reference.Id.Number):
                 target = reference.Id;
                 return true;
 
             case PdfStream stream:
-                return TryFindMissing(stream.Dictionary, owner, isNode, uncounted, path, out target);
+                return TryFindMissing(stream.Dictionary, owner, role, path, out target);
 
             case PdfDictionary dictionary:
                 foreach (var (key, entry) in dictionary)
@@ -273,7 +282,7 @@ internal sealed class ObjectGraph
                     var length = path.Length;
                     FileQuote.AppendName(path, key);
 
-                    if (TryFindMissing(entry, owner, isNode: false, IsUncounted(key, entry, owner, isNode || uncounted), path, out target))
+                    if (TryFindMissing(entry, owner, EntryRole(key, entry, role), path, out target))
                     {
                         return true;
                     }
@@ -284,12 +293,14 @@ internal sealed class ObjectGraph
                 break;
 
             case PdfArray array:
+                var elements = ElementRole(role);
+
                 for (var index = 0; index < array.Count; index++)
                 {
                     var length = path.Length;
                     path.Append(CultureInfo.InvariantCulture, $"[{index}]");
 
-                    if (TryFindMissing(array[index], owner, isNode: false, uncounted, path, out target))
+                    if (TryFindMissing(array[index], owner, elements, path, out target))
                     {
                         return true;
                     }
@@ -406,10 +417,36 @@ internal sealed class ObjectGraph
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>A value still to visit, the object that holds it, and where in that object it lies.</summary>
+    /// <summary>A value still to visit, the object that holds it, and what the other rules make of it.</summary>
     /// <param name="Value">The value.</param>
     /// <param name="Owner">The number of the indirect object that holds it, or 0 for the trailer.</param>
-    /// <param name="TopLevel">Whether the value is the owner's own value, not one nested in it.</param>
-    /// <param name="Uncounted">Whether a reference to nothing in the value is another rule's to report.</param>
-    private readonly record struct Item(PdfObject Value, int Owner, bool TopLevel, bool Uncounted);
+    /// <param name="Role">What the page tree walk and the other rules make of the value.</param>
+    private readonly record struct Item(PdfObject Value, int Owner, Role Role);
+
+    /// <summary>
+    /// What the page tree walk and the other rules make of a value, which decides whose a reference to nothing in it is:
+    /// the kids the walk judged are page-tree.kid-invalid's, the trailer's <c>/Root</c> file.root-invalid's, and any other
+    /// this walk's — a <c>/Kids</c> that is itself a reference to nothing included.
+    /// </summary>
+    [Flags]
+    private enum Role
+    {
+        /// <summary>A value as any other.</summary>
+        None = 0,
+
+        /// <summary>A reference to nothing here is another rule's: a kid the walk judged, or the trailer's <c>/Root</c>.</summary>
+        Uncounted = 1,
+
+        /// <summary>An array whose elements are kids the walk judged: a node's <c>/Kids</c>, or an array of kids of its own.</summary>
+        Kids = 2,
+
+        /// <summary>A node whose kids the walk judged, read whole: the <c>/Kids</c> array written in it holds them.</summary>
+        Node = 4,
+
+        /// <summary>The catalog a root of the tree the walk judged is written in, under its <c>/Pages</c>.</summary>
+        Catalog = 8,
+
+        /// <summary>The trailer, whose <c>/Root</c> is file.root-invalid's, and may be a catalog written there.</summary>
+        Trailer = 16,
+    }
 }
