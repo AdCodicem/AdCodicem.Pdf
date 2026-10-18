@@ -451,6 +451,59 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_tree_a_caller_set_on_a_trailer_the_reader_merged_none_of_is_located_at_the_document()
+    {
+        // The file has no trailer: the rebuild recovers /Root alone. A caller sets on the trailer a catalog whose /Pages is a
+        // stream of its own, a node, listing page 3 and object 99, which the file lacks. Its kid is judged as any node's,
+        // the tree's to report, located at the document since no trailer in the file holds it.
+        var file = PdfTemplate.SoundWith("trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref:1}\n", string.Empty);
+        using var document = PdfDocument.Open(file);
+        document.Reader.TrailerLocation.Should().Be(-1);
+        var node = new PdfDictionary();
+        node.Set(PdfName.Type, PdfName.Pages);
+        node.Set(PdfName.Kids, new PdfArray([new PdfReference(new PdfObjectId(3), document.Reader), new PdfReference(new PdfObjectId(99), document.Reader)]));
+        node.Set(PdfName.Count, PdfInteger.Create(2));
+        var catalog = new PdfDictionary();
+        catalog.Set(PdfName.Type, PdfName.Catalog);
+        catalog.Set(PdfName.Pages, new PdfStream(node, PdfStreamData.FromMemory(ReadOnlyMemory<byte>.Empty)));
+        document.Trailer.Set(PdfName.Root, catalog);
+
+        var report = new PdfValidator().Validate(document);
+
+        var finding = Single(report, PdfValidationRuleIds.PageTreeKidInvalid);
+        finding.Message.Should().Be(
+            "The kid at index 1 of the page tree node under /Root/Pages of the trailer names object 99, which the file lacks: it counts as a page with nothing on it.");
+        finding.Location.IsDocument.Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse("a kid that names nothing is the tree's");
+    }
+
+    [Fact]
+    public void A_kid_listed_past_the_last_page_index_in_a_tree_written_in_the_trailer_is_located_at_the_trailer()
+    {
+        // The catalog and the root of its tree are written in the trailer; node 100 lists 2^31 pages, and the kid after it,
+        // a number, stands for a page past every page index: it is located at the trailer, with no page.
+        var objects = new List<(int Number, string Body)> { (4, "<< /Type /Page /Parent 131 0 R >>") };
+        Doubling(objects, 100, 131, page: 4);
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>();
+
+        foreach (var (number, body) in objects)
+        {
+            rows[number] = file.Object(number, body);
+        }
+
+        file.Table(132, rows, "/Size 132 /Root << /Type /Catalog /Pages << /Type /Pages /Kids [100 0 R 7] /Count 2147483649 /MediaBox [0 0 1 1] /Resources << >> >> >>");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        var finding = Single(new PdfValidator().Validate(document), PdfValidationRuleIds.PageTreeKidInvalid);
+
+        finding.Message.Should().Be(
+            "The kid at index 1 of the page tree node under /Root/Pages of the trailer is a number, neither a page nor a node: it counts as a page with nothing on it.");
+        finding.Location.Should().Be(PdfValidationLocation.AtPosition(document.Reader.TrailerLocation));
+        finding.Location.PageIndex.Should().BeNull();
+    }
+
+    [Fact]
     public void A_kid_written_in_an_array_of_kids_of_its_own_is_located_at_that_array()
     {
         var file = TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids 7 0 R /Count 2", "[5 0 R << /Type /Page /MediaBox 5 >>]");

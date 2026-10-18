@@ -1162,6 +1162,41 @@ public class ReaderLimitsTests
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
+    [Fact]
+    public void A_rebuild_reaching_a_guard_on_the_file_s_own_root_takes_it_as_read_when_opened_to_throw()
+    {
+        // As in M2-02's first shape, under ThrowOnLimit: /Root names object 8, no catalog, and the search takes object 5.
+        // The rebuild settling makes serves a later object 8, a catalog a limit cuts, and reading it to judge /Root reaches
+        // the guard: the rebuild takes the /Root as read, as one a guard cut, and looks for no other catalog. A later object
+        // 1, which the same limit cuts, reached it first, as the rebuild took in object streams: that guard is the one
+        // thrown, once the index is whole.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "(one)"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+            [5] = file.Object(5, "<< /Type /Catalog /Pages 2 0 R /Lang (older) >>"),
+            [8] = file.Object(8, "<< /Type /Outlines >>"),
+        };
+        var one = file.Object(1, "(" + new string('x', 300) + ")");
+        file.Object(8, "<<" + new string(' ', 200) + "/Type /Catalog /Pages 2 0 R >>");
+        file.Object(5, "<< /Type /Font >>");
+        rows[7] = file.Object(7, "<< /Type /Catalog /Pages 2 0 R /Lang (seventh) >>");
+        file.Raw("%" + new string('c', 1200) + "\n");
+        file.Object(6, "(six)");
+        rows[6] = 3;
+        file.Table(9, rows, "/Size 9 /Root 8 0 R");
+        using var document = PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } });
+        document.Reader.CatalogFoundAs.Should().Be(5);
+
+        FluentActions.Invoking(document.Reader.SettleIndex).Should().Throw<PdfLimitExceededException>().Which.Position.Should().Be(one);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0, "a /Root a guard cut is taken as read, and object 7 is not looked for");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
