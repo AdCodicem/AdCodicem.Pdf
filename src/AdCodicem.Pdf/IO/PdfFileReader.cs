@@ -2218,10 +2218,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Determines whether <paramref name="trailer"/> names an older section of the chain — through <c>/Prev</c>, or a
-    /// hybrid table's stream through <c>/XRefStm</c> —, whose trailer a chain that ends at it leaves unread.
+    /// hybrid table's stream through <c>/XRefStm</c>, which a cross-reference stream's dictionary does not name —, whose
+    /// trailer a chain that ends at it leaves unread: an offset in the file, read as <see cref="SectionOffset"/> reads it.
     /// </summary>
-    private static bool NamesOlderSection(PdfDictionary trailer) =>
-        trailer.ContainsKey(PdfName.Prev) || trailer.ContainsKey(PdfName.XRefStm);
+    private bool NamesOlderSection(PdfDictionary trailer, bool stream) =>
+        NamesSection(trailer.GetRaw(PdfName.Prev)) || (!stream && NamesSection(trailer.GetRaw(PdfName.XRefStm)));
+
+    /// <summary>Determines whether <paramref name="value"/>, a <c>/Prev</c> or an <c>/XRefStm</c>, is an offset in the file.</summary>
+    private bool NamesSection(PdfObject? value) =>
+        (value is PdfReference reference ? ReadWithoutLoading(reference.Id) : value)?.AsInteger() is { } offset and >= 0 &&
+        IsInFile(PositionOf(offset));
 
     /// <summary>
     /// Determines whether a guard keeps object <paramref name="number"/> from the reader: it stopped the index short of
@@ -2437,13 +2443,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             _highestRead = Math.Max(_highestRead, section.HighestNumber);
 
-            // A guard kept a trailer from being read whole: one it cut; or, past rows it cut or an index it filled, which
-            // end the chain, the older ones this section's trailer names, or this section's own where it was read at a
-            // place it may have been moved to, whose trailer is not looked for past the guard. Rows that run to the end
-            // of the file, or into anything but a trailer, are the file's to lack one.
+            // A guard kept a trailer from being read whole: one it cut; or, where rows it cut or an index it filled end the
+            // chain at this section, the older ones its trailer names, or its own where it was read at a place it may have
+            // been moved to, whose trailer is not looked for past the guard. Rows that run to the end of the file, or into
+            // anything but a trailer, are the file's to lack one, and a trailer that names no section in the file names no
+            // trailer to hide; a cut that leaves every row read, the chain going on, hides none.
+            var endedByGuard = _indexFullAt >= 0 || (section.CutByLimit && previous < 0);
+
             if (section.TrailerCutByLimit ||
-                ((section.CutByLimit || _indexFullAt >= 0) &&
-                    (section.Trailer is { } trailer ? NamesOlderSection(trailer) : section.State == XRefSectionState.Relocated)))
+                (endedByGuard &&
+                    (section.Trailer is { } trailer
+                        ? NamesOlderSection(trailer, section.Kind == XRefSectionKind.Stream)
+                        : section.State == XRefSectionState.Relocated)))
             {
                 _structure.TrailersHiddenByGuard = true;
             }
@@ -3532,13 +3543,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         _xref.MergeTrailer(dictionary);
         previous = rowsCut ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute);
-
-        // Rows a guard cut end the chain here: an older section's trailer, which the stream's names, is left unread.
-        if (rowsCut && NamesOlderSection(dictionary))
-        {
-            _structure.TrailersHiddenByGuard = true;
-        }
-
         return XRefSectionState.Read;
     }
 

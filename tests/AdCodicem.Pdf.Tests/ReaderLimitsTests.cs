@@ -1448,6 +1448,78 @@ public class ReaderLimitsTests
         whole.Catalog.Should().NotBeNull("read whole, the oldest trailer gives /Root");
     }
 
+    [Theory]
+    [InlineData("/Prev /Garbage", "rows")]
+    [InlineData("/Prev -5", "rows")]
+    [InlineData("/Prev 99999999", "rows")]
+    [InlineData("/XRefStm /Garbage", "rows")]
+    [InlineData("/Prev /Garbage", "index")]
+    public void A_trailer_past_a_guard_whose_older_sections_lie_nowhere_hides_no_root(string older, string guard)
+    {
+        // T3-01: the one table's rows run past what MaxXRefSectionLength reads, or past what MaxIndexEntries holds, and its
+        // trailer gives no /Root and an older section that is no offset in the file: there is no older trailer for the guard
+        // to have kept unread. The reader took the key's presence for one, rebuilt nothing and opened the document with no
+        // catalog; it rebuilds for the /Root the file lacks, as a read of the whole table does.
+        var file = new HandWrittenFile();
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var catalog = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>");
+        var table = file.Position;
+        var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 16));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 21\n0000000000 65535 f \n0000000000 00000 f \n{pages:D10} 00000 n \n{page:D10} 00000 n \n{free}{catalog:D10} 00000 n \ntrailer\n<< /Size 21 {older} >>\nstartxref\n{table}\n%%EOF\n"));
+        var limits = guard == "rows" ? PdfReaderLimits.Default with { MaxXRefSectionLength = 128 } : PdfReaderLimits.Default with { MaxIndexEntries = 4 };
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(20);
+    }
+
+    [Theory]
+    [InlineData("an older section's catalog")]
+    [InlineData("no catalog indexed")]
+    public void A_cross_reference_stream_a_limit_cut_past_its_rows_hides_no_trailer(string shape)
+    {
+        // T3-02: the newest section is a cross-reference stream whose data MaxDecodedStreamLength cuts in its padding, past
+        // every row, and the chain goes on through its /Prev to the oldest table, whose trailer the reader reads; no trailer
+        // gives /Root. The cut took the trailers as hidden: the reader rebuilt nothing for the /Root the file lacks, and
+        // file.root-invalid said nothing, or the document opened with no catalog.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var rows = new Dictionary<int, long>
+        {
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+
+        if (shape == "an older section's catalog")
+        {
+            rows[1] = catalog;
+        }
+
+        var oldest = file.Table(4, rows, "/Size 4");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 2] /Resources << >> >>");
+        var at = file.Position;
+        var data = Row(0, 0, 65535) + Row(0, 0, 0) + Row(1, rows[2], 0) + Row(1, page, 0) + Row(0, 0, 0) + Row(1, at, 0) + new string('0', 400) + ">";
+        file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 6 /W [1 4 2] /Prev {oldest} /Filter /ASCIIHexDecode /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{at}\n%%EOF\n"));
+        using var whole = PdfDocument.Open(file.Bytes);
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 60 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitDecodedStream);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+        document.Catalog.Should().NotBeNull();
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeTrue(string.Join("; ", report.Findings));
+        new PdfValidator().Validate(whole).Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeTrue();
+
+        static string Row(int type, long offset, int generation) =>
+            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+    }
+
     [Fact]
     public void Rows_a_guard_cut_that_run_to_no_trailer_leave_the_root_the_file_lacks_to_be_found()
     {
