@@ -558,10 +558,11 @@ internal sealed class PageTreeWalk
                 parent.Uncountable = true;
             }
 
-            // It lists no page, and its /Count is still required (ISO 32000-1, 7.7.3.2).
-            if (!cut && Given(node, PdfName.Count) is null)
+            // It lists no page, and its /Count is still required (ISO 32000-1, 7.7.3.2). One whose /Kids a limit cut lists
+            // what is unknown, and may be no node at all but where it says it is one.
+            if (!cut && Given(node, PdfName.Count) is null && (!kidsCutAway || node.GetName(PdfName.Type) == PdfName.Pages))
             {
-                CountMissing(place, below: 0, countable: true);
+                CountMissing(place, below: 0, countable: !kidsCutAway);
             }
 
             return;
@@ -857,11 +858,14 @@ internal sealed class PageTreeWalk
 
         Span<double> corners = stackalloc double[4];
 
+        // A corner that names an object a limit cut is unknown, whatever was read of it; the others are judged.
+        Span<bool> known = stackalloc bool[4];
+
         for (var index = 0; index < 4; index++)
         {
             if (NamesCutObject(array[index]))
             {
-                return;
+                continue;
             }
 
             switch (array.Resolved(index))
@@ -880,15 +884,20 @@ internal sealed class PageTreeWalk
                         $"{MediaBoxOf(place, what)} holds {RuleText.Kind(other)} among its corners, not a rectangle of four numbers."));
                     return;
             }
+
+            known[index] = true;
         }
 
         // Any two opposite corners make a rectangle (ISO 32000-1, 7.9.5), in whichever order they come.
-        if (corners[0] == corners[2] || corners[1] == corners[3])
+        if ((known[0] && known[2] && corners[0] == corners[2]) || (known[1] && known[3] && corners[1] == corners[3]))
         {
             MediaBoxFaults.Add(new ProbeFinding(
                 location,
-                Invariant($"{MediaBoxOf(place, what)}, [{array.Resolved(0)} {array.Resolved(1)} {array.Resolved(2)} {array.Resolved(3)}], encloses no area.")));
+                Invariant($"{MediaBoxOf(place, what)}, [{Corner(array, 0, known[0])} {Corner(array, 1, known[1])} {Corner(array, 2, known[2])} {Corner(array, 3, known[3])}], encloses no area.")));
         }
+
+        // An unknown corner is named by the reference it is written as.
+        static PdfObject Corner(PdfArray array, int index, bool known) => known ? array.Resolved(index) : array[index];
     }
 
     /// <summary>

@@ -957,8 +957,9 @@ internal sealed class ArlingtonWalk
 
             if (kind is not (ValueClass.Dictionary or ValueClass.Stream))
             {
-                // An ancestor a reader limit cut, unknown whatever was read of it, gives the key: it may lie past the limit.
-                found = IsCut(number);
+                // An ancestor a reader limit cut, unknown whatever was read of it, or one a guard left out of the index, gives
+                // the key: it may lie past the limit.
+                found = IsCut(number) || (number != 0 && _reader.GetPresence(number) == ObjectPresence.Unindexed);
                 break;
             }
 

@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 using Tool = ArlingtonTool::AdCodicem.Pdf.Arlington;
@@ -1068,6 +1069,30 @@ public class ArlingtonRuleTests
         document.Reader.IsCutAtLimit(4).Should().BeTrue();
         report.Findings.Select(finding => finding.RuleId).Should().NotContain(GeneratedRules);
         Validate(file).Findings.Should().BeEmpty("read whole, field 4 gives field 5 its /DA");
+    }
+
+    [Fact]
+    public void A_key_an_ancestor_a_guard_left_out_of_the_index_may_give_is_not_missing()
+    {
+        // T3-05: field 5 inherits /DA from field 6, which MaxIndexEntries leaves out of the index: unknown, as an ancestor a
+        // limit cut, rather than an ancestor that gives nothing.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R] >> >>"),
+            [2] = file.Object(2, Root),
+            [3] = file.Object(3, Page),
+            [5] = file.Object(5, "<< /FT /Tx /T (b) /Parent 6 0 R >>"),
+            [6] = file.Object(6, "<< /FT /Tx /T (a) /Kids [5 0 R] /DA (/Helv 0 Tf 0 g) >>"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 6 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.GetPresence(6).Should().Be(ObjectPresence.Unindexed);
+        report.Findings.Select(finding => finding.RuleId).Should().NotContain(GeneratedRules);
+        Validate(file.Bytes).Findings.Should().BeEmpty("read whole, field 6 gives field 5 its /DA");
     }
 
     [Fact]
