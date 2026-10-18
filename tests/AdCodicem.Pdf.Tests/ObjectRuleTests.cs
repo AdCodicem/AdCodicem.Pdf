@@ -137,6 +137,19 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void A_root_naming_nothing_in_a_file_with_no_catalog_is_the_file_rule_s_alone()
+    {
+        // With a catalog in the file, the reader takes it and the trailer's /Root names it: the graph never met the reference
+        // to nothing. With none, the trailer keeps /Root 9 0 R, and the graph walks it.
+        var report = Validate(PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("/Root 1 0 R", "/Root 9 0 R", StringComparison.Ordinal)
+            .Replace("/Type /Catalog", "/Type /Outlines", StringComparison.Ordinal)));
+
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse("/Root is file.root-invalid's");
+    }
+
+    [Fact]
     public void A_reference_to_nothing_in_a_kid_written_in_its_node_is_described_where_it_lies()
     {
         // The kids a node lists are page-tree.kid-invalid's, which reports a dictionary written there; the references that

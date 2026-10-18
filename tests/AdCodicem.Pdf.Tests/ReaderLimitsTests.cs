@@ -1290,6 +1290,57 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("a member its stream lacks")]
+    [InlineData("a member written again directly")]
+    public void A_rebuild_keeps_from_the_chain_only_what_it_lacks_of_the_streams_a_guard_hides(string shape)
+    {
+        // Object stream 10's dictionary runs past MaxObjectLength, so the chain's member of it, object 4, is kept through
+        // the rebuild settling makes for row 9; the chain's row for object 7, which places it in object stream 11, read
+        // whole and lacking it, is not, and neither is its row for 4 where the rebuild found 4 written directly. Each reads
+        // as a whole read, which no guard hides, reads it.
+        var file = HiddenAndWholeObjectStreams(direct: shape == "a member written again directly", unindexed: 0);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128 } });
+
+        whole.Reader.SettleIndex();
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.ObjectNumbers.Order().Should().Equal(whole.Reader.ObjectNumbers.Order());
+        document.Reader.ObjectNumbers.Should().NotContain(7);
+
+        if (shape == "a member written again directly")
+        {
+            document.Reader.Index.TryGet(4, out var four).Should().BeTrue();
+            four.Kind.Should().Be(XRefEntryKind.Regular, "an object written directly in the file wins over a copy in an object stream");
+            document.Reader.IsCutAtLimit(4).Should().BeFalse();
+            document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("direct four");
+            whole.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("direct four");
+        }
+        else
+        {
+            document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+            document.Reader.IsCutAtLimit(4).Should().BeTrue("the guard hides the stream that holds it");
+        }
+    }
+
+    [Fact]
+    public void A_rebuild_that_fills_the_index_keeps_no_member_a_guard_hides_past_its_bound()
+    {
+        // The same file, with six objects no row indexes: the rebuild settling makes fills MaxIndexEntries with what it
+        // found, and has no room left for object stream 10's member, which the chain gave.
+        var file = HiddenAndWholeObjectStreams(direct: false, unindexed: 6);
+        using var document = PdfDocument.Open(
+            file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 128, MaxIndexEntries = 14 } });
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.ObjectNumbers.Should().HaveCount(14).And.NotContain(4);
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitIndexEntries);
+    }
+
+    [Theory]
     [InlineData("<< /Type /ObjStm /First 4 >>")]
     [InlineData("<< /Type /ObjStm /N 0 /First 4 >>")]
     public void An_object_stream_refused_for_its_own_fault_hides_no_member_where_a_limit_also_cut_its_data(string dictionary)
@@ -2186,6 +2237,44 @@ public class ReaderLimitsTests
     /// 9's row of its cross-reference stream placed inside object 8's string, where no header lies: settling rebuilds the
     /// index.
     /// </summary>
+    /// <summary>
+    /// Writes a file whose chain places object 4 in object stream 10, whose dictionary runs past 128 bytes, and objects 6 and
+    /// 7 in object stream 11, which holds 6 alone; row 9 places its object inside object 8's string, so that settling
+    /// rebuilds. <paramref name="direct"/> writes object 4 again directly, and <paramref name="unindexed"/> objects no row
+    /// indexes.
+    /// </summary>
+    private static byte[] HiddenAndWholeObjectStreams(bool direct, int unindexed)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"), 0),
+            [4] = (2, 10, 0),
+            [6] = (2, 11, 0),
+            [7] = (2, 11, 1),
+        };
+        var eight = file.Object(8, "(" + new string('y', 2000) + ")");
+        rows[8] = (1, eight, 0);
+        rows[9] = (1, eight + 1000, 0);
+        rows[10] = (1, file.ObjectStream(10, [(4, "(four)")], "/Pad (" + new string('x', 300) + ") "), 0);
+        rows[11] = (1, file.ObjectStream(11, [(6, "(six)")]), 0);
+
+        if (direct)
+        {
+            file.Object(4, "(direct four)");
+        }
+
+        for (var number = 20; number < 20 + unindexed; number++)
+        {
+            file.Object(number, "(unindexed)");
+        }
+
+        file.CrossReferenceStream(12, 13, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
     private static byte[] HiddenMemberRebuilt(string shape, int member, out PdfReaderLimits limits)
     {
         var builder = new TestPdfBuilder();
