@@ -261,9 +261,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly Dictionary<int, ObjectStreamContents?> _objectStreams = [];
 
     /// <summary>
-    /// The object streams, by number, that a guard left unable to serve their objects — their own dictionary cut, their
-    /// data cut before <c>/First</c> or left encoded —: an object they hold is unread for the guard's reasons, not the
-    /// file's, as one a guard cut is (#259).
+    /// The object streams, by number, that a guard left unable to serve their objects — cut short of their stream, their
+    /// data cut before <c>/First</c> or left encoded, a guard reached decoding them under
+    /// <see cref="PdfReaderOptions.ThrowOnLimit"/> —: an object they hold is unread for the guard's reasons, not the file's,
+    /// as one a guard cut is (#259). A rebuild's expansion records any object a guard cut short of a stream, which the
+    /// chain's index may place members in.
     /// </summary>
     private readonly HashSet<int> _objectStreamsHiddenByGuard = [];
     private readonly Queue<int> _objectStreamOrder = new();
@@ -4323,8 +4325,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var found = TryParseObjectAt(number, offset, out var value) ||
             (TryFindObjectHeader(number, offset, out var nearby, out _) && TryParseObjectAt(number, nearby, out value));
 
-        // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown.
-        if (_guardsReached != guards)
+        // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown. A
+        // stream's dictionary was read whole, and is the file's; what a limit cut of its data is weighed as it is decoded.
+        if (_guardsReached != guards && value is not PdfStream)
         {
             return ObjectStreamHeaderResult.CutByLimit;
         }
@@ -4580,12 +4583,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // What decoding without an object the stream holds gives is all the stream can give, and is kept; decoded
             // again once the budget let it go, the stream reads the same objects as null, and gives the same.
             ObjectStreamContents? contents = null;
-            var hidden = IsCutAtLimit(number);
+            bool hidden;
 
+            // A stream whose dictionary was read whole is one a guard hid only as its decoding says; one a guard cut short
+            // of its stream, before or inside its dictionary, is hidden by that guard.
             if (loaded is PdfStream stream)
             {
-                contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out var cut);
-                hidden |= cut;
+                contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out hidden);
+            }
+            else
+            {
+                hidden = IsCutAtLimit(number);
             }
 
             if (contents is null && hidden)
@@ -4753,6 +4761,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var merging = MergeChainIndex(kept);
             reached ??= merging;
         }
+
+        var hiding = KeepMembersHiddenByGuard();
+        reached ??= hiding;
 
         if (redefinitions.Count > 0)
         {
@@ -4954,6 +4965,41 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
+    /// Takes into a rebuilt index the members the chain's index places in an object stream a guard keeps from serving them,
+    /// for the numbers the rebuild did not find: no header of theirs lies in the file, nor one the stream gives, and they
+    /// are unread for the guard's reasons, as before the rebuild — a catalog among them is taken as read (#259).
+    /// </summary>
+    /// <returns>The exception a document opened to throw asked for, held until the index is whole; or null.</returns>
+    private ExceptionDispatchInfo? KeepMembersHiddenByGuard()
+    {
+        ExceptionDispatchInfo? reached = null;
+
+        if (_objectStreamsHiddenByGuard.Count == 0 || _chainIndex is not { } chain)
+        {
+            return reached;
+        }
+
+        foreach (var (number, entry) in chain.Entries)
+        {
+            if (entry.Kind != XRefEntryKind.Compressed ||
+                !_objectStreamsHiddenByGuard.Contains(entry.ObjectStreamNumber) ||
+                _xref.TryGet(number, out _))
+            {
+                continue;
+            }
+
+            var position = _xref.TryGet(entry.ObjectStreamNumber, out var stream) ? PositionOf(stream) : 0;
+
+            if (HasRoomInRebuild(position, ref reached))
+            {
+                _xref.Set(number, entry);
+            }
+        }
+
+        return reached;
+    }
+
+    /// <summary>
     /// Determines whether a rebuilt index has room for one more object number, met at <paramref name="position"/>; when it
     /// has none, reports <see cref="PdfReaderLimits.MaxIndexEntries"/> the first time, and holds the exception a document
     /// opened to throw asked for in <paramref name="reached"/>, unless one is held already: the rebuild finishes first.
@@ -5073,22 +5119,36 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             try
             {
-                if (GetObject(new PdfObjectId(number)) is not PdfStream stream ||
-                    !stream.Dictionary.IsOfType(PdfName.ObjStm))
+                var loaded = GetObject(new PdfObjectId(number));
+
+                if (loaded is not PdfStream stream)
+                {
+                    // An object a guard cut short of a stream may be an object stream the chain's index places members in.
+                    if (IsCutAtLimit(number))
+                    {
+                        _objectStreamsHiddenByGuard.Add(number);
+                    }
+
+                    continue;
+                }
+
+                if (!stream.Dictionary.IsOfType(PdfName.ObjStm))
                 {
                     continue;
                 }
 
-                contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out var cut);
+                contents = ObjectStreamContents.TryCreate(number, stream, _diagnostics, _objectStreamReports, out var hidden);
 
-                if (contents is null && (cut || IsCutAtLimit(number)))
+                if (contents is null && hidden)
                 {
                     _objectStreamsHiddenByGuard.Add(number);
                 }
             }
             catch (PdfLimitExceededException exception)
             {
+                // A guard reached loading or decoding the object hides it, as one reached without throwing would.
                 reached ??= ExceptionDispatchInfo.Capture(exception);
+                _objectStreamsHiddenByGuard.Add(number);
                 continue;
             }
 

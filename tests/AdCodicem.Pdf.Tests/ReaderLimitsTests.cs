@@ -1250,6 +1250,73 @@ public class ReaderLimitsTests
         document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code.StartsWith("limit.", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("past the decoded data")]
+    [InlineData("first past the decoded data")]
+    [InlineData("in a stream whose dictionary a guard cut")]
+    public void A_catalog_an_object_stream_s_cut_leaves_unread_stays_taken_as_read_through_a_rebuild(string shape)
+    {
+        // N2-01: object 9's row places it inside object 8's string, and settling rebuilds the index. The scan finds no header
+        // of the catalog, and the expansion none in the stream a guard hides: the catalog left the index, read as missing,
+        // and the search took the older catalog 5.
+        using var document = PdfDocument.Open(HiddenMemberRebuilt(shape, member: 1, out var limits), new PdfReaderOptions { Limits = limits });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.IsCutAtLimit(1).Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0, "no other catalog is looked for");
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Number.Should().Be(1);
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Theory]
+    [InlineData("past the decoded data")]
+    [InlineData("first past the decoded data")]
+    public void A_member_an_object_stream_s_cut_leaves_unread_throws_again_after_a_rebuild(string shape)
+    {
+        // N2-01: opened to throw, the rebuild's expansion caught the guard decoding the stream and indexed none of its members;
+        // read again, the root of the page tree was missing, and null, where the guard throws each time it is reached.
+        var file = HiddenMemberRebuilt(shape, member: 2, out var limits);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, ThrowOnLimit = true });
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(2))).Should().Throw<PdfLimitExceededException>();
+        FluentActions.Invoking(document.Reader.SettleIndex).Should().Throw<PdfLimitExceededException>();
+
+        document.WasRepaired.Should().BeTrue();
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(2))).Should().Throw<PdfLimitExceededException>();
+    }
+
+    [Theory]
+    [InlineData("<< /Type /ObjStm /First 4 >>")]
+    [InlineData("<< /Type /ObjStm /N 0 /First 4 >>")]
+    public void An_object_stream_refused_for_its_own_fault_hides_no_member_where_a_limit_also_cut_its_data(string dictionary)
+    {
+        // N2-02: object stream 10's dictionary, read whole, gives no usable /N; its data, with no /Length, runs past the
+        // limit. The stream is refused for the file's fault, and the catalog it holds was taken for one the guard cut: no
+        // search for catalog 5, file.root-invalid silent, and the validator's probe said the stream was not checked.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"), 0),
+            [5] = (1, file.Object(5, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [10] = (1, file.Object(10, dictionary + "\nstream\n1 0 << /Type /Catalog /Pages 2 0 R >> " + new string('x', 600) + "\nendstream"), 0),
+            [1] = (2, 10, 0),
+        };
+        file.CrossReferenceStream(11, 12, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 256 } });
+
+        document.Reader.IsCutAtLimit(10).Should().BeTrue();
+        document.Reader.IsCutAtLimit(1).Should().BeFalse();
+        document.Reader.Structure.RootCutByGuard.Should().BeFalse();
+        document.Reader.CatalogFoundAs.Should().Be(5);
+        var report = new PdfValidator().Validate(document);
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse("the stream's dictionary, read whole, is the file's fault");
+    }
+
     [Fact]
     public void A_cross_reference_stream_a_guard_cut_does_not_make_an_object_of_its_number_a_cut_catalog()
     {
@@ -1668,6 +1735,58 @@ public class ReaderLimitsTests
     }
 
     /// <summary>Object 4, an array of three numbers without its endobj, padded to be longer than the sound document's objects.</summary>
+    /// <summary>
+    /// A document whose object <paramref name="member"/> — its catalog, 1, or the root of its page tree, 2 — a guard keeps
+    /// its object stream from serving, <paramref name="shape"/> saying how, with an older catalog 5 beside it, and object
+    /// 9's row of its cross-reference stream placed inside object 8's string, where no header lies: settling rebuilds the
+    /// index.
+    /// </summary>
+    private static byte[] HiddenMemberRebuilt(string shape, int member, out PdfReaderLimits limits)
+    {
+        var builder = new TestPdfBuilder();
+
+        if (shape == "past the decoded data")
+        {
+            builder.WithObject(4, "(" + new string('x', 300) + ")");
+        }
+
+        builder
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>")
+            .WithObject(5, "<< /Type /Catalog /Pages 6 0 R >>")
+            .WithObject(6, "<< /Type /Pages /Kids [7 0 R] /Count 1 >>")
+            .WithObject(7, "<< /Type /Page /Parent 6 0 R /MediaBox [0 0 1 1] /Resources << >> >>")
+            .WithObject(8, "(" + new string('y', 2000) + ")")
+            .WithObject(9, "(nine)");
+        byte[] file;
+
+        switch (shape)
+        {
+            case "past the decoded data":
+                file = builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [4, member], compressObjectStream: true);
+                limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 100 };
+                break;
+
+            case "first past the decoded data":
+                file = builder.BuildWithXRefStream(
+                    rootNumber: 1, compressedObjects: [member], objectStreamHeader: header => header + new string(' ', 200), compressObjectStream: true);
+                limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 100 };
+                break;
+
+            default:
+                file = builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [member], objectStreamEntries: "/Pad (" + new string('x', 300) + ")");
+                limits = PdfReaderLimits.Default with { MaxObjectLength = 128 };
+                break;
+        }
+
+        // The rows are written uncompressed, seven bytes each: a type, an offset of four bytes, and two more.
+        var text = Encoding.Latin1.GetString(file);
+        var row = text.IndexOf("stream\n", text.LastIndexOf("/Type /XRef", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length + (9 * 7);
+        BinaryPrimitives.WriteUInt32BigEndian(file.AsSpan(row + 1, 4), (uint)(text.IndexOf("yyyy", StringComparison.Ordinal) + 1000));
+        return file;
+    }
+
     private static string PaddedArray { get; } = "4 0 obj\n[1 2 3" + new string(' ', 200) + "]";
 
     private static string LongArray { get; } = "[" + string.Join(' ', Enumerable.Range(0, 2000)) + "]";
