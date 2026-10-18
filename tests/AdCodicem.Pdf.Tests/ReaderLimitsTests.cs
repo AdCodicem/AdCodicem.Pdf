@@ -1613,18 +1613,21 @@ public class ReaderLimitsTests
         }
     }
 
-    [Fact]
-    public void A_prev_a_stream_that_fills_the_index_writes_as_a_reference_past_the_full_point_is_no_fault_of_the_file()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_prev_a_stream_that_fills_the_index_writes_as_a_reference_past_the_full_point_is_no_fault_of_the_file(bool chain)
     {
         // V2-2: the newest section, a cross-reference stream, fills MaxIndexEntries before its row for object 21, which
-        // holds the older table's offset its /Prev names as 21 0 R. The reader took the guard to hide the trailers, and
-        // xref.section-not-found said the file's /Prev names nothing.
+        // holds the older table's offset its /Prev names as 21 0 R, or through object 5, which holds 21 0 R. The reader
+        // took the guard to hide the trailers, and xref.section-not-found said the file's /Prev names nothing.
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
         var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
         var twentyOne = file.Object(21, older.ToString(CultureInfo.InvariantCulture));
+        var five = chain ? file.Object(5, "21 0 R") : -1;
         var stream = file.Position;
         var data = new StringBuilder();
 
@@ -1634,6 +1637,7 @@ public class ReaderLimitsTests
             {
                 2 => Row(1, pages, 0),
                 3 => Row(1, page, 0),
+                5 when chain => Row(1, five, 0),
                 21 => Row(1, twentyOne, 0),
                 22 => Row(1, stream, 0),
                 0 => Row(0, 0, 65535),
@@ -1642,7 +1646,7 @@ public class ReaderLimitsTests
         }
 
         data.Append('>');
-        file.Object(22, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 23 /Index [0 1 2 21] /W [1 4 2] /Filter /ASCIIHexDecode /Prev 21 0 R /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        file.Object(22, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 23 /Index [0 1 2 21] /W [1 4 2] /Filter /ASCIIHexDecode /Prev {(chain ? 5 : 21)} 0 R /Length {data.Length} >>\nstream\n{data}\nendstream"));
         file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{stream}\n%%EOF\n"));
 
         using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } });

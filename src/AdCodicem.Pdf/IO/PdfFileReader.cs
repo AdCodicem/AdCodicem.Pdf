@@ -2235,7 +2235,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// object whose number the index read so far lacks, its row perhaps among those the guard that ended the chain left
     /// unread. One the index holds reads as a whole read reads it, rows read first winning.
     /// </summary>
-    private bool NamesSection(PdfObject? value, HashSet<long> visited)
+    private bool NamesSection(PdfObject? value, HashSet<long> visited) =>
+        LeadsPastIndex(value, out var read) ||
+        (read?.AsInteger() is { } offset and >= 0 && IsInFile(PositionOf(offset)) && !visited.Contains(offset));
+
+    /// <summary>
+    /// Follows <paramref name="value"/> through a chain of references, each read where a section already read places it,
+    /// and determines whether the chain leads to an object whose number the index read so far lacks, its row perhaps among
+    /// those a guard left unread. <paramref name="read"/> is where the chain ends: null at a link that reads as nothing.
+    /// </summary>
+    private bool LeadsPastIndex(PdfObject? value, out PdfObject? read)
     {
         for (var link = 0; value is PdfReference reference && link < PdfReference.MaxChainLength; link++)
         {
@@ -2243,11 +2252,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             if (value is null)
             {
+                read = null;
                 return !_xref.TryGet(reference.Id.Number, out _);
             }
         }
 
-        return value?.AsInteger() is { } offset and >= 0 && IsInFile(PositionOf(offset)) && !visited.Contains(offset);
+        read = value;
+        return false;
     }
 
     /// <summary>
@@ -3790,9 +3801,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return offset;
         }
 
-        // A reference to an object whose number an index the guard filled lacks names what is unknown: its row may lie past
-        // the guard, and the chain ends there for the guard, not the file (#175).
-        if (value is PdfReference unplaced && read is null && _indexFullAt >= 0 && !_xref.TryGet(unplaced.Id.Number, out _))
+        // A reference leading to an object whose number an index the guard filled lacks names what is unknown: its row may lie
+        // past the guard, and the chain ends there for the guard, not the file (#175).
+        if (_indexFullAt >= 0 && LeadsPastIndex(value, out _))
         {
             return -1;
         }
