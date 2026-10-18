@@ -1669,6 +1669,39 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(16_400)]
+    [InlineData(60_000)]
+    public void A_pass_with_a_few_bytes_left_at_the_edge_of_a_load_s_first_window_decides_a_header_the_rest_of_the_next_holds(int blanks)
+    {
+        // Object 4's header is "4", blanks past the 8 KB a load reads first, then "0 obj", which a load reads in its next
+        // window, 64 KB from the row. The row's windows reach the load's first edge with 100 bytes of the pass left, the first
+        // 64 bytes free: past the window a load starts with, the next is the rest of the load's, read at once, and decides the
+        // row, charged however little is left. A window of 8 KB between, which a load does not read, ended in the blanks, and
+        // the row was left undecided for want of 8 KB (mutant R-snap-gt).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw("4" + new string(' ', blanks) + "0 obj\n(four)\nendobj\n");
+        rows[4] = at;
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        var reading = new HeaderReading(PdfFileReader.InitialObjectWindow - 64 + 100);
+        document.Reader.ChainIndex!.TryGet(4, out var four).Should().BeTrue();
+
+        var placement = document.Reader.PlaceHeader(4, four, reading);
+
+        placement.Place.Should().Be(HeaderPlace.AtOffset);
+        placement.Position.Should().Be(at);
+        reading.Remaining.Should().Be(0, "what the row crossed up to its decision is charged, however little was left");
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>();
+        document.WasRepaired.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void A_pass_that_spent_its_allowance_decides_a_header_its_first_window_ends_on_where_a_run_crossed_starts(bool crossedFirst)
@@ -1702,6 +1735,46 @@ public class HostileInputTests
         reading.Consume(long.MaxValue);
 
         document.Reader.PlaceHeader(7, seven, reading).Place.Should().Be(crossedFirst ? HeaderPlace.AtOffset : HeaderPlace.Undecided);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Placing_a_row_whose_token_ends_on_a_load_s_largest_window_reaches_the_guard_whatever_lies_past(bool crossedFirst)
+    {
+        // Object 3's row starts a keyword as long as the object guard, which ends where a load's largest window from the row
+        // does; past it lie 200 blanks, which object 4's row, at their start, crosses and remembers as a run. At a load's
+        // largest window, a load reaches the guard on a token its edge reaches, whatever follows: the row is past the guard,
+        // crossed first or not. Ending the keyword at the run, as a smaller window's edge does, took it whole, and said the
+        // row holds no header (mutant R-edge-blank-atreach).
+        const int Guard = 4_096;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var lead = file.Position;
+        file.Raw(new string('x', Guard) + new string(' ', 200));
+        file.Object(4, "(four)");
+        rows[3] = lead;
+        rows[4] = lead + Guard;
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = Guard } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+        var reading = new HeaderReading(long.MaxValue);
+        document.Reader.ChainIndex!.TryGet(3, out var three).Should().BeTrue();
+        document.Reader.ChainIndex.TryGet(4, out var four).Should().BeTrue();
+
+        if (crossedFirst)
+        {
+            document.Reader.PlaceHeader(4, four, reading).Place.Should().Be(HeaderPlace.AtOffset);
+        }
+
+        var placement = document.Reader.PlaceHeader(3, three, reading);
+
+        placement.Place.Should().Be(HeaderPlace.PastGuard);
+        placement.GuardAtOffset.Should().BeTrue();
     }
 
     [Theory]
@@ -1917,6 +1990,35 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(8_192, "", true)]
+    [InlineData(8_192, "x", false)]
+    [InlineData(65_536, "x", false)]
+    public void Placing_a_row_whose_own_header_ends_a_load_s_window_reads_on_past_it_as_a_load_does(int edge, string after, bool placed)
+    {
+        // R-loadedge-any-number: object 6's row holds "6 0 obj", its obj ending where a load's window does. Only a header of
+        // another object is taken as it is there: a load of object 6 finds its own number, reads on in a larger window, and
+        // takes no "objx" for a header. The row decides as the load: object 6 at the row where the keyword ends, no header
+        // where it runs on.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw("6 0" + new string(' ', edge - 6) + "obj" + after + "\n(six)\nendobj\n");
+        rows[6] = at;
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        document.Reader.ChainIndex!.TryGet(6, out var entry).Should().BeTrue();
+
+        var placement = document.Reader.PlaceHeader(6, entry, new HeaderReading(long.MaxValue));
+
+        placement.Place.Should().Be(placed ? HeaderPlace.AtOffset : HeaderPlace.NotFound);
+        (document.Reader.ReadWhereChainPlaces(6, entry) is not null).Should().Be(placed);
+    }
+
+    [Theory]
     [InlineData(8_192, "")]
     [InlineData(8_192, "x")]
     [InlineData(65_536, "x")]
@@ -1946,6 +2048,91 @@ public class HostileInputTests
         placement.Place.Should().Be(HeaderPlace.NotFound);
         placement.NumberAtOffset.Should().Be(6);
         (source.BytesRead - before).Should().BeLessThanOrEqualTo(edge + (2 * PdfFileReader.NearbySearchRadius));
+    }
+
+    [Theory]
+    [InlineData(64)]
+    [InlineData(100)]
+    [InlineData(200)]
+    [InlineData(300)]
+    [InlineData(400)]
+    [InlineData(500)]
+    public void Placing_a_row_whose_header_runs_past_its_lead_s_window_reads_again_at_most_half_of_each_window_short_of_a_load_s(int lead)
+    {
+        // R-reread-2x-off: object 3's row holds a lead of blanks, crossed in its first 64 bytes and the next 512, then a
+        // number written with a thousand leading zeros, which the edge of those 512 bytes cuts. Each window after reads it
+        // again from its start, and grows from the last to twice what it reads again at least, while it is one of the small
+        // ones and ends short of the window a load reads first; past them, it is the rest of that window. A window grown
+        // only from the 64-byte step under what the crossing lexed read up to 476 bytes again, in 512, to gain 36.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var row = file.Position;
+        rows[3] = row;
+        file.Raw(new string(' ', lead) + new string('0', 1000) + "3 0 obj null endobj\n%" + new string('c', 10_000) + "\n");
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        using var source = new WindowLoggingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.ChainIndex!.TryGet(3, out var entry).Should().BeTrue();
+        source.Windows.Clear();
+
+        document.Reader.PlaceHeader(3, entry, new HeaderReading(long.MaxValue)).Place.Should().Be(HeaderPlace.AtOffset);
+
+        var loadEnd = row + PdfFileReader.InitialObjectWindow;
+        source.Windows.Should().Contain(window => window.Offset == row + lead, "the number is read again from its start");
+
+        for (var index = 1; index < source.Windows.Count; index++)
+        {
+            var (offset, length) = source.Windows[index];
+            var again = source.Windows[index - 1].Offset + source.Windows[index - 1].Length - offset;
+
+            if (again > 0 && offset + length != loadEnd)
+            {
+                ((long)length).Should().BeGreaterThanOrEqualTo(2 * again, "the window at {0} reads {1} bytes again", offset - row, again);
+            }
+        }
+    }
+
+    [Fact]
+    public void Placing_a_row_whose_header_s_tokens_lie_apart_reads_no_more_than_its_load()
+    {
+        // Object 4's row holds "4", a thousand blanks, a generation of 5,000 zeros, then "obj". The row's windows of 64 and
+        // 512 bytes stop in the blanks; the next, which would stop 3,520 bytes short of the 8 KB a load reads, less than its
+        // own 4,096, is the rest of that window, as a load reads none between, and decides the header: the row reads what
+        // its load reads. A window of 4,096 bytes cut the zeros, and the next read them again from their start, 3,671 bytes
+        // more than the load (mutant R-cap-min).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw("4" + new string(' ', 1_000) + new string('0', 5_000) + " obj\n(four)\nendobj\n%" + new string('c', 20_000) + "\n");
+        rows[4] = at;
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var bytes = file.Bytes;
+
+        using var aloneSource = new StrictCountingSource(bytes);
+        using var aloneDocument = PdfDocument.Open(aloneSource, options: null, ownsSource: false);
+        var before = aloneSource.BytesRead;
+        aloneDocument.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfString>();
+        var load = aloneSource.BytesRead - before;
+        aloneDocument.WasRepaired.Should().BeFalse();
+
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.ChainIndex!.TryGet(4, out var four).Should().BeTrue();
+        before = source.BytesRead;
+
+        var placement = document.Reader.PlaceHeader(4, four, new HeaderReading(long.MaxValue));
+
+        placement.Place.Should().Be(HeaderPlace.AtOffset);
+        placement.Position.Should().Be(at);
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(load);
     }
 
     [Fact]
@@ -3187,6 +3374,23 @@ public class HostileInputTests
         thread.Join();
 
         return (first, diagnostics, failure);
+    }
+
+    /// <summary>A file in memory that records each window read from it: where it starts, and how many bytes it holds.</summary>
+    private sealed class WindowLoggingSource(byte[] data) : PdfFileSource
+    {
+        /// <summary>Gets the windows read, in order.</summary>
+        public List<(long Offset, int Length)> Windows { get; } = [];
+
+        public override long Length => data.Length;
+
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            var count = (int)Math.Clamp(data.Length - offset, 0, buffer.Length);
+            data.AsSpan((int)offset, count).CopyTo(buffer);
+            Windows.Add((offset, count));
+            return count;
+        }
     }
 
     /// <summary>How an object stream's data is written.</summary>

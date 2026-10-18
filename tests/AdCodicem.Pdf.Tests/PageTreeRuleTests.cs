@@ -1159,6 +1159,25 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_count_read_before_the_cut_of_a_node_whose_kids_are_an_array_read_whole_is_not_judged()
+    {
+        // Mutant W-count-judged-cut: node 2 gives /Count 5 0 R, object 5 holding 1; the cut falls after the "5", which reads
+        // as a count of 5. Its kids, in object 4, are read whole and counted: a node a limit cut is doubtful all the same,
+        // and its /Count is not judged against the one page below it.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Kids 4 0 R /Count 5" + new string(' ', 200) + "0 R >>", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", "4 0 obj\n[3 0 R]\nendobj\n5 0 obj\n1\nendobj\nxref\n0 6\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n{row:5}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 6", StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        document.GetObject(new PdfObjectId(2)).AsDictionary().Required().GetRaw(PdfName.Count).Should().BeOfType<PdfInteger>("the cut left the 5 of 5 0 R").Which.Value.Should().Be(5);
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty("the node is cut, and its count may be what the cut left of a reference");
+        Validate(file).Findings.Should().BeEmpty("read whole, the count is 1, the one page below the node");
+    }
+
+    [Fact]
     public void A_catalog_a_limit_cut_whose_pages_names_nothing_leaves_the_walk_partial()
     {
         // Review of #175 (L5-04): the /Pages read before the cut names an object the file lacks; past the cut may lie more.
