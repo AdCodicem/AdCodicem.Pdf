@@ -1566,6 +1566,99 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("free", "/Prev 21 0 R")]
+    [InlineData("another generation", "/Prev 21 1 R")]
+    [InlineData("object 0", "/Prev 0 0 R")]
+    [InlineData("a stream", "/Prev 21 0 R")]
+    [InlineData("another object's", "/Prev 21 0 R")]
+    [InlineData("a chain past the cut", "/Prev 21 0 R")]
+    public void A_prev_written_as_a_reference_reads_past_a_guard_as_a_whole_read_reads_it(string row21, string prev)
+    {
+        // V2-1, V2-3: the newest table's rows run past what MaxXRefSectionLength reads, its trailer gives no /Root, and its
+        // /Prev is a reference whose row the guard read: a free one, of another generation, object 0, a stream, the row of
+        // another object — which a whole read reads as no section, and rebuilds for the /Root the file lacks —; or a chain
+        // to an object whose row lies past the cut, unknown. Each read as unknown, or as no section, alike.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
+        var oldest = older.ToString(CultureInfo.InvariantCulture);
+        var twentyOne = file.Object(21, row21 switch { "a stream" => "<< /Length 3 >>\nstream\n123\nendstream", "a chain past the cut" => "22 0 R", _ => oldest });
+        var twentyTwo = row21 == "a chain past the cut" ? file.Object(22, oldest) : -1;
+        var table = file.Position;
+        var placed = row21 switch
+        {
+            "free" => "0000000000 00000 f \n",
+            "another object's" => string.Create(CultureInfo.InvariantCulture, $"{pages:D10} 00000 n \n"),
+            _ => string.Create(CultureInfo.InvariantCulture, $"{twentyOne:D10} 00000 n \n"),
+        };
+        var lastRow = twentyTwo < 0 ? "0000000000 00000 f \n" : string.Create(CultureInfo.InvariantCulture, $"{twentyTwo:D10} 00000 n \n");
+        var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 17));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n21 1\n{placed}2 2\n{pages:D10} 00000 n \n{page:D10} 00000 n \n4 17\n{free}22 1\n{lastRow}trailer\n<< /Size 23 {prev} >>\nstartxref\n{table}\n%%EOF\n"));
+        using var whole = PdfDocument.Open(file.Bytes);
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 } });
+
+        if (row21 == "a chain past the cut")
+        {
+            document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+            document.WasRepaired.Should().BeFalse();
+        }
+        else
+        {
+            document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+            document.WasRepaired.Should().Be(whole.WasRepaired).And.BeTrue();
+            (document.Catalog is null).Should().Be(whole.Catalog is null);
+        }
+    }
+
+    [Fact]
+    public void A_prev_a_stream_that_fills_the_index_writes_as_a_reference_past_the_full_point_is_no_fault_of_the_file()
+    {
+        // V2-2: the newest section, a cross-reference stream, fills MaxIndexEntries before its row for object 21, which
+        // holds the older table's offset its /Prev names as 21 0 R. The reader took the guard to hide the trailers, and
+        // xref.section-not-found said the file's /Prev names nothing.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
+        var twentyOne = file.Object(21, older.ToString(CultureInfo.InvariantCulture));
+        var stream = file.Position;
+        var data = new StringBuilder();
+
+        foreach (var number in new[] { 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 })
+        {
+            data.Append(number switch
+            {
+                2 => Row(1, pages, 0),
+                3 => Row(1, page, 0),
+                21 => Row(1, twentyOne, 0),
+                22 => Row(1, stream, 0),
+                0 => Row(0, 0, 65535),
+                _ => Row(0, 0, 0),
+            });
+        }
+
+        data.Append('>');
+        file.Object(22, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 23 /Index [0 1 2 21] /W [1 4 2] /Filter /ASCIIHexDecode /Prev 21 0 R /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{stream}\n%%EOF\n"));
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionMissing);
+        report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse(string.Join("; ", report.Findings));
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+
+        static string Row(int type, long offset, int generation) =>
+            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+    }
+
+    [Theory]
     [InlineData("an older section's catalog")]
     [InlineData("no catalog indexed")]
     public void A_cross_reference_stream_a_limit_cut_past_its_rows_hides_no_trailer(string shape)

@@ -2231,18 +2231,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Determines whether <paramref name="value"/>, a <c>/Prev</c> or an <c>/XRefStm</c>, names a section the chain has
-    /// not read: an offset in the file it has not <paramref name="visited"/>; or a reference the index read so far cannot
-    /// place, its row perhaps among those the guard that ended the chain left unread.
+    /// not read: an offset in the file it has not <paramref name="visited"/>; or a reference, or a chain of them, to an
+    /// object whose number the index read so far lacks, its row perhaps among those the guard that ended the chain left
+    /// unread. One the index holds reads as a whole read reads it, rows read first winning.
     /// </summary>
     private bool NamesSection(PdfObject? value, HashSet<long> visited)
     {
-        if (value is PdfReference reference)
+        for (var link = 0; value is PdfReference reference && link < PdfReference.MaxChainLength; link++)
         {
             value = ReadWithoutLoading(reference.Id);
 
             if (value is null)
             {
-                return true;
+                return !_xref.TryGet(reference.Id.Number, out _);
             }
         }
 
@@ -3787,6 +3788,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (read?.AsInteger() is { } offset and >= 0)
         {
             return offset;
+        }
+
+        // A reference to an object whose number an index the guard filled lacks names what is unknown: its row may lie past
+        // the guard, and the chain ends there for the guard, not the file (#175).
+        if (value is PdfReference unplaced && read is null && _indexFullAt >= 0 && !_xref.TryGet(unplaced.Id.Number, out _))
+        {
+            return -1;
         }
 
         _indexIncomplete = true;
