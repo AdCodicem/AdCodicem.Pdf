@@ -363,6 +363,19 @@ public class ObjectModelTests
     }
 
     [Fact]
+    public void A_reference_with_no_source_is_the_last_object_a_chain_leads_to()
+    {
+        // A reference built with no source reads as null, as one to an object no file defines: no chain goes on from it, so
+        // the object whose value it gives is the one it names, alone or at the end of a chain.
+        var source = Substitute.For<IPdfObjectSource>();
+        source.GetObject(new PdfObjectId(1)).Returns(new PdfReference(new PdfObjectId(2, 4)));
+
+        new PdfReference(new PdfObjectId(7, 2)).Target().Should().Be(new PdfObjectId(7, 2));
+        new PdfReference(new PdfObjectId(1), source).Target().Should().Be(new PdfObjectId(2, 4));
+        new PdfReference(new PdfObjectId(1), source).Resolve().Should().BeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
     public void A_string_marked_utf16_little_endian_reads_as_text()
     {
         var text = new PdfString(new byte[] { 0xFF, 0xFE, (byte)'h', 0, (byte)'i', 0 });

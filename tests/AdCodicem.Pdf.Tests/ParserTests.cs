@@ -145,6 +145,24 @@ public class ParserTests
         parser.TryReadIndirectObject(out _, out _).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("7 0 ob", true)]
+    [InlineData("7 6553", true)]
+    [InlineData("0000", true)]
+    [InlineData("7 65536 ob", false)]
+    [InlineData("7 -1 ob", false)]
+    [InlineData("7 0.5 ob", false)]
+    [InlineData("0 0 ob", false)]
+    public void Asks_for_more_data_only_for_a_header_its_end_cuts_that_no_whole_token_rules_out(string text, bool more)
+    {
+        // A header the end of the data reaches may be whole in a larger window; one whose number or generation is a whole
+        // token no header begins with is none, however large the window (#175).
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text));
+
+        parser.TryReadIndirectObject(out _, out _).Should().BeFalse();
+        parser.IsTruncated.Should().Be(more);
+    }
+
     [Fact]
     public void Reads_a_stream_whose_declared_length_is_correct()
     {

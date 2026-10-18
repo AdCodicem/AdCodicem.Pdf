@@ -1633,6 +1633,38 @@ public class HostileInputTests
         placement.Position.Should().Be(lead + 110);
     }
 
+    [Fact]
+    public void A_pass_with_less_left_than_a_window_of_blanks_holds_leaves_its_row_undecided()
+    {
+        // Object 3's row lies 2,000 blanks before its header. Past the first window, read free of the pass's allowance, the
+        // next is blanks whole, 512 bytes, and the pass has 100 left: crossing it spends the pass, which reads no further,
+        // and the entry is left undecided, where a pass with room enough finds the header past the blanks. What it did not
+        // pay for, it does not remember crossing: no later reading skips those blanks free.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var lead = file.Position;
+        file.Raw(new string(' ', 2_000));
+        file.Object(3, "null");
+        rows[3] = lead;
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        document.Reader.ChainIndex!.TryGet(3, out var entry).Should().BeTrue();
+        var reading = new HeaderReading(100);
+
+        var placement = document.Reader.PlaceHeader(3, entry, reading);
+        var whole = document.Reader.PlaceHeader(3, entry, new HeaderReading(long.MaxValue));
+
+        placement.Place.Should().Be(HeaderPlace.Undecided);
+        reading.Remaining.Should().Be(0);
+        reading.PastBlanks(lead).Should().Be(lead + 64);
+        whole.Place.Should().Be(HeaderPlace.AtOffset);
+        whole.Position.Should().Be(lead + 2_000);
+    }
+
     [Theory]
     [InlineData(0, 64)]
     [InlineData(65_471, 74_304)]
