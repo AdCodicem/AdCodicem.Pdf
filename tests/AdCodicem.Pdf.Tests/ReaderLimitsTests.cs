@@ -1921,6 +1921,7 @@ public class ReaderLimitsTests
     [InlineData("the last row declared", "22 0 R", true)]
     [InlineData("one past the last row declared", "23 0 R", false)]
     [InlineData("a row of a later subsection", "31 0 R", true)]
+    [InlineData("a number between two subsections", "25 0 R", false)]
     [InlineData("a row past the data a guard cut", "21 0 R", true)]
     [InlineData("a row its data, decoded whole, does not hold", "25 0 R", false)]
     public void A_prev_a_stream_a_guard_stopped_writes_as_a_reference_is_unknown_only_for_a_row_it_left_unread(string shape, string prev, bool hidden)
@@ -1930,10 +1931,10 @@ public class ReaderLimitsTests
         // leaves it the data of ten rows. Its /Prev names an object whose row the guard left unread, which may place the
         // older section: the trailers are hidden. One past the rows the stream declares is the file's to lack, as a whole
         // read finds: reported, and the index rebuilt for the /Root; and so is one it declares but its data, decoded whole,
-        // does not hold (X1-1).
+        // does not hold (X1-1), or one between two subsections, which no row numbers.
         var file = shape switch
         {
-            "a row of a later subsection" => NewestStreamNaming("[0 1 2 20 30 3]", [0, .. Numbers(2, 20), 30, 31, 32], prev, refused: -1, size: 33),
+            "a row of a later subsection" or "a number between two subsections" => NewestStreamNaming("[0 1 2 20 30 3]", [0, .. Numbers(2, 20), 30, 31, 32], prev, refused: -1, size: 33),
             "a row its data, decoded whole, does not hold" => NewestStreamNaming("[0 1 2 21 25 1]", [0, .. Numbers(2, 21)], prev, refused: -1, size: 26),
             _ => NewestStreamNaming("[0 1 2 21]", [0, .. Numbers(2, 21)], prev, refused: -1),
         };
