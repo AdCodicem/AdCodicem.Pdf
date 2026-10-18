@@ -1438,12 +1438,15 @@ public class ReaderLimitsTests
     [InlineData("a trailer cut before /Root")]
     [InlineData("a table's rows cut")]
     [InlineData("a full index")]
+    [InlineData("a stream's full index")]
     [InlineData("a section's dictionary cut")]
     public void A_root_a_guard_kept_the_trailers_from_giving_is_unknown_and_rebuilds_nothing(string guard)
     {
         // R2-01, R2-02, S2-01: only the oldest section indexes the catalog, and only its trailer, or the newest's past what
         // MaxTrailerLength reads, gives /Root; or the newest table's rows run past what MaxXRefSectionLength reads, or past
-        // what MaxIndexEntries holds, which ends the chain at its trailer; or the section the newest's /Prev names is a
+        // what MaxIndexEntries holds, which ends the chain at its trailer; or the newest section is a cross-reference stream
+        // whose rows run past what MaxIndexEntries holds, its dictionary naming the oldest through an integer /Prev, which the
+        // full index ends the chain short of (mutant R-ended-full-off); or the section the newest's /Prev names is a
         // cross-reference stream whose dictionary MaxTrailerLength cuts before it says what it is, which ends the chain there
         // (mutant R-thg-lost-off). The guard leaves the trailers the reader read without /Root: the reader rebuilt the index,
         // scanning past the guard, and file.root-invalid said the trailer has no /Root.
@@ -1478,6 +1481,20 @@ public class ReaderLimitsTests
                     ? PdfReaderLimits.Default with { MaxIndexEntries = 4 }
                     : PdfReaderLimits.Default with { MaxXRefSectionLength = 128 },
             };
+        }
+        else if (guard == "a stream's full index")
+        {
+            // The same rows in a cross-reference stream, which the index fills before its row for object 6, and whose /Prev,
+            // an integer, names the oldest table: the chain read with the rows does not reach it.
+            var newest = file.Position;
+            var data = Row(0, 0, 65535) + Row(1, page, 0) + string.Concat(Enumerable.Repeat(Row(0, 0, 0), 20)) + ">";
+            file.Object(
+                24,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"<< /Type /XRef /Size 25 /Index [0 1 3 21] /W [1 4 2] /Filter /ASCIIHexDecode /Prev {first} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{newest}\n%%EOF\n"));
+            options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 } };
         }
         else if (guard == "a section's dictionary cut")
         {
@@ -1515,6 +1532,9 @@ public class ReaderLimitsTests
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
         using var whole = PdfDocument.Open(file.Bytes);
         whole.Catalog.Should().NotBeNull("read whole, the oldest trailer gives /Root");
+
+        static string Row(int type, long offset, int generation) =>
+            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
     }
 
     [Theory]
@@ -1635,6 +1655,80 @@ public class ReaderLimitsTests
 
         document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
         document.Reader.CatalogFoundAs.Should().Be(20);
+
+        static string Row(int type, long offset, int generation) =>
+            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+    }
+
+    [Fact]
+    public void A_table_that_fills_the_index_hides_the_trailer_of_the_hybrid_stream_its_xrefstm_names()
+    {
+        // R-names-xrefstm-off: the one table's rows fill MaxIndexEntries, and its trailer gives neither /Root nor /Prev, only an
+        // /XRefStm naming the hybrid stream, whose dictionary gives /Root and whose row places the catalog. The chain ends at the
+        // full index, short of the stream: its dictionary is a trailer the guard kept unread, which may give the /Root the
+        // trailers lack, so the reader rebuilds nothing for it and file.root-invalid blames nothing (ADR 34).
+        var file = new HandWrittenFile();
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var catalog = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>");
+        var stream = file.Position;
+        var data = string.Create(CultureInfo.InvariantCulture, $"01{catalog:X8}0000>");
+        file.Object(10, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 21 /Index [20 1] /W [1 4 2] /Root 20 0 R /Filter /ASCIIHexDecode /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        var table = file.Position;
+        var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 16));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 20\n0000000000 65535 f \n0000000000 00000 f \n{pages:D10} 00000 n \n{page:D10} 00000 n \n{free}trailer\n<< /Size 21 /XRefStm {stream} >>\nstartxref\n{table}\n%%EOF\n"));
+        using var whole = PdfDocument.Open(file.Bytes);
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        whole.WasRepaired.Should().BeFalse();
+        whole.Catalog.Should().NotBeNull("read whole, the hybrid stream's dictionary gives /Root");
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitIndexEntries);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.Reader.Structure.RootHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse("what a guard hides is no reason to rebuild the index (ADR 34)");
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Fact]
+    public void A_hybrid_stream_that_fills_the_index_hides_the_trailer_its_table_names_through_prev()
+    {
+        // R-thg-hybrid-off: the newest table leaves the index room, and its /XRefStm stream fills MaxIndexEntries; the table's
+        // trailer gives no /Root and names through /Prev the older table, in the file and unread, whose trailer gives it. The
+        // chain stops at the stream, so that trailer is the guard's to hide: the reader rebuilds nothing, and file.root-invalid
+        // does not blame the file, where a whole read finds the catalog through the older trailer.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
+        var stream = file.Position;
+        var data = new StringBuilder();
+
+        for (var number = 4; number < 11; number++)
+        {
+            data.Append(number == 10 ? Row(1, stream, 0) : Row(0, 0, 0));
+        }
+
+        data.Append('>');
+        file.Object(10, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 11 /Index [4 7] /W [1 4 2] /Filter /ASCIIHexDecode /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        var table = file.Position;
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n3 1\n{page:D10} 00000 n \ntrailer\n<< /Size 11 /XRefStm {stream} /Prev {older} >>\nstartxref\n{table}\n%%EOF\n"));
+        using var whole = PdfDocument.Open(file.Bytes);
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 4 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        whole.WasRepaired.Should().BeFalse();
+        whole.Catalog.Should().NotBeNull();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitIndexEntries);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.Reader.Structure.RootHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse("what a guard hides is no reason to rebuild the index (ADR 34)");
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
 
         static string Row(int type, long offset, int generation) =>
             string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
@@ -1889,6 +1983,49 @@ public class ReaderLimitsTests
         report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
     }
 
+    [Fact]
+    public void An_xrefstm_a_stream_that_fills_the_index_writes_names_no_trailer_for_the_guard_to_hide()
+    {
+        // R-names-stream-xrefstm: the newest section, a cross-reference stream with no /Root and no /Prev, fills
+        // MaxIndexEntries, and its dictionary gives /XRefStm the offset of the older table, whose trailer gives /Root. Only a
+        // hybrid table's trailer names a stream through /XRefStm, and no read follows a stream dictionary's: the older trailer
+        // is none the guard kept unread. The reader rebuilds for the /Root the file lacks, as a whole read does.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
+        var stream = file.Position;
+        var data = new StringBuilder(Row(0, 0, 65535));
+
+        for (var number = 2; number < 23; number++)
+        {
+            data.Append(number switch
+            {
+                2 => Row(1, pages, 0),
+                3 => Row(1, page, 0),
+                22 => Row(1, stream, 0),
+                _ => Row(0, 0, 0),
+            });
+        }
+
+        data.Append('>');
+        file.Object(22, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 23 /Index [0 1 2 21] /W [1 4 2] /Filter /ASCIIHexDecode /XRefStm {older} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{stream}\n%%EOF\n"));
+        using var whole = PdfDocument.Open(file.Bytes);
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } });
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitIndexEntries);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+        document.Reader.Structure.RootHiddenByGuard.Should().BeFalse();
+        document.WasRepaired.Should().Be(whole.WasRepaired).And.BeTrue();
+        document.Catalog.Should().NotBeNull();
+
+        static string Row(int type, long offset, int generation) =>
+            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+    }
+
     [Theory]
     [InlineData(31, true)]
     [InlineData(32, false)]
@@ -2035,6 +2172,39 @@ public class ReaderLimitsTests
         document.Reader.GetPresence(9).Should().Be(ObjectPresence.Unindexed);
         document.Catalog.Should().NotBeNull().And.Subject.Should().NotContainKey(PdfName.Version, "the catalog object 5 gives is the one the update superseded");
         report.Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Theory]
+    [InlineData("rows")]
+    [InlineData("index")]
+    public void A_section_a_prev_names_a_few_bytes_off_whose_rows_a_guard_ends_hides_the_trailer_it_leaves_unread(string guard)
+    {
+        // R-thg-notrailer-none: the newest table gives no /Root, and names the older one 3 bytes off; the older one's trailer
+        // gives it. Found near where it was named, the older table's rows run past MaxXRefSectionLength, or fill
+        // MaxIndexEntries, and a place a section may have been moved to has its trailer not looked for past the guard: the
+        // trailer is the guard's to hide, and the /Root the trailers lack is unknown, not the file's to lack.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+        var older = file.Table(40, rows, "/Size 40 /Root 1 0 R");
+        file.Table(1, [], string.Create(CultureInfo.InvariantCulture, $"/Size 40 /Prev {older - 3}"));
+        var limits = guard == "rows" ? PdfReaderLimits.Default with { MaxXRefSectionLength = 128 } : PdfReaderLimits.Default with { MaxIndexEntries = 8 };
+        using var whole = PdfDocument.Open(file.Bytes);
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var report = new PdfValidator().Validate(document);
+
+        new PdfValidator().Validate(whole).Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.Reader.Structure.RootHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
     }
 
     [Fact]
