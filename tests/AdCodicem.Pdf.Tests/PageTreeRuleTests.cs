@@ -1746,6 +1746,62 @@ public class PageTreeRuleTests
         }
     }
 
+    [Theory]
+    [InlineData("no type")]
+    [InlineData("a page")]
+    [InlineData("a node")]
+    public void A_dictionary_a_cut_kids_makes_a_node_is_not_judged_on_its_count(string shape)
+    {
+        // T3-03: object 4 has no /Count, and its /Kids names object 9, which runs past the limit and reads as a string. Its
+        // /Kids makes it a node, of what is unknown: one with no /Type, or a page, may be no node at all, and was said to
+        // lack /Count, with 0 pages below it; a node that says it is one lacks it, but how many pages lie below is unknown.
+        var blanks = new string(' ', 300);
+        var type = shape switch { "no type" => string.Empty, "a page" => "/Type /Page ", _ => "/Type /Pages " };
+        var file = Objects(
+            (2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"),
+            (4, "<< " + type + "/Parent 2 0 R /Kids 9 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (9, "(" + blanks + ")"));
+        using var document = PdfDocument.Open(file, CutAt(200));
+
+        var report = new PdfValidator().Validate(document);
+
+        if (shape == "a node")
+        {
+            Single(report, PdfValidationRuleIds.PageTreeCountMismatch).Message.Should().Be(
+                "Page tree node 4 has no /Count, and how many pages lie below it is unknown.");
+        }
+        else
+        {
+            report.Findings.Should().NotContain(finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal), string.Join("; ", report.Findings));
+        }
+    }
+
+    [Theory]
+    [InlineData("[9 0 R 0 /Wide 1]", "The /MediaBox of object 3 holds a name among its corners, not a rectangle of four numbers.")]
+    [InlineData("[0 9 0 R 0 1]", "The /MediaBox of object 3, [0 9 0 R 0 1], encloses no area.")]
+    [InlineData("[0 0 9 0 R 1]", null)]
+    public void The_corners_of_a_media_box_no_cut_touches_are_judged(string box, string? message)
+    {
+        // T3-04: a corner of the page's /MediaBox names object 9, which runs past the limit: it is unknown, and the corners
+        // written in the page were left unjudged with it — a name, or two equal opposite corners.
+        var file = Objects(
+            (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R /MediaBox " + box + " >>"),
+            (9, new string(' ', 300) + "0"));
+        using var document = PdfDocument.Open(file, CutAt(200));
+
+        var report = new PdfValidator().Validate(document);
+
+        if (message is null)
+        {
+            report.Contains(PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+        }
+        else
+        {
+            Single(report, PdfValidationRuleIds.PageTreeMediaBoxInvalid).Message.Should().Be(message);
+        }
+    }
+
     [Fact]
     public void A_section_key_written_deeper_in_the_trailer_is_followed_as_any_other()
     {
