@@ -91,8 +91,8 @@ internal sealed class FileStructure
 
     /// <summary>
     /// Gets a value indicating whether one of the reader's guards kept it from reading a trailer of the chain whole: one it
-    /// cut, an older section's it left unread — the chain stopped at a guard short of its end —, or that of a section whose
-    /// rows a guard cut before it. A key the trailers lack may lie there.
+    /// cut, an older section's it left unread — the chain stopped at a guard short of its end —, or that of a section read
+    /// where it may have been moved, which is not looked for past rows a guard cut. A key the trailers lack may lie there.
     /// </summary>
     public bool TrailersHiddenByGuard { get; set; }
 
