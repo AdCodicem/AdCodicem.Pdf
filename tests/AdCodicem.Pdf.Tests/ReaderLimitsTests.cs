@@ -1674,6 +1674,7 @@ public class ReaderLimitsTests
     [InlineData("object 0", "/Prev 0 0 R")]
     [InlineData("a stream", "/Prev 21 0 R")]
     [InlineData("another object's", "/Prev 21 0 R")]
+    [InlineData("refused", "/Prev 21 0 R")]
     [InlineData("a chain past the cut", "/Prev 21 0 R")]
     [InlineData("an object past the object guard", "/Prev 21 0 R")]
     public void A_prev_written_as_a_reference_reads_past_a_guard_as_a_whole_read_reads_it(string row21, string prev)
@@ -1702,6 +1703,7 @@ public class ReaderLimitsTests
         {
             "free" => "0000000000 00000 f \n",
             "another object's" => string.Create(CultureInfo.InvariantCulture, $"{pages:D10} 00000 n \n"),
+            "refused" => string.Create(CultureInfo.InvariantCulture, $"{twentyOne:D10} 99999 n \n"),
             _ => string.Create(CultureInfo.InvariantCulture, $"{twentyOne:D10} 00000 n \n"),
         };
         var lastRow = twentyTwo < 0 ? "0000000000 00000 f \n" : string.Create(CultureInfo.InvariantCulture, $"{twentyTwo:D10} 00000 n \n");
@@ -1810,6 +1812,60 @@ public class ReaderLimitsTests
         report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeTrue(string.Join("; ", report.Findings));
         document.WasRepaired.Should().Be(whole.WasRepaired).And.BeTrue();
         document.Catalog.Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData("the first row the index had no room for", "9 0 R", true)]
+    [InlineData("the last row declared", "22 0 R", true)]
+    [InlineData("one past the last row declared", "23 0 R", false)]
+    [InlineData("a row of a later subsection", "31 0 R", true)]
+    [InlineData("a row past the data a guard cut", "21 0 R", true)]
+    public void A_prev_a_stream_a_guard_stopped_writes_as_a_reference_is_unknown_only_for_a_row_it_left_unread(string shape, string prev, bool hidden)
+    {
+        // The newest section, a cross-reference stream with no /Root, holds rows for 0 and 2 to 22 — or, for the later
+        // subsection, 2 to 21 then 30 to 32 —, and MaxIndexEntries fills at the row for object 9; or MaxDecodedStreamLength
+        // leaves it the data of ten rows. Its /Prev names an object whose row the guard left unread, which may place the
+        // older section: the trailers are hidden. One past the rows the stream declares is the file's to lack, as a whole
+        // read finds: reported, and the index rebuilt for the /Root.
+        var later = shape == "a row of a later subsection";
+        var file = later
+            ? NewestStreamNaming("[0 1 2 20 30 3]", [0, .. Numbers(2, 20), 30, 31, 32], prev, refused: -1, size: 33)
+            : NewestStreamNaming("[0 1 2 21]", [0, .. Numbers(2, 21)], prev, refused: -1);
+        var limits = shape == "a row past the data a guard cut"
+            ? PdfReaderLimits.Default with { MaxDecodedStreamLength = 70 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 8 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code.StartsWith("limit.", StringComparison.Ordinal));
+        document.Reader.Structure.TrailersHiddenByGuard.Should().Be(hidden);
+        document.Diagnostics.Any(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionMissing).Should().Be(!hidden);
+    }
+
+    [Fact]
+    public void A_prev_reference_in_a_table_a_guard_cut_after_a_stream_read_whole_is_unknown()
+    {
+        // The newest section, a cross-reference stream read whole, names an older table whose rows run past what
+        // MaxXRefSectionLength reads; that table's /Prev is a reference to object 21, whose row lies past the cut. A table's
+        // rows past a guard may number any object: object 21 is unknown, and the trailers are hidden. What the stream left
+        // unread, nothing, says nothing of the table read after it.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
+        var prev = file.Object(21, older.ToString(CultureInfo.InvariantCulture));
+        var table = file.Position;
+        var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 17));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n2 2\n{pages:D10} 00000 n \n{page:D10} 00000 n \n4 17\n{free}21 1\n{prev:D10} 00000 n \ntrailer\n<< /Size 22 /Prev 21 0 R >>\nstartxref\n{table}\n%%EOF\n"));
+        file.CrossReferenceStream(22, 23, [], string.Create(CultureInfo.InvariantCulture, $"/Index [22 1] /Prev {table}"));
+        using var whole = PdfDocument.Open(file.Bytes);
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 } });
+
+        whole.Catalog.Should().NotBeNull();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Fact]
@@ -2411,7 +2467,7 @@ public class ReaderLimitsTests
     /// dictionary gives <c>/Prev</c> <paramref name="prev"/> and no <c>/Root</c>. The row of <paramref name="refused"/> places
     /// it in object stream 0, which no row may.
     /// </summary>
-    private static byte[] NewestStreamNaming(string index, int[] rows, string prev, int refused, string twentyOne = "")
+    private static byte[] NewestStreamNaming(string index, int[] rows, string prev, int refused, string twentyOne = "", int size = 23)
     {
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -2437,7 +2493,7 @@ public class ReaderLimitsTests
         }
 
         data.Append('>');
-        file.Object(22, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 23 /Index {index} /W [1 4 2] /Filter /ASCIIHexDecode /Prev {prev} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        file.Object(22, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size {size} /Index {index} /W [1 4 2] /Filter /ASCIIHexDecode /Prev {prev} /Length {data.Length} >>\nstream\n{data}\nendstream"));
         file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{stream}\n%%EOF\n"));
         return file.Bytes;
 
