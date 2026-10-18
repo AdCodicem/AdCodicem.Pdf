@@ -930,9 +930,10 @@ public class PageTreeRuleTests
     public void An_array_of_kids_that_holds_a_node_naming_it_again_is_a_loop()
     {
         // Review of #129 (L1-01): object 7, node 2's array of kids, holds a node written in it whose /Kids is object 7
-        // again. Neither has a number the walk could see on its path, and it entered them without end.
+        // again. Neither has a number the walk could see on its path, and it entered them without end. Node 2's /Count of 2
+        // is not judged against the one page counted: what the loop should have listed is unknown (M5-05).
         var file = PdfTemplate.Build(PdfTemplate.Sound
-            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Kids 7 0 R /Count 1 >>", StringComparison.Ordinal)
+            .Replace("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Pages /Kids 7 0 R /Count 2 >>", StringComparison.Ordinal)
             .Replace("xref\n0 4\n", "7 0 obj\n[3 0 R << /Type /Pages /Kids 7 0 R /Count 0 >>]\nendobj\nxref\n0 8\n", StringComparison.Ordinal)
             .Replace("{row:3}\n", "{row:3}\n{free}\n{free}\n{free}\n{row:7}\n", StringComparison.Ordinal)
             .Replace("/Size 4", "/Size 8", StringComparison.Ordinal));
@@ -1436,6 +1437,70 @@ public class PageTreeRuleTests
 
         report.Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse(string.Join("; ", report.Findings));
         report.Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.PageTreeKidInvalid && finding.Message.Contains("which the file lacks", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_root_reached_through_a_chain_of_references_is_named_as_the_node_it_leads_to()
+    {
+        // M5-04: the catalog's /Pages names object 9, whose value is 2 0 R. The root is node 2, and the findings on it name
+        // it so.
+        var report = Validate(Objects(
+            (1, "<< /Type /Catalog /Pages 9 0 R >>"),
+            (2, "<< /Type /Pages /Kids [3 0 R] /Count 5 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+            (9, "2 0 R")));
+
+        Single(report, PdfValidationRuleIds.PageTreeCountMismatch).Message.Should().Be("Page tree node 2 gives /Count 5, and 1 page lies below it.");
+    }
+
+    [Fact]
+    public void An_array_of_kids_reached_through_a_chain_of_references_is_the_array_it_leads_to()
+    {
+        // M5-04: node 4's /Kids names object 8, whose value is 7 0 R; node 5's names object 7. Both are array 7, walked
+        // once, and counted again under node 5.
+        var report = Validate(Objects(
+            (2, "<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 4 0 R >>"),
+            (4, "<< /Type /Pages /Parent 2 0 R /Kids 8 0 R /Count 1 >>"),
+            (5, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 1 >>"),
+            (7, "[3 0 R]"),
+            (8, "7 0 R")));
+
+        report.Findings.Select(finding => (finding.RuleId, finding.Message)).Should().Equal((
+            PdfValidationRuleIds.PageTreeNodeRepeated,
+            "Page tree node 5 gives /Kids 7 0 R, an array of kids the tree already lists: its page is counted again."));
+    }
+
+    [Theory]
+    [InlineData("a page listed again")]
+    [InlineData("an array of kids listed again")]
+    public void What_a_node_a_limit_cut_lists_again_is_counted_again(string again)
+    {
+        // M5-06: node 4, cut by the limit after its /Kids, lists again what node 3 lists. It is not judged, but counted
+        // again all the same: page 8, listed last, is the fifth page, or the third, as qpdf counts the tree.
+        var pad = " /Pad (" + new string('x', 300) + ")";
+        var file = again == "a page listed again"
+            ? Objects(
+                (2, "<< /Type /Pages /Kids [3 0 R 4 0 R 8 0 R] /Count 4 /MediaBox [0 0 1 1] /Resources << >> >>"),
+                (3, "<< /Type /Pages /Parent 2 0 R /Kids [5 0 R] /Count 1 >>"),
+                (4, "<< /Type /Pages /Parent 2 0 R /Kids [5 0 R] /Count 1" + pad + " >>"),
+                (5, "<< /Type /Page /Parent 3 0 R >>"),
+                (8, "<< /Type /Page /Parent 2 0 R >>"))
+            : Objects(
+                (2, "<< /Type /Pages /Kids [3 0 R 4 0 R 8 0 R] /Count 5 /MediaBox [0 0 1 1] /Resources << >> >>"),
+                (3, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 2 >>"),
+                (4, "<< /Type /Pages /Parent 2 0 R /Kids 7 0 R /Count 2" + pad + " >>"),
+                (5, "<< /Type /Page /Parent 3 0 R >>"),
+                (6, "<< /Type /Page /Parent 3 0 R >>"),
+                (7, "[5 0 R 6 0 R]"),
+                (8, "<< /Type /Page /Parent 2 0 R >>"));
+        using var document = PdfDocument.Open(file, CutAt(128));
+
+        var walk = PageTreeWalk.Run(document);
+
+        document.Reader.IsCutAtLimit(4).Should().BeTrue();
+        walk.PageIndexes[8].Should().Be(again == "a page listed again" ? 2 : 4);
+        walk.PageCount.Should().Be(again == "a page listed again" ? 3 : 5);
     }
 
     /// <summary>A document whose catalog, object 1, names node 2 as the root of its page tree, with <paramref name="objects"/>.</summary>

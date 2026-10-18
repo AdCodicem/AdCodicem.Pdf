@@ -1602,6 +1602,41 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Probing_rows_inside_a_run_of_blanks_longer_than_the_object_guard_joins_what_each_crossed()
+    {
+        // M5-02: four hundred rows, a kilobyte apart, inside one run of 1 MB of null bytes, under an object guard of 200 KB.
+        // Each row's crossing stops at its guard, short of the run's end; the next row's meets it, and joins it. Remembered
+        // apart, each crossing was read again, the allowance was spent, and 338 entries were said not checked.
+        const int Rows = 400;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var run = file.Position;
+        file.Raw(new string('\0', 1024 * 1024) + "x\n");
+
+        for (var number = 3; number < Rows + 3; number++)
+        {
+            rows[number] = run + ((number - 3) * 1000L);
+        }
+
+        file.Table(Rows + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Rows + 3} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 200_000 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        document.Reader.SettleIndex();
+        var settled = source.BytesRead;
+
+        var probe = CrossReferenceProbe.Run(document);
+
+        probe.NotChecked.Should().HaveCount(Rows).And.OnlyContain(finding => finding.Message.Contains("MaxObjectLength", StringComparison.Ordinal));
+        (source.BytesRead - settled).Should().BeLessThan(bytes.Length + (Rows * (64L + (2 * PdfFileReader.NearbySearchRadius))));
+    }
+
+    [Fact]
     public void Settling_rows_shifted_into_several_blocks_of_blanks_rebuilds_nothing()
     {
         // M4-01: twenty objects before each of two blocks of null bytes, each row a few bytes into the block after its object,
