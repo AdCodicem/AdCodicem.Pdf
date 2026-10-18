@@ -1635,8 +1635,8 @@ public class HostileInputTests
         // T2-1: two thousand rows place their objects at 70,000 blanks before a comment of 4,700 bytes, then "x" and 450 KB
         // of filler. Past the run the first row crossed, each row read the rest of a load's window from the row, 450 KB,
         // to the "x" that decides it, and was charged up to it: the probe read 180 times the file, and a file of 16 MB
-        // twice its length past a run of 4 MB was read 4,500 times. Past a run it skips, a row's windows grow as from an
-        // offset there.
+        // twice its length past a run of 4 MB was read 4,500 times. Past a run it skips, a row consumes every window it
+        // reads whole.
         const int Rows = 2_000;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -1646,6 +1646,81 @@ public class HostileInputTests
         };
         var at = file.Position;
         file.Raw(new string('\0', 70_000) + "%" + new string('c', 4_699) + "\nx " + new string('z', 450_000) + "\n");
+
+        for (var number = 3; number < Rows + 3; number++)
+        {
+            rows[number] = at;
+        }
+
+        file.Table(Rows + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Rows + 3} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.SettleIndex();
+        var settled = source.BytesRead;
+
+        _ = CrossReferenceProbe.Run(document);
+
+        (source.BytesRead - settled).Should().BeLessThan(10L * bytes.Length);
+    }
+
+    [Theory]
+    [InlineData(100, 600_000)]
+    [InlineData(100, 65_536)]
+    [InlineData(12_000, 450_000)]
+    public void Placing_a_row_past_a_run_it_skips_reads_a_long_token_as_a_load_reads_it(int run, int token)
+    {
+        // U2-1, U2-3: object 4's row leads into a run of blanks object 3's row crossed first, then a name of hundreds of KB.
+        // Past the run, its windows were sized on a second grid, from the run's end, or kept within eight times what was
+        // read since: each stopped short of a load's window, and the name was read again to its end, up to 600 KB more than
+        // the row reads alone. They keep a load's windows from the row, as the row alone does.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw(new string('\0', run) + "/" + new string('a', token - 1) + " x " + new string('z', 600_000) + "\n");
+        rows[3] = at;
+        rows[4] = at;
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var bytes = file.Bytes;
+
+        using var aloneSource = new StrictCountingSource(bytes);
+        using var aloneDocument = PdfDocument.Open(aloneSource, options: null, ownsSource: false);
+        aloneDocument.Reader.ChainIndex!.TryGet(4, out var four).Should().BeTrue();
+        var before = aloneSource.BytesRead;
+        aloneDocument.Reader.PlaceHeader(4, four, new HeaderReading(long.MaxValue)).Place.Should().Be(HeaderPlace.NotFound);
+        var alone = aloneSource.BytesRead - before;
+
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var reading = new HeaderReading(long.MaxValue);
+        document.Reader.ChainIndex!.TryGet(3, out var three).Should().BeTrue();
+        document.Reader.PlaceHeader(3, three, reading);
+        before = source.BytesRead;
+
+        document.Reader.PlaceHeader(4, four, reading).Place.Should().Be(HeaderPlace.NotFound);
+
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(alone + 64 + 512 + 4_096);
+    }
+
+    [Fact]
+    public void Probing_rows_past_a_run_into_a_token_cut_where_a_load_window_ends_reads_a_few_times_the_file()
+    {
+        // U2-2: a thousand rows place their objects at 4,095 blanks before a name of 4,097 bytes, " x " and 70 KB of filler.
+        // Past the run, each row read the name again, then the rest of a load's window, 70 KB, and consumed only the name:
+        // the probe read 34 times the file. Past a run it skips, a row consumes what it reads.
+        const int Rows = 1_000;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw(new string('\0', 4_095) + "/" + new string('a', 4_096) + " x " + new string('z', 70_000) + "\n");
 
         for (var number = 3; number < Rows + 3; number++)
         {
