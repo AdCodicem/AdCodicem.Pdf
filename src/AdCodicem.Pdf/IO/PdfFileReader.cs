@@ -2085,8 +2085,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             // Resolving /Root may itself have rebuilt the index — its object was neither where its entry said nor
             // near it —, and the rebuild looked for the catalog in the rebuilt index. A catalog a guard cut is taken as
-            // read: what it lacks may lie past the cut, and another found for it would be the reader's guess (#175).
-            if (!_repaired && !_structure.RootCutByGuard)
+            // read: what it lacks may lie past the cut, and another found for it would be the reader's guess; so is one a
+            // guard left out of the index, which reads as null until the guard is lifted (#175).
+            if (!_repaired && !_structure.RootCutByGuard && !RootLeftOutByGuard())
             {
                 RecoverCatalog();
             }
@@ -2214,10 +2215,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </remarks>
     private bool RootHiddenByGuard() => Trailer.GetRaw(PdfName.Root) switch
     {
-        PdfReference root => HiddenByGuard(root.Id.Number),
+        PdfReference => RootLeftOutByGuard(),
         null => _structure.TrailersHiddenByGuard,
         _ => false,
     };
+
+    /// <summary>
+    /// Determines whether <c>/Root</c>, resolved — through a chain of references too —, names an object a guard left out of
+    /// the index: the catalog, which reads as null until the guard is lifted, rather than looked for among the objects the
+    /// index holds — any found there is another object than the one <c>/Root</c> names, which an update may have superseded
+    /// (#175).
+    /// </summary>
+    private bool RootLeftOutByGuard() => Trailer.GetRaw(PdfName.Root) is PdfReference root && HiddenByGuard(root.Target().Number);
 
     /// <summary>
     /// Determines whether <c>/Root</c>, resolved, names an object a guard cut: it may be the catalog, its <c>/Type</c> or its
@@ -5200,9 +5209,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             usable = true;
         }
 
-        // A /Root a guard cut is taken as read, and no other is looked for. Searched even when the expansion reached a
-        // guard; the first guard reached is the one thrown.
-        if (!usable && !RootCutByGuard())
+        // A /Root a guard cut, or left out of the rebuilt index, is taken as read, and no other is looked for. Searched even
+        // when the expansion reached a guard; the first guard reached is the one thrown.
+        if (!usable && !RootCutByGuard() && !RootLeftOutByGuard())
         {
             var searching = FindCatalog();
             reached ??= searching;

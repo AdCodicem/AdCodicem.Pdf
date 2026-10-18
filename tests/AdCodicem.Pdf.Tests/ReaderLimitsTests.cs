@@ -1452,6 +1452,73 @@ public class ReaderLimitsTests
         report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_root_naming_an_object_a_guard_left_out_of_the_index_is_taken_as_read_and_no_other_is_looked_for(bool chain)
+    {
+        // Final check of #175: /Root names object 1, or object 9 whose value is 1 0 R, and only the older section, which
+        // MaxXRefSectionCount leaves unread, indexes 1; the newest indexes a stray catalog, 7. The reader took 7 for the
+        // catalog and said the trailer's /Root leads to none, where a whole read takes 1: a /Root a guard left out of the
+        // index is taken as read, null until the guard is lifted, as one a guard cut is.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Lang (file) >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>")
+            .BuildClassic(rootNumber: 1);
+        (int Number, string Body)[] update = chain
+            ? [(9, "1 0 R"), (7, "<< /Type /Catalog /Pages 2 0 R /Lang (stray) >>")]
+            : [(7, "<< /Type /Catalog /Pages 2 0 R /Lang (stray) >>")];
+        var file = TestPdfBuilder.AppendIncrementalUpdate(original, rootNumber: chain ? 9 : 1, update);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        whole.Catalog.Required()[PdfName.Lang].Should().BeOfType<PdfString>().Which.ToText().Should().Be("file");
+        document.Catalog.Should().BeNull("the catalog lies in the section the guard left unread");
+        document.Reader.CatalogFoundAs.Should().Be(0, "object 7 is another object than the one /Root names");
+        document.Reader.Structure.RootHiddenByGuard.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitXRefSectionCount);
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Fact]
+    public void A_root_a_rebuild_that_fills_the_index_leaves_out_is_taken_as_read_and_no_other_is_looked_for()
+    {
+        // As above, for an index a rebuild filled: startxref names no section, so the reader rebuilds the index as the
+        // document opens, and MaxIndexEntries fills it before the catalog, object 1, written last; a stray catalog, 7,
+        // written first, is in the index. The rebuild took 7 for the catalog.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [7] = file.Object(7, "<< /Type /Catalog /Pages 2 0 R /Lang (stray) >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+
+        for (var number = 10; number < 16; number++)
+        {
+            rows[number] = file.Object(number, "(filler)");
+        }
+
+        rows[1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Lang (file) >>");
+        file.Table(16, rows, "/Size 16 /Root 1 0 R");
+        var text = Encoding.Latin1.GetString(file.Bytes);
+        var broken = Encoding.Latin1.GetBytes(text[..text.LastIndexOf("startxref", StringComparison.Ordinal)] + "startxref\n3\n%%EOF\n");
+        using var whole = PdfDocument.Open(broken);
+        using var document = PdfDocument.Open(broken, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 8 } });
+
+        whole.WasRepaired.Should().BeTrue();
+        whole.Catalog.Required()[PdfName.Lang].Should().BeOfType<PdfString>().Which.ToText().Should().Be("file");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Contains(PdfDiagnosticCodes.LimitIndexEntries).Should().BeTrue();
+        document.Catalog.Should().BeNull("the catalog lies past what the index holds");
+        document.Reader.CatalogFoundAs.Should().Be(0, "object 7 is another object than the one /Root names");
+        document.Diagnostics.Contains(PdfDiagnosticCodes.TrailerRootRecovered).Should().BeFalse();
+    }
+
     [Fact]
     public void A_root_a_trailer_cut_before_it_hides_is_not_judged_missing()
     {
