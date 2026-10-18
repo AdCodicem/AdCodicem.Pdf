@@ -250,6 +250,12 @@ internal sealed class ArlingtonWalk
                 continue;
             }
 
+            if (_reader.IsWrittenInCutTrailer(key))
+            {
+                // Written in a trailer one of the reader's limits cut: what it lacks may lie past the cut.
+                continue;
+            }
+
             var kind = Classify(raw, out var resolved, out var number);
 
             if (row.TryMatch(Accepting(kind), out var slot) && row.TryGetLink(slot, out var link) && IsContainer(kind))

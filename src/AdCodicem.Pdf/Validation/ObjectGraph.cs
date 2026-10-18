@@ -150,7 +150,7 @@ internal sealed class ObjectGraph
                 Tally(_nullCharacterNames, owner);
             }
 
-            if (owner == 0 && IsSectionKey(key))
+            if (IsSectionKey(key, role))
             {
                 continue;
             }
@@ -209,7 +209,7 @@ internal sealed class ObjectGraph
         foreach (var (owner, count) in _nullCharacterNames)
         {
             var first = new StringBuilder();
-            var name = FindNullCharacter(ValueOf(owner), owner, first, out var isKey);
+            var name = FindNullCharacter(ValueOf(owner), owner == 0, first, out var isKey);
             var holder = Holder(owner);
             var where = (isKey, first.Length) switch
             {
@@ -274,7 +274,7 @@ internal sealed class ObjectGraph
             case PdfDictionary dictionary:
                 foreach (var (key, entry) in dictionary)
                 {
-                    if (owner == 0 && IsSectionKey(key))
+                    if (IsSectionKey(key, role))
                     {
                         continue;
                     }
@@ -319,7 +319,7 @@ internal sealed class ObjectGraph
     /// Finds, in file order, the first name with a null character inside <paramref name="value"/>, where it lies, and
     /// whether it is a key of the dictionary <paramref name="path"/> leads to.
     /// </summary>
-    private static PdfName? FindNullCharacter(PdfObject value, int owner, StringBuilder path, out bool isKey)
+    private static PdfName? FindNullCharacter(PdfObject value, bool trailer, StringBuilder path, out bool isKey)
     {
         isKey = false;
 
@@ -329,7 +329,7 @@ internal sealed class ObjectGraph
                 return name;
 
             case PdfStream stream:
-                return FindNullCharacter(stream.Dictionary, owner, path, out isKey);
+                return FindNullCharacter(stream.Dictionary, trailer, path, out isKey);
 
             case PdfDictionary dictionary:
                 foreach (var (key, entry) in dictionary)
@@ -340,7 +340,7 @@ internal sealed class ObjectGraph
                         return key;
                     }
 
-                    if (owner == 0 && IsSectionKey(key))
+                    if (trailer && IsSectionKey(key))
                     {
                         continue;
                     }
@@ -348,7 +348,7 @@ internal sealed class ObjectGraph
                     var length = path.Length;
                     FileQuote.AppendName(path, key);
 
-                    if (FindNullCharacter(entry, owner, path, out isKey) is { } found)
+                    if (FindNullCharacter(entry, trailer: false, path, out isKey) is { } found)
                     {
                         return found;
                     }
@@ -364,7 +364,7 @@ internal sealed class ObjectGraph
                     var length = path.Length;
                     path.Append(CultureInfo.InvariantCulture, $"[{index}]");
 
-                    if (FindNullCharacter(array[index], owner, path, out isKey) is { } found)
+                    if (FindNullCharacter(array[index], trailer: false, path, out isKey) is { } found)
                     {
                         return found;
                     }
@@ -409,6 +409,12 @@ internal sealed class ObjectGraph
     private static string Path(StringBuilder path) => path.Length == 0 ? "its value" : RuleText.Path(path);
 
     private static bool IsSectionKey(PdfName key) => key == PdfName.Prev || key == PdfName.XRefStm;
+
+    /// <summary>
+    /// Determines whether <paramref name="key"/> of a dictionary whose role is <paramref name="role"/> names a section of
+    /// the index rather than an object: the trailer's own <c>/Prev</c> or <c>/XRefStm</c>, not one written deeper in it.
+    /// </summary>
+    private static bool IsSectionKey(PdfName key, Role role) => (role & Role.Trailer) != 0 && IsSectionKey(key);
 
     private static bool HasNullCharacter(PdfName name) => name.Value.Contains('\0', StringComparison.Ordinal);
 

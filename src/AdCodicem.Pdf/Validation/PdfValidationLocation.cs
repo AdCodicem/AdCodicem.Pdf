@@ -59,7 +59,7 @@ public readonly record struct PdfValidationLocation
 
         // A location on a page always names the object there as well.
         return PageIndex is { } page
-            ? string.Create(CultureInfo.InvariantCulture, $"page {page + 1}, {where}")
+            ? string.Create(CultureInfo.InvariantCulture, $"page {page + 1L}, {where}")
             : where ?? "the document";
     }
 

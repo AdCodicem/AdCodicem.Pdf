@@ -1318,6 +1318,27 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_catalog_written_in_a_trailer_a_guard_cut_is_taken_as_read()
+    {
+        // P1-02: the catalog is written in the trailer, its /Type and /Pages past MaxTrailerLength. It led to no catalog, and
+        // the reader looked for another, taking catalog 1, which the trailer does not name.
+        var file = PdfTemplate.SoundWith(
+            "<< /Size 4 /Root 1 0 R >>",
+            "<< /Size 4 /Root << /Pad (" + new string('x', 400) + ") /Type /Catalog /Pages 2 0 R >> >>");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 300, MaxXRefSectionLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.RootCutByGuard.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0, "no other catalog is looked for");
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfDictionary>();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+        report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
+    }
+
+    [Fact]
     public void A_cross_reference_stream_a_guard_cut_does_not_make_an_object_of_its_number_a_cut_catalog()
     {
         // Review of #175 (L3-02): /Root names object 5, read whole and no catalog; object 5 is also an older cross-reference
