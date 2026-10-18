@@ -962,9 +962,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// the headers of real files; then, while the header runs past the last or may have been cut at its edge, windows eight
     /// times larger each, the one a load starts with, <see cref="InitialObjectWindow"/>, taken on the way, no further than a
     /// load reads from the offset; past a run of white space it skips, the windows start again from the first, and past
-    /// the white space it crosses, from the one it lexes, each ending no further than the window a load reads from the
-    /// offset. A header is so read in no window reaching past the one a load reads it in, the small ones aside; what decides
-    /// is the first whole token that rules a header out, or the header's three, which any window long enough reads alike.
+    /// the white space it crosses, from the one it lexes while small, then each the rest of a load's window. Every window,
+    /// crossing white space or lexing, ends no further than the window a load reads the same bytes in from the offset: a
+    /// header is so read in no window reaching past the one a load reads it in, and with no more read than a load reads
+    /// to decide it, the small windows aside. What decides is the first whole token that rules a header out, or the
+    /// header's three, which any window long enough reads alike.
     /// </para>
     /// <para>
     /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it crossed up to its
@@ -1011,10 +1013,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var length = (int)Math.Min(windowSize, reach - origin);
 
-            // While white space is crossed, a window stops where a run remembered starts: the crossing joins it there.
-            if (crossing && reading.NextRunAfter(origin) is var next && origin + length > next)
+            if (crossing)
             {
-                length = (int)(next - origin);
+                // While white space is crossed, a window ends no further than the one a load reads the same bytes in, from
+                // the offset; and it stops where a run remembered starts: the crossing joins it there.
+                var loadEnd = offset + LoadWindowPast(origin - offset);
+
+                if (origin + length > loadEnd)
+                {
+                    length = (int)(loadEnd - origin);
+                }
+
+                if (reading.NextRunAfter(origin) is var next && origin + length > next)
+                {
+                    length = (int)(next - origin);
+                }
             }
 
             // A pass that has spent its allowance reads no more than the first window of each header.
@@ -1095,10 +1108,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         return HeaderReadingSpent;
                     }
 
-                    // The next window ends no further than the one a load reads the header in, from the offset, and at its
-                    // end where it would stop short of it by less than it reads: after a crossing, a window starts past the
-                    // offset, and one as large as a load's would read past it. It is grown at least twice what this one
-                    // lexed, which it reads again: grown from a step just under that, it would gain a few bytes.
+                    // The next window grows from this one — twice what it lexed at least, which it reads again — while it
+                    // is one of the small ones and ends short of the window a load reads the header in, from the offset;
+                    // past them, it is the rest of that window, as a load reads none between: after a crossing, a window
+                    // starts past the offset, and one as large as a load's would read past it.
                     var toLoadEnd = offset + LoadWindowPast(origin + span.Length - offset) - origin;
                     windowSize = Grown(windowSize);
 
@@ -1107,7 +1120,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         windowSize = Grown(windowSize);
                     }
 
-                    if (2 * windowSize > toLoadEnd)
+                    if (windowSize >= InitialObjectWindow || 2 * windowSize > toLoadEnd)
                     {
                         windowSize = toLoadEnd;
                     }

@@ -1462,13 +1462,19 @@ public class HostileInputTests
     [InlineData(406_180, 65_430)]
     [InlineData(438_780, 50_000)]
     [InlineData(450_000, 70_000)]
+    [InlineData(45_633, 70_000)]
+    [InlineData(50_000, 70_000)]
+    [InlineData(11_000, 20_000)]
+    [InlineData(111_281, 70_000)]
     public void Settling_rows_whose_long_header_follows_a_lead_reads_no_more_than_their_loads(int lead, int zeros)
     {
         // P3-01, Q2-01, Q2-02: rows, each a lead of blanks then a header of zeros and "n 0 obj". The crossing's last window
         // lexed all but a byte of a step, and the next, grown from the step under it, was read again to gain that byte; grown
         // once more, it was as large as a load's window and ended past it, by the lead; and after a long lead, a window as
         // large as a load's read past the load's. Each window after a crossing grows to twice what it lexed at least, and
-        // ends no further than the window a load reads the header in, from the row.
+        // ends no further than the window a load reads the header in, from the row; a window between, which a load does not
+        // read, read 24 KB more than a load did (R1-02). Each row reads no more than its load and the first small windows; the
+        // catalog and its pages, 64 bytes each.
         const int Count = 4;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
@@ -1504,7 +1510,7 @@ public class HostileInputTests
         document.Reader.SettleIndex();
 
         document.WasRepaired.Should().BeFalse();
-        (source.BytesRead - read).Should().BeLessThanOrEqualTo(loads + ((Count + 2) * (64L + 512 + 4096)));
+        (source.BytesRead - read).Should().BeLessThanOrEqualTo(loads + (Count * (64L + 512 + 4096)) + (2 * 64));
     }
 
     [Fact]
