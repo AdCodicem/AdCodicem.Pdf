@@ -1144,8 +1144,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var atReach = origin + length >= reach;
 
             // A token the window's edge reaches may go on past it — "0000" may be the start of "00004", "obj" that of
-            // "objx" —, but not where white space a reading crossed lies, which ends any token but a string; at a load's
-            // largest window, a load reaches the guard on it whatever follows.
+            // "objx" —, but not where white space a reading crossed lies, which ends any token but a string still open,
+            // which runs through it; at a load's largest window, a load reaches the guard on it whatever follows.
             var blankPast = !atReach && reading.PastBlanks(end) != end;
             var lineEnd = inComment ? LineEndIn(span) : 0;
             var commentRunsOn = inComment && lineEnd == span.Length;
@@ -1157,7 +1157,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 var before = lexer.Position;
                 var token = lexer.Read();
 
-                var edge = blankPast && token.Kind is not (PdfTokenKind.LiteralString or PdfTokenKind.HexString) ? span.Length + 1 : span.Length;
+                var open = token.Kind is PdfTokenKind.LiteralString or PdfTokenKind.HexString && token.End - token.Start < token.Text.Length + 2;
+                var edge = blankPast && !open ? span.Length + 1 : span.Length;
 
                 if (cut && (token.Kind == PdfTokenKind.EndOfInput || token.End >= edge))
                 {
@@ -4521,7 +4522,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
                 // A header read whole that names another object, or another generation, is not this object, however far
-                // its body runs: no guard hides it, as a load finds another object there.
+                // its body runs, the chain reading each object under its reference's own number and generation: no guard
+                // hides it.
                 if (read && found != id)
                 {
                     return false;
