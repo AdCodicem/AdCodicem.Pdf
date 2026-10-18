@@ -1090,6 +1090,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     }
 
                     windowSize = Grown(windowSize);
+
+                    // Grown from a step just under what a window after a crossing lexed, the next would read it all again
+                    // for a few bytes more: it grows once more, while no larger than the window a load reads the header in.
+                    if (windowSize < 2L * span.Length && Grown(windowSize) <= LoadWindowPast(origin + span.Length - offset))
+                    {
+                        windowSize = Grown(windowSize);
+                    }
+
                     continue;
                 }
 
@@ -1109,6 +1117,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// load reads the same bytes in.
     /// </summary>
     private static long Grown(long size) => size < InitialObjectWindow ? Math.Min(size * 8, InitialObjectWindow) : size * 8;
+
+    /// <summary>
+    /// Gives the window a load reads from an entry's offset that ends past the first <paramref name="length"/> bytes: the
+    /// smallest of its windows, <see cref="InitialObjectWindow"/> grown eightfold up to its guard, that is larger. A header
+    /// a window ending there cuts is one a load reads in that window at least.
+    /// </summary>
+    private long LoadWindowPast(long length)
+    {
+        var bound = _guard.Bound(PdfLimit.Object);
+        var window = (long)InitialObjectWindow;
+
+        while (window <= length && window < bound)
+        {
+            window *= 8;
+        }
+
+        return Math.Min(window, bound);
+    }
 
     /// <summary>
     /// Gives the largest window <see cref="Grown"/> steps through, from <see cref="HeaderCheckWindow"/>, that is no larger

@@ -1455,6 +1455,52 @@ public class HostileInputTests
         (source.BytesRead - read).Should().BeLessThanOrEqualTo(loads + ((Count + 2) * (64L + 512 + 4096)));
     }
 
+    [Theory]
+    [InlineData(5_000)]
+    [InlineData(12_865)]
+    public void Settling_rows_whose_long_header_follows_a_lead_reads_no_more_than_their_loads(int lead)
+    {
+        // P3-01: ten rows, each a lead of blanks then a header of 70,000 zeros and "n 0 obj". The crossing's last window
+        // lexed all but a byte of a step; the next, grown from the step under it, was a byte larger, read again to gain that
+        // byte: 64 KB more than a load read a header. It grows once more, no larger than the window a load reads it in.
+        const int Count = 10;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 3; number < Count + 3; number++)
+        {
+            rows[number] = file.Position;
+            file.Raw(new string('\0', lead) + new string('0', 70_000) + string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj null endobj\n"));
+        }
+
+        file.Table(Count + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Count + 3} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        long loads = 0;
+
+        for (var number = 3; number < Count + 3; number++)
+        {
+            using var alone = new StrictCountingSource(bytes);
+            using var opened = PdfDocument.Open(alone, options: null, ownsSource: false);
+            var before = alone.BytesRead;
+            opened.GetObject(new PdfObjectId(number)).Should().Be(PdfNull.Instance);
+            loads += alone.BytesRead - before;
+            opened.WasRepaired.Should().BeFalse();
+        }
+
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var read = source.BytesRead;
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeFalse();
+        (source.BytesRead - read).Should().BeLessThanOrEqualTo(loads + ((Count + 2) * (64L + 512 + 4096)));
+    }
+
     [Fact]
     public void Validating_a_file_cut_short_under_a_row_reads_no_header_there()
     {
