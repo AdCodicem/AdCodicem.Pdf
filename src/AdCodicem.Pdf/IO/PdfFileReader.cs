@@ -3639,10 +3639,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // The rows a guard left unread are the only ones that may yet place an object the dictionary names, before any older
         // section is read: from the row the index had no room for, which the reading passed — every row, for an index full
-        // before the first —, or past the data it cut.
+        // before the first —, up to the last the data holds; or every row past the data a guard cut. Rows that data decoded
+        // whole does not hold are none: the file's to lack.
         var stopped = _indexFullAt >= 0 && row > 0 ? Math.Max(0, (position / row) - 1) : long.MaxValue;
         stopped = rowsCut ? Math.Min(stopped, held) : stopped;
-        _rowsLeftUnread = RowsFrom(index is null ? [0, declared] : subsections, stopped);
+        _rowsLeftUnread = RowsFrom(index is null ? [0, declared] : subsections, stopped, rowsCut ? long.MaxValue : held);
 
         _xref.MergeTrailer(dictionary);
         previous = rowsCut ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute);
@@ -3896,26 +3897,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Gives the numbers of the rows <paramref name="subsections"/> declares, as pairs of a first number and a count, from
-    /// the one at <paramref name="ordinal"/> in their order on: none past the last.
+    /// the one at <paramref name="from"/> in their order up to the one at <paramref name="to"/>, which is not among them.
     /// </summary>
-    private static long[] RowsFrom(long[] subsections, long ordinal)
+    private static long[] RowsFrom(long[] subsections, long from, long to)
     {
         var rows = new List<long>();
+        long ordinal = 0;
 
+        // Each count is within the object numbers, and their sum within a long, as the section's reading found.
         for (var i = 0; i + 1 < subsections.Length; i += 2)
         {
             var count = subsections[i + 1];
+            var start = Math.Max(from, ordinal);
+            var end = Math.Min(to, ordinal + count);
 
-            if (ordinal < count)
+            if (start < end)
             {
-                rows.Add(subsections[i] + ordinal);
-                rows.Add(count - ordinal);
-                ordinal = 0;
+                rows.Add(subsections[i] + (start - ordinal));
+                rows.Add(end - start);
             }
-            else
-            {
-                ordinal -= count;
-            }
+
+            ordinal += count;
         }
 
         return [.. rows];
@@ -4516,6 +4518,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 var cut = window.Length == windowSize && offset + window.Length < _source.Length;
                 var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
+
+                // A header read whole that names another object, or another generation, is not this object, however far
+                // its body runs: no guard hides it, as a load finds another object there.
+                if (read && found != id)
+                {
+                    return false;
+                }
 
                 if (parser.IsTruncated && cut)
                 {
