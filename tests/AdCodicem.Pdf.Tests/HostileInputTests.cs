@@ -1634,6 +1634,71 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(0, 64)]
+    [InlineData(65_471, 74_304)]
+    [InlineData(65_472, 74_304)]
+    public void A_pass_that_spends_its_allowance_on_a_cut_window_reads_it_no_second_time(long allowance, long most)
+    {
+        // X2-1: object 3's row starts "3 0 (" and a string of 600,000 bytes, which each window cuts. A window charged exactly
+        // what the pass had left, or a first window cut with nothing left, was read again from the string's start up to the
+        // same edge, past the row's first 64 bytes, to leave the entry undecided all the same: up to a load's window twice.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[3] = file.Position;
+        file.Raw("3 0 (" + new string('a', 600_000) + ")\n");
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.ChainIndex!.TryGet(3, out var entry).Should().BeTrue();
+        var before = source.BytesRead;
+
+        var placement = document.Reader.PlaceHeader(3, entry, new HeaderReading(allowance));
+
+        placement.Place.Should().Be(HeaderPlace.Undecided);
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(most);
+    }
+
+    [Fact]
+    public void A_crossing_stopped_where_a_run_starts_inside_a_string_reads_the_string_again_once_at_most()
+    {
+        // X2-2: object 6's row leads into 8,200 blanks, then a string holding 200 null bytes, inside which object 5's row
+        // lies; placed first, it crosses them and remembers them as a run. Object 6's crossing stops where the run starts,
+        // finds the string there and reads it on from its start, as a string runs through white space: one crossing window
+        // more than the row alone reads, 64 KB at most, and the same decision.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw(new string(' ', 8_200) + "(" + new string('a', 51_800) + new string('\0', 200) + new string('a', 400_000) + ") ");
+        file.Object(4, "(four)");
+        rows[5] = at + 8_200 + 1 + 51_800 + 50;
+        rows[6] = at;
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.ChainIndex!.TryGet(5, out var five).Should().BeTrue();
+        document.Reader.ChainIndex.TryGet(6, out var six).Should().BeTrue();
+        var start = source.BytesRead;
+        var alone = document.Reader.PlaceHeader(6, six, new HeaderReading(long.MaxValue));
+        var aloneRead = source.BytesRead - start;
+        var reading = new HeaderReading(long.MaxValue);
+        document.Reader.PlaceHeader(5, five, reading);
+        start = source.BytesRead;
+
+        var shared = document.Reader.PlaceHeader(6, six, reading);
+
+        shared.Place.Should().Be(alone.Place);
+        (source.BytesRead - start).Should().BeLessThanOrEqualTo(aloneRead + (64 * 1024));
+    }
+
+    [Theory]
     [InlineData(8_192)]
     [InlineData(65_536)]
     public void A_pass_with_a_few_bytes_left_decides_a_row_skipped_to_a_run_s_end_a_byte_short_of_a_load_s_window(int window)

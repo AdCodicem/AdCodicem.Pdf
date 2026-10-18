@@ -92,7 +92,8 @@ as any read reads it, through the index the reader settled on.
   of the remote corpus — are now rebuilt when a validation starts, a few milliseconds each.
 - Settling costs a header read per regular entry: under a microsecond an entry, about 2 % of a validation, and no
   allocation an entry. On a hostile file it reads a header in no window reaching past the one a load reads it in, and no
-  more than a load reads but for its first windows of 64, 512 and 4,096 bytes, over the entries `MaxIndexEntries` bounds; consumes twice the file's length at most
+  more than a load reads but for its first windows of 64, 512 and 4,096 bytes, and one crossing window where a run another
+  entry crossed lies inside a string, over the entries `MaxIndexEntries` bounds; consumes twice the file's length at most
   past the first bytes of each, reading about ten times that at most past a few small windows an entry; and stops at the
   first entry a load would rebuild for.
 - A rebuild a load sets off while loads are in flight costs what one run first costs: the loads read through the scan's

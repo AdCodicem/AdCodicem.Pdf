@@ -988,7 +988,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// crossed, the tokens it lexed whole, a comment running on — and reads again only a token its edge may have cut, from
     /// its start; each ends no further than the window a load reads its first bytes in, but one that reads such a token
     /// again. A header is so read in no window reaching past the one a load reads it in, and with no more read than a load
-    /// reads to decide it, the small windows aside. What decides is the first whole token that rules a header out, or the
+    /// reads to decide it, the small windows aside, and one crossing window more where a crossing stopped at a run another
+    /// reading crossed finds a string that runs through it, which is read again from its start. What decides is the first whole token that rules a header out, or the
     /// header's three, which any window long enough reads alike — or, as a load reads it, an <c>obj</c> a load's window ends
     /// on, after the number of another object than <paramref name="expected"/>, which a load takes as it is.
     /// </para>
@@ -1077,18 +1078,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             // A pass that has spent its allowance reads no more than the first window of each header: what is left of it past
-            // a run skipped into it decides, or leaves the entry undecided, and a token its end cuts is not read again.
-            var lastFree = false;
-
+            // a run skipped into it, or past white space crossed, decides, or leaves the entry undecided; a token an edge cut
+            // is not read again, since no window that ends in the first one reads it further.
             if (origin + length > consumed && reading.Remaining == 0)
             {
-                if (origin >= consumed)
+                var free = offset + HeaderCheckWindow;
+
+                if (origin >= free || readingAgain)
                 {
                     return HeaderReadingSpent;
                 }
 
-                length = (int)(consumed - origin);
-                lastFree = true;
+                length = (int)(free - origin);
             }
 
             using var window = _source.GetWindow(origin, length);
@@ -1177,7 +1178,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         return HeaderPastGuard;
                     }
 
-                    if (lastFree || !Consume(reading, ref consumed, end))
+                    if (!Consume(reading, ref consumed, end))
                     {
                         return HeaderReadingSpent;
                     }
