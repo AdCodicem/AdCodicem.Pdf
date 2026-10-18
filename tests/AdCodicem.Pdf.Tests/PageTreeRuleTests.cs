@@ -1612,6 +1612,59 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_kid_naming_a_chain_that_does_not_end_takes_a_page_s_place_each_time_it_is_listed()
+    {
+        // Q1-03: thirty-two references from object 5 lead to object 37, past what a reference resolves through, and node 2
+        // lists object 5 twice. Listed again, the kid was said to lead to object 35, where the chain stopped being followed,
+        // and to name what the tree already lists.
+        var objects = new List<(int Number, string Body)>
+        {
+            (2, "<< /Type /Pages /Kids [5 0 R 5 0 R 3 0 R] /Count 3 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+            (37, "(end)"),
+        };
+
+        for (var link = 5; link <= 36; link++)
+        {
+            objects.Add((link, string.Create(CultureInfo.InvariantCulture, $"{link + 1} 0 R")));
+        }
+
+        var report = Validate(Objects([.. objects]));
+
+        report.Findings.Where(finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal)).Select(finding => finding.Message).Should().Equal(
+            "The kid at index 0 of page tree node 2 names object 5, whose chain of references is too long to follow or loops, which reads as null: it counts as a page with nothing on it.",
+            "The kid at index 1 of page tree node 2 names object 5, whose chain of references is too long to follow or loops, which reads as null: it counts as a page with nothing on it.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_kid_naming_an_object_a_limit_cut_before_its_value_is_not_judged(bool chained)
+    {
+        // Q1-04: object 6 writes 300 blanks before its value, past the limit: it reads as null, and the kid naming it, or a
+        // chain leading to it, was said to name an object that is null, a page with nothing on it.
+        var objects = new List<(int Number, string Body)>
+        {
+            (2, "<< /Type /Pages /Kids [" + (chained ? "5" : "6") + " 0 R 3 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+            (6, new string(' ', 300) + "<< /Type /Page /Parent 2 0 R >>"),
+        };
+
+        if (chained)
+        {
+            objects.Add((5, "6 0 R"));
+        }
+
+        using var document = PdfDocument.Open(Objects([.. objects]), CutAt(200));
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.IsCutAtLimit(6).Should().BeTrue();
+        report.Findings.Should().NotContain(finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal), string.Join("; ", report.Findings));
+        PageTreeWalk.Run(document).Partial.Should().BeTrue();
+    }
+
+    [Fact]
     public void A_section_key_written_deeper_in_the_trailer_is_followed_as_any_other()
     {
         // P1-04: the object graph passed over every /Prev and /XRefStm written in the trailer, at any depth, as if each named
