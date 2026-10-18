@@ -219,9 +219,10 @@ internal sealed class PageTreeWalk
         if (root is PdfNull)
         {
             // A /Pages that names an object the file lacks is object.reference-missing's to report; one the index holds
-            // and the reader could not produce is the index's, and one a guard left out of the index the guard's: either
-            // leaves the tree unknown.
-            Partial |= id.Number > 0 && _reader.GetPresence(id.Number) is ObjectPresence.Unproduced or ObjectPresence.Unindexed;
+            // and the reader could not produce is the index's, and one a guard left out of the index, or cut before its
+            // value, the guard's: either leaves the tree unknown.
+            Partial |= id.Number > 0 &&
+                (_reader.GetPresence(id.Number) is ObjectPresence.Unproduced or ObjectPresence.Unindexed || _reader.IsCutAtLimit(id.Number));
             return;
         }
 
@@ -515,7 +516,11 @@ internal sealed class PageTreeWalk
         if (kidsValue?.Resolve() is not PdfArray kids)
         {
             // A /Kids that names an object the file lacks is object.reference-missing's, and one the reader could not
-            // produce the index's; either way, nothing below this node can be counted, nor the nodes above it judged.
+            // produce the index's; either way, nothing below this node can be counted, nor the nodes above it judged. One
+            // that names an object a limit cut before its value lists what is unknown, and leaves the walk partial.
+            var kidsCutAway = kidsValue is PdfReference hidden && _reader.IsCutAtLimit(hidden.Target().Number);
+            Partial |= kidsCutAway;
+
             if (!cut && (kidsValue is null || kidsValue.Resolve() is not PdfNull))
             {
                 NodesWithoutKids.Add(new ProbeFinding(
@@ -528,6 +533,11 @@ internal sealed class PageTreeWalk
             if (id.Number > 0)
             {
                 _pagesBelow[id.Number] = 0;
+
+                if (kidsCutAway)
+                {
+                    _uncountable.Add(id.Number);
+                }
             }
 
             if (parent is not null)
@@ -797,13 +807,16 @@ internal sealed class PageTreeWalk
     /// </summary>
     /// <remarks>
     /// A reference to an object the file lacks, or that the reader could not produce, counts as given: the reference
-    /// is <c>object.reference-missing</c>'s, the entry the cross-reference rules'.
+    /// is <c>object.reference-missing</c>'s, the entry the cross-reference rules'. So does one to an object a limit cut before
+    /// its value, which may lie past the cut.
     /// </remarks>
     private PdfObject? Given(PdfDictionary dictionary, PdfName key) =>
         dictionary.GetRaw(key) switch
         {
             null or PdfNull => null,
-            PdfReference reference when reference.Resolve() is PdfNull && _reader.GetPresence(reference.Id.Number) == ObjectPresence.Defined => null,
+            PdfReference reference when reference.Resolve() is PdfNull &&
+                _reader.GetPresence(reference.Id.Number) == ObjectPresence.Defined &&
+                !_reader.IsCutAtLimit(reference.Target().Number) => null,
             var value => value,
         };
 
