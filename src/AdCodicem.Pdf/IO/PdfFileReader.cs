@@ -950,32 +950,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Gives the number of the object whose header starts at <paramref name="offset"/>, read as <see cref="TryParseNumberedAt"/>
-    /// reads it — after white space and comments, in a window grown while the header runs past it or may have been cut at
-    /// its edge, up to <see cref="PdfReaderLimits.MaxObjectLength"/> —, with its generation and where it starts; 0 where no
+    /// reads it — after white space and comments, in windows read on while the header runs past them or may have been cut at
+    /// their edge, up to <see cref="PdfReaderLimits.MaxObjectLength"/> —, with its generation and where it starts; 0 where no
     /// header is; or <see cref="HeaderPastGuard"/> where the header still runs past the largest window, where a load reaches
     /// that guard; or <see cref="HeaderReadingSpent"/> where reading it further would consume more than
     /// <paramref name="reading"/> has left. Nothing is parsed past the header, reported or recorded.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// It decides as a load does, and reads no further: a first window of <see cref="HeaderCheckWindow"/> bytes, which holds
-    /// the headers of real files; then, while the header runs past the last or may have been cut at its edge, windows eight
-    /// times larger each, the one a load starts with, <see cref="InitialObjectWindow"/>, taken on the way, no further than a
-    /// load reads from the offset; past a run of white space it skips, the windows start again from the first, and past
-    /// the white space it crosses, from the one it lexes while small, then each the rest of a load's window. Every window,
-    /// crossing white space or lexing, ends no further than the window a load reads the same bytes in from the offset: a
-    /// header is so read in no window reaching past the one a load reads it in, and with no more read than a load reads
-    /// to decide it, the small windows aside. What decides is the first whole token that rules a header out, or the
-    /// header's three, which any window long enough reads alike.
+    /// It decides as a load does, and reads no more: a first window of <see cref="HeaderCheckWindow"/> bytes, which holds the
+    /// headers of real files; then, while the header runs past the last or may have been cut at its edge, windows eight
+    /// times larger each, the one a load starts with, <see cref="InitialObjectWindow"/>, taken on the way, then each the
+    /// rest of the window a load reads from the offset; past a run of white space it skips, the windows start again from the
+    /// first. Each reads on from where the last stopped — the white space it crossed, the tokens it lexed whole, a comment
+    /// running on — and reads again only a token its edge may have cut, from its start; each ends no further than the
+    /// window a load reads its first bytes in, but one that reads such a token again. A header is so read in no window
+    /// reaching past the one a load reads it in, and with no more read than a load reads to decide it, the small windows
+    /// aside. What decides is the first whole token that rules a header out, or the header's three, which any window long
+    /// enough reads alike.
     /// </para>
     /// <para>
-    /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it crossed up to its
-    /// decision, which its windows read about ten times at most, past the next window where the first is white space or
-    /// cuts a header, and the first past a run it skips, which consume what lies up to the decision. White space, which the
-    /// lexer skips, is crossed in one pass rather than read again in each larger window, and the runs crossed are
-    /// remembered: an offset inside one, or a crossing that reaches it, reads on from its end, where a load would find what
-    /// it finds, and what it holds is consumed once. Bytes a window lexes are consumed each time, white space of the run
-    /// among them.
+    /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it read up to its decision,
+    /// past the next window where the first is white space or cuts a header, and the first past a run it skips, which
+    /// consume what lies up to the decision. The runs of white space crossed before the header's first token are remembered:
+    /// an offset inside one, or a reading that reaches one — crossing white space, or between two tokens —, reads on from its
+    /// end, where a load would find what it finds, and what it holds is consumed once. Inside a comment, which runs to the
+    /// end of its line, a run is read as any other bytes: it may hold no line end.
     /// </para>
     /// </remarks>
     private long HeaderAt(long offset, HeaderReading reading, out long generation, out long start)
@@ -992,17 +992,30 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var windowSize = (long)HeaderCheckWindow;
         var crossing = true;
 
+        // What the windows before lexed of the header: the tokens read whole — its number, where it starts, its generation —,
+        // whether they stopped inside a comment, and whether the window starts at a token its edge may have cut.
+        var lexed = 0;
+        long number = 0;
+        long numberStart = 0;
+        long written = 0;
+        var inComment = false;
+        var readingAgain = false;
+
         while (true)
         {
             // White space a reading crossed already is not read again, from the offset or on the way: what lies past it
-            // decides, read from a first window again, and what it holds was consumed then.
-            var past = reading.PastBlanks(origin);
-
-            if (past != origin)
+            // decides, read from a first window again, and what it holds was consumed then. Inside a comment, it is the
+            // comment's up to a line end it may not hold.
+            if (!inComment)
             {
-                origin = past;
-                consumed = Math.Max(consumed, origin);
-                windowSize = HeaderCheckWindow;
+                var past = reading.PastBlanks(origin);
+
+                if (past != origin)
+                {
+                    origin = past;
+                    consumed = Math.Max(consumed, origin);
+                    windowSize = HeaderCheckWindow;
+                }
             }
 
             if (origin >= reach)
@@ -1013,10 +1026,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var length = (int)Math.Min(windowSize, reach - origin);
 
-            if (crossing)
+            // A window ends no further than the one a load reads its first bytes in, from the offset, and stops where a run
+            // remembered starts: the reading joins the run there. Not inside a comment, which a run may not end; nor one
+            // that reads again from its start a token the last window's edge may have cut, which that window reached, and
+            // which a string may run through.
+            if (!readingAgain)
             {
-                // While white space is crossed, a window ends no further than the one a load reads the same bytes in, from
-                // the offset; and it stops where a run remembered starts: the crossing joins it there.
                 var loadEnd = offset + LoadWindowPast(origin - offset);
 
                 if (origin + length > loadEnd)
@@ -1024,7 +1039,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     length = (int)(loadEnd - origin);
                 }
 
-                if (reading.NextRunAfter(origin) is var next && origin + length > next)
+                if (!inComment && reading.NextRunAfter(origin) is var next && origin + length > next)
                 {
                     length = (int)(next - origin);
                 }
@@ -1045,32 +1060,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return 0;
             }
 
-            // A window of nothing but white space is crossed whole: what decides lies past it, and so does what a load reads
-            // in the larger windows it grows to. It never reaches into the run remembered, which it stops at or reads on from.
-            var firstToken = span.IndexOfAnyExcept(PdfCharacters.Whitespace);
-
-            if (span.Length > 0 && firstToken < 0)
-            {
-                var crossed = origin + span.Length;
-
-                if (!Consume(reading, ref consumed, crossed))
-                {
-                    return HeaderReadingSpent;
-                }
-
-                // From the offset to here is white space: crossed, or a run an earlier reading crossed. The windows grow as
-                // a lexing window does, up to the most a crossing reads at once.
-                reading.Crossed(offset, crossed);
-                origin = crossed;
-                windowSize = Math.Min(Grown(windowSize), BlankCrossingWindow);
-                continue;
-            }
-
-            // The white space the window starts with ends the run crossed: it is consumed, and remembered with the run; the
-            // window is lexed from the first token on, as the lexer reads it from the offset, and grown from what it lexes —
-            // not from the crossing's window, which a run remembered may have stopped short.
             if (crossing)
             {
+                // A window of nothing but white space is crossed whole: what decides lies past it, and so does what a load
+                // reads in the larger windows it grows to. It never reaches into the run remembered, which it stops at or
+                // reads on from.
+                var firstToken = span.IndexOfAnyExcept(PdfCharacters.Whitespace);
+
+                if (firstToken < 0)
+                {
+                    var crossed = origin + span.Length;
+
+                    if (!Consume(reading, ref consumed, crossed))
+                    {
+                        return HeaderReadingSpent;
+                    }
+
+                    // From the offset to here is white space: crossed, or a run an earlier reading crossed. The windows
+                    // grow as a lexing window does, up to the most a crossing reads at once.
+                    reading.Crossed(offset, crossed);
+                    origin = crossed;
+                    windowSize = Math.Min(Grown(windowSize), BlankCrossingWindow);
+                    continue;
+                }
+
+                // The white space the window starts with ends the run crossed: it is consumed, and remembered with the run;
+                // the window is lexed from the first token on, as the lexer reads it from the offset.
                 // Taken however little remains: the window it lies in may decide, and a deciding window is charged whole.
                 var lead = origin + firstToken;
                 Consume(reading, ref consumed, lead);
@@ -1083,59 +1098,142 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             // The window ends where the file does, or where a load's largest does: past it a load reads nothing.
-            var cut = span.Length == length && origin + length < _source.Length;
+            var end = origin + span.Length;
+            var cut = span.Length == length && end < _source.Length;
             var atReach = origin + length >= reach;
-            var lexer = new PdfLexer(span);
-            var number = lexer.Read();
-            var written = lexer.Read();
-            var keyword = lexer.Read();
-            var header = number.Kind == PdfTokenKind.Integer && written.Kind == PdfTokenKind.Integer && keyword.IsKeyword("obj"u8) &&
-                number.Integer is > 0 and <= PdfObjectId.MaxNumber && written.Integer is >= 0 and <= PdfObjectId.MaxGeneration;
 
-            generation = header ? written.Integer : -1;
-            start = header ? origin + number.Start : offset;
+            // A token the window's edge reaches may go on past it — "0000" may be the start of "00004", "obj" that of
+            // "objx" —, but not where white space a reading crossed lies, which ends any token but a string; at a load's
+            // largest window, a load reaches the guard on it whatever follows.
+            var blankPast = !atReach && reading.PastBlanks(end) != end;
+            var lineEnd = inComment ? LineEndIn(span) : 0;
+            var commentRunsOn = inComment && lineEnd == span.Length;
+            var lexer = new PdfLexer(span, lineEnd);
+            long resume;
 
-            // A header the window's edge may have cut — "5 0 o", or the "obj" of "5 0 objx" — is read again in a larger
-            // window, as the parser reads it; one a whole token already rules out is not. At a load's largest, a load keeps
-            // a header it read whole, and reaches the guard on one it did not.
-            if (cut && (keyword.Kind == PdfTokenKind.EndOfInput || keyword.End >= span.Length) &&
-                PdfObjectParser.MayBeginHeader(number, written, span.Length))
+            while (true)
             {
-                if (!atReach)
+                var before = lexer.Position;
+                var token = lexer.Read();
+
+                var edge = blankPast && token.Kind is not (PdfTokenKind.LiteralString or PdfTokenKind.HexString) ? span.Length + 1 : span.Length;
+
+                if (cut && (token.Kind == PdfTokenKind.EndOfInput || token.End >= edge))
                 {
-                    if (!Consume(reading, ref consumed, origin + span.Length))
+                    // The header may go on past the window. At a load's largest, a load keeps a header it read whole —
+                    // "5 0 obj" up to the edge —, and reaches the guard on one it did not.
+                    if (atReach)
+                    {
+                        Consume(reading, ref consumed, end);
+
+                        if (lexed == 2 && token.IsKeyword("obj"u8))
+                        {
+                            generation = written;
+                            start = numberStart;
+                            return number;
+                        }
+
+                        return HeaderPastGuard;
+                    }
+
+                    if (!Consume(reading, ref consumed, end))
                     {
                         return HeaderReadingSpent;
                     }
 
-                    // The next window grows from this one — twice what it lexed at least, which it reads again — while it
-                    // is one of the small ones and ends short of the window a load reads the header in, from the offset;
-                    // past them, it is the rest of that window, as a load reads none between: after a crossing, a window
-                    // starts past the offset, and one as large as a load's would read past it.
-                    var toLoadEnd = offset + LoadWindowPast(origin + span.Length - offset) - origin;
-                    windowSize = Grown(windowSize);
-
-                    if (windowSize < 2L * span.Length)
+                    // Read on from the edge, past the white space and comments up to it, the tokens lexed whole kept; or from
+                    // the start of the token the edge may have cut.
+                    if (token.Kind == PdfTokenKind.EndOfInput)
                     {
-                        windowSize = Grown(windowSize);
+                        resume = end;
+                        inComment = commentRunsOn || EndsInComment(span[before..]);
+                        readingAgain = false;
+                    }
+                    else
+                    {
+                        resume = origin + token.Start;
+                        inComment = false;
+                        readingAgain = true;
                     }
 
-                    if (windowSize >= InitialObjectWindow || 2 * windowSize > toLoadEnd)
-                    {
-                        windowSize = toLoadEnd;
-                    }
-
-                    continue;
+                    break;
                 }
 
-                Consume(reading, ref consumed, origin + span.Length);
-                return header ? number.Integer : HeaderPastGuard;
+                // A whole token: one no header begins with decides, as the header's three do.
+                var whole = lexed switch
+                {
+                    0 => token.Kind == PdfTokenKind.Integer && token.Integer is > 0 and <= PdfObjectId.MaxNumber,
+                    1 => token.Kind == PdfTokenKind.Integer && token.Integer is >= 0 and <= PdfObjectId.MaxGeneration,
+                    _ => token.IsKeyword("obj"u8),
+                };
+
+                if (!whole || lexed == 2)
+                {
+                    // Decided: what the reading crossed up to its decision is consumed, however little the pass has left.
+                    Consume(reading, ref consumed, origin + Math.Min(token.End, span.Length));
+
+                    if (!whole)
+                    {
+                        return 0;
+                    }
+
+                    generation = written;
+                    start = numberStart;
+                    return number;
+                }
+
+                if (lexed == 0)
+                {
+                    number = token.Integer;
+                    numberStart = origin + token.Start;
+                }
+                else
+                {
+                    written = token.Integer;
+                }
+
+                lexed++;
             }
 
-            // Decided: what the reading crossed up to its decision is consumed, however little the pass has left.
-            Consume(reading, ref consumed, origin + Math.Min(keyword.End, span.Length));
-            return header ? number.Integer : 0;
+            // The next window grows from this one — twice what it reads again at least — while it is one of the small ones
+            // and ends short of the window a load reads past this one's edge, from the offset; past them, it is the rest of
+            // that window, as a load reads none between: after a crossing, a window starts past the offset, and one as
+            // large as a load's would read past it.
+            var toLoadEnd = offset + LoadWindowPast(end - offset) - resume;
+            windowSize = Grown(windowSize);
+
+            if (windowSize < 2L * (end - resume))
+            {
+                windowSize = Grown(windowSize);
+            }
+
+            if (windowSize >= InitialObjectWindow || 2 * windowSize > toLoadEnd)
+            {
+                windowSize = toLoadEnd;
+            }
+
+            origin = resume;
         }
+    }
+
+    /// <summary>
+    /// Gives where the line ends in <paramref name="span"/>, which starts inside a comment: the first carriage return or line
+    /// feed, which the lexer reads on from, or the span's length when the comment runs past it.
+    /// </summary>
+    private static int LineEndIn(ReadOnlySpan<byte> span)
+    {
+        var lineEnd = span.IndexOfAny((byte)'\r', (byte)'\n');
+        return lineEnd < 0 ? span.Length : lineEnd;
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="span"/>, white space and comments the lexer skipped to their end, ends inside a
+    /// comment: its last byte that is no white space is a comment's, and no line ends after it.
+    /// </summary>
+    private static bool EndsInComment(ReadOnlySpan<byte> span)
+    {
+        var last = span.LastIndexOfAnyExcept(PdfCharacters.Whitespace);
+        return last >= 0 && span[(last + 1)..].IndexOfAny((byte)'\r', (byte)'\n') < 0;
     }
 
     /// <summary>

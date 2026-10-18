@@ -188,9 +188,10 @@ internal ref struct PdfObjectParser
     /// </summary>
     /// <remarks>
     /// A token the bytes' end reached may go on past it, and rules nothing out: <c>0000</c> may be the start of
-    /// <c>00004</c>. The reader's loads and its check of the header each entry places decide alike through it.
+    /// <c>00004</c>. The reader's check of the header each entry places decides alike, token by token, as it reads on past
+    /// a window's edge.
     /// </remarks>
-    internal static bool MayBeginHeader(PdfToken number, PdfToken generation, int length)
+    private static bool MayBeginHeader(PdfToken number, PdfToken generation, int length)
     {
         if (number.Kind == PdfTokenKind.EndOfInput || number.End >= length)
         {
