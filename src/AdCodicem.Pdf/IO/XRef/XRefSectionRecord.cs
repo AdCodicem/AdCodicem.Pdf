@@ -117,6 +117,7 @@ internal sealed class XRefSectionRecord
         RefusedRow = attempt.RefusedRow;
         Incomplete = attempt.Incomplete;
         CutByLimit = attempt.CutByLimit;
+        TrailerCutByLimit = attempt.TrailerCutByLimit;
         Trailer = attempt.Trailer;
         TrailerFault = attempt.TrailerFault;
         TrailerPosition = attempt.TrailerPosition;

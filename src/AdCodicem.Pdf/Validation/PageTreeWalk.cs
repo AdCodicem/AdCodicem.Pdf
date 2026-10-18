@@ -285,6 +285,7 @@ internal sealed class PageTreeWalk
         // the kid is the object the chain leads to, whose value is read.
         var reference = kid as PdfReference;
         var id = reference?.Target() ?? default;
+
         // A kid that is a link of a chain is named with the object the chain leads to, which is what the finding is about.
         var named = reference is null
             ? string.Empty
@@ -298,6 +299,17 @@ internal sealed class PageTreeWalk
 
         if (reference is not null)
         {
+            // A chain that does not end — too long to follow, or looping — reads as null wherever it is listed, and leads to
+            // no object of the tree: each listing takes a page's place, the object the reader stopped following it at none.
+            if (_reader.GetObject(id) is PdfReference)
+            {
+                InvalidSlot(
+                    frame,
+                    index,
+                    Invariant($"names object {reference.Id.Number}, whose chain of references is too long to follow or loops, which reads as null"));
+                return;
+            }
+
             if (_onPath.Contains(id.Number))
             {
                 frame.Uncountable = true;
@@ -341,8 +353,10 @@ internal sealed class PageTreeWalk
                 switch (_reader.GetPresence(id.Number))
                 {
                     case ObjectPresence.Unproduced or ObjectPresence.Unindexed:
-                        // The entry's fault, which the cross-reference rules report, or a guard's, which its report names:
-                        // the kid may have been a node, and the counts above it cannot be judged.
+                    case ObjectPresence.Defined when _reader.IsCutAtLimit(id.Number):
+                        // The entry's fault, which the cross-reference rules report, or a guard's, which its report names —
+                        // one that left the object out of the index, or cut it before its value —: the kid may have been a
+                        // node, and the counts above it cannot be judged.
                         Partial = true;
                         frame.Uncountable = true;
                         _uncountable.Add(id.Number);
@@ -354,14 +368,7 @@ internal sealed class PageTreeWalk
                         return;
 
                     default:
-                        // A chain that reads as null without ending — too long to follow, or looping — is no object the
-                        // file defines as null.
-                        InvalidSlot(
-                            frame,
-                            index,
-                            _reader.GetObject(id) is PdfReference
-                                ? Invariant($"names object {reference.Id.Number}, whose chain of references is too long to follow or loops, which reads as null")
-                                : Invariant($"names {named}, which is null"));
+                        InvalidSlot(frame, index, Invariant($"names {named}, which is null"));
                         return;
                 }
 

@@ -1340,6 +1340,81 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_catalog_written_in_a_trailer_a_guard_cut_stays_taken_as_read_through_a_rebuild()
+    {
+        // Q1-06: object 3's row places it inside object 4's string, and settling rebuilds the index. The catalog written in
+        // the cut trailer is the trailer's /Root still, and taken as read: no search, file.root-invalid silent.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        };
+        var padding = file.Padding(4, 3000);
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        rows[3] = padding + 1500;
+        rows[4] = padding;
+        file.Table(5, rows, "/Size 5 /Root << /Pad (" + new string('x', 400) + ") /Type /Catalog /Pages 2 0 R >>");
+        using var document = PdfDocument.Open(file.Bytes, TrailerCut());
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.Structure.RootCutByGuard.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0, "no other catalog is looked for, before the rebuild or after it");
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfDictionary>();
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Fact]
+    public void A_root_a_trailer_cut_before_it_hides_is_not_judged_missing()
+    {
+        // Q1-01: the trailer runs past MaxTrailerLength before /Root. The reader looks for the catalog among the objects the
+        // index holds, as for a /Root it cannot read; file.root-invalid said the trailer has no /Root, which may lie past the
+        // cut.
+        var file = PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "<< /Size 4 /Pad (" + new string('x', 400) + ") /Root 1 0 R >>");
+        using var document = PdfDocument.Open(file, TrailerCut());
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.CatalogFoundAs.Should().Be(1);
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void A_section_a_prev_names_a_few_bytes_off_ends_the_chain_where_its_trailer_is_cut(int shift)
+    {
+        // Q1-02: the middle section's trailer runs past MaxTrailerLength, and the newest names it 3 bytes off. Relocated, it
+        // lost its trailer's cut: the chain read on to the oldest section, past the cut, which the reader takes the catalog
+        // the update superseded from, and object 9 only that section indexes, though unknown, read as missing.
+        var file = new HandWrittenFile();
+        var oldest = new Dictionary<int, long>
+        {
+            [5] = file.Object(5, "<< /Type /Catalog /Pages 2 0 R /Version /1.4 >>"),
+            [9] = file.Object(9, "(nine)"),
+        };
+        var first = file.Table(10, oldest, "/Size 10 /Root 5 0 R");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 9 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+        var middle = file.Table(4, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 10 /Prev {first} /Pad ({new string('x', 400)}) /Root 1 0 R"));
+        file.Table(1, [], string.Create(CultureInfo.InvariantCulture, $"/Size 10 /Prev {middle - shift}"));
+        using var document = PdfDocument.Open(file.Bytes, TrailerCut());
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.GetPresence(9).Should().Be(ObjectPresence.Unindexed);
+        document.Catalog.Should().NotBeNull().And.Subject.Should().NotContainKey(PdfName.Version, "the catalog object 5 gives is the one the update superseded");
+        report.Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Fact]
     public void A_cross_reference_stream_a_guard_cut_does_not_make_an_object_of_its_number_a_cut_catalog()
     {
         // Review of #175 (L3-02): /Root names object 5, read whole and no catalog; object 5 is also an older cross-reference
@@ -1807,6 +1882,13 @@ public class ReaderLimitsTests
         BinaryPrimitives.WriteUInt32BigEndian(file.AsSpan(row + 1, 4), (uint)(text.IndexOf("yyyy", StringComparison.Ordinal) + 1000));
         return file;
     }
+
+    /// <summary>
+    /// Options that cut a trailer past 300 bytes, and a table's window past 128, so that a trailer is read in a window of its
+    /// own, where the trailer guard reaches it.
+    /// </summary>
+    private static PdfReaderOptions TrailerCut() =>
+        new() { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 300, MaxXRefSectionLength = 128 } };
 
     /// <summary>Object 4, an array of three numbers without its endobj, padded to be longer than the sound document's objects.</summary>
     private static string PaddedArray { get; } = "4 0 obj\n[1 2 3" + new string(' ', 200) + "]";

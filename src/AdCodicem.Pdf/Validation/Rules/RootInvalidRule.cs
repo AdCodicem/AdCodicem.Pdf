@@ -1,5 +1,6 @@
 using System.Globalization;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 
 namespace AdCodicem.Pdf.Validation.Rules;
@@ -20,7 +21,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// as it was before the reader looked for a catalog. A trailer that could not be read at all, or an index the chain
 /// did not give, is another rule's to report, and a catalog one of the reader's limits left out of the index
 /// <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>'s. A catalog one of them cut is not judged: what it lacks may lie
-/// past the cut, and the reader's report names the limit.
+/// past the cut, and the reader's report names the limit. Nor is a <c>/Root</c> the trailers lack where the chain ends at a
+/// trailer one of them cut: it may lie past the cut.
 /// </para>
 /// </remarks>
 internal sealed class RootInvalidRule : IValidationRule
@@ -58,6 +60,13 @@ internal sealed class RootInvalidRule : IValidationRule
             return;
         }
 
+        // Nor a /Root the trailers lack where the chain ends at a trailer a guard cut: it may lie past the cut, which
+        // xref.checked-in-part says was not checked, and the reader looked for the catalog among the objects it indexed.
+        if (structure.RootAsWritten is null && EndsAtCutTrailer(structure))
+        {
+            return;
+        }
+
         // The reader's, not the structure's: a rebuild run after the document opened may have taken another.
         var catalog = context.Document.Reader.CatalogFoundAs;
         var found = catalog > 0
@@ -90,6 +99,19 @@ internal sealed class RootInvalidRule : IValidationRule
                     $"The trailer's /Root is {Kind(structure.RootAsWritten)}, not a reference to the document catalog.{found}");
                 break;
         }
+    }
+
+    private static bool EndsAtCutTrailer(FileStructure structure)
+    {
+        foreach (var section in structure.Sections)
+        {
+            if (section.TrailerCutByLimit)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Report(ValidationContext context, PdfValidationLocation location, string message) =>
