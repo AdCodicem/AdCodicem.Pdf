@@ -92,8 +92,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// rebuilds the index past it, in one pass over the file, rather than read on; and each validation's probe of the
     /// cross-reference entries, which says the entries it did not decide were not checked. A header's reading consumes the
     /// bytes it crossed up to its decision — white space, comments, the header's tokens —, and reads about ten times that at
-    /// most, its windows grown eightfold, past a few small windows an entry reads free: the first, the next where the first
-    /// is white space or cuts a header; past a run it skips, it consumes every window it reads whole, the run it skipped
+    /// most, its windows grown eightfold, past a few small windows an entry reads free: the first, and the next where the
+    /// first does not decide — white space, a comment or a header running past its edge —; past a run it skips, it consumes
+    /// every window it reads whole, the run it skipped
     /// consumed by another. A run of white space several entries lead into is
     /// consumed once, while it is one of the runs remembered. Entries can
     /// place their objects in one long comment, each read again to its end, which is what the bound stops. An internal
@@ -993,7 +994,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </para>
     /// <para>
     /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it read up to its decision,
-    /// past the next window where the first is white space or cuts a header, which consume what lies up to the decision;
+    /// past the next window where the first does not decide, which consume what lies up to the decision;
     /// past a run it skips, every window it reads, whole. What it skipped it did not
     /// consume, and a window as large as a load's from the offset may lie far past it: so no reading reads much more than it
     /// consumes. A valid file's entries place their headers exactly, and cross no run to remember. The runs of white space crossed before the header's first token are remembered:
@@ -1075,10 +1076,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 length = (int)(next - origin);
             }
 
-            // A pass that has spent its allowance reads no more than the first window of each header.
+            // A pass that has spent its allowance reads no more than the first window of each header: what is left of it past
+            // a run skipped into it decides, or leaves the entry undecided, and a token its end cuts is not read again.
+            var lastFree = false;
+
             if (origin + length > consumed && reading.Remaining == 0)
             {
-                return HeaderReadingSpent;
+                if (origin >= consumed)
+                {
+                    return HeaderReadingSpent;
+                }
+
+                length = (int)(consumed - origin);
+                lastFree = true;
             }
 
             using var window = _source.GetWindow(origin, length);
@@ -1167,7 +1177,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         return HeaderPastGuard;
                     }
 
-                    if (!Consume(reading, ref consumed, end))
+                    if (lastFree || !Consume(reading, ref consumed, end))
                     {
                         return HeaderReadingSpent;
                     }
