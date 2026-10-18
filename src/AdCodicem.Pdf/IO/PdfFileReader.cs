@@ -248,6 +248,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private Dictionary<PdfObjectId, PdfObject?>? _readWhileChainIsRead;
 
     /// <summary>
+    /// The objects <see cref="ReadWithoutLoading"/> could not read while the chain is read because they run past
+    /// <see cref="PdfReaderLimits.MaxObjectLength"/>, or null while none did: what they hold is the guard's to hide. Let go
+    /// with <see cref="_readWhileChainIsRead"/>.
+    /// </summary>
+    private HashSet<PdfObjectId>? _cutWhileChainIsRead;
+
+    /// <summary>
+    /// The object numbers whose rows a guard left unread in the cross-reference stream just read — past the data it cut, or
+    /// from the row the index had no room for —, as pairs of a first number and a count; null where the section just read
+    /// is a table, whose rows past a guard may number any object. Set as each section is read, for its own trailer.
+    /// </summary>
+    private long[]? _rowsLeftUnread;
+
+    /// <summary>
     /// The cross-reference streams the chain read whose indirect <c>/Length</c> it could not read, by where their data
     /// starts: each <c>/Length</c> is read once the chain is read, and checked against the data the chain took.
     /// </summary>
@@ -690,8 +704,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return null;
             }
 
-            var read = TryReadUnrecorded(id, PositionOf(entry), out var value) ? value : null;
+            var read = TryReadUnrecorded(id, PositionOf(entry), out var value, out var pastGuard) ? value : null;
             (_readWhileChainIsRead ??= [])[id] = read;
+
+            if (pastGuard)
+            {
+                (_cutWhileChainIsRead ??= []).Add(id);
+            }
+
             return read;
         }
         finally
@@ -2028,6 +2048,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             _readingChain = false;
             _readWhileChainIsRead = null;
+            _cutWhileChainIsRead = null;
             _refusedNumbers = null;
         }
 
@@ -2231,9 +2252,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Determines whether <paramref name="value"/>, a <c>/Prev</c> or an <c>/XRefStm</c>, names a section the chain has
-    /// not read: an offset in the file it has not <paramref name="visited"/>; or a reference, or a chain of them, to an
-    /// object whose number the index read so far lacks, its row perhaps among those the guard that ended the chain left
-    /// unread. One the index holds reads as a whole read reads it, rows read first winning.
+    /// not read: an offset in the file it has not <paramref name="visited"/>; or a reference, or a chain of them, that leads
+    /// to what the guard that ended the chain hides (<see cref="LeadsPastIndex"/>). One that leads elsewhere reads as a
+    /// whole read reads it, rows read first winning.
     /// </summary>
     private bool NamesSection(PdfObject? value, HashSet<long> visited) =>
         LeadsPastIndex(value, out var read) ||
@@ -2241,8 +2262,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Follows <paramref name="value"/> through a chain of references, each read where a section already read places it,
-    /// and determines whether the chain leads to an object whose number the index read so far lacks, its row perhaps among
-    /// those a guard left unread. <paramref name="read"/> is where the chain ends: null at a link that reads as nothing.
+    /// as many as a resolution follows, and determines whether the chain leads to what a guard hides: an object that runs
+    /// past <see cref="PdfReaderLimits.MaxObjectLength"/>, or one whose number the index read so far lacks and whose row may
+    /// be among those a guard left unread. <paramref name="read"/> is where the chain ends: null at a link that reads as
+    /// nothing, or past the links a resolution follows, where a whole read finds no value either.
     /// </summary>
     private bool LeadsPastIndex(PdfObject? value, out PdfObject? read)
     {
@@ -2252,12 +2275,38 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             if (value is null)
             {
+                // Object 0 is never read, and a number the chain refused is never placed: no row past a guard changes either.
+                var number = reference.Id.Number;
                 read = null;
-                return !_xref.TryGet(reference.Id.Number, out _);
+                return number > 0 && _refusedNumbers?.Contains(number) != true &&
+                    (_cutWhileChainIsRead?.Contains(reference.Id) == true || (!_xref.TryGet(number, out _) && MayBeLeftUnread(number)));
             }
         }
 
-        read = value;
+        read = value is PdfReference ? null : value;
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether a row a guard left unread in the section just read may number object <paramref name="number"/>:
+    /// any row of a table may, and of a cross-reference stream, only those its <c>/Index</c> or <c>/Size</c> declares past
+    /// where the guard stopped it.
+    /// </summary>
+    private bool MayBeLeftUnread(int number)
+    {
+        if (_rowsLeftUnread is not { } rows)
+        {
+            return true;
+        }
+
+        for (var i = 0; i + 1 < rows.Length; i += 2)
+        {
+            if (number >= rows[i] && number - rows[i] < rows[i + 1])
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -2811,6 +2860,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         previous = -1;
         hybrid = -1;
+        _rowsLeftUnread = null;
 
         if (!IsInFile(absolute))
         {
@@ -3528,6 +3578,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // A declared count is the file's claim: the index makes room for no more rows than the data holds.
         ReserveIndex(Math.Min(declared, held));
+        var fullBefore = _indexFullAt >= 0;
 
         if (index is null)
         {
@@ -3576,6 +3627,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             (_deferredLengths ??= [])[xrefStream.Data.Position] = check;
         }
+
+        // The rows a guard left unread are the only ones that may yet place an object the dictionary names, before any older
+        // section is read: from the row the index had no room for, which the reading passed, or past the data it cut.
+        var stopped = !fullBefore && _indexFullAt >= 0 && row > 0 ? (position / row) - 1 : long.MaxValue;
+        stopped = rowsCut ? Math.Min(stopped, held) : stopped;
+        _rowsLeftUnread = RowsFrom(index is null ? [0, declared] : subsections, stopped);
 
         _xref.MergeTrailer(dictionary);
         previous = rowsCut ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute);
@@ -3783,7 +3840,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// (<see cref="ReadWithoutLoading"/>), and a real with no fractional part as its integer, as the reader reads integers
     /// elsewhere; the validator reports the form the specification does not allow. Anything else — tiff2pdf writes
     /// <c>/Prev 576066 0 R</c>, naming an object the file lacks — names no section, and the sections it should have named
-    /// are reported missing, to be looked for by rebuilding the index. A negative integer is no offset either.
+    /// are reported missing, to be looked for by rebuilding the index. A negative integer is no offset either. Once a guard
+    /// filled the index, though, a reference that leads to what the guard hides (<see cref="LeadsPastIndex"/>) names what is
+    /// unknown, and the chain ends there for the guard, which is reported, not for the file (#175).
     /// </remarks>
     private long SectionOffset(PdfDictionary trailer, PdfName key, long section)
     {
@@ -3801,8 +3860,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return offset;
         }
 
-        // A reference leading to an object whose number an index the guard filled lacks names what is unknown: its row may lie
-        // past the guard, and the chain ends there for the guard, not the file (#175).
+        // A reference leading to what a guard that filled the index hides names what is unknown: the chain ends there for the
+        // guard, not the file (#175).
         if (_indexFullAt >= 0 && LeadsPastIndex(value, out _))
         {
             return -1;
@@ -3823,6 +3882,33 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 $"The {FileQuote.Name(key)} of the cross-reference section at offset {section} is not an offset; the sections it names are looked for by rebuilding the index."),
             section);
         return -1;
+    }
+
+    /// <summary>
+    /// Gives the numbers of the rows <paramref name="subsections"/> declares, as pairs of a first number and a count, from
+    /// the one at <paramref name="ordinal"/> in their order on: none past the last.
+    /// </summary>
+    private static long[] RowsFrom(long[] subsections, long ordinal)
+    {
+        var rows = new List<long>();
+
+        for (var i = 0; i + 1 < subsections.Length; i += 2)
+        {
+            var count = subsections[i + 1];
+
+            if (ordinal < count)
+            {
+                rows.Add(subsections[i] + ordinal);
+                rows.Add(count - ordinal);
+                ordinal = 0;
+            }
+            else
+            {
+                ordinal -= count;
+            }
+        }
+
+        return [.. rows];
     }
 
     /// <summary>Says what a value written where an offset or an integer belongs is, a real as PDF writes one.</summary>
@@ -4394,12 +4480,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Parses object <paramref name="id"/> at an exact offset, as <see cref="TryParseAt"/> does, but keeps nothing of the
     /// reading: what the parser notices is dropped, nothing is recorded, and an object that still runs past the window
-    /// once <see cref="PdfReaderLimits.MaxObjectLength"/> allows no larger one is not read rather than reported. A stream
-    /// is not read: its data is looked for in the window alone, and the method returns false.
+    /// once <see cref="PdfReaderLimits.MaxObjectLength"/> allows no larger one is not read rather than reported, which
+    /// <paramref name="pastGuard"/> says. A stream is not read: its data is looked for in the window alone, and the method
+    /// returns false.
     /// </summary>
-    private bool TryReadUnrecorded(PdfObjectId id, long offset, out PdfObject value)
+    private bool TryReadUnrecorded(PdfObjectId id, long offset, out PdfObject value, out bool pastGuard)
     {
         value = PdfNull.Instance;
+        pastGuard = false;
 
         if (offset < 0 || offset >= _source.Length)
         {
@@ -4423,6 +4511,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     if (windowSize >= maxWindow)
                     {
+                        pastGuard = true;
                         return false;
                     }
 

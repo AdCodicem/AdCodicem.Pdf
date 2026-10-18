@@ -1714,6 +1714,108 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("object 0, with no row")]
+    [InlineData("object 0, its row past the full point")]
+    [InlineData("a number no row declares")]
+    [InlineData("a number whose row was refused")]
+    public void A_prev_a_stream_that_fills_the_index_writes_as_a_reference_no_row_past_it_places_reads_as_a_whole_read_reads_it(string shape)
+    {
+        // W1-1, W1-2, W2-1: the newest section, a cross-reference stream with no /Root, fills MaxIndexEntries; its /Prev names
+        // object 0, which no read places, a number its /Index declares no row for — tiff2pdf's /Prev 576066 0 R —, or one
+        // whose row it refused. No row the guard left unread places any of them: the reader took each for one its row might,
+        // hid the trailers and said nothing, where a whole read reports the /Prev, rebuilds and finds the catalog.
+        var (index, rows, prev) = shape switch
+        {
+            "object 0, with no row" => ("[2 21]", Numbers(2, 21), "0 0 R"),
+            "object 0, its row past the full point" => ("[2 21 0 1]", [.. Numbers(2, 21), 0], "0 0 R"),
+            "a number no row declares" => ("[0 1 2 21]", [0, .. Numbers(2, 21)], "576066 0 R"),
+            _ => ("[0 1 2 21]", [0, .. Numbers(2, 21)], "21 0 R"),
+        };
+        var file = NewestStreamNaming(index, rows, prev, refused: shape == "a number whose row was refused" ? 21 : -1);
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = shape == "a number whose row was refused" ? 21 : 8 };
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitIndexEntries);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+        whole.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionMissing);
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionMissing);
+        report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeTrue(string.Join("; ", report.Findings));
+        document.WasRepaired.Should().Be(whole.WasRepaired).And.BeTrue();
+        document.Catalog.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void A_prev_a_stream_that_fills_the_index_writes_as_a_reference_to_an_object_past_the_object_guard_hides_the_trailers()
+    {
+        // W1-5: the stream's row for object 21 is read before the index fills, and object 21, a comment of 3,000 bytes then
+        // the older table's offset, runs past MaxObjectLength. What it holds is the guard's to hide: the trailers are hidden,
+        // and neither xref.section-not-found nor file.root-invalid blames the file.
+        var file = NewestStreamNaming("[0 1 21 1 2 21]", [0, 21, .. Numbers(2, 21)], "21 0 R", refused: -1, twentyOne: "%" + new string('c', 3_000) + "\n");
+        var limits = PdfReaderLimits.Default with { MaxIndexEntries = 8, MaxObjectLength = 1_024 };
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var report = new PdfValidator().Validate(document);
+
+        whole.WasRepaired.Should().BeFalse();
+        whole.Catalog.Should().NotBeNull();
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefSectionMissing);
+        report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse(string.Join("; ", report.Findings));
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Theory]
+    [InlineData(31, true)]
+    [InlineData(32, false)]
+    public void A_prev_written_as_a_chain_of_references_past_a_guard_is_followed_as_far_as_a_whole_read_follows_it(int links, bool hidden)
+    {
+        // W1-4: /Prev names object 21, which names 22, and so on; the last of the chain holds the older table's offset. The
+        // newest table's rows past the chain run past MaxXRefSectionLength. A whole read follows 32 objects: an offset at the
+        // 32nd names the older section, which the guard's cut leaves unread; one at the 33rd is no offset, and the reader
+        // rebuilds. The guarded read followed the chain 31 objects further, and hid the trailers for an offset no whole read
+        // reaches.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+        var older = file.Table(4, new Dictionary<int, long>(rows), "/Size 4 /Root 1 0 R");
+        var last = 21 + links;
+
+        for (var number = 21; number < last; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R"));
+        }
+
+        rows[last] = file.Object(last, older.ToString(CultureInfo.InvariantCulture));
+        var table = file.Position;
+        var text = new StringBuilder("xref\n0 1\n0000000000 65535 f \n2 2\n");
+        text.Append(CultureInfo.InvariantCulture, $"{rows[2]:D10} 00000 n \n{rows[3]:D10} 00000 n \n21 {links + 1}\n");
+
+        for (var number = 21; number <= last; number++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"{rows[number]:D10} 00000 n \n");
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"{last + 1} 100\n").Append(string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 100)));
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {last + 101} /Prev 21 0 R >>\nstartxref\n{table}\n%%EOF\n");
+        file.Raw(text.ToString());
+        using var whole = PdfDocument.Open(file.Bytes);
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 900 } });
+
+        whole.WasRepaired.Should().Be(!hidden);
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
+        document.Reader.Structure.TrailersHiddenByGuard.Should().Be(hidden);
+        document.WasRepaired.Should().Be(!hidden);
+    }
+
+    [Theory]
     [InlineData("an older section's catalog")]
     [InlineData("no catalog indexed")]
     public void A_cross_reference_stream_a_limit_cut_past_its_rows_hides_no_trailer(string shape)
@@ -2237,6 +2339,49 @@ public class ReaderLimitsTests
     /// 9's row of its cross-reference stream placed inside object 8's string, where no header lies: settling rebuilds the
     /// index.
     /// </summary>
+    /// <summary>
+    /// Writes catalog 1, pages 2 and page 3, an older table indexing them with <c>/Root</c>, object 21 —
+    /// <paramref name="twentyOne"/> then the older table's offset —, and a newest cross-reference stream, object 22, whose
+    /// <c>/Index</c> is <paramref name="index"/>, holding a row for each of <paramref name="rows"/> in its order, and whose
+    /// dictionary gives <c>/Prev</c> <paramref name="prev"/> and no <c>/Root</c>. The row of <paramref name="refused"/> places
+    /// it in object stream 0, which no row may.
+    /// </summary>
+    private static byte[] NewestStreamNaming(string index, int[] rows, string prev, int refused, string twentyOne = "")
+    {
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
+        var placed = file.Object(21, twentyOne + older.ToString(CultureInfo.InvariantCulture));
+        var stream = file.Position;
+        var data = new StringBuilder();
+
+        foreach (var number in rows)
+        {
+            data.Append(number switch
+            {
+                _ when number == refused => Row(2, 0, 0),
+                0 => Row(0, 0, 65535),
+                2 => Row(1, pages, 0),
+                3 => Row(1, page, 0),
+                21 => Row(1, placed, 0),
+                22 => Row(1, stream, 0),
+                _ => Row(0, 0, 0),
+            });
+        }
+
+        data.Append('>');
+        file.Object(22, string.Create(CultureInfo.InvariantCulture, $"<< /Type /XRef /Size 23 /Index {index} /W [1 4 2] /Filter /ASCIIHexDecode /Prev {prev} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{stream}\n%%EOF\n"));
+        return file.Bytes;
+
+        static string Row(int type, long offset, int generation) =>
+            string.Create(CultureInfo.InvariantCulture, $"{type:X2}{offset:X8}{generation:X4}");
+    }
+
+    private static int[] Numbers(int first, int count) => [.. Enumerable.Range(first, count)];
+
     /// <summary>
     /// Writes a file whose chain places object 4 in object stream 10, whose dictionary runs past 128 bytes, and objects 6 and
     /// 7 in object stream 11, which holds 6 alone; row 9 places its object inside object 8's string, so that settling
