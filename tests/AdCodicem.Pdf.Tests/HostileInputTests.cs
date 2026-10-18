@@ -1634,6 +1634,77 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(8_192)]
+    [InlineData(65_536)]
+    public void A_pass_with_a_few_bytes_left_decides_a_row_skipped_to_a_run_s_end_a_byte_short_of_a_load_s_window(int window)
+    {
+        // Object 3's row crosses blanks the pass remembers. Object 4's row lies inside them, their end on the last byte of a
+        // window a load reads from the row, where object 4's header starts, running on a hundred bytes. Past the run, the
+        // row's window ends where the load's does: it reads the header's first byte alone, charged one byte, then reads the
+        // header again from its start, and decides it. A window running past the load's read 64 bytes at once, charged
+        // them, more than the ten left, and left the row undecided (mutant R-cross-cap-past).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var lead = file.Position;
+        var blanks = window + 2_000;
+        file.Raw(new string(' ', blanks) + "4" + new string(' ', 100) + "0 obj\n(four)\nendobj\n");
+        rows[3] = lead;
+        rows[4] = lead + blanks - (window - 1);
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        var reading = new HeaderReading(long.MaxValue);
+        document.Reader.ChainIndex!.TryGet(3, out var three).Should().BeTrue();
+        document.Reader.ChainIndex.TryGet(4, out var four).Should().BeTrue();
+        document.Reader.PlaceHeader(3, three, reading).Place.Should().Be(HeaderPlace.NotFound);
+
+        reading.Consume(reading.Remaining - 10).Should().BeTrue();
+        var placement = document.Reader.PlaceHeader(4, four, reading);
+
+        placement.Place.Should().Be(HeaderPlace.AtOffset);
+        placement.Position.Should().Be(lead + blanks);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_pass_that_spent_its_allowance_decides_a_header_its_first_window_ends_on_where_a_run_crossed_starts(bool crossedFirst)
+    {
+        // Object 7's row leads into 57 blanks, then "7 0 obj", whose obj ends where the row's first 64 bytes do; object 3's
+        // row, right past it, crosses 110 blanks, which the pass remembers. A token the window's edge reaches may go on past
+        // it, but not where white space a reading crossed lies: with nothing left of the allowance, the first window decides
+        // the row. Read without the crossing before, obj may be the start of "objx", and the row is left undecided, the
+        // token not read again (mutant R-edge-blank-off).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var lead = file.Position;
+        file.Raw(new string(' ', 57) + "7 0 obj" + new string(' ', 110) + "null\nendobj\n");
+        rows[3] = lead + 64;
+        rows[7] = lead;
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        var reading = new HeaderReading(1_000);
+        document.Reader.ChainIndex!.TryGet(3, out var three).Should().BeTrue();
+        document.Reader.ChainIndex.TryGet(7, out var seven).Should().BeTrue();
+
+        if (crossedFirst)
+        {
+            document.Reader.PlaceHeader(3, three, reading).Place.Should().Be(HeaderPlace.NotFound);
+        }
+
+        reading.Consume(long.MaxValue);
+
+        document.Reader.PlaceHeader(7, seven, reading).Place.Should().Be(crossedFirst ? HeaderPlace.AtOffset : HeaderPlace.Undecided);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData(50_000)]
     public void Placing_a_row_whose_first_token_is_a_string_through_a_run_crossed_reads_the_string_whole(int? maxObjectLength)
@@ -1831,6 +1902,38 @@ public class HostileInputTests
         };
         var at = file.Position;
         file.Raw("6 0" + new string(' ', edge - 6) + "obj" + after + "\n(eight)\nendobj\n%" + new string('c', 600_000) + "\n");
+        rows[8] = at;
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.ChainIndex!.TryGet(8, out var entry).Should().BeTrue();
+        var before = source.BytesRead;
+
+        var placement = document.Reader.PlaceHeader(8, entry, new HeaderReading(long.MaxValue));
+
+        placement.Place.Should().Be(HeaderPlace.NotFound);
+        placement.NumberAtOffset.Should().Be(6);
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(edge + (2 * PdfFileReader.NearbySearchRadius));
+    }
+
+    [Theory]
+    [InlineData(8_192, "")]
+    [InlineData(8_192, "x")]
+    [InlineData(65_536, "x")]
+    public void Placing_a_row_whose_blanks_lead_to_a_header_of_another_object_ending_a_load_s_window_reads_no_further(int edge, string after)
+    {
+        // R-cross-cap-off: object 8's row holds blanks, then "6 0 obj", its obj ending where a load's window does. A load
+        // crosses the blanks in that window, takes the header as it is and reads no further there; the windows that cross the
+        // blanks grow eightfold, and one that ran past the load's edge read more than the load, and an "objx" there as no
+        // header. Each ends where the load's does: the row decides as the load, object 6's header, from what the load reads.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw(new string(' ', edge - 7) + "6 0 obj" + after + "\n(eight)\nendobj\n%" + new string('c', 100_000) + "\n");
         rows[8] = at;
         file.Table(9, rows, "/Size 9 /Root 1 0 R");
         using var source = new StrictCountingSource(file.Bytes);

@@ -1438,13 +1438,15 @@ public class ReaderLimitsTests
     [InlineData("a trailer cut before /Root")]
     [InlineData("a table's rows cut")]
     [InlineData("a full index")]
+    [InlineData("a section's dictionary cut")]
     public void A_root_a_guard_kept_the_trailers_from_giving_is_unknown_and_rebuilds_nothing(string guard)
     {
         // R2-01, R2-02, S2-01: only the oldest section indexes the catalog, and only its trailer, or the newest's past what
         // MaxTrailerLength reads, gives /Root; or the newest table's rows run past what MaxXRefSectionLength reads, or past
-        // what MaxIndexEntries holds, which ends the chain at its trailer. The guard leaves the trailers the reader read
-        // without /Root: the reader rebuilt the index, scanning past the guard, and file.root-invalid said the trailer has no
-        // /Root.
+        // what MaxIndexEntries holds, which ends the chain at its trailer; or the section the newest's /Prev names is a
+        // cross-reference stream whose dictionary MaxTrailerLength cuts before it says what it is, which ends the chain there
+        // (mutant R-thg-lost-off). The guard leaves the trailers the reader read without /Root: the reader rebuilt the index,
+        // scanning past the guard, and file.root-invalid said the trailer has no /Root.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -1477,6 +1479,22 @@ public class ReaderLimitsTests
                     : PdfReaderLimits.Default with { MaxXRefSectionLength = 128 },
             };
         }
+        else if (guard == "a section's dictionary cut")
+        {
+            // A cross-reference stream between them, which indexes itself alone and whose /Pad runs past the guard before
+            // its /Type: the section is lost to the guard, and its /Prev to the oldest with it.
+            var middle = file.Position;
+            var row = string.Concat(
+                (char)1, (char)((middle >> 24) & 0xFF), (char)((middle >> 16) & 0xFF), (char)((middle >> 8) & 0xFF), (char)(middle & 0xFF), (char)0, (char)0);
+            file.Object(
+                5,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"<< /Pad ({new string('x', 400)}) /Type /XRef /Size 6 /Index [5 1] /W [1 4 2] /Prev {first} /Length {row.Length} >>\nstream\n{row}\nendstream"));
+            var newest = file.Position;
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n3 1\n{page:D10} 00000 n \ntrailer\n<< /Size 6 /Prev {middle} >>\nstartxref\n{newest}\n%%EOF\n"));
+            options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 300 } };
+        }
         else
         {
             // A sound update, whose trailer repeats /Root after an /ID long enough for the guard to cut it before.
@@ -1497,6 +1515,40 @@ public class ReaderLimitsTests
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
         using var whole = PdfDocument.Open(file.Bytes);
         whole.Catalog.Should().NotBeNull("read whole, the oldest trailer gives /Root");
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("/Catalog")]
+    [InlineData("(1 0 R)")]
+    [InlineData("<< /Type /Outlines >>")]
+    public void A_root_written_as_no_reference_past_the_section_count_says_the_file_is_damaged(string root)
+    {
+        // R-roothidden-any: only the oldest section indexes the catalog, and the newest trailer, the one MaxXRefSectionCount
+        // lets the chain read, gives a /Root that is no reference. The newest trailer's key wins, so no older trailer the guard
+        // kept unread could give another: the /Root names no object, the file is damaged whatever lies past the cut, and the
+        // reader rebuilds the index for the catalog its own index lacks, where a /Root the trailers lack would be the guard's.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+        var first = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 2] /Resources << >> >>");
+        var newest = file.Position;
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n3 1\n{page:D10} 00000 n \ntrailer\n<< /Size 4 /Prev {first} /Root {root} >>\nstartxref\n{newest}\n%%EOF\n"));
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
+        document.Reader.Structure.RootHiddenByGuard.Should().BeFalse();
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(1);
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeTrue(string.Join("; ", report.Findings));
     }
 
     [Theory]

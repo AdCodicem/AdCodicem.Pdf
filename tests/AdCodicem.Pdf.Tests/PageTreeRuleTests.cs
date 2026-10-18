@@ -1942,6 +1942,30 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_node_whose_kids_a_limit_cut_away_listed_again_is_counted_again_as_unknown()
+    {
+        // W-kids-cut-uncountable-off: node 5's /Kids names object 9, which runs past the limit and reads as null, so what
+        // lies below node 5 is unknown; nodes 3 and 4 both list it. Listed again under node 4, it would be counted again as 0
+        // pages, and node 4's /Count of 1, right when the file is read whole, judged wrong.
+        var file = Objects(
+            (2, "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Pages /Parent 2 0 R /Kids [5 0 R] /Count 1 >>"),
+            (4, "<< /Type /Pages /Parent 2 0 R /Kids [5 0 R] /Count 1 >>"),
+            (5, "<< /Type /Pages /Parent 3 0 R /Kids 9 0 R /Count 1 >>"),
+            (6, "<< /Type /Page /Parent 5 0 R >>"),
+            (9, new string(' ', 300) + "[6 0 R]"));
+        using var document = PdfDocument.Open(file, CutAt(200));
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.IsCutAtLimit(9).Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse(string.Join("; ", report.Findings));
+        Single(report, PdfValidationRuleIds.PageTreeNodeRepeated).Message.Should().Be(
+            "The kid at index 0 of page tree node 4 names object 5, which the tree already lists: what lies below it is counted again, how many pages that is being unknown.");
+        Validate(file).Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse("read whole, node 5 lists 1 page");
+    }
+
+    [Fact]
     public void A_reference_to_nothing_in_a_kid_of_an_array_of_kids_of_its_own_is_the_one_described()
     {
         // N1-F2: the object graph counted the reference under [1]/Contents, and its finding named the kid at [0], which is
