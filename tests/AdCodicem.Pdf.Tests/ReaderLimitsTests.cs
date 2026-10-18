@@ -1257,8 +1257,9 @@ public class ReaderLimitsTests
     public void A_catalog_an_object_stream_s_cut_leaves_unread_stays_taken_as_read_through_a_rebuild(string shape)
     {
         // N2-01: object 9's row places it inside object 8's string, and settling rebuilds the index. The scan finds no header
-        // of the catalog, and the expansion none in the stream a guard hides: the catalog left the index, read as missing,
-        // and the search took the older catalog 5.
+        // of the catalog, and, where the stream's header lies past the cut or its dictionary is cut, the expansion none in
+        // the stream a guard hides: the catalog left the index, read as missing, and the search took the older catalog 5.
+        // Past the decoded data, the header read, the expansion indexes the catalog, cut as before.
         using var document = PdfDocument.Open(HiddenMemberRebuilt(shape, member: 1, out var limits), new PdfReaderOptions { Limits = limits });
 
         var report = new PdfValidator().Validate(document);
@@ -1755,7 +1756,6 @@ public class ReaderLimitsTests
         document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(64, "the sections hold four rows");
     }
 
-    /// <summary>Object 4, an array of three numbers without its endobj, padded to be longer than the sound document's objects.</summary>
     /// <summary>
     /// A document whose object <paramref name="member"/> — its catalog, 1, or the root of its page tree, 2 — a guard keeps
     /// its object stream from serving, <paramref name="shape"/> saying how, with an older catalog 5 beside it, and object
@@ -1808,6 +1808,7 @@ public class ReaderLimitsTests
         return file;
     }
 
+    /// <summary>Object 4, an array of three numbers without its endobj, padded to be longer than the sound document's objects.</summary>
     private static string PaddedArray { get; } = "4 0 obj\n[1 2 3" + new string(' ', 200) + "]";
 
     private static string LongArray { get; } = "[" + string.Join(' ', Enumerable.Range(0, 2000)) + "]";
