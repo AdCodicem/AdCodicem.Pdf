@@ -121,13 +121,13 @@ object and located there, on its page for a page, as the Arlington walk names su
 under /Kids[1] of page tree node 2", "at [1] in object 7" in an array of kids that is an object of its own, "under
 /Pages of object 1" for a root written in the catalog. A kid that names a link of a chain of references is named with
 the object the chain leads to: "names object 5, which leads to object 99, which the file lacks"; one too long to follow,
-or looping, reads as null, and is said so. Nothing is judged of
-what an object one of the reader's limits cut holds or lacks — a node, a page, an array of kids, the catalog, or the
-trailer a catalog is written in —, as the Arlington walk leaves it ([#175]): a node so
-cut is taken to give what the pages below it inherit, its `/Count` and those above it are not judged, and the values its
-`/Kids` holds after the last reference, dictionary or stream are not counted, being perhaps what the cut left of a
-reference; the pages and nodes it names are judged as any other, and a page so cut, listed again, is counted again with
-the same doubt. An array of kids of its own such a node names, read whole, is not cut with it: another node naming it
+or looping, reads as null, and is said so. Nothing is judged of what an object one of the reader's limits cut holds or
+lacks — a node, a page, an array of kids, the catalog, or the trailer a catalog is written in —, as the Arlington walk
+leaves it ([#175]): a node so cut is taken to give what the pages below it inherit, its `/Count` and those above it are
+not judged, and the values its `/Kids` holds after the last reference, dictionary or stream are not counted, being
+perhaps what the cut left of a reference; the pages and nodes it names are judged as any other, and a page so cut, listed
+again, is counted again with the same doubt. A kid, a `/Kids`, `/Count`, `/MediaBox` or `/Resources`, or the catalog's
+`/Pages`, that names an object a limit cut before its value is unknown, not absent. An array of kids of its own such a node names, read whole, is not cut with it: another node naming it
 has its `/Count` judged. A cut leaves the tree read in part, and `page-tree.page-orphaned` does not
 run.
 

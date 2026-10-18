@@ -1125,8 +1125,9 @@ internal sealed class ArlingtonWalk
         }
 
         var value = _reader.GetObject(reference.Id);
+        // An object a limit cut before its value is unknown, not a null the file writes.
         var kind = value is PdfNull
-            ? (_reader.GetPresence(number) == ObjectPresence.Defined ? ValueClass.Null : ValueClass.Unknown)
+            ? (_reader.GetPresence(number) == ObjectPresence.Defined && !_reader.IsCutAtLimit(number) ? ValueClass.Null : ValueClass.Unknown)
             : ClassOf(value);
 
         _numbers[number] = (byte)kind;

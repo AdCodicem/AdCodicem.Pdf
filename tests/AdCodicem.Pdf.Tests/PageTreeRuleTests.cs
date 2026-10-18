@@ -1664,6 +1664,43 @@ public class PageTreeRuleTests
         PageTreeWalk.Run(document).Partial.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("kids")]
+    [InlineData("count")]
+    [InlineData("media box")]
+    [InlineData("resources")]
+    [InlineData("root")]
+    public void A_value_naming_an_object_a_limit_cut_before_its_value_is_not_judged_absent(string shape)
+    {
+        // R2-03: object 9, or the root 2, writes 300 blanks before its value, past the limit, and reads as null. A /Kids, a
+        // /Count, a /MediaBox or a /Resources naming it was judged absent, and the catalog's /Pages naming a root so cut left
+        // the walk whole, its pages orphaned and the catalog lacking /Pages.
+        var blanks = new string(' ', 300);
+        (int Number, string Body)[] objects = shape switch
+        {
+            "kids" => [(2, "<< /Type /Pages /Kids 9 0 R /Count 1 /MediaBox [0 0 1 1] /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R >>"), (9, blanks + "[3 0 R]")],
+            "count" => [(2, "<< /Type /Pages /Kids [3 0 R] /Count 9 0 R /MediaBox [0 0 1 1] /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R >>"), (9, blanks + "1")],
+            "media box" => [(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R /MediaBox 9 0 R >>"), (9, blanks + "[0 0 1 1]")],
+            "resources" => [(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 1 1] >>"), (3, "<< /Type /Page /Parent 2 0 R /Resources 9 0 R >>"), (9, blanks + "<< >>")],
+            _ => [(2, blanks + "<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 1 1] /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R >>")],
+        };
+        var file = Objects(objects);
+        using var document = PdfDocument.Open(file, CutAt(200));
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+        report.Findings.Should().NotContain(
+            finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal) || finding.RuleId == PdfValidationRuleIds.ObjectKeyMissing,
+            string.Join("; ", report.Findings));
+        Validate(file).Findings.Should().BeEmpty("read whole, the file is sound");
+
+        if (shape is "kids" or "root")
+        {
+            PageTreeWalk.Run(document).Partial.Should().BeTrue();
+        }
+    }
+
     [Fact]
     public void A_section_key_written_deeper_in_the_trailer_is_followed_as_any_other()
     {
