@@ -46,7 +46,7 @@ runs past it, no further than a load reads —, without parsing the object or re
 the object guard is taken as a load takes it: reported, looked for nearby, and rebuilt for when none is found there; for
 a document opened to throw on a limit, left to the read that reaches it, which throws. What settling consumes past the
 first 64 bytes of each header — the bytes it crossed up to each decision, a run of white space several entries lead into
-once — is at most twice the file's length, and it rebuilds once it would consume more: a valid file's headers, each at
+once, every byte read past a run an entry skips — is at most twice the file's length, and it rebuilds once it would consume more: a valid file's headers, each at
 its own offset, are distinct bytes, which consume the file's length at most together (#175).
 
 With it: a rebuild forgets what the reader noted of each object as it read it; `FileStructure` is filled while the

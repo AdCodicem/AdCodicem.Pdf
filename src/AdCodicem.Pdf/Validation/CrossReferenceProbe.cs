@@ -17,7 +17,8 @@ namespace AdCodicem.Pdf.Validation;
 /// settles its index (<see cref="PdfFileReader.PlaceHeader"/>), so that an entry a load takes is never called broken, and
 /// one a load gives up on never taken. A header is read in a few dozen bytes, then in windows grown eightfold, up to
 /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/>; over all the headers, what their reading consumes past the first
-/// 64 bytes of each — the bytes crossed up to each decision, a run of white space several entries lead into once — is at
+/// 64 bytes of each — the bytes crossed up to each decision, a run of white space several entries lead into once, and past a
+/// run an entry skips every byte it reads — is at
 /// most twice the file's length, which a valid file's headers, distinct bytes, never reach, and an entry left undecided
 /// past that is said not checked, as one whose header runs past the limit is. An entry outside the file is looked for
 /// near its offset, as a load looks for it. It reads each object stream once, without keeping it, so that memory follows the
