@@ -1385,11 +1385,15 @@ public class ReaderLimitsTests
     [Theory]
     [InlineData("the section count")]
     [InlineData("a trailer cut before /Root")]
+    [InlineData("a table's rows cut")]
+    [InlineData("a full index")]
     public void A_root_a_guard_kept_the_trailers_from_giving_is_unknown_and_rebuilds_nothing(string guard)
     {
-        // R2-01, R2-02: only the oldest section indexes the catalog, and only its trailer, or the newest's past what
-        // MaxTrailerLength reads, gives /Root. The guard leaves the trailers the reader read without /Root: the reader
-        // rebuilt the index, scanning past the guard, and file.root-invalid said the trailer has no /Root.
+        // R2-01, R2-02, S2-01: only the oldest section indexes the catalog, and only its trailer, or the newest's past what
+        // MaxTrailerLength reads, gives /Root; or the newest table's rows run past what MaxXRefSectionLength reads, or past
+        // what MaxIndexEntries holds, which ends the chain at its trailer. The guard leaves the trailers the reader read
+        // without /Root: the reader rebuilt the index, scanning past the guard, and file.root-invalid said the trailer has no
+        // /Root.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -1408,6 +1412,19 @@ public class ReaderLimitsTests
             var newest = file.Position;
             file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 4 /Prev {middle} >>\nstartxref\n{newest}\n%%EOF\n"));
             options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2 } };
+        }
+        else if (guard is "a table's rows cut" or "a full index")
+        {
+            // Twenty free rows past the page's, which the guard leaves unread, then a trailer that gives no /Root.
+            var newest = file.Position;
+            var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 20));
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n3 1\n{page:D10} 00000 n \n4 20\n{free}trailer\n<< /Size 24 /Prev {first} >>\nstartxref\n{newest}\n%%EOF\n"));
+            options = new PdfReaderOptions
+            {
+                Limits = guard == "a full index"
+                    ? PdfReaderLimits.Default with { MaxIndexEntries = 4 }
+                    : PdfReaderLimits.Default with { MaxXRefSectionLength = 128 },
+            };
         }
         else
         {
@@ -1429,6 +1446,31 @@ public class ReaderLimitsTests
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
         using var whole = PdfDocument.Open(file.Bytes);
         whole.Catalog.Should().NotBeNull("read whole, the oldest trailer gives /Root");
+    }
+
+    [Fact]
+    public void Rows_a_guard_cut_that_run_to_no_trailer_leave_the_root_the_file_lacks_to_be_found()
+    {
+        // S2-02: the one table's rows run past what MaxXRefSectionLength reads, and on to startxref, with no trailer: the
+        // reader looks for it past the rows, to the end of the file, and finds none — the file lacks it, the guard hid
+        // nothing —, so it rebuilds the index for the catalog, as a read of the whole table does. It took the guard to
+        // have hidden a /Root, and opened the document with no catalog.
+        var file = new HandWrittenFile();
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var catalog = file.Object(20, "<< /Type /Catalog /Pages 2 0 R >>");
+        var table = file.Position;
+        var free = string.Concat(Enumerable.Repeat("0000000000 00000 f \n", 16));
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 21\n0000000000 65535 f \n0000000000 00000 f \n{pages:D10} 00000 n \n{page:D10} 00000 n \n{free}{catalog:D10} 00000 n \nstartxref\n{table}\n%%EOF\n"));
+        using var whole = PdfDocument.Open(file.Bytes);
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 } });
+
+        document.Reader.Structure.TrailersHiddenByGuard.Should().BeFalse();
+        document.Reader.Structure.RootHiddenByGuard.Should().BeFalse();
+        document.WasRepaired.Should().Be(whole.WasRepaired).And.BeTrue();
+        document.Catalog.Should().NotBeNull();
+        document.Reader.CatalogFoundAs.Should().Be(20);
     }
 
     [Theory]
