@@ -6,8 +6,9 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// </summary>
 /// <remarks>
 /// <para>
-/// What a header's reading consumes is the bytes it crossed up to its decision, past the first few of each: a valid file's
-/// headers, each at its own offset, are distinct bytes, which consume at most the file's length together.
+/// What a header's reading consumes is the bytes it crossed up to its decision, past the first few of each, and past a run
+/// it skips every byte it reads: a valid file's headers, each at its own offset, are distinct bytes, which consume at most
+/// the file's length together, and skip no run.
 /// </para>
 /// <para>
 /// A load reads the white space before a header to its end, however far; entries a damaged file places in a long run of

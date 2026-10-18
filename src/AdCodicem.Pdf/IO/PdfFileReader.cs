@@ -93,8 +93,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// cross-reference entries, which says the entries it did not decide were not checked. A header's reading consumes the
     /// bytes it crossed up to its decision — white space, comments, the header's tokens —, and reads about ten times that at
     /// most, its windows grown eightfold, past a few small windows an entry reads free: the first, the next where the first
-    /// is white space or cuts a header, the first past a run it skips; past a run it skips, it consumes every window it
-    /// reads whole, the run it skipped consumed by another. A run of white space several entries lead into is
+    /// is white space or cuts a header; past a run it skips, it consumes every window it reads whole, the run it skipped
+    /// consumed by another. A run of white space several entries lead into is
     /// consumed once, while it is one of the runs remembered. Entries can
     /// place their objects in one long comment, each read again to its end, which is what the bound stops. An internal
     /// bound (ADR 34): a valid file's entries place their objects' headers each at its own offset, and its headers, distinct
@@ -973,8 +973,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </para>
     /// <para>
     /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it read up to its decision,
-    /// past the next window where the first is white space or cuts a header, and the first past a run it skips, which
-    /// consume what lies up to the decision; past a run it skips, every window it reads, whole. What it skipped it did not
+    /// past the next window where the first is white space or cuts a header, which consume what lies up to the decision;
+    /// past a run it skips, every window it reads, whole. What it skipped it did not
     /// consume, and a window as large as a load's from the offset may lie far past it: so no reading reads much more than it
     /// consumes. A valid file's entries place their headers exactly, and cross no run to remember. The runs of white space crossed before the header's first token are remembered:
     /// an offset inside one, a crossing that reaches one, or a reading between two tokens whose window ends in one, reads on
