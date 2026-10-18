@@ -126,8 +126,10 @@ lacks — a node, a page, an array of kids, the catalog, or the trailer a catalo
 leaves it ([#175]): a node so cut is taken to give what the pages below it inherit, its `/Count` and those above it are
 not judged, and the values its `/Kids` holds after the last reference, dictionary or stream are not counted, being
 perhaps what the cut left of a reference; the pages and nodes it names are judged as any other, and a page so cut, listed
-again, is counted again with the same doubt. A kid, a `/Kids`, `/Count`, `/MediaBox` or `/Resources`, or the catalog's
-`/Pages`, that names an object a limit cut before its value is unknown, not absent. An array of kids of its own such a node names, read whole, is not cut with it: another node naming it
+again, is counted again with the same doubt. A kid, a `/Kids`, `/Count`, `/MediaBox`, a corner of one, `/Resources` or
+a root's `/Parent`, or the catalog's `/Pages`, that names an object a limit cut is unknown, whatever was read of it —
+nothing, the `12` of `12 0 R`, an array cut short —: neither absent nor judged, and a dictionary whose `/Kids` is so
+cut is a node. An array of kids of its own such a node names, read whole, is not cut with it: another node naming it
 has its `/Count` judged. A cut leaves the tree read in part, and `page-tree.page-orphaned` does not
 run.
 

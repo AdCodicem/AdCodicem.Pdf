@@ -1701,6 +1701,51 @@ public class PageTreeRuleTests
         }
     }
 
+    [Theory]
+    [InlineData("root parent")]
+    [InlineData("untyped node")]
+    [InlineData("kids in a reference")]
+    [InlineData("pages in a reference")]
+    [InlineData("media box cut short")]
+    [InlineData("corner")]
+    [InlineData("count in a reference")]
+    [InlineData("kid in a reference")]
+    public void A_value_naming_an_object_a_limit_cut_is_unknown_whatever_was_read_of_it(string shape)
+    {
+        // S2-03 to S2-06: object 9, or the root 2, runs past the limit, and reads as what lies before the cut: null, the "12"
+        // of "12 0 R", an array cut short. The root's /Parent naming it was judged present; a node with no /Type whose /Kids
+        // names it was walked as a page; a /Kids, a catalog's /Pages, a /Count or a kid reading as a number, and a /MediaBox
+        // reading as an array of two values, or a corner as null, were judged by what was read. Each is unknown, as what
+        // the object holds past the cut: nothing written in it is judged, and a /Kids or a kid so cut leaves the walk partial.
+        var blanks = new string(' ', 300);
+        (int Number, string Body)[] objects = shape switch
+        {
+            "root parent" => [(2, "<< /Type /Pages /Parent 9 0 R /Kids [3 0 R] /Count 1 /MediaBox [0 0 1 1] /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R >>"), (9, blanks + "null")],
+            "untyped node" => [(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>"), (4, "<< /Parent 2 0 R /Kids 9 0 R /Count 1 >>"), (3, "<< /Type /Page /Parent 4 0 R /MediaBox [0 0 1 1] /Resources << >> >>"), (9, blanks + "[3 0 R]")],
+            "kids in a reference" => [(2, "<< /Type /Pages /Kids 9 0 R /Count 1 /MediaBox [0 0 1 1] /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R >>"), (12, "[3 0 R]"), (9, "12 " + blanks + "0 R")],
+            "pages in a reference" => [(12, "<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 1 1] /Resources << >> >>"), (3, "<< /Type /Page /Parent 12 0 R >>"), (2, "12 " + blanks + "0 R")],
+            "media box cut short" => [(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R /MediaBox 9 0 R >>"), (9, "[0 0" + blanks + " 1 1]")],
+            "corner" => [(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 9 0 R 1] >>"), (9, blanks + "1")],
+            "count in a reference" => [(2, "<< /Type /Pages /Kids [3 0 R] /Count 9 0 R /MediaBox [0 0 1 1] /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R >>"), (5, "1"), (9, "5 " + blanks + "0 R")],
+            _ => [(2, "<< /Type /Pages /Kids [9 0 R] /Count 1 /MediaBox [0 0 1 1] /Resources << >> >>"), (3, "<< /Type /Page /Parent 2 0 R >>"), (9, "3 " + blanks + "0 R")],
+        };
+        var file = Objects(objects);
+        using var document = PdfDocument.Open(file, CutAt(200));
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+        report.Findings.Should().NotContain(
+            finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal) ||
+                finding.RuleId == PdfValidationRuleIds.ObjectKeyMissing || finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong,
+            string.Join("; ", report.Findings));
+
+        if (shape is "untyped node" or "kids in a reference" or "pages in a reference" or "kid in a reference")
+        {
+            PageTreeWalk.Run(document).Partial.Should().BeTrue();
+        }
+    }
+
     [Fact]
     public void A_section_key_written_deeper_in_the_trailer_is_followed_as_any_other()
     {
