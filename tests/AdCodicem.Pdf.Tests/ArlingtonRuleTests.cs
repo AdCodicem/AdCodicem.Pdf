@@ -1118,6 +1118,60 @@ public class ArlingtonRuleTests
     }
 
     [Fact]
+    public void What_a_trailer_a_limit_cut_refers_to_before_the_cut_is_judged()
+    {
+        // The trailer runs past MaxTrailerLength after its /Root and its /Info, both references: a reference is whole, and
+        // the objects it names, read whole, are judged as they were read. Only a value written in the cut trailer is left
+        // unjudged (mutant R-cuttrailer-reference took a reference for one, and left the whole document unchecked).
+        var file = Declaring(
+            "1.7",
+            "/Info 4 0 R /Pad (" + new string('x', 400) + ")",
+            "<< /Type /Catalog /Pages 2 0 R /PageMode 7 >>",
+            Root,
+            Page,
+            "<< /Author 7 >>");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 300, MaxXRefSectionLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer);
+        document.Trailer.GetRaw(PdfName.Info).Should().BeOfType<PdfReference>();
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectValueTypeWrong).Select(finding => finding.Message)
+            .Should().BeEquivalentTo(
+                "Object 1 0, a Catalog in the Arlington model, has /PageMode as an integer, where the model wants a name.",
+                "Object 4 0, a DocInfo in the Arlington model, has /Author as an integer, where the model wants a string.");
+    }
+
+    [Fact]
+    public void A_trailer_entry_a_newer_trailer_gives_is_judged_though_an_older_trailer_a_limit_cut_writes_one()
+    {
+        // R-cuttrailer-identity: the original trailer writes an /Info of its own before running past MaxTrailerLength; the
+        // update's trailer refers to object 4, and the document's trailer takes that one. What the walk leaves unjudged is a
+        // value the document's trailer takes from the cut trailer, not any key that trailer writes: object 4 is judged.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, Catalog),
+            [2] = file.Object(2, Root),
+            [3] = file.Object(3, Page),
+        };
+        var first = file.Table(4, rows, "/Size 4 /Root 1 0 R /Info << /Title (Original) >> /Pad (" + new string('x', 400) + ")");
+        rows[4] = file.Object(4, "<< /Author 7 >>");
+        file.Table(5, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 5 /Root 1 0 R /Info 4 0 R /Prev {first}"));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 300, MaxXRefSectionLength = 128 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer);
+        document.Trailer.GetRaw(PdfName.Info).Should().BeOfType<PdfReference>();
+        Single(report, PdfValidationRuleIds.ObjectValueTypeWrong).Message.Should().Be(
+            "Object 4 0, a DocInfo in the Arlington model, has /Author as an integer, where the model wants a string.");
+        document.Reader.IsWrittenInCutTrailer(PdfName.Info).Should().BeFalse("the document's trailer takes /Info from the update");
+    }
+
+    [Fact]
     public void A_catalog_written_in_the_trailer_is_checked_there()
     {
         var template = Template("<< /Title (Direct) >>", Root, Page)
@@ -1129,6 +1183,26 @@ public class ArlingtonRuleTests
             "The dictionary under /Root of the trailer, a Catalog in the Arlington model, has /PageMode as an integer, where the model wants a name.");
         finding.Location.Object.Should().BeNull();
         finding.Location.Position.Should().BePositive();
+    }
+
+    [Theory]
+    [InlineData("/Root << /Type /Catalog", "/Pages 2 0 R >>")]
+    [InlineData("/Root 1 0 R /Info << /Author 7", "/Title (t) >>")]
+    public void A_dictionary_written_in_a_trailer_a_limit_cut_is_not_judged(string before, string after)
+    {
+        // The trailer runs past MaxTrailerLength inside the dictionary written in it: the catalog gives its /Type before the
+        // cut and its /Pages past it, the document information an /Author of the wrong type before it. What it lacks may lie
+        // past the cut, and nothing of what it holds is judged either (#175). Mutant A-trailer-skip-off judged both.
+        var file = PdfTemplate.SoundWith(
+            "<< /Size 4 /Root 1 0 R >>",
+            "<< /Size 4 " + before + " /Pad (" + new string('x', 400) + ") " + after + " >>");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 300, MaxXRefSectionLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer);
+        report.Findings.Select(finding => finding.RuleId).Should().NotContain(GeneratedRules, string.Join("; ", report.Findings));
     }
 
     [Fact]
