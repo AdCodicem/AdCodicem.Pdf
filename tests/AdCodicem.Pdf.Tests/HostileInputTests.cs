@@ -1662,6 +1662,76 @@ public class HostileInputTests
         (source.BytesRead - before).Should().BeLessThanOrEqualTo(most);
     }
 
+    [Theory]
+    [InlineData("(abc)")]
+    [InlineData("<616263>")]
+    public void A_spent_pass_decides_a_row_whose_string_closes_where_a_run_crossed_starts(string closed)
+    {
+        // Y2-1: object 7's row starts a string closed on the byte before 100 blanks, which object 3's row, past the string,
+        // crosses and remembers as a run; object 7's header lies past them. A string closed there is whole: the run that
+        // follows it is no part of it. With nothing left of the allowance, the row was left undecided, the string taken
+        // for one the run's start cut; it is decided as a load decides, its header found near it.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var lead = file.Position;
+        file.Raw(closed + new string(' ', 100));
+        file.Object(7, "null");
+        rows[3] = lead + closed.Length;
+        rows[7] = lead;
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        document.Reader.ChainIndex!.TryGet(3, out var three).Should().BeTrue();
+        document.Reader.ChainIndex.TryGet(7, out var seven).Should().BeTrue();
+        var load = document.Reader.PlaceHeader(7, seven, new HeaderReading(long.MaxValue));
+        var reading = new HeaderReading(long.MaxValue);
+        document.Reader.PlaceHeader(3, three, reading).Place.Should().Be(HeaderPlace.NotFound);
+        reading.Consume(long.MaxValue);
+
+        var placement = document.Reader.PlaceHeader(7, seven, reading);
+
+        load.Place.Should().Be(HeaderPlace.Nearby);
+        placement.Should().Be(load);
+    }
+
+    [Fact]
+    public void A_crossing_stopped_where_a_run_starts_reads_no_string_closed_there_again()
+    {
+        // Y2-2: object 6's row leads into 9,000 blanks, then a string of 56 KB closed on the byte before a run of 100
+        // blanks, which object 5's row, placed first, crosses and remembers. Object 6's crossing stops where the run
+        // starts: the string closed there is whole, and was read again from its start, up to the rest of a load's window.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw(new string(' ', 9_000) + "(" + new string('a', 55_998) + ")" + new string(' ', 100) + "endobj\n");
+        file.Object(4, "(four)");
+        rows[5] = at + 65_000;
+        rows[6] = at;
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.ChainIndex!.TryGet(5, out var five).Should().BeTrue();
+        document.Reader.ChainIndex.TryGet(6, out var six).Should().BeTrue();
+        var start = source.BytesRead;
+        var alone = document.Reader.PlaceHeader(6, six, new HeaderReading(long.MaxValue));
+        var aloneRead = source.BytesRead - start;
+        var reading = new HeaderReading(long.MaxValue);
+        document.Reader.PlaceHeader(5, five, reading);
+        start = source.BytesRead;
+
+        var shared = document.Reader.PlaceHeader(6, six, reading);
+
+        shared.Place.Should().Be(alone.Place);
+        (source.BytesRead - start).Should().BeLessThanOrEqualTo(aloneRead);
+    }
+
     [Fact]
     public void A_crossing_stopped_where_a_run_starts_inside_a_string_reads_the_string_again_once_at_most()
     {
