@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -1800,6 +1801,51 @@ public class PageTreeRuleTests
         {
             Single(report, PdfValidationRuleIds.PageTreeMediaBoxInvalid).Message.Should().Be(message);
         }
+    }
+
+    [Theory]
+    [InlineData("[0 0 612 9 0 R]")]
+    [InlineData("[8 0 R 0 612 9 0 R]")]
+    public void A_corner_naming_an_object_a_guard_left_out_of_the_index_is_unknown(string box)
+    {
+        // U3-4: a corner of the page's /MediaBox names object 9, which MaxIndexEntries leaves out of the index, and another
+        // object 8, which runs past the object limit: the corner past the cut one was judged null.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << >> >>");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox " + box + " >>");
+        var eight = file.Object(8, new string(' ', 300) + "0");
+        var nine = file.Object(9, "612");
+        var table = file.Position;
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{page:D10} 00000 n \n8 1\n{eight:D10} 00000 n \n10 1\n0000000000 00000 f \n9 1\n{nine:D10} 00000 n \ntrailer\n<< /Size 11 /Root 1 0 R >>\nstartxref\n{table}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 5, MaxObjectLength = 200 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.GetPresence(9).Should().Be(ObjectPresence.Unindexed);
+        report.Contains(PdfValidationRuleIds.PageTreeMediaBoxInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+    }
+
+    [Fact]
+    public void A_node_whose_kids_a_guard_left_out_of_the_index_has_an_unknown_count_below_it()
+    {
+        // U3-5: node 4 has no /Count, and its /Kids names object 9, which MaxIndexEntries leaves out of the index: it was said
+        // to have 0 pages below it.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>");
+        var three = file.Object(3, "<< /Type /Page /Parent 4 0 R >>");
+        var four = file.Object(4, "<< /Type /Pages /Parent 2 0 R /Kids 9 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
+        var nine = file.Object(9, "[3 0 R]");
+        var table = file.Position;
+        file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 5\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{three:D10} 00000 n \n{four:D10} 00000 n \n10 1\n0000000000 00000 f \n9 1\n{nine:D10} 00000 n \ntrailer\n<< /Size 11 /Root 1 0 R >>\nstartxref\n{table}\n%%EOF\n"));
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 6 } });
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Reader.GetPresence(9).Should().Be(ObjectPresence.Unindexed);
+        Single(report, PdfValidationRuleIds.PageTreeCountMismatch).Message.Should().Be(
+            "Page tree node 4 has no /Count, and how many pages lie below it is unknown.");
     }
 
     [Fact]

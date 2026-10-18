@@ -128,8 +128,9 @@ not judged, and the values its `/Kids` holds after the last reference, dictionar
 perhaps what the cut left of a reference; the pages and nodes it names are judged as any other, and a page so cut, listed
 again, is counted again with the same doubt. A kid, a `/Kids`, `/Count`, `/MediaBox`, a corner of one, `/Resources` or
 a root's `/Parent`, or the catalog's `/Pages`, that names an object a limit cut is unknown, whatever was read of it —
-nothing, the `12` of `12 0 R`, an array cut short —: neither absent nor judged, the other corners judged, and a
-dictionary whose `/Kids` is so cut is a node, whose missing `/Count` is judged only where it says it is one. An array of kids of its own such a node names, read whole, is not cut with it: another node naming it
+nothing, the `12` of `12 0 R`, an array cut short —, as is one that names an object a guard left out of the index:
+neither absent nor judged, the other corners judged, and a dictionary whose `/Kids` is so unknown is a node, whose
+missing `/Count` is judged only where it says it is one, how many pages lie below it unknown. An array of kids of its own such a node names, read whole, is not cut with it: another node naming it
 has its `/Count` judged. A cut leaves the tree read in part, and `page-tree.page-orphaned` does not
 run.
 
@@ -186,7 +187,8 @@ element — weighing most, and **a tie leaves the object unchecked** rather than
   checked: that is `object.reference-missing`'s
   or the cross-reference rules' business. An object a reader limit cut — at `MaxObjectLength`, or a member of an object
   stream whose data `MaxDecodedStreamLength` cut — is not judged either, nor what is written inside it: what it lacks
-  may lie past the limit. An ancestor so cut gives any key an object would inherit from it.
+  may lie past the limit. An ancestor so cut, or one a guard left out of the index, gives any key an object would inherit
+  from it.
 - Keys are taken in ordinal order and elements in order, so that two validations give the same findings in the same
   order.
 
