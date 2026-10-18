@@ -93,7 +93,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// cross-reference entries, which says the entries it did not decide were not checked. A header's reading consumes the
     /// bytes it crossed up to its decision — white space, comments, the header's tokens —, and reads about ten times that at
     /// most, its windows grown eightfold, past a few small windows an entry reads free: the first, the next where the first
-    /// is white space or cuts a header, the first past a run it skips. A run of white space several entries lead into is
+    /// is white space or cuts a header, the first past a run it skips; past a run it skips, it consumes every window it
+    /// reads whole, the run it skipped consumed by another. A run of white space several entries lead into is
     /// consumed once, while it is one of the runs remembered. Entries can
     /// place their objects in one long comment, each read again to its end, which is what the bound stops. An internal
     /// bound (ADR 34): a valid file's entries place their objects' headers each at its own offset, and its headers, distinct
@@ -962,7 +963,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// headers of real files; then, while the header runs past the last or may have been cut at its edge, windows eight
     /// times larger each, the one a load starts with, <see cref="InitialObjectWindow"/>, taken on the way, then each the
     /// rest of the window a load reads from the offset; past a run of white space it skips, the windows start again from the
-    /// first, and take the rest of a load's window only within eight times what they read since. Each reads on from where the last stopped — the white space it
+    /// first. Each reads on from where the last stopped — the white space it
     /// crossed, the tokens it lexed whole, a comment running on — and reads again only a token its edge may have cut, from
     /// its start; each ends no further than the window a load reads its first bytes in, but one that reads such a token
     /// again. A header is so read in no window reaching past the one a load reads it in, and with no more read than a load
@@ -973,7 +974,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <para>
     /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it read up to its decision,
     /// past the next window where the first is white space or cuts a header, and the first past a run it skips, which
-    /// consume what lies up to the decision. The runs of white space crossed before the header's first token are remembered:
+    /// consume what lies up to the decision; past a run it skips, every window it reads, whole. What it skipped it did not
+    /// consume, and a window as large as a load's from the offset may lie far past it: so no reading reads much more than it
+    /// consumes. A valid file's entries place their headers exactly, and cross no run to remember. The runs of white space crossed before the header's first token are remembered:
     /// an offset inside one, a crossing that reaches one, or a reading between two tokens whose window ends in one, reads on
     /// from its end, where a load would find what it finds, and what it holds is consumed once; a window that lexes reads
     /// through a run, which a string may hold. Inside a comment, which runs to the end of its line, a run is read as any
@@ -994,9 +997,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var windowSize = (long)HeaderCheckWindow;
         var crossing = true;
 
-        // Where the reading last started afresh: the offset, or the end of the last run skipped, past which it has consumed
-        // what it read, and no more.
-        var grownFrom = offset;
+        // Whether the reading skipped a run another reading crossed: past it, every window it reads is consumed whole, since
+        // what it skipped was not, and a window as large as a load's from the row may lie far past what it read.
+        var skipped = false;
 
         // What the windows before lexed of the header: the tokens read whole — its number, where it starts, its generation —,
         // whether they stopped inside a comment, and whether the window starts at a token its edge may have cut.
@@ -1021,7 +1024,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     origin = past;
                     consumed = Math.Max(consumed, origin);
                     windowSize = HeaderCheckWindow;
-                    grownFrom = origin;
+                    skipped = true;
                 }
             }
 
@@ -1177,8 +1180,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 if (!whole || lexed == 2)
                 {
-                    // Decided: what the reading crossed up to its decision is consumed, however little the pass has left.
-                    Consume(reading, ref consumed, origin + Math.Min(token.End, span.Length));
+                    // Decided: what the reading crossed up to its decision is consumed, however little the pass has left — the
+                    // whole window past a run it skipped.
+                    Consume(reading, ref consumed, skipped ? end : origin + Math.Min(token.End, span.Length));
 
                     if (!whole)
                     {
@@ -1206,9 +1210,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // The next window grows from this one — twice what it reads again at least — while it is one of the small ones
             // and ends short of the window a load reads past this one's edge, from the offset; past them, it is the rest of
             // that window, as a load reads none between: after a crossing, a window starts past the offset, and one as
-            // large as a load's would read past it. Past a run it skipped, the reading has consumed only what lies past the
-            // run: it takes the rest of a load's window only within eight times what it read since, and grows as it would
-            // otherwise, no further than that window ends.
+            // large as a load's would read past it.
             var toLoadEnd = offset + LoadWindowPast(end - offset) - resume;
             windowSize = Grown(windowSize);
 
@@ -1217,12 +1219,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 windowSize = Grown(windowSize);
             }
 
-            if ((windowSize >= InitialObjectWindow || 2 * windowSize > toLoadEnd) &&
-                (grownFrom == offset || toLoadEnd <= 8L * (end - grownFrom)))
-            {
-                windowSize = toLoadEnd;
-            }
-            else if (windowSize > toLoadEnd)
+            if (windowSize >= InitialObjectWindow || 2 * windowSize > toLoadEnd)
             {
                 windowSize = toLoadEnd;
             }
