@@ -1039,13 +1039,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // window is lexed from the first token on, as the lexer reads it from the offset, and grown from there.
             if (crossing)
             {
+                // Taken however little remains: the window it lies in may decide, and a deciding window is charged whole.
                 var lead = origin + firstToken;
-
-                if (!Consume(reading, ref consumed, lead))
-                {
-                    return HeaderReadingSpent;
-                }
-
+                Consume(reading, ref consumed, lead);
                 reading.Crossed(offset, lead);
                 crossing = false;
                 span = span[firstToken..];
