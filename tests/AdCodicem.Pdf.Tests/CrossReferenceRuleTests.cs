@@ -1591,6 +1591,8 @@ public class CrossReferenceRuleTests
     [InlineData("x %", true)]
     [InlineData("4 x %", false)]
     [InlineData("4 70000 %", true)]
+    [InlineData("0 0 %", false)]
+    [InlineData("-4 0 %", true)]
     public void A_whole_token_no_header_begins_with_rules_one_out_however_long_what_follows(string start, bool throwOnLimit)
     {
         // Where object 4's row places it, a token no header begins with, then a comment longer than the reader reads an
@@ -1729,6 +1731,34 @@ public class CrossReferenceRuleTests
             (nearby
                 ? "the entries of 2 objects it had not decided by then, the first object 5's, were not checked."
                 : "the entry of object 5, which it had not decided by then, was not checked."));
+    }
+
+    [Theory]
+    [InlineData("a comment")]
+    [InlineData("blanks")]
+    [InlineData("nothing: the header is at the row")]
+    public void A_header_decided_across_the_last_of_the_allowance_is_decided(string lead)
+    {
+        // M5-07, M5-11: 100 bytes are left to consume, and the window that decides object 4's row holds 300 bytes of lead
+        // before a token no header begins with — a comment, or blanks. The deciding window is charged whole, what remains
+        // taken, and the entry is decided rather than left unchecked; a header at the row is read in its first 64 bytes,
+        // free of what is left, even once nothing is.
+        var written = lead switch
+        {
+            "a comment" => "%" + new string('c', 298) + "\nx y z\n",
+            "blanks" => new string(' ', 300) + "x y z\n",
+            _ => "4 0 obj\n(four)\nendobj\n",
+        };
+        var place = lead.StartsWith("nothing", StringComparison.Ordinal) ? HeaderPlace.AtOffset : HeaderPlace.NotFound;
+        var file = WithFourWritten(written, out _);
+        using var document = PdfDocument.Open(file);
+        document.Reader.ChainIndex!.TryGet(4, out var entry).Should().BeTrue();
+        var reading = new HeaderReading(place == HeaderPlace.AtOffset ? 0 : 100);
+
+        var placement = document.Reader.PlaceHeader(4, entry, reading);
+
+        placement.Place.Should().Be(place);
+        reading.Remaining.Should().Be(0);
     }
 
     [Theory]
