@@ -124,8 +124,8 @@ internal sealed class FileStructure
 
     /// <summary>
     /// Gets a value indicating whether <see cref="RootAsWritten"/>, which led to no catalog, names an object a guard cut when
-    /// the document opened: what it would have said past the cut was unknown then, and the reader took it for the catalog as
-    /// read, looking for no other.
+    /// the document opened, or is a catalog written in a trailer a guard cut: what it would have said past the cut was unknown
+    /// then, and the reader took it for the catalog as read, looking for no other.
     /// </summary>
     public bool RootCutByGuard { get; set; }
 

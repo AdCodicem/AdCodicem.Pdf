@@ -1419,7 +1419,7 @@ public class PageTreeRuleTests
 
         report.Findings.Select(finding => (finding.RuleId, finding.Message)).Should().Equal((
             PdfValidationRuleIds.PageTreeKidInvalid,
-            "The kid at index 0 of page tree node 2 names object 10, which is null: it counts as a page with nothing on it."));
+            "The kid at index 0 of page tree node 2 names object 10, whose chain of references is too long to follow or loops, which reads as null: it counts as a page with nothing on it."));
         PageTreeWalk.Run(document).PageIndexes.Should().ContainKey(3).WhoseValue.Should().Be(1);
     }
 
@@ -1538,6 +1538,88 @@ public class PageTreeRuleTests
                 objects.Add((node, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages /Parent {parent} 0 R /Kids [{kids}] /Count {1L << (last - node)} >>")));
             }
         }
+    }
+
+    [Fact]
+    public void The_parent_of_a_page_listed_past_the_last_page_index_is_judged_once()
+    {
+        // P1-01: page 3 is listed after node 100's 2^31 pages, past every page index. The walk judged its /Parent, and the
+        // Arlington walk, asking whether it had, was told no, and judged it again.
+        var objects = new List<(int Number, string Body)>
+        {
+            (2, "<< /Type /Pages /Kids [100 0 R 3 0 R] /Count 2147483649 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 7 >>"),
+            (4, "<< /Type /Page /Parent 131 0 R >>"),
+        };
+        Doubling(objects, 100, 131, page: 4);
+
+        var report = Validate(Objects([.. objects]));
+
+        report.Findings.Should().ContainSingle(finding => finding.Message.Contains("/Parent", StringComparison.Ordinal), string.Join("; ", report.Findings))
+            .Which.Message.Should().Be("Page object 3 has a number for /Parent, and page tree node 2 lists it.");
+    }
+
+    [Fact]
+    public void A_page_at_the_last_page_index_is_located_by_its_page_number()
+    {
+        // P1-03: page 3 is the 2,147,483,648th page, at index int.MaxValue; its location read "page -2147483648".
+        var kids = string.Join(' ', Enumerable.Range(100, 31).Select(node => string.Create(CultureInfo.InvariantCulture, $"{node} 0 R")));
+        var objects = new List<(int Number, string Body)>
+        {
+            (2, "<< /Type /Pages /Kids [" + kids + " 3 0 R] /Count 2147483648 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 7 >>"),
+            (4, "<< /Type /Page /Parent 130 0 R >>"),
+        };
+        Doubling(objects, 100, 130, page: 4);
+
+        var finding = Single(Validate(Objects([.. objects])), PdfValidationRuleIds.PageTreeParentWrong);
+
+        finding.Location.PageIndex.Should().Be(int.MaxValue);
+        finding.Location.ToString().Should().Be("page 2147483648, object 3 0");
+    }
+
+    [Fact]
+    public void A_kid_naming_a_link_of_a_chain_names_the_object_the_chain_leads_to()
+    {
+        // P1-05: object 5's value is 99 0 R, and object 99 is not in the file. The kid naming object 5 was said to name an
+        // object the file lacks, which object 5 is not.
+        var report = Validate(Objects(
+            (2, "<< /Type /Pages /Kids [5 0 R 3 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+            (5, "99 0 R")));
+
+        Single(report, PdfValidationRuleIds.PageTreeKidInvalid).Message.Should().Be(
+            "The kid at index 0 of page tree node 2 names object 5, which leads to object 99, which the file lacks: it counts as a page with nothing on it.");
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "Object 5 refers to object 99 0 under its value, which the file lacks: the reference reads as null.");
+    }
+
+    [Theory]
+    [InlineData("6 0 R", "null", "names object 5, which leads to object 6, which is null")]
+    [InlineData("6 0 R", "5 0 R", "names object 5, whose chain of references is too long to follow or loops, which reads as null")]
+    [InlineData("6 0 R", "[1 2]", "names object 5, which leads to object 6, which is an array, neither a page nor a node")]
+    public void A_kid_naming_a_chain_is_judged_by_what_the_chain_leads_to(string fifth, string sixth, string what)
+    {
+        // P1-05: a chain to a literal null, a chain looping back, and a chain to an array, each named with where it leads.
+        var report = Validate(Objects(
+            (2, "<< /Type /Pages /Kids [5 0 R 3 0 R] /Count 2 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+            (5, fifth),
+            (6, sixth)));
+
+        Single(report, PdfValidationRuleIds.PageTreeKidInvalid).Message.Should().Be(
+            "The kid at index 0 of page tree node 2 " + what + ": it counts as a page with nothing on it.");
+    }
+
+    [Fact]
+    public void A_section_key_written_deeper_in_the_trailer_is_followed_as_any_other()
+    {
+        // P1-04: the object graph passed over every /Prev and /XRefStm written in the trailer, at any depth, as if each named
+        // a section of the index; only the trailer's own do.
+        var report = Validate(PdfTemplate.SoundWith("<< /Size 4 /Root 1 0 R >>", "<< /Size 4 /Root 1 0 R /Info << /Prev 97 0 R >> >>"));
+
+        Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
+            "The trailer refers to object 97 0 under /Info/Prev, which the file lacks: the reference reads as null.");
     }
 
     [Theory]
@@ -1702,6 +1784,29 @@ public class PageTreeRuleTests
     }
 
     [Fact]
+    public void A_root_written_in_a_catalog_a_trailer_cut_holds_is_judged_on_nothing()
+    {
+        // P1-02: the trailer, where the catalog and the root of the tree are written, runs past MaxTrailerLength, the root's
+        // /Count, /MediaBox and /Resources past the cut. Nothing written in the trailer was taken for cut, and they were
+        // reported missing.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>", "<< /Type /Page >>", StringComparison.Ordinal)
+            .Replace(
+                "<< /Size 4 /Root 1 0 R >>",
+                "<< /Size 4 /Root << /Type /Catalog /Pages << /Type /Pages /Kids [3 0 R] /Pad (" + new string('x', 400) + ") /Count 1 /MediaBox [0 0 1 1] /Resources << >> >> >> >>",
+                StringComparison.Ordinal));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 300, MaxXRefSectionLength = 128 } };
+        using var document = PdfDocument.Open(file, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitTrailer);
+        report.Findings.Should().NotContain(finding => finding.RuleId.StartsWith("page-tree.", StringComparison.Ordinal), string.Join("; ", report.Findings));
+        PageTreeWalk.Run(document).Partial.Should().BeTrue();
+        Validate(file).Findings.Should().BeEmpty("read whole, the root gives what page 3 inherits, and its /Count");
+    }
+
+    [Fact]
     public void A_kid_to_nothing_of_a_root_written_in_a_cut_catalog_is_the_object_graph_s()
     {
         // N1-F8: a catalog a limit cut is taken as read, and nothing written in it judged: its root's kids are the graph's.
@@ -1716,6 +1821,22 @@ public class PageTreeRuleTests
         Single(report, PdfValidationRuleIds.ObjectReferenceMissing).Message.Should().Be(
             "Object 1 refers to object 98 0 under /Pages/Kids[0], which the file lacks: the reference reads as null.");
         report.Contains(PdfValidationRuleIds.PageTreeKidInvalid).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Adds nodes <paramref name="first"/> to <paramref name="last"/>, each naming the next twice, the last naming
+    /// <paramref name="page"/> once: node n lists 2^(last - n) pages, which its /Count gives. The first names node 2 its parent.
+    /// </summary>
+    private static void Doubling(List<(int Number, string Body)> objects, int first, int last, int page)
+    {
+        for (var node = first; node <= last; node++)
+        {
+            var parent = node == first ? 2 : node - 1;
+            var kids = node == last
+                ? string.Create(CultureInfo.InvariantCulture, $"{page} 0 R")
+                : string.Create(CultureInfo.InvariantCulture, $"{node + 1} 0 R {node + 1} 0 R");
+            objects.Add((node, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages /Parent {parent} 0 R /Kids [{kids}] /Count {1L << (last - node)} >>")));
+        }
     }
 
     /// <summary>A document whose catalog, object 1, names node 2 as the root of its page tree, with <paramref name="objects"/>.</summary>

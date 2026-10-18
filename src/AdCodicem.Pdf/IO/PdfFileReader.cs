@@ -227,6 +227,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private PdfXRefTable? _chainIndex;
 
     /// <summary>
+    /// The trailer of the section the chain ended at because one of the reader's limits cut it, or null: what the document's
+    /// trailer takes from it is read only as far as the limit let it be.
+    /// </summary>
+    private PdfDictionary? _cutTrailer;
+
+    /// <summary>
     /// Whether the cross-reference chain is being read. Nothing is loaded meanwhile: an object is read only where a
     /// section already read places it, and nothing is corrected, rebuilt, cached or recorded (#182).
     /// </summary>
@@ -1844,6 +1850,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _objectStreamBytes = 0;
         _xref.Release();
         _chainIndex = null;
+        _cutTrailer = null;
 
         // What it noted of each object grows with a damaged file, past what the file weighs: nothing reads it once closed.
         _nullWhileDecoding.Clear();
@@ -2040,7 +2047,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// for elsewhere — a search could take a catalog an update superseded, and a rebuild would scan the file for what the
     /// guard's report already names (ADR 34).
     /// </summary>
-    private bool RootCutByGuard() => Trailer.GetRaw(PdfName.Root) is PdfReference root && IsCutAtLimit(root.Target().Number);
+    /// <remarks>A catalog written in a trailer a guard cut, rather than referred to, is so cut (#175).</remarks>
+    private bool RootCutByGuard() => Trailer.GetRaw(PdfName.Root) is PdfReference root
+        ? IsCutAtLimit(root.Target().Number)
+        : IsWrittenInCutTrailer(PdfName.Root);
+
+    /// <summary>
+    /// Merges the trailer of <paramref name="section"/> into the document's, keeping it apart when one of the reader's limits
+    /// cut it: the chain ends there, and a value the document's trailer takes from it may lie past the cut in part.
+    /// </summary>
+    private void MergeSectionTrailer(PdfDictionary trailer, XRefSectionRecord section)
+    {
+        if (section.TrailerCutByLimit)
+        {
+            _cutTrailer = trailer;
+        }
+
+        _xref.MergeTrailer(trailer);
+    }
+
+    /// <summary>
+    /// Determines whether the trailer's <paramref name="key"/> is a value written in a trailer one of the reader's limits
+    /// cut — a catalog written there rather than referred to —, which it was read only as far as the limit let it be: what
+    /// it lacks may lie past the cut. A reference is whole, and the object it names judged as it was read.
+    /// </summary>
+    internal bool IsWrittenInCutTrailer(PdfName key) =>
+        _cutTrailer?.GetRaw(key) is { } value and not PdfReference && ReferenceEquals(Trailer.GetRaw(key), value);
 
     /// <summary>
     /// Determines whether a guard keeps object <paramref name="number"/> from the reader: it stopped the index short of
@@ -2663,7 +2695,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                     if (ReadTrailer(window.Memory, absolute, lexer.Position, windowFull, section) is { } trailer)
                     {
-                        _xref.MergeTrailer(trailer);
+                        MergeSectionTrailer(trailer, section);
                         previous = SectionOffset(trailer, PdfName.Prev, absolute);
                         hybrid = SectionOffset(trailer, PdfName.XRefStm, absolute);
                     }
@@ -2902,7 +2934,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (JudgeTrailer(value, syntaxFault, section) is { } trailer)
         {
-            _xref.MergeTrailer(trailer);
+            MergeSectionTrailer(trailer, section);
         }
     }
 

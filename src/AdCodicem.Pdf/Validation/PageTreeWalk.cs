@@ -166,8 +166,7 @@ internal sealed class PageTreeWalk
     public HashSet<int> ParentsUnjudged { get; } = [];
 
     /// <summary>Determines whether the walk judged the <c>/Parent</c> of object <paramref name="number"/>.</summary>
-    public bool JudgedParent(int number) =>
-        (Nodes.Contains(number) || PageIndexes.ContainsKey(number)) && !ParentsUnjudged.Contains(number);
+    public bool JudgedParent(int number) => (Nodes.Contains(number) || IsPage(number)) && !ParentsUnjudged.Contains(number);
 
     /// <summary>
     /// Gets the object number of each page of the tree, with the index it is first listed at — every page but those first
@@ -286,7 +285,12 @@ internal sealed class PageTreeWalk
         // the kid is the object the chain leads to, whose value is read.
         var reference = kid as PdfReference;
         var id = reference?.Target() ?? default;
-        var named = reference?.Id.Number ?? 0;
+        // A kid that is a link of a chain is named with the object the chain leads to, which is what the finding is about.
+        var named = reference is null
+            ? string.Empty
+            : reference.Id.Number == id.Number
+                ? Invariant($"object {id.Number}")
+                : Invariant($"object {reference.Id.Number}, which leads to object {id.Number}");
 
         // What a node's /Kids holds is not judged where a limit cut the array: the findings on the kid itself are, located
         // at the object it is.
@@ -302,7 +306,7 @@ internal sealed class PageTreeWalk
                 {
                     Cycles.Add(new ProbeFinding(
                         Location(frame.Place),
-                        Invariant($"{Kid(frame, index)} names object {named}, {(id.Number == frame.Id.Number ? "which is that node itself" : "a node above it")}: the tree loops back on itself there, and what it should have listed is unknown.")));
+                        Invariant($"{Kid(frame, index)} names {named}, {(id.Number == frame.Id.Number ? "which is that node itself" : "a node above it")}: the tree loops back on itself there, and what it should have listed is unknown.")));
                 }
 
                 return;
@@ -314,7 +318,7 @@ internal sealed class PageTreeWalk
                 {
                     RepeatedNodes.Add(new ProbeFinding(
                         Location(frame.Place),
-                        Invariant($"{Kid(frame, index)} names object {named}, which the tree already lists: {CountedAgain(frame, id.Number)}.")));
+                        Invariant($"{Kid(frame, index)} names {named}, which the tree already lists: {CountedAgain(frame, id.Number)}.")));
                 }
                 else
                 {
@@ -346,11 +350,18 @@ internal sealed class PageTreeWalk
                         return;
 
                     case ObjectPresence.Missing:
-                        InvalidSlot(frame, index, Invariant($"names object {named}, which the file lacks"));
+                        InvalidSlot(frame, index, Invariant($"names {named}, which the file lacks"));
                         return;
 
                     default:
-                        InvalidSlot(frame, index, Invariant($"names object {named}, which is null"));
+                        // A chain that reads as null without ending — too long to follow, or looping — is no object the
+                        // file defines as null.
+                        InvalidSlot(
+                            frame,
+                            index,
+                            _reader.GetObject(id) is PdfReference
+                                ? Invariant($"names object {reference.Id.Number}, whose chain of references is too long to follow or loops, which reads as null")
+                                : Invariant($"names {named}, which is null"));
                         return;
                 }
 
@@ -366,7 +377,7 @@ internal sealed class PageTreeWalk
                     InvalidKids.Add(new ProbeFinding(
                         Location(reference is not null ? streamPlace : frame.Place),
                         reference is not null
-                            ? Invariant($"{Kid(frame, index)} names object {named}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")
+                            ? Invariant($"{Kid(frame, index)} names {named}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")
                             : $"{Kid(frame, index)} is a stream written in the array, where the tree wants an indirect reference to a dictionary: the reader reads the stream's dictionary in its place."));
                 }
 
@@ -389,7 +400,7 @@ internal sealed class PageTreeWalk
                     frame,
                     index,
                     reference is not null
-                        ? Invariant($"names object {named}, which is {RuleText.Kind(other)}, neither a page nor a node")
+                        ? Invariant($"names {named}, which is {RuleText.Kind(other)}, neither a page nor a node")
                         : $"is {RuleText.Kind(other)}, neither a page nor a node");
                 return;
         }
@@ -842,9 +853,11 @@ internal sealed class PageTreeWalk
 
     /// <summary>
     /// Determines whether what lies at <paramref name="place"/> was read only as far as one of the reader's limits let it
-    /// be: the object it is, or the one it is written in, was cut.
+    /// be: the object it is, or the one it is written in, was cut — or, written in the trailer, the trailer the catalog was
+    /// read from.
     /// </summary>
-    private bool IsCut(Place place) => place.Holder.Number > 0 && _reader.IsCutAtLimit(place.Holder.Number);
+    private bool IsCut(Place place) =>
+        place.Holder.Number > 0 ? _reader.IsCutAtLimit(place.Holder.Number) : _reader.IsWrittenInCutTrailer(PdfName.Root);
 
     /// <summary>Gives the location of what lies at <paramref name="place"/>: the object it is, or the one it is written in.</summary>
     private PdfValidationLocation Location(Place place) =>
