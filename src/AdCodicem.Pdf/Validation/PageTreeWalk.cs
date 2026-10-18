@@ -215,17 +215,6 @@ internal sealed class PageTreeWalk
         var place = rootValue is PdfReference reference ? Place.Of(reference.Target()) : catalog.Inside("/Pages");
         var id = place.Id;
         var root = rootValue.Resolve();
-
-        if (root is PdfNull)
-        {
-            // A /Pages that names an object the file lacks is object.reference-missing's to report; one the index holds
-            // and the reader could not produce is the index's, and one a guard left out of the index, or cut before its
-            // value, the guard's: either leaves the tree unknown.
-            Partial |= id.Number > 0 &&
-                (_reader.GetPresence(id.Number) is ObjectPresence.Unproduced or ObjectPresence.Unindexed || _reader.IsCutAtLimit(id.Number));
-            return;
-        }
-
         var node = root switch
         {
             PdfDictionary dictionary => dictionary,
@@ -235,6 +224,13 @@ internal sealed class PageTreeWalk
 
         if (node is null)
         {
+            // A /Pages that names an object the file lacks is object.reference-missing's to report; one the index holds
+            // and the reader could not produce is the index's, and one a guard left out of the index, or cut short of a
+            // dictionary — before its value, or in a value such as the "12" of "12 0 R" —, the guard's: either leaves the
+            // tree unknown.
+            Partial |= id.Number > 0 &&
+                ((root is PdfNull && _reader.GetPresence(id.Number) is ObjectPresence.Unproduced or ObjectPresence.Unindexed) ||
+                    _reader.IsCutAtLimit(id.Number));
             return;
         }
 
@@ -243,7 +239,8 @@ internal sealed class PageTreeWalk
             _visited.Add(id.Number);
         }
 
-        if (!IsCut(place) && Given(node, PdfName.Parent) is not null)
+        // A /Parent that names an object a limit cut is unknown: it may be null past the cut, which is absence.
+        if (!IsCut(place) && Given(node, PdfName.Parent) is { } rootParent && !NamesCutObject(rootParent))
         {
             ParentFaults.Add(new ProbeFinding(
                 Location(place),
@@ -358,10 +355,7 @@ internal sealed class PageTreeWalk
                         // The entry's fault, which the cross-reference rules report, or a guard's, which its report names —
                         // one that left the object out of the index, or cut it before its value —: the kid may have been a
                         // node, and the counts above it cannot be judged.
-                        Partial = true;
-                        frame.Uncountable = true;
-                        _uncountable.Add(id.Number);
-                        CountPages(1);
+                        CountUnknownKid(frame, id.Number);
                         return;
 
                     case ObjectPresence.Missing:
@@ -403,6 +397,12 @@ internal sealed class PageTreeWalk
                 Enter(dictionary, reference is not null ? Place.Of(id) : frame.KidPlace(index), frame);
                 return;
 
+            case not PdfNull when reference is not null && _reader.IsCutAtLimit(id.Number):
+                // A guard cut the object short of a dictionary, in a value such as the "12" of "12 0 R": as one cut before
+                // its value, it may have been a node.
+                CountUnknownKid(frame, id.Number);
+                return;
+
             case var other:
                 InvalidSlot(
                     frame,
@@ -412,6 +412,19 @@ internal sealed class PageTreeWalk
                         : $"is {RuleText.Kind(other)}, neither a page nor a node");
                 return;
         }
+    }
+
+    /// <summary>
+    /// Counts a kid that names object <paramref name="number"/>, which the tree cannot know — the index could not produce
+    /// it, or a guard kept it from the reader in part or whole —, under <paramref name="frame"/>: it takes a page's place,
+    /// may have been a node, and leaves the tree read in part and the counts above it unjudged.
+    /// </summary>
+    private void CountUnknownKid(Frame frame, int number)
+    {
+        Partial = true;
+        frame.Uncountable = true;
+        _uncountable.Add(number);
+        CountPages(1);
     }
 
     /// <summary>
@@ -517,11 +530,11 @@ internal sealed class PageTreeWalk
         {
             // A /Kids that names an object the file lacks is object.reference-missing's, and one the reader could not
             // produce the index's; either way, nothing below this node can be counted, nor the nodes above it judged. One
-            // that names an object a limit cut before its value lists what is unknown, and leaves the walk partial.
-            var kidsCutAway = kidsValue is PdfReference hidden && _reader.IsCutAtLimit(hidden.Target().Number);
+            // that names an object a limit cut short of an array lists what is unknown, and leaves the walk partial.
+            var kidsCutAway = NamesCutObject(kidsValue);
             Partial |= kidsCutAway;
 
-            if (!cut && (kidsValue is null || kidsValue.Resolve() is not PdfNull))
+            if (!cut && !kidsCutAway && (kidsValue is null || kidsValue.Resolve() is not PdfNull))
             {
                 NodesWithoutKids.Add(new ProbeFinding(
                     Location(place),
@@ -687,7 +700,8 @@ internal sealed class PageTreeWalk
 
                 break;
 
-            case var count when !frame.Doubtful && count.Resolve() is PdfInteger { Value: var declared } && declared != below:
+            // One that names an object a limit cut is unknown, whatever was read of it.
+            case var count when !frame.Doubtful && !NamesCutObject(count) && count.Resolve() is PdfInteger { Value: var declared } && declared != below:
                 CountMismatches.Add(new ProbeFinding(
                     Location(frame.Place),
                     Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {RuleText.Pages(below)} {Lie(below)} below it.")));
@@ -816,16 +830,17 @@ internal sealed class PageTreeWalk
             null or PdfNull => null,
             PdfReference reference when reference.Resolve() is PdfNull &&
                 _reader.GetPresence(reference.Id.Number) == ObjectPresence.Defined &&
-                !_reader.IsCutAtLimit(reference.Target().Number) => null,
+                !NamesCutObject(reference) => null,
             var value => value,
         };
 
     private void CheckMediaBox(PdfObject box, PdfValidationLocation location, Place place, string what)
     {
-        // A /MediaBox that names an object the file lacks is object.reference-missing's, or the index's.
+        // A /MediaBox that names an object the file lacks is object.reference-missing's, or the index's; one that names an
+        // object a limit cut, or a corner that does, is unknown, whatever was read of it.
         var resolved = box.Resolve();
 
-        if (resolved is PdfNull)
+        if (resolved is PdfNull || NamesCutObject(box))
         {
             return;
         }
@@ -844,6 +859,11 @@ internal sealed class PageTreeWalk
 
         for (var index = 0; index < 4; index++)
         {
+            if (NamesCutObject(array[index]))
+            {
+                return;
+            }
+
             switch (array.Resolved(index))
             {
                 case PdfInteger integer:
@@ -962,8 +982,19 @@ internal sealed class PageTreeWalk
         return 0;
     }
 
-    private static bool IsNode(PdfDictionary dictionary) =>
-        dictionary.GetRaw(PdfName.Kids)?.Resolve() is PdfArray || dictionary.GetName(PdfName.Type) == PdfName.Pages;
+    /// <summary>
+    /// Determines whether <paramref name="dictionary"/> is a node of the tree: it lists kids, or says it is one. A
+    /// <c>/Kids</c> that names an object a limit cut may list them past the cut, and counts as an array.
+    /// </summary>
+    private bool IsNode(PdfDictionary dictionary) =>
+        dictionary.GetRaw(PdfName.Kids) is { } kids && (kids.Resolve() is PdfArray || NamesCutObject(kids)) ||
+        dictionary.GetName(PdfName.Type) == PdfName.Pages;
+
+    /// <summary>
+    /// Determines whether <paramref name="value"/> names an object a limit cut: what it holds past the cut is unknown,
+    /// whatever was read of it — nothing, the <c>12</c> of <c>12 0 R</c>, an array cut short.
+    /// </summary>
+    private bool NamesCutObject(PdfObject? value) => value is PdfReference reference && _reader.IsCutAtLimit(reference.Target().Number);
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 

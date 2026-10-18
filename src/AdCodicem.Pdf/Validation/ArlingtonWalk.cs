@@ -957,6 +957,8 @@ internal sealed class ArlingtonWalk
 
             if (kind is not (ValueClass.Dictionary or ValueClass.Stream))
             {
+                // An ancestor a reader limit cut, unknown whatever was read of it, gives the key: it may lie past the limit.
+                found = IsCut(number);
                 break;
             }
 
@@ -974,12 +976,6 @@ internal sealed class ArlingtonWalk
                 }
 
                 _chainNumbers.Add(number);
-
-                if (_reader.IsCutAtLimit(number))
-                {
-                    found = true;
-                    break;
-                }
             }
 
             // An ancestor a rebuild of the index turned into something else says nothing of the key: as one a limit
@@ -1125,9 +1121,10 @@ internal sealed class ArlingtonWalk
         }
 
         var value = _reader.GetObject(reference.Id);
-        // An object a limit cut before its value is unknown, not a null the file writes.
-        var kind = value is PdfNull
-            ? (_reader.GetPresence(number) == ObjectPresence.Defined && !_reader.IsCutAtLimit(number) ? ValueClass.Null : ValueClass.Unknown)
+        // An object a limit cut is unknown, whatever was read of it — nothing, which is no null the file writes, the "12" of
+        // "12 0 R", the "<" of "<<" —: nothing written in it is judged, its kind among the rest.
+        var kind = _reader.IsCutAtLimit(number) ? ValueClass.Unknown
+            : value is PdfNull ? (_reader.GetPresence(number) == ObjectPresence.Defined ? ValueClass.Null : ValueClass.Unknown)
             : ClassOf(value);
 
         _numbers[number] = (byte)kind;
