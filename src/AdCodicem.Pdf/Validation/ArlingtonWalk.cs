@@ -941,8 +941,8 @@ internal sealed class ArlingtonWalk
     /// </summary>
     /// <remarks>
     /// The chain stops at an object met before on it, so a loop of parents ends it; and what each object's ancestors
-    /// give is remembered, so that many objects under one long chain walk it once. An ancestor a reader limit cut gives
-    /// the key: it may lie past the limit.
+    /// give is remembered, so that many objects under one long chain walk it once. An ancestor a reader limit cut, or a
+    /// guard left out of the index, gives the key: it may lie past the limit.
     /// </remarks>
     private bool Inherits(PdfDictionary dictionary, ArlingtonName key)
     {
