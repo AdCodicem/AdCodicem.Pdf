@@ -962,9 +962,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// the headers of real files; then, while the header runs past the last or may have been cut at its edge, windows eight
     /// times larger each, the one a load starts with, <see cref="InitialObjectWindow"/>, taken on the way, no further than a
     /// load reads from the offset; past a run of white space it skips, the windows start again from the first, and past
-    /// the white space it crosses, from the one it lexes. A header is so read in no larger window than a load reads it in,
-    /// the small ones aside; what decides is the first whole token that rules a header out, or the header's three, which
-    /// any window long enough reads alike.
+    /// the white space it crosses, from the one it lexes, each ending no further than the window a load reads from the
+    /// offset. A header is so read in no window reaching past the one a load reads it in, the small ones aside; what decides
+    /// is the first whole token that rules a header out, or the header's three, which any window long enough reads alike.
     /// </para>
     /// <para>
     /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it crossed up to its
@@ -1095,13 +1095,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         return HeaderReadingSpent;
                     }
 
+                    // The next window ends no further than the one a load reads the header in, from the offset, and at its
+                    // end where it would stop short of it by less than it reads: after a crossing, a window starts past the
+                    // offset, and one as large as a load's would read past it. It is grown at least twice what this one
+                    // lexed, which it reads again: grown from a step just under that, it would gain a few bytes.
+                    var toLoadEnd = offset + LoadWindowPast(origin + span.Length - offset) - origin;
                     windowSize = Grown(windowSize);
 
-                    // Grown from a step just under what a window after a crossing lexed, the next would read it all again
-                    // for a few bytes more: it grows once more, while no larger than the window a load reads the header in.
-                    if (windowSize < 2L * span.Length && Grown(windowSize) <= LoadWindowPast(origin + span.Length - offset))
+                    if (windowSize < 2L * span.Length)
                     {
                         windowSize = Grown(windowSize);
+                    }
+
+                    if (2 * windowSize > toLoadEnd)
+                    {
+                        windowSize = toLoadEnd;
                     }
 
                     continue;

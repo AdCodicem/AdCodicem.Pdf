@@ -1456,14 +1456,20 @@ public class HostileInputTests
     }
 
     [Theory]
-    [InlineData(5_000)]
-    [InlineData(12_865)]
-    public void Settling_rows_whose_long_header_follows_a_lead_reads_no_more_than_their_loads(int lead)
+    [InlineData(5_000, 70_000)]
+    [InlineData(12_865, 70_000)]
+    [InlineData(12_764, 50_000)]
+    [InlineData(406_180, 65_430)]
+    [InlineData(438_780, 50_000)]
+    [InlineData(450_000, 70_000)]
+    public void Settling_rows_whose_long_header_follows_a_lead_reads_no_more_than_their_loads(int lead, int zeros)
     {
-        // P3-01: ten rows, each a lead of blanks then a header of 70,000 zeros and "n 0 obj". The crossing's last window
-        // lexed all but a byte of a step; the next, grown from the step under it, was a byte larger, read again to gain that
-        // byte: 64 KB more than a load read a header. It grows once more, no larger than the window a load reads it in.
-        const int Count = 10;
+        // P3-01, Q2-01, Q2-02: rows, each a lead of blanks then a header of zeros and "n 0 obj". The crossing's last window
+        // lexed all but a byte of a step, and the next, grown from the step under it, was read again to gain that byte; grown
+        // once more, it was as large as a load's window and ended past it, by the lead; and after a long lead, a window as
+        // large as a load's read past the load's. Each window after a crossing grows to twice what it lexed at least, and
+        // ends no further than the window a load reads the header in, from the row.
+        const int Count = 4;
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -1474,7 +1480,7 @@ public class HostileInputTests
         for (var number = 3; number < Count + 3; number++)
         {
             rows[number] = file.Position;
-            file.Raw(new string('\0', lead) + new string('0', 70_000) + string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj null endobj\n"));
+            file.Raw(new string('\0', lead) + new string('0', zeros) + string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj null endobj\n"));
         }
 
         file.Table(Count + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Count + 3} /Root 1 0 R"));
