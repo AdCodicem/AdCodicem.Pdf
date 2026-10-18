@@ -3588,7 +3588,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // A declared count is the file's claim: the index makes room for no more rows than the data holds.
         ReserveIndex(Math.Min(declared, held));
-        var fullBefore = _indexFullAt >= 0;
 
         if (index is null)
         {
@@ -3639,8 +3638,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         // The rows a guard left unread are the only ones that may yet place an object the dictionary names, before any older
-        // section is read: from the row the index had no room for, which the reading passed, or past the data it cut.
-        var stopped = !fullBefore && _indexFullAt >= 0 && row > 0 ? (position / row) - 1 : long.MaxValue;
+        // section is read: from the row the index had no room for, which the reading passed — every row, for an index full
+        // before the first —, or past the data it cut.
+        var stopped = _indexFullAt >= 0 && row > 0 ? Math.Max(0, (position / row) - 1) : long.MaxValue;
         stopped = rowsCut ? Math.Min(stopped, held) : stopped;
         _rowsLeftUnread = RowsFrom(index is null ? [0, declared] : subsections, stopped);
 
