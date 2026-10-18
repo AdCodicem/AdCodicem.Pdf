@@ -1560,13 +1560,17 @@ public class HostileInputTests
         (source.BytesRead - read).Should().BeLessThanOrEqualTo(loads + (2 * 64));
     }
 
-    [Fact]
-    public void Placing_a_row_whose_comment_ends_in_a_run_crossed_inside_it_reads_the_comment_to_its_line_end()
+    [Theory]
+    [InlineData(10)]
+    [InlineData(100)]
+    [InlineData(1_000)]
+    public void Placing_a_row_whose_comment_ends_in_a_run_crossed_inside_it_reads_the_comment_to_its_line_end(int inside)
     {
         // Object 4's row leads into a comment of blanks whose line ends 2,000 bytes on, then into 70,000 blanks before its
         // header. Object 5's row, inside the comment, crosses its blanks, the line end and the blanks past it, which it
         // remembers as a run: inside the comment, the run is the comment's up to its line end, and object 4's row reads it,
-        // as a load does, rather than reading on past it still inside the comment, which would swallow the header.
+        // as a load does, rather than reading on past it still inside the comment, which would swallow the header. A row
+        // close to the comment's start has object 4's second window end inside the run, still in the comment (T2-4).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -1577,14 +1581,14 @@ public class HostileInputTests
         file.Raw("%c" + new string('\0', 2_000) + "\n" + new string('\0', 70_000));
         file.Object(4, "(four)");
         rows[4] = lead;
-        rows[5] = lead + 1_000;
+        rows[5] = lead + inside;
         file.Table(6, rows, "/Size 6 /Root 1 0 R");
         using var document = PdfDocument.Open(file.Bytes);
         var reading = new HeaderReading(long.MaxValue);
-        document.Reader.ChainIndex!.TryGet(5, out var inside).Should().BeTrue();
+        document.Reader.ChainIndex!.TryGet(5, out var insideEntry).Should().BeTrue();
         document.Reader.ChainIndex.TryGet(4, out var commented).Should().BeTrue();
 
-        document.Reader.PlaceHeader(5, inside, reading).Place.Should().Be(HeaderPlace.NotFound);
+        document.Reader.PlaceHeader(5, insideEntry, reading).Place.Should().Be(HeaderPlace.NotFound);
         var placement = document.Reader.PlaceHeader(4, commented, reading);
 
         placement.Place.Should().Be(HeaderPlace.AtOffset);
@@ -1592,12 +1596,15 @@ public class HostileInputTests
         document.WasRepaired.Should().BeFalse();
     }
 
-    [Fact]
-    public void Placing_a_row_whose_first_token_is_a_string_through_a_run_crossed_reads_the_string_whole()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(50_000)]
+    public void Placing_a_row_whose_first_token_is_a_string_through_a_run_crossed_reads_the_string_whole(int? maxObjectLength)
     {
         // Object 4's row starts a string of 70,000 blanks, which object 5's row, inside it, crosses and remembers as a run. A
         // string runs on through white space: object 4's row reads it again from its start, past the run, to its end, as a
-        // load does, and finds no header there, rather than taking the string for one the run ends.
+        // load does, rather than taking the string for one the run ends. No string begins a header; but one that runs past
+        // the object guard is one a load reaches the guard on, and so does the row (T2-5).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -1610,14 +1617,120 @@ public class HostileInputTests
         rows[4] = lead;
         rows[5] = lead + 10;
         file.Table(6, rows, "/Size 6 /Root 1 0 R");
-        using var document = PdfDocument.Open(file.Bytes);
+        var limits = maxObjectLength is { } bound ? PdfReaderLimits.Default with { MaxObjectLength = bound } : PdfReaderLimits.Default;
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
         var reading = new HeaderReading(long.MaxValue);
         document.Reader.ChainIndex!.TryGet(5, out var inside).Should().BeTrue();
         document.Reader.ChainIndex.TryGet(4, out var stringed).Should().BeTrue();
+        var place = maxObjectLength is null ? HeaderPlace.NotFound : HeaderPlace.PastGuard;
 
-        document.Reader.PlaceHeader(5, inside, reading).Place.Should().Be(HeaderPlace.NotFound);
+        document.Reader.PlaceHeader(5, inside, reading).Place.Should().Be(place);
 
-        document.Reader.PlaceHeader(4, stringed, reading).Place.Should().Be(HeaderPlace.NotFound);
+        document.Reader.PlaceHeader(4, stringed, reading).Place.Should().Be(place);
+    }
+
+    [Fact]
+    public void Probing_rows_that_skip_a_run_into_a_comment_reads_a_few_times_what_they_consume()
+    {
+        // T2-1: two thousand rows place their objects at 70,000 blanks before a comment of 4,700 bytes, then "x" and 450 KB
+        // of filler. Past the run the first row crossed, each row read the rest of a load's window from the row, 450 KB,
+        // to the "x" that decides it, and was charged up to it: the probe read 180 times the file, and a file of 16 MB
+        // twice its length past a run of 4 MB was read 4,500 times. Past a run it skips, a row's windows grow as from an
+        // offset there.
+        const int Rows = 2_000;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw(new string('\0', 70_000) + "%" + new string('c', 4_699) + "\nx " + new string('z', 450_000) + "\n");
+
+        for (var number = 3; number < Rows + 3; number++)
+        {
+            rows[number] = at;
+        }
+
+        file.Table(Rows + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Rows + 3} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.SettleIndex();
+        var settled = source.BytesRead;
+
+        _ = CrossReferenceProbe.Run(document);
+
+        (source.BytesRead - settled).Should().BeLessThan(10L * bytes.Length);
+    }
+
+    [Fact]
+    public void Placing_a_row_whose_string_holds_a_run_crossed_reads_no_more_than_the_row_alone()
+    {
+        // T2-2: object 6's row leads into 70,000 blanks, then a string of 400 KB holding a run of blanks object 5's row
+        // crossed first. The window that lexed the string stopped where the run starts, and the next read the string again
+        // from its start: 400 KB more than the row read alone. A window that lexes reads on through a run.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw("1" + new string(' ', 69_999) + "(" + new string('a', 430_000) + new string('\0', 200) + new string('a', 300_000) + ") ");
+        rows[6] = at;
+        rows[5] = at + 70_000 + 1 + 430_000;
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var bytes = file.Bytes;
+
+        using var aloneSource = new StrictCountingSource(bytes);
+        using var aloneDocument = PdfDocument.Open(aloneSource, options: null, ownsSource: false);
+        aloneDocument.Reader.ChainIndex!.TryGet(6, out var six).Should().BeTrue();
+        var before = aloneSource.BytesRead;
+        aloneDocument.Reader.PlaceHeader(6, six, new HeaderReading(long.MaxValue)).Place.Should().Be(HeaderPlace.NotFound);
+        var alone = aloneSource.BytesRead - before;
+
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var reading = new HeaderReading(long.MaxValue);
+        document.Reader.ChainIndex!.TryGet(5, out var five).Should().BeTrue();
+        document.Reader.PlaceHeader(5, five, reading);
+        before = source.BytesRead;
+
+        document.Reader.PlaceHeader(6, six, reading).Place.Should().Be(HeaderPlace.NotFound);
+
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(alone);
+    }
+
+    [Theory]
+    [InlineData(8_192, "")]
+    [InlineData(65_536, "")]
+    [InlineData(65_536, "x")]
+    public void Placing_a_row_whose_header_of_another_object_ends_a_load_s_window_reads_no_further(int edge, string after)
+    {
+        // T2-3: object 8's row holds "6 0 obj", its obj ending where a load's window does. A load takes the header as it is,
+        // and, of another object, reads no further there; the row read it again in the rest of the next window, 458 KB past
+        // what the load read. It decides as the load, object 6's header at the row, even an "objx" past the window.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var at = file.Position;
+        file.Raw("6 0" + new string(' ', edge - 6) + "obj" + after + "\n(eight)\nendobj\n%" + new string('c', 600_000) + "\n");
+        rows[8] = at;
+        file.Table(9, rows, "/Size 9 /Root 1 0 R");
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        document.Reader.ChainIndex!.TryGet(8, out var entry).Should().BeTrue();
+        var before = source.BytesRead;
+
+        var placement = document.Reader.PlaceHeader(8, entry, new HeaderReading(long.MaxValue));
+
+        placement.Place.Should().Be(HeaderPlace.NotFound);
+        placement.NumberAtOffset.Should().Be(6);
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(edge + (2 * PdfFileReader.NearbySearchRadius));
     }
 
     [Fact]

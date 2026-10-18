@@ -72,9 +72,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// How many bytes <see cref="HeaderAt"/> reads first where an entry places its object, free of what a pass that reads
     /// every entry's header may consume: enough for a header after some white space. A header that runs past them, or that
-    /// their edge may have cut, is read again in a window eight times larger, and so on, the window a load starts with
-    /// taken on the way, no further than a load reads. Not a bound: the size of a first read, which holds the headers of
-    /// real files.
+    /// their edge may have cut, is read on from there in a window eight times larger, and so on, the window a load starts
+    /// with taken on the way, no further than a load reads. Not a bound: the size of a first read, which holds the headers
+    /// of real files.
     /// </summary>
     private const int HeaderCheckWindow = 64;
 
@@ -899,7 +899,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (IsInFile(offset))
         {
-            var found = HeaderAt(offset, reading, out var generation, out var start);
+            var found = HeaderAt(offset, number, reading, out var generation, out var start);
 
             if (found == HeaderReadingSpent)
             {
@@ -937,7 +937,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // The search reads a header backwards from an "obj"; a load parses forwards from where it starts, and refuses what
         // the search took — "4 0 objection" —, or reaches the guard on it.
-        var near = HeaderAt(nearby, reading, out var nearGeneration, out _);
+        var near = HeaderAt(nearby, number, reading, out var nearGeneration, out _);
 
         return near switch
         {
@@ -950,11 +950,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Gives the number of the object whose header starts at <paramref name="offset"/>, read as <see cref="TryParseNumberedAt"/>
-    /// reads it — after white space and comments, in windows read on while the header runs past them or may have been cut at
-    /// their edge, up to <see cref="PdfReaderLimits.MaxObjectLength"/> —, with its generation and where it starts; 0 where no
-    /// header is; or <see cref="HeaderPastGuard"/> where the header still runs past the largest window, where a load reaches
-    /// that guard; or <see cref="HeaderReadingSpent"/> where reading it further would consume more than
-    /// <paramref name="reading"/> has left. Nothing is parsed past the header, reported or recorded.
+    /// reads it for object <paramref name="expected"/> — after white space and comments, in windows read on while the header
+    /// runs past them or may have been cut at their edge, up to <see cref="PdfReaderLimits.MaxObjectLength"/> —, with its
+    /// generation and where it starts; 0 where no header is; or <see cref="HeaderPastGuard"/> where the header still runs
+    /// past the largest window, where a load reaches that guard; or <see cref="HeaderReadingSpent"/> where reading it further
+    /// would consume more than <paramref name="reading"/> has left. Nothing is parsed past the header, reported or recorded.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -962,23 +962,25 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// headers of real files; then, while the header runs past the last or may have been cut at its edge, windows eight
     /// times larger each, the one a load starts with, <see cref="InitialObjectWindow"/>, taken on the way, then each the
     /// rest of the window a load reads from the offset; past a run of white space it skips, the windows start again from the
-    /// first. Each reads on from where the last stopped — the white space it crossed, the tokens it lexed whole, a comment
-    /// running on — and reads again only a token its edge may have cut, from its start; each ends no further than the
-    /// window a load reads its first bytes in, but one that reads such a token again. A header is so read in no window
-    /// reaching past the one a load reads it in, and with no more read than a load reads to decide it, the small windows
-    /// aside. What decides is the first whole token that rules a header out, or the header's three, which any window long
-    /// enough reads alike.
+    /// first, and grow as they would from an offset there. Each reads on from where the last stopped — the white space it
+    /// crossed, the tokens it lexed whole, a comment running on — and reads again only a token its edge may have cut, from
+    /// its start; each ends no further than the window a load reads its first bytes in, but one that reads such a token
+    /// again. A header is so read in no window reaching past the one a load reads it in, and with no more read than a load
+    /// reads to decide it, the small windows aside. What decides is the first whole token that rules a header out, or the
+    /// header's three, which any window long enough reads alike — or, as a load reads it, an <c>obj</c> a load's window ends
+    /// on, after the number of another object than <paramref name="expected"/>, which a load takes as it is.
     /// </para>
     /// <para>
     /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it read up to its decision,
     /// past the next window where the first is white space or cuts a header, and the first past a run it skips, which
     /// consume what lies up to the decision. The runs of white space crossed before the header's first token are remembered:
-    /// an offset inside one, or a reading that reaches one — crossing white space, or between two tokens —, reads on from its
-    /// end, where a load would find what it finds, and what it holds is consumed once. Inside a comment, which runs to the
-    /// end of its line, a run is read as any other bytes: it may hold no line end.
+    /// an offset inside one, a crossing that reaches one, or a reading between two tokens whose window ends in one, reads on
+    /// from its end, where a load would find what it finds, and what it holds is consumed once; a window that lexes reads
+    /// through a run, which a string may hold. Inside a comment, which runs to the end of its line, a run is read as any
+    /// other bytes: it may hold no line end.
     /// </para>
     /// </remarks>
-    private long HeaderAt(long offset, HeaderReading reading, out long generation, out long start)
+    private long HeaderAt(long offset, int expected, HeaderReading reading, out long generation, out long start)
     {
         generation = -1;
         start = offset;
@@ -991,6 +993,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var origin = offset;
         var windowSize = (long)HeaderCheckWindow;
         var crossing = true;
+
+        // Where the windows grow from, as a load's from its offset: the offset, or the end of the last run skipped, past which
+        // the reading has consumed what it read, and no more.
+        var grownFrom = offset;
 
         // What the windows before lexed of the header: the tokens read whole — its number, where it starts, its generation —,
         // whether they stopped inside a comment, and whether the window starts at a token its edge may have cut.
@@ -1015,6 +1021,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     origin = past;
                     consumed = Math.Max(consumed, origin);
                     windowSize = HeaderCheckWindow;
+                    grownFrom = origin;
                 }
             }
 
@@ -1026,10 +1033,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var length = (int)Math.Min(windowSize, reach - origin);
 
-            // A window ends no further than the one a load reads its first bytes in, from the offset, and stops where a run
-            // remembered starts: the reading joins the run there. Not inside a comment, which a run may not end; nor one
-            // that reads again from its start a token the last window's edge may have cut, which that window reached, and
-            // which a string may run through.
+            // A window ends no further than the one a load reads its first bytes in, from the offset, but one that reads
+            // again from its start a token the last window's edge may have cut, which that window reached.
             if (!readingAgain)
             {
                 var loadEnd = offset + LoadWindowPast(origin - offset);
@@ -1038,11 +1043,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     length = (int)(loadEnd - origin);
                 }
+            }
 
-                if (!inComment && reading.NextRunAfter(origin) is var next && origin + length > next)
-                {
-                    length = (int)(next - origin);
-                }
+            // While white space is crossed, a window stops where a run remembered starts: the crossing joins it there. A
+            // window that lexes reads on through it: a string may hold it.
+            if (crossing && reading.NextRunAfter(origin) is var next && origin + length > next)
+            {
+                length = (int)(next - origin);
             }
 
             // A pass that has spent its allowance reads no more than the first window of each header.
@@ -1121,8 +1128,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 if (cut && (token.Kind == PdfTokenKind.EndOfInput || token.End >= edge))
                 {
                     // The header may go on past the window. At a load's largest, a load keeps a header it read whole —
-                    // "5 0 obj" up to the edge —, and reaches the guard on one it did not.
-                    if (atReach)
+                    // "5 0 obj" up to the edge —, and reaches the guard on one it did not; at the end of a smaller one, it
+                    // takes such a header of another object than the one it reads as it is, and reads no further.
+                    if (atReach || (lexed == 2 && number != expected && token.IsKeyword("obj"u8) && EndsLoadWindow(offset, end)))
                     {
                         Consume(reading, ref consumed, end);
 
@@ -1198,8 +1206,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // The next window grows from this one — twice what it reads again at least — while it is one of the small ones
             // and ends short of the window a load reads past this one's edge, from the offset; past them, it is the rest of
             // that window, as a load reads none between: after a crossing, a window starts past the offset, and one as
-            // large as a load's would read past it.
-            var toLoadEnd = offset + LoadWindowPast(end - offset) - resume;
+            // large as a load's would read past it. Past a run it skipped, it grows as from an offset at the run's end: a
+            // window that reached the end of a load's from the row would read far more than the reading consumes.
+            var toLoadEnd = Math.Min(offset + LoadWindowPast(end - offset), grownFrom + LoadWindowPast(end - grownFrom)) - resume;
             windowSize = Grown(windowSize);
 
             if (windowSize < 2L * (end - resume))
@@ -1215,6 +1224,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             origin = resume;
         }
     }
+
+    /// <summary>
+    /// Determines whether <paramref name="end"/> is where a window a load reads from <paramref name="offset"/> ends, one of
+    /// <see cref="InitialObjectWindow"/> grown eightfold.
+    /// </summary>
+    private bool EndsLoadWindow(long offset, long end) => LoadWindowPast(end - offset - 1) == end - offset;
 
     /// <summary>
     /// Gives where the line ends in <paramref name="span"/>, which starts inside a comment: the first carriage return or line
