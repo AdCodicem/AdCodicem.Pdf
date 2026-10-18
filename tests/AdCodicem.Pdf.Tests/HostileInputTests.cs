@@ -1409,6 +1409,79 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Settling_rows_whose_header_ends_where_a_run_crossed_before_starts_reads_no_larger_window_than_a_load_reads()
+    {
+        // N3-02: a hundred rows, written highest number first, each 13,000 blanks or more before its header, which ends where
+        // the lead of the row settled before it starts. Each crossing stopped at that remembered run, with the header at the
+        // window's edge, and the next window grew from the crossing's, 512 KB, where a load reads 8 KB, then 64 KB: settling
+        // read seven times what loads of the rows read. The window after a crossing now grows from what it lexes.
+        const int Count = 100;
+        const int Lead = 13_000;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = Count + 2; number >= 3; number--)
+        {
+            rows[number] = file.Position;
+            file.Raw(new string(' ', Lead + number - 3) + string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj"));
+        }
+
+        file.Raw("\nnull\nendobj\n");
+        file.Table(Count + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {Count + 3} /Root 1 0 R"));
+        var bytes = file.Bytes;
+        long loads = 0;
+
+        for (var number = 3; number < Count + 3; number++)
+        {
+            using var alone = new StrictCountingSource(bytes);
+            using var opened = PdfDocument.Open(alone, options: null, ownsSource: false);
+            var before = alone.BytesRead;
+            opened.GetObject(new PdfObjectId(number));
+            loads += alone.BytesRead - before;
+            opened.WasRepaired.Should().BeFalse();
+        }
+
+        using var source = new StrictCountingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var read = source.BytesRead;
+
+        document.Reader.SettleIndex();
+
+        document.WasRepaired.Should().BeFalse();
+        (source.BytesRead - read).Should().BeLessThanOrEqualTo(loads + ((Count + 2) * (64L + 512 + 4096)));
+    }
+
+    [Fact]
+    public void Validating_a_file_cut_short_under_a_row_reads_no_header_there()
+    {
+        // N3-01: another process cuts the file at object 3's row after the document opened. Settling's window there gave
+        // nothing, and slicing it from its first token, which an empty window lacks, threw out of the validator; a load of
+        // object 3 reads the end of the data there.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var cut = file.Position;
+        rows[3] = file.Object(3, "(three)");
+        file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var source = new CutShortSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: true);
+        source.CutAt((int)cut);
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Should().Contain(finding =>
+            finding.RuleId == PdfValidationRuleIds.XRefEntryBroken && finding.Location.Object == new PdfObjectId(3));
+        document.GetObject(new PdfObjectId(3)).Should().Be(PdfNull.Instance);
+    }
+
+    [Fact]
     public void Probing_the_entries_consumes_no_more_than_twice_the_file_past_the_first_bytes_of_each_header()
     {
         // Two hundred rows place their objects in two comments of 100 KB, past which no header lies, each row in the other

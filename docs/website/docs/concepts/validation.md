@@ -104,9 +104,10 @@ it nearby as a load would, and nothing of any object's body. A header that runs 
 [object limit](reader-limits.md) is taken as a read takes it: reported under `limit.object` and looked for nearby, or,
 for a document opened to throw on a limit, left to the read that reaches it. What reading the headers consumes — the
 bytes crossed up to each decision, past the first 64 of each — is twice the file's length at most, which a valid file's
-headers, distinct bytes, never reach: past it, the validator rebuilds the index rather than read on. Each run of white
+headers, distinct bytes, never reach: past it, the validator rebuilds the index rather than read on. A run of white
 space is crossed once, the entries placed inside it, or that reach it, reading on from its end, as blocks of zeros a
-fault left would otherwise be read again for each. A rebuild costs a whole read of
+fault left would otherwise be read again for each — sixteen runs remembered at most, the longest kept, so that entries
+placed in more blocks than that cross the shorter ones again, and may spend what reading the headers may consume. A rebuild costs a whole read of
 the file, even when no rule would have reached the damage. No rule then reads part of the document before a rebuild and part
 after it, and a document gives the same report whatever you read before validating it — nothing, every object, or a
 previous validation.
