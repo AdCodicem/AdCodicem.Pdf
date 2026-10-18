@@ -1597,6 +1597,43 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_pass_that_spent_its_allowance_decides_a_row_skipped_into_a_run_in_its_first_window(bool crossedFirst)
+    {
+        // W2-3: object 3's row crosses 110 blanks, which the pass remembers; object 7's header lies past them, 5 bytes past
+        // its row. With nothing left of the allowance, the row skipped to the run's end and read a window running past its
+        // first 64 bytes, and was left undecided, though they decide it; read without the crossing before, it was decided.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var lead = file.Position;
+        file.Raw(new string(' ', 110));
+        file.Object(7, "null");
+        rows[3] = lead;
+        rows[7] = lead + 105;
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+        var reading = new HeaderReading(1_000);
+        document.Reader.ChainIndex!.TryGet(3, out var three).Should().BeTrue();
+        document.Reader.ChainIndex.TryGet(7, out var seven).Should().BeTrue();
+
+        if (crossedFirst)
+        {
+            document.Reader.PlaceHeader(3, three, reading).Place.Should().Be(HeaderPlace.NotFound);
+        }
+
+        reading.Consume(long.MaxValue);
+        var placement = document.Reader.PlaceHeader(7, seven, reading);
+
+        placement.Place.Should().Be(HeaderPlace.AtOffset);
+        placement.Position.Should().Be(lead + 110);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData(50_000)]
     public void Placing_a_row_whose_first_token_is_a_string_through_a_run_crossed_reads_the_string_whole(int? maxObjectLength)
