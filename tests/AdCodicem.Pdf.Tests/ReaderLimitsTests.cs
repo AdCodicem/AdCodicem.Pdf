@@ -1623,19 +1623,27 @@ public class ReaderLimitsTests
     [InlineData("a stream", "/Prev 21 0 R")]
     [InlineData("another object's", "/Prev 21 0 R")]
     [InlineData("a chain past the cut", "/Prev 21 0 R")]
+    [InlineData("an object past the object guard", "/Prev 21 0 R")]
     public void A_prev_written_as_a_reference_reads_past_a_guard_as_a_whole_read_reads_it(string row21, string prev)
     {
-        // V2-1, V2-3: the newest table's rows run past what MaxXRefSectionLength reads, its trailer gives no /Root, and its
-        // /Prev is a reference whose row the guard read: a free one, of another generation, object 0, a stream, the row of
-        // another object — which a whole read reads as no section, and rebuilds for the /Root the file lacks —; or a chain
-        // to an object whose row lies past the cut, unknown. Each read as unknown, or as no section, alike.
+        // V2-1, V2-3, W1-5: the newest table's rows run past what MaxXRefSectionLength reads, its trailer gives no /Root, and
+        // its /Prev is a reference whose row the guard read: a free one, of another generation, object 0, a stream, the row
+        // of another object — which a whole read reads as no section, and rebuilds for the /Root the file lacks —; or a
+        // chain to an object whose row lies past the cut, or an object that runs past MaxObjectLength, unknown. Each read as
+        // unknown, or as no section, alike.
         var file = new HandWrittenFile();
         var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         var pages = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>");
         var older = file.Table(4, new Dictionary<int, long> { [1] = catalog, [2] = pages, [3] = page }, "/Size 4 /Root 1 0 R");
         var oldest = older.ToString(CultureInfo.InvariantCulture);
-        var twentyOne = file.Object(21, row21 switch { "a stream" => "<< /Length 3 >>\nstream\n123\nendstream", "a chain past the cut" => "22 0 R", _ => oldest });
+        var twentyOne = file.Object(21, row21 switch
+        {
+            "a stream" => "<< /Length 3 >>\nstream\n123\nendstream",
+            "a chain past the cut" => "22 0 R",
+            "an object past the object guard" => "%" + new string('c', 3_000) + "\n" + oldest,
+            _ => oldest,
+        });
         var twentyTwo = row21 == "a chain past the cut" ? file.Object(22, oldest) : -1;
         var table = file.Position;
         var placed = row21 switch
@@ -1649,9 +1657,14 @@ public class ReaderLimitsTests
         file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n21 1\n{placed}2 2\n{pages:D10} 00000 n \n{page:D10} 00000 n \n4 17\n{free}22 1\n{lastRow}trailer\n<< /Size 23 {prev} >>\nstartxref\n{table}\n%%EOF\n"));
         using var whole = PdfDocument.Open(file.Bytes);
 
-        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 128 } });
+        var limits = PdfReaderLimits.Default with
+        {
+            MaxXRefSectionLength = 128,
+            MaxObjectLength = row21 == "an object past the object guard" ? 1_024 : PdfReaderLimits.Default.MaxObjectLength,
+        };
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
 
-        if (row21 == "a chain past the cut")
+        if (row21 is "a chain past the cut" or "an object past the object guard")
         {
             document.Reader.Structure.TrailersHiddenByGuard.Should().BeTrue();
             document.WasRepaired.Should().BeFalse();
