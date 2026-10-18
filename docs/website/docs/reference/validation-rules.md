@@ -123,10 +123,10 @@ under /Kids[1] of page tree node 2", "at [1] in object 7" in an array of kids th
 the object the chain leads to: "names object 5, which leads to object 99, which the file lacks"; one too long to follow,
 or looping, reads as null, and is said so. Nothing is judged of what an object one of the reader's limits cut holds or
 lacks — a node, a page, an array of kids, the catalog, or the trailer a catalog is written in —, as the Arlington walk
-leaves it ([#175]): a node so cut is taken to give what the pages below it inherit, its `/Count` and those above it are
-not judged, and the values its `/Kids` holds after the last reference, dictionary or stream are not counted, being
-perhaps what the cut left of a reference; the pages and nodes it names are judged as any other, and a page so cut, listed
-again, is counted again with the same doubt. A kid, a `/Kids`, `/Count`, `/MediaBox`, a corner of one, `/Resources` or
+leaves it ([#175]): a node so cut is taken to give what the pages below it inherit, its `/Count` is not judged, nor the
+value of those above it, a missing one still reported, and the values its `/Kids` holds after the last reference,
+dictionary or stream are not counted, being perhaps what the cut left of a reference; the pages and nodes it names are
+judged as any other, and a page so cut, listed again, is counted again with the same doubt. A kid, a `/Kids`, `/Count`, `/MediaBox`, a corner of one, `/Resources` or
 a root's `/Parent`, or the catalog's `/Pages`, that names an object a limit cut is unknown, whatever was read of it —
 nothing, the `12` of `12 0 R`, an array cut short —, as is one that names an object a guard left out of the index:
 neither absent nor judged, the other corners judged, and a dictionary whose `/Kids` is so unknown is a node, whose

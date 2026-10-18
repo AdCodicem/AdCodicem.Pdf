@@ -147,7 +147,7 @@ The document's [reader limits](reader-limits.md) apply to validation too. An obj
 limit is not a fault of the file, so a rule meeting one judges nothing of what it lacks or holds, or says, as
 information, that it could not check it whole, rather than calling the file broken; opening the document with a raised
 limit lets it check the rest. The page tree rules take a node so cut to give what its pages inherit, and leave its
-`/Count`, those above it and the pages the tree may leave out unjudged; the reader takes a catalog so cut for the
+`/Count`, the value of those above it and the pages the tree may leave out unjudged; the reader takes a catalog so cut for the
 catalog, as it read it, rather than look for another, and does not look for one either when a limit left the object
 `/Root` names out of the index. Validation
 throws only for the caller's own mistakes, and for a limit when the document was opened to throw on one.

@@ -30,10 +30,11 @@ namespace AdCodicem.Pdf.Validation;
 /// <para>
 /// Nothing is judged of what is written in an object one of the reader's limits cut, as the Arlington walk leaves it:
 /// neither what it lacks — that may lie past the cut — nor what it holds, the value at the cut being perhaps cut itself.
-/// A node so cut is taken to give what the pages below it inherit, its <c>/Count</c> and those above it are not judged —
-/// not the array of kids of its own it names, read whole, counted as any other where listed again —, and the walk is
-/// partial; the references its <c>/Kids</c> holds, as read, are walked, each page or node judged as any other, and the
-/// values after its last reference, dictionary or stream are not counted, being perhaps what the cut left of a reference.
+/// A node so cut is taken to give what the pages below it inherit; its <c>/Count</c> is not judged, nor the value of those
+/// above it — a missing one still is, and the array of kids of its own the node names, read whole, is counted as any
+/// other where listed again —, and the walk is partial; the references its <c>/Kids</c> holds, as read, are walked, each
+/// page or node judged as any other, and the values after its last reference, dictionary or stream are not counted, being
+/// perhaps what the cut left of a reference.
 /// A catalog so cut leaves the walk partial too: its <c>/Pages</c> may lie past the cut.
 /// </para>
 /// <para>
