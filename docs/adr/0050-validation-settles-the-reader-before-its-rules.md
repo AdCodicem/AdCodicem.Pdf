@@ -93,8 +93,8 @@ as any read reads it, through the index the reader settled on.
 - Settling costs a header read per regular entry: under a microsecond an entry, about 2 % of a validation, and no
   allocation an entry. On a hostile file it reads a header in no larger window than a load reads it in, its first windows
   of 64, 512 and 4,096 bytes aside, over the entries `MaxIndexEntries` bounds; consumes twice the file's length at most
-  past the first bytes of each, reading about ten times that at most; and stops at the first entry a load would rebuild
-  for.
+  past the first bytes of each, reading about ten times that at most past a few small windows an entry; and stops at the
+  first entry a load would rebuild for.
 - A rebuild a load sets off while loads are in flight costs what one run first costs: the loads read through the scan's
   index meanwhile, and the object they read is read again once it is finished. The object graph reads again each object
   it has a finding for. The walk of the object streams' dependencies reads outside the reader's cache, and keeps the

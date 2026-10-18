@@ -92,7 +92,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// rebuilds the index past it, in one pass over the file, rather than read on; and each validation's probe of the
     /// cross-reference entries, which says the entries it did not decide were not checked. A header's reading consumes the
     /// bytes it crossed up to its decision — white space, comments, the header's tokens —, and reads about ten times that at
-    /// most, its windows grown eightfold; a run of white space several entries lead into is consumed once. Entries can
+    /// most, its windows grown eightfold, past a few small windows an entry reads free: the first, the next where the first
+    /// is white space or cuts a header, the first past a run it skips. A run of white space several entries lead into is
+    /// consumed once, while it is one of the runs remembered. Entries can
     /// place their objects in one long comment, each read again to its end, which is what the bound stops. An internal
     /// bound (ADR 34): a valid file's entries place their objects' headers each at its own offset, and its headers, distinct
     /// bytes, consume at most the file's length together.
@@ -953,17 +955,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// It decides as a load does, and reads no further: a first window of <see cref="HeaderCheckWindow"/> bytes, which holds
     /// the headers of real files; then, while the header runs past the last or may have been cut at its edge, windows eight
     /// times larger each, the one a load starts with, <see cref="InitialObjectWindow"/>, taken on the way, no further than a
-    /// load reads from the offset; past a run of white space it skips, the windows start again from the first. A header is
-    /// so read in no larger window than a load reads it in, the small ones aside; what decides is the first whole token
-    /// that rules a header out, or the header's three, which any window long enough reads alike.
+    /// load reads from the offset; past a run of white space it skips, the windows start again from the first, and past
+    /// the white space it crosses, from the one it lexes. A header is so read in no larger window than a load reads it in,
+    /// the small ones aside; what decides is the first whole token that rules a header out, or the header's three, which
+    /// any window long enough reads alike.
     /// </para>
     /// <para>
     /// What it consumes past the first window is taken from <paramref name="reading"/>: the bytes it crossed up to its
-    /// decision, which its windows read about ten times at most. White space, which the lexer skips, is crossed in one pass
-    /// rather than read again in each larger window, and the runs crossed are remembered: an offset inside one, or a
-    /// crossing that reaches it, reads on from its end, where a load would find what it finds, and what it holds is consumed
-    /// once.
-    /// Bytes a window lexes are consumed each time, white space of the run among them.
+    /// decision, which its windows read about ten times at most, past the next window where the first is white space or
+    /// cuts a header, and the first past a run it skips, which consume what lies up to the decision. White space, which the
+    /// lexer skips, is crossed in one pass rather than read again in each larger window, and the runs crossed are
+    /// remembered: an offset inside one, or a crossing that reaches it, reads on from its end, where a load would find what
+    /// it finds, and what it holds is consumed once. Bytes a window lexes are consumed each time, white space of the run
+    /// among them.
     /// </para>
     /// </remarks>
     private long HeaderAt(long offset, HeaderReading reading, out long generation, out long start)
@@ -1016,6 +1020,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             using var window = _source.GetWindow(origin, length);
             var span = window.Memory.Span;
 
+            // A source that gives nothing where its length says bytes lie ends there, as a load reads it: no header.
+            if (span.IsEmpty)
+            {
+                return 0;
+            }
+
             // A window of nothing but white space is crossed whole: what decides lies past it, and so does what a load reads
             // in the larger windows it grows to. It never reaches into the run remembered, which it stops at or reads on from.
             var firstToken = span.IndexOfAnyExcept(PdfCharacters.Whitespace);
@@ -1038,7 +1048,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             // The white space the window starts with ends the run crossed: it is consumed, and remembered with the run; the
-            // window is lexed from the first token on, as the lexer reads it from the offset, and grown from there.
+            // window is lexed from the first token on, as the lexer reads it from the offset, and grown from what it lexes —
+            // not from the crossing's window, which a run remembered may have stopped short.
             if (crossing)
             {
                 // Taken however little remains: the window it lies in may decide, and a deciding window is charged whole.
@@ -1049,6 +1060,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 span = span[firstToken..];
                 length -= firstToken;
                 origin = lead;
+                windowSize = StepAtMost(length);
             }
 
             // The window ends where the file does, or where a load's largest does: past it a load reads nothing.
@@ -1097,6 +1109,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// load reads the same bytes in.
     /// </summary>
     private static long Grown(long size) => size < InitialObjectWindow ? Math.Min(size * 8, InitialObjectWindow) : size * 8;
+
+    /// <summary>
+    /// Gives the largest window <see cref="Grown"/> steps through, from <see cref="HeaderCheckWindow"/>, that is no larger
+    /// than <paramref name="length"/>, or the first: the one after it is larger than <paramref name="length"/>.
+    /// </summary>
+    private static long StepAtMost(long length)
+    {
+        var step = (long)HeaderCheckWindow;
+
+        while (Grown(step) <= length)
+        {
+            step = Grown(step);
+        }
+
+        return step;
+    }
 
     /// <summary>
     /// Takes from <paramref name="reading"/> what a header's reading consumed from <paramref name="consumed"/> to
