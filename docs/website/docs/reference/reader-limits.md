@@ -51,7 +51,8 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   `MaxXRefSectionLength` or past what `MaxDecodedStreamLength` decodes of a cross-reference stream, the object
   numbers past `MaxIndexEntries` — reads as null until you raise the limit. The reader does not rebuild the index for
   it, since the file may be sound, and the validator reports it as unknown, under `xref.checked-in-part`, rather than
-  missing. A classic table cut by its length, or whose rows run past a full index, keeps its trailer: the document's
+  missing. When the trailer's `/Root` names an object so left out, the catalog reads as null too: the reader does not
+  look for another among the objects it indexed, which would be another object than the one `/Root` names. A classic table cut by its length, or whose rows run past a full index, keeps its trailer: the document's
   catalog, encryption and identity. The chain ends at such a cut, and at a section whose trailer a limit cut: a `/Prev`,
   an `/XRefStm` or a `/Root` past the cut is unknown, and no older section stands for it. A section a limit cut is
   where it was named, and is not looked for near there, as a section that is not there is.

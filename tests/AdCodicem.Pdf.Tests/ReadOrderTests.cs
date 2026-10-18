@@ -426,8 +426,8 @@ public class ReadOrderTests
     public void A_root_a_guard_hid_as_the_document_opened_is_not_judged_once_a_rebuild_finds_it()
     {
         // /Root names object 1, which only the oldest of three sections indexes, and MaxXRefSectionCount 2 leaves that section
-        // unread: whether the file holds 1 is unknown. The newest section indexes catalog 7, which the reader takes, and gives
-        // object 5 a row that leads nowhere: reading it rebuilds the index, which finds 1.
+        // unread: whether the file holds 1 is unknown. The newest section indexes catalog 7, which the reader does not take
+        // for it, and gives object 5 a row that leads nowhere: reading it rebuilds the index, which finds 1.
         var file = PdfTemplate.Build(PdfTemplate.Sound + """
             4 0 obj
             (update)
@@ -460,6 +460,7 @@ public class ReadOrderTests
             new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2 } });
 
         document.Reader.Structure.RootHiddenByGuard.Should().BeTrue();
+        document.Reader.CatalogFoundAs.Should().Be(0, "object 7 is another object than the one /Root names");
         document.GetObject(new PdfObjectId(5));
 
         document.WasRepaired.Should().BeTrue();
