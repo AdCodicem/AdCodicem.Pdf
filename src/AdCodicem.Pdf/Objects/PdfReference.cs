@@ -7,7 +7,7 @@ public sealed class PdfReference : PdfObject
     /// Longest chain of references followed before giving up. A conforming file never chains references
     /// at all; a hostile one might chain them forever.
     /// </summary>
-    private const int MaxChainLength = 32;
+    internal const int MaxChainLength = 32;
 
     /// <summary>Initializes a reference to <paramref name="id"/> resolved through <paramref name="source"/>.</summary>
     public PdfReference(PdfObjectId id, IPdfObjectSource? source = null)
