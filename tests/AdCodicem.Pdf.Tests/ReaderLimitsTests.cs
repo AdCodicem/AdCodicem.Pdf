@@ -1383,6 +1383,55 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("the section count")]
+    [InlineData("a trailer cut before /Root")]
+    public void A_root_a_guard_kept_the_trailers_from_giving_is_unknown_and_rebuilds_nothing(string guard)
+    {
+        // R2-01, R2-02: only the oldest section indexes the catalog, and only its trailer, or the newest's past what
+        // MaxTrailerLength reads, gives /Root. The guard leaves the trailers the reader read without /Root: the reader
+        // rebuilt the index, scanning past the guard, and file.root-invalid said the trailer has no /Root.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+        var first = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var page = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2 2] /Resources << >> >>");
+        PdfReaderOptions options;
+
+        if (guard == "the section count")
+        {
+            var middle = file.Position;
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n3 1\n{page:D10} 00000 n \ntrailer\n<< /Size 4 /Prev {first} >>\n"));
+            var newest = file.Position;
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 4 /Prev {middle} >>\nstartxref\n{newest}\n%%EOF\n"));
+            options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 2 } };
+        }
+        else
+        {
+            // A sound update, whose trailer repeats /Root after an /ID long enough for the guard to cut it before.
+            var id = "<" + new string('a', 400) + ">";
+            var newest = file.Position;
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"xref\n0 1\n0000000000 65535 f \n3 1\n{page:D10} 00000 n \ntrailer\n<< /Size 4 /Prev {first} /ID [{id} {id}] /Root 1 0 R >>\nstartxref\n{newest}\n%%EOF\n"));
+            options = TrailerCut();
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeFalse("what a guard hides is no reason to rebuild the index (ADR 34)");
+        document.Diagnostics.Should().NotContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.XRefRebuilt);
+        document.Reader.Structure.RootHiddenByGuard.Should().BeTrue();
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse(string.Join("; ", report.Findings));
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+        using var whole = PdfDocument.Open(file.Bytes);
+        whole.Catalog.Should().NotBeNull("read whole, the oldest trailer gives /Root");
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(3)]
     public void A_section_a_prev_names_a_few_bytes_off_ends_the_chain_where_its_trailer_is_cut(int shift)

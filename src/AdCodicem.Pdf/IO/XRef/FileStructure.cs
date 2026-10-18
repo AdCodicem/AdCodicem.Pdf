@@ -89,6 +89,13 @@ internal sealed class FileStructure
     /// </remarks>
     public long ChainCutAt { get; set; } = -1;
 
+    /// <summary>
+    /// Gets a value indicating whether one of the reader's guards kept it from reading a trailer of the chain whole: one it
+    /// cut, an older section's it left unread — the chain stopped at a guard short of its end —, or that of a section whose
+    /// rows a guard cut before it. A key the trailers lack may lie there.
+    /// </summary>
+    public bool TrailersHiddenByGuard { get; set; }
+
     /// <summary>Gets the offset the chain went on at when it was cut, as the file writes it, counted from its header; -1 when it was not cut.</summary>
     public long ChainCutWrittenOffset { get; set; } = -1;
 
@@ -118,7 +125,8 @@ internal sealed class FileStructure
 
     /// <summary>
     /// Gets a value indicating whether <see cref="RootAsWritten"/>, which led to no catalog, names an object a guard left out
-    /// of the index when the document opened: whether the file holds it was unknown then, whatever a rebuild run since found.
+    /// of the index when the document opened, or is none where a guard kept a trailer from being read whole
+    /// (<see cref="TrailersHiddenByGuard"/>): whether the file holds it was unknown then, whatever a rebuild run since found.
     /// </summary>
     public bool RootHiddenByGuard { get; set; }
 
