@@ -1074,7 +1074,7 @@ internal sealed class ArlingtonWalk
 
         return row.Object.Index switch
         {
-            ArlingtonModel.PageObject => _pages.PageIndexes.ContainsKey(number),
+            ArlingtonModel.PageObject => _pages.IsPage(number),
             ArlingtonModel.PageTreeNode or ArlingtonModel.PageTreeNodeRoot => _pages.Nodes.Contains(number),
             _ => _pages.KidsArrays.Contains(number),
         };

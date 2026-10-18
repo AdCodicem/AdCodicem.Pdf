@@ -15,7 +15,8 @@ namespace AdCodicem.Pdf.Validation;
 /// Pages are counted as the tree lists them, the way qpdf walks it: a kid that is null, names an object the file
 /// lacks, or is neither a page nor a node takes the place of a page, one with nothing on it; a node or a page listed
 /// twice counts each time it is listed; a kid that loops back to a node above it counts for nothing. A node is a
-/// dictionary with a <c>/Kids</c> array or of <c>/Type /Pages</c>; any other dictionary the tree lists is a page.
+/// dictionary with a <c>/Kids</c> array or of <c>/Type /Pages</c>; any other dictionary the tree lists is a page. A count
+/// past what a <see langword="long"/> holds stays at its greatest, and no <c>/Count</c> is judged past it.
 /// </para>
 /// <para>
 /// The walk is iterative and visits each indirect node, and each array of kids that is an object of its own, once, so it
@@ -29,10 +30,11 @@ namespace AdCodicem.Pdf.Validation;
 /// <para>
 /// Nothing is judged of what is written in an object one of the reader's limits cut, as the Arlington walk leaves it:
 /// neither what it lacks — that may lie past the cut — nor what it holds, the value at the cut being perhaps cut itself.
-/// A node so cut is taken to give what the pages below it inherit, its <c>/Count</c> and those above it are not judged,
-/// and the walk is partial; the references its <c>/Kids</c> holds, as read, are walked, each page or node judged as any
-/// other, and the values after its last reference, dictionary or stream are not counted, being perhaps what the cut left
-/// of a reference. A catalog so cut leaves the walk partial too: its <c>/Pages</c> may lie past the cut.
+/// A node so cut is taken to give what the pages below it inherit, its <c>/Count</c> and those above it are not judged —
+/// not the array of kids of its own it names, read whole, counted as any other where listed again —, and the walk is
+/// partial; the references its <c>/Kids</c> holds, as read, are walked, each page or node judged as any other, and the
+/// values after its last reference, dictionary or stream are not counted, being perhaps what the cut left of a reference.
+/// A catalog so cut leaves the walk partial too: its <c>/Pages</c> may lie past the cut.
 /// </para>
 /// <para>
 /// A node or a page written inside another object rather than as an object of its own is named by where it is
@@ -68,7 +70,19 @@ internal sealed class PageTreeWalk
 
     /// <summary>The arrays of kids of their own below which the pages could not be counted with confidence.</summary>
     private readonly HashSet<int> _uncountableArrays = [];
+
+    /// <summary>
+    /// The pages first listed past the greatest page index, as a tree listing nodes again may list them: kept apart, being
+    /// at no index.
+    /// </summary>
+    private readonly HashSet<int> _pagesPastIndexes = [];
     private long _pages;
+
+    /// <summary>
+    /// Whether the pages counted ran past what a <see langword="long"/> holds: a tree listing nodes again lists 2^63 pages
+    /// with 63 levels, each naming the next twice. The count stays at its greatest, and no node left since is judged.
+    /// </summary>
+    private bool _overflowed;
 
     /// <summary>What a node is called in the findings.</summary>
     private const string NodeKind = "page tree node";
@@ -131,6 +145,13 @@ internal sealed class PageTreeWalk
     public bool JudgedKidsOf(int number) => Nodes.Contains(number) && !CutNodes.Contains(number);
 
     /// <summary>
+    /// Gets the number of the object a root of the tree written in the catalog's <c>/Pages</c> is written in — the
+    /// catalog's, or 0 when the catalog is written in the trailer — when the root is a node whose kids the walk judged, read
+    /// whole; -1 otherwise. Another rule judges the references to nothing written in a root a limit cut.
+    /// </summary>
+    public int JudgedRootIn { get; private set; } = -1;
+
+    /// <summary>
     /// Gets the object numbers of the arrays of kids of their own whose kids the walk judged: walked under a node, and read
     /// whole. Another rule judges the references to nothing written in an array a limit cut.
     /// </summary>
@@ -148,8 +169,14 @@ internal sealed class PageTreeWalk
     public bool JudgedParent(int number) =>
         (Nodes.Contains(number) || PageIndexes.ContainsKey(number)) && !ParentsUnjudged.Contains(number);
 
-    /// <summary>Gets the object number of each page of the tree, with the index it is first listed at.</summary>
+    /// <summary>
+    /// Gets the object number of each page of the tree, with the index it is first listed at — every page but those first
+    /// listed past the greatest index, which <see cref="IsPage"/> knows.
+    /// </summary>
     public Dictionary<int, int> PageIndexes { get; } = [];
+
+    /// <summary>Determines whether object <paramref name="number"/> is a page of the tree.</summary>
+    public bool IsPage(int number) => PageIndexes.ContainsKey(number) || _pagesPastIndexes.Contains(number);
 
     /// <summary>Walks the page tree of <paramref name="document"/>.</summary>
     public static PageTreeWalk Run(PdfDocument document)
@@ -228,6 +255,11 @@ internal sealed class PageTreeWalk
             // A catalog whose /Pages is a page: a tree of one page, which the shape rules judge.
             EnterPage(node, place, parent: null);
             return;
+        }
+
+        if (id.Number <= 0 && !IsCut(place))
+        {
+            JudgedRootIn = place.Holder.Number;
         }
 
         EnterNode(node, place, parent: null);
@@ -309,7 +341,8 @@ internal sealed class PageTreeWalk
                         // the kid may have been a node, and the counts above it cannot be judged.
                         Partial = true;
                         frame.Uncountable = true;
-                        _pages++;
+                        _uncountable.Add(id.Number);
+                        CountPages(1);
                         return;
 
                     case ObjectPresence.Missing:
@@ -371,7 +404,7 @@ internal sealed class PageTreeWalk
     private long CountAgain(Frame frame, int number, bool array = false)
     {
         var counted = (array ? _pagesBelowArray : _pagesBelow).TryGetValue(number, out var below) ? below : 1;
-        _pages += counted;
+        CountPages(counted);
 
         if ((array ? _uncountableArrays : _uncountable).Contains(number))
         {
@@ -391,12 +424,33 @@ internal sealed class PageTreeWalk
     };
 
     /// <summary>
+    /// Counts <paramref name="pages"/> pages more, at most up to what a <see langword="long"/> holds, and gives how many were
+    /// counted before them: the index of the first.
+    /// </summary>
+    private long CountPages(long pages)
+    {
+        var before = _pages;
+
+        if (pages > long.MaxValue - _pages)
+        {
+            _pages = long.MaxValue;
+            _overflowed = true;
+        }
+        else
+        {
+            _pages += pages;
+        }
+
+        return before;
+    }
+
+    /// <summary>
     /// Records a kid that stands for a page the tree cannot read, and counts it as one with nothing on it; the record is
     /// not kept where a limit cut the array.
     /// </summary>
     private void InvalidSlot(Frame frame, int index, string what)
     {
-        var page = _pages++;
+        var page = CountPages(1);
 
         if (!frame.KidsCut)
         {
@@ -514,7 +568,7 @@ internal sealed class PageTreeWalk
             KidsCut = kidsCut,
             WalksKids = walksKids,
             FragmentsFrom = kidsCut ? FragmentsFrom(kids) : kids.Count,
-            Uncountable = cut || kidsCut || loops,
+            Uncountable = kidsCut || loops,
         };
 
         _stack.Add(frame);
@@ -560,17 +614,24 @@ internal sealed class PageTreeWalk
 
         var below = _pages - frame.PagesBefore;
 
+        // Past what a long holds, the pages below a node left since are no number.
+        if (_overflowed)
+        {
+            frame.Uncountable = true;
+        }
+
         if (frame.Id.Number > 0)
         {
             _pagesBelow[frame.Id.Number] = below;
 
-            if (frame.Uncountable)
+            if (frame.Doubtful)
             {
                 _uncountable.Add(frame.Id.Number);
             }
         }
 
-        // An array of kids is recorded by the node that walked it, not by one that found it walked or above it.
+        // An array of kids is recorded by the node that walked it, not by one that found it walked or above it; the doubt
+        // a limit's cut of that node casts is on the node, not on the array, read whole with what it lists.
         if (frame.WalksKids && frame.KidsArray.Number > 0)
         {
             _arraysOnPath.Remove(frame.KidsArray.Number);
@@ -582,7 +643,7 @@ internal sealed class PageTreeWalk
             }
         }
 
-        if (frame.Uncountable && _stack.Count > 0)
+        if (frame.Doubtful && _stack.Count > 0)
         {
             _stack[^1].Uncountable = true;
         }
@@ -593,12 +654,12 @@ internal sealed class PageTreeWalk
                 // Missing whether or not the pages below can be counted; unknown where a limit cut the node.
                 if (!frame.Cut)
                 {
-                    CountMissing(frame.Place, below, countable: !frame.Uncountable);
+                    CountMissing(frame.Place, below, countable: !frame.Doubtful);
                 }
 
                 break;
 
-            case var count when !frame.Uncountable && count.Resolve() is PdfInteger { Value: var declared } && declared != below:
+            case var count when !frame.Doubtful && count.Resolve() is PdfInteger { Value: var declared } && declared != below:
                 CountMismatches.Add(new ProbeFinding(
                     Location(frame.Place),
                     Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {RuleText.Pages(below)} {Lie(below)} below it.")));
@@ -618,7 +679,7 @@ internal sealed class PageTreeWalk
     {
         var id = place.Id;
         var cut = IsCut(place);
-        var index = _pages++;
+        var index = CountPages(1);
 
         // A page a limit cut may be a node whose /Kids lies past the cut: what lies below it is unknown, and so is the count
         // of the node listing it.
@@ -635,9 +696,16 @@ internal sealed class PageTreeWalk
             }
         }
 
-        if (index <= int.MaxValue && id.Number > 0)
+        if (id.Number > 0 && !PageIndexes.ContainsKey(id.Number))
         {
-            PageIndexes.TryAdd(id.Number, (int)index);
+            if (index <= int.MaxValue)
+            {
+                PageIndexes.Add(id.Number, (int)index);
+            }
+            else
+            {
+                _pagesPastIndexes.Add(id.Number);
+            }
         }
 
         var location = PageLocation(index, place);
@@ -943,9 +1011,16 @@ internal sealed class PageTreeWalk
         public int FragmentsFrom { get; init; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether what lies below the node cannot be counted with confidence, or its
-        /// <c>/Count</c> is not judged.
+        /// Gets or sets a value indicating whether what the node's kids list cannot be counted with confidence: a kid loops
+        /// back, could not be read, or may be a node; a limit cut the array; or the count ran past what a
+        /// <see langword="long"/> holds.
         /// </summary>
         public bool Uncountable { get; set; }
+
+        /// <summary>
+        /// Gets a value indicating whether the node's <c>/Count</c>, and those of the nodes above it, are not judged: what
+        /// its kids list cannot be counted, or a limit cut the node itself.
+        /// </summary>
+        public bool Doubtful => Uncountable || Cut;
     }
 }

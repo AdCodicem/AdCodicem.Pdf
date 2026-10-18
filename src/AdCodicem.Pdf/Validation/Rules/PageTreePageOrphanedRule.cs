@@ -48,7 +48,7 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
         foreach (var number in numbers)
         {
             // Read again for each object: one read meanwhile may make the reader copy the chain's index.
-            if (number <= 0 || tree.PageIndexes.ContainsKey(number) || tree.Nodes.Contains(number) ||
+            if (number <= 0 || tree.IsPage(number) || tree.Nodes.Contains(number) ||
                 context.Document.Reader.ChainIndex?.TryGet(number, out var entry) != true ||
                 entry.Kind == XRefEntryKind.Free)
             {
