@@ -169,10 +169,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// parsing of the object it loads besides. No level holds decoded data while it loads the next: a stream resolves
     /// its filters and every parameter they read before its first filter runs (<see cref="Filters.FilterChain"/>), so
     /// that a chain of loads holds at once one stream's decoding, and the object streams
-    /// <see cref="ObjectStreamBudget"/> keeps. Two things remain. A stream an object stream holds, which ISO 32000-1
-    /// (7.5.7) forbids, is the exception: its <c>/Length</c> is read while its object stream's data is held (#161). And
-    /// each object stream loaded on the chain stays in the object cache with the raw data it read, until the cache lets
-    /// it go (#170). The count alone does not bound the stack, since each load parses as deep as the parser allows: the
+    /// <see cref="ObjectStreamBudget"/> keeps. One thing remains: each object stream loaded on the chain stays in the object
+    /// cache with the raw data it read, until the cache lets it go (#170). A stream an object stream holds, which ISO
+    /// 32000-1 (7.5.7) forbids, is no exception: it is no value, and its <c>/Length</c> is not read (#161). The count alone does not bound the stack, since each load parses as deep as the parser allows: the
     /// stack is asked as well before each load.
     /// </summary>
     private const int MaxNestedLoads = 64;
@@ -4762,10 +4761,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// header could be read only in part — the objects the reader serves from it —, none otherwise.
     /// </param>
     /// <param name="fault">What is wrong with it, in words, when it could not be read whole and is there.</param>
-    internal ObjectStreamHeaderResult ReadObjectStreamHeader(int number, long offset, out int[] numbers, out string? fault)
+    /// <param name="streamMembers">
+    /// The places in the header, among those of <paramref name="numbers"/>, of the objects written as a stream, which the
+    /// reader reads as null (#161): each member is read as the reader reads it, in its window, unless the window holds no
+    /// <c>stream</c> at all.
+    /// </param>
+    internal ObjectStreamHeaderResult ReadObjectStreamHeader(
+        int number, long offset, out int[] numbers, out string? fault, out int[] streamMembers)
     {
         numbers = [];
         fault = null;
+        streamMembers = [];
 
         var guards = _guardsReached;
         var found = TryParseObjectAt(number, offset, out var value) ||
@@ -4824,6 +4830,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // The reader's own reading of the header: the objects it serves are those the pairs read list (#275).
         var header = ObjectStreamHeader.Read(data.Span, count, (int)first, cut);
         numbers = header.Numbers;
+        streamMembers = StreamMembers(number, stream.Data.Position, data, header, (int)first, cut);
 
         if (header.Fault == ObjectStreamHeaderFault.None)
         {
@@ -4841,6 +4848,53 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 $"its header lists {header.Count} of the {count} objects its /N declares, then object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}"),
         };
         return ObjectStreamHeaderResult.Unreadable;
+    }
+
+    /// <summary>
+    /// Gives the places in <paramref name="header"/> of the members of object stream <paramref name="number"/> written as a
+    /// stream, each read as a load reads it, in its window: one whose window holds no <c>stream</c> is none. What the
+    /// parses meet is dropped.
+    /// </summary>
+    private int[] StreamMembers(int number, long dataStart, ReadOnlyMemory<byte> data, ObjectStreamHeader header, int first, bool cut)
+    {
+        List<int>? found = null;
+        var bound = _guard.Bound(PdfLimit.Object);
+        var mark = _pending.GetMark();
+
+        try
+        {
+            for (var index = 0; index < header.Count; index++)
+            {
+                // A member past data a guard cut is unread.
+                if ((long)first + header.Offsets[index] >= data.Length)
+                {
+                    continue;
+                }
+
+                var window = ObjectStreamMemberWindow.Of(header.Offsets, index, first, data.Length, cut, bound);
+
+                if (data.Span[window.Start..window.End].IndexOf("stream"u8) < 0)
+                {
+                    continue;
+                }
+
+                var parser = PdfObjectParser.ForObjectStreamMember(
+                    data[..window.End], number, dataStart, header.Numbers[index], this, _pending, window.EndsData, window.EndsAtNextMember);
+                parser.Position = window.Start;
+                _ = parser.ParseObject();
+
+                if (parser.IsMemberStream)
+                {
+                    (found ??= []).Add(index);
+                }
+            }
+        }
+        finally
+        {
+            _pending.RollBack(mark);
+        }
+
+        return found is null ? [] : [.. found];
     }
 
     /// <summary>
@@ -4951,7 +5005,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         try
         {
             var bound = _guard.Bound(PdfLimit.Object);
-            var value = contents.Parse(entry.IndexInObjectStream, id.Number, this, _diagnostics, _pending, bound, out var cut, out var pastLength);
+            var value = contents.Parse(
+                entry.IndexInObjectStream, id.Number, this, _diagnostics, _pending, bound, out var cut, out var pastLength, out var streamAt);
+
+            // A member written as a stream reads as null, what parsing met of it dropped, and is reported once (#161).
+            if (streamAt >= 0)
+            {
+                if (_objectStreamReports.IsFirstStreamMember(entry.ObjectStreamNumber, id.Number))
+                {
+                    _diagnostics.Warn(
+                        PdfDiagnosticCodes.ObjectStreamMemberStream,
+                        string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"Object {id.Number}, at byte {streamAt} of object stream {entry.ObjectStreamNumber}'s decoded data, is written as a stream, which an object stream cannot hold; it reads as null."),
+                        contents.DataStart);
+                }
+
+                return null;
+            }
 
             if (pastLength >= 0)
             {
@@ -5706,12 +5777,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Gives the data of a stream an object stream holds, from that stream's decoded data, refused as a stream's data in
-    /// the file is once the document is disposed.
-    /// </summary>
-    internal PdfStreamData MemberStreamData(ReadOnlyMemory<byte> bytes) => new MemberData(this, bytes);
-
-    /// <summary>
     /// A stream's data in the file, read the first time something asks for it, and refused, read or not, once the
     /// document is disposed.
     /// </summary>
@@ -5744,22 +5809,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var read = reader._source.Read(offset, buffer);
             _bytes = read == length ? buffer : buffer[..read];
             return _bytes;
-        }
-    }
-
-    /// <summary>
-    /// A stream's data an object stream holds, in that stream's decoded data, and refused once the document is
-    /// disposed. It decodes under the default guards and keeps the decoded data it lies in, as #161 says.
-    /// </summary>
-    private sealed class MemberData(PdfFileReader reader, ReadOnlyMemory<byte> bytes) : PdfStreamData
-    {
-        public override int Length => bytes.Length;
-
-        /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
-        public override ReadOnlyMemory<byte> GetBytes()
-        {
-            ObjectDisposedException.ThrowIf(reader._closed, typeof(PdfDocument));
-            return bytes;
         }
     }
 
@@ -5844,11 +5893,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// <summary>Each object reported at another index of an object stream than its entry gives, with that stream.</summary>
         private readonly HashSet<(int Stream, int Number)> _moves = [];
 
+        /// <summary>Each object reported written as a stream in an object stream, with that stream.</summary>
+        private readonly HashSet<(int Stream, int Number)> _streamMembers = [];
+
         /// <summary>Records the fault of the object stream whose data starts at <paramref name="dataStart"/>, and tells whether it is the first.</summary>
         public bool IsFirstFault(long dataStart) => _faults.Add(dataStart);
 
         /// <summary>Records that object <paramref name="number"/> is elsewhere in object stream <paramref name="stream"/>, and tells whether it is the first time.</summary>
         public bool IsFirstMove(int stream, int number) => _moves.Add((stream, number));
+
+        /// <summary>Records that object <paramref name="number"/> is written as a stream in object stream <paramref name="stream"/>, and tells whether it is the first time.</summary>
+        public bool IsFirstStreamMember(int stream, int number) => _streamMembers.Add((stream, number));
 
         /// <summary>Forgets what was reported, for a reader that will report nothing more.</summary>
         public void Clear()
@@ -5857,6 +5912,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             _faults.TrimExcess();
             _moves.Clear();
             _moves.TrimExcess();
+            _streamMembers.Clear();
+            _streamMembers.TrimExcess();
         }
     }
 
@@ -6044,6 +6101,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// Where the member starts in the data, when it runs past <paramref name="maxLength"/>, which a guard then reports;
         /// -1 otherwise.
         /// </param>
+        /// <param name="streamAt">
+        /// Where the member starts in the data, when it is written as a stream, which an object stream cannot hold: it is then
+        /// no value; -1 otherwise.
+        /// </param>
         public PdfObject? Parse(
             int index,
             int expectedNumber,
@@ -6052,10 +6113,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             PdfDiagnostics parsing,
             int maxLength,
             out bool cut,
-            out long pastLength)
+            out long pastLength,
+            out long streamAt)
         {
             cut = false;
             pastLength = -1;
+            streamAt = -1;
 
             if (index < 0 || index >= _numbers.Length || _numbers[index] != expectedNumber)
             {
@@ -6081,44 +6144,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 index = corrected;
             }
 
-            // Both are at most int.MaxValue, so their sum is computed as a long, where it cannot wrap.
-            var start = (long)_first + _offsets[index];
-
             // Past data a guard cut, the object is unread for the guard's reasons, not the file's (#259): the header keeps a
-            // pair whose member starts past the data only then.
-            if (start >= _data.Length)
+            // pair whose member starts past the data only then. Both are at most int.MaxValue, so their sum is a long.
+            if ((long)_first + _offsets[index] >= _data.Length)
             {
                 cut = true;
                 return null;
             }
 
-            // A member is read to the next one's start, the offsets increasing, and the last to the end of the data: the
-            // members' reads together cover the data once (#200). An internal bound (ADR 34): a valid file's members lie each
-            // before the next one's start, and the reads of every member of the corpus end there. A start past data a guard
-            // cut leaves the member before it the rest of the data.
-            var end = index + 1 < _offsets.Length ? Math.Min(_first + (long)_offsets[index + 1], _data.Length) : _data.Length;
-            var nextMember = end < _data.Length;
-            var endsData = nextMember || !_cutByGuard;
-
-            // No member is read past MaxObjectLength, as no object of the file is (#160).
-            if (end - start > maxLength)
-            {
-                end = start + maxLength;
-                nextMember = false;
-                endsData = false;
-            }
-
+            var window = ObjectStreamMemberWindow.Of(_offsets, index, _first, _data.Length, _cutByGuard, maxLength);
             var parser = PdfObjectParser.ForObjectStreamMember(
-                _data[..(int)end], _number, _position, expectedNumber, source, parsing, endsData, endsAtNextMember: nextMember);
-            parser.Position = (int)start;
+                _data[..window.End], _number, _position, expectedNumber, source, parsing, window.EndsData, window.EndsAtNextMember);
+            parser.Position = window.Start;
             var value = parser.ParseObject();
-            cut = !endsData && parser.IsTruncated;
 
-            if (cut && end < _data.Length)
+            // A member written as a stream is no value (#161).
+            if (parser.IsMemberStream)
             {
-                pastLength = start;
+                streamAt = window.Start;
+                return null;
             }
 
+            cut = !window.EndsData && parser.IsTruncated;
+            pastLength = cut && window.Bounded ? window.Start : -1;
             return value;
         }
 

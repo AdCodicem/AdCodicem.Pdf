@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -741,6 +742,87 @@ public class CrossReferenceRuleTests
 
         finding.Message.Should().Be(
             "Object stream 4, where the index places 2 objects, can be read only in part: its header lists 2 of the 3 objects its /N declares, then ends; each object the index places in it is listed before that.");
+    }
+
+    [Theory]
+    [InlineData("<< /Length 5 >>stream\nhello\nendstream")]
+    [InlineData("[1 << /Length 5 >> stream\nhello\nendstream]")]
+    public void An_object_written_as_a_stream_inside_an_object_stream_is_broken(string written)
+    {
+        // An object stream cannot hold a stream (7.5.7): the reader reads the object as null, and its entry is broken (#161,
+        // #202). The page's /Contents names it.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> /Contents 4 0 R >>")
+            .WithObject(4, written)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3, 4]);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefEntryBroken);
+
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Message.Should().Be("The entry of object 4 places it at index 2 of object stream 5, where it is written as a stream, which an object stream cannot hold.");
+    }
+
+    [Theory]
+    [InlineData("(upstream)")]
+    [InlineData("<< /Note (a stream) /Kind /stream >>")]
+    public void An_object_whose_bytes_merely_hold_stream_inside_an_object_stream_is_sound(string written)
+    {
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Test 4 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>")
+            .WithObject(4, written)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3, 4]);
+
+        Validate(file).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void An_object_placed_in_an_object_stream_that_declares_none_is_broken()
+    {
+        // An object stream of /N 0 is empty, not damaged, and serves nothing: the object its entry places there is lost.
+        var file = Replace(XRefStreamFile(), "/N 2", "/N 0");
+
+        var findings = Validate(file).Findings.Where(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal)).ToList();
+
+        findings.Select(finding => (finding.RuleId, finding.Location.Object)).Should().Equal(
+            (PdfValidationRuleIds.XRefEntryBroken, new PdfObjectId(2)),
+            (PdfValidationRuleIds.XRefEntryBroken, new PdfObjectId(3)));
+        findings[0].Message.Should().Be("The entry of object 2 places it at index 0 of object stream 4, whose header does not list it.");
+    }
+
+    [Fact]
+    public void An_object_whose_start_a_damaged_filter_leaves_past_the_data_is_lost()
+    {
+        // Object stream 4's Flate data is cut short, stored blocks decoding what they hold: its header and the start of object
+        // 2 decode, and object 3 starts past what does. The header ends there, as the reader reads it (#202).
+        const string Header = "2 0 3 42 ";
+        var members = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>\n";
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.NoCompression, leaveOpen: true))
+        {
+            zlib.Write(Encoding.ASCII.GetBytes(Header + members));
+        }
+
+        var stored = compressed.ToArray()[..(2 + 5 + Header.Length + 30)];
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [4] = (1, file.Object(4, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 2 /First {Header.Length} /Filter /FlateDecode /Length {stored.Length} >>\nstream\n{Encoding.Latin1.GetString(stored)}\nendstream")), 0),
+            [2] = (2, 4, 0),
+            [3] = (2, 4, 1),
+        };
+        file.CrossReferenceStream(5, 6, rows, "/Root 1 0 R");
+
+        var finding = Single(Validate(file.Bytes), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Object stream 4, where the index places 2 objects, can be read only in part: its header lists 1 of the 2 objects its /N declares, then object 3 at offset 42, past what its {Header.Length + 30} bytes of decoded data hold; 1 of them is not listed before that, and lost."));
     }
 
     [Fact]

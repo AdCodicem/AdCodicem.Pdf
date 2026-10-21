@@ -285,7 +285,7 @@ internal sealed class CrossReferenceProbe
         // object alone, as the entry's own is (#125).
         var at = reader.IsInFile(offset) ? PdfValidationLocation.OfObject(id, offset) : PdfValidationLocation.OfObject(id);
 
-        var result = reader.ReadObjectStreamHeader(stream, offset, out var numbers, out var fault);
+        var result = reader.ReadObjectStreamHeader(stream, offset, out var numbers, out var fault, out var streamMembers);
 
         switch (result)
         {
@@ -330,12 +330,22 @@ internal sealed class CrossReferenceProbe
 
         foreach (var (number, index) in objects)
         {
-            if (index >= 0 && index < numbers.Length && numbers[index] == number)
+            var listed = index >= 0 && index < numbers.Length && numbers[index] == number;
+            var actual = listed ? index : Array.IndexOf(numbers, number);
+
+            // An object written as a stream is lost: the reader reads it as null (#161, #202).
+            if (actual >= 0 && Array.IndexOf(streamMembers, actual) >= 0)
             {
+                Broken.Add(new ProbeFinding(
+                    PdfValidationLocation.OfObject(new PdfObjectId(number)),
+                    Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold.")));
                 continue;
             }
 
-            var actual = Array.IndexOf(numbers, number);
+            if (listed)
+            {
+                continue;
+            }
 
             // An object a header broken before it does not list is the stream's finding's, not its entry's.
             if (actual < 0 && result == ObjectStreamHeaderResult.Unreadable)

@@ -99,6 +99,9 @@ internal ref struct PdfObjectParser
     /// </summary>
     private ObjectStreamMember? _member;
 
+    /// <summary>Where the <c>stream</c> keyword a member is written with starts, or -1 when none was met.</summary>
+    private int _memberStream = -1;
+
     /// <summary>Creates a parser over <paramref name="memory"/>.</summary>
     /// <param name="memory">The bytes to parse.</param>
     /// <param name="baseOffset">Where the bytes start in the file.</param>
@@ -163,6 +166,13 @@ internal ref struct PdfObjectParser
     /// whole input keeps what was read.
     /// </summary>
     public readonly bool IsTruncated => _truncated || _lengthUnsettled;
+
+    /// <summary>
+    /// Gets a value indicating whether the object stream member being read is written as a stream, or holds one: a
+    /// dictionary followed by <c>stream</c>, which an object stream cannot hold (ISO 32000-1 7.5.7). The parse stops at the
+    /// keyword, and what it read of the member is no value (#161).
+    /// </summary>
+    public readonly bool IsMemberStream => _memberStream >= 0;
 
     /// <summary>Gets what followed the value of the last indirect object <see cref="TryReadIndirectObject"/> read.</summary>
     public readonly EndObjState EndObj => _endObj;
@@ -446,6 +456,12 @@ internal ref struct PdfObjectParser
 
                 default:
                     array.Add(ParseValue(token, depth + 1));
+
+                    if (IsMemberStream)
+                    {
+                        return array;
+                    }
+
                     break;
             }
         }
@@ -546,15 +562,28 @@ internal ref struct PdfObjectParser
 
             var value = ParseValue(valueToken, depth + 1);
 
+            if (IsMemberStream)
+            {
+                return dictionary;
+            }
+
             // A value the parse met a window's edge in may be what the edge made of it — a keyword cut short reads as null —:
             // it is kept as far as it was read, but removes nothing.
             Give(dictionary, ref nullKeys, keyToken, key, value, keyAtEdge, valueCut: PastWindowEdge);
         }
 
         var afterDictionary = _lexer.Position;
+        var next = _lexer.Read();
 
-        if (_lexer.Read().IsKeyword("stream"u8))
+        if (next.IsKeyword("stream"u8))
         {
+            // A member's stream is not read: the member is no value, and the parse stops here (#161).
+            if (_member is not null)
+            {
+                _memberStream = next.Start;
+                return dictionary;
+            }
+
             return ReadStream(dictionary);
         }
 
@@ -859,22 +888,11 @@ internal ref struct PdfObjectParser
 
         _lengthFault = fault;
 
-        if (_member is { } member)
-        {
-            member.Report(code, message, fault.DataStart);
-        }
-        else if (_streamData?.IsLengthFaultReported(fault.DataStart) != true)
+        if (_streamData?.IsLengthFaultReported(fault.DataStart) != true)
         {
             _diagnostics?.Warn(code, message, fault.DataStart);
         }
     }
-
-    /// <summary>
-    /// Wraps a stream's data held in the parser's own buffer: one an object stream holds, which ISO 32000-1 (7.5.7)
-    /// forbids but a file can write, is refused with the rest of its document once that is disposed.
-    /// </summary>
-    private readonly PdfStreamData Held(ReadOnlyMemory<byte> bytes) =>
-        _member is not null && _source is PdfFileReader reader ? reader.MemberStreamData(bytes) : PdfStreamData.FromMemory(bytes);
 
     private PdfStream Finish(PdfDictionary dictionary, int dataStart, int length, int bufferLength)
     {
@@ -882,7 +900,7 @@ internal ref struct PdfObjectParser
 
         var data = _streamData is not null
             ? _streamData.Create(_baseOffset + dataStart, length)
-            : Held(_memory.Slice(dataStart, Math.Min(length, bufferLength - dataStart)));
+            : PdfStreamData.FromMemory(_memory.Slice(dataStart, Math.Min(length, bufferLength - dataStart)));
 
         var afterData = (int)Math.Min((long)dataStart + length, bufferLength);
         _lexer.Position = afterData;

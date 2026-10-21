@@ -2220,6 +2220,26 @@ public class PageTreeRuleTests
         return report.Findings.First(finding => finding.RuleId == ruleId);
     }
 
+    [Theory]
+    [InlineData("3 500 ", "", PdfValidationRuleIds.XRefObjectStreamBroken)]
+    [InlineData("3 0 ", " /Length 3 >>stream\nabc\nendstream", PdfValidationRuleIds.XRefEntryBroken)]
+    public void The_only_kid_its_object_stream_loses_is_reported_by_the_cross_reference_rules(string header, string written, string ruleId)
+    {
+        // The page starts past the object stream's data, or is written as a stream, which an object stream cannot hold: the
+        // reader reads it as null, the tree is walked in part, and a cross-reference rule reports the page lost (#202).
+        var page = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >>" + (written.Length > 0 ? written : " >>");
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, page)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], objectStreamHeader: _ => header);
+
+        var finding = Validate(file).Findings.Should().ContainSingle().Which;
+
+        finding.RuleId.Should().Be(ruleId);
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+    }
+
     /// <summary>Opens a document with <see cref="PdfReaderLimits.MaxObjectLength"/> lowered to <paramref name="maxObjectLength"/>.</summary>
     private static PdfReaderOptions CutAt(int maxObjectLength) =>
         new() { Limits = PdfReaderLimits.Default with { MaxObjectLength = maxObjectLength } };
