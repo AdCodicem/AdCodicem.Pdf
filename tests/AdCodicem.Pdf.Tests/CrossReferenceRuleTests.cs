@@ -653,6 +653,7 @@ public class CrossReferenceRuleTests
 
     [Theory]
     [InlineData("/Type /ObjStm", "/Type/XObject", "Object 4, where the index places 2 objects, is a stream that is not of /Type /ObjStm.")]
+    [InlineData("/Type /ObjStm", "/Kind /ObjStm", "Object 4, where the index places 2 objects, is a stream that is not of /Type /ObjStm.")]
     [InlineData("/N 2", "/N 9", "Object stream 4, where the index places 2 objects, can be read only in part: its header lists 2 of the 9 objects its /N declares, then ends; each object the index places in it is listed before that.")]
     [InlineData("/N 2", "/X 2", "Object stream 4, where the index places 2 objects, cannot be read: its /N or its /First is missing or negative.")]
     [InlineData("/Type /ObjStm /N 2 /First ", "/Type/ObjStm/N 2/First 999", "Object stream 4, where the index places 2 objects, cannot be read: it decodes to")]
