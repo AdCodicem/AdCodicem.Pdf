@@ -652,7 +652,7 @@ public class CrossReferenceRuleTests
 
     [Theory]
     [InlineData("/Type /ObjStm", "/Type/XObject", "Object 4, where the index places 2 objects, is a stream that is not of /Type /ObjStm.")]
-    [InlineData("/N 2", "/N 9", "Object stream 4, where the index places 2 objects, cannot be read: its /N declares 9 objects, more than its /First of")]
+    [InlineData("/N 2", "/N 9", "Object stream 4, where the index places 2 objects, can be read only in part: its header lists 2 of the 9 objects its /N declares, then ends; each object the index places in it is listed before that.")]
     [InlineData("/N 2", "/X 2", "Object stream 4, where the index places 2 objects, cannot be read: its /N or its /First is missing or negative.")]
     [InlineData("/Type /ObjStm /N 2 /First ", "/Type/ObjStm/N 2/First 999", "Object stream 4, where the index places 2 objects, cannot be read: it decodes to")]
     public void An_object_stream_that_cannot_serve_its_objects_is_reported_once(string text, string replacement, string message)
@@ -678,7 +678,6 @@ public class CrossReferenceRuleTests
     [InlineData("2 -5 ", "then object 2 at offset -5, which no member can be")]
     [InlineData("2 2147483648 ", "then object 2 at offset 2147483648, which no member can be")]
     [InlineData("2147483647 0 ", null)]
-    [InlineData("2 2147483647 ", null)]
     public void An_object_stream_whose_header_lists_something_other_than_objects_cannot_be_read(string start, string? then)
     {
         // The header starts "2 0 ", object 2 at offset 0; the objects keep their offsets from /First. A number no object
@@ -691,13 +690,57 @@ public class CrossReferenceRuleTests
 
         if (then is null)
         {
-            // The largest number and offset a member may have: the header is read, whatever else the entries then get wrong.
+            // The largest number a member may have: the header is read, whatever else the entries then get wrong.
             report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse();
             return;
         }
 
         Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().Be(
             "Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, " + then + ".");
+    }
+
+    [Theory]
+    [InlineData("2 0 3 0 ", "then object 3 at offset 0, not past the offset of the object before it, 0")]
+    [InlineData("2 42 3 0 ", "then object 3 at offset 0, not past the offset of the object before it, 42")]
+    [InlineData("2 0 3 999 ", "then object 3 at offset 999, past what its {0} bytes of decoded data hold")]
+    [InlineData("2 0 x ", "then something else")]
+    public void An_object_stream_whose_header_breaks_after_an_object_says_which_objects_are_lost(string header, string then)
+    {
+        // The reader serves object 2, listed before the fault, and loses object 3 (#160, #202, #275).
+        var file = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: _ => header);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Severity.Should().Be(PdfValidationSeverity.Error);
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Object stream 4, where the index places 2 objects, can be read only in part: its header lists 1 of the 2 objects its /N declares, {string.Format(CultureInfo.InvariantCulture, then, header.Length + PackedLength)}; 1 of them is not listed before that, and lost."));
+    }
+
+    [Fact]
+    public void An_object_stream_whose_first_member_starts_past_its_data_cannot_be_read()
+    {
+        // The only page of the tree is lost: a start no member can have, as an offset past an int is (#202).
+        const string Header = "2 999 3 1000 ";
+        var file = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: _ => Header);
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, then object 2 at offset 999, past what its {Header.Length + PackedLength} bytes of decoded data hold."));
+    }
+
+    [Fact]
+    public void An_object_stream_that_lists_every_object_its_index_places_before_its_header_breaks_loses_none()
+    {
+        // Its /N declares a third object, and its header ends after the two the index places in it: both are served.
+        var file = Replace(XRefStreamFile(), "/N 2", "/N 3");
+
+        var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
+
+        finding.Message.Should().Be(
+            "Object stream 4, where the index places 2 objects, can be read only in part: its header lists 2 of the 3 objects its /N declares, then ends; each object the index places in it is listed before that.");
     }
 
     [Fact]
@@ -1946,6 +1989,9 @@ public class CrossReferenceRuleTests
 
     /// <summary>A document whose index is a cross-reference stream, objects 2 and 3 packed in object stream 4.</summary>
     private static byte[] XRefStreamFile() => XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+
+    /// <summary>The bytes objects 2 and 3 of <see cref="XRefStreamBuilder"/> take packed in an object stream, past its header.</summary>
+    private const int PackedLength = 42 + 73;
 
     /// <summary>The catalog, the page tree and the page, objects 1 to 3.</summary>
     private static TestPdfBuilder XRefStreamBuilder() =>

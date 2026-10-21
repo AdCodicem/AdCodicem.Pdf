@@ -120,10 +120,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private const int ScanOverlap = 64;
 
     /// <summary>
-    /// The decoded data of object streams kept at once, in bytes. Past it the oldest is let go, and decoded again if
-    /// an object it holds is asked for, so no file is read differently for it: the bound is on memory, not on what
-    /// can be read. The object stream decoded last is kept whatever its size, so memory follows the heaviest object
-    /// stream rather than the number of them.
+    /// What the object streams kept at once weigh, in bytes: their decoded data, and the tables and lookup of their
+    /// headers (#160). Past it the oldest is let go, and decoded again if an object it holds is asked for, so no file is
+    /// read differently for it: the bound is on memory, not on what can be read. The object stream decoded last is kept
+    /// whatever its size, so memory follows the heaviest object stream rather than the number of them.
     /// </summary>
     private const long ObjectStreamBudget = 32L * 1024 * 1024;
 
@@ -280,7 +280,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly Queue<int> _cacheOrder = new();
     /// <summary>
     /// The object streams decoded, by number, null for one that cannot be read; with the order they were decoded in
-    /// and the bytes their data holds, which <see cref="ObjectStreamBudget"/> bounds.
+    /// and what they weigh — their data, their headers' tables and lookups —, which <see cref="ObjectStreamBudget"/> bounds.
     /// </summary>
     private readonly Dictionary<int, ObjectStreamContents?> _objectStreams = [];
 
@@ -542,7 +542,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </remarks>
     public PdfXRefTable Index => _xref;
 
-    /// <summary>Gets the bytes of decoded object stream data the reader keeps, which it bounds.</summary>
+    /// <summary>Gets what the object streams the reader keeps weigh, in bytes — their decoded data and their headers —, which it bounds.</summary>
     internal long ObjectStreamBytes => _objectStreamBytes;
 
     /// <inheritdoc/>
@@ -4737,8 +4737,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     /// <param name="number">The object stream's number.</param>
     /// <param name="offset">Where the chain's index places it, in the file.</param>
-    /// <param name="numbers">The object numbers its header lists, in order; empty unless it was read.</param>
-    /// <param name="fault">What is wrong with it, in words, when it could not be read and is there.</param>
+    /// <param name="numbers">
+    /// The object numbers its header lists, in order: all of them when it was read, those listed before the fault when its
+    /// header could be read only in part — the objects the reader serves from it —, none otherwise.
+    /// </param>
+    /// <param name="fault">What is wrong with it, in words, when it could not be read whole and is there.</param>
     internal ObjectStreamHeaderResult ReadObjectStreamHeader(int number, long offset, out int[] numbers, out string? fault)
     {
         numbers = [];
@@ -4775,15 +4778,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return ObjectStreamHeaderResult.Unreadable;
         }
 
-        // Each entry of the header costs at least "0 0 ", so a count far beyond what the header could hold is a
-        // lie, and believing it would mean allocating an array the file asked for.
-        if (count > (first / 2) + 1)
-        {
-            fault = string.Create(
-                CultureInfo.InvariantCulture, $"its /N declares {count} objects, more than its /First of {first} leaves room for");
-            return ObjectStreamHeaderResult.Unreadable;
-        }
-
         var mark = _diagnostics.GetMark();
         var data = Filters.PdfFilterPipeline.Decode(stream, _diagnostics, out var leftEncoded);
         var cut = LimitSince(_diagnostics, mark) || stream.Data.CutByGuard;
@@ -4801,34 +4795,32 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return cut ? ObjectStreamHeaderResult.CutByLimit : ObjectStreamHeaderResult.Unreadable;
         }
 
-        var lexer = new PdfLexer(data.Span[..(int)first]);
-        var header = new int[count];
-
-        for (var i = 0; i < header.Length; i++)
+        // A stream that declares no object is empty, as the reader reads it.
+        if (count == 0)
         {
-            var numberToken = lexer.Read();
-            var offsetToken = lexer.Read();
-
-            if (numberToken.Kind != PdfTokenKind.Integer || offsetToken.Kind != PdfTokenKind.Integer)
-            {
-                fault = string.Create(
-                    CultureInfo.InvariantCulture, $"its header lists {i} of the {count} objects its /N declares, then something else");
-                return ObjectStreamHeaderResult.Unreadable;
-            }
-
-            if (numberToken.Integer is <= 0 or > PdfObjectId.MaxNumber || offsetToken.Integer is < 0 or > int.MaxValue)
-            {
-                fault = string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"its header lists {i} of the {count} objects its /N declares, then object {numberToken.Integer} at offset {offsetToken.Integer}, which no member can be");
-                return ObjectStreamHeaderResult.Unreadable;
-            }
-
-            header[i] = (int)numberToken.Integer;
+            return ObjectStreamHeaderResult.Read;
         }
 
-        numbers = header;
-        return ObjectStreamHeaderResult.Read;
+        // The reader's own reading of the header: the objects it serves are those the pairs read list (#275).
+        var header = ObjectStreamHeader.Read(data.Span, count, (int)first, cut);
+        numbers = header.Numbers;
+
+        if (header.Fault == ObjectStreamHeaderFault.None)
+        {
+            return ObjectStreamHeaderResult.Read;
+        }
+
+        fault = header.Fault switch
+        {
+            ObjectStreamHeaderFault.Ended => string.Create(
+                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {count} objects its /N declares, then ends"),
+            ObjectStreamHeaderFault.Stray => string.Create(
+                CultureInfo.InvariantCulture, $"its header lists {header.Count} of the {count} objects its /N declares, then something else"),
+            _ => string.Create(
+                CultureInfo.InvariantCulture,
+                $"its header lists {header.Count} of the {count} objects its /N declares, then object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}"),
+        };
+        return ObjectStreamHeaderResult.Unreadable;
     }
 
     /// <summary>
@@ -5040,14 +5032,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Keeps an object stream's contents, letting go of the oldest ones kept while their data and its own exceed
-    /// <see cref="ObjectStreamBudget"/>.
+    /// Keeps an object stream's contents, letting go of the oldest ones kept while what they weigh and its own weight
+    /// exceed <see cref="ObjectStreamBudget"/>.
     /// </summary>
     private void KeepObjectStream(int number, ObjectStreamContents? contents)
     {
         if (_objectStreams.TryGetValue(number, out var previous) && previous is not null)
         {
-            _objectStreamBytes -= previous.Length;
+            _objectStreamBytes -= previous.Weight;
         }
 
         _objectStreams[number] = contents;
@@ -5057,17 +5049,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return;
         }
 
-        while (_objectStreamBytes + contents.Length > ObjectStreamBudget && _objectStreamOrder.TryDequeue(out var oldest))
+        while (_objectStreamBytes + contents.Weight > ObjectStreamBudget && _objectStreamOrder.TryDequeue(out var oldest))
         {
             // The queue can name a number twice, once replaced; letting it go early costs a decoding, nothing else.
             if (oldest != number && _objectStreams.Remove(oldest, out var released) && released is not null)
             {
-                _objectStreamBytes -= released.Length;
+                _objectStreamBytes -= released.Weight;
             }
         }
 
         _objectStreamOrder.Enqueue(number);
-        _objectStreamBytes += contents.Length;
+        _objectStreamBytes += contents.Weight;
     }
 
     private void Cache(int number, PdfObject value)
@@ -5857,10 +5849,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         private readonly bool _cutByGuard;
 
         /// <summary>
-        /// Where each number lies in the header, the first place when it lies in several; built the first time an
-        /// entry's index is wrong, so that an index every entry of the file gets wrong costs a lookup, not a search.
+        /// Each number of the header with its place, the number in the upper half, sorted, so that the first place of a
+        /// number is found by a binary search; built the first time an entry's index is wrong, so that an index every entry
+        /// of the file gets wrong costs a lookup, not a search. <see cref="Weight"/> counts it from the start.
         /// </summary>
-        private Dictionary<int, int>? _indexes;
+        private long[]? _places;
 
         private ObjectStreamContents(
             int number,
@@ -5884,8 +5877,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         public int Count => _numbers.Length;
 
-        /// <summary>Gets the length of the decoded data, which is what keeping the contents costs.</summary>
-        public int Length => _data.Length;
+        /// <summary>
+        /// Gets what keeping the contents costs, in bytes: the decoded data, the header's two tables and the lookup of its
+        /// numbers, whether built yet or not — four bytes for each table and eight for the lookup, for each member (#160).
+        /// </summary>
+        public long Weight => _data.Length + (16L * _numbers.Length);
 
         public int NumberAt(int index) => _numbers[index];
 
@@ -5912,6 +5908,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var count = stream.Dictionary.GetInteger(PdfName.N, -1);
             var first = stream.Dictionary.GetInteger(PdfName.First, -1);
 
+            // A stream of another type serves no member, as the validator and the rebuild read it (#274).
+            if (!stream.Dictionary.IsOfType(PdfName.ObjStm))
+            {
+                ReportUnreadable(diagnostics, reports, number, position, "is a stream that is not of /Type /ObjStm", 0, 0);
+                return null;
+            }
+
             // A stream that declares no object is empty, not damaged.
             if (count == 0)
             {
@@ -5927,23 +5930,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (first < 0)
             {
                 ReportUnreadable(diagnostics, reports, number, position, "has no /First that gives where its objects start", 0, count);
-                return null;
-            }
-
-            // Each entry of the header costs at least "0 0 ", so a count far beyond what the header could
-            // hold is a lie, and believing it would mean allocating arrays the file asked for.
-            if (count > (first / 2) + 1)
-            {
-                ReportUnreadable(
-                    diagnostics,
-                    reports,
-                    number,
-                    position,
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"declares {count:N0} objects in /N, more than a header of the {first:N0} bytes its /First gives can list"),
-                    0,
-                    count);
                 return null;
             }
 
@@ -5979,57 +5965,33 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return null;
             }
 
-            // Both now fit an int: the count is bounded by the header, and the header by the data.
-            var numbers = new int[count];
-            var offsets = new int[count];
-            var lexer = new PdfLexer(data.Span[..(int)first]);
+            var header = ObjectStreamHeader.Read(data.Span, count, (int)first, cutByGuard);
 
-            for (var i = 0; i < count; i++)
+            if (header.Fault != ObjectStreamHeaderFault.None)
             {
-                var numberToken = lexer.Read();
-                var offsetToken = lexer.Read();
-
-                if (numberToken.Kind != PdfTokenKind.Integer || offsetToken.Kind != PdfTokenKind.Integer)
-                {
-                    // A stray token is the fault whatever follows it; the header ends where the first missing token is.
-                    var ends = numberToken.Kind == PdfTokenKind.EndOfInput ||
-                        (numberToken.Kind == PdfTokenKind.Integer && offsetToken.Kind == PdfTokenKind.EndOfInput);
-                    var fault = ends
-                        ? "has a header that ends after"
-                        : "has a header that holds something other than an object number and an offset after";
-                    ReportUnreadable(
-                        diagnostics,
-                        reports,
-                        number,
-                        position,
-                        string.Create(CultureInfo.InvariantCulture, $"{fault} {i:N0} of the {count:N0} objects its /N declares"),
-                        i,
-                        count);
-                    return i > 0 ? new ObjectStreamContents(number, position, reports, data, numbers[..i], offsets[..i], (int)first, cutByGuard) : null;
-                }
-
-                // A pair no member can have ends the header as a stray token does: narrowed, it would name another object
-                // or start it elsewhere.
-                if (numberToken.Integer is <= 0 or > PdfObjectId.MaxNumber || offsetToken.Integer is < 0 or > int.MaxValue)
-                {
-                    ReportUnreadable(
-                        diagnostics,
-                        reports,
-                        number,
-                        position,
-                        string.Create(
+                ReportUnreadable(
+                    diagnostics,
+                    reports,
+                    number,
+                    position,
+                    header.Fault switch
+                    {
+                        ObjectStreamHeaderFault.Ended => string.Create(
+                            CultureInfo.InvariantCulture, $"has a header that ends after {header.Count:N0} of the {count:N0} objects its /N declares"),
+                        ObjectStreamHeaderFault.Stray => string.Create(
                             CultureInfo.InvariantCulture,
-                            $"has a header that lists object {numberToken.Integer} at offset {offsetToken.Integer}, which no member can be, after {i:N0} of the {count:N0} objects its /N declares"),
-                        i,
-                        count);
-                    return i > 0 ? new ObjectStreamContents(number, position, reports, data, numbers[..i], offsets[..i], (int)first, cutByGuard) : null;
-                }
-
-                numbers[i] = (int)numberToken.Integer;
-                offsets[i] = (int)offsetToken.Integer;
+                            $"has a header that holds something other than an object number and an offset after {header.Count:N0} of the {count:N0} objects its /N declares"),
+                        _ => string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"has a header that lists object {header.FaultNumber} at offset {header.FaultOffset}, {header.Why(data.Length)}, after {header.Count:N0} of the {count:N0} objects its /N declares"),
+                    },
+                    header.Count,
+                    count);
             }
 
-            return new ObjectStreamContents(number, position, reports, data, numbers, offsets, (int)first, cutByGuard);
+            return header.Count > 0
+                ? new ObjectStreamContents(number, position, reports, data, header.Numbers, header.Offsets, (int)first, cutByGuard)
+                : null;
         }
 
         /// <summary>Parses the object the stream holds under <paramref name="expectedNumber"/>, or gives null when it holds none.</summary>
@@ -6110,17 +6072,38 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         private int IndexOf(int number)
         {
-            if (_indexes is null)
+            if (_places is null)
             {
-                _indexes = new Dictionary<int, int>(_numbers.Length);
+                _places = new long[_numbers.Length];
 
                 for (var i = 0; i < _numbers.Length; i++)
                 {
-                    _indexes.TryAdd(_numbers[i], i);
+                    _places[i] = ((long)_numbers[i] << 32) | (uint)i;
+                }
+
+                Array.Sort(_places);
+            }
+
+            // The first place whose number is not below the one sought: the number's first place, if it has one.
+            var sought = (long)number << 32;
+            var low = 0;
+            var high = _places.Length;
+
+            while (low < high)
+            {
+                var middle = low + ((high - low) / 2);
+
+                if (_places[middle] < sought)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle;
                 }
             }
 
-            return _indexes.TryGetValue(number, out var index) ? index : -1;
+            return low < _places.Length && (_places[low] >> 32) == number ? (int)(uint)_places[low] : -1;
         }
     }
 }

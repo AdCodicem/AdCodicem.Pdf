@@ -285,7 +285,9 @@ internal sealed class CrossReferenceProbe
         // object alone, as the entry's own is (#125).
         var at = reader.IsInFile(offset) ? PdfValidationLocation.OfObject(id, offset) : PdfValidationLocation.OfObject(id);
 
-        switch (reader.ReadObjectStreamHeader(stream, offset, out var numbers, out var fault))
+        var result = reader.ReadObjectStreamHeader(stream, offset, out var numbers, out var fault);
+
+        switch (result)
         {
             case ObjectStreamHeaderResult.NotFound:
                 // The stream's own entry is broken, which its probe reports; what it holds cannot be told.
@@ -303,11 +305,27 @@ internal sealed class CrossReferenceProbe
                     Invariant($"Object {stream}, where the index places {RuleText.Objects(objects.Count)}, {fault}.")));
                 return;
 
-            case ObjectStreamHeaderResult.Unreadable:
+            case ObjectStreamHeaderResult.Unreadable when numbers.Length == 0:
                 BrokenObjectStreams.Add(new ProbeFinding(
                     at,
                     Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, cannot be read: {fault}.")));
                 return;
+
+            case ObjectStreamHeaderResult.Unreadable:
+                // The reader serves the objects the header lists before its fault, and those alone (#275).
+                var lost = 0;
+
+                foreach (var (number, _) in objects)
+                {
+                    lost += Array.IndexOf(numbers, number) < 0 ? 1 : 0;
+                }
+
+                BrokenObjectStreams.Add(new ProbeFinding(
+                    at,
+                    lost == 0
+                        ? Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, can be read only in part: {fault}; each object the index places in it is listed before that.")
+                        : Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, can be read only in part: {fault}; {lost} of them {(lost == 1 ? "is" : "are")} not listed before that, and lost.")));
+                break;
         }
 
         foreach (var (number, index) in objects)
@@ -318,6 +336,12 @@ internal sealed class CrossReferenceProbe
             }
 
             var actual = Array.IndexOf(numbers, number);
+
+            // An object a header broken before it does not list is the stream's finding's, not its entry's.
+            if (actual < 0 && result == ObjectStreamHeaderResult.Unreadable)
+            {
+                continue;
+            }
 
             if (actual >= 0)
             {

@@ -134,17 +134,117 @@ public class HostileInputTests
     }
 
     [Fact]
-    public void Ignores_an_object_stream_that_claims_more_objects_than_it_could_hold()
+    public void An_object_stream_that_claims_more_objects_than_it_could_hold_serves_those_it_lists_and_allocates_nothing_for_the_rest()
     {
-        var bytes = new TestPdfBuilder()
-            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .WithObject(5, "<< /Type /ObjStm /N 1000000000 /First 4 /Length 8 >>\nstream\n1 0 <<>>\nendstream")
-            .BuildClassic(rootNumber: 1);
+        // A billion objects in /N, and a header of four bytes: the tables grow with the pairs read, not with /N (#160).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [5] = (1, file.Object(5, "<< /Type /ObjStm /N 1000000000 /First 4 /Length 8 >>\nstream\n6 0 <<>>\nendstream"), 0),
+            [6] = (2, 5, 0),
+        };
+        file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R");
 
-        using var document = Measure(() => PdfDocument.Open(bytes));
+        var allocated = Allocations.Least(
+            () => PdfDocument.Open(file.Bytes),
+            document => Measure(() => document.GetObject(new PdfObjectId(6))),
+            out var document,
+            out var six);
 
-        document.Catalog.Required();
+        using (document)
+        {
+            six.Should().BeOfType<PdfDictionary>();
+            allocated.Should().BeLessThan(64 * 1024, "the header lists one pair, whatever its /N says");
+            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+                "Object stream 5 has a header that ends after 1 of the 1,000,000,000 objects its /N declares; only the first 1 of its 1,000,000,000 objects can be read from it.");
+        }
+    }
+
+    [Fact]
+    public void An_object_stream_whose_N_its_blank_header_cannot_hold_allocates_no_table_for_it()
+    {
+        // Four megabytes of blanks before /First, and a /N of a million: the reader and the validator read no pair, and
+        // allocate what decoding the stream takes, as for a /N of one, not tables sized by /N (#160).
+        const int First = 4 * 1024 * 1024;
+        var lying = BlankHeader(First, (First / 4) + 1);
+        var honest = BlankHeader(First, 1);
+
+        var reading = Allocations.Least(() => PdfDocument.Open(lying), Read, out var opened, out var six);
+        var readingHonest = Allocations.Least(() => PdfDocument.Open(honest), Read, out var openedHonest, out _);
+        var validating = Allocations.Least(() => PdfDocument.Open(lying), Validate, out var validated, out var report);
+        var validatingHonest = Allocations.Least(() => PdfDocument.Open(honest), Validate, out var validatedHonest, out _);
+
+        using (opened)
+        using (openedHonest)
+        using (validated)
+        using (validatedHonest)
+        {
+            six.Should().BeSameAs(PdfNull.Instance);
+            reading.Should().BeLessThan(readingHonest + (64 * 1024), "nothing is allocated in proportion to /N");
+            validating.Should().BeLessThan(validatingHonest + (64 * 1024), "the validator reads the header as the reader does");
+            report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue();
+        }
+
+        static PdfObject Read(PdfDocument document) => Measure(() => document.GetObject(new PdfObjectId(6)));
+
+        static PdfValidationReport Validate(PdfDocument document) => Measure(() => new PdfValidator().Validate(document));
+
+        static byte[] BlankHeader(int first, int count)
+        {
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+                [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            };
+            var data = Compress(Encoding.ASCII.GetBytes(new string(' ', first) + "<<>>"));
+            rows[5] = (1, file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {count} /First {first} /Filter /FlateDecode /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+            rows[6] = (2, 5, 0);
+            file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R");
+            return file.Bytes;
+        }
+    }
+
+    [Fact]
+    public void An_object_stream_that_lists_one_offset_over_and_over_keeps_one_member()
+    {
+        // A million pairs "1 0 ", every member at the same offset: the header ends at the second, whose offset does not
+        // follow the first's, and the stream weighs its data and one pair, not a million (#160).
+        const int Pairs = 1_000_000;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var decoded = string.Concat(Enumerable.Repeat("1 0 ", Pairs)) + "<<>>";
+        var data = Compress(Encoding.ASCII.GetBytes(decoded));
+        rows[5] = (1, file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {Pairs} /First {4 * Pairs} /Filter /FlateDecode /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+        rows[6] = (2, 5, 0);
+        file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R");
+
+        using var document = PdfDocument.Open(file.Bytes);
+
+        Measure(() => document.GetObject(new PdfObjectId(6))).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.ObjectStreamBytes.Should().Be(decoded.Length + 16);
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            "Object stream 5 has a header that lists object 1 at offset 0, not past the offset of the object before it, 0, after 1 of the 1,000,000 objects its /N declares; only the first 1 of its 1,000,000 objects can be read from it.");
+    }
+
+    [Fact]
+    public void The_object_stream_budget_weighs_the_header_tables_with_the_data()
+    {
+        // Each member costs its number and its offset, and its place in the lookup an entry's wrong index builds (#160).
+        const int Members = 1000;
+        var file = ObjectStreams(streams: 1, decodedLength: 0, objectsPerStream: Members, everyIndexWrong: false);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(PackedNumber(0, 0, Members))).AsDictionary().Required();
+
+        var decoded = document.GetObject(new PdfObjectId(StreamNumber(0))).AsStream().Required().Decode().Length;
+        document.Reader.ObjectStreamBytes.Should().Be(decoded + (16L * Members));
     }
 
     [Fact]
@@ -1145,7 +1245,7 @@ public class HostileInputTests
         six.Should().BeOfType<PdfNull>();
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(10)).Should().Be(PdfName.Get("ASCIIHexDecode"));
-        document.Reader.ObjectStreamBytes.Should().Be(21, "only object stream 9 is kept");
+        document.Reader.ObjectStreamBytes.Should().Be(21 + 16, "only object stream 9 is kept: its data, and its header's tables and lookup");
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectStreamUnreadable, "the stream is reported once, however often it is decoded (#187)");
         document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamSelfReference);
     }
@@ -3491,6 +3591,18 @@ public class HostileInputTests
         }
 
         return GC.GetAllocatedBytesForCurrentThread() - allocated;
+    }
+
+    /// <summary>Compresses <paramref name="data"/> with zlib, as a <c>/FlateDecode</c> stream holds it.</summary>
+    private static byte[] Compress(byte[] data)
+    {
+        using var compressed = new MemoryStream();
+        using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            zlib.Write(data);
+        }
+
+        return compressed.ToArray();
     }
 
     private static T Measure<T>(Func<T> action)
