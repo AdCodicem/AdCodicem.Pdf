@@ -440,6 +440,8 @@ Known gaps:
   that is no catalog, and `file.root-invalid` says no object is one.
 - [#260] `file.root-invalid` says no object of the file is a catalog when one may lie past a guard, or when a rebuild
   made `/Root` one.
+- [#276] An object a rebuild loses, when the definition of its object stream the rebuild serves does not list it,
+  reads as null with no finding that names it: the probe judges the definition the chain's index places.
 
 ## What holds the defenses
 
@@ -715,3 +717,4 @@ The last column also names the questions they leave open, which that milestone s
 [#273]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/273
 [#274]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/274
 [#275]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/275
+[#276]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/276
