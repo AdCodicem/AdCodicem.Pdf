@@ -14,7 +14,7 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 | Property of `PdfReaderLimits` | Default | Reached by | What is kept | Code |
 |---|---|---|---|---|
 | `MaxDecodedStreamLength` | 256 MB | A decompression bomb, or a large-format scan: a 9,600 × 11,410 RGB map decodes to 313 MB. Of a chain of filters, the filters before the last share the bound for what they pass along together, and the last has its own; a `/Crypt` filter, which passes its data along as it is, is neither charged nor the last | The first bytes, up to the bound | `limit.decoded-stream` |
-| `MaxObjectLength` | 16 MB | An object that long, the data of a stream aside: an array of a million references | The object as far as the bound | `limit.object` |
+| `MaxObjectLength` | 16 MB | An object that long, the data of a stream aside, written in the file or held by an object stream: an array of a million references | The object as far as the bound | `limit.object` |
 | `MaxXRefSectionLength` | 64 MB | A classic cross-reference table of more than about 3.3 million entries | The entries within the bound | `limit.xref-section-length` |
 | `MaxXRefSectionCount` | 1,024 | A document saved incrementally more than a thousand times | The newest sections | `limit.xref-section-count` |
 | `MaxTrailerLength` | 64 KB | A trailer that long, or a cross-reference stream's dictionary: its `/Index` grows with every scattered update | The trailer as far as the bound | `limit.trailer` |
@@ -45,8 +45,8 @@ Warning limit.decoded-stream at 48213: The /FlateDecode data decodes to more tha
 there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 ```
 
-- An object, a cross-reference section or a trailer is reported once, however often it is read again; a full index,
-  once a document.
+- An object, a cross-reference section or a trailer is reported once, however often it is read again — an object an
+  object stream holds, once for each stream and object —; a full index, once a document.
 - What a limit leaves out of the index — the sections past `MaxXRefSectionCount`, the rows past
   `MaxXRefSectionLength` or past what `MaxDecodedStreamLength` decodes of a cross-reference stream, the object
   numbers past `MaxIndexEntries` — reads as null until you raise the limit. The reader does not rebuild the index for
@@ -96,8 +96,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   its length. `MaxTrailerLength` bounds how far the reader follows one past that window.
 - Until the reader decodes streams a piece at a time, a stream that decodes past about 2 GB is cut there, and
   reported, even under `Unbounded`.
-- The reader keeps the object streams it decoded within a budget of 32 MB, and always keeps the one it decoded last,
-  whatever its size. Raising `MaxDecodedStreamLength` raises how large that one can be.
+- The reader keeps the object streams it decoded within a budget of 32 MB — their decoded data, and their headers'
+  tables —, and always keeps the one it decoded last, whatever its size. Raising `MaxDecodedStreamLength` raises how
+  large that one can be.
 
 ## `ThrowOnLimit`
 
@@ -133,5 +134,7 @@ the documents producers write. They are not options:
 | A reference that resolves to another reference | followed 32 times | Producers write the object itself; the bound breaks a chain that loops |
 | Objects loaded while loading another | 64 | An indirect `/Length` leads to an integer, and a stream resolves its filters and the parameters they read before decoding any of its data: no level holds decoded data while the next loads |
 | Object numbers | up to 2,147,483,647 | An object's number is an `int`, and ISO 32000-1's Annex C advises at most 8,388,607 indirect objects. A number past it is refused where it is read — a header, a reference, a subsection, a row, an object stream's header —, never narrowed to one that would name another object. An object is numbered from 1; 0 names the head of the free list, where a reference, a subsection or a row may give it |
+| An object stream's members | each read to the next one's start, the last to the end of the decoded data | ISO 32000-1 (7.5.7) has a header list its objects by increasing offset, so that each lies before the next one starts: a pair whose offset is not past the one before it, or whose object would start past the data, ends the header there, as a stray token does, and the objects listed before it are read. A member past `MaxObjectLength` is that limit's |
+| An object stream's header | at most a quarter of its `/First` bytes, and one, of pairs | No limit but a count: each pair takes four bytes at least, so a header holds no more, whatever its `/N` claims. The header is read as far as it goes, and what it lists grows as it is read |
 | Generations | 0 to 65,535 | No object in use has a higher one (ISO 32000-1, 7.5.4). A free row of a table is read whatever its generation: producers give the free list's head 65,536 |
 | Reals | within ±1.8 × 10³⁰⁸ | A real is a `double`, and ISO 32000-1's Annex C advises reals within ±3.403 × 10³⁸. A number past it reads as null, reported as `syntax.number-out-of-range` |

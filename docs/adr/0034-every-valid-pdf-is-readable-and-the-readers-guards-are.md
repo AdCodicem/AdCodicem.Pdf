@@ -69,6 +69,17 @@ own diagnostics now hold a stream's report once, however often the reader, the v
 hold an object's; diagnostics a caller passes to `Decode` hold every decoding's. The guard is still counted each time it is
 reached, so that what it cut is never taken for damage, and a document opened to throw throws each time.
 
+Amended on 2026-10-21, by the maintainer, while [#160](https://github.com/AdCodicem/AdCodicem.Pdf/issues/160) and
+[#200](https://github.com/AdCodicem/AdCodicem.Pdf/issues/200) were fixed: `MaxObjectLength` bounds an object stream's
+member as it bounds an object written in the file — a member of millions of nested arrays was parsed whole, whatever the
+guard —, and is reported once for each member it cuts. What an object stream's header says is bounded by internal
+constants, each because ISO 32000-1 (7.5.7) asks it of every valid file: a member is read no further than the next
+member's start, the last no further than the end of the data; a pair whose offset is not past the one before it, or whose
+member would start past the data, ends the header as a stray token does. And a header lists at most a quarter of its
+`/First` bytes and one, whatever its `/N` claims: a count of what its bytes can hold, not a bound, its tables growing with
+the pairs read. The consequence that raising `MaxDecodedStreamLength` multiplies what the cache of decoded object streams
+holds until M23 bounds it (T33) was stale: `ObjectStreamBudget` bounds it since 2026-09-28.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -176,8 +187,8 @@ guard: active by default, reported when it is reached, and lifted by an option.
 - With `ThrowOnLimit`, any lazy operation — resolving an object, decoding a stream — may throw after `Open`
   returned; a caller who sets it must be ready for that wherever the document is used.
 - `Unbounded` is for documents the application trusts. Raised guards let a file make the reader hold what
-  it asks for, up to the new bounds; and until M23 bounds the cache of decoded object streams (T33), raising
-  `MaxDecodedStreamLength` multiplies what that cache can hold.
+  it asks for, up to the new bounds; the cache of decoded object streams keeps within `ObjectStreamBudget` but always
+  holds the stream decoded last, so raising `MaxDecodedStreamLength` raises what that one can hold.
 - A classic trailer that ends within the window its table was read through is read whole whatever its
   length: the guard bounds how far the reader follows one past that window, which is where the cost is.
 - **Rejected** — reading everything by default and making the guards opt-in: every service that accepts

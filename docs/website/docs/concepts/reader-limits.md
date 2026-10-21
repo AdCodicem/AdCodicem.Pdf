@@ -88,8 +88,10 @@ maxima.
 
 Other bounds protect the reader itself — its stack, the chains of references it follows — and are not reached by the
 documents producers write: real documents nest a handful of levels, not 128, and producers write an object rather
-than a reference to a reference. Those stay internal constants, since lifting them would let nothing more be read,
-and each says where it is declared why no valid file reaches it.
+than a reference to a reference. An object stream's header lists its objects by increasing offset, so that a sound
+one's objects each lie before the next one starts: the reader reads each no further, and a header that breaks that
+order ends where it breaks it. Those stay internal constants, since lifting them would let nothing more be read, and
+each says where it is declared why no valid file reaches it.
 
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
 if a valid file can reach it, it becomes a limit, with its code and its test.
