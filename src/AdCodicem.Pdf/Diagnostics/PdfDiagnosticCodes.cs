@@ -84,6 +84,14 @@ public static class PdfDiagnosticCodes
     public const string ObjectStreamMemberMoved = "object-stream.member-moved";
 
     /// <summary>
+    /// An object an object stream holds is written as a stream — a dictionary followed by <c>stream</c> —, or holds one,
+    /// which an object stream cannot hold (ISO 32000-1 7.5.7): it reads as null, and its data is not read. The report is
+    /// placed where the object stream's data starts, and names the object, the object stream and the byte the object
+    /// starts at; it is made once for each object.
+    /// </summary>
+    public const string ObjectStreamMemberStream = "object-stream.member-stream";
+
+    /// <summary>
     /// What an object stream — a stream an entry of the index names as one — says of itself cannot be believed: its
     /// <c>/N</c> or its <c>/First</c> is absent or no non-negative integer, its <c>/N</c> declares more objects than
     /// its header can list, its <c>/First</c> lies past its decoded data, or its header ends or breaks before listing as

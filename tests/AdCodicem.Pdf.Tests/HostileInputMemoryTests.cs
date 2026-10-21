@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
+using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
@@ -13,6 +14,80 @@ namespace AdCodicem.Pdf.Tests;
 [Collection(TimingCollection.Name)]
 public class HostileInputMemoryTests
 {
+    [Fact]
+    public void Object_streams_each_holding_a_stream_keep_no_more_than_their_budget_once_their_members_are_read()
+    {
+        // Eight object streams of 8 MB, each holding one stream of five bytes: a member's data lay in its object stream's
+        // decoded data, which it kept alive past the budget. Members written as streams are no value now, and the reader
+        // keeps its budget and the heaviest stream at most (#161).
+        const int Streams = 8;
+        const int Decoded = 8 * 1024 * 1024;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var k = 0; k < Streams; k++)
+        {
+            var header = string.Create(CultureInfo.InvariantCulture, $"{20 + k} 0 ");
+            var data = HostileInputTests.Compress(Encoding.ASCII.GetBytes(header + "<< /Length 5 >>stream\nhello\nendstream" + new string(' ', Decoded)));
+            rows[10 + k] = (1, file.Object(10 + k, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First {header.Length} /Filter /FlateDecode /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+            rows[20 + k] = (2, 10 + k, 0);
+        }
+
+        file.CrossReferenceStream(30, 31, rows, "/Root 1 0 R");
+        var bytes = file.Bytes;
+        var before = Retained();
+        using var document = PdfDocument.Open(bytes);
+
+        for (var k = 0; k < Streams; k++)
+        {
+            document.GetObject(new PdfObjectId(20 + k)).Should().BeSameAs(PdfNull.Instance);
+        }
+
+        var after = Retained();
+
+        after.Should().BeLessThan(before + (32L * 1024 * 1024) + Decoded + (1024 * 1024), "the budget and the heaviest object stream, not every one");
+        document.Diagnostics.Should().HaveCount(Streams).And.OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectStreamMemberStream);
+    }
+
+    [Fact]
+    public void Disposing_a_document_lets_go_of_the_object_streams_it_decoded_though_a_reference_it_gave_is_held()
+    {
+        // Sixteen megabytes of an object stream's decoded data, which the reader keeps, and a reference handed out, which
+        // reaches the reader: disposing lets go of the data all the same.
+        var file = HostileInputTests.ObjectStreams(streams: 1, decodedLength: 16 * 1024 * 1024, objectsPerStream: 1, everyIndexWrong: false);
+        var before = Retained();
+        var (held, kept) = OpenDecodeAndDispose(file);
+        var after = Retained();
+
+        kept.Should().BeGreaterThan(before + (16L * 1024 * 1024), "the reader kept the decoded data while the document was open");
+        after.Should().BeLessThan(before + (1024 * 1024), "the object streams the document decoded are let go");
+        GC.KeepAlive(held);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (PdfObject Held, long Kept) OpenDecodeAndDispose(byte[] file)
+    {
+        var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(HostileInputTests.PackedNumber(0, 0))).AsDictionary().Required();
+        var held = document.Trailer.GetRaw(PdfName.Root)!;
+        var kept = Retained();
+
+        document.Dispose();
+        return (held, kept);
+    }
+
+    private static long Retained()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        return GC.GetTotalMemory(forceFullCollection: true);
+    }
+
     [Fact]
     public void A_chain_of_object_streams_each_needing_the_next_to_decode_holds_one_level_s_output_at_once()
     {

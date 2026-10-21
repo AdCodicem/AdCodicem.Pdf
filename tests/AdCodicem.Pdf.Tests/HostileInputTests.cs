@@ -276,6 +276,38 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_stream_inside_an_object_stream_is_not_decoded_whatever_it_would_decode_to()
+    {
+        // A member written as a stream whose data inflates to 50 MB: under a bound of 1 MB and ThrowOnLimit, it decoded whole,
+        // with no report, under the default guard. It now reads as null, and its data is never decoded (#161).
+        var zeros = Compress(new byte[50 * 1024 * 1024]);
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Big 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var data = Compress(Encoding.Latin1.GetBytes(string.Create(CultureInfo.InvariantCulture, $"7 0 << /Filter /FlateDecode /Length {zeros.Length} >>stream\n{Encoding.Latin1.GetString(zeros)}\nendstream")));
+        rows[5] = (1, file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+        rows[7] = (2, 5, 0);
+        file.CrossReferenceStream(6, 8, rows, "/Root 1 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1024 * 1024 } };
+
+        var allocated = Allocations.Least(
+            () => PdfDocument.Open(file.Bytes, options),
+            document => Measure(() => document.GetObject(new PdfObjectId(7))),
+            out var opened,
+            out var seven);
+
+        using (opened)
+        {
+            seven.Should().BeSameAs(PdfNull.Instance);
+            allocated.Should().BeLessThan(4L * 1024 * 1024, "the object stream is decoded, and its member's data is not");
+            opened.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.ObjectStreamMemberStream);
+        }
+    }
+
+    [Fact]
     public void An_object_stream_of_members_one_byte_apart_reads_each_to_the_next_one_s_start_in_time()
     {
         // A hundred and sixty thousand members, each an open bracket the next one's start closes: read to the end of the
@@ -3689,7 +3721,7 @@ public class HostileInputTests
     }
 
     /// <summary>Compresses <paramref name="data"/> with zlib, as a <c>/FlateDecode</c> stream holds it.</summary>
-    private static byte[] Compress(byte[] data)
+    internal static byte[] Compress(byte[] data)
     {
         using var compressed = new MemoryStream();
         using (var zlib = new ZLibStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))

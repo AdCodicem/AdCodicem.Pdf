@@ -718,8 +718,8 @@ public class DocumentReaderTests
             };
 
             // Taken before: a page, cached; its content stream, cached and its data read; a stream whose data was not
-            // read; an object of an object stream read, so cached, and one of the same stream not read; a stream an
-            // object stream holds, which ISO 32000-1 forbids, its data read, and one in an array there, not read.
+            // read; an object of an object stream read, so cached, and one of the same stream not read. A stream an object
+            // stream holds, which ISO 32000-1 forbids, reads as null, as does an array there holding one (#161).
             var page = document.GetObject(new PdfObjectId(3)).AsDictionary().Required();
             var contents = page.GetRaw(PdfName.Contents).Should().BeOfType<PdfReference>().Subject;
             var read = contents.Resolve().Should().BeOfType<PdfStream>().Subject;
@@ -729,15 +729,16 @@ public class DocumentReaderTests
             states.GetDictionary(PdfName.Get("A")).Should().NotBeNull();
             var packed = states.GetRaw(PdfName.Get("A")).Should().BeOfType<PdfReference>().Subject;
             var packedUnread = states.GetRaw(PdfName.Get("B")).Should().BeOfType<PdfReference>().Subject;
-            var member = document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfStream>().Subject;
-            member.GetRawBytes().Length.Should().Be(3);
-            var nested = document.GetObject(new PdfObjectId(9)).Should().BeOfType<PdfArray>().Subject[0].Should().BeOfType<PdfStream>().Subject;
+            document.GetObject(new PdfObjectId(8)).Should().BeSameAs(PdfNull.Instance);
+            document.GetObject(new PdfObjectId(9)).Should().BeSameAs(PdfNull.Instance);
             using var numbers = document.ObjectNumbers.GetEnumerator();
             numbers.MoveNext().Should().BeTrue();
 
             document.Dispose();
 
-            document.Diagnostics.Should().BeEmpty("the record of the reading keeps answering");
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+                [PdfDiagnosticCodes.ObjectStreamMemberStream, PdfDiagnosticCodes.ObjectStreamMemberStream],
+                "the record of the reading keeps answering");
             Disposed(() => document.Trailer);
             Disposed(() => document.Catalog);
             Disposed(() => document.Version);
@@ -756,11 +757,8 @@ public class DocumentReaderTests
             Disposed(() => read.GetRawBytes());
             Disposed(() => read.Decode(document.Diagnostics));
             Disposed(() => unread.GetRawBytes());
-            Disposed(() => member.GetRawBytes());
-            Disposed(() => nested.Decode(document.Diagnostics));
 
             read.RawLength.Should().Be(18, "what was handed out stays the caller's");
-            member.RawLength.Should().Be(3);
             read.ToString().Should().Be("<<stream of 18 bytes>>");
             page.ToString().Should().Be("<</Type /Page ... 5 entries>>");
             FluentActions.Invoking(document.Dispose).Should().NotThrow();
@@ -868,32 +866,6 @@ public class DocumentReaderTests
         document.Dispose();
 
         reader.ChainIndex.Required().Count.Should().Be(0);
-    }
-
-    [Fact]
-    public void Disposing_lets_go_of_the_object_streams_the_document_decoded()
-    {
-        var (held, decoded) = OpenDecodeAndDispose();
-
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-
-        decoded.IsAlive.Should().BeFalse("the object streams the document decoded are let go");
-        GC.KeepAlive(held);
-    }
-
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static (PdfObject Held, WeakReference Decoded) OpenDecodeAndDispose()
-    {
-        // The data of a stream an object stream holds lies in that object stream's decoded data, which it hands out.
-        var document = PdfDocument.Open(HeldObjectsDocument());
-        var member = document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfStream>().Subject;
-        System.Runtime.InteropServices.MemoryMarshal.TryGetArray(member.GetRawBytes(), out var segment).Should().BeTrue();
-        var taken = (document.GetObject(new PdfObjectId(3)).AsDictionary().Required().GetRaw(PdfName.Contents)!, new WeakReference(segment.Array));
-
-        document.Dispose();
-        return taken;
     }
 
     [Fact]
@@ -1230,25 +1202,46 @@ public class DocumentReaderTests
             $"The object stream's decoded data ended inside a dictionary, which was never closed, before the value of its last key. It was met in object 3, at byte {opens} of object stream 4's decoded data."));
     }
 
-    [Fact]
-    public void Places_a_length_fault_of_a_stream_written_inside_an_object_stream_where_the_object_stream_s_data_starts()
+    [Theory]
+    [InlineData("<< /Length 99 >>\nstream\nabc\nendstream")]
+    [InlineData("[1 << /Length 3 >> stream\nabc\nendstream]")]
+    public void Reads_an_object_written_as_a_stream_inside_an_object_stream_as_null_and_reports_it_once(string member)
     {
-        var file = new TestPdfBuilder()
+        // An object stream cannot hold a stream (7.5.7): the member, or the member holding one, is no value; its data is
+        // not read, and nothing of its length reported. Read again once the cache let it go, it is not reported again (#161).
+        var builder = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .WithObject(3, "<< /Length 99 >>\nstream\nabc\nendstream")
-            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+            .WithObject(3, member);
+
+        for (var number = 10; number < 90; number++)
+        {
+            builder.WithObject(number, "(filler)");
+        }
+
+        var file = builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
         var dataStart = ObjectStreamDataStart(file);
+        var opens = Encoding.Latin1.GetString(file).IndexOf(member, (int)dataStart, StringComparison.Ordinal) - dataStart;
 
-        using var document = PdfDocument.Open(file);
-        _ = document.GetObject(new PdfObjectId(3));
+        using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
 
-        var data = Encoding.Latin1.GetString(file).IndexOf("stream\nabc", (int)dataStart, StringComparison.Ordinal) + "stream\n".Length - dataStart;
-        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which;
+        for (var round = 0; round < 2; round++)
+        {
+            document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+
+            for (var number = 10; number < 90; number++)
+            {
+                document.GetObject(new PdfObjectId(number));
+            }
+        }
+
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.ObjectStreamMemberStream);
+        report.Severity.Should().Be(PdfDiagnosticSeverity.Warning);
         report.Position.Should().Be(dataStart);
-        report.Message.Should().EndWith(string.Create(
+        report.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $" It was met in object 3, at byte {data} of object stream 4's decoded data."));
+            $"Object 3, at byte {opens} of object stream 90's decoded data, is written as a stream, which an object stream cannot hold; it reads as null."));
     }
 
     [Theory]

@@ -871,19 +871,33 @@ public class StreamLengthTests
     }
 
     [Fact]
-    public void A_stream_inside_an_object_stream_quotes_its_length_s_name_escaped()
+    public void A_stream_inside_an_object_stream_has_no_length_read_nor_reported_however_often_it_is_read()
     {
-        var file = new TestPdfBuilder()
+        // An object stream cannot hold a stream (7.5.7): the member reads as null, and its /Length is never read, so no
+        // fault of it is reported, the first time or after the cache let it go (#161).
+        var builder = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
-            .WithObject(3, "<< /Length /Q#0Aw#1B >>\nstream\nabc\nendstream")
-            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]);
+            .WithObject(3, "<< /Length /Q#0Aw#1B >>\nstream\nabc\nendstream");
 
-        using var document = PdfDocument.Open(file);
-        _ = document.GetObject(new PdfObjectId(3));
+        for (var number = 10; number < 90; number++)
+        {
+            builder.WithObject(number, "(filler)");
+        }
 
-        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid)
-            .Which.Message.Should().StartWith("The stream's /Length is a name, /Q#0Aw#1B, not a non-negative integer;").And.MatchRegex("^[ -~]*$");
+        using var document = PdfDocument.Open(builder.BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3]), PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+
+        for (var round = 0; round < 3; round++)
+        {
+            document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+
+            for (var number = 10; number < 90; number++)
+            {
+                document.GetObject(new PdfObjectId(number));
+            }
+        }
+
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.ObjectStreamMemberStream);
     }
 
     [Fact]
