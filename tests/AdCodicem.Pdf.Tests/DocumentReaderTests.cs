@@ -1031,17 +1031,104 @@ public class DocumentReaderTests
             : $"Object stream 4 has a header that lists object {number} at offset 0, which no member can be, after 0 of the 2 objects its /N declares; none of its objects can be read from it.");
     }
 
-    [Theory]
-    [InlineData("2147483647 0 ")]
-    [InlineData("2 2147483647 ")]
-    public void Reads_an_object_stream_header_at_the_edge_of_what_a_member_can_be(string start)
+    [Fact]
+    public void Reads_an_object_stream_header_that_lists_the_largest_number_a_member_can_have()
     {
-        // The largest number a member may have, and the largest offset: the header is read, whatever the entries then
-        // find in it.
-        using var document = PdfDocument.Open(Packed(header => start + header[4..]));
+        // The header is read, whatever the entries then find in it.
+        using var document = PdfDocument.Open(Packed(header => "2147483647 0 " + header[4..]));
 
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable);
+    }
+
+    [Theory]
+    [InlineData("6 0 7 0 ", "lists object 7 at offset 0, not past the offset of the object before it, 0")]
+    [InlineData("6 6 7 0 ", "lists object 7 at offset 0, not past the offset of the object before it, 6")]
+    [InlineData("6 0 7 99 ", "lists object 7 at offset 99, past what its {0} bytes of decoded data hold")]
+    [InlineData("6 0 7 13 ", "lists object 7 at offset 13, past what its {0} bytes of decoded data hold")]
+    public void Ends_an_object_stream_header_at_a_member_that_starts_before_the_one_before_it_ends_or_past_the_data(string header, string pair)
+    {
+        // The members are "(six)" at offset 0 and "(sevn)" at offset 6, thirteen bytes with their ends of line. Offsets must
+        // increase (7.5.7), so that each member is read to the next one's start; an offset that does not, or a member that
+        // would start at or past the end of the data, ends the header as a pair no member can have does (#160, #202).
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(6, "(six)")
+            .WithObject(7, "(sevn)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [6, 7], objectStreamHeader: _ => header);
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(6)).AsText().Should().Be(header.StartsWith("6 6", StringComparison.Ordinal) ? "sevn" : "six");
+        document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.ObjectStreamUnreadable);
+        report.Position.Should().Be(ObjectStreamDataStart(file));
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Object stream 8 has a header that {string.Format(CultureInfo.InvariantCulture, pair, header.Length + 13)}, after 1 of the 2 objects its /N declares; only the first 1 of its 2 objects can be read from it."));
+    }
+
+    [Theory]
+    [InlineData("6 13 7 14 ")]
+    [InlineData("6 2147483647 7 0 ")]
+    public void Reads_none_of_an_object_stream_whose_first_member_starts_past_its_data(string header)
+    {
+        // Thirteen bytes of members: the first starts at their end, or past what an offset into them can reach.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(6, "(six)")
+            .WithObject(7, "(sevn)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [6, 7], objectStreamHeader: _ => header);
+        var offset = header[2..header.IndexOf(" 7", StringComparison.Ordinal)];
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(new PdfObjectId(7)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Object stream 8 has a header that lists object 6 at offset {offset}, past what its {header.Length + 13} bytes of decoded data hold, after 0 of the 2 objects its /N declares; none of its objects can be read from it."));
+    }
+
+    [Theory]
+    [InlineData("/Type /XObj  ")]
+    [InlineData("/Kind /ObjStm")]
+    public void Reads_none_of_the_members_of_a_stream_that_is_not_of_type_object_stream(string type)
+    {
+        // The validator and the rebuild read no member from such a stream, nor does the reader (#274). The replacement
+        // keeps every offset.
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(Packed(header => header)).Replace("/Type /ObjStm", type, StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which;
+        report.Position.Should().Be(Encoding.Latin1.GetString(file).IndexOf("stream\n", Encoding.Latin1.GetString(file).IndexOf("/N 2", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length);
+        report.Message.Should().Be("Object stream 4 is a stream that is not of /Type /ObjStm; none of its objects can be read from it.");
+    }
+
+    [Fact]
+    public void Finds_an_object_its_entry_misplaces_at_the_first_place_its_object_stream_lists_it()
+    {
+        // Object 6 is listed twice, at indexes 0 and 1, and its entry gives index 5: it is the first that is read.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(6, "(six)")
+            .WithObject(7, "(sevn)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [6, 7], objectStreamHeader: _ => "6 0 6 6 ");
+        var text = Encoding.Latin1.GetString(file);
+        var rows = text.IndexOf("stream\n", text.IndexOf("/Type /XRef", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length;
+        file[rows + (6 * 7) + 6] = 5;
+
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(6)).AsText().Should().Be("six");
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            "Object 6 is at index 0 of object stream 8, not at index 5, where the cross-reference index places it.");
     }
 
     [Theory]
@@ -1169,7 +1256,7 @@ public class DocumentReaderTests
     [InlineData("/N -1 /First 4", "has no /N that gives a count of objects; none of its objects can be read from it.")]
     [InlineData("/N 1", "has no /First that gives where its objects start; none of its objects can be read from it.")]
     [InlineData("/N 1 /First -4", "has no /First that gives where its objects start; none of its objects can be read from it.")]
-    [InlineData("/N 9 /First 4", "declares 9 objects in /N, more than a header of the 4 bytes its /First gives can list; none of its objects can be read from it.")]
+    [InlineData("/N 9 /First 4", "has a header that ends after 1 of the 9 objects its /N declares; only the first 1 of its 9 objects can be read from it.")]
     [InlineData("/N 1 /First 40", "gives in /First an offset, 40, past the end of its decoded data, which is 8 bytes long; none of its objects can be read from it.")]
     [InlineData("/N 2 /First 4", "has a header that ends after 1 of the 2 objects its /N declares; only the first 1 of its 2 objects can be read from it.")]
     public void Reports_an_object_stream_whose_dictionary_or_header_cannot_be_believed_where_its_data_starts(string entries, string fault)
@@ -1456,10 +1543,11 @@ public class DocumentReaderTests
     [Fact]
     public void Writes_the_numbers_a_rebuild_finds_redefined_whatever_the_culture()
     {
-        // One object stream lists object 6 a thousand and two times: the 1,001 definitions past the first are counted
-        // with the invariant culture's comma, not with the non-breaking space Swedish groups digits with.
-        var header = string.Concat(Enumerable.Repeat("6 0 ", 1002));
-        var data = header + "(one)";
+        // One object stream lists object 6 a thousand and two times, each at its own offset: the 1,001 definitions past
+        // the first are counted with the invariant culture's comma, not with the non-breaking space Swedish groups digits
+        // with.
+        var header = string.Concat(Enumerable.Range(0, 1002).Select(index => string.Create(CultureInfo.InvariantCulture, $"6 {2 * index} ")));
+        var data = header + string.Concat(Enumerable.Repeat("1 ", 1002));
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")

@@ -7347,8 +7347,7 @@
         "requiredDiagnostics": [
           "xref.rebuilt",
           "stream.length-invalid",
-          "object-stream.unreadable",
-          "object.redefined"
+          "object-stream.unreadable"
         ],
         "findings": [
           "xref.entry-broken",

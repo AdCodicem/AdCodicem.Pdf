@@ -620,7 +620,8 @@ public class ReaderLimitsTests
         // are indexed; the catalog, object 5, and object 6 itself are past the cut. /Root names object 2, the page tree,
         // which is no catalog, and none is among the indexed objects: that is damage, and the index is rebuilt. The scan
         // finds every header, but object 6 has no /Type /ObjStm, so the rebuild does not take in what it holds: only the
-        // chain's entries for 3 and 4, kept through the rebuild, still place them.
+        // chain's entries for 3 and 4, kept through the rebuild, still place them — in a stream that serves no member, as
+        // the validator reads it (#274).
         var written = new TestPdfBuilder()
             .WithObject(1, "(one)")
             .WithObject(2, Pages)
@@ -635,8 +636,10 @@ public class ReaderLimitsTests
 
         document.WasRepaired.Should().BeTrue();
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
-        document.GetObject(new PdfObjectId(3)).AsText().Should().Be("packed three");
-        document.GetObject(new PdfObjectId(4)).AsText().Should().Be("packed four");
+        document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.GetObject(new PdfObjectId(4)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable)
+            .Which.Message.Should().Be("Object stream 6 is a stream that is not of /Type /ObjStm; none of its objects can be read from it.");
 
         // Five headers found, two entries kept: the chain's free row for object 0 is no object, and is not.
         document.ObjectCount.Should().Be(7);
@@ -647,15 +650,17 @@ public class ReaderLimitsTests
     {
         // As above, the rebuild set off by a read: object 4's row leads into padding, and reading 4 rebuilds the index while
         // 4 is being loaded. The cross-reference stream decodes no further than its first ten rows; object 6, which holds 7,
-        // has no /Type /ObjStm: once the rebuild is finished, only the chain's entry for 7, kept through it, places 7.
+        // has a comment inside its header, which the scan does not find (#261): once the rebuild is finished, only the
+        // chain's entries for 6 and 7, kept through it, place 7.
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, long>
         {
             [1] = file.Object(1, Catalog),
             [2] = file.Object(2, Pages),
-            [6] = file.Object(6, "<< /Kind /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream"),
-            [8] = file.Padding(8),
+            [6] = file.Position,
         };
+        file.Raw("6 0 % object stream\nobj\n<< /Type /ObjStm /N 1 /First 4 /Length 18 >>\nstream\n7 0 (packed seven)\nendstream\nendobj\n");
+        rows[8] = file.Padding(8);
         rows[4] = rows[8] + 600;
         file.Object(4, "(four)");
 
