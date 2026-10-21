@@ -234,6 +234,75 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void A_member_of_millions_of_arrays_is_read_no_further_than_MaxObjectLength()
+    {
+        // Eight megabytes of "[]" in one member, from a file of a few kilobytes: read whole, it allocated some 370 MB. Read
+        // to a bound of 256 KB, it allocates in proportion to the bound, and the guard says so (#160).
+        const int Pairs = 4 * 1024 * 1024;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var decoded = new byte[4 + 1 + (2 * Pairs) + 1];
+        "4 0 ["u8.CopyTo(decoded);
+
+        for (var i = 5; i < decoded.Length - 1; i += 2)
+        {
+            decoded[i] = (byte)'[';
+            decoded[i + 1] = (byte)']';
+        }
+
+        decoded[^1] = (byte)']';
+        var data = Compress(decoded);
+        rows[5] = (1, file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+        rows[4] = (2, 5, 0);
+        file.CrossReferenceStream(6, 7, rows, "/Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 256 * 1024 } };
+
+        var allocated = Allocations.Least(
+            () => PdfDocument.Open(file.Bytes, options),
+            document => Measure(() => document.GetObject(new PdfObjectId(4))),
+            out var opened,
+            out var four);
+
+        using (opened)
+        {
+            four.AsArray().Required().Count.Should().BeLessThanOrEqualTo(128 * 1024, "the bound holds 128 Ki pairs, the last one cut");
+            allocated.Should().BeLessThan(128L * 1024 * 1024, "the stream is decoded, and its member read to the bound, not whole");
+            opened.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.LimitObject);
+        }
+    }
+
+    [Fact]
+    public void An_object_stream_of_members_one_byte_apart_reads_each_to_the_next_one_s_start_in_time()
+    {
+        // A hundred and sixty thousand members, each an open bracket the next one's start closes: read to the end of the
+        // data, they took a minute together (#200). Each is reported, and the report formats a message only while the
+        // diagnostics keep it.
+        const int Members = 160_000;
+        var file = MembersOneByteApart(Members);
+        using var document = PdfDocument.Open(file);
+
+        var arrays = Measure(() =>
+        {
+            var read = 0;
+
+            for (var i = 0; i < Members; i++)
+            {
+                read += document.GetObject(new PdfObjectId(1000 + i)) is PdfArray { Count: 0 } ? 1 : 0;
+            }
+
+            return read;
+        });
+
+        arrays.Should().Be(Members);
+        document.Diagnostics.Should().OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxTruncatedObject);
+        document.Diagnostics[0].Message.Should().StartWith("The next member of the object stream started inside an array, which was never closed.");
+    }
+
+    [Fact]
     public void The_object_stream_budget_weighs_the_header_tables_with_the_data()
     {
         // Each member costs its number and its offset, and its place in the lookup an entry's wrong index builds (#160).
@@ -3308,6 +3377,32 @@ public class HostileInputTests
 
     /// <summary>The number of the object at <paramref name="index"/> of object stream <paramref name="stream"/>.</summary>
     internal static int PackedNumber(int stream, int index, int objectsPerStream = 1) => 1000 + (stream * objectsPerStream) + index;
+
+    /// <summary>
+    /// Writes a file whose object stream holds <paramref name="members"/> members one byte apart, objects 1000 and on, over
+    /// as many open brackets: read to the end of the data, each would take every bracket after it (#200).
+    /// </summary>
+    internal static byte[] MembersOneByteApart(int members)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var header = new StringBuilder();
+
+        for (var i = 0; i < members; i++)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{1000 + i} {i} ");
+            rows[1000 + i] = (2, 5, i);
+        }
+
+        var data = Compress(Encoding.ASCII.GetBytes(header.ToString() + new string('[', members)));
+        rows[5] = (1, file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {members} /First {header.Length} /Filter /FlateDecode /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")), 0);
+        file.CrossReferenceStream(3, 1000 + members, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
 
     /// <summary>
     /// Writes a file whose index is a cross-reference stream, with <paramref name="streams"/> object streams holding

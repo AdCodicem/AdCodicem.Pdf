@@ -13,6 +13,58 @@ namespace AdCodicem.Pdf.Tests;
 public class ReaderTimingTests
 {
     [Fact]
+    public void The_members_of_an_object_stream_one_byte_apart_are_read_in_linear_time()
+    {
+        // Each member is read to the next one's start, not to the end of the data: four times the members, over four times
+        // the brackets, take about four times as long, where reading each to the end would take sixteen (#200). The
+        // measure is the ratio, the best of five runs of each size.
+        const int Small = 20_000;
+        const int Large = 4 * Small;
+        var small = HostileInputTests.MembersOneByteApart(Small);
+        var large = HostileInputTests.MembersOneByteApart(Large);
+
+        ReadEvery(small, Small);
+        var smallTime = TimeSpan.MaxValue;
+        var largeTime = TimeSpan.MaxValue;
+
+        for (var run = 0; run < 5; run++)
+        {
+            smallTime = Min(smallTime, Time(() => ReadEvery(small, Small)));
+            largeTime = Min(largeTime, Time(() => ReadEvery(large, Large)));
+        }
+
+        largeTime.Should().BeLessThan(
+            smallTime * 8,
+            "four times the members must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
+
+        static TimeSpan Time(Action action)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            action();
+            return stopwatch.Elapsed;
+        }
+
+        static void ReadEvery(byte[] file, int count)
+        {
+            using var document = PdfDocument.Open(file);
+            var arrays = 0;
+
+            for (var i = 0; i < count; i++)
+            {
+                arrays += document.GetObject(new PdfObjectId(1000 + i)) is PdfArray ? 1 : 0;
+            }
+
+            arrays.Should().Be(count);
+        }
+    }
+
+    [Fact]
     public void An_object_stream_whose_every_index_is_wrong_is_read_in_linear_time()
     {
         // One stream whose every entry in the index names the wrong place in it: each object is found by its

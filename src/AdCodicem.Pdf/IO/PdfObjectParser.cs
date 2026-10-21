@@ -138,9 +138,10 @@ internal ref struct PdfObjectParser
     /// <param name="source">Resolves what the member refers to.</param>
     /// <param name="diagnostics">Receives what parsing met.</param>
     /// <param name="endsData">
-    /// Whether <paramref name="data"/> is the whole of the decoded data, rather than what a guard cut it to: only then is
-    /// what its end cuts short the data's fault.
+    /// Whether <paramref name="data"/> ends where the member must — at the next member's start, or at the end of the decoded
+    /// data —, rather than where a guard cut it: only then is what its end cuts short the data's fault.
     /// </param>
+    /// <param name="endsAtNextMember">Whether <paramref name="data"/> ends at the next member's start, which its reports then name.</param>
     public static PdfObjectParser ForObjectStreamMember(
         ReadOnlyMemory<byte> data,
         int streamNumber,
@@ -148,10 +149,11 @@ internal ref struct PdfObjectParser
         int objectNumber,
         IPdfObjectSource source,
         PdfDiagnostics diagnostics,
-        bool endsData = true)
+        bool endsData = true,
+        bool endsAtNextMember = false)
     {
         var parser = new PdfObjectParser(data, 0, source, diagnostics, endsData: endsData);
-        parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber, diagnostics);
+        parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber, diagnostics, endsAtNextMember);
         return parser;
     }
 
@@ -307,7 +309,7 @@ internal ref struct PdfObjectParser
                     _cutReported = true;
                     Report(
                         PdfDiagnosticCodes.SyntaxTruncatedObject,
-                        _member is null ? "The file ended in the middle of an object." : "The object stream's decoded data ended in the middle of an object.",
+                        $"{End} in the middle of an object.",
                         token.Start);
                 }
 
@@ -1184,7 +1186,7 @@ internal ref struct PdfObjectParser
             return;
         }
 
-        var data = atEndObj ? "An endobj ended the object" : _member is null ? "The file ended" : "The object stream's decoded data ended";
+        var data = atEndObj ? "An endobj ended the object" : End;
         var content = swallowed > 0
             ? string.Create(CultureInfo.InvariantCulture, $", which takes the {swallowed:N0} {(swallowed == 1 ? "byte" : "bytes")} from where it opens to that end")
             : valueMissing ? ", which was never closed, before the value of its last key" : ", which was never closed";
@@ -1217,6 +1219,14 @@ internal ref struct PdfObjectParser
     /// a window's edge may be the start of a longer keyword.
     /// </summary>
     private readonly bool IsEndObj(PdfToken token) => token.IsKeyword("endobj"u8) && !AtWindowEdge(token);
+
+    /// <summary>Gets what ended the buffer, as a report of what it cut short names it.</summary>
+    private readonly string End => _member switch
+    {
+        null => "The file ended",
+        { EndsAtNextMember: true } => "The next member of the object stream started",
+        _ => "The object stream's decoded data ended",
+    };
 
     /// <summary>Gets a value indicating whether a report made now is kept, rather than counted and dropped.</summary>
     private readonly bool KeepsReports => _member is { } member ? !member.Diagnostics.IsFull : _diagnostics is { IsFull: false };
@@ -1297,7 +1307,9 @@ internal ref struct PdfObjectParser
     /// <param name="DataStart">Where the object stream's data starts in the file.</param>
     /// <param name="ObjectNumber">The member's number.</param>
     /// <param name="Diagnostics">Receives what the parser meets in the member.</param>
-    private readonly record struct ObjectStreamMember(int StreamNumber, long DataStart, int ObjectNumber, PdfDiagnostics Diagnostics)
+    /// <param name="EndsAtNextMember">Whether the buffer ends at the next member's start rather than at the end of the data.</param>
+    private readonly record struct ObjectStreamMember(
+        int StreamNumber, long DataStart, int ObjectNumber, PdfDiagnostics Diagnostics, bool EndsAtNextMember)
     {
         /// <summary>
         /// Reports, where the object stream's data starts, what was met at byte <paramref name="position"/> of its
