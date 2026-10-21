@@ -59,21 +59,33 @@ public class SyntaxFaultTests
     }
 
     [Theory]
-    [InlineData("[1 2 3")]
-    [InlineData("(abc")]
-    public void A_member_that_takes_the_members_after_it_to_the_end_of_the_data_leaves_them_readable(string value)
+    [InlineData("[1 2 3", "an array, which was never closed")]
+    [InlineData("(abc", "a literal string, which takes the 5 bytes from where it opens to that end")]
+    [InlineData("<414243", "a hexadecimal string, which takes the 8 bytes from where it opens to that end")]
+    public void A_member_left_open_ends_at_the_next_member_s_start(string value, string what)
     {
-        // The members after it are read from where the header places them; the one left open takes their bytes to the end of
-        // the data, as the reader has no bound but the data's end for a member yet (#160).
+        // A member is read to the next one's start (#200): one left open takes nothing of the members after it, which are
+        // read from where the header places them, and its report names what cut it short.
         var file = Packed(value, last: false);
+        var opens = PdfTemplate.OffsetOf(file, value) - DataStart(file);
         using var document = PdfDocument.Open(file);
 
-        var swallowing = document.GetObject(new PdfObjectId(4));
+        var open = document.GetObject(new PdfObjectId(4));
 
         document.GetObject(new PdfObjectId(5)).AsDictionary().Required().GetInteger(PdfName.Get("X")).Should().Be(5);
         document.GetObject(new PdfObjectId(6)).AsString().Required().ToText().Should().Be("six");
-        (swallowing is PdfArray { Count: 5 } || swallowing.AsString()?.ToText() == "abc\n<< /X 5 >>\n(six)\n").Should().BeTrue();
-        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        (value[0] switch
+        {
+            '[' => open is PdfArray { Count: 3 },
+            '(' => open.AsString()?.ToText() == "abc\n",
+            _ => open.AsString()?.Bytes.ToArray() is [0x41, 0x42, 0x43],
+        }).Should().BeTrue();
+        var report = document.Diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        report.Position.Should().Be(DataStart(file));
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The next member of the object stream started inside {what}. It was met in object 4, at byte {opens} of object stream 7's decoded data."));
     }
 
     [Theory]
@@ -130,22 +142,6 @@ public class SyntaxFaultTests
         report.Position.Should().Be(PdfTemplate.OffsetOf(file, "4 0 obj\n") + "4 0 obj\n".Length);
         report.Message.Should().Be($"An endobj ended the object inside {what}.");
         new PdfValidator().Validate(document).Findings.Should().BeEmpty();
-    }
-
-    [Fact]
-    public void A_hexadecimal_string_that_lost_its_closing_bracket_is_reported_for_what_it_takes_of_the_next_member()
-    {
-        // The string runs on to the first > it meets, the next member's: what it takes that is no digit is reported, and the
-        // next member is still read from where the header places it.
-        var file = Packed("<414243", last: false);
-        using var document = PdfDocument.Open(file);
-
-        document.GetObject(new PdfObjectId(4)).AsString().Required().Bytes.ToArray().Should().Equal((byte)0x41, 0x42, 0x43, 0x50);
-        document.GetObject(new PdfObjectId(5)).AsDictionary().Required().GetInteger(PdfName.Get("X")).Should().Be(5);
-
-        var report = document.Diagnostics.Should().ContainSingle().Subject;
-        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxHexStringInvalid);
-        report.Message.Should().StartWith("A hexadecimal string holds 4 bytes that are neither hexadecimal digits nor white space");
     }
 
     [Theory]

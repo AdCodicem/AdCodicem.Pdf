@@ -204,6 +204,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>The guards already reported, and where: an object read again is not reported again.</summary>
     private readonly HashSet<(PdfLimit Limit, long Position)> _limitsReached = [];
 
+    /// <summary>The object stream members <see cref="PdfReaderLimits.MaxObjectLength"/> cut, by stream and number, each reported once.</summary>
+    private readonly HashSet<(int Stream, int Number)> _memberLimitsReached = [];
+
     /// <summary>
     /// The faults of the syntax the document's diagnostics keep: an object parsed again — after the cache let it go, the
     /// index was rebuilt, or the validator read it — is not reported again. As many as the diagnostics keep, at most.
@@ -2035,6 +2038,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         Release(_lengthFaultsReported);
         Release(_syntaxReported);
         Release(_limitsReached);
+        Release(_memberLimitsReached);
         _objectStreamReports.Clear();
 
         static void Release<T>(HashSet<T> set)
@@ -4652,6 +4656,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
     }
 
+    /// <summary>
+    /// Reports, once for each member, that <see cref="PdfReaderLimits.MaxObjectLength"/> cut member <paramref name="number"/>
+    /// of object stream <paramref name="stream"/>, at <paramref name="position"/>, where the stream's data starts: its
+    /// members share that place, and each is reported. A document that throws on a guard throws each time.
+    /// </summary>
+    private void ReachMemberLimit(int stream, int number, string what, long position)
+    {
+        _guardsReached++;
+
+        if (!_memberLimitsReached.Contains((stream, number)))
+        {
+            _guard.Reach(PdfLimit.Object, _diagnostics, what, position);
+            _memberLimitsReached.Add((stream, number));
+        }
+    }
+
     private bool TryFindObjectHeader(int number, long approximateOffset, out long actualOffset, out int generation) =>
         TryFindObjectHeader(_source, number, approximateOffset, out actualOffset, out generation);
 
@@ -4930,7 +4950,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         try
         {
-            var value = contents.Parse(entry.IndexInObjectStream, id.Number, this, _diagnostics, _pending, out var cut);
+            var bound = _guard.Bound(PdfLimit.Object);
+            var value = contents.Parse(entry.IndexInObjectStream, id.Number, this, _diagnostics, _pending, bound, out var cut, out var pastLength);
+
+            if (pastLength >= 0)
+            {
+                ReachMemberLimit(
+                    entry.ObjectStreamNumber,
+                    id.Number,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Object {id.Number}, at byte {pastLength} of object stream {entry.ObjectStreamNumber}'s decoded data, runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read."),
+                    contents.DataStart);
+            }
 
             if (cut)
             {
@@ -5885,6 +5917,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         public int NumberAt(int index) => _numbers[index];
 
+        /// <summary>Gets where the stream's data starts in the file, where its reports are placed.</summary>
+        public long DataStart => _position;
+
         /// <summary>
         /// Reads the header of object stream <paramref name="number"/>, or gives null when it serves no object: it
         /// declares none, or what it says of itself cannot be believed, which is reported.
@@ -6000,14 +6035,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// <param name="source">Resolves what the object refers to.</param>
         /// <param name="diagnostics">Receives what the index got wrong of the object's place.</param>
         /// <param name="parsing">Receives what parsing met, for the caller to keep or drop.</param>
+        /// <param name="maxLength">The most of the data the member is read over, <see cref="PdfReaderLimits.MaxObjectLength"/>.</param>
         /// <param name="cut">
-        /// Whether the object runs into the end of data a guard cut, and was read only as far as it, or starts past it, and was
-        /// not read.
+        /// Whether the object runs into the end of data a guard cut, or past <paramref name="maxLength"/>, and was read only
+        /// as far as it, or starts past data a guard cut, and was not read.
+        /// </param>
+        /// <param name="pastLength">
+        /// Where the member starts in the data, when it runs past <paramref name="maxLength"/>, which a guard then reports;
+        /// -1 otherwise.
         /// </param>
         public PdfObject? Parse(
-            int index, int expectedNumber, IPdfObjectSource source, PdfDiagnostics diagnostics, PdfDiagnostics parsing, out bool cut)
+            int index,
+            int expectedNumber,
+            IPdfObjectSource source,
+            PdfDiagnostics diagnostics,
+            PdfDiagnostics parsing,
+            int maxLength,
+            out bool cut,
+            out long pastLength)
         {
             cut = false;
+            pastLength = -1;
 
             if (index < 0 || index >= _numbers.Length || _numbers[index] != expectedNumber)
             {
@@ -6036,17 +6084,41 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // Both are at most int.MaxValue, so their sum is computed as a long, where it cannot wrap.
             var start = (long)_first + _offsets[index];
 
-            // Past data a guard cut, the object is unread for the guard's reasons, not the file's (#259).
+            // Past data a guard cut, the object is unread for the guard's reasons, not the file's (#259): the header keeps a
+            // pair whose member starts past the data only then.
             if (start >= _data.Length)
             {
-                cut = _cutByGuard;
+                cut = true;
                 return null;
             }
 
-            var parser = PdfObjectParser.ForObjectStreamMember(_data, _number, _position, expectedNumber, source, parsing, endsData: !_cutByGuard);
+            // A member is read to the next one's start, the offsets increasing, and the last to the end of the data: the
+            // members' reads together cover the data once (#200). An internal bound (ADR 34): a valid file's members lie each
+            // before the next one's start, and the reads of every member of the corpus end there. A start past data a guard
+            // cut leaves the member before it the rest of the data.
+            var end = index + 1 < _offsets.Length ? Math.Min(_first + (long)_offsets[index + 1], _data.Length) : _data.Length;
+            var nextMember = end < _data.Length;
+            var endsData = nextMember || !_cutByGuard;
+
+            // No member is read past MaxObjectLength, as no object of the file is (#160).
+            if (end - start > maxLength)
+            {
+                end = start + maxLength;
+                nextMember = false;
+                endsData = false;
+            }
+
+            var parser = PdfObjectParser.ForObjectStreamMember(
+                _data[..(int)end], _number, _position, expectedNumber, source, parsing, endsData, endsAtNextMember: nextMember);
             parser.Position = (int)start;
             var value = parser.ParseObject();
-            cut = _cutByGuard && parser.IsTruncated;
+            cut = !endsData && parser.IsTruncated;
+
+            if (cut && end < _data.Length)
+            {
+                pastLength = start;
+            }
+
             return value;
         }
 

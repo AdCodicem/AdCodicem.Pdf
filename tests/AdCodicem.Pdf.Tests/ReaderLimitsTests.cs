@@ -614,6 +614,62 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_member_longer_than_MaxObjectLength_is_read_to_the_bound_and_each_is_reported_once()
+    {
+        // Objects 4 and 5, packed in object stream 6, run past a bound of 4 KB: each is read to it, as an object of the file
+        // is, and each is reported, though both are placed where the stream's data starts; read again once the cache let
+        // them go, neither is reported again (#160).
+        var file = LongMembers(out var starts);
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64, Limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 } };
+        using var document = PdfDocument.Open(file, options);
+
+        for (var round = 0; round < 2; round++)
+        {
+            document.GetObject(new PdfObjectId(4)).AsArray().Required().Count.Should().BeInRange(2000, 2048);
+            document.GetObject(new PdfObjectId(5)).AsArray().Required().Count.Should().BeInRange(2000, 2048);
+
+            for (var number = 10; number < 90; number++)
+            {
+                document.GetObject(new PdfObjectId(number));
+            }
+        }
+
+        document.Reader.IsCutAtLimit(4).Should().BeTrue();
+        document.Reader.IsCutAtLimit(5).Should().BeTrue();
+        var text = Encoding.Latin1.GetString(file);
+        var dataStart = text.IndexOf("stream\n", text.IndexOf("/Type /ObjStm", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length;
+        document.Diagnostics.Select(entry => (entry.Code, entry.Position, entry.Message)).Should().Equal(
+            (PdfDiagnosticCodes.LimitObject, dataStart, string.Create(CultureInfo.InvariantCulture, $"Object 4, at byte {starts[0]} of object stream 6's decoded data, runs past 4 KB; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.")),
+            (PdfDiagnosticCodes.LimitObject, dataStart, string.Create(CultureInfo.InvariantCulture, $"Object 5, at byte {starts[1]} of object stream 6's decoded data, runs past 4 KB; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it.")));
+    }
+
+    [Fact]
+    public void A_member_longer_than_MaxObjectLength_throws_each_time_it_is_read_when_the_document_throws_on_a_limit()
+    {
+        var file = LongMembers(out _);
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 } };
+        using var document = PdfDocument.Open(file, options);
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var reading = () => document.GetObject(new PdfObjectId(4));
+            reading.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        }
+    }
+
+    [Fact]
+    public void A_member_within_MaxObjectLength_is_read_whole_and_reported_nowhere()
+    {
+        var file = LongMembers(out _);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Count.Should().Be(4000);
+        document.GetObject(new PdfObjectId(5)).AsArray().Required().Count.Should().Be(4000);
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.IsCutAtLimit(4).Should().BeFalse();
+    }
+
+    [Fact]
     public void A_rebuild_damage_sets_off_keeps_the_entries_a_chain_a_guard_cut_gave_that_the_scan_cannot_find()
     {
         // The cross-reference stream decodes no further than five of its eight rows: objects 3 and 4, packed in object 6,
@@ -2751,6 +2807,34 @@ public class ReaderLimitsTests
     /// dictionary gives <c>/Prev</c> <paramref name="prev"/> and no <c>/Root</c>. The row of <paramref name="refused"/> places
     /// it in object stream 0, which no row may. The stream's <c>/Size</c> is <paramref name="size"/>.
     /// </summary>
+    /// <summary>
+    /// Writes objects 4 and 5, arrays of 4,000 zeros, packed in object stream 6, and objects 10 to 89, small strings that
+    /// push them out of a cache of 64; with <paramref name="starts"/> where each member starts in the decoded data.
+    /// </summary>
+    private static byte[] LongMembers(out int[] starts)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, Catalog), 0),
+            [2] = (1, file.Object(2, Pages), 0),
+            [4] = (2, 6, 0),
+            [5] = (2, 6, 1),
+        };
+        var member = "[" + string.Concat(Enumerable.Repeat("0 ", 4000)) + "]\n";
+        var header = string.Create(CultureInfo.InvariantCulture, $"4 0 5 {member.Length} ");
+        starts = [header.Length, header.Length + member.Length];
+        rows[6] = (1, file.Object(6, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 2 /First {header.Length} /Length {header.Length + (2 * member.Length)} >>\nstream\n{header}{member}{member}\nendstream")), 0);
+
+        for (var number = 10; number < 90; number++)
+        {
+            rows[number] = (1, file.Object(number, "(filler)"), 0);
+        }
+
+        file.CrossReferenceStream(90, 91, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
     private static byte[] NewestStreamNaming(string index, int[] rows, string prev, int refused, string twentyOne = "", int size = 23)
     {
         var file = new HandWrittenFile();
