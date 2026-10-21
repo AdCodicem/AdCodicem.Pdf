@@ -102,6 +102,9 @@ internal ref struct PdfObjectParser
     /// <summary>Where the <c>stream</c> keyword a member is written with starts, or -1 when none was met.</summary>
     private int _memberStream = -1;
 
+    /// <summary>Where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
+    private int _headerStart;
+
     /// <summary>Creates a parser over <paramref name="memory"/>.</summary>
     /// <param name="memory">The bytes to parse.</param>
     /// <param name="baseOffset">Where the bytes start in the file.</param>
@@ -173,6 +176,9 @@ internal ref struct PdfObjectParser
     /// keyword, and what it read of the member is no value (#161).
     /// </summary>
     public readonly bool IsMemberStream => _memberStream >= 0;
+
+    /// <summary>Gets where the header of the last indirect object <see cref="TryReadIndirectObject"/> read starts, in the buffer.</summary>
+    public readonly int HeaderStart => _headerStart;
 
     /// <summary>Gets what followed the value of the last indirect object <see cref="TryReadIndirectObject"/> read.</summary>
     public readonly EndObjState EndObj => _endObj;
@@ -253,6 +259,7 @@ internal ref struct PdfObjectParser
 
         id = new PdfObjectId((int)number.Integer, (int)generation.Integer);
         _objectNumber = id.Number;
+        _headerStart = number.Start;
 
         // An empty object, "2 0 obj endobj", reads its endobj as its value, and says so; that endobj is its own.
         var beforeValue = _lexer.Position;

@@ -285,7 +285,7 @@ internal sealed class CrossReferenceProbe
         // object alone, as the entry's own is (#125).
         var at = reader.IsInFile(offset) ? PdfValidationLocation.OfObject(id, offset) : PdfValidationLocation.OfObject(id);
 
-        var result = reader.ReadObjectStreamHeader(stream, offset, out var numbers, out var fault, out var streamMembers);
+        var result = reader.ReadObjectStreamHeader(stream, entry, out var numbers, out var fault, out var streamMembers);
 
         switch (result)
         {
