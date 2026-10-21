@@ -1303,6 +1303,233 @@ public class ReadOrderTests
         return file.Bytes;
     }
 
+    [Theory]
+    [InlineData("/N")]
+    [InlineData("/Filter")]
+    public void An_object_stream_decoded_again_after_a_rebuild_a_load_set_off_reads_what_a_rebuild_run_first_reads(string key)
+    {
+        // Object stream 10 holds object 11, and takes its /Length from 21, which object stream 20 holds; 20 takes its /N, or its
+        // /Filter, from 11, and its /Length from 22, whose row leads nowhere and which only object stream 30 holds. Reading 11
+        // decodes 10, then 20, whose /Length rebuilds the index with the three loads in flight; 20 then asks for 11, which is
+        // being loaded, and reads it as null. Finished once no load is in flight, the rebuild decodes 20 before 30 gives 22,
+        // and does not keep it: 21, read next, decodes 20 again, which reads 11 as the finished index serves it — as a rebuild
+        // run first does —, not as the loads in flight read it, which the finish forgets (#257).
+        var bytes = LoadsInFlightReadingNull(key);
+        using var settled = PdfDocument.Open(bytes);
+        settled.Reader.SettleIndex();
+        using var document = PdfDocument.Open(bytes);
+
+        document.GetObject(new PdfObjectId(11)).ToString().Should().Be(settled.GetObject(new PdfObjectId(11)).ToString());
+
+        document.WasRepaired.Should().BeTrue();
+        var expected = settled.GetObject(new PdfObjectId(21)).Should().BeOfType<PdfInteger>().Subject;
+        document.GetObject(new PdfObjectId(21)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(expected.Value);
+    }
+
+    [Theory]
+    [InlineData("/N")]
+    [InlineData("/Filter")]
+    [InlineData("/Length")]
+    [InlineData("/Length, with faults")]
+    public void A_read_that_sets_a_rebuild_off_while_object_streams_need_each_other_reports_what_a_rebuild_run_first_reports(string key)
+    {
+        // Object stream 20 takes its /N, its /Filter or its /Length from 11, which object stream 10 holds, and 10 its /Length
+        // from 21, which 20 holds. Reading 11 rebuilds the index while 10 and 20 are decoded — 20's /Length names 22, whose
+        // row leads nowhere, or 20's own row leads nowhere —, and the loads in flight read 11 as null: they report 20
+        // unreadable, or its /Length unreadable, which a rebuild run first does not. The finish withdraws what they
+        // reported, and what is read after it reports what a rebuild run first reports, in the same order (#273). With
+        // faults, the loads in flight also report what is reported once — a guard, a member a guard cut, a fault of the
+        // syntax, of a filter, of a header, a member written as a stream —, which the finish forgets it reported.
+        var bytes = key.StartsWith("/Length", StringComparison.Ordinal) ? EachOthersLength(faults: key != "/Length") : LoadsInFlightReadingNull(key);
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = 4096 } };
+        using var settled = PdfDocument.Open(bytes, options);
+        settled.Reader.SettleIndex();
+        using var document = PdfDocument.Open(bytes, options);
+
+        foreach (var number in new[] { 11, 21 })
+        {
+            document.GetObject(new PdfObjectId(number)).ToString().Should().Be(settled.GetObject(new PdfObjectId(number)).ToString());
+        }
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.ToString())
+            .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+    }
+
+    [Fact]
+    public void A_read_that_sets_a_rebuild_off_and_nests_too_deep_reports_what_a_rebuild_run_first_reports()
+    {
+        // Streams 100 to 169 each take their /Length from the next, and 101's row leads nowhere: reading 100 rebuilds the
+        // index with 100 and 101 in flight, and the loads in flight reach past the depth the reader follows. The finish
+        // withdraws that report, and reading 100 again reports it again, as a rebuild run first does (#273).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        for (var number = 100; number < 170; number++)
+        {
+            rows[number] = file.Object(number, string.Create(CultureInfo.InvariantCulture, $"<< /Length {number + 1} 0 R >>\nstream\nx\nendstream"));
+        }
+
+        rows[170] = file.Object(170, "1");
+        rows[9] = file.Padding(9);
+        rows[101] = rows[9] + 600;
+        file.Table(171, rows, "/Size 171 /Root 1 0 R");
+        using var settled = PdfDocument.Open(file.Bytes);
+        settled.Reader.SettleIndex();
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(100)).ToString().Should().Be(settled.GetObject(new PdfObjectId(100)).ToString());
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.SyntaxDepthExceeded);
+        document.Diagnostics.Select(diagnostic => diagnostic.ToString())
+            .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+    }
+
+    [Theory]
+    [InlineData(false, 8192)]
+    [InlineData(false, 64)]
+    [InlineData(true, 8192)]
+    [InlineData(true, 64)]
+    public void An_object_stream_read_where_the_chain_places_it_notes_nothing_of_a_definition_the_reader_no_longer_serves(
+        bool servedLacksEndObj, int cache)
+    {
+        // The shape of #255: the chain's index places object stream 6, holding 7, before a padding object; a second object
+        // stream 6 follows, holding another 7. Object 5's row leads into the catalog's header, so the validator rebuilds
+        // the index first, which serves the later 6. One of the two lacks its endobj. The walk of the object streams'
+        // dependencies reads the chain's 6 where the chain places it, and the probe reads its header there: neither notes
+        // anything of number 6, which the reader serves from the later definition. Only the definition the reader serves is
+        // judged, whatever the cache let go between three validations.
+        const string Lacking = "6 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 13 >>\nstream\n7 0 (chain)\nendstream\n(stray)\nendobj\n";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 6 0 R /Bar 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [6] = (1, file.Position, 0),
+            [7] = (2, 6, 0),
+            [5] = (1, 9, 0),
+        };
+
+        long served;
+
+        if (servedLacksEndObj)
+        {
+            file.ObjectStream(6, [(7, "(chain)")]);
+            rows[8] = (1, file.Padding(8), 0);
+            served = file.Position;
+            file.Raw(Lacking.Replace("(chain)", "(later)", StringComparison.Ordinal));
+        }
+        else
+        {
+            file.Raw(Lacking);
+            rows[8] = (1, file.Padding(8), 0);
+            served = file.ObjectStream(6, [(7, "(later)")]);
+        }
+
+        for (var number = 100; number < 300; number++)
+        {
+            rows[number] = (1, file.Object(number, "(filler)"), 0);
+        }
+
+        file.CrossReferenceStream(9, 300, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = cache });
+
+        for (var validation = 0; validation < 3; validation++)
+        {
+            var findings = new PdfValidator().Validate(document).Findings
+                .Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectEndObjMissing).ToList();
+
+            document.GetObject(new PdfObjectId(7)).AsText().Should().Be("later");
+
+            if (servedLacksEndObj)
+            {
+                findings.Should().ContainSingle().Which.Location.Position.Should().Be(served);
+            }
+            else
+            {
+                findings.Should().BeEmpty("the chain's 6, which lacks its endobj, is no definition the reader serves");
+            }
+
+            for (var number = 100; number < 300; number++)
+            {
+                document.GetObject(new PdfObjectId(number));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Writes the shape of #257: object streams 10 and 20 each need an object the other holds, 20 through
+    /// <paramref name="key"/>, and 20's <c>/Length</c> names object 22, whose row leads nowhere and which only object stream
+    /// 30, written after 20, holds.
+    /// </summary>
+    private static byte[] LoadsInFlightReadingNull(string key)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var ten = "11 0 " + (key == "/N" ? "1" : "/ASCIIHexDecode") + " ";
+        rows[10] = (1, file.Object(10, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 5 /Length 21 0 R >>\nstream\n{ten}\nendstream")), 0);
+        rows[11] = (2, 10, 0);
+        var twenty = string.Create(CultureInfo.InvariantCulture, $"21 0 {ten.Length} ");
+        var (entries, data) = key == "/N"
+            ? ("/N 11 0 R /First 5", twenty)
+            : ("/N 1 /First 5 /Filter 11 0 R", Convert.ToHexString(Encoding.ASCII.GetBytes(twenty)) + ">");
+        rows[20] = (1, file.Object(20, $"<< /Type /ObjStm {entries} /Length 22 0 R >>\nstream\n{data}\nendstream"), 0);
+        rows[21] = (2, 20, 0);
+        rows[30] = (1, file.ObjectStream(30, [(22, data.Length.ToString(CultureInfo.InvariantCulture))]), 0);
+        rows[9] = (1, file.Padding(9), 0);
+        rows[22] = (1, rows[9].Field2 + 600, 0);
+        file.CrossReferenceStream(40, 41, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes object streams 10 and 20, each of whose <c>/Length</c> is an object the other holds — 10's is 21, 20's is
+    /// 11 —, and whose row of 20 leads nowhere. With <paramref name="faults"/>, 10 takes its filters from 12, which runs
+    /// past 4 KB, its hexadecimal data holds a byte that encodes nothing, and member 11 decodes past 4 KB; 20 gives /Type
+    /// twice, its header lists 1 of its 2 objects, and member 21 is written as a stream.
+    /// </summary>
+    private static byte[] EachOthersLength(bool faults)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        if (faults)
+        {
+            var ten = Convert.ToHexString(Compress(Encoding.ASCII.GetBytes("11 0 [" + string.Concat(Enumerable.Repeat("0 ", 2100)) + "]")));
+            ten = ten[..8] + "G" + ten[8..] + ">";
+            rows[12] = (1, file.Object(12, "[/ASCIIHexDecode /FlateDecode]" + new string(' ', 5000)), 0);
+            rows[10] = (1, file.Object(10, $"<< /Type /ObjStm /N 1 /First 5 /Filter 12 0 R /Length 21 0 R >>\nstream\n{ten}\nendstream"), 0);
+            rows[9] = (1, file.Padding(9), 0);
+            file.Object(20, "<< /Type /ObjStm /Type /ObjStm /N 2 /First 5 /Length 11 0 R >>\nstream\n21 0 << /Length 1 >>\nstream\nx\nendstream\nendstream");
+        }
+        else
+        {
+            rows[10] = (1, file.Object(10, "<< /Type /ObjStm /N 1 /First 5 /Length 21 0 R >>\nstream\n11 0 6\nendstream"), 0);
+            rows[9] = (1, file.Padding(9), 0);
+            file.Object(20, "<< /Type /ObjStm /N 1 /First 5 /Length 11 0 R >>\nstream\n21 0 6\nendstream");
+        }
+
+        rows[11] = (2, 10, 0);
+        rows[20] = (1, rows[9].Field2 + 600, 0);
+        rows[21] = (2, 20, 0);
+        file.CrossReferenceStream(40, 41, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
     /// <summary>Compresses <paramref name="data"/> as <c>/FlateDecode</c> decodes it.</summary>
     private static byte[] Compress(byte[] data)
     {

@@ -100,8 +100,20 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         Warn(code, message, position);
     }
 
-    /// <summary>Records where the entries stand, so that what follows can be kept or dropped as one.</summary>
+    /// <summary>
+    /// Records where the entries stand, so that what follows can be kept or dropped as one. Rolled back to, this instance
+    /// still holds as moved in the reports decodings moved in since: a mark of an instance decodings report into is taken
+    /// by <see cref="GetMarkWithDecodingReports"/>.
+    /// </summary>
     internal PdfDiagnosticsMark GetMark() => new(_entries.Count, _suppressed, _limits);
+
+    /// <summary>
+    /// Records where the entries stand, and which of them decodings of streams moved in: rolled back to, this instance
+    /// forgets the decodings' reports it drops, so that a decoding that meets one again moves it in again. It copies what
+    /// it records, so it is taken where it is rare, not in a loop.
+    /// </summary>
+    internal PdfDiagnosticsMark GetMarkWithDecodingReports() =>
+        new(_entries.Count, _suppressed, _limits, new Dictionary<PdfDiagnostic, int>(_decodingReports ?? []));
 
     /// <summary>Drops every entry recorded since <paramref name="mark"/>, suppressed ones and guards reached included.</summary>
     internal void RollBack(PdfDiagnosticsMark mark)
@@ -109,6 +121,12 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
         _entries.RemoveRange(mark.Count, _entries.Count - mark.Count);
         _suppressed = mark.Suppressed;
         _limits = mark.Limits;
+
+        // Copied: the mark keeps what it recorded, whatever this instance holds next.
+        if (mark.DecodingReports is { } held)
+        {
+            _decodingReports = new Dictionary<PdfDiagnostic, int>(held);
+        }
     }
 
     /// <summary>

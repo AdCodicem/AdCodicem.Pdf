@@ -160,6 +160,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>Asks <see cref="TryParseAt"/> for a direct object, with no object header: a trailer.</summary>
     private const int DirectObject = -1;
 
+    /// <summary>Asks <see cref="TryParseNumberedAt"/> to note what it reads of the object it was asked for, wherever it lies.</summary>
+    private const long RecordedAnywhere = -1;
+
+    /// <summary>Asks <see cref="TryParseNumberedAt"/> to note nothing of the object it reads, by its number.</summary>
+    private const long RecordedNowhere = -2;
+
     /// <summary>Asks <see cref="TryParseAt"/> for an object whatever its number: a cross-reference stream.</summary>
     private const int AnyObject = 0;
 
@@ -4339,8 +4345,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Parses object <paramref name="number"/> at an exact offset, growing the window while the object runs
     /// past its end. Returns false when nothing with that number is there.
     /// </summary>
-    private bool TryParseObjectAt(int number, long offset, out PdfObject value) =>
-        TryParseAt(offset, number, PdfLimit.Object, out value);
+    private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere) =>
+        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, recordedAt: recordedAt);
 
     /// <summary>
     /// Parses what starts at an exact offset — object <paramref name="number"/>, any object for
@@ -4379,6 +4385,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// a search for a stream's <c>endstream</c> aside, which is kept as every search is (<see cref="IPdfStreamDataProvider.FindEndStream"/>)
     /// —, a guard its window reached included, and the method returns false.
     /// </param>
+    /// <param name="recordedAt">
+    /// Where the object's header must start for what the reading notes of it by its number — its <c>endobj</c>, its stream's
+    /// length, a cut — to be noted: <see cref="RecordedAnywhere"/>, <see cref="RecordedNowhere"/>, or the place of the
+    /// definition the reader serves, which a reading where the chain places the object may not be (#255).
+    /// </param>
     private bool TryParseNumberedAt(
         long offset,
         int number,
@@ -4387,7 +4398,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         out int foundNumber,
         out bool syntaxFault,
         int initialWindow = InitialObjectWindow,
-        Func<PdfObject, bool>? keep = null)
+        Func<PdfObject, bool>? keep = null,
+        long recordedAt = RecordedAnywhere)
     {
         value = PdfNull.Instance;
         foundNumber = 0;
@@ -4472,7 +4484,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                     // What the chain reads of a cross-reference stream is the section's, which records its cut: the object of that
                     // number a load reads is noted when it is read (#175).
-                    if (foundNumber > 0 && number != AnyObject)
+                    if (foundNumber > 0 && number != AnyObject && Records(recordedAt, offset + parser.HeaderStart))
                     {
                         _cutAtLimit.Add(foundNumber);
                     }
@@ -4490,8 +4502,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 syntaxFault |= SyntaxFaultSince(_pending, mark);
                 KeepPending(mark);
-                RecordEndObj(number, foundNumber, parser.EndObj, cut, offset);
-                RecordStreamLength(number, foundNumber, parsed, lengthFault);
+
+                // A reading of a definition the reader no longer serves notes nothing of the number (#255).
+                var noted = Records(recordedAt, offset + parser.HeaderStart);
+                RecordEndObj(noted ? number : DirectObject, foundNumber, parser.EndObj, cut, offset);
+                RecordStreamLength(noted ? number : DirectObject, foundNumber, parsed, lengthFault);
                 value = parsed;
                 return true;
             }
@@ -4567,6 +4582,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             _pending.RollBack(mark);
         }
+    }
+
+    /// <summary>
+    /// Determines whether a reading of an object whose header starts at <paramref name="headerStart"/> notes what it found
+    /// by the object's number, as <paramref name="recordedAt"/> asks.
+    /// </summary>
+    private static bool Records(long recordedAt, long headerStart) =>
+        recordedAt == RecordedAnywhere || recordedAt == headerStart;
+
+    /// <summary>
+    /// Gives where a reading of object <paramref name="number"/> where the chain's <paramref name="entry"/> places it notes
+    /// what it found by the number: anywhere, when the reader serves that entry; at the header of the definition it serves
+    /// instead, read from the file, which may be the same one; nowhere, when it serves the number from an object stream or
+    /// not at all (#255).
+    /// </summary>
+    private long RecordedAtFor(int number, XRefEntry entry)
+    {
+        if (!_xref.TryGet(number, out var served) || served.Kind != XRefEntryKind.Regular)
+        {
+            return RecordedNowhere;
+        }
+
+        return served == entry ? RecordedAnywhere : PositionOf(served);
     }
 
     /// <summary>
@@ -4742,9 +4780,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal PdfObject? ReadWhereChainPlaces(int number, XRefEntry entry)
     {
         var offset = PositionOf(entry);
+        var recordedAt = RecordedAtFor(number, entry);
 
-        return TryParseObjectAt(number, offset, out var value) ||
-            (TryFindObjectHeader(number, offset, out var nearby, out _) && TryParseObjectAt(number, nearby, out value))
+        return TryParseObjectAt(number, offset, out var value, recordedAt) ||
+            (TryFindObjectHeader(number, offset, out var nearby, out _) && TryParseObjectAt(number, nearby, out value, recordedAt))
             ? value
             : null;
     }
@@ -4755,7 +4794,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// memory follows the largest of them rather than their sum.
     /// </summary>
     /// <param name="number">The object stream's number.</param>
-    /// <param name="offset">Where the chain's index places it, in the file.</param>
+    /// <param name="entry">The regular entry of the chain's index that places it.</param>
     /// <param name="numbers">
     /// The object numbers its header lists, in order: all of them when it was read, those listed before the fault when its
     /// header could be read only in part — the objects the reader serves from it —, none otherwise.
@@ -4767,15 +4806,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <c>stream</c> at all.
     /// </param>
     internal ObjectStreamHeaderResult ReadObjectStreamHeader(
-        int number, long offset, out int[] numbers, out string? fault, out int[] streamMembers)
+        int number, XRefEntry entry, out int[] numbers, out string? fault, out int[] streamMembers)
     {
         numbers = [];
         fault = null;
         streamMembers = [];
 
         var guards = _guardsReached;
-        var found = TryParseObjectAt(number, offset, out var value) ||
-            (TryFindObjectHeader(number, offset, out var nearby, out _) && TryParseObjectAt(number, nearby, out value));
+        var offset = PositionOf(entry);
+        var recordedAt = RecordedAtFor(number, entry);
+        var found = TryParseObjectAt(number, offset, out var value, recordedAt) ||
+            (TryFindObjectHeader(number, offset, out var nearby, out _) && TryParseObjectAt(number, nearby, out value, recordedAt));
 
         // A dictionary one of the reader's limits cut is the limit's, not the file's: what it would have said is unknown. A
         // stream's dictionary was read whole, and is the file's; what a limit cut of its data is weighed as it is decoded.
@@ -5253,7 +5294,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (_loading.Count > 0 || _objectStreamsLoading.Count > 0)
         {
             _unfinishedRebuild = new UnfinishedRebuild(
-                new Dictionary<int, XRefEntry>(_xref.Entries), redefinitions, kept, _indexFull, _indexFullAt);
+                new Dictionary<int, XRefEntry>(_xref.Entries), redefinitions, kept, _indexFull, _indexFullAt, MarkReports());
             reached?.Throw();
             return;
         }
@@ -5329,6 +5370,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var unfinished = _unfinishedRebuild!;
         _unfinishedRebuild = null;
 
+        // What the loads in flight reported, they read through the scan's index and with each other's objects reading as
+        // null: it is withdrawn, and reported again as far as the finished index's own reading reports it, as a rebuild run
+        // first does (#273). Once: what a finish the source failed reported stays, as what any read reported does.
+        if (unfinished.Reports is { } reports)
+        {
+            WithdrawReportsSince(reports);
+        }
+
         _xref.Clear();
 
         foreach (var (number, entry) in unfinished.Scanned)
@@ -5359,7 +5408,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
         catch (Exception exception) when (exception is not PdfLimitExceededException)
         {
-            _unfinishedRebuild = unfinished;
+            _unfinishedRebuild = unfinished with { Reports = null };
             throw;
         }
     }
@@ -5383,6 +5432,43 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             // The rebuild is left unfinished, and finished by the next read.
         }
+    }
+
+    /// <summary>
+    /// Records where the document's reports stand, and what it holds as reported once, for
+    /// <see cref="WithdrawReportsSince"/>. It copies what it records: it is taken once, when a rebuild is left unfinished.
+    /// </summary>
+    private ReportsMark MarkReports() => new(
+        _diagnostics.GetMarkWithDecodingReports(),
+        new HashSet<long>(_lengthFaultsReported),
+        new HashSet<PdfDiagnostic>(_syntaxReported),
+        new HashSet<(PdfLimit Limit, long Position)>(_limitsReached),
+        new HashSet<(int Stream, int Number)>(_memberLimitsReached),
+        new HashSet<int>(_objectStreamsNeedingThemselves),
+        _nestingReported,
+        _objectStreamReports.Copy());
+
+    /// <summary>
+    /// Withdraws what the document reported since <paramref name="mark"/>, and forgets that it was reported: what is read
+    /// again reports it again.
+    /// </summary>
+    private void WithdrawReportsSince(ReportsMark mark)
+    {
+        _diagnostics.RollBack(mark.Diagnostics);
+        Restore(_lengthFaultsReported, mark.LengthFaults);
+        Restore(_syntaxReported, mark.Syntax);
+        Restore(_limitsReached, mark.Limits);
+        Restore(_memberLimitsReached, mark.MemberLimits);
+        Restore(_objectStreamsNeedingThemselves, mark.NeedingThemselves);
+        _nestingReported = mark.NestingReported;
+        _objectStreamReports.RestoreFrom(mark.ObjectStreams);
+    }
+
+    /// <summary>Brings <paramref name="set"/> back to what <paramref name="copy"/> holds.</summary>
+    private static void Restore<T>(HashSet<T> set, HashSet<T> copy)
+    {
+        set.Clear();
+        set.UnionWith(copy);
     }
 
     /// <summary>
@@ -5818,12 +5904,39 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="Kept">The entries a chain a guard cut gave, kept through the rebuild; null when no guard cut it.</param>
     /// <param name="IndexFull">Whether the scan filled the index.</param>
     /// <param name="IndexFullAt">Where the index first had no room for a number, or -1.</param>
+    /// <param name="Reports">
+    /// What the document had reported once the scan was done, which the finish brings its reports back to; null once a
+    /// finish has.
+    /// </param>
     private sealed record UnfinishedRebuild(
         Dictionary<int, XRefEntry> Scanned,
         Redefinitions Redefinitions,
         PdfXRefTable? Kept,
         bool IndexFull,
-        long IndexFullAt);
+        long IndexFullAt,
+        ReportsMark? Reports);
+
+    /// <summary>
+    /// Where the document's reports stood, and what it held as reported once — a guard, a fault of the syntax, a stream's
+    /// length, an object stream's fault —, so that what was reported since can be withdrawn and reported again.
+    /// </summary>
+    /// <param name="Diagnostics">Where the diagnostics stood, with which of their entries decodings moved in.</param>
+    /// <param name="LengthFaults">The streams whose length fault was reported, by where their data starts.</param>
+    /// <param name="Syntax">The faults of the syntax reported.</param>
+    /// <param name="Limits">The guards reported, and where.</param>
+    /// <param name="MemberLimits">The object stream members whose cut was reported.</param>
+    /// <param name="NeedingThemselves">The object streams reported as needing an object they hold.</param>
+    /// <param name="NestingReported">Whether loads nested too deep were reported.</param>
+    /// <param name="ObjectStreams">What the object streams' reports said.</param>
+    private sealed record ReportsMark(
+        PdfDiagnosticsMark Diagnostics,
+        HashSet<long> LengthFaults,
+        HashSet<PdfDiagnostic> Syntax,
+        HashSet<(PdfLimit Limit, long Position)> Limits,
+        HashSet<(int Stream, int Number)> MemberLimits,
+        HashSet<int> NeedingThemselves,
+        bool NestingReported,
+        ObjectStreamReports ObjectStreams);
 
     /// <summary>
     /// The definitions a rebuild met of object numbers it had already found: how many, and the first few numbers, kept
@@ -5904,6 +6017,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         /// <summary>Records that object <paramref name="number"/> is written as a stream in object stream <paramref name="stream"/>, and tells whether it is the first time.</summary>
         public bool IsFirstStreamMember(int stream, int number) => _streamMembers.Add((stream, number));
+
+        /// <summary>Gives a copy of what was reported, which <see cref="RestoreFrom"/> brings back.</summary>
+        public ObjectStreamReports Copy()
+        {
+            var copy = new ObjectStreamReports();
+            copy._faults.UnionWith(_faults);
+            copy._moves.UnionWith(_moves);
+            copy._streamMembers.UnionWith(_streamMembers);
+            return copy;
+        }
+
+        /// <summary>Brings back what <paramref name="copy"/> held as reported, and forgets what was reported since.</summary>
+        public void RestoreFrom(ObjectStreamReports copy)
+        {
+            Restore(_faults, copy._faults);
+            Restore(_moves, copy._moves);
+            Restore(_streamMembers, copy._streamMembers);
+        }
 
         /// <summary>Forgets what was reported, for a reader that will report nothing more.</summary>
         public void Clear()
