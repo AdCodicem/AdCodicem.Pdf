@@ -62,12 +62,13 @@ public sealed record PdfReaderLimits
     public int MaxDecodedStreamLength { get; init => field = Length(value); } = 256 * 1024 * 1024;
 
     /// <summary>
-    /// Gets the longest object the reader parses, in bytes, the data of a stream aside. Defaults to 16 MB,
-    /// which a direct array of a million references would need.
+    /// Gets the longest object the reader parses, in bytes, the data of a stream aside, whether the file writes it
+    /// directly or an object stream holds it. Defaults to 16 MB, which a direct array of a million references would need.
     /// </summary>
     /// <remarks>
     /// A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
-    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObject"/>.
+    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObject"/>, once for each object, and for each object an object
+    /// stream holds.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxObjectLength { get; init => field = Length(value); } = 16 * 1024 * 1024;

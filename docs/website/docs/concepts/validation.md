@@ -126,7 +126,8 @@ header in a sound file, never its body —, and each object stream once, without
 for near its offset, as a load looks for it. An entry whose header runs past the reader's object limit, or that they had
 not decided once reading the headers had consumed twice the file's length, is said not checked rather than broken. They judge the rows as the file
 wrote them, not as the reader corrected them, and read each object stream where the file's own index places it,
-outside the document's cache. Working out which object streams need one another, they read there too each object
+outside the document's cache: what they find there of a definition the reader no longer serves, once a rebuild serves a
+later one, is noted of no object ([#255](https://github.com/AdCodicem/AdCodicem.Pdf/issues/255)). Working out which object streams need one another, they read there too each object
 written directly in the file that a stream's decoding keys lead through, once a validation for as many of them as the
 document's cache holds. The other values written
 elsewhere that a row's object needs — a stream's own `/Length` written as a reference, the values an object stream's
