@@ -121,8 +121,9 @@ public static class PdfValidationRuleIds
 
     /// <summary>
     /// An object stream needs, to be read, an object that only reading it — or another stream that needs it in turn —
-    /// can give: its <c>/Length</c>, <c>/Filter</c>, <c>/DecodeParms</c>, <c>/N</c> or <c>/First</c> names an object
-    /// it holds. <see cref="PdfValidationSeverity.Error"/>.
+    /// can give: its <c>/Length</c>, <c>/Type</c>, <c>/Filter</c>, <c>/DecodeParms</c>, <c>/N</c> or <c>/First</c>
+    /// names an object it holds — of a stream not of <c>/Type /ObjStm</c>, its <c>/Type</c>.
+    /// <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefObjectStreamCircular = "xref.object-stream-circular";
 
