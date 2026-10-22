@@ -2859,13 +2859,6 @@ public class ReaderLimitsTests
     }
 
     /// <summary>
-    /// Writes catalog 1, pages 2 and page 3, an older table indexing them with <c>/Root</c>, object 21 —
-    /// <paramref name="twentyOne"/> then the older table's offset —, and a newest cross-reference stream, object 22, whose
-    /// <c>/Index</c> is <paramref name="index"/>, holding a row for each of <paramref name="rows"/> in its order, and whose
-    /// dictionary gives <c>/Prev</c> <paramref name="prev"/> and no <c>/Root</c>. The row of <paramref name="refused"/> places
-    /// it in object stream 0, which no row may. The stream's <c>/Size</c> is <paramref name="size"/>.
-    /// </summary>
-    /// <summary>
     /// Writes objects 4 and 5, arrays of 4,000 zeros, packed in object stream 6, and objects 10 to 89, small strings that
     /// push them out of a cache of 64; with <paramref name="starts"/> where each member starts in the decoded data.
     /// </summary>
@@ -2893,6 +2886,13 @@ public class ReaderLimitsTests
         return file.Bytes;
     }
 
+    /// <summary>
+    /// Writes catalog 1, pages 2 and page 3, an older table indexing them with <c>/Root</c>, object 21 —
+    /// <paramref name="twentyOne"/> then the older table's offset —, and a newest cross-reference stream, object 22, whose
+    /// <c>/Index</c> is <paramref name="index"/>, holding a row for each of <paramref name="rows"/> in its order, and whose
+    /// dictionary gives <c>/Prev</c> <paramref name="prev"/> and no <c>/Root</c>. The row of <paramref name="refused"/> places
+    /// it in object stream 0, which no row may. The stream's <c>/Size</c> is <paramref name="size"/>.
+    /// </summary>
     private static byte[] NewestStreamNaming(string index, int[] rows, string prev, int refused, string twentyOne = "", int size = 23)
     {
         var file = new HandWrittenFile();

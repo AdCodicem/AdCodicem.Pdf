@@ -136,30 +136,47 @@ public class HostileInputTests
     [Fact]
     public void An_object_stream_that_claims_more_objects_than_it_could_hold_serves_those_it_lists_and_allocates_nothing_for_the_rest()
     {
-        // A billion objects in /N, and a header of four bytes: the tables grow with the pairs read, not with /N (#160).
-        var file = new HandWrittenFile(version: "1.5");
-        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
-        {
-            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
-            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
-            [5] = (1, file.Object(5, "<< /Type /ObjStm /N 1000000000 /First 4 /Length 8 >>\nstream\n6 0 <<>>\nendstream"), 0),
-            [6] = (2, 5, 0),
-        };
-        file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R");
-
+        // A billion objects in /N, and a header of four bytes: the tables grow with the pairs read, not with /N, and start
+        // no larger than the header can hold, one pair here — what a /N of one allocates (#160).
         var allocated = Allocations.Least(
-            () => PdfDocument.Open(file.Bytes),
+            () => PdfDocument.Open(Claiming(1_000_000_000)),
             document => Measure(() => document.GetObject(new PdfObjectId(6))),
             out var document,
             out var six);
+        var honest = Allocations.Least(() => PdfDocument.Open(Claiming(1)), document => Measure(() => document.GetObject(new PdfObjectId(6))), out var opened, out _);
+        opened.Dispose();
 
         using (document)
         {
             six.Should().BeOfType<PdfDictionary>();
-            allocated.Should().BeLessThan(64 * 1024, "the header lists one pair, whatever its /N says");
+            allocated.Should().BeLessThan(honest + 4096, "the header lists one pair, whatever its /N says");
             document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
                 "Object stream 5 has a header that ends after 1 of the 1,000,000,000 objects its /N declares; only the first 1 of its 1,000,000,000 objects can be read from it.");
         }
+    }
+
+    [Fact]
+    public void An_object_stream_header_s_tables_grow_no_larger_than_its_bytes_can_hold()
+    {
+        // 1,100 pairs, each of object 1, and a /N of a billion: the header's 6,590 bytes hold 1,647 pairs at most, so the
+        // tables grow from 1,024 to that, not to 2,048, before they are trimmed to the pairs read (#160).
+        var header = new StringBuilder();
+
+        for (var pair = 0; pair < 1100; pair++)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"1 {pair} ");
+        }
+
+        var data = Encoding.ASCII.GetBytes(header.ToString() + new string(' ', 1100));
+        var first = header.Length;
+        var room = (first + 1) / 4;
+        room.Should().BeInRange(1101, 2047);
+
+        var allocated = Allocations.Least(() => ObjectStreamHeader.Read(data, 1_000_000_000, first, cutByGuard: false), out var read);
+
+        read.Count.Should().Be(1100);
+        read.Fault.Should().Be(ObjectStreamHeaderFault.Ended);
+        allocated.Should().BeLessThanOrEqualTo((2L * (1024 + room + 1100) * sizeof(int)) + (6 * 32), "the tables are 1,024, then the header's room, then the pairs read");
     }
 
     [Fact]
@@ -279,7 +296,8 @@ public class HostileInputTests
     public void A_stream_inside_an_object_stream_is_not_decoded_whatever_it_would_decode_to()
     {
         // A member written as a stream whose data inflates to 50 MB: under a bound of 1 MB and ThrowOnLimit, it decoded whole,
-        // with no report, under the default guard. It now reads as null, and its data is never decoded (#161).
+        // with no report, under the default guard, once a caller decoded what the reader served. It now reads as null, and
+        // its data is never decoded (#161).
         var zeros = Compress(new byte[50 * 1024 * 1024]);
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -295,7 +313,13 @@ public class HostileInputTests
 
         var allocated = Allocations.Least(
             () => PdfDocument.Open(file.Bytes, options),
-            document => Measure(() => document.GetObject(new PdfObjectId(7))),
+            document => Measure(() =>
+            {
+                // A caller decodes the stream it is given: that is where a member's data was decoded.
+                var value = document.GetObject(new PdfObjectId(7));
+                _ = (value as PdfStream)?.Decode();
+                return value;
+            }),
             out var opened,
             out var seven);
 
@@ -3410,6 +3434,21 @@ public class HostileInputTests
 
     /// <summary>The number of the object at <paramref name="index"/> of object stream <paramref name="stream"/>.</summary>
     internal static int PackedNumber(int stream, int index, int objectsPerStream = 1) => 1000 + (stream * objectsPerStream) + index;
+
+    /// <summary>Writes an object stream whose header lists object 6 and whose /N claims <paramref name="count"/> objects.</summary>
+    private static byte[] Claiming(int count)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [5] = (1, file.Object(5, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {count} /First 4 /Length 8 >>\nstream\n6 0 <<>>\nendstream")), 0),
+            [6] = (2, 5, 0),
+        };
+        file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
 
     /// <summary>
     /// Writes a file whose object stream holds <paramref name="members"/> members one byte apart, objects 1000 and on, over

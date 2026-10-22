@@ -1484,7 +1484,9 @@ public class ReadOrderTests
     {
         // Streams 100 to 169 each take their /Length from the next, and 101's row leads nowhere: reading 100 rebuilds the
         // index with 100 and 101 in flight, and the loads in flight reach past the depth the reader follows. The finish
-        // withdraws that report, and reading 100 again reports it again, as a rebuild run first does (#273).
+        // withdraws that report and forgets it made it, so that reading 100 again reports it again, as a rebuild run first
+        // does (#273): withdrawn but still taken as made, the report would be lost. The report read in flight and the one
+        // read again are alike, so the test holds that the report is made again, not that it was withdrawn.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -1526,7 +1528,8 @@ public class ReadOrderTests
         // the index first, which serves the later 6. One of the two lacks its endobj. The walk of the object streams'
         // dependencies reads the chain's 6 where the chain places it, and the probe reads its header there: neither notes
         // anything of number 6, which the reader serves from the later definition. Only the definition the reader serves is
-        // judged, whatever the cache let go between three validations.
+        // judged, whatever the cache let go between three validations: an object cache of 8,192 keeps the served 6, so a
+        // note of the chain's would stand; one of 64 lets it go and reads it again, which the validations must survive.
         const string Lacking = "6 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 13 >>\nstream\n7 0 (chain)\nendstream\n(stray)\nendobj\n";
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -1583,6 +1586,86 @@ public class ReadOrderTests
             {
                 document.GetObject(new PdfObjectId(number));
             }
+        }
+    }
+
+    [Fact]
+    public void An_object_stream_the_chain_places_where_the_rebuilt_index_has_no_room_notes_nothing_of_its_number()
+    {
+        // The chain places object stream 6, holding 7, after forty objects it does not list; 6 lacks its endobj. Object 5's
+        // row leads into the catalog's header, so the validator rebuilds the index, which has room for 20 numbers only: it
+        // fills before it reaches 6, and serves no 6 at all. The walk of the object streams' dependencies and the probe read
+        // 6 where the chain places it: neither notes anything of number 6, which the reader serves from nowhere (#255).
+        const string Lacking = "6 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Length 13 >>\nstream\n7 0 (chain)\nendstream\n(stray)\nendobj\n";
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 6 0 R /Bar 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [7] = (2, 6, 0),
+            [5] = (1, 9, 0),
+        };
+
+        for (var number = 100; number < 140; number++)
+        {
+            file.Object(number, "(filler)");
+        }
+
+        rows[6] = (1, file.Position, 0);
+        file.Raw(Lacking);
+        file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 20 } });
+
+        for (var validation = 0; validation < 3; validation++)
+        {
+            new PdfValidator().Validate(document).Findings
+                .Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectEndObjMissing)
+                .Should().BeEmpty("the chain's 6, which lacks its endobj, is no definition the reader serves");
+        }
+
+        document.Reader.Index.TryGet(6, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("length")]
+    [InlineData("cut")]
+    public void An_object_stream_read_where_the_chain_places_it_notes_no_fault_of_a_definition_the_reader_no_longer_serves(string fault)
+    {
+        // The chain's 6 declares a /Length longer than its data, or runs past MaxObjectLength; a later sound 6, which the
+        // rebuild serves, holds 7 too. The walk and the probe read the chain's 6 where the chain places it: the length they
+        // find wrong, or the cut, is noted of no number, as an endobj missing is not (#255).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 6 0 R /Bar 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [7] = (2, 6, 0),
+            [5] = (1, 9, 0),
+            [6] = (1, file.Position, 0),
+        };
+        var pad = fault == "cut" ? "/Pad [" + string.Concat(Enumerable.Repeat("0 ", 3000)) + "] " : string.Empty;
+        file.Raw($"6 0 obj\n<< /Type /ObjStm /N 1 /First 4 {pad}/Length {(fault == "length" ? 13 : 11)} >>\nstream\n7 0 (chain)\nendstream\nendobj\n");
+        rows[8] = (1, file.Padding(8), 0);
+        file.ObjectStream(6, [(7, "(later)")]);
+
+        for (var number = 100; number < 300; number++)
+        {
+            rows[number] = (1, file.Object(number, "(filler)"), 0);
+        }
+
+        file.CrossReferenceStream(9, 300, rows, "/Root 1 0 R");
+        var options = fault == "cut" ? PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = 2048 } } : PdfReaderOptions.Default;
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        for (var validation = 0; validation < 3; validation++)
+        {
+            new PdfValidator().Validate(document);
+
+            document.GetObject(new PdfObjectId(7)).AsText().Should().Be("later");
+            document.Reader.TryGetStreamLengthFault(6, out _).Should().BeFalse();
+            document.Reader.IsCutAtLimit(6).Should().BeFalse();
         }
     }
 
