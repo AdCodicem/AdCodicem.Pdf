@@ -515,6 +515,22 @@ public class FileRuleTests
         Single(report, PdfValidationRuleIds.XRefEntryBroken).Location.Object.Should().Be(new PdfObjectId(1));
     }
 
+    [Fact]
+    public void A_rebuild_the_catalog_search_sets_off_takes_the_catalog_the_search_was_reading_once()
+    {
+        // /Root names nothing. Looking among the indexed objects, the reader meets object 1, the catalog, far from where its
+        // entry says, and rebuilds the index, whose own search takes it: the search that set the rebuild off ends there,
+        // rather than taking the catalog it was reading a second time.
+        var file = PdfTemplate.Build(PdfTemplate.Spread
+            .Replace("{row:1}", "{row:3}", StringComparison.Ordinal)
+            .Replace("/Root 1 0 R", "/Root 9 0 R", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1));
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered).Should().ContainSingle();
+    }
+
     [Theory]
     [InlineData(22, "/Type /Cata")]
     [InlineData(24, "/Type /Catalo")]
