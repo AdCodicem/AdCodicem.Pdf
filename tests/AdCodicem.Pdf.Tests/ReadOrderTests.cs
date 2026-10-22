@@ -1518,6 +1518,70 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void Finishing_a_rebuild_a_load_set_off_copies_what_was_reported_once()
+    {
+        // Members 100 on of object stream 6 are each placed at index 0, and each read reports its move. Object 7's stream
+        // takes its /Length from 5, whose row leads into the catalog's header: reading 7 sets a rebuild off while 8 loads,
+        // finished as the read ends. What that read allocates grows with the moves reported, by the rebuild's own work and
+        // by one copy of what was reported, taken as the rebuild was left, which marks its finish too: about 200 bytes a
+        // move, where a second copy, for the finish, took about 300 (#273).
+        var small = Finishing(10_000);
+        var large = Finishing(40_000);
+
+        ((large - small) / 30_000.0).Should().BeLessThan(250, "the reports are copied once, not twice ({0} and {1} bytes)", small, large);
+
+        static long Finishing(int members)
+        {
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+            {
+                [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+                [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            };
+            var packed = new (int Number, string Body)[members];
+
+            for (var member = 0; member < members; member++)
+            {
+                packed[member] = (100 + member, "1");
+                rows[100 + member] = (2, 6, 0);
+            }
+
+            rows[6] = (1, file.ObjectStream(6, packed), 0);
+            const string Data = "7 0 (member) ";
+            rows[8] = (1, file.Object(8, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
+            rows[7] = (2, 8, 0);
+            rows[5] = (1, 9, 0);
+            file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+            file.CrossReferenceStream(99, 100 + members, rows, "/Root 1 0 R");
+            var bytes = file.Bytes;
+
+            var allocated = Allocations.Least(
+                () =>
+                {
+                    var document = PdfDocument.Open(bytes);
+
+                    for (var member = 0; member < members; member++)
+                    {
+                        document.GetObject(new PdfObjectId(100 + member));
+                    }
+
+                    return document;
+                },
+                document => document.GetObject(new PdfObjectId(7)),
+                out var opened,
+                out var seven);
+
+            using (opened)
+            {
+                seven.AsText().Should().Be("member");
+                opened.WasRepaired.Should().BeTrue();
+            }
+
+            return allocated;
+        }
+    }
+
+    [Fact]
     public void A_finish_the_source_fails_after_it_reported_withdraws_what_it_reported()
     {
         // Object 4 is defined twice; the catalog, written first, is let go by the object cache of 64 before the finish reads

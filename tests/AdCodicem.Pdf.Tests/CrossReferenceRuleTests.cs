@@ -538,6 +538,7 @@ public class CrossReferenceRuleTests
         finding.Severity.Should().Be(PdfValidationSeverity.Error);
         finding.Location.Object.Should().Be(new PdfObjectId(3));
         finding.Message.Should().Be("The entry of object 3 gives offset 9999999999, outside the file.");
+        finding.Remedy.Should().Be("Correct the entry, or rewrite the file's cross-reference index.");
     }
 
     [Fact]
@@ -878,6 +879,7 @@ public class CrossReferenceRuleTests
         findings[0].Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
             $"The entry of object 4 places it at index {index} of object stream 5, whose header lists it at index 2, where it is written as a stream, which an object stream cannot hold."));
+        findings[0].Remedy.Should().Be("Write the object outside the object stream, and index it there.");
     }
 
     [Theory]
