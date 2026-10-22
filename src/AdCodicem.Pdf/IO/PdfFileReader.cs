@@ -4798,7 +4798,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// memory follows the largest of them rather than their sum.
     /// </summary>
     /// <param name="number">The object stream's number.</param>
-    /// <param name="entry">The regular entry of the chain's index that places it.</param>
+    /// <param name="entry">
+    /// The regular entry that places it: the chain's index's, or that of the index the reader serves, for the members only a
+    /// rebuild places.
+    /// </param>
     /// <param name="numbers">
     /// The object numbers its header lists, in order: all of them when it was read, those listed before the fault when its
     /// header could be read only in part — the objects the reader serves from it —, none otherwise.
@@ -4843,6 +4846,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var count = stream.Dictionary.GetInteger(PdfName.N, -1);
         var first = stream.Dictionary.GetInteger(PdfName.First, -1);
 
+        // A stream that declares no object is empty, as the reader reads it: neither its /First nor its data is read.
+        if (count == 0)
+        {
+            return ObjectStreamHeaderResult.Read;
+        }
+
         if (count < 0 || first < 0)
         {
             fault = "its /N or its /First is missing or negative";
@@ -4864,12 +4873,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             fault = string.Create(
                 CultureInfo.InvariantCulture, $"it decodes to {data.Length} bytes, fewer than its /First of {first}");
             return cut ? ObjectStreamHeaderResult.CutByLimit : ObjectStreamHeaderResult.Unreadable;
-        }
-
-        // A stream that declares no object is empty, as the reader reads it.
-        if (count == 0)
-        {
-            return ObjectStreamHeaderResult.Read;
         }
 
         // The reader's own reading of the header: the objects it serves are those the pairs read list (#275).
@@ -6345,38 +6348,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         private int IndexOf(int number)
         {
-            if (_places is null)
-            {
-                _places = new long[_numbers.Length];
-
-                for (var i = 0; i < _numbers.Length; i++)
-                {
-                    _places[i] = ((long)_numbers[i] << 32) | (uint)i;
-                }
-
-                Array.Sort(_places);
-            }
-
-            // The first place whose number is not below the one sought: the number's first place, if it has one.
-            var sought = (long)number << 32;
-            var low = 0;
-            var high = _places.Length;
-
-            while (low < high)
-            {
-                var middle = low + ((high - low) / 2);
-
-                if (_places[middle] < sought)
-                {
-                    low = middle + 1;
-                }
-                else
-                {
-                    high = middle;
-                }
-            }
-
-            return low < _places.Length && (_places[low] >> 32) == number ? (int)(uint)_places[low] : -1;
+            _places ??= ObjectStreamPlaces.Of(_numbers);
+            return ObjectStreamPlaces.FirstIndexOf(_places, number);
         }
     }
 }

@@ -22,9 +22,11 @@ namespace AdCodicem.Pdf.Validation;
 /// most twice the file's length, which a valid file's headers, distinct bytes, never reach, and an entry left undecided
 /// past that is said not checked, as one whose header runs past the limit is. An entry outside the file is looked for
 /// near its offset, as a load looks for it. It reads each object stream once, without keeping it, so that memory follows the
-/// largest of them rather than their sum. It probes the index the file's chain gave, as the reader first read it — not
-/// one the reader has corrected or rebuilt since —, and nothing when the chain gave none: the file rules have then said
-/// the index is unusable, and every entry would only say it again.
+/// largest of them rather than their sum, each member whose bytes hold <c>stream</c> parsed as a load parses it. It probes
+/// the index the file's chain gave, as the reader first read it — not one the reader has corrected or rebuilt since —,
+/// and nothing of it when the chain gave none: the file rules have then said the index is unusable, and every entry would
+/// only say it again. Of the index a rebuild made, it judges only the members written as a stream that it places where the
+/// chain's places nothing, which the reader reads as null and no entry of the file's would name (#161, #202).
 /// </para>
 /// <para>
 /// Several rules read it, so the validation context works it out once. What it keeps is what it found wrong,
@@ -82,6 +84,7 @@ internal sealed class CrossReferenceProbe
 
         if (reader.ChainIndex is not { } index)
         {
+            probe.CheckMembersOnlyARebuildPlaces(document, reader);
             return probe;
         }
 
@@ -140,6 +143,7 @@ internal sealed class CrossReferenceProbe
             probe.CheckObjectStreams(document, reader, packed);
         }
 
+        probe.CheckMembersOnlyARebuildPlaces(document, reader);
         return probe;
     }
 
@@ -286,6 +290,7 @@ internal sealed class CrossReferenceProbe
         var at = reader.IsInFile(offset) ? PdfValidationLocation.OfObject(id, offset) : PdfValidationLocation.OfObject(id);
 
         var result = reader.ReadObjectStreamHeader(stream, entry, out var numbers, out var fault, out var streamMembers);
+        long[]? places = null;
 
         switch (result)
         {
@@ -312,33 +317,41 @@ internal sealed class CrossReferenceProbe
                 return;
 
             case ObjectStreamHeaderResult.Unreadable:
-                // The reader serves the objects the header lists before its fault, and those alone (#275).
+                // The reader serves the objects the header lists before its fault, and those alone (#275): when the index
+                // places none past them, nothing is lost, and the reader's own report says what the header lacks.
                 var lost = 0;
 
-                foreach (var (number, _) in objects)
+                foreach (var (number, index) in objects)
                 {
-                    lost += Array.IndexOf(numbers, number) < 0 ? 1 : 0;
+                    lost += Listed(numbers, number, index) || FirstIndexOf(numbers, number, ref places) >= 0 ? 0 : 1;
                 }
 
-                BrokenObjectStreams.Add(new ProbeFinding(
-                    at,
-                    lost == 0
-                        ? Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, can be read only in part: {fault}; each object the index places in it is listed before that.")
-                        : Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, can be read only in part: {fault}; {lost} of them {(lost == 1 ? "is" : "are")} not listed before that, and lost.")));
+                if (lost > 0)
+                {
+                    BrokenObjectStreams.Add(new ProbeFinding(
+                        at,
+                        objects.Count == 1
+                            ? Invariant($"Object stream {stream}, where the index places 1 object, can be read only in part: {fault}; it is not listed before that, and lost.")
+                            : Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, can be read only in part: {fault}; {lost} of them {(lost == 1 ? "is" : "are")} not listed before that, and lost.")));
+                }
+
                 break;
         }
 
         foreach (var (number, index) in objects)
         {
-            var listed = index >= 0 && index < numbers.Length && numbers[index] == number;
-            var actual = listed ? index : Array.IndexOf(numbers, number);
+            var listed = Listed(numbers, number, index);
+            var actual = listed ? index : FirstIndexOf(numbers, number, ref places);
 
-            // An object written as a stream is lost: the reader reads it as null (#161, #202).
-            if (actual >= 0 && Array.IndexOf(streamMembers, actual) >= 0)
+            // An object written as a stream is lost: the reader reads it as null (#161, #202). The places of such members
+            // are listed in increasing order.
+            if (actual >= 0 && Array.BinarySearch(streamMembers, actual) >= 0)
             {
                 Broken.Add(new ProbeFinding(
                     PdfValidationLocation.OfObject(new PdfObjectId(number)),
-                    Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold.")));
+                    listed
+                        ? Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold.")
+                        : Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, whose header lists it at index {actual}, where it is written as a stream, which an object stream cannot hold.")));
                 continue;
             }
 
@@ -366,6 +379,79 @@ internal sealed class CrossReferenceProbe
                     Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, whose header does not list it.")));
             }
         }
+    }
+
+    /// <summary>
+    /// Judges the members written as a stream that the index the reader serves places, where the chain's index places
+    /// nothing under their number: a rebuild found them, expanding an object stream, and the reader reads each as null
+    /// (#161, #202), which no entry of the chain's says. Only a rebuild places a member the chain's index lacks.
+    /// </summary>
+    private void CheckMembersOnlyARebuildPlaces(PdfDocument document, PdfFileReader reader)
+    {
+        if (!reader.WasRepaired || document.IsEncrypted)
+        {
+            return;
+        }
+
+        SortedDictionary<int, List<(int Number, int Index)>>? packed = null;
+
+        foreach (var (number, entry) in reader.Index.Entries)
+        {
+            if (entry.Kind == XRefEntryKind.Compressed &&
+                (reader.ChainIndex?.TryGet(number, out var placed) != true || placed.Kind == XRefEntryKind.Free))
+            {
+                packed ??= [];
+
+                if (!packed.TryGetValue(entry.ObjectStreamNumber, out var objects))
+                {
+                    objects = [];
+                    packed.Add(entry.ObjectStreamNumber, objects);
+                }
+
+                objects.Add((number, entry.IndexInObjectStream));
+            }
+        }
+
+        if (packed is null)
+        {
+            return;
+        }
+
+        foreach (var (stream, objects) in packed)
+        {
+            if (!reader.Index.TryGet(stream, out var entry) || entry.Kind != XRefEntryKind.Regular ||
+                reader.ReadObjectStreamHeader(stream, entry, out var numbers, out _, out var streamMembers) is
+                    ObjectStreamHeaderResult.NotFound or ObjectStreamHeaderResult.CutByLimit or ObjectStreamHeaderResult.NotAnObjectStream)
+            {
+                continue;
+            }
+
+            objects.Sort();
+
+            foreach (var (number, index) in objects)
+            {
+                if (Listed(numbers, number, index) && Array.BinarySearch(streamMembers, index) >= 0)
+                {
+                    Broken.Add(new ProbeFinding(
+                        PdfValidationLocation.OfObject(new PdfObjectId(number)),
+                        Invariant($"The index the reader rebuilt places object {number} at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold; the file's own index does not place it.")));
+                }
+            }
+        }
+    }
+
+    /// <summary>Determines whether the header that lists <paramref name="numbers"/> lists <paramref name="number"/> at <paramref name="index"/>.</summary>
+    private static bool Listed(int[] numbers, int number, int index) =>
+        index >= 0 && index < numbers.Length && numbers[index] == number;
+
+    /// <summary>
+    /// Gives the first place the header that lists <paramref name="numbers"/> lists <paramref name="number"/> at, or -1,
+    /// through a lookup built the first time one is needed.
+    /// </summary>
+    private static int FirstIndexOf(int[] numbers, int number, ref long[]? places)
+    {
+        places ??= ObjectStreamPlaces.Of(numbers);
+        return ObjectStreamPlaces.FirstIndexOf(places, number);
     }
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
