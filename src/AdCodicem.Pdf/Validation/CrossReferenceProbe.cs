@@ -21,12 +21,14 @@ namespace AdCodicem.Pdf.Validation;
 /// run an entry skips every byte it reads — is at
 /// most twice the file's length, which a valid file's headers, distinct bytes, never reach, and an entry left undecided
 /// past that is said not checked, as one whose header runs past the limit is. An entry outside the file is looked for
-/// near its offset, as a load looks for it. It reads each object stream once, without keeping it, so that memory follows the
-/// largest of them rather than their sum, each member whose bytes hold <c>stream</c> parsed as a load parses it. It probes
+/// near its offset, as a load looks for it. It reads each object stream once, without keeping it — twice when the reader
+/// rebuilt its index and only the rebuilt index places some of its objects —, so that memory follows the largest of them
+/// rather than their sum, each member whose bytes hold <c>stream</c> parsed as a load parses it. It probes
 /// the index the file's chain gave, as the reader first read it — not one the reader has corrected or rebuilt since —,
 /// and nothing of it when the chain gave none: the file rules have then said the index is unusable, and every entry would
 /// only say it again. Of the index a rebuild made, it judges only the members written as a stream that it places where the
-/// chain's places nothing, which the reader reads as null and no entry of the file's would name (#161, #202).
+/// chain's places nothing — or, the chain stopped short by a guard, where the part of it the reader read places nothing —,
+/// which the reader reads as null and no entry of the file's would name (#161, #202).
 /// </para>
 /// <para>
 /// Several rules read it, so the validation context works it out once. What it keeps is what it found wrong,
@@ -35,6 +37,9 @@ namespace AdCodicem.Pdf.Validation;
 /// </remarks>
 internal sealed class CrossReferenceProbe
 {
+    /// <summary>What corrects an object written as a stream inside an object stream: no entry can.</summary>
+    private const string StreamMemberRemedy = "Write the object outside the object stream, and index it there.";
+
     /// <summary>What the headers' reading may still consume past the first bytes of each, and the run of white space it crossed.</summary>
     private readonly HeaderReading _reading;
 
@@ -351,7 +356,8 @@ internal sealed class CrossReferenceProbe
                     PdfValidationLocation.OfObject(new PdfObjectId(number)),
                     listed
                         ? Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold.")
-                        : Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, whose header lists it at index {actual}, where it is written as a stream, which an object stream cannot hold.")));
+                        : Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, whose header lists it at index {actual}, where it is written as a stream, which an object stream cannot hold."),
+                    StreamMemberRemedy));
                 continue;
             }
 
@@ -384,7 +390,9 @@ internal sealed class CrossReferenceProbe
     /// <summary>
     /// Judges the members written as a stream that the index the reader serves places, where the chain's index places
     /// nothing under their number: a rebuild found them, expanding an object stream, and the reader reads each as null
-    /// (#161, #202), which no entry of the chain's says. Only a rebuild places a member the chain's index lacks.
+    /// (#161, #202), which no entry of the chain's says. Only a rebuild places a member the chain's index lacks. Where a
+    /// guard stopped the chain short, the entry that places the member may lie past where it stopped: the finding says the
+    /// part of the file's index the reader read does not place it.
     /// </summary>
     private void CheckMembersOnlyARebuildPlaces(PdfDocument document, PdfFileReader reader)
     {
@@ -432,9 +440,15 @@ internal sealed class CrossReferenceProbe
             {
                 if (Listed(numbers, number, index) && Array.BinarySearch(streamMembers, index) >= 0)
                 {
+                    // A number the chain's index lacks, a guard having stopped it short, may be placed past where it stopped.
+                    var unread = reader.ChainStoppedByGuard && reader.ChainIndex?.TryGet(number, out _) != true;
+
                     Broken.Add(new ProbeFinding(
                         PdfValidationLocation.OfObject(new PdfObjectId(number)),
-                        Invariant($"The index the reader rebuilt places object {number} at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold; the file's own index does not place it.")));
+                        unread
+                            ? Invariant($"The index the reader rebuilt places object {number} at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold; the part of the file's own index the reader read does not place it.")
+                            : Invariant($"The index the reader rebuilt places object {number} at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold; the file's own index does not place it."),
+                        StreamMemberRemedy));
                 }
             }
         }

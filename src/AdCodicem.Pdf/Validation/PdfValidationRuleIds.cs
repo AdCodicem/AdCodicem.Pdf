@@ -103,7 +103,7 @@ public static class PdfValidationRuleIds
 
     /// <summary>
     /// An in-use entry places its object where it is not, nor near it; or in an object stream that does not hold
-    /// it. <see cref="PdfValidationSeverity.Error"/>.
+    /// it, or holds it written as a stream. <see cref="PdfValidationSeverity.Error"/>.
     /// </summary>
     public const string XRefEntryBroken = "xref.entry-broken";
 
