@@ -1205,6 +1205,7 @@ public class DocumentReaderTests
     [Theory]
     [InlineData("<< /Length 99 >>\nstream\nabc\nendstream")]
     [InlineData("[1 << /Length 3 >> stream\nabc\nendstream]")]
+    [InlineData("<< /Inner << /Length 3 >> stream\nabc\nendstream >>")]
     public void Reads_an_object_written_as_a_stream_inside_an_object_stream_as_null_and_reports_it_once(string member)
     {
         // An object stream cannot hold a stream (7.5.7): the member, or the member holding one, is no value; its data is
