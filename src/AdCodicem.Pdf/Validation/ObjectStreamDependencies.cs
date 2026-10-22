@@ -14,11 +14,13 @@ namespace AdCodicem.Pdf.Validation;
 /// <remarks>
 /// <para>
 /// It is worked out from the stream dictionaries and the index, not from what the reader happened to do: each stream the
-/// index uses as an object stream, in the order of its number, has the references under those keys followed, as the reader
-/// follows them, through objects written directly in the file, until one names an object the index places in an object
-/// stream — a filter and its parameters through their direct arrays and dictionaries too, whose elements and entries the
-/// reader resolves, and the others, a name or a number, through a chain of references alone, as a reference resolves.
-/// The streams so needed are linked, and a stream that its links lead back to is circular.
+/// index uses as an object stream, in the order of its number, has the references under those keys followed, through
+/// objects written directly in the file, until one names an object the index places in an object stream. A name or a
+/// number — <c>/Length</c>, <c>/Type</c>, <c>/N</c>, <c>/First</c> — is followed as a reference resolves, through a chain
+/// of references as far as <see cref="PdfReference.Resolve"/> reads it; a filter and its parameters whole, every element
+/// and entry of their arrays and dictionaries, and of the objects they name, which is more than decoding may read, and
+/// misses a parameter that is a stream (#277). The streams so needed are linked, and a stream that its links lead back to
+/// is circular.
 /// </para>
 /// <para>
 /// The reader resolves a stream's <c>/Length</c> as it parses it, then its <c>/Type</c>, and nothing else of one that is
@@ -164,19 +166,14 @@ internal sealed class ObjectStreamDependencies
                 continue;
             }
 
-            // A filter and its parameters are read whole, each element and entry resolved; the other values, a name or a
-            // number, as a reference resolves — the object it names, while that is a reference in turn —, nothing written
-            // inside an array or a dictionary read for them.
-            var whole = key == PdfName.Filter || key == PdfName.DecodeParms;
+            if (key != PdfName.Filter && key != PdfName.DecodeParms)
+            {
+                FollowChain(document, value, key, references, found);
+                continue;
+            }
 
-            if (whole)
-            {
-                Push(work, ReferencesIn(value));
-            }
-            else if (value is PdfReference reference)
-            {
-                work.Push(reference.Id);
-            }
+            // A filter and its parameters are followed whole, each element and entry, through what they name in turn.
+            Push(work, ReferencesIn(value));
 
             while (work.TryPop(out var id))
             {
@@ -193,26 +190,60 @@ internal sealed class ObjectStreamDependencies
                 }
                 else if (entry.Kind == XRefEntryKind.Regular)
                 {
-                    if (!references.TryGet(id.Number, out var held))
-                    {
-                        var read = Read(document, id, entry);
-                        held = new HeldReferences(ReferencesIn(read), read is PdfReference);
-                        references.Add(id.Number, held);
-                    }
-
-                    if (whole)
-                    {
-                        Push(work, held.References);
-                    }
-                    else if (held.IsReference)
-                    {
-                        work.Push(held.References[0]);
-                    }
+                    Push(work, Held(document, id, entry, references).References);
                 }
             }
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// Follows <paramref name="value"/>, which the reader reads as a name or a number, as a reference resolves: the object
+    /// it names, while that is a reference in turn, as many as <see cref="PdfReference.Resolve"/> reads —
+    /// <see cref="PdfReference.MaxChainLength"/>, and for a <c>/Length</c> one more, which the parse reads before it resolves
+    /// what it gives —; nothing written inside an array or a dictionary is read for it. The chain ends at an object an
+    /// object stream holds, which the stream then needs.
+    /// </summary>
+    private static void FollowChain(PdfDocument document, PdfObject value, PdfName key, ReferenceMemo references, List<Need> found)
+    {
+        var links = key == PdfName.Length ? PdfReference.MaxChainLength + 1 : PdfReference.MaxChainLength;
+        var next = value is PdfReference reference ? reference.Id : default(PdfObjectId?);
+
+        for (var link = 0; next is { } id && link < links; link++)
+        {
+            next = null;
+
+            if (id.Number <= 0 || !IndexOf(document.Reader).TryGet(id.Number, out var entry))
+            {
+                return;
+            }
+
+            if (entry.Kind == XRefEntryKind.Compressed)
+            {
+                found.Add(new Need(entry.ObjectStreamNumber, id.Number, FileQuote.Name(key)));
+            }
+            else if (entry.Kind == XRefEntryKind.Regular && Held(document, id, entry, references) is { IsReference: true } held)
+            {
+                next = held.References[0];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gives the references the object <paramref name="id"/>, written in the file, holds, read once and kept in
+    /// <paramref name="references"/>, or kept there already.
+    /// </summary>
+    private static HeldReferences Held(PdfDocument document, PdfObjectId id, XRefEntry entry, ReferenceMemo references)
+    {
+        if (!references.TryGet(id.Number, out var held))
+        {
+            var read = Read(document, id, entry);
+            held = new HeldReferences(ReferencesIn(read), read is PdfReference);
+            references.Add(id.Number, held);
+        }
+
+        return held;
     }
 
     /// <summary>

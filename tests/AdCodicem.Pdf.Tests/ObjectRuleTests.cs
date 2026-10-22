@@ -435,6 +435,71 @@ public class ObjectRuleTests
             "Object stream 7 needs object 5, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is.");
     }
 
+    [Theory]
+    [InlineData("<< /Predictor 5 0 R >>", "/DecodeParms 3 0 R", "/DecodeParms")]
+    [InlineData("[5 0 R]", "/Filter 3 0 R", "/Filter")]
+    public void A_length_that_names_what_a_filter_or_its_parameters_names_hides_no_loop_through_them(string three, string key, string named)
+    {
+        // Stream 7's /Length names object 3, as its /DecodeParms, or its /Filter, does: a length reads nothing inside 3, a
+        // dictionary or an array, while the filter or its parameters read 5, which 7 holds. Following the length to 3 first
+        // keeps the walk from following the filter or its parameters through it.
+        var five = named == "/Filter" ? "/FlateDecode" : "1";
+        var header = string.Create(CultureInfo.InvariantCulture, $"5 0 6 {five.Length + 1} ");
+        var data = Deflate(header + five + "\n(six)\n");
+        var filter = named == "/Filter" ? string.Empty : " /Filter /FlateDecode";
+        var written = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, written.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, written.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [3] = (1, written.Object(3, three), 0),
+            [7] = (1, written.Object(7, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 2 /First {header.Length} {key}{filter} /Length 3 0 R >>\nstream\n{data}\nendstream")), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+        };
+        written.CrossReferenceStream(12, 13, rows, "/Root 1 0 R");
+
+        Single(Validate(written.Bytes), PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            $"Object stream 7 needs object 5, which it holds, to be read: its {named} names it, and the object cannot be read before the stream is.");
+    }
+
+    [Theory]
+    [InlineData("/N", 31, true)]
+    [InlineData("/N", 32, false)]
+    [InlineData("/Length", 32, true)]
+    [InlineData("/Length", 33, false)]
+    public void A_chain_of_references_is_followed_as_far_as_a_reference_resolves(string key, int links, bool circular)
+    {
+        // Stream 7's /N, or /Length, names object 100, the first of a chain of objects each naming the next, the last naming
+        // 5, which 7 holds. A reference resolution reads the 32 objects of a chain at most, and a /Length one more, which the
+        // parse reads before it resolves what it gives: past that, the reader never reads 5, and needs nothing.
+        const string Data = "5 0 6 2 2 (six) ";
+        var written = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, written.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 6 0 R >>"), 0),
+            [2] = (1, written.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var link = 0; link < links; link++)
+        {
+            rows[100 + link] = (1, written.Object(100 + link, (link + 1 < links ? 101 + link : 5).ToString(CultureInfo.InvariantCulture) + " 0 R"), 0);
+        }
+
+        var count = key == "/N" ? "100 0 R" : "2";
+        var length = key == "/Length" ? "100 0 R" : Data.Length.ToString(CultureInfo.InvariantCulture);
+        rows[7] = (1, written.Object(7, $"<< /Type /ObjStm /N {count} /First 8 /Length {length} >>\nstream\n{Data}\nendstream"), 0);
+        rows[5] = (2, 7, 0);
+        rows[6] = (2, 7, 1);
+        written.CrossReferenceStream(12, 100 + links, rows, "/Root 1 0 R");
+
+        Validate(written.Bytes).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().Be(circular);
+
+        using var document = PdfDocument.Open(written.Bytes);
+        document.GetObject(new PdfObjectId(6));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Contains(PdfDiagnosticCodes.StreamSelfReference).Should().Be(circular);
+    }
+
     [Fact]
     public void Of_two_objects_an_object_stream_holds_and_needs_the_one_its_walk_meets_first_is_named()
     {
@@ -863,7 +928,6 @@ public class ObjectRuleTests
             "Object 4 refers to object 9 0 under /DecodeParms, which the file lacks: the reference reads as null.");
     }
 
-    /// <summary>Objects 5 and 6 in object stream 7, whose dictionary gets <paramref name="entries"/>; object 5 is <paramref name="parameter"/>.</summary>
     /// <summary>Object stream 7, uncompressed, holding object 5, /ObjStm, and 6; object 4 is <paramref name="four"/>, written in the file.</summary>
     private static byte[] ObjectStreamWith(string four) =>
         new TestPdfBuilder()
@@ -874,6 +938,20 @@ public class ObjectRuleTests
             .WithObject(6, "<< /Title (six) >>")
             .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], compressObjectStream: false);
 
+    /// <summary>Gives <paramref name="text"/> compressed with Flate, as text written in a file is.</summary>
+    private static string Deflate(string text)
+    {
+        using var compressed = new MemoryStream();
+
+        using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.Optimal))
+        {
+            zlib.Write(Encoding.Latin1.GetBytes(text));
+        }
+
+        return Encoding.Latin1.GetString(compressed.ToArray());
+    }
+
+    /// <summary>Objects 5 and 6 in object stream 7, whose dictionary gets <paramref name="entries"/>; object 5 is <paramref name="parameter"/>.</summary>
     private static byte[] ObjectStream(string entries, string parameter, bool compress = true) =>
         new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
