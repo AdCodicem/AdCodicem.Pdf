@@ -582,6 +582,17 @@ internal ref struct PdfObjectParser
         var afterDictionary = _lexer.Position;
         var next = _lexer.Read();
 
+        // A member's window that a guard ended may have left a stream keyword after the dictionary past it, or cut one — a
+        // keyword it reaches may be "stream" or longer —: the member is cut there, as an object written in the file whose
+        // window ends after its value is. What else follows is whole wherever it lies, and is no stream keyword.
+        if (_member is not null && !_endsData &&
+            (next.Kind is PdfTokenKind.EndOfInput || (next.Kind is PdfTokenKind.Keyword && next.End >= _memory.Length)))
+        {
+            _truncated = true;
+            _lexer.Position = afterDictionary;
+            return dictionary;
+        }
+
         if (next.IsKeyword("stream"u8))
         {
             // A member's stream is not read: the member is no value, and the parse stops here (#161).
@@ -592,13 +603,6 @@ internal ref struct PdfObjectParser
             }
 
             return ReadStream(dictionary);
-        }
-
-        // A member's window that a guard ended may have cut a stream keyword after the dictionary, or left it past the
-        // window: the member is cut there, as an object written in the file whose window ends after its value is.
-        if (_member is not null && !_endsData && (next.Kind is PdfTokenKind.EndOfInput || next.End >= _memory.Length))
-        {
-            _truncated = true;
         }
 
         _lexer.Position = afterDictionary;
