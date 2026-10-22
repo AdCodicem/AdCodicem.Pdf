@@ -1520,17 +1520,20 @@ public class ReadOrderTests
     [Fact]
     public void Finishing_a_rebuild_a_load_set_off_copies_what_was_reported_once()
     {
-        // Members 100 on of object stream 6 are each placed at index 0, and each read reports its move. Object 7's stream
-        // takes its /Length from 5, whose row leads into the catalog's header: reading 7 sets a rebuild off while 8 loads,
-        // finished as the read ends. What that read allocates grows with the moves reported, by the rebuild's own work and
-        // by one copy of what was reported, taken as the rebuild was left, which marks its finish too: about 200 bytes a
-        // move, where a second copy, for the finish, took about 300 (#273).
-        var small = Finishing(10_000);
-        var large = Finishing(40_000);
+        // Members 100 on of object stream 6 are each placed at index 0, and each read reports its move; or each at its own
+        // index, and none does. Object 7's stream takes its /Length from 5, whose row leads into the catalog's header:
+        // reading 7 sets a rebuild off while 8 loads, finished as the read ends. What that read allocates grows with the
+        // members by the rebuild's own work, about 93 bytes a member, and with the moves reported by one copy of what was
+        // reported, taken as the rebuild was left, which marks its finish too: about 104 bytes a move, where a second
+        // copy, for the finish, took as much again (#273).
+        var moves = Slope(moved: true);
+        var rebuild = Slope(moved: false);
 
-        ((large - small) / 30_000.0).Should().BeLessThan(250, "the reports are copied once, not twice ({0} and {1} bytes)", small, large);
+        (moves - rebuild).Should().BeLessThan(156, "the reports are copied once, not twice ({0} bytes a move, {1} a member without)", moves, rebuild);
 
-        static long Finishing(int members)
+        static double Slope(bool moved) => (Finishing(40_000, moved) - Finishing(10_000, moved)) / 30_000.0;
+
+        static long Finishing(int members, bool moved)
         {
             var file = new HandWrittenFile(version: "1.5");
             var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -1543,7 +1546,7 @@ public class ReadOrderTests
             for (var member = 0; member < members; member++)
             {
                 packed[member] = (100 + member, "1");
-                rows[100 + member] = (2, 6, 0);
+                rows[100 + member] = (2, 6, moved ? 0 : member);
             }
 
             rows[6] = (1, file.ObjectStream(6, packed), 0);
