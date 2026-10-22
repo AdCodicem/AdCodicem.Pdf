@@ -210,8 +210,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>The guards already reported, and where: an object read again is not reported again.</summary>
     private readonly HashSet<(PdfLimit Limit, long Position)> _limitsReached = [];
 
-    /// <summary>The object stream members <see cref="PdfReaderLimits.MaxObjectLength"/> cut, by stream and number, each reported once.</summary>
-    private readonly HashSet<(int Stream, int Number)> _memberLimitsReached = [];
+    /// <summary>
+    /// The object stream members <see cref="PdfReaderLimits.MaxObjectLength"/> cut, by where their stream's data starts and
+    /// their number, each reported once: a stream defined again, which a rebuild may serve, is another place.
+    /// </summary>
+    private readonly HashSet<(long DataStart, int Number)> _memberLimitsReached = [];
 
     /// <summary>
     /// The faults of the syntax the document's diagnostics keep: an object parsed again — after the cache let it go, the
@@ -4696,17 +4699,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Reports, once for each member, that <see cref="PdfReaderLimits.MaxObjectLength"/> cut member <paramref name="number"/>
-    /// of object stream <paramref name="stream"/>, at <paramref name="position"/>, where the stream's data starts: its
-    /// members share that place, and each is reported. A document that throws on a guard throws each time.
+    /// of the object stream whose data starts at <paramref name="position"/>: its members share that place, and each is
+    /// reported. A document that throws on a guard throws each time.
     /// </summary>
-    private void ReachMemberLimit(int stream, int number, string what, long position)
+    private void ReachMemberLimit(int number, string what, long position)
     {
         _guardsReached++;
 
-        if (!_memberLimitsReached.Contains((stream, number)))
+        if (!_memberLimitsReached.Contains((position, number)))
         {
             _guard.Reach(PdfLimit.Object, _diagnostics, what, position);
-            _memberLimitsReached.Add((stream, number));
+            _memberLimitsReached.Add((position, number));
         }
     }
 
@@ -5053,7 +5056,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // A member written as a stream reads as null, what parsing met of it dropped, and is reported once (#161).
             if (streamAt >= 0)
             {
-                if (_objectStreamReports.IsFirstStreamMember(entry.ObjectStreamNumber, id.Number))
+                if (_objectStreamReports.IsFirstStreamMember(contents.DataStart, id.Number))
                 {
                     _diagnostics.Warn(
                         PdfDiagnosticCodes.ObjectStreamMemberStream,
@@ -5069,7 +5072,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (pastLength >= 0)
             {
                 ReachMemberLimit(
-                    entry.ObjectStreamNumber,
                     id.Number,
                     string.Create(
                         CultureInfo.InvariantCulture,
@@ -5444,7 +5446,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         new HashSet<long>(_lengthFaultsReported),
         new HashSet<PdfDiagnostic>(_syntaxReported),
         new HashSet<(PdfLimit Limit, long Position)>(_limitsReached),
-        new HashSet<(int Stream, int Number)>(_memberLimitsReached),
+        new HashSet<(long DataStart, int Number)>(_memberLimitsReached),
         new HashSet<int>(_objectStreamsNeedingThemselves),
         _nestingReported,
         _objectStreamReports.Copy());
@@ -5934,7 +5936,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         HashSet<long> LengthFaults,
         HashSet<PdfDiagnostic> Syntax,
         HashSet<(PdfLimit Limit, long Position)> Limits,
-        HashSet<(int Stream, int Number)> MemberLimits,
+        HashSet<(long DataStart, int Number)> MemberLimits,
         HashSet<int> NeedingThemselves,
         bool NestingReported,
         ObjectStreamReports ObjectStreams);
@@ -6004,20 +6006,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// <summary>Where the data starts of each object stream whose own fault was reported.</summary>
         private readonly HashSet<long> _faults = [];
 
-        /// <summary>Each object reported at another index of an object stream than its entry gives, with that stream.</summary>
-        private readonly HashSet<(int Stream, int Number)> _moves = [];
+        /// <summary>
+        /// Each object reported at another index of an object stream than its entry gives, with where that stream's data
+        /// starts: a stream defined again, which a rebuild may serve, is another place.
+        /// </summary>
+        private readonly HashSet<(long DataStart, int Number)> _moves = [];
 
-        /// <summary>Each object reported written as a stream in an object stream, with that stream.</summary>
-        private readonly HashSet<(int Stream, int Number)> _streamMembers = [];
+        /// <summary>Each object reported written as a stream in an object stream, with where that stream's data starts.</summary>
+        private readonly HashSet<(long DataStart, int Number)> _streamMembers = [];
 
         /// <summary>Records the fault of the object stream whose data starts at <paramref name="dataStart"/>, and tells whether it is the first.</summary>
         public bool IsFirstFault(long dataStart) => _faults.Add(dataStart);
 
-        /// <summary>Records that object <paramref name="number"/> is elsewhere in object stream <paramref name="stream"/>, and tells whether it is the first time.</summary>
-        public bool IsFirstMove(int stream, int number) => _moves.Add((stream, number));
+        /// <summary>Records that object <paramref name="number"/> is elsewhere in the object stream whose data starts at <paramref name="dataStart"/>, and tells whether it is the first time.</summary>
+        public bool IsFirstMove(long dataStart, int number) => _moves.Add((dataStart, number));
 
-        /// <summary>Records that object <paramref name="number"/> is written as a stream in object stream <paramref name="stream"/>, and tells whether it is the first time.</summary>
-        public bool IsFirstStreamMember(int stream, int number) => _streamMembers.Add((stream, number));
+        /// <summary>Records that object <paramref name="number"/> is written as a stream in the object stream whose data starts at <paramref name="dataStart"/>, and tells whether it is the first time.</summary>
+        public bool IsFirstStreamMember(long dataStart, int number) => _streamMembers.Add((dataStart, number));
 
         /// <summary>Gives a copy of what was reported, which <see cref="RestoreFrom"/> brings back.</summary>
         public ObjectStreamReports Copy()
@@ -6263,7 +6268,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 // The entry is left as it is: the object is found by its number each time it is parsed, and
                 // reported the first.
-                if (_reports.IsFirstMove(_number, expectedNumber))
+                if (_reports.IsFirstMove(_position, expectedNumber))
                 {
                     diagnostics.Repair(
                         PdfDiagnosticCodes.ObjectStreamMemberMoved,

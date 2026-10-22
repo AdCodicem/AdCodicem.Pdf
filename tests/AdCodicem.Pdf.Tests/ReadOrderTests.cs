@@ -1356,6 +1356,46 @@ public class ReadOrderTests
             .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_member_fault_of_the_definition_a_rebuild_serves_is_reported_whatever_was_read_before(bool tooLong)
+    {
+        // Object stream 6 is defined twice, and member 7 of each is written as a stream, or runs past MaxObjectLength. The
+        // chain places 6 at the first; 5's row leads into the catalog's header, and reading it rebuilds the index, which
+        // serves the second. A member's fault is reported once for each definition of its stream, keyed by where the
+        // definition's data starts: 7 read before the rebuild does not keep the served definition's fault from being said.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var first = file.ObjectStream(6, [(7, tooLong ? "(" + new string('a', 2000) + ")" : "<< /Length 1 >> stream\nx\nendstream")]);
+        file.Padding(9, 200);
+        file.ObjectStream(6, [(7, tooLong ? "(" + new string('b', 2000) + ")" : "<< /Length 1 >> stream\ny\nendstream")]);
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, catalog, 0),
+            [2] = (1, pages, 0),
+            [5] = (1, 9, 0),
+            [6] = (1, first, 0),
+            [7] = (2, 6, 0),
+        };
+        file.CrossReferenceStream(20, 21, rows, "/Root 1 0 R");
+        var options = tooLong ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } } : PdfReaderOptions.Default;
+        var code = tooLong ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.ObjectStreamMemberStream;
+        using var rebuiltFirst = PdfDocument.Open(file.Bytes, options);
+        rebuiltFirst.GetObject(new PdfObjectId(5));
+        rebuiltFirst.GetObject(new PdfObjectId(7));
+        var served = rebuiltFirst.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == code).Which.Position;
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.GetObject(new PdfObjectId(7));
+        document.GetObject(new PdfObjectId(5));
+        document.GetObject(new PdfObjectId(7));
+
+        served.Should().NotBe(first);
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == code).Select(diagnostic => diagnostic.Position).Should().HaveCount(2).And.Contain(served);
+    }
+
     [Fact]
     public void A_read_that_sets_a_rebuild_off_and_nests_too_deep_reports_what_a_rebuild_run_first_reports()
     {
