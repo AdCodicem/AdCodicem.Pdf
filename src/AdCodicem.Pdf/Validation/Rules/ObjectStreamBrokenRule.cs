@@ -7,7 +7,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <remarks>
 /// An object stream the index lacks, that is no object stream, or whose data does not decode to the header its
 /// <c>/N</c> and <c>/First</c> describe, loses every object placed in it: reported once for the stream, not for each
-/// of its objects. An object stream whose own entry is broken is <see cref="PdfValidationRuleIds.XRefEntryBroken"/>'s,
+/// of its objects. A header that breaks after listing some objects loses only those the index places in the stream that
+/// it does not list before the break, which the finding counts; none lost, there is no finding (#275). An object stream whose own entry is broken is <see cref="PdfValidationRuleIds.XRefEntryBroken"/>'s,
 /// one a limit stopped the reader decoding is <see cref="PdfValidationRuleIds.XRefCheckedInPart"/>'s, and one that
 /// needs an object it holds to be read is <see cref="PdfValidationRuleIds.XRefObjectStreamCircular"/>'s.
 /// </remarks>

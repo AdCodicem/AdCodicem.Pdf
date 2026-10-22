@@ -654,7 +654,6 @@ public class CrossReferenceRuleTests
     [Theory]
     [InlineData("/Type /ObjStm", "/Type/XObject", "Object 4, where the index places 2 objects, is a stream that is not of /Type /ObjStm.")]
     [InlineData("/Type /ObjStm", "/Kind /ObjStm", "Object 4, where the index places 2 objects, is a stream that is not of /Type /ObjStm.")]
-    [InlineData("/N 2", "/N 9", "Object stream 4, where the index places 2 objects, can be read only in part: its header lists 2 of the 9 objects its /N declares, then ends; each object the index places in it is listed before that.")]
     [InlineData("/N 2", "/X 2", "Object stream 4, where the index places 2 objects, cannot be read: its /N or its /First is missing or negative.")]
     [InlineData("/Type /ObjStm /N 2 /First ", "/Type/ObjStm/N 2/First 999", "Object stream 4, where the index places 2 objects, cannot be read: it decodes to")]
     public void An_object_stream_that_cannot_serve_its_objects_is_reported_once(string text, string replacement, string message)
@@ -702,12 +701,13 @@ public class CrossReferenceRuleTests
     [InlineData("-2 0 ", "then object -2 at offset 0, which no member can be")]
     [InlineData("2 -5 ", "then object 2 at offset -5, which no member can be")]
     [InlineData("2 2147483648 ", "then object 2 at offset 2147483648, which no member can be")]
+    [InlineData("2 2147483647 ", "then object 2 at offset 2147483647, past what its {0} bytes of decoded data hold")]
     [InlineData("2147483647 0 ", null)]
     public void An_object_stream_whose_header_lists_something_other_than_objects_cannot_be_read(string start, string? then)
     {
         // The header starts "2 0 ", object 2 at offset 0; the objects keep their offsets from /First. A number no object
         // can have, or an offset no member can start at, ends the header as a stray token does, as the reader ends it; a
-        // number past a long is a real, which is a stray token.
+        // number past a long is a real, which is a stray token; the largest offset an int holds is a start past the data.
         var file = XRefStreamBuilder().BuildWithXRefStream(
             rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: header => start + header[4..]);
 
@@ -721,7 +721,8 @@ public class CrossReferenceRuleTests
         }
 
         Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().Be(
-            "Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, " + then + ".");
+            "Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, " +
+            string.Format(CultureInfo.InvariantCulture, then, start.Length + 5 + PackedLength) + ".");
     }
 
     [Theory]
@@ -731,10 +732,13 @@ public class CrossReferenceRuleTests
     [InlineData("2 0 x ", "then something else")]
     public void An_object_stream_whose_header_breaks_after_an_object_says_which_objects_are_lost(string header, string then)
     {
-        // The reader serves object 2, listed before the fault, and loses object 3 (#160, #202, #275).
+        // The reader serves object 2, listed before the fault, and loses object 3 (#160, #202, #275): the stream's finding
+        // says so, and 3's entry has none of its own.
         var file = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: _ => header);
 
         var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
+        Validate(file).Findings.Where(each => each.RuleId.StartsWith("xref.", StringComparison.Ordinal)).Select(each => each.RuleId)
+            .Should().Equal(PdfValidationRuleIds.XRefObjectStreamBroken);
 
         finding.Severity.Should().Be(PdfValidationSeverity.Error);
         finding.Message.Should().Be(string.Create(
@@ -756,16 +760,72 @@ public class CrossReferenceRuleTests
             $"Object stream 4, where the index places 2 objects, cannot be read: its header lists 0 of the 2 objects its /N declares, then object 2 at offset 999, past what its {Header.Length + PackedLength} bytes of decoded data hold."));
     }
 
-    [Fact]
-    public void An_object_stream_that_lists_every_object_its_index_places_before_its_header_breaks_loses_none()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_stream_that_lists_every_object_its_index_places_before_its_header_breaks_loses_none_and_is_no_finding(bool stray)
     {
-        // Its /N declares a third object, and its header ends after the two the index places in it: both are served.
-        var file = Replace(XRefStreamFile(), "/N 2", "/N 3");
+        // Its /N declares a third object, and its header ends, or lists something else, after the two the index places in
+        // it: both are served, nothing the index places is lost, and the reader's own report says what the header lacks
+        // (#275).
+        var written = stray
+            ? XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: header => header + "x ")
+            : XRefStreamFile();
+        var file = Replace(written, "/N 2", "/N 3");
+        using var document = PdfDocument.Open(file);
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Should().BeEmpty();
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.ObjectStreamUnreadable);
+    }
+
+    [Fact]
+    public void An_object_stream_that_loses_the_only_object_its_index_places_says_so_of_it()
+    {
+        // The index places object 3 alone in the stream, whose header lists object 2 and then something else (#275).
+        var written = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [3], objectStreamHeader: _ => "2 0 x ");
+        var file = Replace(written, "/N 1", "/N 2");
 
         var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
 
-        finding.Message.Should().Be(
-            "Object stream 4, where the index places 2 objects, can be read only in part: its header lists 2 of the 3 objects its /N declares, then ends; each object the index places in it is listed before that.");
+        finding.Message.Should().Contain("where the index places 1 object, can be read only in part: its header lists 1 of the 2 objects its /N declares, then something else")
+            .And.EndWith("; it is not listed before that, and lost.");
+    }
+
+    [Fact]
+    public void An_object_stream_broken_after_an_object_the_index_misplaces_shifts_that_object_and_loses_the_other()
+    {
+        // The header lists object 2 and then something else; the index places 2 at index 1, past the break, and 3 there too.
+        // The reader serves 2 where the header lists it, and loses 3: 2's entry is shifted, and the stream loses one object.
+        var written = XRefStreamBuilder().BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3], objectStreamHeader: _ => "2 0 x ");
+        var file = Replace(written, "\u0002\0\0\0\u0004\0\0", "\u0002\0\0\0\u0004\0\u0001");
+
+        var findings = Validate(file).Findings.Where(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal)).ToList();
+
+        findings.Select(finding => (finding.RuleId, finding.Location.Object)).Should().BeEquivalentTo(
+            [(PdfValidationRuleIds.XRefEntryShifted, new PdfObjectId(2)), (PdfValidationRuleIds.XRefObjectStreamBroken, new PdfObjectId(4))]);
+        findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().EndWith("; 1 of them is not listed before that, and lost.");
+    }
+
+    [Fact]
+    public void An_object_written_as_a_stream_before_a_header_breaks_is_its_entry_s_finding_and_not_counted_lost()
+    {
+        // The header lists object 5, written as a stream, then something else; the index places 6 and 7 after it. 5's entry
+        // is broken, and the stream loses 6 and 7, not 5, which its header lists.
+        var written = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R /Foo 5 0 R /Bar 6 0 R /Baz 7 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Length 5 >>stream\nhello\nendstream")
+            .WithObject(6, "(six)")
+            .WithObject(7, "(seven)")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6, 7], objectStreamHeader: _ => "5 0 x ");
+
+        var findings = Validate(written).Findings.Where(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal)).ToList();
+
+        findings.Should().HaveCount(2);
+        findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefEntryBroken).Location.Object.Should().Be(new PdfObjectId(5));
+        findings.Single(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().EndWith("; 2 of them are not listed before that, and lost.");
     }
 
     [Theory]
@@ -790,6 +850,57 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData(5)]
+    [InlineData(0)]
+    public void An_object_written_as_a_stream_that_its_entry_misplaces_is_broken_where_its_header_lists_it(int index)
+    {
+        // Object 4, written as a stream at index 2 of object stream 5, is placed by its entry at an index past the header, or
+        // at another member's: the finding names both indexes (#161).
+        var written = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> /Contents 4 0 R >>")
+            .WithObject(4, "<< /Length 5 >>stream\nhello\nendstream")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [2, 3, 4]);
+        var file = Replace(written, "\u0002\0\0\0\u0005\0\u0002", "\u0002\0\0\0\u0005\0" + (char)index);
+
+        var findings = Validate(file).Findings.Where(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal)).ToList();
+
+        findings.Should().ContainSingle().Which.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
+        findings[0].Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The entry of object 4 places it at index {index} of object stream 5, whose header lists it at index 2, where it is written as a stream, which an object stream cannot hold."));
+    }
+
+    [Theory]
+    [InlineData("no index")]
+    [InlineData("an index that lacks it")]
+    public void An_object_written_as_a_stream_that_only_a_rebuilt_index_places_is_broken(string chain)
+    {
+        // Object stream 3 holds 4, written as a stream, and 5. The file has no index, or a table that places 1 and 2 alone,
+        // 2 outside the file: the rebuilt index places 4 in 3, where it reads as null, and no entry of the file says so but
+        // the rebuilt one (#161, #202).
+        var file = new HandWrittenFile();
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 4 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        file.ObjectStream(3, [(4, "<< /Length 3 >> stream\nabc\nendstream"), (5, "<< /B 2 >>")]);
+
+        if (chain == "no index")
+        {
+            file.Raw("trailer\n<< /Root 1 0 R /Size 6 >>\n%%EOF\n");
+        }
+        else
+        {
+            file.Table(6, new Dictionary<int, long> { [1] = one, [2] = 99999 }, "/Root 1 0 R /Size 6");
+        }
+
+        var finding = Validate(file.Bytes).Findings.Should().ContainSingle(each => each.Location.Object == new PdfObjectId(4)).Subject;
+
+        finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
+        finding.Message.Should().Be("The index the reader rebuilt places object 4 at index 0 of object stream 3, where it is written as a stream, which an object stream cannot hold; the file's own index does not place it.");
+    }
+
+    [Theory]
     [InlineData("(upstream)")]
     [InlineData("<< /Note (a stream) /Kind /stream >>")]
     public void An_object_whose_bytes_merely_hold_stream_inside_an_object_stream_is_sound(string written)
@@ -804,11 +915,15 @@ public class CrossReferenceRuleTests
         Validate(file).Findings.Should().BeEmpty();
     }
 
-    [Fact]
-    public void An_object_placed_in_an_object_stream_that_declares_none_is_broken()
+    [Theory]
+    [InlineData("/N 2 /First 9", "/N 0 /First 9")]
+    [InlineData("/N 2 /First 9", "/N 0 /Fxrst 9")]
+    [InlineData("/N 2 /First 9", "/N 0/First 99")]
+    public void An_object_placed_in_an_object_stream_that_declares_none_is_broken(string text, string replacement)
     {
-        // An object stream of /N 0 is empty, not damaged, and serves nothing: the object its entry places there is lost.
-        var file = Replace(XRefStreamFile(), "/N 2", "/N 0");
+        // An object stream of /N 0 is empty, not damaged, and serves nothing, whatever its /First: the object its entry
+        // places there is lost, as the reader reads the stream.
+        var file = Replace(XRefStreamFile(), text, replacement);
 
         var findings = Validate(file).Findings.Where(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal)).ToList();
 

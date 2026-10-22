@@ -1,7 +1,10 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -116,6 +119,136 @@ public class ReaderTimingTests
 
             dictionaries.Should().Be(count);
             document.Diagnostics.Contains(PdfDiagnosticCodes.ObjectStreamMemberMoved).Should().BeTrue();
+        }
+    }
+
+    [Theory]
+    [InlineData("a header broken before its last member")]
+    [InlineData("members written as streams")]
+    [InlineData("an index wrong for every member")]
+    public void The_validator_judges_an_object_stream_s_members_in_linear_time(string shape)
+    {
+        // One object stream of many members, each placed by the index: the probe finds each in the header through a lookup
+        // built once, and each member written as a stream by a search of those it found, not by scanning the header for
+        // each — four times the members take about four times as long, where a scan would take sixteen. The probe alone is
+        // timed, the documents opened and settled before.
+        const int Small = 50_000;
+        const int Large = 4 * Small;
+        using var small = PdfDocument.Open(Packed(Small, shape));
+        using var large = PdfDocument.Open(Packed(Large, shape));
+        small.Reader.SettleIndex();
+        large.Reader.SettleIndex();
+
+        Probe(small);
+        var smallTime = TimeSpan.MaxValue;
+        var largeTime = TimeSpan.MaxValue;
+
+        for (var run = 0; run < 3; run++)
+        {
+            smallTime = Min(smallTime, Time(() => Probe(small)));
+            largeTime = Min(largeTime, Time(() => Probe(large)));
+        }
+
+        largeTime.Should().BeLessThan(
+            smallTime * 8,
+            "four times the members must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
+
+        static TimeSpan Time(Action action)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            action();
+            return stopwatch.Elapsed;
+        }
+
+        static void Probe(PdfDocument document)
+        {
+            var probe = CrossReferenceProbe.Run(document);
+            (probe.Broken.Count + probe.Shifted.Count + probe.BrokenObjectStreams.Count).Should().BePositive();
+        }
+    }
+
+    /// <summary>
+    /// Writes a file whose object stream 3 holds <paramref name="members"/> objects, numbered from 4, each placed by a row
+    /// of a cross-reference stream: <c>1</c> each, its header broken before the last by a pair whose offset is not past the
+    /// one before; or each written as a stream; or <c>1</c> each, every row giving the next member's index.
+    /// </summary>
+    private static byte[] Packed(int members, string shape)
+    {
+        using var output = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+        void Write(string text) => output.Write(Encoding.ASCII.GetBytes(text));
+
+        void WriteObject(int number, string body)
+        {
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+        }
+
+        Write("%PDF-1.5\n");
+        WriteObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        WriteObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        var member = shape == "members written as streams" ? "<<>>stream\n" : "1\n";
+        var header = new StringBuilder();
+
+        var broken = shape == "a header broken before its last member";
+
+        for (var index = 0; index < (broken ? members - 1 : members); index++)
+        {
+            header.Append(CultureInfo.InvariantCulture, $"{4 + index} {index * member.Length} ");
+        }
+
+        if (broken)
+        {
+            header.Append("999 0 ");
+        }
+
+        var declared = members;
+
+        var data = header + string.Concat(Enumerable.Repeat(member, members));
+        WriteObject(3, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N {declared} /First {header.Length} /Length {data.Length} >>\nstream\n{data}\nendstream"));
+
+        var xref = 4 + members;
+        var xrefOffset = output.Position;
+        offsets[xref] = xrefOffset;
+        var rows = new byte[(xref + 1) * 9];
+
+        for (var number = 0; number <= xref; number++)
+        {
+            var row = rows.AsSpan(number * 9, 9);
+
+            if (offsets.TryGetValue(number, out var offset))
+            {
+                row[0] = 1;
+                Put(row[1..5], offset);
+            }
+            else if (number >= 4)
+            {
+                var index = number - 4;
+                row[0] = 2;
+                Put(row[1..5], 3);
+                Put(row[5..9], shape == "an index wrong for every member" ? (index + 1) % members : index);
+            }
+        }
+
+        Write(string.Create(CultureInfo.InvariantCulture, $"{xref} 0 obj\n<< /Type /XRef /Size {xref + 1} /W [1 4 4] /Root 1 0 R /Length {rows.Length} >>\nstream\n"));
+        output.Write(rows);
+        Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
+        return output.ToArray();
+
+        static void Put(Span<byte> field, long value)
+        {
+            for (var i = field.Length - 1; i >= 0; i--)
+            {
+                field[i] = (byte)value;
+                value >>= 8;
+            }
         }
     }
 }
