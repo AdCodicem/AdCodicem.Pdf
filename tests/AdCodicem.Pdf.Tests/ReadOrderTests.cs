@@ -1397,6 +1397,89 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void A_finish_the_source_fails_reports_once_finished_again_what_a_rebuild_run_first_reports()
+    {
+        // Object stream 8 takes its /Length from 5, whose row leads into the catalog's header: reading 7, which 8 holds,
+        // rebuilds the index while 8 is loaded. Object 10 is written directly and in object stream 6, so the finish meets it
+        // again. The source fails the finish's read of 5: the read throws, the rebuild is left to the next, and what the
+        // failed finish met and reported is withdrawn, so that the finish that completes reports what a rebuild run first
+        // reports — the redefinition of 10 once.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [6] = (1, file.ObjectStream(6, [(10, "(ten)"), (11, "(eleven)")]), 0),
+            [10] = (2, 6, 0),
+            [11] = (2, 6, 1),
+        };
+        const string Data = "7 0 (member) ";
+        rows[8] = (1, file.Object(8, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
+        rows[7] = (2, 8, 0);
+        rows[5] = (1, 9, 0);
+        rows[9] = (1, file.Padding(9), 0);
+        var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+        file.Object(10, "(direct ten)");
+        file.CrossReferenceStream(12, 13, rows, "/Root 1 0 R");
+        using var settled = PdfDocument.Open(file.Bytes);
+        settled.Reader.SettleIndex();
+        settled.GetObject(new PdfObjectId(7));
+        using var source = new FailingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.Fail(five, 2);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be("member");
+
+        document.Diagnostics.Select(diagnostic => diagnostic.ToString())
+            .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+    }
+
+    [Fact]
+    public void A_finish_the_source_fails_after_it_reported_withdraws_what_it_reported()
+    {
+        // Object 4 is defined twice; the catalog, written first, is let go by the object cache of 64 before the finish reads
+        // it. Reading 7 rebuilds the index while object stream 8 is loaded, its /Length 5 leading nowhere. The finish
+        // reports 4's redefinition, then fails to read the catalog: what it reported is withdrawn, and the finish that
+        // completes reports it once, as a rebuild run first does.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        rows[1] = (1, catalog, 0);
+        file.Object(4, "(first)");
+
+        for (var number = 100; number < 180; number++)
+        {
+            rows[number] = (1, file.Object(number, "(filler)"), 0);
+        }
+
+        rows[2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0);
+        rows[3] = (1, file.Object(3, Page), 0);
+        rows[4] = (1, file.Object(4, "(second)"), 0);
+        const string Data = "7 0 (member) ";
+        rows[8] = (1, file.Object(8, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
+        rows[7] = (2, 8, 0);
+        rows[9] = (1, file.Padding(9), 0);
+        rows[5] = (1, rows[9].Field2 + 600, 0);
+        file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+        file.CrossReferenceStream(200, 201, rows, "/Root 1 0 R");
+        var options = PdfReaderOptions.Default with { ObjectCacheCapacity = 64 };
+        using var settled = PdfDocument.Open(file.Bytes, options);
+        settled.Reader.SettleIndex();
+        settled.GetObject(new PdfObjectId(7));
+        using var source = new FailingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        source.Fail(catalog, 2);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be("member");
+
+        document.Diagnostics.Select(diagnostic => diagnostic.ToString())
+            .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+    }
+
+    [Fact]
     public void A_read_that_sets_a_rebuild_off_and_nests_too_deep_reports_what_a_rebuild_run_first_reports()
     {
         // Streams 100 to 169 each take their /Length from the next, and 101's row leads nowhere: reading 100 rebuilds the

@@ -5375,11 +5375,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // What the loads in flight reported, they read through the scan's index and with each other's objects reading as
         // null: it is withdrawn, and reported again as far as the finished index's own reading reports it, as a rebuild run
-        // first does (#273). Once: what a finish the source failed reported stays, as what any read reported does.
+        // first does (#273). Once: what is reported after a finish the source failed, before the next, stays.
         if (unfinished.Reports is { } reports)
         {
             WithdrawReportsSince(reports);
         }
+
+        // A finish the source fails withdraws what it reported, which the finish run again reports.
+        var attempt = MarkReports();
 
         _xref.Clear();
 
@@ -5407,10 +5410,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         try
         {
-            FinishRebuild(unfinished.Redefinitions, unfinished.Kept, reached: null);
+            FinishRebuild(unfinished.Redefinitions.Copy(), unfinished.Kept, reached: null);
         }
         catch (Exception exception) when (exception is not PdfLimitExceededException)
         {
+            WithdrawReportsSince(attempt);
             _unfinishedRebuild = unfinished with { Reports = null };
             throw;
         }
@@ -5439,7 +5443,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Records where the document's reports stand, and what it holds as reported once, for
-    /// <see cref="WithdrawReportsSince"/>. It copies what it records: it is taken once, when a rebuild is left unfinished.
+    /// <see cref="WithdrawReportsSince"/>. It copies what it records: it is taken when a rebuild is left unfinished and
+    /// as each finish of it begins: twice a document, and once more for each finish the source fails.
     /// </summary>
     private ReportsMark MarkReports() => new(
         _diagnostics.GetMarkWithDecodingReports(),
@@ -5978,6 +5983,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 _unlisted = true;
             }
+        }
+
+        /// <summary>
+        /// Gives a copy of what was met, which a finish adds to: a finish the source fails is run again from what the scan
+        /// met, not from what it added.
+        /// </summary>
+        public Redefinitions Copy()
+        {
+            var copy = new Redefinitions { Count = Count, _listed = _listed, _unlisted = _unlisted };
+            _numbers.CopyTo(copy._numbers, 0);
+            return copy;
         }
 
         /// <summary>Says how many definitions were met, of which numbers, and which definition was kept.</summary>
