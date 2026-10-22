@@ -157,7 +157,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </remarks>
     internal const int EndStreamSearchPasses = 4;
 
-    /// <summary>Asks <see cref="TryParseAt"/> for a direct object, with no object header: a trailer.</summary>
+    /// <summary>Asks <see cref="TryParseNumberedAt"/> for a direct object, with no object header: a trailer.</summary>
     private const int DirectObject = -1;
 
     /// <summary>Asks <see cref="TryParseNumberedAt"/> to note what it reads of the object it was asked for, wherever it lies.</summary>
@@ -166,7 +166,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>Asks <see cref="TryParseNumberedAt"/> to note nothing of the object it reads, by its number.</summary>
     private const long RecordedNowhere = -2;
 
-    /// <summary>Asks <see cref="TryParseAt"/> for an object whatever its number: a cross-reference stream.</summary>
+    /// <summary>Asks <see cref="TryParseNumberedAt"/> for an object whatever its number: a cross-reference stream.</summary>
     private const int AnyObject = 0;
 
     /// <summary>
@@ -4355,8 +4355,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Parses what starts at an exact offset — object <paramref name="number"/>, any object for
     /// <see cref="AnyObject"/>, or a direct object for <see cref="DirectObject"/> —, growing the window while it
-    /// runs past its end, up to the bound of <paramref name="limit"/>. Returns false when nothing with the
-    /// expected number is there.
+    /// runs past its end, up to the bound of <paramref name="limit"/>, and gives the number of the object found there —
+    /// 0 for a direct object. Returns false when nothing with the expected number is there.
     /// </summary>
     /// <remarks>
     /// What the parser notices is held back until an attempt is kept. An attempt that ran out of window
@@ -4367,13 +4367,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// that still runs past the window once the guard allows no larger one is kept as far as it was read, and
     /// the guard is reported in place of what the cut made the parser notice.
     /// </remarks>
-    private bool TryParseAt(long offset, int number, PdfLimit limit, out PdfObject value, int initialWindow = InitialObjectWindow) =>
-        TryParseNumberedAt(offset, number, limit, out value, out _, out _, initialWindow);
-
-    /// <summary>
-    /// Parses what starts at an exact offset, as <see cref="TryParseAt"/> does, and gives the number of the object
-    /// found there — 0 for a direct object.
-    /// </summary>
     /// <param name="offset">Where the object starts in the file.</param>
     /// <param name="number">The object's number, <see cref="AnyObject"/> or <see cref="DirectObject"/>.</param>
     /// <param name="limit">The guard that bounds the window.</param>
@@ -4523,7 +4516,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Parses object <paramref name="id"/> at an exact offset, as <see cref="TryParseAt"/> does, but keeps nothing of the
+    /// Parses object <paramref name="id"/> at an exact offset, as <see cref="TryParseNumberedAt"/> does, but keeps nothing of the
     /// reading: what the parser notices is dropped, nothing is recorded, and an object that still runs past the window
     /// once <see cref="PdfReaderLimits.MaxObjectLength"/> allows no larger one is not read rather than reported, which
     /// <paramref name="pastGuard"/> says. A stream is not read: its data is looked for in the window alone, and the method
