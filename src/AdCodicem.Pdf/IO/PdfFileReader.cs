@@ -5384,8 +5384,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             WithdrawReportsSince(reports);
         }
 
-        // A finish the source fails withdraws what it reported, which the finish run again reports.
-        var attempt = MarkReports();
+        // A finish the source fails withdraws what it reported, which the finish run again reports. Withdrawn, the reports
+        // are what the in-flight mark holds, which the withdrawal leaves as it was: it marks the finish too.
+        var attempt = unfinished.Reports ?? MarkReports();
 
         _xref.Clear();
 
@@ -5446,8 +5447,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Records where the document's reports stand, and what it holds as reported once, for
-    /// <see cref="WithdrawReportsSince"/>. It copies what it records: it is taken when a rebuild is left unfinished and
-    /// as each finish of it begins: twice a document, and once more for each finish the source fails.
+    /// <see cref="WithdrawReportsSince"/>. It copies what it records: it is taken when a rebuild is left unfinished, whose
+    /// finish it marks too, and as each finish after one the source failed begins: once a document, and once more for each
+    /// finish the source fails.
     /// </summary>
     private ReportsMark MarkReports() => new(
         _diagnostics.GetMarkWithDecodingReports(),
