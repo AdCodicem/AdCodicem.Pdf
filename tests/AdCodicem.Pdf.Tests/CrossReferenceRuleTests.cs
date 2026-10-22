@@ -796,8 +796,8 @@ public class CrossReferenceRuleTests
 
         var finding = Single(Validate(file), PdfValidationRuleIds.XRefObjectStreamBroken);
 
-        finding.Message.Should().Contain("where the index places 1 object, can be read only in part: its header lists 1 of the 2 objects its /N declares, then something else")
-            .And.EndWith("; it is not listed before that, and lost.");
+        finding.Location.Object.Should().Be(new PdfObjectId(4));
+        finding.Message.Should().Be("Object stream 4, where the index places 1 object, can be read only in part: its header lists 1 of the 2 objects its /N declares, then something else; it is not listed before that, and lost.");
     }
 
     [Fact]
@@ -978,11 +978,12 @@ public class CrossReferenceRuleTests
     [Theory]
     [InlineData("/N 2 /First 9", "/N 0 /First 9")]
     [InlineData("/N 2 /First 9", "/N 0 /Fxrst 9")]
-    [InlineData("/N 2 /First 9", "/N 0/First 99")]
+    [InlineData("/N 2 /First 9 /Length", "/N 0/First 999/Length")]
     public void An_object_placed_in_an_object_stream_that_declares_none_is_broken(string text, string replacement)
     {
-        // An object stream of /N 0 is empty, not damaged, and serves nothing, whatever its /First: the object its entry
-        // places there is lost, as the reader reads the stream.
+        // An object stream of /N 0 is empty, not damaged, and serves nothing, whatever its /First — missing, or past the
+        // 124 bytes its data holds —: the object its entry places there is lost, as the reader reads the stream. Each
+        // replacement is as long as what it replaces, so that the file's offsets hold.
         var file = Replace(XRefStreamFile(), text, replacement);
 
         var findings = Validate(file).Findings.Where(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal)).ToList();

@@ -131,7 +131,8 @@ public class ReaderTimingTests
         // One object stream of many members, each placed by the index: the probe finds each in the header through a lookup
         // built once, and each member written as a stream by a search of those it found, not by scanning the header for
         // each — four times the members take about four times as long, where a scan would take sixteen. The probe alone is
-        // timed, the documents opened and settled before.
+        // timed, the documents opened and settled before, and each probed once first; each run starts from a collected heap,
+        // so that the findings of a run before it, one for each member, are not collected inside the next.
         const int Small = 50_000;
         const int Large = 4 * Small;
         using var small = PdfDocument.Open(Packed(Small, shape));
@@ -140,10 +141,11 @@ public class ReaderTimingTests
         large.Reader.SettleIndex();
 
         Probe(small);
+        Probe(large);
         var smallTime = TimeSpan.MaxValue;
         var largeTime = TimeSpan.MaxValue;
 
-        for (var run = 0; run < 3; run++)
+        for (var run = 0; run < 5; run++)
         {
             smallTime = Min(smallTime, Time(() => Probe(small)));
             largeTime = Min(largeTime, Time(() => Probe(large)));
@@ -161,6 +163,9 @@ public class ReaderTimingTests
 
         static TimeSpan Time(Action action)
         {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
             var stopwatch = Stopwatch.StartNew();
             action();
             return stopwatch.Elapsed;
