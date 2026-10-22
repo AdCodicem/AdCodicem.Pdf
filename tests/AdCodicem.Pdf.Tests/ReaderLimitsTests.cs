@@ -669,6 +669,64 @@ public class ReaderLimitsTests
         document.Reader.IsCutAtLimit(4).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(100)]
+    [InlineData(101)]
+    [InlineData(104)]
+    [InlineData(106)]
+    public void A_member_dictionary_whose_stream_keyword_MaxObjectLength_leaves_out_is_cut_there_and_reported(int bound)
+    {
+        // Member 3 is a dictionary of 100 bytes and the stream after it, which an object stream cannot hold. The bound ends
+        // the member's window right after the dictionary, or inside "stream": what follows the dictionary is unknown, as it
+        // is of an object written in the file whose window ends there, and the member is cut at the guard, not read as a
+        // dictionary in silence. Past "stream", the member is a stream, and reads as null.
+        const string Member = "<< /A (" + "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" + ") >>\nstream\nabc\nendstream";
+        Member.IndexOf(">>", StringComparison.Ordinal).Should().Be(98);
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, Member)
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [3]);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = bound } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfDictionary>();
+        document.Reader.IsCutAtLimit(3).Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
+
+        using var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 107 } });
+        whole.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        whole.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.ObjectStreamMemberStream);
+    }
+
+    [Fact]
+    public void A_member_left_open_where_a_guard_cuts_the_data_at_the_next_member_s_start_is_the_file_s_fault()
+    {
+        // Member 10, "[1 2", decodes to bytes 10 to 13 and is left open; member 11 starts at byte 14, where
+        // MaxDecodedStreamLength cuts the data. The member ends at the next one's start whatever the guard did: what it
+        // lacks is the file's, reported as such, and it is no member a guard cut.
+        const string Data = "10 0 11 4 [1 23 ";
+        var hex = Convert.ToHexString(Encoding.Latin1.GetBytes(Data)) + ">";
+        var written = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, written.Object(1, Catalog), 0),
+            [2] = (1, written.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [3] = (1, written.Object(3, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 2 /First 10 /Filter /ASCIIHexDecode /Length {hex.Length} >>\nstream\n{hex}\nendstream")), 0),
+            [10] = (2, 3, 0),
+            [11] = (2, 3, 1),
+        };
+        written.CrossReferenceStream(12, 13, rows, "/Root 1 0 R");
+
+        using var document = PdfDocument.Open(written.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 14 } });
+
+        document.GetObject(new PdfObjectId(10)).AsArray().Required().Count.Should().Be(2);
+        document.Reader.IsCutAtLimit(10).Should().BeFalse();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        document.Diagnostics[1].Message.Should().StartWith("The next member of the object stream started inside an array");
+    }
+
     [Fact]
     public void A_rebuild_damage_sets_off_keeps_the_entries_a_chain_a_guard_cut_gave_that_the_scan_cannot_find()
     {
