@@ -87,18 +87,19 @@ public static class PdfDiagnosticCodes
     /// An object an object stream holds is written as a stream — a dictionary followed by <c>stream</c> —, or holds one,
     /// which an object stream cannot hold (ISO 32000-1 7.5.7): it reads as null, and its data is not read. The report is
     /// placed where the object stream's data starts, and names the object, the object stream and the byte the object
-    /// starts at; it is made once for each object.
+    /// starts at; it is made once for each object and each definition of its object stream.
     /// </summary>
     public const string ObjectStreamMemberStream = "object-stream.member-stream";
 
     /// <summary>
-    /// What an object stream — a stream an entry of the index names as one — says of itself cannot be believed: its
-    /// <c>/N</c> or its <c>/First</c> is absent or no non-negative integer, its <c>/N</c> declares more objects than
-    /// its header can list, its <c>/First</c> lies past its decoded data, or its header ends or breaks before listing as
-    /// many objects as its <c>/N</c> declares — a pair that is not two integers, or that gives a number no object can
-    /// have or an offset no member can start at. The objects listed before the fault, if any, are read; the others cannot
-    /// be read from it. The report is placed where the object
-    /// stream's data starts, and names the object stream and its fault.
+    /// What an object stream — a stream an entry of the index names as one — says of itself cannot be believed: it is not
+    /// of <c>/Type /ObjStm</c>, its <c>/N</c> or its <c>/First</c> is absent or no non-negative integer, its <c>/First</c>
+    /// lies past its decoded data, or its header ends or breaks before listing as many objects as its <c>/N</c> declares —
+    /// a pair that is not two integers, that gives a number no object can have or an offset no member can start at, whose
+    /// offset is not past the one before it, or whose member would start at or past the end of the decoded data, unless a
+    /// guard cut it. The header is read as far as it goes, whatever its <c>/N</c> claims: the objects listed before the
+    /// fault, if any, are read; the others cannot be read from it. The report is placed where the object stream's data
+    /// starts, and names the object stream and its fault.
     /// </summary>
     public const string ObjectStreamUnreadable = "object-stream.unreadable";
 
@@ -114,12 +115,15 @@ public static class PdfDiagnosticCodes
     /// missing, or an array, a dictionary or a string it opened never closed —, or an <c>endobj</c> stood where a value or a
     /// key should be, inside an array or a dictionary it opened. What was read is kept: a string takes the bytes to the end of
     /// the data, and an <c>endobj</c> ends every container it finds open: the object's own, or, when the object lost it too, the
-    /// next object's, the container then taking that object.
+    /// next object's, the container then taking that object. An object an object stream holds is read to the next one's
+    /// start, the last to the end of the decoded data: running into either, it is cut short there, and the message says
+    /// which.
     /// Reported once, for the innermost construct left open, where it opens — where the value would start, when none is open;
     /// past the depth the reader follows, the container it skipped, which holds what it did not follow —, the constructs
     /// around it counted in the message; inside an object an object stream holds, where the stream's data
     /// starts, the member and the byte in the message. The edge of a window the reader grows is no end of the data, and a cut
-    /// a guard made is the guard's.
+    /// a guard made is the guard's: an object an object stream holds read past
+    /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> is <see cref="LimitObject"/>'s.
     /// </summary>
     public const string SyntaxTruncatedObject = "syntax.truncated-object";
 
@@ -216,7 +220,9 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// An object is longer than <see cref="Documents.PdfReaderLimits.MaxObjectLength"/>, and only the part
-    /// within it was parsed.
+    /// within it was parsed. An object an object stream holds is bounded alike, and reported once for each definition of
+    /// its object stream, where that stream's data starts, the object, the object stream and the byte the object starts at
+    /// in the message.
     /// </summary>
     public const string LimitObject = "limit.object";
 
