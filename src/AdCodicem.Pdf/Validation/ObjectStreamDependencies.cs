@@ -9,16 +9,17 @@ namespace AdCodicem.Pdf.Validation;
 
 /// <summary>
 /// Which object streams need, to be read, an object that only reading them — or reading another stream that needs
-/// them in turn — can give: a <c>/Length</c>, <c>/Filter</c>, <c>/DecodeParms</c>, <c>/N</c> or <c>/First</c> naming
-/// an object the stream holds (#51).
+/// them in turn — can give: a <c>/Type</c>, <c>/Length</c>, <c>/Filter</c>, <c>/DecodeParms</c>, <c>/N</c> or
+/// <c>/First</c> naming an object the stream holds (#51).
 /// </summary>
 /// <remarks>
 /// <para>
-/// It is worked out from the stream dictionaries and the index, not from what the reader happened to do: each object
-/// stream the index uses — of /Type /ObjStm, as the reader requires (#274) —, in the order of its number, has the references under those keys followed — through direct
-/// arrays and dictionaries, and through objects written directly in the file — until one names an object the index
-/// places in an object stream. The streams so needed are linked, and a stream that its links lead back to is
-/// circular.
+/// It is worked out from the stream dictionaries and the index, not from what the reader happened to do: each stream the
+/// index uses as an object stream, in the order of its number, has the references under those keys followed — through
+/// direct arrays and dictionaries, and through objects written directly in the file — until one names an object the index
+/// places in an object stream. The reader reads a stream's <c>/Type</c> first, and nothing else of one that is not of
+/// <c>/Type /ObjStm</c> (#274): of such a stream, only the references its <c>/Type</c> holds are followed. The streams so
+/// needed are linked, and a stream that its links lead back to is circular.
 /// </para>
 /// <para>
 /// It reads each stream's dictionary, and the few objects written directly in the file its keys name, where the chain's
@@ -32,8 +33,11 @@ namespace AdCodicem.Pdf.Validation;
 /// </remarks>
 internal sealed class ObjectStreamDependencies
 {
-    /// <summary>The keys of an object stream whose values must be known before its data can be read.</summary>
-    private static readonly PdfName[] DecodingKeys = [PdfName.Length, PdfName.Filter, PdfName.DecodeParms, PdfName.N, PdfName.First];
+    /// <summary>The keys of an object stream whose values must be known before its data can be read, its type first.</summary>
+    private static readonly PdfName[] DecodingKeys = [PdfName.Type, PdfName.Length, PdfName.Filter, PdfName.DecodeParms, PdfName.N, PdfName.First];
+
+    /// <summary>The key the reader reads of a stream before it knows whether the stream is an object stream.</summary>
+    private static readonly PdfName[] TypeKey = [PdfName.Type];
 
     /// <summary>The keys of an object stream that ISO 32000-1 makes integers (Tables 5 and 16).</summary>
     private static readonly PdfName[] IntegerKeys = [PdfName.N, PdfName.First, PdfName.Length];
@@ -85,15 +89,26 @@ internal sealed class ObjectStreamDependencies
         var references = new ReferenceMemo(reader.CacheCapacity);
 
         // A stream that is not of /Type /ObjStm serves no object, to the reader, the probe or the rebuild alike (#274):
-        // nothing is read from its data, so nothing it names is needed, and none of its values is read as an integer.
+        // nothing is read from its data, so nothing it names is needed but what its /Type does, and none of its values is
+        // read as an integer. A /Type that names an object the stream holds is a need, as any other key's.
         foreach (var stream in streams)
         {
             if (IndexOf(reader).TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular &&
-                Read(document, new PdfObjectId(stream, entry.Generation), entry) is PdfStream objectStream &&
-                objectStream.Dictionary.IsOfType(PdfName.ObjStm))
+                Read(document, new PdfObjectId(stream, entry.Generation), entry) is PdfStream objectStream)
             {
+                if (!objectStream.Dictionary.IsOfType(PdfName.ObjStm))
+                {
+                    if (Needs(document, objectStream.Dictionary, TypeKey, references) is { Count: > 0 } typeNeeds)
+                    {
+                        locations[stream] = Location(reader, stream, entry);
+                        needs[stream] = typeNeeds;
+                    }
+
+                    continue;
+                }
+
                 locations[stream] = Location(reader, stream, entry);
-                needs[stream] = Needs(document, objectStream.Dictionary, references);
+                needs[stream] = Needs(document, objectStream.Dictionary, DecodingKeys, references);
 
                 foreach (var key in IntegerKeys)
                 {
@@ -124,16 +139,17 @@ internal sealed class ObjectStreamDependencies
     }
 
     /// <summary>
-    /// Lists the objects, held in object streams, that the decoding keys of <paramref name="dictionary"/> lead to, through
-    /// the objects written in the file whose references <paramref name="references"/> holds, or which it reads and holds.
+    /// Lists the objects, held in object streams, that <paramref name="keys"/> of <paramref name="dictionary"/> lead to,
+    /// through the objects written in the file whose references <paramref name="references"/> holds, or which it reads and
+    /// holds.
     /// </summary>
-    private static List<Need> Needs(PdfDocument document, PdfDictionary dictionary, ReferenceMemo references)
+    private static List<Need> Needs(PdfDocument document, PdfDictionary dictionary, PdfName[] keys, ReferenceMemo references)
     {
         var found = new List<Need>();
         var seen = new HashSet<int>();
         var work = new Stack<PdfObjectId>();
 
-        foreach (var key in DecodingKeys)
+        foreach (var key in keys)
         {
             if (dictionary.GetRaw(key) is not { } value)
             {

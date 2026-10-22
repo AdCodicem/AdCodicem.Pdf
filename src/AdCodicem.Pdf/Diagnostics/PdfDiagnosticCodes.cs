@@ -70,7 +70,7 @@ public static class PdfDiagnosticCodes
     public const string StreamTruncated = "stream.truncated";
 
     /// <summary>
-    /// An object stream's dictionary names an object the stream holds — as its <c>/Length</c>, <c>/N</c>,
+    /// An object stream's dictionary names an object the stream holds — as its <c>/Type</c>, <c>/Length</c>, <c>/N</c>,
     /// <c>/First</c>, a filter or one of its parameters —, which cannot be read before the stream is: the stream was
     /// decoded without it.
     /// </summary>
