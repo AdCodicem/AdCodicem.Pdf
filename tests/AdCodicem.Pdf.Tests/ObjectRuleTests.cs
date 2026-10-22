@@ -464,19 +464,80 @@ public class ObjectRuleTests
         report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse("the loop is the fault, reported once");
     }
 
-    [Fact]
-    public void An_object_stream_whose_type_it_holds_is_circular_and_not_also_broken()
+    [Theory]
+    [InlineData("/Type 5 0 R  ", false)]
+    [InlineData("/Type 4 0 R  ", true)]
+    public void An_object_stream_whose_type_it_holds_is_circular_and_not_also_broken(string type, bool throughAReference)
     {
-        // Stream 7's /Type names object 5, /ObjStm, which the stream holds: the reader reads a stream's /Type before anything
-        // else of it (#274), and cannot read 5 before 7. The loop is the fault, as one through /N is.
-        var written = Encoding.Latin1.GetString(ObjectStream(string.Empty, "/ObjStm", compress: false));
-        var file = Encoding.Latin1.GetBytes(written.Replace("/Type /ObjStm", "/Type 5 0 R  ", StringComparison.Ordinal));
+        // Stream 7's /Type names object 5, /ObjStm, which the stream holds — directly, or through object 4, written in the
+        // file, whose value is a reference to 5: the reader resolves /Type as it decides whether 7 is an object stream
+        // (#274), and cannot read 5 before 7. The loop is the fault, as one through /N is.
+        var written = Encoding.Latin1.GetString(ObjectStreamWith(throughAReference ? "5 0 R" : "(four)"));
+        var file = Encoding.Latin1.GetBytes(written.Replace("/Type /ObjStm", type, StringComparison.Ordinal));
 
         var report = Validate(file);
 
         Single(report, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
             "Object stream 7 needs object 5, which it holds, to be read: its /Type names it, and the object cannot be read before the stream is.");
         report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse("the loop is the fault, reported once");
+    }
+
+    [Theory]
+    [InlineData("/Type [5 0 R]", "(four)")]
+    [InlineData("/Type 4 0 R  ", "<< /X 5 0 R >>")]
+    public void An_object_stream_whose_type_holds_a_reference_inside_a_value_is_broken_not_circular(string type, string four)
+    {
+        // Stream 7's /Type is an array holding a reference to 5, or names object 4, a dictionary that does: the reader
+        // resolves a /Type as a reference resolves — the object it names, while that is a reference in turn — and reads
+        // nothing inside an array or a dictionary, so 5 is never needed. No /Type /ObjStm: the stream is broken.
+        var written = Encoding.Latin1.GetString(ObjectStreamWith(four));
+        var file = Encoding.Latin1.GetBytes(written.Replace("/Type /ObjStm", type, StringComparison.Ordinal));
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().EndWith("is a stream that is not of /Type /ObjStm.");
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_object_stream_whose_count_is_an_array_holding_a_reference_it_holds_is_broken_not_circular()
+    {
+        // Stream 7's /N is an array that holds a reference to 5, which the stream holds: the reader reads no count from an
+        // array, and needs nothing inside it; the stream has no /N, and is broken.
+        var report = Validate(ObjectStream("/N [5 0 R]", "2", compress: false));
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().EndWith("cannot be read: its /N or its /First is missing or negative.");
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_stream_of_another_type_whose_length_it_holds_is_broken_not_circular()
+    {
+        // Stream 7 is not of /Type /ObjStm, and its /Length names object 5, which it would hold. The reader resolves the
+        // /Length as it parses the stream, and reports that it needs 5; it then reads the stream's type, and nothing more.
+        // The loop is not why its objects are lost — its type is —: the stream is broken, not circular.
+        const string Data = "5 0 6 3 17 (six) ";
+        var written = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, written.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 6 0 R >>"), 0),
+            [2] = (1, written.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [7] = (1, written.Object(7, "<< /Type /XObject /N 2 /First 8 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0),
+            [5] = (2, 7, 0),
+            [6] = (2, 7, 1),
+        };
+        written.CrossReferenceStream(12, 13, rows, "/Root 1 0 R");
+        var file = written.Bytes;
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamBroken).Message.Should().EndWith("is a stream that is not of /Type /ObjStm.");
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Contain(PdfDiagnosticCodes.StreamSelfReference)
+            .And.Contain(PdfDiagnosticCodes.ObjectStreamUnreadable);
     }
 
     [Fact]
@@ -803,6 +864,16 @@ public class ObjectRuleTests
     }
 
     /// <summary>Objects 5 and 6 in object stream 7, whose dictionary gets <paramref name="entries"/>; object 5 is <paramref name="parameter"/>.</summary>
+    /// <summary>Object stream 7, uncompressed, holding object 5, /ObjStm, and 6; object 4 is <paramref name="four"/>, written in the file.</summary>
+    private static byte[] ObjectStreamWith(string four) =>
+        new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(4, four)
+            .WithObject(5, "/ObjStm")
+            .WithObject(6, "<< /Title (six) >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], compressObjectStream: false);
+
     private static byte[] ObjectStream(string entries, string parameter, bool compress = true) =>
         new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
@@ -15,11 +14,17 @@ namespace AdCodicem.Pdf.Validation;
 /// <remarks>
 /// <para>
 /// It is worked out from the stream dictionaries and the index, not from what the reader happened to do: each stream the
-/// index uses as an object stream, in the order of its number, has the references under those keys followed — through
-/// direct arrays and dictionaries, and through objects written directly in the file — until one names an object the index
-/// places in an object stream. The reader reads a stream's <c>/Type</c> first, and nothing else of one that is not of
-/// <c>/Type /ObjStm</c> (#274): of such a stream, only the references its <c>/Type</c> holds are followed. The streams so
-/// needed are linked, and a stream that its links lead back to is circular.
+/// index uses as an object stream, in the order of its number, has the references under those keys followed, as the reader
+/// follows them, through objects written directly in the file, until one names an object the index places in an object
+/// stream — a filter and its parameters through their direct arrays and dictionaries too, whose elements and entries the
+/// reader resolves, and the others, a name or a number, through a chain of references alone, as a reference resolves.
+/// The streams so needed are linked, and a stream that its links lead back to is circular.
+/// </para>
+/// <para>
+/// The reader resolves a stream's <c>/Length</c> as it parses it, then its <c>/Type</c>, and nothing else of one that is
+/// not of <c>/Type /ObjStm</c> (#274): of such a stream, only its <c>/Type</c> is followed. A loop through its
+/// <c>/Type</c> is why it is not taken for an object stream, and is the fault; a loop through its <c>/Length</c> alone
+/// leaves its objects lost to its type all the same, which <see cref="PdfValidationRuleIds.XRefObjectStreamBroken"/> says.
 /// </para>
 /// <para>
 /// It reads each stream's dictionary, and the few objects written directly in the file its keys name, where the chain's
@@ -33,10 +38,13 @@ namespace AdCodicem.Pdf.Validation;
 /// </remarks>
 internal sealed class ObjectStreamDependencies
 {
-    /// <summary>The keys of an object stream whose values must be known before its data can be read, its type first.</summary>
-    private static readonly PdfName[] DecodingKeys = [PdfName.Type, PdfName.Length, PdfName.Filter, PdfName.DecodeParms, PdfName.N, PdfName.First];
+    /// <summary>
+    /// The keys of an object stream whose values must be known before its data can be read, its length, which its parse
+    /// resolves, and its type first.
+    /// </summary>
+    private static readonly PdfName[] DecodingKeys = [PdfName.Length, PdfName.Type, PdfName.Filter, PdfName.DecodeParms, PdfName.N, PdfName.First];
 
-    /// <summary>The key the reader reads of a stream before it knows whether the stream is an object stream.</summary>
+    /// <summary>The key that decides whether the reader takes a stream for an object stream.</summary>
     private static readonly PdfName[] TypeKey = [PdfName.Type];
 
     /// <summary>The keys of an object stream that ISO 32000-1 makes integers (Tables 5 and 16).</summary>
@@ -156,7 +164,19 @@ internal sealed class ObjectStreamDependencies
                 continue;
             }
 
-            Push(work, ReferencesIn(value));
+            // A filter and its parameters are read whole, each element and entry resolved; the other values, a name or a
+            // number, as a reference resolves — the object it names, while that is a reference in turn —, nothing written
+            // inside an array or a dictionary read for them.
+            var whole = key == PdfName.Filter || key == PdfName.DecodeParms;
+
+            if (whole)
+            {
+                Push(work, ReferencesIn(value));
+            }
+            else if (value is PdfReference reference)
+            {
+                work.Push(reference.Id);
+            }
 
             while (work.TryPop(out var id))
             {
@@ -175,11 +195,19 @@ internal sealed class ObjectStreamDependencies
                 {
                     if (!references.TryGet(id.Number, out var held))
                     {
-                        held = ReferencesIn(Read(document, id, entry));
+                        var read = Read(document, id, entry);
+                        held = new HeldReferences(ReferencesIn(read), read is PdfReference);
                         references.Add(id.Number, held);
                     }
 
-                    Push(work, held);
+                    if (whole)
+                    {
+                        Push(work, held.References);
+                    }
+                    else if (held.IsReference)
+                    {
+                        work.Push(held.References[0]);
+                    }
                 }
             }
         }
@@ -314,6 +342,9 @@ internal sealed class ObjectStreamDependencies
     /// <summary>An object a stream needs to be read, the object stream holding it, and the key that leads to it.</summary>
     private readonly record struct Need(int Stream, int Object, string Key);
 
+    /// <summary>The references an object written in the file holds, and whether its value is one of them, alone.</summary>
+    private readonly record struct HeldReferences(PdfObjectId[] References, bool IsReference);
+
     /// <summary>
     /// The references held by objects the walk read, by object number — a reference's generation leads the reader to no
     /// other object —: as many objects as <paramref name="capacity"/> says, the oldest let go first, and read again when met
@@ -321,14 +352,14 @@ internal sealed class ObjectStreamDependencies
     /// </summary>
     private sealed class ReferenceMemo(int capacity)
     {
-        private readonly Dictionary<int, PdfObjectId[]> _held = [];
+        private readonly Dictionary<int, HeldReferences> _held = [];
         private readonly Queue<int> _order = new();
 
         /// <summary>Gives the references object <paramref name="number"/> holds, if they are kept.</summary>
-        public bool TryGet(int number, [MaybeNullWhen(false)] out PdfObjectId[] references) => _held.TryGetValue(number, out references);
+        public bool TryGet(int number, out HeldReferences references) => _held.TryGetValue(number, out references);
 
         /// <summary>Keeps the references object <paramref name="number"/>, which is not kept yet, holds.</summary>
-        public void Add(int number, PdfObjectId[] references)
+        public void Add(int number, HeldReferences references)
         {
             if (_held.Count >= capacity && _order.TryDequeue(out var oldest))
             {
