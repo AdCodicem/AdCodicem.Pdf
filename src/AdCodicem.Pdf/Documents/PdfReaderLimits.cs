@@ -68,7 +68,7 @@ public sealed record PdfReaderLimits
     /// <remarks>
     /// A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObject"/>, once for each object, and for each object an object
-    /// stream holds.
+    /// stream holds, once for each definition of that stream.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxObjectLength { get; init => field = Length(value); } = 16 * 1024 * 1024;

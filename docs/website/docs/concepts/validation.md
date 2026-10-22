@@ -122,12 +122,17 @@ can still depend on which stream was read first
 
 The cross-reference rules read where each entry of the file's index places its object as a load reads it, and decide
 what a load would find there as settling decides it, through one function of the reader — a few dozen bytes of its
-header in a sound file, never its body —, and each object stream once, without keeping it. An entry outside the file is looked
+header in a sound file, never its body —, and each object stream once, without keeping it, or twice when only an index the
+reader rebuilt places some of its objects. An entry outside the file is looked
 for near its offset, as a load looks for it. An entry whose header runs past the reader's object limit, or that they had
 not decided once reading the headers had consumed twice the file's length, is said not checked rather than broken. They judge the rows as the file
 wrote them, not as the reader corrected them, and read each object stream where the file's own index places it,
 outside the document's cache: what they find there of a definition the reader no longer serves, once a rebuild serves a
-later one, is noted of no object ([#255](https://github.com/AdCodicem/AdCodicem.Pdf/issues/255)). Working out which object streams need one another, they read there too each object
+later one, is noted of no object ([#255](https://github.com/AdCodicem/AdCodicem.Pdf/issues/255)). Of an index the reader
+rebuilt, they judge one thing: an object it places in an object stream, written there as a stream — which the reader reads
+as null —, where the file's own index places nothing under its number, the object stream read where the rebuilt index
+places it ([#161](https://github.com/AdCodicem/AdCodicem.Pdf/issues/161)); no row of the file would say that object is
+lost. Working out which object streams need one another, they read there too each object
 written directly in the file that a stream's decoding keys lead through, once a validation for as many of them as the
 document's cache holds. The other values written
 elsewhere that a row's object needs — a stream's own `/Length` written as a reference, the values an object stream's

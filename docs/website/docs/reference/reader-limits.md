@@ -46,7 +46,7 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
 ```
 
 - An object, a cross-reference section or a trailer is reported once, however often it is read again — an object an
-  object stream holds, once for each stream and object —; a full index, once a document.
+  object stream holds, once for each object and each definition of its object stream —; a full index, once a document.
 - What a limit leaves out of the index — the sections past `MaxXRefSectionCount`, the rows past
   `MaxXRefSectionLength` or past what `MaxDecodedStreamLength` decodes of a cross-reference stream, the object
   numbers past `MaxIndexEntries` — reads as null until you raise the limit. The reader does not rebuild the index for
