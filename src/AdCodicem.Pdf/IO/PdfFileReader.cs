@@ -4794,7 +4794,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Reads which objects the object stream <paramref name="number"/> holds, in order, from the header its data
-    /// starts with — without keeping the stream, nor what it decodes to: the validation rules read each once, and
+    /// starts with — without keeping the stream, nor what it decodes to: the validation rules read each once, or twice where
+    /// a rebuilt index alone places some of its objects, and
     /// memory follows the largest of them rather than their sum.
     /// </summary>
     /// <param name="number">The object stream's number.</param>

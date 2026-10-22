@@ -93,8 +93,8 @@ public static class PdfDiagnosticCodes
 
     /// <summary>
     /// What an object stream — a stream an entry of the index names as one — says of itself cannot be believed: it is not
-    /// of <c>/Type /ObjStm</c>, its <c>/N</c> or its <c>/First</c> is absent or no non-negative integer, its <c>/First</c>
-    /// lies past its decoded data, or its header ends or breaks before listing as many objects as its <c>/N</c> declares —
+    /// of <c>/Type /ObjStm</c>, its <c>/N</c> is absent or no non-negative integer, or, when it declares objects, its
+    /// <c>/First</c> is, or lies past its decoded data, or its header ends or breaks before listing as many objects as its <c>/N</c> declares —
     /// a pair that is not two integers, that gives a number no object can have or an offset no member can start at, whose
     /// offset is not past the one before it, or whose member would start at or past the end of the decoded data, unless a
     /// guard cut it. The header is read as far as it goes, whatever its <c>/N</c> claims: the objects listed before the
