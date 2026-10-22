@@ -82,12 +82,23 @@ public class ObjectRuleTests
             "Object 1 refers to object 0 0 under /Outlines, which the file lacks: the reference reads as null.");
     }
 
-    [Fact]
-    public void A_reference_to_object_0_under_an_object_stream_s_keys_needs_nothing_though_the_table_places_object_0_in_it()
+    [Theory]
+    [InlineData("/DecodeParms 0 0 R")]
+    [InlineData("/N 0 0 R")]
+    [InlineData("/N 3 0 R")]
+    [InlineData("/Type 3 0 R")]
+    public void A_reference_to_object_0_under_an_object_stream_s_keys_needs_nothing_though_the_table_places_object_0_in_it(string entries)
     {
-        // The cross-reference stream's first row is rewritten to place object 0 at index 0 of object stream 7: the reader
-        // still never reads object 0, so the stream does not need itself.
-        var file = ObjectStream("/DecodeParms 0 0 R", "<< /Predictor 1 >>");
+        // The cross-reference stream's first row is rewritten to place object 0 at index 0 of object stream 7, whose
+        // parameters, count or type name object 0, directly or through object 3, a reference to it: the reader still never
+        // reads object 0, so the stream does not need itself.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(3, "0 0 R")
+            .WithObject(5, "<< /Predictor 1 >>")
+            .WithObject(6, "<< /Title (six) >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], compressObjectStream: true, objectStreamEntries: entries);
         var text = Encoding.Latin1.GetString(file);
         var rows = text.IndexOf("stream\n", text.IndexOf("/Type /XRef", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length;
         file[rows] = 2;
@@ -96,7 +107,8 @@ public class ObjectRuleTests
         file[rows + 6] = 0;
 
         using var document = PdfDocument.Open(file);
-        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfDictionary>();
+        document.GetObject(new PdfObjectId(6));
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().NotContain(PdfDiagnosticCodes.StreamSelfReference);
 
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
     }
@@ -442,7 +454,7 @@ public class ObjectRuleTests
     {
         // Stream 7's /Length names object 3, as its /DecodeParms, or its /Filter, does: a length reads nothing inside 3, a
         // dictionary or an array, while the filter or its parameters read 5, which 7 holds. Following the length to 3 first
-        // keeps the walk from following the filter or its parameters through it.
+        // must not keep the walk from following the filter or its parameters through it.
         var five = named == "/Filter" ? "/FlateDecode" : "1";
         var header = string.Create(CultureInfo.InvariantCulture, $"5 0 6 {five.Length + 1} ");
         var data = Deflate(header + five + "\n(six)\n");
