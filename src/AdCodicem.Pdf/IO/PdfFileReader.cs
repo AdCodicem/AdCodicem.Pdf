@@ -4794,8 +4794,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Reads which objects the object stream <paramref name="number"/> holds, in order, from the header its data
-    /// starts with — without keeping the stream, nor what it decodes to: the validation rules read each once, or twice where
-    /// a rebuilt index alone places some of its objects, and
+    /// starts with — without keeping the stream, nor what it decodes to: the validation rules read each once, or once more
+    /// where the chain's index places some of its objects and a rebuilt index alone others, and
     /// memory follows the largest of them rather than their sum.
     /// </summary>
     /// <param name="number">The object stream's number.</param>
@@ -6159,8 +6159,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             hiddenByGuard = false;
             var position = stream.Data.Position;
 
-            // A stream of another type serves no member, as the validator and the rebuild read it (#274): nothing else of it
-            // is read, so nothing else it names is needed.
+            // A stream of another type serves no member, as the validator and the rebuild read it (#274): nothing past its
+            // type is read — its /Length, the parse resolved —, so nothing else it names is needed.
             if (!stream.Dictionary.IsOfType(PdfName.ObjStm))
             {
                 ReportUnreadable(diagnostics, reports, number, position, "is a stream that is not of /Type /ObjStm", 0, 0);
