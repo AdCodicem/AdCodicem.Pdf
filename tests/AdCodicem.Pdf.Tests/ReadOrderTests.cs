@@ -1386,14 +1386,57 @@ public class ReadOrderTests
         rebuiltFirst.GetObject(new PdfObjectId(5));
         rebuiltFirst.GetObject(new PdfObjectId(7));
         var served = rebuiltFirst.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == code).Which.Position;
+        using var chainOnly = PdfDocument.Open(file.Bytes, options);
+        chainOnly.GetObject(new PdfObjectId(7));
+        var placed = chainOnly.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == code).Which.Position;
         using var document = PdfDocument.Open(file.Bytes, options);
 
         document.GetObject(new PdfObjectId(7));
         document.GetObject(new PdfObjectId(5));
         document.GetObject(new PdfObjectId(7));
 
-        served.Should().NotBe(first);
-        document.Diagnostics.Where(diagnostic => diagnostic.Code == code).Select(diagnostic => diagnostic.Position).Should().HaveCount(2).And.Contain(served);
+        placed.Should().BeGreaterThan(first);
+        served.Should().BeGreaterThan(placed);
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == code).Select(diagnostic => diagnostic.Position).Should().Equal(placed, served);
+    }
+
+    [Fact]
+    public void A_member_the_definition_a_rebuild_serves_lists_elsewhere_is_reported_moved_whatever_was_read_before()
+    {
+        // Object stream 6 is defined twice. The chain places 6 at the first, which lists 33 at index 1 while its entry says
+        // 0. The second's /Filter is object 10, which object stream 30, written after it, holds: the rebuild, which serves
+        // the second, expands it before 10 is indexed, its data read as written, where 33 is listed first, and indexes 33
+        // at index 0; read once the index is whole, its data decodes to a header that lists 33 at index 1. A move is
+        // reported once for each definition of its stream, keyed by where the definition's data starts: 33 read before the
+        // rebuild does not keep the served definition's move from being said.
+        var file = new HandWrittenFile();
+        var catalog = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var pages = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var first = file.ObjectStream(6, [(8, "(a)"), (33, "(b)")]);
+        file.Padding(9, 200);
+        const string Encoded = "33 20 30 20 33 33 20 32 20 35 20 36>";
+        var second = file.Object(6, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 2 /First 9 /Filter 10 0 R /Length {Encoded.Length} >>\nstream\n{Encoded}\nendstream"));
+        file.ObjectStream(30, [(10, "/ASCIIHexDecode")]);
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, catalog, 0),
+            [2] = (1, pages, 0),
+            [5] = (1, 9, 0),
+            [6] = (1, first, 0),
+            [33] = (2, 6, 0),
+        };
+        file.CrossReferenceStream(20, 34, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(33)).AsText().Should().Be("b");
+        document.GetObject(new PdfObjectId(5));
+        document.GetObject(new PdfObjectId(33)).AsInteger().Should().Be(6);
+
+        var moves = document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.ObjectStreamMemberMoved)
+            .Select(diagnostic => diagnostic.Position).ToList();
+        moves.Should().HaveCount(2);
+        moves[0].Should().BeInRange(first, second);
+        moves[1].Should().BeGreaterThan(second);
     }
 
     [Fact]
@@ -1434,6 +1477,44 @@ public class ReadOrderTests
 
         document.Diagnostics.Select(diagnostic => diagnostic.ToString())
             .Should().Equal(settled.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+    }
+
+    [Fact]
+    public void A_report_made_between_a_finish_the_source_fails_and_the_next_stays()
+    {
+        // The file above, with stream 14, whose ASCIIHex data lacks its end marker. The source fails the finish, and the
+        // caller then decodes 14, which reports the missing marker: what the loads in flight reported was withdrawn once,
+        // as the failed finish began, and the finish that completes leaves what was reported since in place.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Test 7 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [6] = (1, file.ObjectStream(6, [(10, "(ten)"), (11, "(eleven)")]), 0),
+            [10] = (2, 6, 0),
+            [11] = (2, 6, 1),
+        };
+        const string Data = "7 0 (member) ";
+        rows[8] = (1, file.Object(8, "<< /Type /ObjStm /N 1 /First 4 /Length 5 0 R >>\nstream\n" + Data + "\nendstream"), 0);
+        rows[7] = (2, 8, 0);
+        rows[5] = (1, 9, 0);
+        rows[9] = (1, file.Padding(9), 0);
+        var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
+        file.Object(10, "(direct ten)");
+        rows[14] = (1, file.Object(14, "<< /Filter /ASCIIHexDecode /Length 6 >>\nstream\n414243\nendstream"), 0);
+        file.CrossReferenceStream(15, 16, rows, "/Root 1 0 R");
+        using var source = new FailingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var hex = document.GetObject(new PdfObjectId(14)).Should().BeOfType<PdfStream>().Subject;
+        source.Fail(five, 2);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+        hex.Decode().ToArray().Should().Equal((byte)'A', (byte)'B', (byte)'C');
+        var decoding = document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.FilterFailed).Subject;
+        document.GetObject(new PdfObjectId(7)).AsText().Should().Be("member");
+
+        document.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Code == PdfDiagnosticCodes.FilterFailed).Which.Should().Be(decoding);
     }
 
     [Fact]

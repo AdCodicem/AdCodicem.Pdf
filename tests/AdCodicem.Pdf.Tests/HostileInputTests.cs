@@ -136,8 +136,8 @@ public class HostileInputTests
     [Fact]
     public void An_object_stream_that_claims_more_objects_than_it_could_hold_serves_those_it_lists_and_allocates_nothing_for_the_rest()
     {
-        // A billion objects in /N, and a header of four bytes: the tables grow with the pairs read, not with /N, and start
-        // no larger than the header can hold, one pair here — what a /N of one allocates (#160).
+        // A billion objects in /N, and a header of four bytes: the tables grow with the pairs read, not with /N — what a /N
+        // of one allocates (#160). That they start no larger than the header can hold, the header's own test holds.
         var allocated = Allocations.Least(
             () => PdfDocument.Open(Claiming(1_000_000_000)),
             document => Measure(() => document.GetObject(new PdfObjectId(6))),
@@ -153,6 +153,20 @@ public class HostileInputTests
             document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
                 "Object stream 5 has a header that ends after 1 of the 1,000,000,000 objects its /N declares; only the first 1 of its 1,000,000,000 objects can be read from it.");
         }
+    }
+
+    [Fact]
+    public void An_object_stream_header_s_tables_start_no_larger_than_its_bytes_can_hold()
+    {
+        // A header of four bytes and a /N of a billion: the header holds one pair at most, so the tables start at one, not
+        // at 1,024 (#160).
+        var data = Encoding.ASCII.GetBytes("6 0 <<>>");
+
+        var allocated = Allocations.Least(() => ObjectStreamHeader.Read(data, 1_000_000_000, 4, cutByGuard: false), out var read);
+
+        read.Count.Should().Be(1);
+        read.Fault.Should().Be(ObjectStreamHeaderFault.Ended);
+        allocated.Should().BeLessThanOrEqualTo(2 * (sizeof(int) + 32), "two tables of one pair each");
     }
 
     [Fact]
