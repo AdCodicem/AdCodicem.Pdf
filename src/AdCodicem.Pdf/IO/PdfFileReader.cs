@@ -5814,11 +5814,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         foreach (var number in numbers)
         {
-            PdfObject candidate;
+            bool isCatalog;
 
+            // A /Type written as a reference is read as the candidate is, and may reach a guard as its read may: the search
+            // goes on, and the first guard reached is the one thrown once it ends.
             try
             {
-                candidate = GetObject(new PdfObjectId(number));
+                isCatalog = GetObject(new PdfObjectId(number)).AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog);
             }
             catch (PdfLimitExceededException exception)
             {
@@ -5831,7 +5833,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 break;
             }
 
-            if (candidate.AsDictionary() is { } dictionary && dictionary.IsOfType(PdfName.Catalog))
+            if (isCatalog)
             {
                 // The reference names the catalog as its entry does, read once the catalog is — a relocation on the way
                 // gives the header's generation —: an entry of 1 1 makes 1 1 R, not 1 0 R (#118).
