@@ -17,9 +17,10 @@ namespace AdCodicem.Pdf.Validation;
 /// index uses as an object stream, in the order of its number, has the references under those keys followed, through
 /// objects written directly in the file, until one names an object the index places in an object stream. A name or a
 /// number — <c>/Length</c>, <c>/Type</c>, <c>/N</c>, <c>/First</c> — is followed as a reference resolves, through a chain
-/// of references as far as <see cref="PdfReference.Resolve"/> reads it; a filter and its parameters whole, every element
-/// and entry of their arrays and dictionaries, and of the objects they name, which is more than decoding may read, and
-/// misses a parameter that is a stream (#277). The streams so needed are linked, and a stream that its links lead back to
+/// of references as far as <see cref="PdfReference.Resolve"/> reads it, a <c>/Length</c> one object further; a filter and
+/// its parameters whole, every element and entry of their arrays and dictionaries, and of the objects they name, which is
+/// more than decoding may read. Where the reader reads on — a parameter or a link that is a stream, whose
+/// <c>/Length</c> its parse resolves, a member whose value is a reference —, the walk stops (#277). The streams so needed are linked, and a stream that its links lead back to
 /// is circular.
 /// </para>
 /// <para>
