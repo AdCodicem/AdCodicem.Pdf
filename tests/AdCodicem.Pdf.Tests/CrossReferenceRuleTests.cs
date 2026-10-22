@@ -854,6 +854,7 @@ public class CrossReferenceRuleTests
         finding.Severity.Should().Be(PdfValidationSeverity.Error);
         finding.Location.Object.Should().Be(new PdfObjectId(4));
         finding.Message.Should().Be("The entry of object 4 places it at index 2 of object stream 5, where it is written as a stream, which an object stream cannot hold.");
+        finding.Remedy.Should().Be("Write the object outside the object stream, and index it there.");
     }
 
     [Theory]
@@ -880,31 +881,83 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
-    [InlineData("no index")]
-    [InlineData("an index that lacks it")]
-    public void An_object_written_as_a_stream_that_only_a_rebuilt_index_places_is_broken(string chain)
+    [InlineData("no index", "the file's own index does not place it")]
+    [InlineData("an index that holds it free", "the file's own index does not place it")]
+    [InlineData("an index that lacks it", "the file's own index does not place it")]
+    [InlineData("an index a guard stopped short of it", "the part of the file's own index the reader read does not place it")]
+    public void An_object_written_as_a_stream_that_only_a_rebuilt_index_places_is_broken(string chain, string clause)
     {
-        // Object stream 3 holds 4, written as a stream, and 5. The file has no index, or a table that places 1 and 2 alone,
-        // 2 outside the file: the rebuilt index places 4 in 3, where it reads as null, and no entry of the file says so but
-        // the rebuilt one (#161, #202).
-        var file = new HandWrittenFile();
+        // Object stream 3 holds 4, written as a stream, and 5. The file has no index; or a table that places 1 and 2 alone,
+        // 2 outside the file, and holds 4 free or lists no row for it; or that table, then a cross-reference stream before
+        // it, which places 4 in 3, and which MaxXRefSectionCount leaves unread. The rebuilt index places 4 in 3, where it
+        // reads as null, and no entry the reader read says so but the rebuilt one (#161, #202); where a guard stopped the
+        // chain, the entry that places 4 may lie past where it stopped.
+        var file = new HandWrittenFile(version: "1.5");
         var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 4 0 R >>");
-        file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
-        file.ObjectStream(3, [(4, "<< /Length 3 >> stream\nabc\nendstream"), (5, "<< /B 2 >>")]);
+        var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var three = file.ObjectStream(3, [(4, "<< /Length 3 >> stream\nabc\nendstream"), (5, "<< /B 2 >>")]);
+        var options = new PdfReaderOptions();
 
-        if (chain == "no index")
+        switch (chain)
         {
-            file.Raw("trailer\n<< /Root 1 0 R /Size 6 >>\n%%EOF\n");
-        }
-        else
-        {
-            file.Table(6, new Dictionary<int, long> { [1] = one, [2] = 99999 }, "/Root 1 0 R /Size 6");
+            case "no index":
+                file.Raw("trailer\n<< /Root 1 0 R /Size 6 >>\n%%EOF\n");
+                break;
+            case "an index that holds it free":
+                file.Table(6, new Dictionary<int, long> { [1] = one, [2] = 99999 }, "/Root 1 0 R /Size 6");
+                break;
+            case "an index that lacks it":
+                file.Table(3, new Dictionary<int, long> { [1] = one, [2] = 99999 }, "/Root 1 0 R /Size 6");
+                break;
+            default:
+                var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+                {
+                    [1] = (1, one, 0),
+                    [2] = (1, two, 0),
+                    [3] = (1, three, 0),
+                    [4] = (2, 3, 0),
+                    [5] = (2, 3, 1),
+                };
+                var older = file.CrossReferenceStream(6, 7, rows, "/Root 1 0 R");
+                file.Table(3, new Dictionary<int, long> { [1] = one, [2] = 99999 }, string.Create(CultureInfo.InvariantCulture, $"/Root 1 0 R /Size 7 /Prev {older}"));
+                options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } };
+                break;
         }
 
-        var finding = Validate(file.Bytes).Findings.Should().ContainSingle(each => each.Location.Object == new PdfObjectId(4)).Subject;
+        using var document = PdfDocument.Open(file.Bytes, options);
+        var report = new PdfValidator().Validate(document);
 
+        document.WasRepaired.Should().BeTrue();
+        var finding = report.Findings.Should().ContainSingle(each => each.Location.Object == new PdfObjectId(4)).Subject;
         finding.RuleId.Should().Be(PdfValidationRuleIds.XRefEntryBroken);
-        finding.Message.Should().Be("The index the reader rebuilt places object 4 at index 0 of object stream 3, where it is written as a stream, which an object stream cannot hold; the file's own index does not place it.");
+        finding.Message.Should().Be($"The index the reader rebuilt places object 4 at index 0 of object stream 3, where it is written as a stream, which an object stream cannot hold; {clause}.");
+        finding.Remedy.Should().Be("Write the object outside the object stream, and index it there.");
+    }
+
+    [Fact]
+    public void An_object_written_as_a_stream_that_the_chain_and_a_rebuilt_index_both_place_is_its_entry_s_finding_alone()
+    {
+        // The cross-reference stream places 4 in object stream 3, where it is written as a stream, and 6 inside the
+        // catalog's header, which sets a rebuild off: the rebuilt index places 4 there too, and the chain's entry is judged,
+        // once — the rebuilt index is judged only where the chain's places nothing.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Foo 4 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+            [3] = (1, file.ObjectStream(3, [(4, "<< /Length 3 >> stream\nabc\nendstream"), (5, "<< /B 2 >>")]), 0),
+            [4] = (2, 3, 0),
+            [5] = (2, 3, 1),
+        };
+        rows[6] = (1, rows[1].Field2, 0);
+        file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R");
+
+        using var document = PdfDocument.Open(file.Bytes);
+        var report = new PdfValidator().Validate(document);
+
+        document.WasRepaired.Should().BeTrue();
+        report.Findings.Should().ContainSingle(each => each.Location.Object == new PdfObjectId(4)).Which.Message.Should().Be(
+            "The entry of object 4 places it at index 0 of object stream 3, where it is written as a stream, which an object stream cannot hold.");
     }
 
     [Theory]

@@ -15,9 +15,10 @@ namespace AdCodicem.Pdf.Validation;
 /// <para>
 /// Validation reads through the document lazily, once it has settled the index as the next paragraph says, and within
 /// the document's reader limits: what its rules resolve joins the document's cache — the cross-reference rules read each
-/// object stream, and the objects its decoding keys lead through, where the file's own index places them, outside it —,
-/// and what the reader notices on the way joins <see cref="PdfDocument.Diagnostics"/>. Opening the document with raised
-/// limits lets it check more.
+/// object stream, and the objects its decoding keys lead through, outside it, where the file's own index places them, or,
+/// for the objects written as a stream that only an index the reader rebuilt places, where that index places their
+/// stream —, and what the reader notices on the way joins <see cref="PdfDocument.Diagnostics"/>. Opening the document with
+/// raised limits lets it check more.
 /// </para>
 /// <para>
 /// Before its first rule, it rebuilds the document's index when a read could still set off that rebuild — the index is
