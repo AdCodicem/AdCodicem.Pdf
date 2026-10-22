@@ -689,6 +689,13 @@ public class CrossReferenceRuleTests
 
         findings.Should().ContainSingle().Which.RuleId.Should().Be(PdfValidationRuleIds.XRefObjectStreamBroken);
         findings[0].Message.Should().EndWith("is a stream that is not of /Type /ObjStm.");
+
+        // The reader reads nothing of it past its type either: no /N read, no object needed. Its dictionary repeats /N, the
+        // builder's and the row's, which the parse reports.
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(6)).Should().BeSameAs(PdfNull.Instance);
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Where(code => code != PdfDiagnosticCodes.SyntaxKeyRepeated)
+            .Should().Equal(PdfDiagnosticCodes.ObjectStreamUnreadable);
     }
 
     [Theory]
