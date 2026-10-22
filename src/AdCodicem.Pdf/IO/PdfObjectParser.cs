@@ -594,6 +594,13 @@ internal ref struct PdfObjectParser
             return ReadStream(dictionary);
         }
 
+        // A member's window that a guard ended may have cut a stream keyword after the dictionary, or left it past the
+        // window: the member is cut there, as an object written in the file whose window ends after its value is.
+        if (_member is not null && !_endsData && (next.Kind is PdfTokenKind.EndOfInput || next.End >= _memory.Length))
+        {
+            _truncated = true;
+        }
+
         _lexer.Position = afterDictionary;
         return dictionary;
     }

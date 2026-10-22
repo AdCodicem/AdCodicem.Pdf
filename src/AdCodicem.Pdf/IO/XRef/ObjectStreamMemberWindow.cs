@@ -29,10 +29,12 @@ internal readonly record struct ObjectStreamMemberWindow(int Start, int End, boo
     public static ObjectStreamMemberWindow Of(int[] offsets, int index, int first, int dataLength, bool cutByGuard, int maxLength)
     {
         // Both are at most int.MaxValue, so their sum is computed as a long, where it cannot wrap; within the data, it fits
-        // an int.
+        // an int. The next member's start decides whether the member ends there, though a guard cut the data exactly at it:
+        // what the member then lacks is the file's, not the guard's.
         var start = (int)((long)first + offsets[index]);
-        var end = index + 1 < offsets.Length ? (int)Math.Min((long)first + offsets[index + 1], dataLength) : dataLength;
-        var nextMember = end < dataLength;
+        var nextStart = index + 1 < offsets.Length ? (long)first + offsets[index + 1] : long.MaxValue;
+        var nextMember = nextStart <= dataLength;
+        var end = nextMember ? (int)nextStart : dataLength;
 
         return end - start > maxLength
             ? new ObjectStreamMemberWindow(start, start + maxLength, EndsData: false, EndsAtNextMember: false, Bounded: true)

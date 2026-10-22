@@ -1068,7 +1068,8 @@ public class HostileInputTests
         // Object stream 7's hexadecimal data lacks its end marker. The reader decodes it to serve object 6, and again to
         // serve object 10 once a stream of 33 MB has pushed it out of the budget; the validator decodes it once more, and
         // a caller twice, passing no diagnostics and then the document's: the document holds the report once (#144).
-        // Diagnostics a caller passes of its own hold every decoding's.
+        // Diagnostics a caller passes of its own hold every decoding's. Object 9 is followed by 33 MB of padding, which an
+        // object limit of 64 MB lets the reader see to its end.
         var file = PackedFile(
             [
                 new PackedStream(7, "/Filter /ASCIIHexDecode", [(6, "<< /Title (six) >>"), (10, "<< /Title (ten) >>")], PackedData.Hex),
@@ -1079,7 +1080,7 @@ public class HostileInputTests
         var dataStart = header + file.AsSpan(header).IndexOf("stream\n"u8) + "stream\n".Length;
         var report = $"Repair filter.failed at {dataStart}: An ASCIIHex stream ends without its > end marker; it decoded to the end of its data.";
 
-        using var document = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 64 * 1024 * 1024 } });
         Title(document.GetObject(new PdfObjectId(6))).Should().Be("six");
         document.GetObject(new PdfObjectId(9)).Should().BeOfType<PdfDictionary>();
         Title(document.GetObject(new PdfObjectId(10))).Should().Be("ten");
