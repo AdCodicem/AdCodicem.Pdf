@@ -12,7 +12,7 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// the file's chain gave, as the reader first read them; a chain that gave none is
 /// <see cref="PdfValidationRuleIds.FileStartXRefWrong"/>'s or <see cref="PdfValidationRuleIds.FileStartXRefMissing"/>'s,
 /// and none of its entries is probed. Of an index the reader rebuilt, chain or none, the objects written as a stream that
-/// it places where the chain's index places nothing are judged too: no entry of the file would say they are lost.
+/// it places where the chain's index places nothing are judged too: no entry the reader read would say they are lost.
 /// </remarks>
 internal sealed class EntryBrokenRule : IValidationRule
 {
