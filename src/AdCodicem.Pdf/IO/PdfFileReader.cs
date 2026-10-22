@@ -6155,15 +6155,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             hiddenByGuard = false;
             var position = stream.Data.Position;
-            var count = stream.Dictionary.GetInteger(PdfName.N, -1);
-            var first = stream.Dictionary.GetInteger(PdfName.First, -1);
 
-            // A stream of another type serves no member, as the validator and the rebuild read it (#274).
+            // A stream of another type serves no member, as the validator and the rebuild read it (#274): nothing else of it
+            // is read, so nothing else it names is needed.
             if (!stream.Dictionary.IsOfType(PdfName.ObjStm))
             {
                 ReportUnreadable(diagnostics, reports, number, position, "is a stream that is not of /Type /ObjStm", 0, 0);
                 return null;
             }
+
+            var count = stream.Dictionary.GetInteger(PdfName.N, -1);
+            var first = stream.Dictionary.GetInteger(PdfName.First, -1);
 
             // A stream that declares no object is empty, not damaged.
             if (count == 0)
