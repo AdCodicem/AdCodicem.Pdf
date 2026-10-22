@@ -700,6 +700,42 @@ public class ReaderLimitsTests
         whole.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.ObjectStreamMemberStream);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_guard_reached_reading_a_catalog_candidate_s_type_is_thrown_once_the_search_after_a_rebuild_ends(bool settle)
+    {
+        // /Root names object 3, a string. Object 4, the first a rebuild's search for the catalog reads, gives its /Type as a
+        // reference to object 9, longer than MaxObjectLength; the catalog, object 1, comes after it. A rebuild — set off by
+        // row 5, which leads into object 4's header, or by settling the index — searches for the catalog: the guard
+        // reached reading 4's /Type is held until the search has found 1, then thrown, as one reading a candidate is.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [4] = file.Object(4, "<< /Type 9 0 R >>"),
+            [9] = file.Object(9, "(" + new string('x', 3000) + ")"),
+            [3] = file.Object(3, "(three)"),
+            [1] = file.Object(1, Catalog),
+            [2] = file.Object(2, Pages),
+        };
+        rows[5] = rows[4];
+        file.Table(10, rows, "/Size 10 /Root 3 0 R");
+        var options = new PdfReaderOptions { ThrowOnLimit = true, Limits = PdfReaderLimits.Default with { MaxObjectLength = 2048 } };
+
+        using var document = PdfDocument.Open(file.Bytes, options);
+        Action rebuilding = settle ? document.Reader.SettleIndex : () => document.GetObject(new PdfObjectId(5));
+
+        rebuilding.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        document.WasRepaired.Should().BeTrue();
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1));
+        document.Diagnostics.Where(diagnostic => diagnostic.Code == PdfDiagnosticCodes.TrailerRootRecovered).Should().HaveCount(2)
+            .And.AllSatisfy(diagnostic => diagnostic.Message.Should().EndWith("the catalog was found as object 1."));
+
+        // The rebuild is finished: the next read rebuilds nothing, and throws nothing.
+        document.Reader.SettleIndex();
+        document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
     [Fact]
     public void A_member_left_open_where_a_guard_cuts_the_data_at_the_next_member_s_start_is_the_file_s_fault()
     {
