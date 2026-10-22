@@ -739,6 +739,35 @@ public class ReaderLimitsTests
     }
 
     [Theory]
+    [InlineData("null")]
+    [InlineData("true")]
+    [InlineData("endobj")]
+    [InlineData("R")]
+    [InlineData("streaml")]
+    public void A_member_dictionary_followed_by_a_keyword_that_cannot_be_stream_where_MaxObjectLength_ends_its_window_is_whole(string keyword)
+    {
+        // Member 4's dictionary is followed by a keyword its window, which MaxObjectLength ends, ends on: however the
+        // keyword goes on past the window, it is no stream keyword, so the dictionary is whole, as the guard lifted reads it.
+        var member = "<< /A (" + new string('x', 100) + ") >> " + keyword;
+        var written = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, written.Object(1, Catalog), 0),
+            [2] = (1, written.Object(2, Pages), 0),
+            [3] = (1, written.ObjectStream(3, [(4, member + new string(' ', 300)), (5, "42")]), 0),
+            [4] = (2, 3, 0),
+            [5] = (2, 3, 1),
+        };
+        written.CrossReferenceStream(6, 7, rows, "/Root 1 0 R");
+
+        using var document = PdfDocument.Open(written.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = member.Length } });
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfDictionary>();
+        document.Reader.IsCutAtLimit(4).Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("[<< /A (x) >>]", 0)]
     [InlineData("[<< /A (x) >> >>", 1)]
     public void A_member_whose_value_ends_where_MaxObjectLength_ends_its_window_is_read_whole(string shape, int strays)
