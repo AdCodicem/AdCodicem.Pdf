@@ -15,7 +15,7 @@ namespace AdCodicem.Pdf.Validation;
 /// <remarks>
 /// <para>
 /// It is worked out from the stream dictionaries and the index, not from what the reader happened to do: each object
-/// stream the index uses, in the order of its number, has the references under those keys followed — through direct
+/// stream the index uses — of /Type /ObjStm, as the reader requires (#274) —, in the order of its number, has the references under those keys followed — through direct
 /// arrays and dictionaries, and through objects written directly in the file — until one names an object the index
 /// places in an object stream. The streams so needed are linked, and a stream that its links lead back to is
 /// circular.
@@ -84,10 +84,13 @@ internal sealed class ObjectStreamDependencies
         // stream they lead from, as many objects kept as the reader keeps in its cache, and nothing else of them.
         var references = new ReferenceMemo(reader.CacheCapacity);
 
+        // A stream that is not of /Type /ObjStm serves no object, to the reader, the probe or the rebuild alike (#274):
+        // nothing is read from its data, so nothing it names is needed, and none of its values is read as an integer.
         foreach (var stream in streams)
         {
             if (IndexOf(reader).TryGet(stream, out var entry) && entry.Kind == XRefEntryKind.Regular &&
-                Read(document, new PdfObjectId(stream, entry.Generation), entry) is PdfStream objectStream)
+                Read(document, new PdfObjectId(stream, entry.Generation), entry) is PdfStream objectStream &&
+                objectStream.Dictionary.IsOfType(PdfName.ObjStm))
             {
                 locations[stream] = Location(reader, stream, entry);
                 needs[stream] = Needs(document, objectStream.Dictionary, references);

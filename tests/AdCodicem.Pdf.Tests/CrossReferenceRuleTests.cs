@@ -670,6 +670,29 @@ public class CrossReferenceRuleTests
     }
 
     [Theory]
+    [InlineData("/N 2.0", false)]
+    [InlineData("/N 5 0 R", false)]
+    [InlineData("/DecodeParms 5 0 R", true)]
+    public void A_stream_that_is_not_an_object_stream_is_judged_on_its_type_alone(string entries, bool compressed)
+    {
+        // Stream 4 has no /Type: it serves no object, to the reader as to the probe (#274). Its /N written as a real, or a
+        // /N or /DecodeParms naming an object it would hold, is neither a value the reader read nor a need of its data: the
+        // stream is judged on its type alone.
+        var written = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "2")
+            .WithObject(6, "<< /Title (six) >>")
+            .BuildWithXRefStream(rootNumber: 1, compressedObjects: [5, 6], compressObjectStream: compressed, objectStreamEntries: entries);
+        var file = Replace(written, "/Type /ObjStm", "/Kind /ObjStm");
+
+        var findings = Validate(file).Findings.Where(finding => finding.RuleId.StartsWith("xref.", StringComparison.Ordinal)).ToList();
+
+        findings.Should().ContainSingle().Which.RuleId.Should().Be(PdfValidationRuleIds.XRefObjectStreamBroken);
+        findings[0].Message.Should().EndWith("is a stream that is not of /Type /ObjStm.");
+    }
+
+    [Theory]
     [InlineData("x 0 ", "then something else")]
     [InlineData("2 x ", "then something else")]
     [InlineData("92233720368547758082 0 ", "then something else")]
