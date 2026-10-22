@@ -583,10 +583,12 @@ internal ref struct PdfObjectParser
         var next = _lexer.Read();
 
         // A member's window that a guard ended may have left a stream keyword after the dictionary past it, or cut one — a
-        // keyword it reaches may be "stream" or longer —: the member is cut there, as an object written in the file whose
-        // window ends after its value is. What else follows is whole wherever it lies, and is no stream keyword.
+        // keyword it reaches that begins "stream", or is "stream" itself, which may be a longer keyword —: the member is cut
+        // there, as an object written in the file whose window ends after its value is. What else follows is whole
+        // wherever it lies, or cannot be a stream keyword however it goes on.
         if (_member is not null && !_endsData &&
-            (next.Kind is PdfTokenKind.EndOfInput || (next.Kind is PdfTokenKind.Keyword && next.End >= _memory.Length)))
+            (next.Kind is PdfTokenKind.EndOfInput ||
+             (next.Kind is PdfTokenKind.Keyword && next.End >= _memory.Length && "stream"u8.StartsWith(next.Text))))
         {
             _truncated = true;
             _lexer.Position = afterDictionary;
