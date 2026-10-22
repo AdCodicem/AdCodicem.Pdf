@@ -131,12 +131,12 @@ outside the document's cache: what they find there of a definition the reader no
 later one, is noted of no object ([#255](https://github.com/AdCodicem/AdCodicem.Pdf/issues/255)). Working out which
 object streams need one another, they read there too each object written directly in the file that a stream's decoding
 keys lead through, once a validation for as many of them as the document's cache holds. Of an index the reader rebuilt,
-they judge one thing besides: an object it places in an object stream, written there as a stream — which the reader reads
+they judge, besides, an object it places in an object stream, written there as a stream — which the reader reads
 as null —, where the file's own index places nothing under its number, or, where one of the reader's limits stopped the
 chain short, where the part of it the reader read places nothing; the object stream is read where the rebuilt index
 places it ([#161](https://github.com/AdCodicem/AdCodicem.Pdf/issues/161)), and no row the reader read would say that
 object is lost. When the file gave no index at all, the object streams the rebuilt index places are the ones whose
-needs they work out. The other values written
+needs they work out, and whose integers written as reals they report. The other values written
 elsewhere that a row's object needs — a stream's own `/Length` written as a reference, the values an object stream's
 header gives as reals, a decoding parameter the trailer names — are read as any read reads them, through the index the
 reader settled on.
