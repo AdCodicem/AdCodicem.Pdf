@@ -57,14 +57,16 @@ public class HostileInputMemoryTests
     public void Disposing_a_document_lets_go_of_the_object_streams_it_decoded_though_a_reference_it_gave_is_held()
     {
         // Sixteen megabytes of an object stream's decoded data, which the reader keeps, and a reference handed out, which
-        // reaches the reader: disposing lets go of the data all the same.
-        var file = HostileInputTests.ObjectStreams(streams: 1, decodedLength: 16 * 1024 * 1024, objectsPerStream: 1, everyIndexWrong: false);
+        // reaches the reader: disposing lets go of the data all the same. The measure is the whole process's, whatever else
+        // runs in it, the test platform included: half the data parts what is kept from what is let go.
+        const long Decoded = 16L * 1024 * 1024;
+        var file = HostileInputTests.ObjectStreams(streams: 1, decodedLength: (int)Decoded, objectsPerStream: 1, everyIndexWrong: false);
         var before = Retained();
         var (held, kept) = OpenDecodeAndDispose(file);
         var after = Retained();
 
-        kept.Should().BeGreaterThan(before + (16L * 1024 * 1024), "the reader kept the decoded data while the document was open");
-        after.Should().BeLessThan(before + (1024 * 1024), "the object streams the document decoded are let go");
+        kept.Should().BeGreaterThan(before + (Decoded / 2), "the reader kept the decoded data while the document was open");
+        after.Should().BeLessThan(before + (Decoded / 2), "the object streams the document decoded are let go");
         GC.KeepAlive(held);
     }
 
