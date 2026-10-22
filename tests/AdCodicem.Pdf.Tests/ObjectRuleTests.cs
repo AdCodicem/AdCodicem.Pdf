@@ -465,6 +465,21 @@ public class ObjectRuleTests
     }
 
     [Fact]
+    public void An_object_stream_whose_type_it_holds_is_circular_and_not_also_broken()
+    {
+        // Stream 7's /Type names object 5, /ObjStm, which the stream holds: the reader reads a stream's /Type before anything
+        // else of it (#274), and cannot read 5 before 7. The loop is the fault, as one through /N is.
+        var written = Encoding.Latin1.GetString(ObjectStream(string.Empty, "/ObjStm", compress: false));
+        var file = Encoding.Latin1.GetBytes(written.Replace("/Type /ObjStm", "/Type 5 0 R  ", StringComparison.Ordinal));
+
+        var report = Validate(file);
+
+        Single(report, PdfValidationRuleIds.XRefObjectStreamCircular).Message.Should().Be(
+            "Object stream 7 needs object 5, which it holds, to be read: its /Type names it, and the object cannot be read before the stream is.");
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse("the loop is the fault, reported once");
+    }
+
+    [Fact]
     public void An_object_stream_whose_parameters_are_written_in_the_file_is_sound()
     {
         var file = new TestPdfBuilder()
