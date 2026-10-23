@@ -121,6 +121,36 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("21 0 R")]
+    [InlineData("20 0 R")]
+    public void A_missing_endstream_is_the_file_s_fault_when_a_guard_left_the_length_out_of_the_index(string length)
+    {
+        // Object 4's /Length leads to object 21, which only an older section places, which MaxXRefSectionCount leaves unread:
+        // the length is unknown, and not judged, but the endstream the stream lacks was not reported either (#224).
+        var file = new HandWrittenFile();
+        var older = new Dictionary<int, long> { [21] = file.Object(21, "5") };
+        var first = file.Table(22, older, "/Size 22");
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Object(4, "<< /Length " + length + " >>\nstream\n0 0 m"),
+            [20] = file.Object(20, "21 0 R"),
+        };
+        file.Table(21, rows, string.Create(CultureInfo.InvariantCulture, $"/Size 22 /Root 1 0 R /Prev {first}"));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal("0 0 m"u8.ToArray());
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamTruncated).Which.Message.Should().StartWith(
+            "The stream's /Length names object 21 0, which one of the reader's limits left out of the index, and no endstream follows its data");
+        document.Reader.TryGetStreamLengthFault(4, out var fault).Should().BeTrue();
+        fault.Form.Should().Be(StreamLengthForm.ObjectUnindexed);
+        fault.Reference.Should().Be(new PdfObjectId(21));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void A_deferred_length_a_guard_cut_is_not_judged_once_the_chain_is_read(bool inside)
