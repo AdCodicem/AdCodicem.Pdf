@@ -29,9 +29,9 @@ foreach (var entry in document.Diagnostics)
 }
 ```
 
-Reading is lazy: a stream reaches `MaxDecodedStreamLength` when it is decoded, so look after decoding, not only after
-opening. And an object a limit left out of the cross-reference index — the oldest sections of a long chain, the objects
-past `MaxIndexEntries` — reads as null, as an object the file lacks does: the `limit.*` entry is what tells them apart.
+Reading is lazy: a stream reaches `MaxStreamLength` when its data is read, and `MaxDecodedStreamLength` when it is
+decoded, so look after reading streams, not only after opening. And an object a limit left out of the cross-reference
+index — the oldest sections of a long chain, the objects past `MaxIndexEntries` — reads as null, as an object the file lacks does: the `limit.*` entry is what tells them apart.
 
 ## Raise the limit the report names
 
@@ -49,6 +49,17 @@ using var document = PdfDocument.Open("topographic-map.pdf", options);
 ```
 
 Every stream of that document decodes under its limits, however long after opening you decode it.
+
+The two bounds on a stream are not interchangeable. A large image stored without a filter reaches `MaxStreamLength`,
+the bound on what is read of one stream's data, and not `MaxDecodedStreamLength`, which bounds what filters produce.
+Raise `MaxStreamLength` for it:
+
+```csharp
+var options = new PdfReaderOptions
+{
+    Limits = PdfReaderLimits.Default with { MaxStreamLength = 512 * 1024 * 1024 },
+};
+```
 
 ## Read documents you trust without limits
 
@@ -88,7 +99,8 @@ catch (PdfLimitExceededException exception)
 
 Put the `try` around everything that uses the document, not only around `Open`: the exception comes from whichever
 operation reaches the limit — `Open` while it indexes the file, `GetObject` or resolving a reference when an object is
-too long or lies past what a full index holds, `Decode` when a stream decodes too far, `Validate` as it reads.
+too long or lies past what a full index holds, `GetRawBytes` or `Decode` when a stream's data runs past
+`MaxStreamLength`, `Decode` when a stream decodes too far, `Validate` as it reads.
 
 ## See also
 
