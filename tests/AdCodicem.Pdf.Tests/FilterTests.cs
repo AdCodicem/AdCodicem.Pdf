@@ -1197,25 +1197,27 @@ public class FilterTests
     }
 
     [Theory]
-    [InlineData("/Filter /DCTDecode", true)]
-    [InlineData("/Filter [/ASCIIHexDecode /DCTDecode]", true)]
-    [InlineData("/Filter [/ASCIIHexDecode /JPXDecode /FlateDecode]", true)]
-    [InlineData("/Filter [/MadeUpDecode /DCTDecode]", false)]
-    [InlineData("/Filter [5 /DCTDecode]", false)]
-    [InlineData("/Filter (DCTDecode)", false)]
-    [InlineData("/Filter [/ASCIIHexDecode /FlateDecode]", false)]
-    [InlineData("/Filter null", false)]
-    [InlineData("", false)]
-    public void Says_a_stream_is_an_image_only_when_decoding_it_stops_at_an_image_filter(string entries, bool image)
+    [InlineData("/Filter /DCTDecode", true, false)]
+    [InlineData("/Filter [/ASCIIHexDecode /DCTDecode]", true, false)]
+    [InlineData("/Filter [/ASCIIHexDecode /JPXDecode /FlateDecode]", true, false)]
+    [InlineData("/Filter [/FlateDecode /DCTDecode]", true, true)]
+    [InlineData("/Filter [/MadeUpDecode /DCTDecode]", false, false)]
+    [InlineData("/Filter [5 /DCTDecode]", false, false)]
+    [InlineData("/Filter (DCTDecode)", false, false)]
+    [InlineData("/Filter [/ASCIIHexDecode /FlateDecode]", false, true)]
+    [InlineData("/Filter null", false, false)]
+    [InlineData("", false, false)]
+    public void Says_a_stream_is_an_image_only_when_decoding_it_stops_at_an_image_filter(string entries, bool image, bool readsParameters)
     {
         // Decoding stops at the first filter it does not know, or at an element that names none: the data that comes
-        // back is not the image a filter after it names. Telling it reads no parameter.
+        // back is not the image a filter after it names. Telling it reads what decoding reads before it, and no more: the
+        // parameters of a Flate or LZW step before the chain ends, a value of which a guard cut ends it there (#263).
         var source = Substitute.For<IPdfObjectSource>();
         var dictionary = new PdfObjectParser(Encoding.ASCII.GetBytes($"<< {entries} /DecodeParms 9 0 R >>"), source: source).ParseObject().AsDictionary().Required();
         var stream = new PdfStream(dictionary, PdfStreamData.FromMemory("00>"u8.ToArray()));
 
         stream.HasImageFilter().Should().Be(image);
-        source.ReceivedCalls().Should().BeEmpty();
+        source.ReceivedCalls().Should().HaveCount(readsParameters ? 1 : 0);
     }
 
     [Fact]

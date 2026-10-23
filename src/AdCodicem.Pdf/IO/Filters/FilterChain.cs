@@ -114,18 +114,19 @@ internal sealed class FilterChain
     /// <param name="maxFilters">The most filters the stream's data may pass through: the chain ends at the element past them.</param>
     public static FilterChain Resolve(PdfDictionary dictionary, int maxFilters)
     {
-        var reading = Read(dictionary, maxFilters, readParameters: true, keep: true);
+        var reading = Read(dictionary, maxFilters, keep: true);
         return reading.Filters is null && reading.End == FilterChainEnd.None ? NoFilter : new FilterChain(reading);
     }
 
     /// <summary>
-    /// Resolves what ends the chain of filters the stream <paramref name="dictionary"/> describes, reading none of their
-    /// parameters and keeping nothing.
+    /// Resolves what ends the chain of filters the stream <paramref name="dictionary"/> describes, as decoding resolves it,
+    /// and keeps nothing: the parameters decoding reads are read too, since a value among them that leads to an object a
+    /// guard cut, or left out of the index, ends the chain where it is read (#263).
     /// </summary>
     /// <param name="dictionary">The stream's dictionary.</param>
     /// <param name="maxFilters">The most filters the stream's data may pass through: the chain ends at the element past them.</param>
     public static FilterChainEnd EndOf(PdfDictionary dictionary, int maxFilters) =>
-        Read(dictionary, maxFilters, readParameters: false, keep: false).End;
+        Read(dictionary, maxFilters, keep: false).End;
 
     /// <summary>
     /// Follows, through <paramref name="reader"/>, every value decoding the stream <paramref name="dictionary"/> describes
@@ -137,7 +138,7 @@ internal sealed class FilterChain
     /// <returns>False when <paramref name="reader"/> ended the reading.</returns>
     public static bool TryFollow<TReader>(PdfDictionary dictionary, int maxFilters, ref TReader reader)
         where TReader : struct, IFilterValueReader =>
-        TryRead(dictionary, maxFilters, ref reader, readParameters: true, keep: false, out _);
+        TryRead(dictionary, maxFilters, ref reader, keep: false, out _);
 
     /// <summary>Gets the steps decoding runs, in order.</summary>
     public Steps GetEnumerator() => new(this);
@@ -197,12 +198,11 @@ internal sealed class FilterChain
     /// <param name="dictionary">The stream's dictionary.</param>
     /// <param name="maxFilters">The most filters the stream's data may pass through: the chain ends at the element past them.</param>
     /// <param name="reader">Follows each value to what it leads to, and can end the reading.</param>
-    /// <param name="readParameters">Whether the parameters are read, or only the names of the filters.</param>
     /// <param name="keep">Whether what decoding needs again is kept, or only what ends the chain.</param>
     /// <param name="reading">What was read.</param>
     /// <returns>False when <paramref name="reader"/> ended the reading.</returns>
     private static bool TryRead<TReader>(
-        PdfDictionary dictionary, int maxFilters, ref TReader reader, bool readParameters, bool keep, out Reading reading)
+        PdfDictionary dictionary, int maxFilters, ref TReader reader, bool keep, out Reading reading)
         where TReader : struct, IFilterValueReader
     {
         reading = new Reading();
@@ -276,7 +276,7 @@ internal sealed class FilterChain
                 Append(ref reading.Names, ref reading.NameCount, filter);
             }
 
-            if (readParameters && (filter == PdfName.FlateDecode || filter == PdfName.LZWDecode))
+            if (filter == PdfName.FlateDecode || filter == PdfName.LZWDecode)
             {
                 if (!parametersRead)
                 {
@@ -335,11 +335,11 @@ internal sealed class FilterChain
     /// element past the guard on filters does — the steps before it run, and what they decode is left encoded by the rest
     /// (#263).
     /// </summary>
-    private static Reading Read(PdfDictionary dictionary, int maxFilters, bool readParameters, bool keep)
+    private static Reading Read(PdfDictionary dictionary, int maxFilters, bool keep)
     {
         var reader = default(Resolving);
 
-        if (!TryRead(dictionary, maxFilters, ref reader, readParameters, keep, out var reading))
+        if (!TryRead(dictionary, maxFilters, ref reader, keep, out var reading))
         {
             // The steps read whole before the value stand: the chain ends at the element that value was read for.
             reading.End = FilterChainEnd.Guard;
