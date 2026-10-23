@@ -27,7 +27,9 @@ namespace AdCodicem.Pdf.Documents;
 /// accessor that resolves, a stream's data asked for —, however it was opened and whether or not it was read before.
 /// What was handed out stays the caller's: a dictionary's direct values, a stream's <see cref="PdfStream.RawLength"/>,
 /// every object's <c>ToString</c>. Disposing lets go of what the document kept: the objects it read, its index, and the
-/// file, closed when it was opened from a path, and held no longer when it was opened from memory or a stream.
+/// file, closed when it was opened from a path, and held no longer when it was opened from memory or a stream. A stream's
+/// raw bytes taken before from a document held in memory are a view of that memory rather than a copy
+/// (<see cref="PdfStream.GetRawBytes"/>): for as long as they are held, they keep it alive, and they change as it does.
 /// </para>
 /// </remarks>
 public sealed class PdfDocument : IDisposable
