@@ -2221,7 +2221,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     private long EndStreamAfter(long position)
     {
-        var at = position < 0 ? -1 : NextSignificant(position);
+        var at = NextSignificant(position);
         Span<byte> keyword = stackalloc byte[StreamEnds.EndStreamKeyword.Length];
         var read = at < 0 || at >= _source.Length ? 0 : _source.Read(at, keyword[..(int)Math.Min(keyword.Length, _source.Length - at)]);
         return keyword[..read].SequenceEqual(StreamEnds.EndStreamKeyword) ? at : position;
