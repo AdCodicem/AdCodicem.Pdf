@@ -432,6 +432,35 @@ internal static class ChainFiles
         return file.ToArray();
     }
 
+    /// <summary>
+    /// A file of two classic tables. The first indexes the catalog, the page tree, the page and object 12, the highest
+    /// number; the second, an update, writes the catalog, the page tree and the page again, indexes them with object 4, a
+    /// page the tree does not list, and object 9, which holds the first table's offset after <paramref name="padding"/>
+    /// spaces, and names that table through <c>/Prev 9 0 R</c>. Both trailers give <c>/Size 13</c>.
+    /// </summary>
+    public static byte[] UpdateHidingItsHighestNumber(int padding)
+    {
+        using var file = new Writer("1.4");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(12, "(twelve)");
+        var first = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\n12 1\n{file.OffsetOf(12):D10} 00000 n\r\ntrailer\n<< /Size 13 /Root 1 0 R >>\nstartxref\n{first}\n%%EOF\n"));
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(9, new string(' ', padding) + first.ToString(CultureInfo.InvariantCulture));
+        var second = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n1 4\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\n{file.OffsetOf(4):D10} 00000 n\r\n9 1\n{file.OffsetOf(9):D10} 00000 n\r\ntrailer\n<< /Size 13 /Root 1 0 R /Prev 9 0 R >>\nstartxref\n{second}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
     private enum Rows
     {
         Raw,
