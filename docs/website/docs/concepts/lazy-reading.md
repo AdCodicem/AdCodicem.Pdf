@@ -19,7 +19,7 @@ Opening a document builds an index, finds the catalog, and stops there.
    the map the chain gives is the file's own. A `/Length` no section read before places, or that leads through
    references to such an object, is read once the chain is, and checked against the data the chain took up to the
    first `endstream` after the data's start, searched for in the file up to the next object the sections read so far
-   place, or its end; one that leads to an object `MaxObjectLength` cuts waits for the chain the same way, and is the
+   place, or its end — unless `MaxStreamLength` cut that data, which is the guard's; one that leads to an object `MaxObjectLength` cuts waits for the chain the same way, and is the
    guard's: the guard is reached once the chain is read, and the length is not checked. Either way, when the section's
    own row for that `/Length` — the row the reading of its rows keeps — lies among the rows the data holds, those
    rows spelled `endstream`: the object is read where the row places it, without being kept, and the data is taken
@@ -71,7 +71,10 @@ the chain is read:
 - when an object the map lacks is asked for, by opening or after it, while the map may have lost entries: a
   cross-reference section the chain names cannot be found, or a `/Prev` or `/XRefStm` is not an offset — one
   written as a reference no section read before it places included — (`xref.section-missing`); one is found and
-  cannot be read (`xref.section-unreadable`), a value its rows need written as such a reference, or a `/Length` so written whose data no `endstream` ends before the next object or the end of the file, among the causes; the chain loops back on itself (`xref.chain-cycle`); a row of a classic table cannot be read, which ends its subsection; a row gives an object
+  cannot be read (`xref.section-unreadable`), a value its rows need written as such a reference, or a `/Length` so
+  written, or that leads through references to an object no section read before places, whose data no `endstream` ends
+  before the next object or the end of the file, among the causes; the chain loops back on itself (`xref.chain-cycle`);
+  a row of a classic table cannot be read, which ends its subsection; a row gives an object
   in use what no entry can hold — a generation past 65,535, an offset of 2⁶³ or more, an object stream that is no
   object number, an index past 2,147,483,647, a field wider than 8 bytes whose leading bytes are not all zero —,
   which refuses that row alone, no older section's row standing for
@@ -135,11 +138,13 @@ past the window, it asks the file for the bytes after the declared length rather
 as far as white space and comments run. A length nothing confirms, or a `/Length` that gives none, sends the reader on
 one search for the first `endstream` after the data's start: in the bytes the parser holds, then in the file, up to the
 nearer of the first object header the bytes hold and the next object the index as the file wrote it places, or the end
-of the file. With no `endstream` before that stop, the object's `endobj` plays its part. The search is made once for
-each stream, however often the stream is parsed again; no window grows to find an `endstream`, so that a stream's data
-never counts toward `MaxObjectLength`; and the searches of a document read four times the file at most — a valid
-file's, about twice, for the white space after a declared length and the cross-reference streams whose `/Length` the
-chain cannot read yet. What each case keeps, and reports, is in [Diagnostics](diagnostics.md#where-a-stream-ends).
+of the file. With no `endstream` before that stop, the object's `endobj` plays its part: the search follows the last one
+through its own reads, the comments after it taken for white space, rather than read the bytes before the stop again
+backward. The search is made once for each stream, however often the stream is parsed again, and whether the object's
+`endobj` follows the declared length is read again only when a rebuild changes that length; no window grows to find an
+`endstream`, so that a stream's data never counts toward `MaxObjectLength`; and the searches of a document read four
+times the file at most — a valid file's, about twice, for the white space after a declared length and the
+cross-reference streams whose `/Length` the chain cannot read yet. What each case keeps, and reports, is in [Diagnostics](diagnostics.md#where-a-stream-ends).
 
 When it is read or decoded, a stream works under the [limits](reader-limits.md) of the document it came from,
 however long after opening — so with `ThrowOnLimit` set, `GetRawBytes()` and `Decode()` can throw long after `Open`
