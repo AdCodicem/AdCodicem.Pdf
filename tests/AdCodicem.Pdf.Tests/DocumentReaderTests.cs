@@ -1882,6 +1882,26 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_deferred_length_a_newer_section_refused_takes_no_data_again()
+    {
+        // A third revision's table refuses the row it gives object 4, the update's /Length: no row of the update's stream
+        // stands for it then, and the data is left as the chain took it, up to the endstream its rows spell (#220).
+        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: true);
+        var text = Encoding.Latin1.GetString(file);
+        var startxref = text.LastIndexOf("startxref\n", StringComparison.Ordinal) + "startxref\n".Length;
+        var second = text[startxref..text.IndexOf('\n', startxref)];
+        var update = string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n4 1\n0000000010 99999 n\r\ntrailer\n<< /Size 11 /Root 1 0 R /Prev {second} >>\nstartxref\n{file.Length}\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Concat(Encoding.ASCII.GetBytes(update)).ToArray());
+
+        var sections = document.Reader.Structure.Sections;
+        sections[0].RefusedRow.Should().NotBeNull();
+        sections[1].Incomplete.Should().BeTrue();
+        sections[1].Fault.Should().Be("it holds 1 row where its /Index and /Size declare 5");
+    }
+
+    [Fact]
     public void A_deferred_length_is_not_checked_against_data_a_guard_cut()
     {
         // The stream's data, taken up to the endstream its rows spell, runs past MaxStreamLength: decoding cut it, and the
