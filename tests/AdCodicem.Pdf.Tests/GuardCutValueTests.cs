@@ -375,4 +375,31 @@ public class GuardCutValueTests
                 CultureInfo.InvariantCulture,
                 $"<< /Type /ObjStm /N {members.Length}{first} {entries}/Filter {filter} /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream"));
     }
+
+    [Fact]
+    public void A_missing_endstream_names_the_object_a_guard_cut_at_the_end_of_the_length_s_chain_and_keeps_no_length()
+    {
+        // Object 4's /Length, object 20, holds a reference to object 21, which MaxObjectLength cuts inside "15": the report
+        // of its missing endstream named object 20, read whole, and the fault kept the parted 1 as the declared length.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Object(4, "<< /Length 20 0 R >>\nstream\n0 0 m 10 10 l S"),
+            [20] = file.Object(20, "21 0 R"),
+            [21] = file.Object(21, new string(' ', 1024 - "21 0 obj\n".Length - 1) + "15" + new string(' ', 100)),
+        };
+        file.Table(22, rows, "/Size 22 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal("0 0 m 10 10 l S"u8.ToArray());
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamTruncated)
+            .Which.Message.Should().StartWith("The stream's /Length names object 21 0, which one of the reader's limits cut");
+        document.Reader.TryGetStreamLengthFault(4, out var fault).Should().BeTrue();
+        fault.Form.Should().Be(StreamLengthForm.ObjectCut);
+        fault.Reference.Should().Be(new PdfObjectId(21));
+        fault.Declared.Should().BeNull();
+    }
 }
