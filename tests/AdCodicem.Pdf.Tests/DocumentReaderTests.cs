@@ -1901,16 +1901,25 @@ public class DocumentReaderTests
         sections[1].Fault.Should().Be("it holds 1 row where its /Index and /Size declare 5");
     }
 
-    [Fact]
-    public void A_deferred_length_is_not_checked_against_data_a_guard_cut()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_deferred_length_is_not_checked_against_data_a_guard_cut(bool decoding)
     {
         // The stream's data, taken up to the endstream its rows spell, runs past MaxStreamLength: decoding cut it, and the
-        // length, read once the chain is, was checked against it, the guard's cut reported as the file's (ADR 34).
-        var file = ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: false);
-        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = 30 } });
+        // length, read once the chain is, was checked against it, the guard's cut reported as the file's (ADR 34). Or the
+        // data, compressed in stored blocks that show the rows as written, decodes past MaxDecodedStreamLength, which kept
+        // it from being taken again to its length.
+        var file = ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: false, stored: decoding);
+        var limits = decoding
+            ? PdfReaderLimits.Default with { MaxDecodedStreamLength = 30 }
+            : PdfReaderLimits.Default with { MaxStreamLength = 30 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
         using var whole = PdfDocument.Open(file);
 
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitStreamLength);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            decoding ? PdfDiagnosticCodes.LimitDecodedStream : PdfDiagnosticCodes.LimitStreamLength);
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeTrue();
         whole.Diagnostics.Should().BeEmpty();
     }
 

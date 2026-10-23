@@ -191,23 +191,31 @@ internal static class ChainFiles
     /// A file of one cross-reference stream, object 5, whose <c>/Length</c> names object 4, which only that stream indexes,
     /// in a row before two rows of reserved types that spell <c>endstream</c> after an end-of-line; the page's row comes
     /// after them. With <paramref name="reservedRowFirst"/>, the <c>/Index</c> numbers object 4 twice: first in a row of a
-    /// reserved type, which the specification says to ignore, then in the row that places it. The file is valid.
+    /// reserved type, which the specification says to ignore, then in the row that places it. With <paramref name="stored"/>,
+    /// the data is compressed in stored blocks, which show the rows as written. The file is valid.
     /// </summary>
-    public static byte[] AloneWithIndirectLengthBeforeSpelledRows(bool reservedRowFirst)
+    public static byte[] AloneWithIndirectLengthBeforeSpelledRows(bool reservedRowFirst, bool stored = false)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
-        var rowCount = reservedRowFirst ? 9 : 8;
-        file.Object(4, (rowCount * 7).ToString(CultureInfo.InvariantCulture));
-        var stream = file.Position;
         var reserved = reservedRowFirst ? [(3, 0L, 0)] : Array.Empty<(int, long, int)>();
-        var data = new List<byte>(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), .. reserved, (1, file.OffsetOf(4), 0), (1, stream, 0)], Rows.Raw));
-        data.AddRange("\nendstream\0\0\0\0"u8.ToArray());
-        data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long four, long stream)
+        {
+            var data = new List<byte>(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), .. reserved, (1, four, 0), (1, stream, 0)], Rows.Raw));
+            data.AddRange("\nendstream\0\0\0\0"u8.ToArray());
+            data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
+            return stored ? Compress([.. data]) : [.. data];
+        }
+
+        file.Object(4, Data(0, 0).Length.ToString(CultureInfo.InvariantCulture));
+        var stream = file.Position;
         var index = reservedRowFirst ? "0 3 4 1 4 2 6 2 3 1" : "0 3 4 2 6 2 3 1";
-        file.Stream(5, $"/Type /XRef /Size 8 /W [1 4 2] /Index [{index}] /Root 1 0 R /Length 4 0 R", [.. data]);
+        var filter = stored ? " /Filter /FlateDecode" : string.Empty;
+        file.Stream(5, $"/Type /XRef /Size 8 /W [1 4 2] /Index [{index}]{filter} /Root 1 0 R /Length 4 0 R", Data(file.OffsetOf(4), stream));
         file.StartXRef(stream);
         return file.ToArray();
     }
@@ -561,16 +569,17 @@ internal static class ChainFiles
             data.AddRange([(byte)type, (byte)(second >> 24), (byte)(second >> 16), (byte)(second >> 8), (byte)second, (byte)(third >> 8), (byte)third]);
         }
 
-        if (encoding == Rows.Raw)
-        {
-            return [.. data];
-        }
+        return encoding == Rows.Raw ? [.. data] : Compress([.. data]);
+    }
 
+    /// <summary>Compresses data in stored blocks, which show it as written.</summary>
+    private static byte[] Compress(byte[] data)
+    {
         using var output = new MemoryStream();
 
         using (var zlib = new ZLibStream(output, CompressionLevel.NoCompression, leaveOpen: true))
         {
-            zlib.Write([.. data]);
+            zlib.Write(data);
         }
 
         return output.ToArray();

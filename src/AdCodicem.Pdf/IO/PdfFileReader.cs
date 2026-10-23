@@ -3830,9 +3830,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
         }
 
-        // Data a guard cut is the guard's, which says so (ADR 34), and is not checked against a length: decoding it, which
-        // reads it, says whether it was.
-        if (deferred is { } check && !xrefStream.Data.CutByGuard)
+        // Data a guard cut — MaxStreamLength as the data was read, or a guard on decoding it — is the guard's, which says so
+        // (ADR 34), and is not checked against a length: the cut kept the data from being taken again to it.
+        if (deferred is { } check && decodedWhole)
         {
             (_deferredLengths ??= [])[xrefStream.Data.Position] = check;
         }
