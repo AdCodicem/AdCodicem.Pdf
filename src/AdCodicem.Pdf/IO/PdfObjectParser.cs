@@ -706,11 +706,19 @@ internal ref struct PdfObjectParser
         _endObjUnknown = false;
 
         // The end-of-line after "stream" is not data. A buffer that ends on the keyword, or on the carriage
-        // return of a CR LF, cannot say where the data starts; a larger one can — unless the buffer ends the data, and the
-        // stream's data, which starts there, holds nothing.
+        // return of a CR LF, cannot say where the data starts: the file says, as it says what follows the data, since the
+        // data counts toward no window — not even one a guard ended there (#174) —; a parser the reader does not back
+        // needs a larger buffer. One that ends the data says: the stream's data, which starts there, holds nothing.
         if (!_endsData && dataStart >= span.Length && (dataStart == keywordEnd || span[dataStart - 1] != (byte)'\n'))
         {
-            _truncated = true;
+            if (_streamData is null)
+            {
+                _truncated = true;
+            }
+            else
+            {
+                dataStart = (int)(_streamData.DataStart(_baseOffset + keywordEnd) - _baseOffset);
+            }
         }
 
         var declared = ReadLength(dictionary);
@@ -743,7 +751,7 @@ internal ref struct PdfObjectParser
         var deferred = declared.Form == StreamLengthForm.Deferred;
         var declaredEnd = length < 0 ? -1 : _baseOffset + dataStart + length;
         var search = _streamData is not null
-            ? _streamData.FindEndStream(_objectNumber, _baseOffset + dataStart, declaredEnd, span[dataStart..], deferred)
+            ? _streamData.FindEndStream(_objectNumber, _baseOffset + dataStart, declaredEnd, span[Math.Min(dataStart, span.Length)..], deferred)
             : SearchBuffer(span, dataStart, declaredEnd, deferred);
 
         if (search is not { } settled)

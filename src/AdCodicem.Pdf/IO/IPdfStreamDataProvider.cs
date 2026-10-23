@@ -20,6 +20,14 @@ internal interface IPdfStreamDataProvider
     PdfStreamData Create(long absoluteOffset, int length);
 
     /// <summary>
+    /// Gives where the data of a stream starts in the file: past the end-of-line after its <c>stream</c> keyword, which ends
+    /// at <paramref name="absoluteKeywordEnd"/>. The parser asks when its buffer ends on the keyword, or on the carriage
+    /// return after it, and so cannot say: a window a guard ended there is not grown for it, since stream data counts
+    /// toward no window (#174).
+    /// </summary>
+    long DataStart(long absoluteKeywordEnd);
+
+    /// <summary>
     /// Determines whether an <c>endstream</c> keyword follows <paramref name="absoluteOffset"/>, after white space and
     /// comments, however many (#174), and what follows it. The parser asks at the end of a stream's declared length when its
     /// buffer cannot say: the data runs past it, or the white space after it does.

@@ -1541,6 +1541,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <inheritdoc/>
+    long IPdfStreamDataProvider.DataStart(long absoluteKeywordEnd)
+    {
+        // The end-of-line after "stream" is a carriage return and a line feed, or either alone, as the lexer skips it.
+        Span<byte> endOfLine = stackalloc byte[2];
+        var read = absoluteKeywordEnd < 0 || absoluteKeywordEnd >= _source.Length
+            ? 0
+            : _source.Read(absoluteKeywordEnd, endOfLine[..(int)Math.Min(endOfLine.Length, _source.Length - absoluteKeywordEnd)]);
+        var skipped = read > 0 && endOfLine[0] == (byte)'\r' ? 1 : 0;
+
+        if (skipped < read && endOfLine[skipped] == (byte)'\n')
+        {
+            skipped++;
+        }
+
+        return absoluteKeywordEnd + skipped;
+    }
+
+    /// <inheritdoc/>
     EndObjState? IPdfStreamDataProvider.CheckEndStream(long absoluteOffset)
     {
         // A source is only asked for bytes it has, as GetWindow does: a subclass need not accept an offset

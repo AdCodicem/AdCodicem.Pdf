@@ -110,7 +110,8 @@ than a reference to a reference. An object stream's header lists its objects by 
 one's objects each lie before the next one starts: the reader reads each no further, and a header that breaks that
 order ends where it breaks it. A sound stream's `endstream` follows its declared length; where it does not, or the
 `/Length` gives none, the reader searches the file for it past the bytes it parsed the object through, rather than parse
-the object through a larger window, so that a stream's data never counts toward its object's length. A document's
+the object through a larger window, so that a stream's data — and the end-of-line after its `stream` keyword — never
+counts toward its object's length. A document's
 searches read four times the file at most: a valid file is read past those bytes only for the data of a cross-reference
 stream whose `/Length` the chain cannot read yet, and for white space and comments after a declared length, about twice
 the file. Those stay internal constants, since lifting them would let nothing more be read, and

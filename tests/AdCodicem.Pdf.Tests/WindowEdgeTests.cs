@@ -4,6 +4,7 @@ using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -140,6 +141,68 @@ public class WindowEdgeTests
         }
 
         failures.Should().BeEmpty($"{Describe(endOfLine)} must not cost a larger window");
+    }
+
+    [Theory]
+    [InlineData("\n", true)]
+    [InlineData("\r\n", true)]
+    [InlineData("\r", true)]
+    [InlineData("\n", false)]
+    [InlineData("\r\n", false)]
+    public void A_stream_reads_the_same_when_a_guard_s_window_ends_on_its_keyword(string endOfLine, bool ended)
+    {
+        // MaxObjectLength ends the window right after "stream", or after its carriage return: the dictionary is whole, and
+        // the end-of-line, as the data, counts toward no window. The data starts past it, as under a window one byte
+        // larger — never on it, a byte early, nor at the declared length past the cut with no search (#174).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(
+                4,
+                $"<< /Pad ({new string('x', 60)}) /Length {(ended ? 40 : 5000)} >>\nstream{endOfLine}" + new string('a', 40) +
+                (ended ? "\nendstream" : string.Empty)),
+            [6] = file.Object(6, "(six)"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var bytes = file.Bytes;
+        var header = PdfTemplate.OffsetOf(bytes, "4 0 obj");
+        var keywordEnd = PdfTemplate.OffsetOf(bytes, "stream" + endOfLine) + "stream".Length;
+        var window = (int)(keywordEnd - header) + (endOfLine == "\r\n" ? 1 : 0);
+
+        using var whole = PdfDocument.Open(bytes);
+        using var guarded = PdfDocument.Open(
+            bytes,
+            PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = window } });
+
+        var expected = whole.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray();
+        guarded.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal(expected);
+        expected.Should().Equal(Encoding.ASCII.GetBytes(new string('a', 40)));
+        guarded.Diagnostics.Select(entry => entry.Message).Should().Equal(whole.Diagnostics.Select(entry => entry.Message));
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_reads_whole_when_its_guard_s_window_ends_on_its_keyword()
+    {
+        // MaxTrailerLength ends the window right after the stream's keyword: its dictionary is whole, and its rows are read
+        // past it, as under a window one byte larger — not a byte early, misaligned, which rebuilt the index and judged the
+        // catalog missing (#174).
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildWithXRefStream(rootNumber: 1);
+        var dictionary = PdfTemplate.OffsetOf(bytes, "/Type /XRef");
+        var header = Encoding.Latin1.GetString(bytes).LastIndexOf(" 0 obj", (int)dictionary, StringComparison.Ordinal) - 1;
+        var keywordEnd = Encoding.Latin1.GetString(bytes).IndexOf("stream", (int)dictionary, StringComparison.Ordinal) + "stream".Length;
+
+        using var document = PdfDocument.Open(
+            bytes,
+            PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxTrailerLength = keywordEnd - header } });
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
     }
 
     [Fact]
