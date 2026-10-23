@@ -20,10 +20,8 @@ namespace AdCodicem.Pdf.IntegrationTests;
 /// qpdf reads the copy of an object its own index places, which is the reader's only when both indexes place the same
 /// one: a stream qpdf's index lacks — tiff2pdf's scans, whose chain qpdf does not follow —, or places elsewhere — the
 /// Atypon article's object 49, which the reader reads where its rebuilt index places it —, is another stream, and is not
-/// compared. qpdf's search for <c>endstream</c> is not bounded by the next object, as the reader's past its window is;
-/// where the two disagree for that reason, the stream is named below. Inside the window the reader does not bound its
-/// search either, and the two agree even where both are wrong: PDFBox's zeroed object stream, object 417, takes object
-/// 441's endstream, a zeroed stretch having erased its own.
+/// compared. qpdf's search for <c>endstream</c> is not bounded by the next object, as the reader's is, in the bytes it
+/// holds as past them (#174); where the two disagree for that reason, the stream is named below.
 /// </para>
 /// </remarks>
 [Collection(RefereeCollection.Name)]
@@ -34,10 +32,15 @@ public class StreamLengthRefereeTests(RefereeContainer referee)
     /// planning report: a block of zeros erased the end of object 695's data, its <c>endstream</c> and the objects after
     /// it; qpdf takes the first <c>endstream</c> past the block, object 778's, and reads 3,292,376 bytes, where the reader
     /// stops at object 696, which the index as written places 21 bytes past the declared length, and keeps that length.
+    /// PDFBox's zeroed object stream: a 32 KB block of zeros erased object 417's <c>endstream</c> and the objects after it;
+    /// qpdf takes object 441's <c>endstream</c>, past the block, and reads 34,152 bytes, where the reader stops at the next
+    /// object the index places, inside the block, and keeps the declared 1,302 — it took 441's too until #174 bounded its
+    /// search within the bytes it holds as past them.
     /// </summary>
     private static readonly Dictionary<string, int[]> KnownDisagreements = new(StringComparer.Ordinal)
     {
         ["remote/opf-format-corpus/jhove-hul-35-pdfium-urban-planning-report.pdf"] = [695],
+        ["remote/pdfbox/distiller6-zeroed-object-stream-pdfbox3947.pdf"] = [417],
     };
 
     [Theory]
