@@ -364,9 +364,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// What each search of the file for a stream's <c>endstream</c> found, by where the stream's data starts and whether
     /// its <c>/Length</c> was one the chain could not read: the file is searched once for each stream, however many times
-    /// it is parsed.
+    /// it is parsed. With it, the declared end it last said what follows of, read again only when that end changes.
     /// </summary>
-    private readonly Dictionary<(long DataStart, bool Deferred), StreamEndSearch> _endStreamSearches = [];
+    private readonly Dictionary<(long DataStart, bool Deferred), (StreamEndSearch Search, long DeclaredEnd)> _endStreamSearches = [];
 
     /// <summary>
     /// What follows each place the reader read on past white space and comments to find an <c>endstream</c> (#174): read
@@ -1790,11 +1790,38 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     StreamEndSearch IPdfStreamDataProvider.FindEndStream(
         int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred)
     {
-        if (_endStreamSearches.TryGetValue((absoluteDataStart, deferred), out var known))
+        var found = _endStreamSearches.TryGetValue((absoluteDataStart, deferred), out var known);
+
+        if (found && known.DeclaredEnd == declaredEnd)
         {
-            return known;
+            return known.Search;
         }
 
+        var search = found ? known.Search : SearchEndStreamOnce(number, absoluteDataStart, buffered, deferred);
+
+        // Whether the object's endobj follows the declared length depends on the length the stream is read with now, which a
+        // rebuild can change — the /Length an object another definition replaces —: it is read again when that length does,
+        // and the search, whose result the bytes and the index as written alone decide, is not.
+        if (search.Length is null && search.Searched)
+        {
+            search = search with
+            {
+                EndObjAfterDeclared = declaredEnd >= absoluteDataStart && declaredEnd <= (search.NextObject ?? _source.Length) &&
+                    EndObjFollows(absoluteDataStart, declaredEnd, buffered),
+            };
+        }
+
+        _endStreamSearches[(absoluteDataStart, deferred)] = (search, declaredEnd);
+        return search;
+    }
+
+    /// <summary>
+    /// Searches, once for each stream, the data that starts at <paramref name="absoluteDataStart"/> for its first
+    /// <c>endstream</c>, and reads what its object's <c>endobj</c> does when none is found; what follows the declared length
+    /// is left to <see cref="IPdfStreamDataProvider.FindEndStream"/>.
+    /// </summary>
+    private StreamEndSearch SearchEndStreamOnce(int number, long absoluteDataStart, ReadOnlySpan<byte> buffered, bool deferred)
+    {
         var nextObject = NextObjectStart(number, absoluteDataStart);
 
         // Once the searches have read as much of the file as they may, the bytes the parser holds are searched alone: they
@@ -1810,7 +1837,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of more
         // than 2 GB can put one there, and the stream is read as one whose endstream is not found. With none, what the
         // object's endobj does is read once with the search, as long as the searches may read.
-        var search = dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue
+        return dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue
             ? new StreamEndSearch(
                 (int)(dataEnd - absoluteDataStart),
                 stop,
@@ -1818,13 +1845,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             : new StreamEndSearch(null, stop, EndObjState.Unknown, searched)
             {
                 EndObjSeen = endObjSeen,
-                EndObjAfterDeclared = searched && declaredEnd >= absoluteDataStart && declaredEnd <= end &&
-                    EndObjFollows(absoluteDataStart, declaredEnd, buffered),
                 ObjectEnd = searched ? EndObjBefore(absoluteDataStart, end, buffered) : -1,
             };
-
-        _endStreamSearches[(absoluteDataStart, deferred)] = search;
-        return search;
     }
 
     /// <inheritdoc/>
@@ -2059,6 +2081,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _streamLengthFaults.TrimExcess();
         _endStreamSearches.Clear();
         _endStreamSearches.TrimExcess();
+        _endStreamChecks.Clear();
+        _endStreamChecks.TrimExcess();
         Release(_lengthFaultsReported);
         Release(_syntaxReported);
         Release(_limitsReached);
@@ -3557,8 +3581,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // Data a search found no endstream for, before the next object the sections read so far place or the end of the
         // file, ends nowhere the section says: its rows are not read (#220).
-        if (deferred is { } unended && _endStreamSearches.TryGetValue((xrefStream.Data.Position, true), out var search) &&
-            search.Length is null)
+        if (deferred is { } unended && _endStreamSearches.TryGetValue((xrefStream.Data.Position, true), out var known) &&
+            known.Search is { Length: null } search)
         {
             var where = search.NextObject is { } next
                 ? string.Create(CultureInfo.InvariantCulture, $"before the next object, at {next}")

@@ -2068,4 +2068,25 @@ public class StreamLengthTests
             return count;
         }
     }
+
+    [Theory]
+    [InlineData("stream")]
+    [InlineData("stream\r")]
+    [InlineData("stream\n")]
+    [InlineData("stream\r\n")]
+    public void A_file_that_ends_on_the_stream_keyword_ends_the_stream_s_data_there_and_says_so(string tail)
+    {
+        // A buffer that ends on the keyword, or on the carriage return of a CR LF, cannot say where the data starts, and was
+        // left for a larger one, which a buffer that ends the file has none of: the stream read as no data, in silence.
+        // Its data starts where the file ends, holding nothing, as with the line feed after the keyword (#174).
+        var text = "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R /Metadata 5 0 R >> endobj\n" +
+            "2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\n5 0 obj << /Length 10 >>\n" + tail;
+        using var document = PdfDocument.Open(Encoding.ASCII.GetBytes(text));
+
+        document.GetObject(new PdfObjectId(5)).AsStream().Required().RawLength.Should().Be(0);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamTruncated).Which.Message.Should().Be(
+            "The stream declared 10 bytes, and no endstream follows its data before the end of the file; the 0 bytes to the end of the file are taken as its data.");
+        document.Reader.TryGetStreamLengthFault(5, out var fault).Should().BeTrue();
+        fault.EndStream.Should().Be(EndStreamState.MissingBeforeEndOfFile);
+    }
 }

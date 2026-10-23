@@ -1911,4 +1911,43 @@ public class ReadOrderTests
             return first;
         }
     }
+
+    [Fact]
+    public void A_stream_read_again_after_a_rebuild_changed_its_length_ends_as_one_read_after_the_rebuild_does()
+    {
+        // Object 4 lost its endstream, its endobj after its 10 bytes; its /Length, object 5, gives 10 where the table places
+        // it, and 3 where a second definition, which only a rebuild finds, gives it. Read before the rebuild, then after it,
+        // object 4 was served 3 bytes, taken as the length its endobj follows — what was read of the endobj after the first
+        // length was kept with the search. Read again, it ends as it does when first read after the rebuild: where its
+        // object's endobj ends it, after 10 bytes (#174).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[4] = file.Position;
+        file.Raw("4 0 obj\n<< /Length 5 0 R >>\nstream\nABCDEFGHIJ\nendobj\n");
+        rows[5] = file.Object(5, "10");
+        rows[7] = file.Padding(7, 2000);
+        file.Object(6, "(six)");
+        file.Object(5, "3");
+        rows[6] = rows[1] + 1;
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+
+        using var before = PdfDocument.Open(file.Bytes);
+        before.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal("ABCDEFGHIJ"u8.ToArray());
+        before.GetObject(new PdfObjectId(6));
+        before.WasRepaired.Should().BeTrue();
+        var again = before.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        using var after = PdfDocument.Open(file.Bytes);
+        after.GetObject(new PdfObjectId(6));
+        var first = after.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        first.GetRawBytes().ToArray().Should().Equal("ABCDEFGHIJ"u8.ToArray());
+        again.GetRawBytes().ToArray().Should().Equal("ABCDEFGHIJ"u8.ToArray());
+        before.Reader.TryGetStreamLengthFault(4, out var fault).Should().BeTrue();
+        fault.Taken.Should().Be(10);
+    }
 }
