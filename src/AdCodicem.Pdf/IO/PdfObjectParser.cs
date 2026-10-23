@@ -715,7 +715,7 @@ internal ref struct PdfObjectParser
         }
 
         // An integer read from a /Length a guard cut is a place to check, never a length kept when nothing confirms it.
-        var checkedAt = declared.Form == StreamLengthForm.ObjectCut ? (int)declared.Value.GetValueOrDefault(-1) : length;
+        var checkedAt = declared.Hint ?? length;
         var confirmed = ConfirmsLength(span, dataStart, checkedAt);
 
         if (confirmed is null)
@@ -976,11 +976,14 @@ internal ref struct PdfObjectParser
                 presence = value is PdfNull ? ObjectPresence.Unproduced : ObjectPresence.Defined;
             }
 
-            // An integer the cut left, whole or parted, is only a place to look for endstream at (#224).
+            // An integer the cut left, whole or parted, is only a place to look for endstream at, and no declared length; the
+            // object the guard cut is the one a chain of references from the /Length leads to (#224).
             if (presence == ObjectPresence.Cut)
             {
                 return new DeclaredLength(
-                    StreamLengthForm.ObjectCut, value.AsInteger() is { } hint and >= 0 and <= int.MaxValue ? hint : null, reference);
+                    StreamLengthForm.ObjectCut,
+                    Reference: named.Target(),
+                    Hint: value.AsInteger() is { } hint and >= 0 and <= int.MaxValue ? (int)hint : null);
             }
 
             if (presence != ObjectPresence.Defined)
@@ -1529,6 +1532,15 @@ internal ref struct PdfObjectParser
     /// <param name="Reference">The object it names, when it is a reference.</param>
     /// <param name="Kind">What kind of value it holds, when that is not an integer.</param>
     /// <param name="Written">The real number, name or boolean it holds, as the file wrote it; null for any other value.</param>
+    /// <param name="Hint">
+    /// The integer an object a guard cut held before the cut, when it is one a stream can have: where to look for an
+    /// <c>endstream</c> first, and no declared length (#224).
+    /// </param>
     private readonly record struct DeclaredLength(
-        StreamLengthForm Form, long? Value = null, PdfObjectId? Reference = null, string? Kind = null, PdfObject? Written = null);
+        StreamLengthForm Form,
+        long? Value = null,
+        PdfObjectId? Reference = null,
+        string? Kind = null,
+        PdfObject? Written = null,
+        int? Hint = null);
 }
