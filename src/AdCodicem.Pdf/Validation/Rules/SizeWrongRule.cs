@@ -135,7 +135,8 @@ internal sealed class SizeWrongRule : IValidationRule
     {
         foreach (var section in sections)
         {
-            if (section.State is XRefSectionState.NotFound or XRefSectionState.Malformed || section.CutByLimit)
+            if (section.State is XRefSectionState.NotFound or XRefSectionState.Malformed || section.CutByLimit ||
+                section.ChainHiddenByGuard is not null)
             {
                 return false;
             }

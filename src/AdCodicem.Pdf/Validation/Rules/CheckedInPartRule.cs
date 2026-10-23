@@ -71,6 +71,17 @@ internal sealed class CheckedInPartRule : IValidationRule
                         $"One of the reader's limits stopped it reading the cross-reference section at offset {section.Offset} whole: what lies past the limit was not checked."),
                     remedy: null);
             }
+
+            if (section.ChainHiddenByGuard is { } hidden)
+            {
+                context.Report(
+                    this,
+                    PdfValidationLocation.AtPosition(section.Offset),
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The cross-reference section at offset {section.Offset} names older sections, but {hidden}: they were not checked."),
+                    remedy: null);
+            }
         }
 
         foreach (var finding in context.Probe.NotChecked)

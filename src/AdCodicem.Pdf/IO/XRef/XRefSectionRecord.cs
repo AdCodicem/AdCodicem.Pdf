@@ -73,6 +73,13 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public bool TrailerCutByLimit { get; set; }
 
+    /// <summary>
+    /// Gets what the section's <c>/Prev</c> or <c>/XRefStm</c> is, when it leads to an object one of the reader's guards cut
+    /// — "its /Prev is the reference 9 0 R, which one of the reader's limits cut" —, which ends the chain here: the sections
+    /// it names are the guard's to hide (#263). Null when nothing did.
+    /// </summary>
+    public string? ChainHiddenByGuard { get; set; }
+
     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
     public PdfDictionary? Trailer { get; set; }
 
@@ -118,6 +125,7 @@ internal sealed class XRefSectionRecord
         Incomplete = attempt.Incomplete;
         CutByLimit = attempt.CutByLimit;
         TrailerCutByLimit = attempt.TrailerCutByLimit;
+        ChainHiddenByGuard = attempt.ChainHiddenByGuard;
         Trailer = attempt.Trailer;
         TrailerFault = attempt.TrailerFault;
         TrailerPosition = attempt.TrailerPosition;
