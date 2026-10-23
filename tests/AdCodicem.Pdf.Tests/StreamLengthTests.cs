@@ -2227,7 +2227,7 @@ public class StreamLengthTests
     {
         // The declared length ends 20 bytes short of the window's edge, and a comment after it runs past the edge and past the
         // first read after it: the reader reads on through it to the endstream, and keeps what it found for the stream's next
-        // reading, after the cache let the stream go.
+        // reading, after the cache let the stream go, which reads nothing past its window and the first read after its data.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
@@ -2247,7 +2247,8 @@ public class StreamLengthTests
         }
 
         file.Table(80, rows, "/Size 80 /Root 1 0 R");
-        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+        using var source = new StrictCountingSource(file.Bytes);
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: false);
 
         document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
 
@@ -2256,7 +2257,9 @@ public class StreamLengthTests
             document.GetObject(new PdfObjectId(number));
         }
 
+        var before = source.BytesRead;
         document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
+        (source.BytesRead - before).Should().BeLessThanOrEqualTo(PdfFileReader.InitialObjectWindow + PdfObjectParser.EndObjLookahead);
         document.Diagnostics.Should().BeEmpty();
         document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
     }

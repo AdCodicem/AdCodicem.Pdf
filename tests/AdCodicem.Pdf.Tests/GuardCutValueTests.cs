@@ -4,6 +4,7 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
 
@@ -698,6 +699,30 @@ public class GuardCutValueTests
 
         var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Fact]
+    public void A_section_whose_prev_a_guard_cut_keeps_the_chain_it_hides_when_it_is_found_where_it_was_moved()
+    {
+        // A third table's /Prev names the table whose /Prev, object 9, MaxObjectLength cuts, 3 bytes before it: the section is
+        // found where it lies, and what its /Prev hides is said of it there, as where it is named (#263).
+        var two = ChainFiles.UpdateNamingItsPrevious("9 0 R", padding: 3000);
+        var text = Encoding.Latin1.GetString(two);
+        var named = long.Parse(text[(text.LastIndexOf("startxref\n", StringComparison.Ordinal) + "startxref\n".Length)..].Split('\n')[0], CultureInfo.InvariantCulture);
+        var five = two.Length;
+        var appended = Invariant($"5 0 obj\n(five)\nendobj\n");
+        var third = five + appended.Length;
+        appended += Invariant(
+            $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{five:D10} 00000 n\r\ntrailer\n<< /Size 10 /Root 1 0 R /Prev {named - 3} >>\nstartxref\n{third}\n%%EOF\n");
+        var file = two.Concat(Encoding.Latin1.GetBytes(appended)).ToArray();
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var moved = document.Reader.Structure.Sections.Should().ContainSingle(section => section.State == XRefSectionState.Relocated).Which;
+        moved.ChainHiddenByGuard.Should().NotBeNull();
+        new PdfValidator().Validate(document).Findings
+            .Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart)
+            .Should().ContainSingle(finding => finding.Message.Contains("names older sections", StringComparison.Ordinal));
     }
 
     [Fact]
