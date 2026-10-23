@@ -140,12 +140,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// How many times the length of the file the searches for <c>endstream</c> of one document may read, together,
-    /// before a stream whose declared length no <c>endstream</c> follows keeps it without a search.
+    /// before a stream whose declared length no <c>endstream</c> follows keeps it without a search past the bytes the
+    /// parser holds, and white space after a declared length is read no further than a first read.
     /// </summary>
     /// <remarks>
-    /// Not a guard a valid file reaches (ADR 34): a valid file is never searched. Each search reads from a stream's
-    /// data to the first object header the bytes hold after it, or to the next object the index as written places,
-    /// whichever is nearer, and its reads grow from twice what the parser holds of the data
+    /// Not a guard a valid file reaches (ADR 34), argued here once for every read it counts. A valid file is read past the
+    /// parser's window in two ways only: a cross-reference stream whose <c>/Length</c> the chain cannot read (#220) is
+    /// searched once to its <c>endstream</c>, and white space after a declared length that runs past a first read is read
+    /// on once for each place (#174). The data of different sections lies apart, and so do the runs of white space after
+    /// different streams: together those reads cover the file once, and one read past each — about twice the file at
+    /// most. Every other search is of an invalid stream, whose <c>endstream</c> does not follow its declared length. Each
+    /// reads from a stream's data to the first object header the bytes hold after it, or to the next object the index as
+    /// written places, whichever is nearer, and its reads grow from twice what the parser holds of the data
     /// (<see cref="EndStreamSearchFirstRead"/>): it reads at most about twice what its object spans, and the searches of
     /// objects whose headers follow one another read disjoint stretches — the file twice over at most. Only searches that
     /// share a stretch read more: objects that overlap, the header of one inside the dictionary of another, before its
@@ -350,10 +356,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly Dictionary<int, StreamLengthFault> _streamLengthFaults = [];
 
     /// <summary>
-    /// What each search of the file for a stream's <c>endstream</c> found, by where the stream's data starts: the file
-    /// is searched once for each stream, however many times it is parsed.
+    /// What each search of the file for a stream's <c>endstream</c> found, by where the stream's data starts and whether
+    /// its <c>/Length</c> was one the chain could not read: the file is searched once for each stream, however many times
+    /// it is parsed.
     /// </summary>
-    private readonly Dictionary<long, StreamEndSearch> _endStreamSearches = [];
+    private readonly Dictionary<(long DataStart, bool Deferred), StreamEndSearch> _endStreamSearches = [];
+
+    /// <summary>
+    /// What follows each place the reader read on past white space and comments to find an <c>endstream</c> (#174): read
+    /// once, however many times its stream is parsed.
+    /// </summary>
+    private readonly Dictionary<long, EndObjState?> _endStreamChecks = [];
 
     /// <summary>
     /// Where the data starts of each stream whose length fault a reading the reader kept reported: the stream is not
@@ -1492,33 +1505,234 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <inheritdoc/>
-    bool IPdfStreamDataProvider.IsEndStreamAt(long absoluteOffset)
+    EndObjState? IPdfStreamDataProvider.CheckEndStream(long absoluteOffset)
     {
         // A source is only asked for bytes it has, as GetWindow does: a subclass need not accept an offset
         // or a length that runs past its end.
         if (absoluteOffset < 0 || absoluteOffset >= _source.Length)
         {
-            return false;
-        }
-
-        Span<byte> tail = stackalloc byte[PdfObjectParser.EndStreamLookahead];
-        var available = (int)Math.Min(tail.Length, _source.Length - absoluteOffset);
-        var read = _source.Read(absoluteOffset, tail[..available]);
-        return PdfObjectParser.IsEndStreamAt(tail[..read], 0);
-    }
-
-    /// <inheritdoc/>
-    EndObjState? IPdfStreamDataProvider.CheckEndStream(long absoluteOffset)
-    {
-        if (absoluteOffset < 0 || absoluteOffset >= _source.Length)
-        {
             return null;
         }
 
+        // One read decides for all but a stream whose white space runs past it: a few bytes, on the stack.
         Span<byte> tail = stackalloc byte[PdfObjectParser.EndObjLookahead];
-        var available = (int)Math.Min(tail.Length, _source.Length - absoluteOffset);
-        var read = _source.Read(absoluteOffset, tail[..available]);
-        return PdfObjectParser.ReadStreamEnd(tail[..read], absoluteOffset + read >= _source.Length);
+        var read = _source.Read(absoluteOffset, tail[..(int)Math.Min(tail.Length, _source.Length - absoluteOffset)]);
+        var end = StreamEnds.ReadEnd(tail[..read], absoluteOffset + read >= _source.Length);
+
+        return end.Kind switch
+        {
+            StreamEndKind.None => null,
+            StreamEndKind.EndStream when end.EndObj != EndObjState.Unseen => end.EndObj,
+            _ => CheckEndStreamOn(absoluteOffset, end),
+        };
+    }
+
+    /// <summary>
+    /// Reads on, past what one read of <see cref="IPdfStreamDataProvider.CheckEndStream"/> holds, through the white space
+    /// and comments that may lead to an <c>endstream</c> at <paramref name="absoluteOffset"/>, or to what follows it: once
+    /// for each place, however often its stream is parsed.
+    /// </summary>
+    /// <param name="absoluteOffset">Where the data ends.</param>
+    /// <param name="first">What the first read said: undecided, or an <c>endstream</c> after which it saw nothing.</param>
+    private EndObjState? CheckEndStreamOn(long absoluteOffset, StreamEnd first)
+    {
+        if (_endStreamChecks.TryGetValue(absoluteOffset, out var known))
+        {
+            return known;
+        }
+
+        EndObjState? state;
+        var keywordEnd = absoluteOffset + first.KeywordEnd;
+
+        if (first.Kind == StreamEndKind.Undecided)
+        {
+            var at = NextSignificant(absoluteOffset);
+            Span<byte> keyword = stackalloc byte[StreamEnds.EndStreamKeyword.Length + 1];
+            var read = at < 0 ? 0 : _source.Read(at, keyword[..(int)Math.Min(keyword.Length, _source.Length - at)]);
+
+            if (!keyword[..read].StartsWith(StreamEnds.EndStreamKeyword))
+            {
+                // Once the searches have read as much as they may, a run the first read could not see past confirms nothing.
+                _endStreamChecks[absoluteOffset] = null;
+                return null;
+            }
+
+            // "endstreamx" is no keyword, and is what follows the data.
+            if (read == keyword.Length && PdfCharacters.IsRegular(keyword[^1]))
+            {
+                _endStreamChecks[absoluteOffset] = EndObjState.Absent;
+                return EndObjState.Absent;
+            }
+
+            keywordEnd = at + StreamEnds.EndStreamKeyword.Length;
+        }
+
+        var next = NextSignificant(keywordEnd);
+        state = next < 0 ? EndObjState.Unseen : IsEndObjKeywordAt(next) ? EndObjState.Present : EndObjState.Absent;
+        _endStreamChecks[absoluteOffset] = state;
+        return state;
+    }
+
+    /// <summary>
+    /// Determines whether an <c>endobj</c> keyword, whole, follows the declared length of a stream whose data starts at
+    /// <paramref name="dataStart"/>, white space and comments between: in the bytes the parser holds when they say, in the
+    /// file otherwise.
+    /// </summary>
+    private bool EndObjFollows(long dataStart, long declaredEnd, ReadOnlySpan<byte> buffered) =>
+        (declaredEnd - dataStart <= buffered.Length
+            ? StreamEnds.IsEndObjAt(buffered, (int)(declaredEnd - dataStart), reachesEndOfFile: dataStart + buffered.Length >= _source.Length)
+            : null) ?? IsEndObjAt(declaredEnd);
+
+    /// <summary>
+    /// Gives where the data of a stream that has no <c>endstream</c> ends when its object's own <c>endobj</c> ends it before
+    /// <paramref name="stop"/>: in the bytes the parser holds when they reach the stop, in the file otherwise.
+    /// </summary>
+    private long EndObjBefore(long dataStart, long stop, ReadOnlySpan<byte> buffered)
+    {
+        if (stop - dataStart > buffered.Length)
+        {
+            return FindEndObjBefore(dataStart, stop);
+        }
+
+        var end = StreamEnds.EndObjBefore(buffered[..(int)(stop - dataStart)]);
+        return end < 0 ? -1 : dataStart + end;
+    }
+
+    /// <summary>
+    /// Determines whether an <c>endobj</c> keyword, whole, follows <paramref name="absoluteOffset"/> after white space and
+    /// comments: the end of a stream's object that has no <c>endstream</c>.
+    /// </summary>
+    private bool IsEndObjAt(long absoluteOffset)
+    {
+        if (absoluteOffset < 0 || absoluteOffset >= _source.Length)
+        {
+            return false;
+        }
+
+        Span<byte> tail = stackalloc byte[PdfObjectParser.EndObjLookahead];
+        var read = _source.Read(absoluteOffset, tail[..(int)Math.Min(tail.Length, _source.Length - absoluteOffset)]);
+
+        if (StreamEnds.IsEndObjAt(tail[..read], 0, absoluteOffset + read >= _source.Length) is { } decided)
+        {
+            return decided;
+        }
+
+        var next = NextSignificant(absoluteOffset);
+        return next >= 0 && IsEndObjKeywordAt(next);
+    }
+
+    /// <summary>
+    /// Gives where the data of a stream that has no <c>endstream</c> ends when its object's own <c>endobj</c> ends it: the
+    /// <c>endobj</c>, a whole keyword after <paramref name="absoluteDataStart"/>, that only white space separates from
+    /// <paramref name="stop"/>, the end-of-line before it left out; -1 when none does.
+    /// </summary>
+    /// <param name="absoluteDataStart">Where the data starts in the file.</param>
+    /// <param name="stop">Where the search for the stream's <c>endstream</c> stopped: an object, or the end of the file.</param>
+    private long FindEndObjBefore(long absoluteDataStart, long stop)
+    {
+        // The white space before the stop, read back a few bytes at a time and more as it runs on: the search read it
+        // already, and this reads it once more at most.
+        var end = stop;
+        var size = PdfObjectParser.EndObjLookahead;
+
+        while (end > absoluteDataStart)
+        {
+            var from = Math.Max(absoluteDataStart, end - size);
+            using var window = _source.GetWindow(from, (int)(end - from));
+            var span = window.Memory.Span;
+            _endStreamSearchBytes += span.Length;
+
+            if (span.Length < end - from)
+            {
+                return -1;
+            }
+
+            var last = span.LastIndexOfAnyExcept(PdfCharacters.Whitespace);
+
+            if (last >= 0)
+            {
+                end = from + last + 1;
+                break;
+            }
+
+            end = from;
+            size = (int)Math.Min(2L * size, EndStreamSearchChunk);
+        }
+
+        // The keyword, the byte before it and the end-of-line before that.
+        var before = Math.Max(absoluteDataStart, end - StreamEnds.EndObjKeyword.Length - 3);
+        Span<byte> bytes = stackalloc byte[StreamEnds.EndObjKeyword.Length + 3];
+        var length = (int)(end - before);
+        var held = _source.Read(before, bytes[..length]);
+        var dataEnd = held == length ? StreamEnds.EndObjEnding(bytes[..length], atDataStart: before == absoluteDataStart) : -1;
+        return dataEnd < 0 ? -1 : before + dataEnd;
+    }
+
+    /// <summary>
+    /// Gives where the first byte at or after <paramref name="position"/> lies that is neither white space nor part of a
+    /// comment, reading the file on as far as they run, or the length of the file when they run to its end; -1 when the
+    /// searches for <c>endstream</c> have read as much as they may (<see cref="EndStreamSearchPasses"/>), which these reads
+    /// count with, or the source gives less than it holds.
+    /// </summary>
+    private long NextSignificant(long position)
+    {
+        var size = PdfObjectParser.EndObjLookahead;
+        var inComment = false;
+
+        while (position < _source.Length)
+        {
+            if (_endStreamSearchBytes >= EndStreamSearchPasses * _source.Length)
+            {
+                return -1;
+            }
+
+            using var window = _source.GetWindow(position, (int)Math.Min(size, _source.Length - position));
+            var span = window.Memory.Span;
+            _endStreamSearchBytes += span.Length;
+
+            if (span.IsEmpty)
+            {
+                return -1;
+            }
+
+            for (var i = 0; i < span.Length; i++)
+            {
+                var current = span[i];
+
+                if (inComment)
+                {
+                    // A comment runs to the end of the line; both line endings occur in the wild.
+                    inComment = current is not ((byte)'\r' or (byte)'\n');
+                }
+                else if (current == (byte)'%')
+                {
+                    inComment = true;
+                }
+                else if (!PdfCharacters.IsWhitespace(current))
+                {
+                    return position + i;
+                }
+            }
+
+            position += span.Length;
+            size = (int)Math.Min(2L * size, EndStreamSearchChunk);
+        }
+
+        return _source.Length;
+    }
+
+    /// <summary>Determines whether <c>endobj</c>, a whole keyword, starts at <paramref name="position"/>.</summary>
+    private bool IsEndObjKeywordAt(long position)
+    {
+        if (position >= _source.Length)
+        {
+            return false;
+        }
+
+        Span<byte> bytes = stackalloc byte[StreamEnds.EndObjKeyword.Length + 1];
+        var read = _source.Read(position, bytes[..(int)Math.Min(bytes.Length, _source.Length - position)]);
+        return bytes[..read].StartsWith(StreamEnds.EndObjKeyword) &&
+            (read == StreamEnds.EndObjKeyword.Length ? position + read >= _source.Length : !PdfCharacters.IsRegular(bytes[^1]));
     }
 
     /// <inheritdoc/>
@@ -1545,45 +1759,53 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </para>
     /// <para>
     /// This bound is no guard (ADR 34): a valid file's <c>endstream</c> follows its declared length (ISO 32000-1,
-    /// 7.3.8.1) — so do those of the 35,873 streams of the corpus whose length is confirmed, a gap of 0 to 2 bytes
-    /// between them —, and only an invalid file is searched at all. What it reads is the stretch between the stream and
-    /// the next object, once for each stream: the result is kept, and a stream parsed again — after the cache let it go,
-    /// or a rebuild of the index — is not searched again. What the searches read together is bounded by
+    /// 7.3.8.1) — so do those of the 35,716 streams of the corpus whose length is confirmed, a gap of 0 to 2 bytes
+    /// between them, counted over the final index of each of its 401 documents —, and only an invalid stream is searched,
+    /// but for a cross-reference stream whose <c>/Length</c> the chain could not read, which is searched with neither
+    /// stop the rule for headers makes nor a carriage return trimmed, as <paramref name="deferred"/>: its rows may spell
+    /// a header, and end in a carriage return. What it reads is the stretch between the stream and the next object,
+    /// once for each stream: the result is kept, and a stream parsed again — after the cache let it go, or a rebuild of
+    /// the index — is not searched again. What the searches read together is bounded by
     /// <see cref="EndStreamSearchPasses"/>.
     /// </para>
     /// </remarks>
-    StreamEndSearch IPdfStreamDataProvider.FindEndStream(int number, long absoluteDataStart, ReadOnlySpan<byte> buffered)
+    StreamEndSearch IPdfStreamDataProvider.FindEndStream(
+        int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred)
     {
-        if (_endStreamSearches.TryGetValue(absoluteDataStart, out var known))
+        if (_endStreamSearches.TryGetValue((absoluteDataStart, deferred), out var known))
         {
             return known;
         }
 
-        StreamEndSearch search;
+        var nextObject = NextObjectStart(number, absoluteDataStart);
 
-        if (_endStreamSearchBytes >= EndStreamSearchPasses * _source.Length)
-        {
-            search = new StreamEndSearch(null, null, EndObjState.Unknown, Searched: false);
-        }
-        else
-        {
-            var nextObject = NextObjectStart(number, absoluteDataStart);
-            var dataEnd = SearchEndStream(absoluteDataStart, buffered, nextObject ?? _source.Length, out var header);
+        // Once the searches have read as much of the file as they may, the bytes the parser holds are searched alone: they
+        // cost no read.
+        var readsFile = _endStreamSearchBytes < EndStreamSearchPasses * _source.Length;
+        var dataEnd = SearchEndStream(
+            absoluteDataStart, buffered, nextObject ?? _source.Length, deferred, readsFile, out var header, out var searched, out var endObjSeen);
 
-            // A header the bytes hold is looked for only before the next object the index places: found, it is the nearer.
-            var stop = header >= 0 ? header : nextObject;
+        // A header the bytes hold is looked for only before the next object the index places: found, it is the nearer.
+        var stop = header >= 0 ? header : nextObject;
+        var end = stop ?? _source.Length;
 
-            // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of
-            // more than 2 GB can put one there, and the declared length is kept, as when none is found.
-            search = dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue
-                ? new StreamEndSearch(
-                    (int)(dataEnd - absoluteDataStart),
-                    stop,
-                    ((IPdfStreamDataProvider)this).CheckEndStream(dataEnd) ?? EndObjState.Unseen)
-                : new StreamEndSearch(null, stop, EndObjState.Unknown);
-        }
+        // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of more
+        // than 2 GB can put one there, and the stream is read as one whose endstream is not found. With none, what the
+        // object's endobj does is read once with the search, as long as the searches may read.
+        var search = dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue
+            ? new StreamEndSearch(
+                (int)(dataEnd - absoluteDataStart),
+                stop,
+                ((IPdfStreamDataProvider)this).CheckEndStream(dataEnd) ?? EndObjState.Unseen)
+            : new StreamEndSearch(null, stop, EndObjState.Unknown, searched)
+            {
+                EndObjSeen = endObjSeen,
+                EndObjAfterDeclared = searched && declaredEnd >= absoluteDataStart && declaredEnd <= end &&
+                    EndObjFollows(absoluteDataStart, declaredEnd, buffered),
+                ObjectEnd = searched ? EndObjBefore(absoluteDataStart, end, buffered) : -1,
+            };
 
-        _endStreamSearches[absoluteDataStart] = search;
+        _endStreamSearches[(absoluteDataStart, deferred)] = search;
         return search;
     }
 
@@ -1682,15 +1904,33 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// for what each read repeats, and each read is searched for both: a header only before the <c>endstream</c> it holds,
     /// with what <see cref="HeaderText"/> carries into it of the reads before.
     /// </remarks>
-    private long SearchEndStream(long dataStart, ReadOnlySpan<byte> buffered, long limit, out long header)
+    /// <param name="dataStart">Where the data starts in the file.</param>
+    /// <param name="buffered">The bytes of the data the parser holds, from its start.</param>
+    /// <param name="limit">Where the next object the index places starts, or the end of the file.</param>
+    /// <param name="deferred">Whether the stream's <c>/Length</c> is one the chain could not read, which no header stops.</param>
+    /// <param name="readsFile">Whether the file past the bytes the parser holds may be read.</param>
+    /// <param name="header">Where the header that stopped the search starts, or -1.</param>
+    /// <param name="searched">Whether the search reached where it stops, rather than the end of what it might read.</param>
+    /// <param name="endObjSeen">Whether the bytes searched, before a header that stopped the search, hold an <c>endobj</c>.</param>
+    private long SearchEndStream(
+        long dataStart,
+        ReadOnlySpan<byte> buffered,
+        long limit,
+        bool deferred,
+        bool readsFile,
+        out long header,
+        out bool searched,
+        out bool endObjSeen)
     {
         Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
         Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
         var text = new HeaderText(carried, carriedAt, dataStart);
+        searched = true;
 
         var inBuffer = (int)Math.Clamp(limit - dataStart, 0, buffered.Length);
         text.Read(buffered[..inBuffer], dataStart);
-        var found = SearchStretch(text, endsRange: dataStart + inBuffer >= limit, out header);
+        var found = StreamEnds.SearchStretch(text, endsRange: dataStart + inBuffer >= limit, deferred, out header);
+        endObjSeen = StreamEnds.HoldsEndObj(buffered[..inBuffer], header >= 0 ? (int)(header - dataStart) : inBuffer);
 
         if (found >= 0 || header >= 0)
         {
@@ -1701,6 +1941,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (dataStart + buffered.Length >= end)
         {
+            return -1;
+        }
+
+        if (!readsFile)
+        {
+            searched = false;
             return -1;
         }
 
@@ -1721,7 +1967,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             text.Read(span, position);
-            found = SearchStretch(text, endsRange: position + span.Length >= end, out header);
+            found = StreamEnds.SearchStretch(text, endsRange: position + span.Length >= end, deferred, out header);
+            endObjSeen |= StreamEnds.HoldsEndObj(span, header >= 0 ? (int)(header - position) : span.Length);
 
             if (found >= 0 || header >= 0 || position + span.Length >= end)
             {
@@ -1731,269 +1978,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             position += Math.Max(1, span.Length - EndStreamSearchOverlap);
             text.CarryTo(position);
             size = Math.Min(2 * size, EndStreamSearchChunk);
-        }
-    }
-
-    /// <summary>
-    /// Searches one read of a search for <c>endstream</c> — the parser's bytes, or a window of the file — for the first
-    /// <c>endstream</c>, and for the first object header before it: returns where the data ends in the file, the
-    /// end-of-line before the keyword left out, or -1 when the read holds no <c>endstream</c> or a header comes first,
-    /// whose start in the file is then <paramref name="header"/>, -1 otherwise.
-    /// </summary>
-    /// <remarks>
-    /// The overlap between reads puts the end-of-line before a keyword first seen in a read inside it, unless the keyword
-    /// starts the data.
-    /// </remarks>
-    /// <param name="text">The bytes read, after what the reads before carry into them.</param>
-    /// <param name="endsRange">Whether they end where the search does: at the next object the index places, or the end of the file.</param>
-    /// <param name="header">Where the header that stopped the search starts in the file, or -1.</param>
-    private static long SearchStretch(in HeaderText text, bool endsRange, out long header)
-    {
-        var span = text.Bytes;
-        var keyword = span.IndexOf("endstream"u8);
-        header = text.FindHeader(keyword >= 0 ? keyword : span.Length, endsRange);
-
-        if (keyword < 0 || header >= 0)
-        {
-            return -1;
-        }
-
-        if (keyword > 0 && span[keyword - 1] == (byte)'\n')
-        {
-            keyword--;
-        }
-
-        if (keyword > 0 && span[keyword - 1] == (byte)'\r')
-        {
-            keyword--;
-        }
-
-        return text.PositionOf(keyword);
-    }
-
-    /// <summary>
-    /// One read of a search for <c>endstream</c> as the rule for object headers sees it (<see cref="FindHeader"/>): its
-    /// bytes, after a few that stand for what the search read before them.
-    /// </summary>
-    /// <remarks>
-    /// Whether <c>obj</c> ends an object header depends on the runs of white space and of digits before it, which may run
-    /// back past the start of a read, as far as the start of the data. What the reads before hold is carried into each one
-    /// as a few bytes that decide every header as they would: the runs of white space or of digits that end where the read
-    /// starts, four at most — each run of white space as one space, each run of digits as the digits of its value, or of
-    /// 2,147,483,648 for any larger one, which no number nor generation reaches however many digits follow —, and the byte
-    /// before them. A header holds four such runs, and asks of the byte before them only whether it ends a token: no run
-    /// reads that byte. The start of the data is carried as a space, which ends a token as white space does and holds no
-    /// digit. The bytes carried have negative indexes, and each records where the run it stands for starts in the file.
-    /// None of the sizes below bounds what the file holds (ADR 34): a run of any length is carried, as what decides a
-    /// header — its kind and its value.
-    /// </remarks>
-    private ref struct HeaderText
-    {
-        /// <summary>The most runs of white space or digits before <c>obj</c> that decide a header: those it holds.</summary>
-        private const int MaxRuns = 4;
-
-        /// <summary>The most digits a run of digits is carried as: those of <see cref="Beyond"/>.</summary>
-        private const int MaxDigits = 10;
-
-        /// <summary>The most bytes carried into a read: the byte before the runs, two runs of white space and two of digits.</summary>
-        internal const int CarriedLength = 1 + (2 * (1 + MaxDigits));
-
-        /// <summary>The value a run of digits is taken for when it is larger: past any object number and generation.</summary>
-        private const long Beyond = (long)PdfObjectId.MaxNumber + 1;
-
-        private readonly Span<byte> _carried;
-        private readonly Span<long> _carriedAt;
-        private int _carriedLength;
-        private ReadOnlySpan<byte> _bytes;
-        private long _at;
-
-        /// <summary>Starts a search at <paramref name="dataStart"/>, before which nothing is read.</summary>
-        /// <param name="carried">Room for <see cref="CarriedLength"/> bytes carried into a read.</param>
-        /// <param name="carriedAt">Room for where the run each of them stands for starts in the file.</param>
-        /// <param name="dataStart">Where the data starts in the file.</param>
-        public HeaderText(Span<byte> carried, Span<long> carriedAt, long dataStart)
-        {
-            _carried = carried;
-            _carriedAt = carriedAt;
-            _carried[0] = (byte)' ';
-            _carriedAt[0] = dataStart;
-            _carriedLength = 1;
-        }
-
-        /// <summary>Gets the bytes of the read.</summary>
-        public readonly ReadOnlySpan<byte> Bytes => _bytes;
-
-        /// <summary>Gets the index of the first byte carried into the read: the byte before the runs, which no run reads.</summary>
-        private readonly int FirstCarried => -_carriedLength;
-
-        private readonly byte this[int index] => index >= 0 ? _bytes[index] : _carried[_carriedLength + index];
-
-        /// <summary>Takes <paramref name="bytes"/>, read at <paramref name="at"/> in the file, as the read that follows what is carried.</summary>
-        public void Read(ReadOnlySpan<byte> bytes, long at)
-        {
-            _bytes = bytes;
-            _at = at;
-        }
-
-        /// <summary>Gives where the byte at <paramref name="index"/> is in the file, or, for a byte carried, where its run starts.</summary>
-        public readonly long PositionOf(int index) => index >= 0 ? _at + index : _carriedAt[_carriedLength + index];
-
-        /// <summary>
-        /// Carries into the next read, which starts at <paramref name="position"/> in this one, the runs of white space and
-        /// of digits that end there, and the byte before them.
-        /// </summary>
-        public void CarryTo(long position)
-        {
-            Span<long> runAt = stackalloc long[MaxRuns];
-            Span<long> runValue = stackalloc long[MaxRuns];
-            var end = (int)(position - _at);
-            var runs = 0;
-
-            while (runs < MaxRuns && end > FirstCarried + 1 &&
-                (PdfCharacters.IsDigit(this[end - 1]) || PdfCharacters.IsWhitespace(this[end - 1])))
-            {
-                var digits = PdfCharacters.IsDigit(this[end - 1]);
-                var start = RunStart(end, digits);
-                runAt[runs] = PositionOf(start);
-                runValue[runs] = digits ? Value(start, end) : -1;
-                end = start;
-                runs++;
-            }
-
-            // What is carried is read whole before it is written over.
-            var before = this[end - 1];
-            _carriedAt[0] = PositionOf(end - 1);
-            _carried[0] = before;
-            var length = 1;
-
-            for (var run = runs - 1; run >= 0; run--)
-            {
-                var written = 1;
-
-                if (runValue[run] < 0)
-                {
-                    _carried[length] = (byte)' ';
-                }
-                else
-                {
-                    // The room carried has ten digits for each run of digits, and no value carried has more.
-                    _ = runValue[run].TryFormat(_carried[length..], out written, default, CultureInfo.InvariantCulture);
-                }
-
-                _carriedAt.Slice(length, written).Fill(runAt[run]);
-                length += written;
-            }
-
-            _carriedLength = length;
-        }
-
-        /// <summary>
-        /// Finds the first object header whose <c>obj</c> ends before <paramref name="before"/> in the read, and gives where
-        /// it starts in the file; -1 when there is none.
-        /// </summary>
-        /// <remarks>
-        /// A header is <c>N G obj</c> at a token boundary, as the file's bytes hold it: white space, a delimiter or the start
-        /// of the data before the number; a run of digits whose value the parser takes for an object number, 1 to
-        /// 2,147,483,647, and one whose value it takes for a generation, 0 to 65,535, however many zeros lead them; white
-        /// space before each of the generation and <c>obj</c>, as much as the file holds; and white space, a delimiter or the
-        /// end of the search after <c>obj</c>. <c>endobj</c> is no header, nor <c>10 0 objx</c>, nor digits a regular
-        /// character precedes, nor tokens a comment separates. The scan that rebuilds an index refuses <c>endobj</c> and
-        /// tokens a comment separates too, but takes <c>10 0 objx</c> and digits a regular character precedes (#171).
-        /// A header lies whole in what the search reads, from the start of the data to the next object the index places: the
-        /// stream's own header, and whatever precedes the data, is never one, and one that the next object's offset cuts is
-        /// not seen, that offset stopping the search first. The rule reads nothing but the bytes, so where it stops cannot
-        /// depend on what was read before; and what a read's start cuts of a header is carried into it, and <c>obj</c> with
-        /// the byte after it is whole in the read that decides it, so where the reads start cannot change it either: a
-        /// candidate whose <c>obj</c> ends the read, where the search goes on, is left to the next read, which repeats it.
-        /// <para>
-        /// The rule is no guard (ADR 34): only a stream whose <c>endstream</c> does not follow its declared length is
-        /// searched, which no valid file holds (ISO 32000-1, 7.3.8.1). A valid stream's data may hold text that reads as a
-        /// header — an embedded PDF written uncompressed —: its length, confirmed, is never searched. An invalid stream whose
-        /// data holds such text before its <c>endstream</c> stops there, keeps its declared length and is reported, as one
-        /// whose next object came first; text that only looks like a header is read past, and an <c>endstream</c> after it
-        /// ends the data.
-        /// </para>
-        /// </remarks>
-        /// <param name="before">Where the <c>endstream</c> found in the read starts, or its length.</param>
-        /// <param name="endsRange">Whether the read ends where the search does, where <c>obj</c> may end.</param>
-        public readonly long FindHeader(int before, bool endsRange)
-        {
-            var from = 0;
-
-            while (true)
-            {
-                var index = _bytes[from..before].IndexOf(ObjKeyword);
-
-                if (index < 0)
-                {
-                    return -1;
-                }
-
-                var keyword = from + index;
-                var after = keyword + ObjKeyword.Length;
-
-                // What follows obj past the end of the read is the next read's to see, which repeats it: the end of the read
-                // ends the token only where the search ends.
-                if ((after < _bytes.Length ? !PdfCharacters.IsRegular(_bytes[after]) : endsRange) &&
-                    TryFindStart(keyword, out var start))
-                {
-                    return PositionOf(start);
-                }
-
-                from = after;
-            }
-        }
-
-        /// <summary>
-        /// Reads back from the <c>obj</c> at <paramref name="keyword"/> for the rest of an object header, as
-        /// <see cref="FindHeader"/> takes one, and gives where its number starts.
-        /// </summary>
-        private readonly bool TryFindStart(int keyword, out int start)
-        {
-            var generationEnd = RunStart(keyword, digits: false);
-            var generationStart = RunStart(generationEnd, digits: true);
-            var numberEnd = RunStart(generationStart, digits: false);
-            start = RunStart(numberEnd, digits: true);
-
-            // Each run holds a byte at least, what precedes the number ends a token, and the values are an object number's
-            // and a generation's.
-            return generationEnd < keyword && generationStart < generationEnd && numberEnd < generationStart &&
-                start < numberEnd && !PdfCharacters.IsRegular(this[start - 1]) &&
-                Value(start, numberEnd) is >= 1 and <= PdfObjectId.MaxNumber &&
-                Value(generationStart, generationEnd) <= PdfObjectId.MaxGeneration;
-        }
-
-        /// <summary>
-        /// Gives where the run of digits, or of white space, that ends at <paramref name="end"/> starts, the first byte
-        /// carried left out.
-        /// </summary>
-        private readonly int RunStart(int end, bool digits)
-        {
-            var start = end;
-
-            while (start > FirstCarried + 1 &&
-                (digits ? PdfCharacters.IsDigit(this[start - 1]) : PdfCharacters.IsWhitespace(this[start - 1])))
-            {
-                start--;
-            }
-
-            return start;
-        }
-
-        /// <summary>
-        /// Gives the value of the digits from <paramref name="start"/> to <paramref name="end"/>, or <see cref="Beyond"/> when
-        /// it is larger.
-        /// </summary>
-        private readonly long Value(int start, int end)
-        {
-            var value = 0L;
-
-            for (var index = start; index < end; index++)
-            {
-                value = Math.Min((value * 10) + (this[index] - '0'), Beyond);
-            }
-
-            return value;
         }
     }
 
@@ -2156,7 +2140,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 var stopped = EndStreamAfter(dataStart + deferred.Taken);
 
-                if (!((IPdfStreamDataProvider)this).IsEndStreamAt(dataStart + length))
+                if (((IPdfStreamDataProvider)this).CheckEndStream(dataStart + length) is null)
                 {
                     message = string.Create(CultureInfo.InvariantCulture, $"The stream declared {length} bytes but ended after {deferred.Taken}.");
                 }
@@ -2176,17 +2160,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Gives where the <c>endstream</c> keyword starts that the end-of-line or white space at <paramref name="position"/>
-    /// leads to, or <paramref name="position"/> itself when none follows within the gap the parser allows.
+    /// Gives where the <c>endstream</c> keyword starts that the white space and comments at <paramref name="position"/>
+    /// lead to, or <paramref name="position"/> itself when none follows them.
     /// </summary>
     private long EndStreamAfter(long position)
     {
-        Span<byte> tail = stackalloc byte[PdfObjectParser.EndStreamLookahead];
-        var read = position < 0 || position >= _source.Length
-            ? 0
-            : _source.Read(position, tail[..(int)Math.Min(tail.Length, _source.Length - position)]);
-        var keyword = tail[..read].IndexOf("endstream"u8);
-        return keyword < 0 ? position : position + keyword;
+        var at = position < 0 ? -1 : NextSignificant(position);
+        Span<byte> keyword = stackalloc byte[StreamEnds.EndStreamKeyword.Length];
+        var read = at < 0 || at >= _source.Length ? 0 : _source.Read(at, keyword[..(int)Math.Min(keyword.Length, _source.Length - at)]);
+        return keyword[..read].SequenceEqual(StreamEnds.EndStreamKeyword) ? at : position;
     }
 
     /// <summary>
@@ -3450,9 +3432,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         previous = -1;
 
-        // The first window, of 64 KB, holds the data of all but the largest cross-reference streams, so the
-        // parser checks their /Length against the data rather than only at the end the /Length gives. The
-        // dictionary is the trailer, and grows its window no further than a trailer may.
+        // The first window, of 64 KB, holds the data of all but the largest cross-reference streams. The dictionary is the
+        // trailer, and grows its window no further than a trailer may: the data never counts toward it, and a /Length the
+        // chain cannot read has the data searched for its endstream past the window (#174, #220).
         var guards = _guardsReached;
 
         // A place the section may have been moved to is a guess: what is there and is no section leaves nothing of its
@@ -4518,8 +4500,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Parses object <paramref name="id"/> at an exact offset, as <see cref="TryParseNumberedAt"/> does, but keeps nothing of the
     /// reading: what the parser notices is dropped, nothing is recorded, and an object that still runs past the window
     /// once <see cref="PdfReaderLimits.MaxObjectLength"/> allows no larger one is not read rather than reported, which
-    /// <paramref name="pastGuard"/> says. A stream is not read: its data is looked for in the window alone, and the method
-    /// returns false.
+    /// <paramref name="pastGuard"/> says. A stream is not read: whatever its data, the method returns false.
     /// </summary>
     private bool TryReadUnrecorded(PdfObjectId id, long offset, out PdfObject value, out bool pastGuard)
     {
@@ -4546,8 +4527,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 // A header read whole that names another object, or another generation, is not this object, however far
                 // its body runs, the chain reading each object under its reference's own number and generation: no guard
-                // hides it.
-                if (read && found != id)
+                // hides it. A stream is not read either, wherever its data ends.
+                if (read && (found != id || parsed is PdfStream))
                 {
                     return false;
                 }

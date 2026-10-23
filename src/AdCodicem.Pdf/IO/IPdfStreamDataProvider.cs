@@ -20,36 +20,42 @@ internal interface IPdfStreamDataProvider
     PdfStreamData Create(long absoluteOffset, int length);
 
     /// <summary>
-    /// Determines whether an <c>endstream</c> keyword starts at <paramref name="absoluteOffset"/>, after at
-    /// most a few bytes of white space. The parser asks when that keyword may lie past the end of its buffer.
+    /// Determines whether an <c>endstream</c> keyword follows <paramref name="absoluteOffset"/>, after white space and
+    /// comments, however many (#174), and what follows it. The parser asks at the end of a stream's declared length when its
+    /// buffer cannot say: the data runs past it, or the white space after it does.
     /// </summary>
-    bool IsEndStreamAt(long absoluteOffset);
-
-    /// <summary>
-    /// Determines whether an <c>endstream</c> keyword starts at <paramref name="absoluteOffset"/>, as
-    /// <see cref="IsEndStreamAt"/> does, and what follows it. The parser asks at the end of a stream whose data runs
-    /// past its buffer, where it can see neither.
-    /// </summary>
-    /// <returns>Null when no <c>endstream</c> starts there; what follows it otherwise.</returns>
+    /// <remarks>
+    /// The file is read on as far as the white space and comments run, the reads past the first counted with the searches
+    /// for <c>endstream</c> (<see cref="PdfFileReader.EndStreamSearchPasses"/>); once those have read as much as they may, the
+    /// first read alone decides.
+    /// </remarks>
+    /// <returns>Null when no <c>endstream</c> follows; what follows it otherwise.</returns>
     EndObjState? CheckEndStream(long absoluteOffset);
 
     /// <summary>
-    /// Looks for where the data of a stream that runs past the parser's buffer ends, when no <c>endstream</c> follows
-    /// its declared length: the first <c>endstream</c> after the start of the data, before the next object the file's
-    /// index places — as the file wrote it, or as the reader rebuilt it as the document opened when the file wrote none —,
-    /// before the first object header the file's bytes hold, and before the end of the file.
+    /// Looks for where the data of a stream ends when no <c>endstream</c> follows its declared length, or it has none: the
+    /// first <c>endstream</c> after the start of the data, in the bytes the parser holds and then in the file, before the
+    /// next object the file's index places — as the file wrote it, or as the reader rebuilt it as the document opened when
+    /// the file wrote none —, before the first object header the file's bytes hold, and before the end of the file.
     /// </summary>
     /// <remarks>
     /// The file is searched once for each stream: asked again for the data at the same place — the stream parsed
     /// again, after the cache let it go or the index was rebuilt —, the provider answers what it found the first time.
+    /// When it finds no <c>endstream</c>, it says what the object's <c>endobj</c> does instead (#174): whether one follows
+    /// the declared length, where the one that ends the object before the stop lies, and whether the stretch holds one.
     /// </remarks>
     /// <param name="number">
     /// The number of the object the stream is the value of, whose own entry in the index is no next object; 0 for a
     /// stream read alone.
     /// </param>
     /// <param name="absoluteDataStart">Where the data starts in the file.</param>
+    /// <param name="declaredEnd">Where the declared length ends in the file, or -1 when the stream has none it can take.</param>
     /// <param name="buffered">The bytes of the data the parser holds, from its start, which are searched first.</param>
-    StreamEndSearch FindEndStream(int number, long absoluteDataStart, ReadOnlySpan<byte> buffered);
+    /// <param name="deferred">
+    /// Whether the stream is a cross-reference stream whose <c>/Length</c> the chain could not read (#182): its rows may
+    /// spell an object header and end in a carriage return, so neither stops nor trims the search (#220).
+    /// </param>
+    StreamEndSearch FindEndStream(int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred);
 
     /// <summary>
     /// Resolves the object a stream's <c>/Length</c> names, and says whether the file holds it and whether it could be

@@ -1713,9 +1713,9 @@ public class ReaderLimitsTests
     [InlineData("<< /Type /ObjStm /N 0 /First 4 >>")]
     public void An_object_stream_refused_for_its_own_fault_hides_no_member_where_a_limit_also_cut_its_data(string dictionary)
     {
-        // N2-02: object stream 10's dictionary, read whole, gives no usable /N; its data, with no /Length, runs past the
-        // limit. The stream is refused for the file's fault, and the catalog it holds was taken for one the guard cut: no
-        // search for catalog 5, file.root-invalid silent, and the validator's probe said the stream was not checked.
+        // N2-02: object stream 10's dictionary, read whole, gives no usable /N; its data runs past what MaxStreamLength lets
+        // the reader read. The stream is refused for the file's fault, and the catalog it holds was taken for one the guard
+        // cut: no search for catalog 5, file.root-invalid silent, and the validator's probe said the stream was not checked.
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
         {
@@ -1726,9 +1726,10 @@ public class ReaderLimitsTests
             [1] = (2, 10, 0),
         };
         file.CrossReferenceStream(11, 12, rows, "/Root 1 0 R");
-        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 256 } });
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = 256 } });
 
-        document.Reader.IsCutAtLimit(10).Should().BeTrue();
+        document.GetObject(new PdfObjectId(10)).AsStream().Required().GetRawBytes().Length.Should().Be(256);
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitStreamLength);
         document.Reader.IsCutAtLimit(1).Should().BeFalse();
         document.Reader.Structure.RootCutByGuard.Should().BeFalse();
         document.Reader.CatalogFoundAs.Should().Be(5);

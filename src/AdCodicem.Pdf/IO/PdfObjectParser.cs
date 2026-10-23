@@ -26,25 +26,18 @@ internal ref struct PdfObjectParser
     /// </remarks>
     private const int MaxDepth = 128;
 
-    /// <summary>The most white space accepted between a stream's data and its <c>endstream</c> keyword.</summary>
-    private const int MaxEndStreamGap = 4;
-
-    /// <summary>How many bytes after a stream's data can decide whether <c>endstream</c> follows it.</summary>
-    internal const int EndStreamLookahead = MaxEndStreamGap + 9;
-
     /// <summary>
-    /// How many bytes after a stream's data can decide, besides whether <c>endstream</c> follows it, whether
-    /// <c>endobj</c> follows that: the white space and keyword <see cref="EndStreamLookahead"/> allows, then the few
-    /// bytes of white space or comment files put between the two keywords, and <c>endobj</c> with the byte after it.
+    /// How many bytes after a stream's data the reader reads first to decide whether <c>endstream</c> follows it, and
+    /// whether <c>endobj</c> follows that: the few bytes of white space or comment files put before and between the two
+    /// keywords, and the keywords with the byte after each.
     /// </summary>
     /// <remarks>
-    /// No guard (ADR 34): it bounds what the reader sees of an object's end, not what it reads. A file that puts more
-    /// between the keywords reads the same, and whether its object ends with <c>endobj</c> goes unseen and unjudged, as
-    /// past a window's edge.
+    /// No bound (ADR 34): a first read, not what the reader reads. White space and comments that run past it are read on as
+    /// far as they go (#174), and what follows them decides.
     /// </remarks>
     internal const int EndObjLookahead = 64;
 
-    private static ReadOnlySpan<byte> EndStreamKeyword => "endstream"u8;
+    private static ReadOnlySpan<byte> EndStreamKeyword => StreamEnds.EndStreamKeyword;
 
     private readonly ReadOnlyMemory<byte> _memory;
     private readonly IPdfObjectSource? _source;
@@ -64,26 +57,25 @@ internal ref struct PdfObjectParser
     private bool _truncated;
 
     /// <summary>
-    /// Whether a stream's <c>/Length</c> runs past what the file holds, which only a window reaching the end of the file
-    /// can settle: a larger buffer is asked for, though the parse met no edge, and what it reads after the stream is whole.
-    /// </summary>
-    private bool _lengthUnsettled;
-
-    /// <summary>
     /// Whether the end of the data was reported already: a cut leaves every construct around it open, and is reported
     /// once, for the innermost.
     /// </summary>
     private bool _cutReported;
 
-    private bool _endStreamMissing;
+    /// <summary>
+    /// Whether the last stream read kept a declared length that neither <c>endstream</c> nor <c>endobj</c> follows: where
+    /// its object ends is unknown, and its <c>endobj</c> is not judged.
+    /// </summary>
+    private bool _endObjUnknown;
+
     private EndObjState _endObj;
 
     /// <summary>What was found of the last stream read, when the file did not confirm its length.</summary>
     private StreamLengthFault? _lengthFault;
 
     /// <summary>
-    /// What follows the <c>endstream</c> of the last stream read, when its data ran past the buffer and the provider
-    /// was asked; null otherwise.
+    /// What follows the data of the last stream read, when the provider was asked: what follows its <c>endstream</c>, or,
+    /// when it has none, whether its object's <c>endobj</c> ends it; null otherwise.
     /// </summary>
     private EndObjState? _endObjAfterStream;
 
@@ -168,7 +160,7 @@ internal ref struct PdfObjectParser
     /// buffer could read differently. A caller that can offer one should; a caller whose buffer is the
     /// whole input keeps what was read.
     /// </summary>
-    public readonly bool IsTruncated => _truncated || _lengthUnsettled;
+    public readonly bool IsTruncated => _truncated;
 
     /// <summary>
     /// Gets a value indicating whether the object stream member being read is written as a stream, or holds one: a
@@ -282,7 +274,7 @@ internal ref struct PdfObjectParser
         // end, and its answer stands where the buffer has none (#55).
         _endObj = next.IsKeyword("endobj"u8)
             ? EndObjState.Present
-            : _endStreamMissing ? EndObjState.Unknown
+            : _endObjUnknown ? EndObjState.Unknown
             : !unseen ? EndObjState.Absent
             : value is PdfStream && _endObjAfterStream is { } afterStream ? afterStream
             : EndObjState.Unseen;
@@ -611,6 +603,19 @@ internal ref struct PdfObjectParser
         return dictionary;
     }
 
+    /// <summary>
+    /// Reads a stream's data, whose <c>stream</c> keyword the lexer just read, and finds where it ends (#55, #174).
+    /// </summary>
+    /// <remarks>
+    /// The declared length is confirmed by an <c>endstream</c> after it, white space and comments between, however many.
+    /// Unconfirmed, or with no length to confirm, the data is searched for its first <c>endstream</c>, which ends it: in the
+    /// bytes the parser holds, then in the file, up to the nearer of the first object header the bytes hold and the next
+    /// object the index places, or to the end of the data. Stream data never counts toward the bytes the parser is given
+    /// to read an object through: a window is never grown to find an <c>endstream</c>. With none before the stop, the
+    /// object's <c>endobj</c> plays its part: it ends the data where it follows the declared length, or where it ends the
+    /// object before the stop; without it, a declared length that ends before the stop is kept, and the data otherwise
+    /// runs to the stop.
+    /// </remarks>
     private PdfStream ReadStream(PdfDictionary dictionary)
     {
         var span = _memory.Span;
@@ -621,6 +626,7 @@ internal ref struct PdfObjectParser
         var dataStart = _lexer.Position;
         _lengthFault = null;
         _endObjAfterStream = null;
+        _endObjUnknown = false;
 
         // The end-of-line after "stream" is not data. A buffer that ends on the keyword, or on the carriage
         // return of a CR LF, cannot say where the data starts; a larger one can.
@@ -632,129 +638,227 @@ internal ref struct PdfObjectParser
         var declared = ReadLength(dictionary);
         var length = declared.Form == StreamLengthForm.Integer ? (int)declared.Value.GetValueOrDefault() : -1;
 
-        var beyondBuffer = length >= 0 && dataStart + (long)length > span.Length;
-
-        if (beyondBuffer && _streamData is not null)
+        if (_truncated)
         {
-            // The data lives past the window the reader gave us, into what the file holds: the file is asked
-            // whether endstream follows the declared length (#55). An attempt the reader makes again, its buffer
-            // too short to say where the data starts, asks nothing.
-            if (_baseOffset + dataStart + (long)length <= _streamData.SourceLength)
-            {
-                return IsTruncated
-                    ? Finish(dictionary, dataStart, length, span.Length)
-                    : ReadPastBuffer(_streamData, dictionary, declared, dataStart, length);
-            }
-
-            // Unless the file cannot hold it. Then only a window that reaches the end of the file can say
-            // whether the data stops at an "endstream" — the length is wrong — or at the end of the file —
-            // the stream is cut —, and the search below says which once the reader has offered one. The parse
-            // met no edge for that: what it reads after an endstream the search finds is whole.
-            _lengthUnsettled = true;
+            return Finish(dictionary, dataStart, Math.Max(length, 0), span.Length);
         }
 
-        if (length < 0 || beyondBuffer || !ConfirmsLength(span, dataStart + length))
+        var confirmed = ConfirmsLength(span, dataStart, length);
+
+        if (confirmed is null)
         {
-            // A length read once the cross-reference chain is keeps a carriage return before the line feed as data, which it
-            // may be: rows can end in 0x0D, and the length, once read, is checked against what was taken (#182).
-            var recovered = FindEndStream(span, dataStart, keepCarriageReturn: declared.Form == StreamLengthForm.Deferred);
-
-            if (recovered < 0)
-            {
-                _truncated = true;
-
-                // An endobj after the data says the object ends there, without its endstream, and where it ends is
-                // then the reader's guess; with none, the file ends inside the object, and so without its endobj.
-                _endStreamMissing = span[dataStart..].IndexOf("endobj"u8) >= 0;
-                var rest = span.Length - dataStart;
-
-                ReportLengthFault(
-                    PdfDiagnosticCodes.StreamTruncated,
-                    _endStreamMissing
-                        ? string.Create(
-                            CultureInfo.InvariantCulture,
-                            $"The stream has no endstream before the endobj that follows its data; the {rest} bytes to the end of the file are taken as its data.")
-                        : "A stream ran past the end of the file.",
-                    Fault(declared, dataStart, rest, null, _endStreamMissing ? EndStreamState.MissingBeforeEndObj : EndStreamState.MissingBeforeEndOfFile, null));
-
-                return Finish(dictionary, dataStart, rest, span.Length);
-            }
-
-            if (length != recovered)
-            {
-                ReportLengthFault(
-                    PdfDiagnosticCodes.StreamLengthInvalid,
-                    DescribeRecovered(declared, recovered),
-                    Fault(declared, dataStart, recovered, recovered, EndStreamState.Found, null));
-            }
-
-            length = recovered;
-        }
-
-        return Finish(dictionary, dataStart, length, span.Length);
-    }
-
-    /// <summary>
-    /// Reads a stream whose declared length runs past the buffer, into what the file holds (#55). The file is asked
-    /// whether <c>endstream</c> follows the declared length, and when it does not, searched for the first one after the
-    /// start of the data, before the next object or the end of the file: found, it ends the data; not found, or not
-    /// searched for once the document's searches have read as much as they may, the declared length is kept. Either is
-    /// reported, and the file answers what follows the <c>endstream</c> too.
-    /// </summary>
-    private PdfStream ReadPastBuffer(
-        IPdfStreamDataProvider provider, PdfDictionary dictionary, DeclaredLength declared, int dataStart, int length)
-    {
-        var span = _memory.Span;
-
-        if (provider.CheckEndStream(_baseOffset + dataStart + (long)length) is { } afterEndStream)
-        {
-            _endObjAfterStream = afterEndStream;
+            // Undecided, the buffer a window the parser alone was given: a larger one says.
+            _truncated = true;
             return Finish(dictionary, dataStart, length, span.Length);
         }
 
-        var search = provider.FindEndStream(_objectNumber, _baseOffset + dataStart, span[dataStart..]);
-        _endObjAfterStream = search.EndObj;
-
-        if (search.Length is { } found)
+        if (confirmed == true)
         {
-            ReportLengthFault(
-                PdfDiagnosticCodes.StreamLengthInvalid,
-                string.Create(CultureInfo.InvariantCulture, $"The stream declared {length} bytes but ended after {found}."),
-                Fault(declared, dataStart, found, found, EndStreamState.Found, null));
+            return Finish(dictionary, dataStart, length, span.Length);
+        }
 
+        // A cross-reference stream whose /Length the chain could not read keeps a carriage return before the line feed as
+        // data, which it may be — rows can end in 0x0D, and the length, once read, is checked against what was taken —,
+        // and is not stopped by rows that spell an object header (#182, #220).
+        var deferred = declared.Form == StreamLengthForm.Deferred;
+        var declaredEnd = length < 0 ? -1 : _baseOffset + dataStart + length;
+        var search = _streamData is not null
+            ? _streamData.FindEndStream(_objectNumber, _baseOffset + dataStart, declaredEnd, span[dataStart..], deferred)
+            : SearchBuffer(span, dataStart, declaredEnd, deferred);
+
+        if (search is not { } settled)
+        {
+            _truncated = true;
+            return Finish(dictionary, dataStart, Math.Max(length, 0), span.Length);
+        }
+
+        if (settled.Length is { } found)
+        {
+            if (length != found)
+            {
+                ReportLengthFault(
+                    PdfDiagnosticCodes.StreamLengthInvalid,
+                    DescribeRecovered(declared, found),
+                    Fault(declared, dataStart, found, found, EndStreamState.Found, null));
+            }
+
+            _endObjAfterStream = _streamData is null ? null : settled.EndObj;
             return Finish(dictionary, dataStart, found, span.Length);
         }
 
+        return FinishWithoutEndStream(dictionary, declared, dataStart, length, settled);
+    }
+
+    /// <summary>
+    /// Ends the data of a stream whose search found no <c>endstream</c> before it stopped (#174): at the declared length,
+    /// when its object's <c>endobj</c> follows it; at that <c>endobj</c>, when it ends the object before the stop; at the
+    /// declared length, when it ends before the stop; at the stop otherwise — the next object, or the end of the data.
+    /// </summary>
+    private PdfStream FinishWithoutEndStream(
+        PdfDictionary dictionary, DeclaredLength declared, int dataStart, int length, StreamEndSearch search)
+    {
+        var span = _memory.Span;
+        var endOfData = _streamData is null ? span.Length : _streamData.SourceLength - _baseOffset;
+        var stop = search.NextObject is { } next ? next - _baseOffset : endOfData;
+        var fits = length >= 0 && dataStart + (long)length <= stop;
+        var upToStop = (int)Math.Min(stop - dataStart, int.MaxValue);
+        var where = search.NextObject is { } nextObject
+            ? string.Create(CultureInfo.InvariantCulture, $"before the next object, at {nextObject}")
+            : "before the end of the file";
+        var missing = search.NextObject is null ? EndStreamState.MissingBeforeEndOfFile : EndStreamState.MissingBeforeNextObject;
+
         if (!search.Searched)
+        {
+            // The document's searches read as much of the file as they may: what lies past the bytes held is not looked at.
+            var kept = fits ? length : upToStop;
+            ReportLengthFault(
+                PdfDiagnosticCodes.StreamLengthInvalid,
+                fits
+                    ? string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The stream declared {length} bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.")
+                    : string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object; the {kept} bytes {(search.NextObject is null ? "to the end of the file" : "up to the next object")} are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."),
+                Fault(declared, dataStart, kept, null, EndStreamState.NotSearched, null));
+
+            _endObjUnknown = true;
+            return Finish(dictionary, dataStart, kept, span.Length);
+        }
+
+        if (fits && search.EndObjAfterDeclared)
+        {
+            ReportLengthFault(
+                PdfDiagnosticCodes.StreamTruncated,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The stream has no endstream: its object's endobj follows the {length} bytes it declared, which are taken as its data."),
+                Fault(declared, dataStart, length, null, EndStreamState.MissingBeforeEndObj, null));
+
+            _endObjAfterStream = EndObjState.Present;
+            return Finish(dictionary, dataStart, length, span.Length);
+        }
+
+        if (search.ObjectEnd >= 0)
+        {
+            var taken = (int)Math.Min(search.ObjectEnd - _baseOffset - dataStart, int.MaxValue);
+            ReportLengthFault(
+                PdfDiagnosticCodes.StreamTruncated,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{Describe(declared)}, and no endstream follows its data {where}: its object's endobj ends it, after {taken} bytes."),
+                Fault(declared, dataStart, taken, null, EndStreamState.MissingBeforeEndObj, search.NextObject));
+
+            _endObjAfterStream = EndObjState.Present;
+            return Finish(dictionary, dataStart, taken, span.Length);
+        }
+
+        if (fits)
         {
             ReportLengthFault(
                 PdfDiagnosticCodes.StreamLengthInvalid,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The stream declared {length} bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may."),
-                Fault(declared, dataStart, length, null, EndStreamState.NotSearched, null));
+                    $"The stream declared {length} bytes, and no endstream follows them {where}; the declared length is kept."),
+                Fault(declared, dataStart, length, null, missing, search.NextObject));
 
+            // Where the object ends is unknown, and its endobj is not judged.
+            _endObjUnknown = true;
             return Finish(dictionary, dataStart, length, span.Length);
         }
 
-        var before = search.NextObject is { } next
-            ? string.Create(CultureInfo.InvariantCulture, $"before the next object, at {next}")
-            : "before the end of the file";
-
+        // The data runs to the next object, which no declared length passes, or to the end of the file. The object lacks its
+        // endobj, unless what is taken as its data holds one, which may be the object's own: where it ends is then unknown.
         ReportLengthFault(
-            PdfDiagnosticCodes.StreamLengthInvalid,
+            search.NextObject is null ? PdfDiagnosticCodes.StreamTruncated : PdfDiagnosticCodes.StreamLengthInvalid,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"The stream declared {length} bytes, and no endstream follows them {before}; the declared length is kept."),
-            Fault(
-                declared,
-                dataStart,
-                length,
-                null,
-                search.NextObject is null ? EndStreamState.MissingBeforeEndOfFile : EndStreamState.MissingBeforeNextObject,
-                search.NextObject));
+                $"{Describe(declared)}, and no endstream follows its data {where}; the {upToStop} bytes {(search.NextObject is null ? "to the end of the file" : "up to that object")} are taken as its data."),
+            Fault(declared, dataStart, upToStop, null, missing, search.NextObject));
 
-        return Finish(dictionary, dataStart, length, span.Length);
+        _endObjUnknown = search.EndObjSeen;
+        _endObjAfterStream = search.EndObjSeen ? EndObjState.Unknown : EndObjState.Absent;
+        return Finish(dictionary, dataStart, upToStop, span.Length);
+    }
+
+    /// <summary>
+    /// Determines whether the declared length is confirmed by an <c>endstream</c> after it, white space and comments
+    /// between, however many: in the buffer, or, where the buffer cannot say, in the file, which the provider reads on as
+    /// far as they run (#174). Null when neither can say: the buffer is a window given to the parser alone.
+    /// </summary>
+    private bool? ConfirmsLength(ReadOnlySpan<byte> span, int dataStart, int length)
+    {
+        if (length < 0)
+        {
+            return false;
+        }
+
+        var dataEnd = dataStart + (long)length;
+
+        if (dataEnd <= span.Length)
+        {
+            var end = StreamEnds.ReadEnd(span[(int)dataEnd..], reachesEndOfFile: _endsData);
+
+            if (end.Kind != StreamEndKind.Undecided)
+            {
+                return end.Kind == StreamEndKind.EndStream;
+            }
+        }
+        else if (_endsData)
+        {
+            return false;
+        }
+
+        if (_streamData is null)
+        {
+            return null;
+        }
+
+        if (_baseOffset + dataEnd > _streamData.SourceLength)
+        {
+            return false;
+        }
+
+        _endObjAfterStream = _streamData.CheckEndStream(_baseOffset + dataEnd);
+        return _endObjAfterStream is not null;
+    }
+
+    /// <summary>
+    /// Searches the buffer of a parser the reader does not back for the first <c>endstream</c> after the start of the data,
+    /// up to the first object header it holds, as the reader searches the file, and says what the object's <c>endobj</c>
+    /// does when it finds none; null when the buffer holds neither, and is a window a larger one may show more of.
+    /// </summary>
+    private readonly StreamEndSearch? SearchBuffer(ReadOnlySpan<byte> span, int dataStart, long declaredEnd, bool deferred)
+    {
+        Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
+        Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
+        var start = _baseOffset + dataStart;
+        var text = new HeaderText(carried, carriedAt, start);
+        text.Read(span[dataStart..], start);
+
+        var dataEnd = StreamEnds.SearchStretch(text, endsRange: _endsData, deferred, out var header);
+
+        if (dataEnd >= 0)
+        {
+            return new StreamEndSearch((int)(dataEnd - start), null, EndObjState.Unseen);
+        }
+
+        if (header < 0 && !_endsData)
+        {
+            return null;
+        }
+
+        var stop = header < 0 ? span.Length : (int)(header - _baseOffset);
+        var stretch = span[dataStart..stop];
+        var objectEnd = StreamEnds.EndObjBefore(stretch);
+
+        return new StreamEndSearch(null, header < 0 ? null : header, EndObjState.Unknown)
+        {
+            EndObjSeen = StreamEnds.HoldsEndObj(stretch, stretch.Length),
+            EndObjAfterDeclared = declaredEnd >= start && declaredEnd - _baseOffset <= stop &&
+                StreamEnds.IsEndObjAt(span[..stop], (int)(declaredEnd - _baseOffset), reachesEndOfFile: true) == true,
+            ObjectEnd = objectEnd < 0 ? -1 : start + objectEnd,
+        };
     }
 
     /// <summary>
@@ -835,16 +939,23 @@ internal ref struct PdfObjectParser
     };
 
     /// <summary>Says what was wrong with a stream's <c>/Length</c>, its <c>endstream</c> found after <paramref name="recovered"/> bytes.</summary>
-    private static string DescribeRecovered(DeclaredLength declared, int recovered)
+    private static string DescribeRecovered(DeclaredLength declared, int recovered) => declared.Form == StreamLengthForm.Integer
+        ? string.Create(CultureInfo.InvariantCulture, $"The stream declared {declared.Value} bytes but ended after {recovered}.")
+        : string.Create(CultureInfo.InvariantCulture, $"{Describe(declared)}; its data ends after {recovered} bytes.");
+
+    /// <summary>
+    /// Says how a stream's <c>/Length</c> was written, as a report starts: the length it declared, or why it gives none.
+    /// </summary>
+    private static string Describe(DeclaredLength declared)
     {
         if (declared.Form == StreamLengthForm.Integer)
         {
-            return string.Create(CultureInfo.InvariantCulture, $"The stream declared {declared.Value} bytes but ended after {recovered}.");
+            return string.Create(CultureInfo.InvariantCulture, $"The stream declared {declared.Value} bytes");
         }
 
         if (declared.Form == StreamLengthForm.Absent)
         {
-            return string.Create(CultureInfo.InvariantCulture, $"The stream has no /Length; its data ends after {recovered} bytes.");
+            return "The stream has no /Length";
         }
 
         var written = declared.Reference is not { } reference
@@ -856,7 +967,7 @@ internal ref struct PdfObjectParser
                 _ => Names(reference, "which holds " + Value(declared)),
             };
 
-        return string.Create(CultureInfo.InvariantCulture, $"The stream's /Length {written}; its data ends after {recovered} bytes.");
+        return "The stream's /Length " + written;
 
         static string Names(PdfObjectId reference, string what) =>
             string.Create(CultureInfo.InvariantCulture, $"names object {reference.Number} {reference.Generation}, {what}");
@@ -932,99 +1043,6 @@ internal ref struct PdfObjectParser
         }
 
         return new PdfStream(dictionary, data);
-    }
-
-    /// <summary>
-    /// Determines whether the declared length is confirmed by an <c>endstream</c> keyword where the data
-    /// ends. When the keyword may lie across the end of the buffer, the file is asked rather than the buffer:
-    /// a stream whose data ends a few bytes short of the window's edge is not a truncated stream.
-    /// </summary>
-    private readonly bool ConfirmsLength(ReadOnlySpan<byte> span, int dataEnd)
-    {
-        if (IsEndStreamAt(span, dataEnd))
-        {
-            return true;
-        }
-
-        return _streamData is not null &&
-               dataEnd + (long)EndStreamLookahead > span.Length &&
-               _streamData.IsEndStreamAt(_baseOffset + dataEnd);
-    }
-
-    /// <summary>
-    /// Determines whether <c>endstream</c> starts at <paramref name="position"/>, after at most
-    /// <see cref="MaxEndStreamGap"/> bytes of white space.
-    /// </summary>
-    internal static bool IsEndStreamAt(ReadOnlySpan<byte> span, long position)
-    {
-        if (position < 0 || position > span.Length)
-        {
-            return false;
-        }
-
-        var index = (int)position;
-
-        // Conforming files put an end-of-line before "endstream"; some put nothing, some put spaces.
-        var limit = Math.Min(index + MaxEndStreamGap, span.Length);
-        while (index < limit && PdfCharacters.IsWhitespace(span[index]))
-        {
-            index++;
-        }
-
-        return span[index..].StartsWith(EndStreamKeyword);
-    }
-
-    /// <summary>
-    /// Determines whether <c>endstream</c> starts at the start of <paramref name="bytes"/>, after at most
-    /// <see cref="MaxEndStreamGap"/> bytes of white space, and what follows the keyword: <c>endobj</c>, another token,
-    /// or nothing the bytes show — unless they reach the end of the file, which then follows it.
-    /// </summary>
-    /// <returns>Null when no <c>endstream</c> starts there.</returns>
-    internal static EndObjState? ReadStreamEnd(ReadOnlySpan<byte> bytes, bool reachesEndOfFile)
-    {
-        if (!IsEndStreamAt(bytes, 0))
-        {
-            return null;
-        }
-
-        // Read as the parser reads what follows a stream: "endstreamx" is no keyword, and is what follows the data.
-        var lexer = new PdfLexer(bytes);
-        var keyword = lexer.Read();
-        var next = keyword.IsKeyword(EndStreamKeyword) ? lexer.Read() : keyword;
-
-        if (!reachesEndOfFile && (next.Kind == PdfTokenKind.EndOfInput || next.End >= bytes.Length))
-        {
-            return EndObjState.Unseen;
-        }
-
-        return next.IsKeyword("endobj"u8) ? EndObjState.Present : EndObjState.Absent;
-    }
-
-    /// <summary>
-    /// Finds where a stream really ends when its declared length is wrong, and returns its true length.
-    /// </summary>
-    private static int FindEndStream(ReadOnlySpan<byte> span, int dataStart, bool keepCarriageReturn = false)
-    {
-        var index = span[dataStart..].IndexOf(EndStreamKeyword);
-        if (index < 0)
-        {
-            return -1;
-        }
-
-        var end = dataStart + index;
-
-        // The end-of-line that precedes the keyword belongs to the syntax, not to the data.
-        if (end > dataStart && span[end - 1] == (byte)'\n')
-        {
-            end--;
-        }
-
-        if (!keepCarriageReturn && end > dataStart && span[end - 1] == (byte)'\r')
-        {
-            end--;
-        }
-
-        return end - dataStart;
     }
 
     /// <summary>

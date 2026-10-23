@@ -88,7 +88,10 @@ public sealed record PdfReaderLimits
     /// directly or an object stream holds it. Defaults to 16 MB, which a direct array of a million references would need.
     /// </summary>
     /// <remarks>
-    /// A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
+    /// A stream's data never counts toward it, however its end is found: a <c>/Length</c> that is wrong, missing or past
+    /// the file has the data searched for its <c>endstream</c> past the bytes the object was parsed through, not read
+    /// through a larger window (#174); what the reader reads of the data at once is
+    /// <see cref="MaxStreamLength"/>'s. A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObject"/>, once for each object, and for each object an object
     /// stream holds, once for each definition of that stream.
     /// </remarks>

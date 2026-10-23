@@ -104,9 +104,11 @@ public class StreamLengthTests
     }
 
     [Fact]
-    public void A_stream_past_the_window_with_no_endstream_before_the_next_object_keeps_its_declared_length()
+    public void A_stream_past_the_window_with_no_endstream_before_the_next_object_ends_at_its_object_s_endobj()
     {
-        // The endstream the search would find next is object 6's: the next object bounds it.
+        // The endstream the search would find next is object 6's: the next object bounds it. No endstream before it, the
+        // object's own endobj ends the data, its end-of-line left out, rather than a declared length that runs on into
+        // object 6 (#174).
         var data = Data(3 * Window);
         var file = Reachable((StreamNumber, Stream(data.Length + 100, data, end: "\n")), (6, Stream(5, "hello")));
         var dataStart = DataStartOf(file, StreamNumber);
@@ -115,22 +117,24 @@ public class StreamLengthTests
         using var document = PdfDocument.Open(file);
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        stream.Data.Length.Should().Be(data.Length + 100);
-        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
-            Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {next}; the declared length is kept."));
+        stream.Data.Length.Should().Be(data.Length + 1);
+        var diagnostic = document.Diagnostics.Should().ContainSingle().Which;
+        diagnostic.Code.Should().Be(PdfDiagnosticCodes.StreamTruncated);
+        diagnostic.Message.Should().Be(
+            Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows its data before the next object, at {next}: its object's endobj ends it, after {data.Length + 1} bytes."));
 
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
         fault.Should().Be(new StreamLengthFault
         {
             Form = StreamLengthForm.Integer,
             Declared = data.Length + 100,
-            Taken = data.Length + 100,
-            EndStream = EndStreamState.MissingBeforeNextObject,
+            Taken = data.Length + 1,
+            EndStream = EndStreamState.MissingBeforeEndObj,
             NextObject = next,
             DataStart = dataStart,
         });
 
-        // Where the object ends is unknown, and its endobj is not judged.
+        // The object ends with its own endobj.
         document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeFalse();
     }
@@ -153,20 +157,21 @@ public class StreamLengthTests
     }
 
     [Fact]
-    public void A_stream_past_the_window_with_no_endstream_before_an_object_the_window_holds_keeps_its_declared_length()
+    public void A_stream_past_the_window_with_no_endstream_before_an_object_the_window_holds_ends_at_its_endobj_unsearched()
     {
-        // The next object starts inside the window: the part of the window before it is all the search reads.
+        // The next object starts inside the window: the part of the window before it is all the search reads, and the
+        // object's endobj before it ends the data (#174).
         var file = Document((StreamNumber, Stream(3 * Window, "short data", end: string.Empty)), (6, "(" + new string('p', 4 * Window) + ")"));
 
         using var source = new StrictCountingSource(file);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
         var beforeLoading = source.BytesRead;
 
-        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(3 * Window);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be("short data".Length);
 
         (source.BytesRead - beforeLoading).Should().Be(Window + PdfObjectParser.EndObjLookahead, "the file past the window is not searched");
         document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
-            Invariant($"The stream declared {3 * Window} bytes, and no endstream follows them before the next object, at {HeaderOf(file, 6)}; the declared length is kept."));
+            Invariant($"The stream declared {3 * Window} bytes, and no endstream follows its data before the next object, at {HeaderOf(file, 6)}: its object's endobj ends it, after 10 bytes."));
     }
 
     [Fact]
@@ -184,6 +189,108 @@ public class StreamLengthTests
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
             Invariant($"The stream declared {data.Length} bytes, and no endstream follows them before the end of the file; the declared length is kept."));
         document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse("where the object ends is unknown");
+    }
+
+    [Theory]
+    [InlineData("     ", false)]
+    [InlineData("     ", true)]
+    [InlineData("\r\n% a comment between the data and its keyword\r\n", false)]
+    [InlineData("\r\n% a comment between the data and its keyword\r\n", true)]
+    [InlineData("\t\f\0 \r\n ", false)]
+    [InlineData("\t\f\0 \r\n ", true)]
+    public void A_length_any_white_space_or_comment_separates_from_endstream_is_confirmed(string gap, bool pastWindow)
+    {
+        // ISO 32000-1 (7.3.8.1) only says an end-of-line should precede endstream, and 7.2.3 makes a comment white space:
+        // five spaces, or a comment, after a length that was right made it a wrong one, the gap taken into the data, and
+        // the file past the window searched (#174). Past the window, the bytes after the declared length are all it reads.
+        var data = Data(pastWindow ? 3 * Window : 100);
+        var file = Document((StreamNumber, Stream(data.Length, data, end: gap + "endstream")), (6, "(six)"));
+
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var beforeLoading = source.BytesRead;
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(data.Length);
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out _).Should().BeFalse();
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse();
+
+        if (pastWindow)
+        {
+            (source.BytesRead - beforeLoading).Should().BeLessThanOrEqualTo(Window + (2 * PdfObjectParser.EndObjLookahead) + 8, "the window, then the bytes after the declared length");
+        }
+    }
+
+    [Theory]
+    [InlineData(3 * 8192, 100)]
+    [InlineData(3 * 8192, 5_000)]
+    [InlineData(3 * 8192, 200_000)]
+    [InlineData(8192 - 200, 300)]
+    public void White_space_before_endstream_that_runs_past_the_first_read_is_read_on_and_confirms_the_length(int length, int spaces)
+    {
+        // White space after the data longer than the reader reads at first, past the window or across its edge: the file is
+        // read on as far as it runs, and the endstream after it confirms the length (#174).
+        var data = Data(length);
+        var file = Document((StreamNumber, Stream(data.Length, data, end: new string(' ', spaces) + "endstream")), (6, "(six)"));
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("<< /Length 3 >>", false)]
+    [InlineData("<< /Length 3 >>", true)]
+    [InlineData("<< /Length -1 >>", false)]
+    [InlineData("<< /Length 2147483647 >>", false)]
+    [InlineData("<< /Length 2147483647 >>", true)]
+    [InlineData("<< /Length 20000 >>", false)]
+    [InlineData("<< /Length 9 0 R >>", false)]
+    [InlineData("<< >>", false)]
+    [InlineData("<< >>", true)]
+    public void A_stream_that_lost_its_endstream_takes_nothing_of_the_object_after_it(string dictionary, bool pastWindow)
+    {
+        // Object 5 lost its endstream, and object 6, a stream, follows it. The search in the window took object 5's endobj,
+        // object 6's header and its data up to its endstream — 49 bytes for "hello" —, and a declared length past it was
+        // kept, whatever the search found. The search stops at object 6, the next object, and object 5's own endobj ends
+        // its data, its end-of-line left out, wherever its /Length points (#174).
+        var data = pastWindow ? Data(3 * Window) : "hello";
+        var file = Document(
+            (StreamNumber, dictionary + "\nstream\n" + data),
+            (6, Stream(5, "world")),
+            (7, "(" + new string('p', 30_000) + ")"));
+
+        using var document = PdfDocument.Open(file);
+        var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be(data);
+        var diagnostic = document.Diagnostics.Should().ContainSingle().Which;
+        diagnostic.Code.Should().Be(PdfDiagnosticCodes.StreamTruncated);
+        diagnostic.Message.Should().EndWith(Invariant($"before the next object, at {HeaderOf(file, 6)}: its object's endobj ends it, after {data.Length} bytes."));
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse("the object ends with its own endobj");
+
+        Encoding.ASCII.GetString(document.GetObject(new PdfObjectId(6)).AsStream().Required().GetRawBytes().Span).Should().Be("world");
+        document.Diagnostics.Should().ContainSingle("object 6 is read alone, whole");
+    }
+
+    [Fact]
+    public void A_stream_that_lost_its_endstream_runs_to_a_header_its_object_has_no_endobj_before_and_lacks_its_endobj()
+    {
+        // No endstream, no endobj: the data runs to the next object's header, which no declared length passes, and the
+        // object ends without its endobj (#174).
+        var data = Data(3 * Window);
+        var file = Document((StreamNumber, Stream(5 * Window, data, end: "\n7 0 obj\n(seven)")), (6, "(six)"));
+        var seven = Encoding.Latin1.GetString(file).IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length + 1);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            Invariant($"The stream declared {5 * Window} bytes, and no endstream follows its data before the next object, at {seven}; the {data.Length + 1} bytes up to that object are taken as its data."));
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeTrue();
     }
 
     [Fact]
@@ -218,7 +325,8 @@ public class StreamLengthTests
     [Fact]
     public void The_search_stops_at_the_next_object_of_an_index_rebuilt_as_the_document_opened()
     {
-        // No index was written: the one the rebuild made is the only one, and object 6's endstream is past its header.
+        // No index was written: the one the rebuild made is the only one, and object 6's endstream is past its header. The
+        // object's endobj before it ends the data (#174).
         var data = Data(3 * Window);
         var file = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
@@ -231,9 +339,9 @@ public class StreamLengthTests
         document.WasRepaired.Should().BeTrue();
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        stream.Data.Length.Should().Be(data.Length - 7);
-        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Should().ContainSingle()
-            .Which.Message.Should().EndWith(Invariant($"before the next object, at {HeaderOf(file, 6)}; the declared length is kept."));
+        stream.Data.Length.Should().Be(data.Length + 1);
+        document.Diagnostics.Where(d => d.Code == PdfDiagnosticCodes.StreamTruncated).Should().ContainSingle()
+            .Which.Message.Should().EndWith(Invariant($"before the next object, at {HeaderOf(file, 6)}: its object's endobj ends it, after {data.Length + 1} bytes."));
     }
 
     [Fact]
@@ -241,7 +349,7 @@ public class StreamLengthTests
     {
         // Object 5 lost its endstream, and object 12's header follows it, an object no index places: the index as written
         // places object 6 next, past object 12's endstream. The header the bytes hold is the nearer, and the search stops
-        // there rather than take in object 12.
+        // there rather than take in object 12; object 5's endobj before it ends the data (#174).
         var data = Data(3 * Window);
         var file = Document(
             (StreamNumber, Stream(data.Length + 400, data, end: "\nendstreax\nendobj\n12 0 obj\n<< /Length 5 >>\nstream\nhello\nendstream")),
@@ -252,20 +360,20 @@ public class StreamLengthTests
         using var document = PdfDocument.Open(file);
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        stream.Data.Length.Should().Be(data.Length + 400);
+        stream.Data.Length.Should().Be(data.Length + "\nendstreax".Length);
         HeaderOf(file, 6).Should().BeGreaterThan(twelve);
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
         fault.Should().Be(new StreamLengthFault
         {
             Form = StreamLengthForm.Integer,
             Declared = data.Length + 400,
-            Taken = data.Length + 400,
-            EndStream = EndStreamState.MissingBeforeNextObject,
+            Taken = data.Length + "\nendstreax".Length,
+            EndStream = EndStreamState.MissingBeforeEndObj,
             NextObject = twelve,
             DataStart = dataStart,
         });
         document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
-            Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows them before the next object, at {twelve}; the declared length is kept."));
+            Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows its data before the next object, at {twelve}: its object's endobj ends it, after {data.Length + "\nendstreax".Length} bytes."));
     }
 
     [Theory]
@@ -304,7 +412,8 @@ public class StreamLengthTests
     {
         // An object header is "N G obj" at a token boundary, as the bytes hold it: a number and a generation whose values
         // the parser takes, however many zeros lead them, and white space between its tokens, however much. Text that is
-        // one stops the search before the endstream after it, and the declared length is kept; text that only looks like
+        // one stops the search before the endstream after it, and the data, which no declared length runs past, ends there
+        // (#174); text that only looks like
         // one — endobj, obj glued to what follows or precedes it, digits after a regular character, a number or a
         // generation out of range, a comment between its tokens — is read past, and the endstream after it ends the data.
         var data = Data(3 * Window);
@@ -321,11 +430,11 @@ public class StreamLengthTests
         if (header is { } at)
         {
             var start = dataStart + data.Length + 1 + at;
-            stream.Data.Length.Should().Be(data.Length + 400);
+            stream.Data.Length.Should().Be(data.Length + 1 + at);
             fault.EndStream.Should().Be(EndStreamState.MissingBeforeNextObject);
             fault.NextObject.Should().Be(start);
             document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
-                Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows them before the next object, at {start}; the declared length is kept."));
+                Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows its data before the next object, at {start}; the {data.Length + 1 + at} bytes up to that object are taken as its data."));
         }
         else
         {
@@ -357,7 +466,7 @@ public class StreamLengthTests
         }
 
         using var document = PdfDocument.Open(file);
-        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length + 400);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be((int)(header - dataStart), "the data runs to the header");
 
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
         fault.NextObject.Should().Be(header);
@@ -378,7 +487,7 @@ public class StreamLengthTests
         // the same with a regular character before or after it, or a number or a generation out of range, which are none.
         // What a read's start cuts of a header, the read before carries into it. The start of a read is no boundary before
         // a number, nor its end one after obj, unless the search starts or ends there. A header missed, the endstream after
-        // it would end the data; text taken for one, the declared length would be kept.
+        // it would end the data; text taken for one, the data would end there.
         var prefix = Invariant($"{StreamNumber} 0 obj\n") + Stream(0, string.Empty, end: string.Empty, width: 7);
         var read = PdfFileReader.EndStreamSearchFirstRead(Window - prefix.Length);
         var first = Window - PdfFileReader.EndStreamSearchOverlap + read;
@@ -402,7 +511,7 @@ public class StreamLengthTests
 
                 if (header)
                 {
-                    stream.Data.Length.Should().Be(length + 400, because);
+                    stream.Data.Length.Should().Be(length + 1, because);
                     fault.NextObject.Should().Be(HeaderOf(file, StreamNumber) + at, because);
                 }
                 else
@@ -443,7 +552,7 @@ public class StreamLengthTests
 
         if (header)
         {
-            stream.Data.Length.Should().Be(declared);
+            stream.Data.Length.Should().Be(data.Length + 1, "the data runs to the header");
             fault.NextObject.Should().Be(dataStart + data.Length + 1, "the header starts where its number does, its zeros with it");
         }
         else
@@ -475,7 +584,8 @@ public class StreamLengthTests
         // all, declares 100 bytes more than its data, which its endstream follows. Bounded by the index as written alone,
         // each of 10 to 38 ran to object 39's endstream: the searches read the file over and over and spent the document's
         // budget, object 50 was searched only when read before the rebuild, and it held 30,000 bytes or 30,100 according
-        // to the order. Each stream now stops at the header of the one after it, and holds the same data in either order,
+        // to the order. Each stream now stops at the header of the one after it, ends at its own endobj before that header
+        // (#174), and holds the same data in either order,
         // however the headers are written that both the rebuild and the parser take: more white space than a read of the
         // search repeats, zeros leading the generation. The searches cannot know where that header is before they read
         // it: reading the file 64 KB at a time, or 16 KB at first whatever window the object was parsed through, the
@@ -521,9 +631,9 @@ public class StreamLengthTests
 
         for (var number = 10; number < 39; number++)
         {
-            document.GetObject(new PdfObjectId(number)).AsStream().Required().Data.Length.Should().Be(data.Length + 100);
+            document.GetObject(new PdfObjectId(number)).AsStream().Required().Data.Length.Should().Be(data.Length);
             document.Reader.TryGetStreamLengthFault(number, out var fault).Should().BeTrue();
-            fault.EndStream.Should().Be(EndStreamState.MissingBeforeNextObject, "the document's searches have read far less than they may");
+            fault.EndStream.Should().Be(EndStreamState.MissingBeforeEndObj, "the document's searches have read far less than they may");
             fault.NextObject.Should().Be(text.IndexOf("\n" + Header(header, number + 1) + "\n", StringComparison.Ordinal) + 1);
         }
 
@@ -623,16 +733,20 @@ public class StreamLengthTests
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().Be(missing);
     }
 
-    [Fact]
-    public void What_follows_the_endstream_of_a_stream_past_the_window_is_unseen_past_a_few_bytes()
+    [Theory]
+    [InlineData("\nendobj\n", false)]
+    [InlineData("\n8 0 obj\n", true)]
+    public void What_follows_the_endstream_of_a_stream_past_the_window_is_seen_however_far_white_space_runs(string next, bool missing)
     {
+        // Past a few bytes of white space after endstream, what followed went unseen, and the object's endobj unjudged: the
+        // file is read on as far as white space runs (#174).
         var data = Data(3 * Window);
-        var file = Document((StreamNumber, Stream(data.Length, data, end: "\nendstream" + new string(' ', PdfObjectParser.EndObjLookahead))));
+        var file = Document((StreamNumber, Stream(data.Length, data, end: "\nendstream" + new string(' ', 200) + next + "(unwritten)")));
 
         using var document = PdfDocument.Open(file);
-        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length);
 
-        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse("what follows is not seen, and not judged");
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().Be(missing);
     }
 
     [Fact]
@@ -969,9 +1083,39 @@ public class StreamLengthTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void A_stream_that_endobj_follows_without_its_endstream_says_what_it_takes(bool pastWindow)
+    public void A_stream_that_endobj_follows_without_its_endstream_keeps_its_declared_length(bool pastWindow)
     {
-        // iPRES's t02-05-01-014: the data runs to the end of the file, which the endobj after it does not stop.
+        // iPRES's t02-05-01-014: its /Length is right, and its object's endobj follows the data without an endstream. The data
+        // ran to the end of the file, through object 6, the table and the trailer; the endobj plays the endstream's part now,
+        // and the declared length is kept, in the window or past it (#174).
+        var data = Data(pastWindow ? 3 * Window : 68);
+        var file = Encoding.ASCII.GetBytes(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            Invariant($"5 0 obj\n<< /Length {data.Length} >>\nstream\n{data}\r\n\n\nendobj \n6 0 obj\n(six)\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"));
+        var dataStart = DataStartOf(file, StreamNumber);
+
+        using var document = PdfDocument.Open(file);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length);
+
+        var diagnostic = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamTruncated).Which;
+        diagnostic.Message.Should().Be(Invariant($"The stream has no endstream: its object's endobj follows the {data.Length} bytes it declared, which are taken as its data."));
+        diagnostic.Position.Should().Be(dataStart);
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+        fault.EndStream.Should().Be(EndStreamState.MissingBeforeEndObj);
+        fault.Taken.Should().Be(data.Length);
+        fault.Found.Should().BeNull();
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse("the object ends with its endobj");
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_stream_whose_endobj_the_trailer_follows_runs_to_the_end_of_the_file_and_leaves_its_endobj_unjudged(bool pastWindow)
+    {
+        // A /Length 20,000 bytes too long, an endobj after the data, then the trailer: no endstream, no object after it, and
+        // the endobj does not end the file, which is where the search stops. The data runs to the end of the file, and
+        // holds that endobj, which may be the object's own: whether the object ends with one is not judged (#174).
         var data = Data(pastWindow ? 3 * Window : 60);
         var file = Encoding.ASCII.GetBytes(
             "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
@@ -983,12 +1127,11 @@ public class StreamLengthTests
         document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be((int)rest);
 
         var diagnostic = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamTruncated).Which;
-        diagnostic.Message.Should().Be(Invariant($"The stream has no endstream before the endobj that follows its data; the {rest} bytes to the end of the file are taken as its data."));
-        diagnostic.Position.Should().Be(dataStart);
+        diagnostic.Message.Should().Be(Invariant($"The stream declared {data.Length + 20000} bytes, and no endstream follows its data before the end of the file; the {rest} bytes to the end of the file are taken as its data."));
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
-        fault.EndStream.Should().Be(EndStreamState.MissingBeforeEndObj);
+        fault.EndStream.Should().Be(EndStreamState.MissingBeforeEndOfFile);
         fault.Taken.Should().Be((int)rest);
-        fault.Found.Should().BeNull();
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse("the data holds an endobj, which may be the object's own");
     }
 
     [Fact]
@@ -1003,7 +1146,7 @@ public class StreamLengthTests
         document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length);
 
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamTruncated)
-            .Which.Message.Should().Be("A stream ran past the end of the file.");
+            .Which.Message.Should().Be("The stream declared 20000 bytes, and no endstream follows its data before the end of the file; the 200 bytes to the end of the file are taken as its data.");
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
         fault.Should().Be(new StreamLengthFault
         {
@@ -1016,17 +1159,40 @@ public class StreamLengthTests
     }
 
     [Fact]
-    public void A_stream_a_limit_cuts_records_nothing_of_its_length()
+    public void A_stream_s_data_counts_for_nothing_toward_MaxObjectLength_and_its_fault_is_the_file_s()
     {
-        // The window stopped at the guard, not at the end of the file: what the parser found there is the limit's.
+        // A stream with no /Length, its data three windows long, under a MaxObjectLength of one window: the window grew to
+        // find its endstream, reached the guard, and the guard was reported in place of the stream's fault. Stream data is
+        // searched past the window now, and counts for nothing toward the object's length (#174).
         var file = Document((StreamNumber, "<< >>\nstream\n" + Data(3 * Window) + "\nendstream"));
         var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = Window } };
+
+        using var document = PdfDocument.Open(file, options);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(3 * Window);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            Invariant($"The stream has no /Length; its data ends after {3 * Window} bytes."));
+        document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
+        fault.EndStream.Should().Be(EndStreamState.Found);
+        document.Reader.IsCutAtLimit(StreamNumber).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_stream_whose_data_start_a_limit_cuts_records_nothing_of_its_length()
+    {
+        // The window MaxObjectLength allows ends on the stream keyword: where the data starts is past it, the guard's, and
+        // what the parser found of the stream is the limit's.
+        var header = Invariant($"{StreamNumber} 0 obj\n");
+        var dictionary = "<< /Pad (" + new string('x', 1024 - header.Length - "<< /Pad () >>\nstream".Length) + ") >>\nstream";
+        var file = Document((StreamNumber, dictionary + "\n" + Data(100) + "\nendstream"));
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
 
         using var document = PdfDocument.Open(file, options);
         document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
         document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
         document.Reader.TryGetStreamLengthFault(StreamNumber, out _).Should().BeFalse();
+        document.Reader.IsCutAtLimit(StreamNumber).Should().BeTrue();
     }
 
     [Fact]
@@ -1064,7 +1230,8 @@ public class StreamLengthTests
         // Six hundred bytes of junk come before %PDF-, and the index counts from there. Declared 300 bytes short, the
         // stream's endstream lies past where object 6's entry would place it counted from the start of the file: it is
         // found only when the bound is placed from the header. Without an endstream, the report names where object 6
-        // starts in the file, and the search stops there rather than at object 6's endstream.
+        // starts in the file, and the search stops there rather than at object 6's endstream: object 5's endobj before it
+        // ends the data (#174).
         const int Junk = 600;
         var data = Data(3 * Window);
         var built = endStreamFollowsData
@@ -1081,7 +1248,8 @@ public class StreamLengthTests
 
         document.Reader.HeaderOffset.Should().Be(Junk);
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
-        var message = document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message;
+        var code = endStreamFollowsData ? PdfDiagnosticCodes.StreamLengthInvalid : PdfDiagnosticCodes.StreamTruncated;
+        var message = document.Diagnostics.Should().ContainSingle(d => d.Code == code).Which.Message;
 
         if (endStreamFollowsData)
         {
@@ -1090,10 +1258,10 @@ public class StreamLengthTests
         }
         else
         {
-            stream.Data.Length.Should().Be(data.Length + 100);
+            stream.Data.Length.Should().Be(data.Length + 1);
             fault.NextObject.Should().Be(next);
             message.Should().Be(
-                Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {next}; the declared length is kept."));
+                Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows its data before the next object, at {next}: its object's endobj ends it, after {data.Length + 1} bytes."));
         }
     }
 
@@ -1188,7 +1356,8 @@ public class StreamLengthTests
         // Object 5 lost its endstream. Object 7, which the index as written marks free, follows it; object 8's entry
         // leads nowhere near it, and asking for it rebuilds the index, which places object 7. The index as written places
         // nothing between object 5 and object 6, but the bytes hold object 7's header: read before the rebuild or after
-        // it, the search stops there, and the stream keeps its declared length rather than object 7's header and data. The
+        // it, the search stops there, and the stream ends at its own endobj before it rather than take in object 7's header
+        // and data (#174). The
         // rebuilt index is not asked, which would have bounded a stream read after the rebuild only: its data would depend
         // on what was read first.
         var data = Data(3 * Window);
@@ -1217,13 +1386,13 @@ public class StreamLengthTests
         document.WasRepaired.Should().BeTrue();
         var again = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        first.Data.Length.Should().Be(data.Length + 400);
-        again.Data.Length.Should().Be(data.Length + 400);
+        first.Data.Length.Should().Be(data.Length);
+        again.Data.Length.Should().Be(data.Length);
         document.GetObject(new PdfObjectId(7)).AsStream().Required().Data.Length.Should().Be(5, "the rebuilt index serves object 7 in its own right");
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
         fault.NextObject.Should().Be(seven);
-        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
-            Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows them before the next object, at {seven}; the declared length is kept."));
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamTruncated).Which.Message.Should().Be(
+            Invariant($"The stream declared {data.Length + 400} bytes, and no endstream follows its data before the next object, at {seven}: its object's endobj ends it, after {data.Length} bytes."));
     }
 
     [Theory]
@@ -1234,7 +1403,8 @@ public class StreamLengthTests
         // As the IBM QMF manual's entries do, object 16's points one byte into its header, at "6 0 obj": reading object 16
         // finds it a byte before, and corrects the index the reader reads with. The search for object 5's endstream, which
         // it lost, is bounded by the index as the file wrote it, and stops at the same place whether object 16 was read and
-        // found first or not.
+        // found first or not. Its endobj lies before that place, but a byte of object 16's header lies between: the data
+        // runs to the place the index gives, and holds the endobj, whether the object ends there unknown (#174).
         var data = Data(3 * Window);
         var file = Document((StreamNumber, Stream(data.Length + 100, data, end: "\n")), (16, "(" + new string('p', 200) + ")"));
         var header = HeaderOf(file, 16);
@@ -1252,11 +1422,13 @@ public class StreamLengthTests
 
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        stream.Data.Length.Should().Be(data.Length + 100);
+        var taken = (int)(header + 1 - DataStartOf(file, StreamNumber));
+        stream.Data.Length.Should().Be(taken);
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
         fault.NextObject.Should().Be(header + 1, "the index as written places object 16 there");
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
-            Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {header + 1}; the declared length is kept."));
+            Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows its data before the next object, at {header + 1}; the {taken} bytes up to that object are taken as its data."));
+        document.Reader.IsEndObjMissing(StreamNumber, out _).Should().BeFalse("the data holds an endobj, which may be the object's own");
     }
 
     [Theory]
@@ -1296,10 +1468,10 @@ public class StreamLengthTests
             document.GetObject(new PdfObjectId(number));
         }
 
-        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length + 100);
+        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required().Data.Length.Should().Be(data.Length + 1);
         document.GetObject(new PdfObjectId(7)).AsStream().Required().Data.Length.Should().Be(5);
-        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
-            Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {HeaderOf(file, 6)}; the declared length is kept."));
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamTruncated).Which.Message.Should().Be(
+            Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows its data before the next object, at {HeaderOf(file, 6)}: its object's endobj ends it, after {data.Length + 1} bytes."));
         source.Searches(dataStart, data.Length).Should().Be(0, "the stream was searched as the document opened");
         document.Reader.Index.Entries.Should().Equal(opened, "nothing read after the document opened changes an index rebuilt as it opened");
     }
@@ -1315,7 +1487,8 @@ public class StreamLengthTests
         // its endstream (#182). Once the chain is read, the /Length is read and checked: object 10 is found near its entry,
         // which is corrected behind a copy of the index as the file wrote it. Object 5 lost its endstream; its search stops
         // where that index places the next object, 2 bytes before object 10's header, whether reading object 6 — whose entry
-        // points one byte into its header — corrected the index the reader reads with since, or not.
+        // points one byte into its header — corrected the index the reader reads with since, or not. That place cuts object
+        // 5's endobj: the data runs to it (#174).
         var data = Data(3 * Window);
         var file = LengthObjectOffItsEntry(data, out var tenAt);
 
@@ -1332,12 +1505,13 @@ public class StreamLengthTests
 
         var stream = document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
 
-        stream.Data.Length.Should().Be(data.Length + 100);
+        var taken = (int)(tenAt - 2 - DataStartOf(file, StreamNumber));
+        stream.Data.Length.Should().Be(taken);
         document.Reader.TryGetStreamLengthFault(StreamNumber, out var fault).Should().BeTrue();
         fault.NextObject.Should().Be(tenAt - 2);
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamLengthInvalid && d.Position == DataStartOf(file, StreamNumber))
             .Which.Message.Should().Be(
-                Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows them before the next object, at {tenAt - 2}; the declared length is kept."));
+                Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows its data before the next object, at {tenAt - 2}; the {taken} bytes up to that object are taken as its data."));
     }
 
     [Theory]
@@ -1594,6 +1768,26 @@ public class StreamLengthTests
             .Which.Message.Should().Be(message);
     }
 
+    [Fact]
+    public void IPRES_s_stream_that_lost_its_endstream_keeps_the_length_its_endobj_follows()
+    {
+        // t02-05-01-014: the 68 bytes its /Length declares, which its endobj follows without an endstream. It took the 310
+        // bytes to the end of the file, through object 5, the table and the trailer (#174).
+        const string File = "remote/ipres2017/t02-05-01-014-endstream-keyword-missing.pdf";
+        Assert.SkipUnless(Corpus.Paths.Contains(File), $"{File} is a remote document this machine did not fetch");
+        using var document = PdfDocument.Open(Corpus.Read(File), CorpusOptions(Corpus.Get(File)));
+
+        foreach (var each in document.ObjectNumbers.ToList())
+        {
+            document.GetObject(new PdfObjectId(each));
+        }
+
+        document.Reader.TryGetStreamLengthFault(4, out var fault).Should().BeTrue();
+        fault.Taken.Should().Be(68);
+        document.Diagnostics.Should().ContainSingle(d => d.Position == fault.DataStart).Which.ToString().Should().Be(
+            "Warning stream.truncated at 315: The stream has no endstream: its object's endobj follows the 68 bytes it declared, which are taken as its data.");
+    }
+
     private static readonly (string File, int Number, long DataStart, int Length, string Message)[] RemoteRows =
     [
         ("remote/opf-format-corpus/ibm-id-workbench-xpp-qmf-manual.pdf", 93, 89018, 115264, "The stream declared 115266 bytes but ended after 115264."),
@@ -1609,6 +1803,7 @@ public class StreamLengthTests
         ("remote/opf-format-corpus/quartz-word-samhsa-prevention-pathways-fact-sheet.pdf", 72, 145068, 8458, "The stream declared 8434 bytes but ended after 8458."),
         ("remote/opf-format-corpus/jhove-hul-35-atypon-pdfplus-journal-article.pdf", 49, 249330, 1647, "The stream declared 62065 bytes but ended after 1647."),
         ("remote/opf-format-corpus/jhove-hul-35-pdfium-urban-planning-report.pdf", 695, 19901349, 202154, "The stream declared 202154 bytes, and no endstream follows them before the next object, at 20103524; the declared length is kept."),
+        ("remote/pdfbox/distiller6-zeroed-object-stream-pdfbox3947.pdf", 417, 1670741, 1302, "The stream declared 1302 bytes, and no endstream follows them before the next object, at 1672062; the declared length is kept."),
         ("remote/ipres2017/t02-05-01-015-invalid-stream-length-in-dictionary.pdf", 4, 316, 68, "The stream's /Length is a real number, 61.5, not a non-negative integer; its data ends after 68 bytes."),
         ("remote/ipres2017/t02-05-01-016-stream-length-missing-in-dictionary.pdf", 4, 304, 68, "The stream has no /Length; its data ends after 68 bytes."),
         ("remote/opf-format-corpus/jhove-hul-157-tiff2pdf-1996-journal-article-scan.pdf", 16, 542577, 5555, "The stream's /Length names object 18 0, which holds a stream, not a non-negative integer; its data ends after 5555 bytes."),

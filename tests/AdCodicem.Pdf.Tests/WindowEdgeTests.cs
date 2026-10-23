@@ -110,7 +110,7 @@ public class WindowEdgeTests
     {
         // T21's shape: the data ends 0 to 10 bytes short of the window's edge — the hospital-bed guidance's
         // objects 604 and 2053 end 2 bytes short and right on it, before a CR LF — and its "endstream" lies
-        // across or past the edge. The reader asks the file for the 13 bytes after the data instead of
+        // across or past the edge. The reader asks the file for a few bytes after the data instead of
         // parsing the object again through a window eight times larger, which the file, padded past that
         // size, would otherwise serve.
         var failures = new List<string>();
@@ -132,7 +132,7 @@ public class WindowEdgeTests
             var read = source.BytesRead - beforeLoading;
             var length = stream.GetRawBytes().Length;
 
-            if (read > Window + 13 || length != Window - shortOfEdge - DataStart(Window - shortOfEdge) ||
+            if (read > Window + PdfObjectParser.EndObjLookahead || length != Window - shortOfEdge - DataStart(Window - shortOfEdge) ||
                 document.Diagnostics.Count > 0)
             {
                 failures.Add($"{shortOfEdge} bytes short: read {read} bytes, data of {length}, {document.Diagnostics.Count} diagnostics");
@@ -376,10 +376,11 @@ public class WindowEdgeTests
     }
 
     [Fact]
-    public void A_stream_the_file_cuts_short_is_reported_without_asking_the_source_past_its_end()
+    public void A_stream_the_file_cuts_short_keeps_its_declared_length_without_asking_the_source_past_its_end()
     {
         // The file ends inside "endstream". The reader asks the file for the bytes after the data, and a
-        // source may refuse a read that runs past its end: it must be asked only for the six there are.
+        // source may refuse a read that runs past its end: it must be asked only for the six there are. No endstream
+        // nor endobj follows the declared length, which ends before the end of the file: it is kept, and reported (#174).
         var bytes = Encoding.ASCII.GetBytes(
             "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n" +
             "2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\n" +
@@ -388,8 +389,9 @@ public class WindowEdgeTests
         using var document = PdfDocument.Open(new StrictCountingSource(bytes), options: null, ownsSource: true);
         var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
 
-        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().StartWith("hello");
-        document.Diagnostics.Contains(PdfDiagnosticCodes.StreamTruncated).Should().BeTrue();
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("hello");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
+            "The stream declared 5 bytes, and no endstream follows them before the end of the file; the declared length is kept.");
     }
 
     /// <summary>

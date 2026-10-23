@@ -182,12 +182,26 @@ public class ParserTests
     }
 
     [Theory]
-    [InlineData(0, true)]
-    [InlineData(-1, false)]
-    [InlineData(11, false)]
-    public void Looks_for_endstream_only_inside_the_bytes_it_is_given(long position, bool expected)
+    [InlineData("\nendstream\n", "EndStream")]
+    [InlineData("     \n %a comment\r\n\t \fendstream endobj", "EndStream")]
+    [InlineData("\nendstream", "Undecided")]
+    [InlineData("x\nendstream", "None")]
+    [InlineData("\nendstrean", "None")]
+    [InlineData("      ", "Undecided")]
+    [InlineData("\nendst", "Undecided")]
+    [InlineData("\n%a comment the bytes end inside", "Undecided")]
+    public void Reads_endstream_after_any_white_space_and_comments_or_says_the_bytes_cannot_tell(string bytes, string expected)
     {
-        PdfObjectParser.IsEndStreamAt("\nendstream"u8, position).Should().Be(expected);
+        StreamEnds.ReadEnd(Encoding.ASCII.GetBytes(bytes), reachesEndOfFile: false).Kind.ToString().Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("      ")]
+    [InlineData("\nendst")]
+    [InlineData("\n%a comment the file ends inside")]
+    public void Bytes_that_end_the_file_before_endstream_hold_none(string bytes)
+    {
+        StreamEnds.ReadEnd(Encoding.ASCII.GetBytes(bytes), reachesEndOfFile: true).Kind.Should().Be(StreamEndKind.None);
     }
 
     [Fact]
@@ -198,6 +212,38 @@ public class ParserTests
 
         Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("truncated");
         diagnostics.Contains(PdfDiagnosticCodes.StreamTruncated).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_stream_that_lost_its_endstream_ends_at_its_own_endobj_before_the_next_object()
+    {
+        // The parser alone stops the search where the reader does, at the first header its bytes hold, and the object's
+        // endobj before it ends the data (#174).
+        var diagnostics = new PdfDiagnostics();
+        var stream = ParseStream("<< /Length 3 >>\nstream\nhello\nendobj\n6 0 obj\n<< /Length 5 >>\nstream\nworld\nendstream\nendobj", diagnostics);
+
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("hello");
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamTruncated);
+    }
+
+    [Fact]
+    public void A_stream_that_lost_its_endstream_runs_to_the_header_its_bytes_hold_when_no_endobj_precedes_it()
+    {
+        var diagnostics = new PdfDiagnostics();
+        var stream = ParseStream("<< /Length 99 >>\nstream\nhello\n6 0 obj\n<< /Length 5 >>\nstream\nworld\nendstream\nendobj", diagnostics);
+
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("hello\n");
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Fact]
+    public void A_window_given_to_the_parser_alone_that_cannot_say_where_a_stream_ends_asks_for_more()
+    {
+        // No endstream, no header, no endobj in the window: a larger one may hold them.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("<< /Length 300 >>\nstream\n" + new string('d', 100)), endsData: false);
+
+        parser.ParseObject().Should().BeOfType<PdfStream>();
+        parser.IsTruncated.Should().BeTrue();
     }
 
     [Fact]

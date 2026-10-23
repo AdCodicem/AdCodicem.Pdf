@@ -169,6 +169,113 @@ public class HostileInputTests
         allocated.Should().BeLessThanOrEqualTo(2 * (sizeof(int) + 32), "two tables of one pair each");
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(100_000)]
+    [InlineData(1_000_000)]
+    public void A_length_the_file_cannot_hold_is_settled_by_the_endstream_found_without_reaching_a_guard(int dataLength)
+    {
+        // "/Length 2147483647", the data, its endstream, then an object of 17 MB: the window grew to MaxObjectLength to
+        // settle a length the file cannot hold, read 21.5 MB, reported limit.object and marked the object cut, though its
+        // data was found whole, and threw under ThrowOnLimit (#174). The endstream found settles it, the data read once.
+        var data = dataLength == 0 ? "short" : new string('d', dataLength);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Length 2147483647 >>\nstream\n" + data + "\nendstream")
+            .WithObject(6, "(" + new string('p', 17 * 1024 * 1024) + ")")
+            .BuildClassic(rootNumber: 1);
+
+        foreach (var throwOnLimit in new[] { false, true })
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ThrowOnLimit = throwOnLimit }, ownsSource: false);
+            var opened = source.BytesRead;
+            var stream = document.GetObject(new PdfObjectId(5)).AsStream().Required();
+
+            stream.Data.Length.Should().Be(data.Length);
+            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+                string.Create(CultureInfo.InvariantCulture, $"The stream declared 2147483647 bytes but ended after {data.Length}."));
+            document.Reader.IsCutAtLimit(5).Should().BeFalse();
+            (source.BytesRead - opened).Should().BeLessThan(data.Length + (4L * PdfFileReader.InitialObjectWindow), "the data, read once");
+        }
+    }
+
+    [Fact]
+    public void Many_lengths_the_file_cannot_hold_read_the_file_once_not_once_each()
+    {
+        // Fifty such streams before an object of 17 MB: each grew its window to MaxObjectLength, and the reader read the
+        // file sixty times over (#174).
+        const int Streams = 50;
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var k = 0; k < Streams; k++)
+        {
+            builder.WithObject(10 + k, "<< /Length 2147483647 >>\nstream\nshort\nendstream");
+        }
+
+        var file = builder.WithObject(100, "(" + new string('p', 17 * 1024 * 1024) + ")").BuildClassic(rootNumber: 1);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
+
+        for (var k = 0; k < Streams; k++)
+        {
+            document.GetObject(new PdfObjectId(10 + k)).AsStream().Required().Data.Length.Should().Be(5);
+        }
+
+        (source.BytesRead - opened).Should().BeLessThan(Streams * 2L * PdfFileReader.InitialObjectWindow, "a window and a few bytes for each");
+        document.Diagnostics.Should().HaveCount(Streams).And.OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Fact]
+    public void A_stream_whose_endobj_follows_its_length_without_endstream_reads_no_further_than_its_window_whatever_follows()
+    {
+        // iPRES's t02-05-01-014 before an object of 20 MB: no endstream after the data, which the window held, so it grew to
+        // MaxObjectLength looking for one, took 16 MB as the data of a 68-byte stream, reported limit.object and marked the
+        // object cut (#174). Its endobj plays the endstream's part.
+        var data = new string('d', 68);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Length 68 >>\nstream\n" + data + "\r\n\n")
+            .WithObject(6, "(" + new string('p', 20 * 1024 * 1024) + ")")
+            .BuildClassic(rootNumber: 1);
+
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
+
+        document.GetObject(new PdfObjectId(5)).AsStream().Required().Data.Length.Should().Be(68);
+
+        (source.BytesRead - opened).Should().BeLessThanOrEqualTo(PdfFileReader.InitialObjectWindow, "the window holds the object and what follows it");
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamTruncated);
+        document.Reader.IsCutAtLimit(5).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_length_the_file_cannot_hold_with_no_endstream_takes_the_rest_of_the_file_without_reaching_a_guard()
+    {
+        // "/Length 2147483647" and 20 MB of data to the end of the file, with no endstream and no endobj: the window grew to
+        // MaxObjectLength and the guard was reported (#174). The data runs to the end of the file, the object without its
+        // endobj, as for any stream the end of the file cuts.
+        var text = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "5 0 obj\n<< /Length 2147483647 >>\nstream\n";
+        var file = Encoding.ASCII.GetBytes(text + new string('d', 20 * 1024 * 1024));
+
+        using var document = PdfDocument.Open(file);
+        var stream = document.GetObject(new PdfObjectId(5)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(20 * 1024 * 1024);
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamTruncated).Which.Message.Should().Be(
+            "The stream declared 2147483647 bytes, and no endstream follows its data before the end of the file; the 20971520 bytes to the end of the file are taken as its data.");
+        document.Diagnostics.Should().NotContain(d => d.Code.StartsWith("limit.", StringComparison.Ordinal));
+        document.Reader.IsCutAtLimit(5).Should().BeFalse();
+        document.Reader.IsEndObjMissing(5, out _).Should().BeTrue();
+    }
+
     [Fact]
     public void Reading_streams_whose_data_share_a_stretch_of_a_file_held_in_memory_allocates_none_of_their_data()
     {

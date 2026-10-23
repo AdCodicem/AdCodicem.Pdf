@@ -248,9 +248,10 @@ public class CorpusReadingTests
     [Fact]
     public void A_damaged_object_stream_s_fault_is_held_once_after_a_full_read_and_a_validation()
     {
-        // Object stream 417 of the PDFBox report turns corrupt where a block of zeros erased its data. Reading it serves its
-        // objects; reading object 5922 rebuilds the index, which decodes it again; the full read decodes it a third time,
-        // and the validator a fourth: its fault was held four times, and is held once (#144).
+        // Object stream 417 of the PDFBox report lost its end to a block of zeros: its data is the 1,302 bytes it declares,
+        // which no endstream follows before the next object (#174), and its Flate data ends before them. Reading it serves
+        // its objects; reading object 5922 rebuilds the index, which decodes it again; the full read decodes it a third
+        // time, and the validator a fourth: its fault was held four times, and is held once (#144).
         const string File = "remote/pdfbox/distiller6-zeroed-object-stream-pdfbox3947.pdf";
         Assert.SkipUnless(Corpus.Paths.Contains(File), $"{File} is a remote document this machine did not fetch");
         using var document = PdfDocument.Open(Corpus.PathOf(File), OptionsFor(Corpus.Get(File)) with { DiagnosticCapacity = int.MaxValue });
@@ -259,7 +260,7 @@ public class CorpusReadingTests
         new PdfValidator().Validate(document);
 
         document.Diagnostics.Where(d => d.Position == 1670741 && d.Code == PdfDiagnosticCodes.FilterFailed).Select(d => d.ToString())
-            .Should().Equal("Warning filter.failed at 1670741: A Flate stream is corrupt at byte 33853 of its 34152; the 102785 bytes decoded before the fault was found were kept.");
+            .Should().Equal("Warning filter.failed at 1670741: A Flate stream ends before its data does; what decoded before the end was kept.");
     }
 
     [Theory]
