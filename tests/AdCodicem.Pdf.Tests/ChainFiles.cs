@@ -581,6 +581,60 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of two revisions, as <see cref="UpdateOverAStrayHexByte"/> writes it, but stream 5's hexadecimal rows hold no
+    /// stray byte. With <paramref name="compressed"/>, the rows and <paramref name="padding"/> zero bytes after them are
+    /// compressed, the zero bytes to a few, and written with no <c>&gt;</c>: <c>/Filter [/ASCIIHexDecode /FlateDecode]</c>. Without,
+    /// the rows are written as they are, <c>/Filter /ASCIIHexDecode</c>, and an end-of-line, <c>endstream</c> and another
+    /// follow the digits of 14 bytes and one more: the deferred search stops there.
+    /// </summary>
+    public static byte[] UpdateOverHexRows(bool deferred, bool compressed, int padding = 0)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+
+        // Compressed, the data's length depends on the offsets its rows hold: written in four digits, it does not move them.
+        byte[] Data(long four, long stream)
+        {
+            var rows = Encode(
+                [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, four, 0), (1, stream, 0)],
+                Rows.Raw);
+
+            if (compressed)
+            {
+                using var output = new MemoryStream();
+
+                using (var zlib = new ZLibStream(output, CompressionLevel.Optimal, leaveOpen: true))
+                {
+                    zlib.Write([.. rows, .. new byte[padding]]);
+                }
+
+                return Encoding.ASCII.GetBytes(Convert.ToHexString(output.ToArray()));
+            }
+
+            var hex = Convert.ToHexString(rows);
+            return Encoding.ASCII.GetBytes(hex[..29] + "\nendstream\n" + hex[29..] + ">");
+        }
+
+        var four = file.Position;
+        var at = four + "4 0 obj\n0000\nendobj\n".Length;
+        var data = Data(four, at);
+        var length = data.Length.ToString("D4", CultureInfo.InvariantCulture);
+        file.Object(4, length);
+        file.Stream(
+            5,
+            $"/Type /XRef /Size 6 /W [1 4 2] /Filter {(compressed ? "[/ASCIIHexDecode /FlateDecode]" : "/ASCIIHexDecode")} /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
+            data);
+        file.Text("%" + new string('-', 1200) + "\n");
+        var xref = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 6 /Root 1 0 R /Prev {at} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of one cross-reference stream, object 7, whose <c>/Length</c> names object 5, which only the stream's own row
     /// places, before the rows of objects 1 and 2; two rows of reserved types spell <c>endstream</c> after an end-of-line
     /// after them, 28 and 42 bytes in, before the rows of objects 3 and 7 and fifty free ones, 420 bytes in all. Object 5

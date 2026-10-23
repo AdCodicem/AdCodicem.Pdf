@@ -1987,6 +1987,25 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_deferred_length_s_data_whose_last_digit_alone_crosses_MaxDecodedStreamLength_is_cut_as_its_direct_twin_s()
+    {
+        // Stream 5's hexadecimal rows spell an endstream after the digits of 14 bytes and one more, where the deferred search
+        // stops: the lone digit makes a fifteenth byte, past MaxDecodedStreamLength. Decoded once more as data a guard cut,
+        // the digit was dropped and the data fit: the rows past the spelled endstream were charged to the file, the
+        // section rebuilt, where the direct twin's are the guard's. A hidden end silences what decoding says of the end,
+        // and changes nothing it decodes (#220, #224).
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 14 } };
+        using var direct = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: false, compressed: false), options);
+        using var deferred = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: true, compressed: false), options);
+
+        direct.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        deferred.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        deferred.WasRepaired.Should().BeFalse();
+        deferred.Reader.Structure.Sections[^1].CutByLimit.Should().BeTrue();
+        deferred.Reader.Structure.Sections[^1].Incomplete.Should().BeFalse();
+    }
+
+    [Fact]
     public void A_deferred_length_whose_reference_leads_to_an_object_only_its_own_section_places_is_read_once_the_chain_is()
     {
         // The cross-reference stream's /Length, object 5, which the newer table places, holds a reference to object 6, which
