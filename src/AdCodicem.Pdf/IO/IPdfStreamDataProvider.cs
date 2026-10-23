@@ -32,6 +32,13 @@ internal interface IPdfStreamDataProvider
     long DataStart(long absoluteKeywordEnd);
 
     /// <summary>
+    /// Determines whether a token that reaches the end of the parser's buffer at <paramref name="absoluteOffset"/> ends there:
+    /// the file ends there, or no regular character follows. The parser asks of an <c>endobj</c> its window's edge reaches,
+    /// which may be the start of a longer keyword (#174).
+    /// </summary>
+    bool TokenEndsAt(long absoluteOffset);
+
+    /// <summary>
     /// Determines whether an <c>endstream</c> keyword follows <paramref name="absoluteOffset"/>, after white space and
     /// comments, however many (#174), and what follows it. The parser asks at the end of a stream's declared length when its
     /// buffer cannot say: the data runs past it, or the white space after it does.

@@ -295,12 +295,16 @@ internal ref struct PdfObjectParser
 
         var afterValue = _lexer.Position;
         var next = _lexer.Read();
-        var unseen = next.Kind == PdfTokenKind.EndOfInput || next.End >= _memory.Length;
+
+        // A header a window's edge left undecided ended the value: what follows it is the edge's, not seen (#230).
+        var unseen = next.Kind == PdfTokenKind.EndOfInput || next.End >= _memory.Length || _headerUndecided;
 
         // What follows a stream whose data runs past the buffer lies past it too: the file was asked at the stream's
         // end, and its answer stands where the buffer has none (#55). An endobj a window's edge reaches may be the start of
-        // a longer keyword, which the file read on after a stream says, or a larger window (#174).
-        var endObj = IsEndObj(next);
+        // a longer keyword: the file says whether a regular character follows it, so that an object a window ends exactly
+        // with reads whole, as under a larger window; a parser no file backs asks for a larger buffer (#174).
+        var endObj = IsEndObj(next) ||
+            (next.IsKeyword("endobj"u8) && !PastWindowEdge && _streamData is { } file && file.TokenEndsAt(_baseOffset + next.End));
         _endObj = endObj
             ? EndObjState.Present
             : _endObjUnknown ? EndObjState.Unknown
@@ -1490,6 +1494,7 @@ internal ref struct PdfObjectParser
     /// </summary>
     private readonly bool HeaderUndecided(PdfToken number, PdfToken generation, PdfToken keyword) =>
         !_endsData && _member is null && MayBeginHeader(number, generation, _memory.Length) &&
+        MayBeHeaderBytes(number, generation, keyword) &&
         (generation.Kind == PdfTokenKind.EndOfInput ||
             (generation.Kind == PdfTokenKind.Integer &&
                 (keyword.Kind == PdfTokenKind.EndOfInput ||
@@ -1516,6 +1521,30 @@ internal ref struct PdfObjectParser
             !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
             !span[number.End..generation.Start].ContainsAnyExcept(PdfCharacters.Whitespace) &&
             !span[generation.End..keyword.Start].ContainsAnyExcept(PdfCharacters.Whitespace);
+    }
+
+    /// <summary>
+    /// Determines whether the bytes read of what may be a header, up to the window's edge, keep to the header's byte rule
+    /// (<see cref="IsHeader"/>): digits alone, white space alone between the tokens — no sign, no comment.
+    /// </summary>
+    private readonly bool MayBeHeaderBytes(PdfToken number, PdfToken generation, PdfToken keyword)
+    {
+        var span = _memory.Span;
+
+        if (span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9'))
+        {
+            return false;
+        }
+
+        if (generation.Kind != PdfTokenKind.Integer)
+        {
+            return !span[number.End..].ContainsAnyExcept(PdfCharacters.Whitespace);
+        }
+
+        var upTo = keyword.Kind == PdfTokenKind.EndOfInput ? span.Length : keyword.Start;
+        return !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
+            !span[number.End..generation.Start].ContainsAnyExcept(PdfCharacters.Whitespace) &&
+            !span[generation.End..upTo].ContainsAnyExcept(PdfCharacters.Whitespace);
     }
 
     /// <summary>Gets what ended the buffer, as a report of what it cut short names it.</summary>
