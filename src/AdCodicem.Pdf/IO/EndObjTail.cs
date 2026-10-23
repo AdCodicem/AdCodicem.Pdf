@@ -191,9 +191,11 @@ internal struct EndObjTail
     /// token, as the one the data may end at; whether the byte after it does is read next.
     /// </summary>
     /// <remarks>
-    /// A regular character before it makes it part of the token that character is in; a solidus makes it a name,
-    /// <c>/endobj</c>, and a percent sign part of a comment. The bytes before the keyword are the data's, which no lexing
-    /// reads: any other delimiter ends a token or stands alone, wherever a string or a dictionary it may open would end.
+    /// A regular character right before it makes it part of the token that character is in; a solidus makes it a name,
+    /// <c>/endobj</c>, and a percent sign a comment that starts there, <c>%endobj</c>. Only that byte is read: the bytes
+    /// before the keyword are the data's, which no lexing reads, so a comment that starts further back on the line does not
+    /// hide it — any other delimiter ends a token or stands alone, wherever a string, a dictionary or a comment it may open
+    /// would end.
     /// </remarks>
     /// <returns>Whether the keyword starts a token.</returns>
     private bool Found(ReadOnlySpan<byte> bytes, long at, int start, long keyword)
