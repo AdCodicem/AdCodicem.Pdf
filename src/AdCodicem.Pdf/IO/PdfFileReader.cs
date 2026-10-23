@@ -3101,9 +3101,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     section.TrailerPosition = absolute + token.Start;
 
-                    if (ReadTrailer(window.Memory, absolute, lexer.Position, windowFull, section) is { } trailer)
+                    var trailer = ReadTrailer(window.Memory, absolute, lexer.Position, windowFull, section);
+
+                    if (trailer is not null)
                     {
                         MergeSectionTrailer(trailer, section);
+                    }
+
+                    // A table an /XRefStm names, where ISO 32000-1 names a cross-reference stream (Table 19), stands in its
+                    // place: as a hybrid file's stream's own /Prev, what its trailer names is not read, to name a section
+                    // missing or end the chain for a guard, the chain going on through the table that names it.
+                    if (trailer is not null && section.NamedBy != "/XRefStm")
+                    {
                         previous = SectionOffset(trailer, PdfName.Prev, absolute, out var previousHidden);
                         hybrid = SectionOffset(trailer, PdfName.XRefStm, absolute, out var streamHidden);
                         section.ChainHiddenByGuard = streamHidden ?? previousHidden;

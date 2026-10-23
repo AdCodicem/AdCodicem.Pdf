@@ -32,7 +32,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// the validator had the reader settle on before its first rule — the chain's own, unless a read could still have rebuilt
 /// it, in which case it was rebuilt then (#237) —, so that what was read before validating changes nothing. A hybrid file's
 /// stream's own <c>/Prev</c>, which the reader does not follow, the chain going on through the table's, is judged as the
-/// file wrote it, a reference it holds not followed (#263).
+/// file wrote it, a reference it holds not followed (#263); so are the <c>/Prev</c> and <c>/XRefStm</c> of a table an
+/// <c>/XRefStm</c> names in a stream's place.
 /// </para>
 /// </remarks>
 internal sealed class TrailerValueWrongRule : IValidationRule
@@ -86,14 +87,17 @@ internal sealed class TrailerValueWrongRule : IValidationRule
             }
             else
             {
+                // A table an /XRefStm names gives values the reader does not follow either: judged as written (#263).
+                var followed = section.NamedBy != "/XRefStm";
+
                 if (IsFollowed(sections, section, PdfName.Prev))
                 {
-                    judge.Value("its /Prev", trailer.GetRaw(PdfName.Prev), "ISO 32000-1 makes it direct (Table 15)", "Table 15");
+                    judge.Value("its /Prev", trailer.GetRaw(PdfName.Prev), "ISO 32000-1 makes it direct (Table 15)", "Table 15", followed);
                 }
 
                 if (IsFollowed(sections, section, PdfName.XRefStm))
                 {
-                    judge.Value("its /XRefStm", trailer.GetRaw(PdfName.XRefStm), direct: null, "Table 19");
+                    judge.Value("its /XRefStm", trailer.GetRaw(PdfName.XRefStm), direct: null, "Table 19", followed);
                 }
             }
         }
