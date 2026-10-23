@@ -443,9 +443,10 @@ internal ref struct PdfObjectParser
         var second = _lexer.Read();
         var third = second.Kind == PdfTokenKind.Integer ? _lexer.Read() : second;
 
-        if (second.Kind == PdfTokenKind.Integer && third.IsKeyword("R"u8) &&
-            token.Integer is >= 0 and <= PdfObjectId.MaxNumber &&
-            second.Integer is >= 0 and <= PdfObjectId.MaxGeneration)
+        // An R a window's edge reaches is one only where the file says it ends there: "12 0 Rx" is no reference.
+        var referenced = second.Kind == PdfTokenKind.Integer && IsWholeKeyword(third, "R"u8);
+
+        if (referenced && token.Integer is >= 0 and <= PdfObjectId.MaxNumber && second.Integer is >= 0 and <= PdfObjectId.MaxGeneration)
         {
             return new PdfReference(new PdfObjectId((int)token.Integer, (int)second.Integer), _source);
         }
@@ -473,8 +474,8 @@ internal ref struct PdfObjectParser
         }
 
         // The buffer ended before the look-ahead could tell: "12 0" may be all there is, or what a window's edge left of
-        // "12 0 R".
-        if (third.Kind == PdfTokenKind.EndOfInput)
+        // "12 0 R" — or "12 0 R" what it left of "12 0 RG", which a larger window shows (#174).
+        if (third.Kind == PdfTokenKind.EndOfInput || (second.Kind == PdfTokenKind.Integer && third.IsKeyword("R"u8) && !referenced))
         {
             _truncated = true;
             _lookAheadCut = !_endsData;
@@ -1486,8 +1487,15 @@ internal ref struct PdfObjectParser
     /// a window ends exactly with reads whole, as under a larger window, wherever its endobj comes — after its value, where a
     /// container it left open is, or as all it holds (#174); a parser no file backs asks for a larger buffer.
     /// </summary>
-    private readonly bool IsEndObj(PdfToken token) =>
-        token.IsKeyword("endobj"u8) &&
+    private readonly bool IsEndObj(PdfToken token) => IsWholeKeyword(token, "endobj"u8);
+
+    /// <summary>
+    /// Determines whether <paramref name="token"/> is the keyword <paramref name="keyword"/>, and whole: one that reaches the
+    /// end of a buffer that is a window's edge may be the start of a longer keyword — <c>endobjX</c>, <c>RG</c> —, which the
+    /// file says when it backs the parser; a parser no file backs asks for a larger buffer.
+    /// </summary>
+    private readonly bool IsWholeKeyword(PdfToken token, ReadOnlySpan<byte> keyword) =>
+        token.IsKeyword(keyword) &&
         (!AtWindowEdge(token) || (!PastWindowEdge && _fileEdge is { } file && file.TokenEndsAt(_baseOffset + token.End)));
 
     /// <summary>

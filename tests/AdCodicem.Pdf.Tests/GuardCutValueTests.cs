@@ -629,6 +629,37 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("Rx", false)]
+    [InlineData("RG", false)]
+    [InlineData("R\n", true)]
+    public void An_R_a_window_s_edge_reaches_makes_a_reference_only_where_the_file_ends_it_there(string tail, bool reference)
+    {
+        // Object 4, the stream's /Filter, holds "6 0 " and the tail after 100 spaces, and MaxObjectLength ends its window
+        // right after the R; object 6 holds /ASCIIHexDecode. An R a regular byte goes on was taken whole: the cut object
+        // held a reference the file never wrote, which the /Filter followed to object 6, past the guard's cut, and the data
+        // was decoded. The edge cuts what may be a reference, as under a bound one byte smaller, and the data is left as it
+        // is, the guard's (#224, #263).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, new string(' ', 100) + "6 0 " + tail),
+            [6] = file.Object(6, "/ASCIIHexDecode"),
+            [7] = file.Object(7, "<< /Length 7 /Filter 4 0 R >>\nstream\n414243>\nendstream"),
+        };
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = "4 0 obj\n".Length + 105 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        var data = document.GetObject(new PdfObjectId(7)).AsStream().Required().Decode().ToArray();
+
+        Encoding.ASCII.GetString(data).Should().Be(reference ? "ABC" : "414243>");
+        document.Reader.IsCutAtLimit(4).Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
     [InlineData(29)]
     [InlineData(20)]
     public void A_filter_run_out_where_a_guard_s_cut_of_the_length_leaves_the_data_says_nothing_of_the_file(int free)
