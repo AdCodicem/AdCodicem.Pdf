@@ -3564,13 +3564,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // file, ends nowhere the section says: its rows are not read (#220). Where the /Length leads to an object a guard cut,
         // the length that would have said is the guard's, as a value its rows are read with is (#263): the section counts as
         // cut, the chain ends here, and the guard is reached once the chain is read.
-        if (deferred is { } unended && _endStreamSearches.TryGetValue((xrefStream.Data.Position, true), out var known) &&
+        if (deferred is not null && _endStreamSearches.TryGetValue((xrefStream.Data.Position, true), out var known) &&
             known.Search is { Length: null } search)
         {
-            if (Follow(PdfName.Length, dictionary.GetRaw(PdfName.Length), entry: true, out _, out var cutObject) is { } cutFault &&
-                cutObject is { } past)
+            // The fault names the link of the chain that could not be read — the one no section read so far places, or the
+            // one a guard cut —, which the chain read without loading stopped at, as Follow does.
+            var lengthFault = Follow(PdfName.Length, dictionary.GetRaw(PdfName.Length), entry: true, out _, out var cutObject);
+
+            if (cutObject is { } past)
             {
-                section.Fault = cutFault;
+                section.Fault = lengthFault;
                 section.CutByLimit = true;
                 (_chainValuesCut ??= []).Add(past);
                 return XRefSectionState.Malformed;
@@ -3581,7 +3584,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 : "before the end of the file";
             section.Fault = string.Create(
                 CultureInfo.InvariantCulture,
-                $"its /Length holds the reference {unended.Length.Number} {unended.Length.Generation} R, which no section read before it places where it can be read, and {(search.Searched ? "no endstream follows its data " + where : "its data was not searched for its endstream, the document's searches for endstream having read as much of the file as they may")}");
+                $"{lengthFault}, and {(search.Searched ? "no endstream follows its data " + where : "its data was not searched for its endstream, the document's searches for endstream having read as much of the file as they may")}");
             return XRefSectionState.Malformed;
         }
 
