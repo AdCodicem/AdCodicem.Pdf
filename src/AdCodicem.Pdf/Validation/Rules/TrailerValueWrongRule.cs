@@ -1,5 +1,6 @@
 using System.Globalization;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 
@@ -30,10 +31,13 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <para>
 /// Each trailer is judged as the file wrote it; a reference it holds is followed as any read follows it, through the index
 /// the validator had the reader settle on before its first rule — the chain's own, unless a read could still have rebuilt
-/// it, in which case it was rebuilt then (#237) —, so that what was read before validating changes nothing. A hybrid file's
-/// stream's own <c>/Prev</c>, which the reader does not follow, the chain going on through the table's, is judged as the
-/// file wrote it, a reference it holds not followed (#263); so are the <c>/Prev</c> and <c>/XRefStm</c> of a table an
-/// <c>/XRefStm</c> names in a stream's place.
+/// it, in which case it was rebuilt then (#237) —, so that what was read before validating changes nothing. A value the
+/// reader does not read is judged as the file wrote it, a reference it holds not followed: following it would read what
+/// the reading never did, and could reach a guard it never met (#263). So are a hybrid file's stream's own <c>/Prev</c>,
+/// which the reader does not follow, the chain going on through the table's; the <c>/Prev</c> and <c>/XRefStm</c> of a
+/// table an <c>/XRefStm</c> names in a stream's place; and what of a cross-reference stream's <c>/Filter</c> and
+/// <c>/DecodeParms</c> decoding does not read — the parameters of a filter that reads none, past its predictor where it
+/// has none, or past the element that ends the chain.
 /// </para>
 /// </remarks>
 internal sealed class TrailerValueWrongRule : IValidationRule
@@ -83,7 +87,11 @@ internal sealed class TrailerValueWrongRule : IValidationRule
                 }
 
                 judge.Value("its /Length", trailer.GetRaw(PdfName.Length), pdf20 ? Iso2 : null, "Table 5");
-                judge.Decoding(trailer, pdf20);
+
+                // What decoding reads, followed as decoding follows it, through the bound on filters the reader read under.
+                var reads = new DecodingReads();
+                FilterChain.TryFollow(trailer, context.Document.Reader.FilterChainBound, ref reads);
+                judge.Decoding(trailer, pdf20, reads);
             }
             else
             {
@@ -192,9 +200,10 @@ internal sealed class TrailerValueWrongRule : IValidationRule
 
         /// <summary>
         /// Reports a cross-reference stream's <c>/Filter</c> or <c>/DecodeParms</c> written as a reference, and, in a file
-        /// that declares PDF 2.0, each element and entry written as one; and the integers of Table 8 written as reals.
+        /// that declares PDF 2.0, each element and entry written as one; and the integers of Table 8 written as reals. A
+        /// reference among them is followed where decoding follows it, as <paramref name="reads"/> says.
         /// </summary>
-        public void Decoding(PdfDictionary trailer, bool pdf20)
+        public void Decoding(PdfDictionary trailer, bool pdf20, DecodingReads reads)
         {
             var inside = pdf20 ? Iso2 : null;
 
@@ -204,7 +213,7 @@ internal sealed class TrailerValueWrongRule : IValidationRule
                 var value = trailer.GetRaw(key);
                 Value("its " + name, value, Iso1, integer: null);
 
-                switch (value?.Resolve())
+                switch (reads.Resolve(value))
                 {
                     case PdfArray array:
                         for (var i = 0; i < array.Count; i++)
@@ -212,27 +221,55 @@ internal sealed class TrailerValueWrongRule : IValidationRule
                             var what = string.Create(CultureInfo.InvariantCulture, $"element {i} of its {name}");
                             Value(what, array[i], inside, integer: null);
 
-                            if (array[i].Resolve() is PdfDictionary parameters)
+                            if (reads.Resolve(array[i]) is PdfDictionary parameters)
                             {
-                                Parameters(parameters, what, inside);
+                                Parameters(parameters, what, inside, reads);
                             }
                         }
 
                         break;
 
                     case PdfDictionary parameters:
-                        Parameters(parameters, "its " + name, inside);
+                        Parameters(parameters, "its " + name, inside, reads);
                         break;
                 }
             }
         }
 
-        private void Parameters(PdfDictionary parameters, string where, string? inside)
+        private void Parameters(PdfDictionary parameters, string where, string? inside, DecodingReads reads)
         {
             foreach (var (key, value) in parameters)
             {
-                Value(FileQuote.Name(key) + " of " + where, value, inside, Array.IndexOf(IntegerParameters, key) >= 0 ? "Table 8" : null);
+                var integer = Array.IndexOf(IntegerParameters, key) >= 0 ? "Table 8" : null;
+                Value(FileQuote.Name(key) + " of " + where, value, inside, integer, reads.Follows(value));
             }
+        }
+    }
+
+    /// <summary>
+    /// The references among a cross-reference stream's <c>/Filter</c> and <c>/DecodeParms</c> that decoding follows, each as
+    /// the file wrote it, which <see cref="FilterChain.TryFollow"/> gives in the order decoding reads them (#263).
+    /// </summary>
+    private readonly struct DecodingReads() : IFilterValueReader
+    {
+        private readonly HashSet<PdfObject> _followed = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>Determines whether <paramref name="written"/> is no reference, or one decoding follows.</summary>
+        public bool Follows(PdfObject? written) => written is not PdfReference || _followed.Contains(written);
+
+        /// <summary>Gives what <paramref name="written"/> leads to where decoding follows it, and itself otherwise.</summary>
+        public PdfObject? Resolve(PdfObject? written) => Follows(written) ? written?.Resolve() : written;
+
+        /// <inheritdoc/>
+        public bool TryRead(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
+        {
+            if (written is PdfReference)
+            {
+                _followed.Add(written);
+            }
+
+            value = written?.Resolve();
+            return true;
         }
     }
 }

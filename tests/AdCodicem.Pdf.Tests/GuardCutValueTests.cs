@@ -1230,6 +1230,38 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("/Filter /FlateDecode /DecodeParms << /Columns 5 0 R >>", true, false)]
+    [InlineData("/Filter /FlateDecode /DecodeParms << /EarlyChange 5 0 R >>", true, false)]
+    [InlineData("/DecodeParms 5 0 R", false, false)]
+    [InlineData("/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 5 0 R >>", true, true)]
+    public void The_rule_on_trailer_values_follows_a_parameter_only_where_decoding_reads_it(string entries, bool compressed, bool read)
+    {
+        // Stream 7's /DecodeParms, or a parameter in it, is a reference to object 5, which holds 7.0. Decoding reads /Columns
+        // only past a predictor, /EarlyChange only for LZW, and /DecodeParms only for a Flate or LZW step: the rule followed
+        // each all the same, judged a real decoding never read, and reached the guard the reading never met where
+        // MaxObjectLength cuts object 5 (#263). Where decoding reads it, it is followed as before.
+        var trailers = new ValidationProfile("trailers", 1, [new TrailerValueWrongRule()]);
+        var file = ChainFiles.UnderAnUpdate($"/Type /XRef /Size 8 /W [1 4 2] {entries} /Length {{length}}", "7.0", compressed, predicted: read, placed: true);
+        using var document = PdfDocument.Open(file);
+
+        new PdfValidator(new PdfValidatorOptions { Profile = trailers }).Validate(document).Findings
+            .Any(finding => finding.Message.Contains("as a real number", StringComparison.Ordinal)).Should().Be(read);
+
+        if (read)
+        {
+            return;
+        }
+
+        var padded = ChainFiles.UnderAnUpdate(
+            $"/Type /XRef /Size 8 /W [1 4 2] {entries} /Length {{length}}", new string(' ', 3000) + "7.0", compressed, predicted: false, placed: true);
+        using var guarded = PdfDocument.Open(padded, ObjectGuard);
+
+        guarded.Diagnostics.Should().BeEmpty();
+        new PdfValidator(new PdfValidatorOptions { Profile = trailers }).Validate(guarded);
+        guarded.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("Prev", "9 0 R", true)]
     [InlineData("XRefStm", "9 0 R", true)]
     [InlineData("Prev", "12 0 R", false)]
