@@ -975,6 +975,64 @@ public class GuardCutValueTests
         document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_object_read_through_for_a_place_that_holds_no_section_reaches_the_guard_only_where_a_kept_value_reads_it(bool kept)
+    {
+        // The newer table's /Prev lands 2 bytes into object 8, a stream whose /Length names object 5, which MaxObjectLength
+        // cuts after "6 0 R", whole: the chain reads object 8 as a section, refuses it, and finds stream 7 after it. What it
+        // read for object 8 is no section's, and nothing of it was to be kept, but object 5, read through, was loaded at
+        // opening, the guard reported, or thrown. Where stream 7's /Size names object 5 too, the chain keeps its value, and
+        // the guard is reached as before (#224, #263).
+        var file = ChainFiles.UnderAnUpdate(
+            kept ? "/Type /XRef /Size 5 0 R /W [1 4 2] /Length {length}" : "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "6 0 R" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            placedToo: new Dictionary<int, string> { [6] = "8", [8] = "<< /Length 5 0 R >>\nstream\nabc\nendstream" });
+        var text = Encoding.Latin1.GetString(file);
+        var stream = text.IndexOf("7 0 obj", StringComparison.Ordinal);
+        var eight = text.IndexOf("8 0 obj", StringComparison.Ordinal);
+        file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {eight + 2} "), StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            kept ? [PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.LimitObject] : [PdfDiagnosticCodes.XRefOffsetAdjusted]);
+
+        var opening = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true }).Dispose();
+
+        if (kept)
+        {
+            opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        }
+        else
+        {
+            opening.Should().NotThrow();
+        }
+    }
+
+    [Fact]
+    public void A_size_beside_an_index_that_names_an_object_a_guard_cut_after_a_whole_reference_is_not_read()
+    {
+        // Stream 7's /Size names object 5, which MaxObjectLength cuts after "9 0 R", whole, beside an /Index the rows are
+        // numbered by: the chain read it through, though it numbers nothing, and loaded object 5 at opening, reporting the
+        // guard, or throwing it. It is left as written, as the rows are read without it (#263).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 5 0 R /Index [0 8] /W [1 4 2] /Length {length}",
+            "9 0 R" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            placedToo: new Dictionary<int, string> { [9] = "8" });
+
+        using var document = PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => section.State == IO.XRef.XRefSectionState.Read);
+    }
+
     [Fact]
     public void Rows_past_an_endstream_they_spell_are_the_guard_s_when_it_cut_the_deferred_length_before_its_value()
     {

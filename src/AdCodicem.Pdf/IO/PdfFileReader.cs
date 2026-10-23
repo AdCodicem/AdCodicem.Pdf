@@ -286,8 +286,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// The objects a guard cut that a cross-reference stream's values led to, which the chain could not read and ended at, and
-    /// those it read through, the cut having left their value a whole reference: each is loaded once the chain is read, so
-    /// that its guard is reached where a load reaches it (#263).
+    /// those it read through, the cut having left their value a whole reference — but for an object it read as a section
+    /// and refused —: each is loaded once the chain is read, so that its guard is reached where a load reaches it (#263).
+    /// Let go then, or when the chain is rebuilt.
     /// </summary>
     private List<PdfObjectId>? _chainValuesCut;
 
@@ -2187,6 +2188,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (!chainRead)
         {
+            // A rebuild reads every object again, and loads none the chain read through.
+            _chainValuesCut = null;
             Repair();
             return;
         }
@@ -2290,6 +2293,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 _diagnostics.Warn(PdfDiagnosticCodes.StreamLengthInvalid, message, dataStart);
             }
         }
+    }
+
+    /// <summary>
+    /// Forgets the objects read through since <see cref="_chainValuesCut"/> held <paramref name="mark"/> of them, which an
+    /// object at a place the section may have been moved to, and that is no section, led to: nothing of its reading is kept,
+    /// and a value the chain keeps that leads to one of them reads it anew, for it to be loaded once the chain is read.
+    /// </summary>
+    private void ForgetReadThrough(int mark)
+    {
+        if (_chainValuesCut is not { } cut)
+        {
+            return;
+        }
+
+        for (var i = mark; i < cut.Count; i++)
+        {
+            _readWhileChainIsRead?.Remove(cut[i]);
+        }
+
+        cut.RemoveRange(mark, cut.Count - mark);
     }
 
     /// <summary>
@@ -3608,6 +3631,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // trailer, and grows its window no further than a trailer may: the data never counts toward it, and a /Length the
         // chain cannot read has the data searched for its endstream past the window (#174, #220).
         var guards = _guardsReached;
+        var readThrough = _chainValuesCut?.Count ?? 0;
 
         // A place the section may have been moved to is a guess: what is there and is no section leaves nothing of its
         // reading, not even a guard its dictionary reached. Where the chain names a section, the guard is reported.
@@ -3622,6 +3646,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 candidate ? DeclaresCrossReferenceStream : null) ||
             !DeclaresCrossReferenceStream(value))
         {
+            if (candidate)
+            {
+                ForgetReadThrough(readThrough);
+            }
+
             if (!candidate && _guardsReached != guards && value is PdfDictionary { } cut && !cut.ContainsKey(PdfName.Type))
             {
                 // A dictionary MaxTrailerLength cut before it said what it is may be the section's: unknown, and the
@@ -3753,7 +3782,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // one that names an object no section read so far places is UnreadValue's fault.
         var written = dictionary.GetRaw(PdfName.Index);
         var index = written?.Resolve() is { } given and not PdfNull ? given : null;
-        var size = dictionary.GetInteger(PdfName.Size);
+
+        // Beside an /Index, the rows are read without the /Size: it is left as written (UnreadValue).
+        var size = index is null ? dictionary.GetInteger(PdfName.Size) : null;
 
         // The numbering is checked before any row is read: a section that numbers its rows wrongly gives none to believe.
         // Each value is read once, so that what is read is what was checked.
