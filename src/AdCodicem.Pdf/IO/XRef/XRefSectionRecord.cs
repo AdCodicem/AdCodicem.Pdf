@@ -80,6 +80,12 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public string? ChainHiddenByGuard { get; set; }
 
+    /// <summary>
+    /// Gets a value indicating whether what <see cref="ChainHiddenByGuard"/> says is the section's <c>/XRefStm</c>: what
+    /// the guard hides is then the cross-reference stream of the section's revision, and any section older than it.
+    /// </summary>
+    public bool ChainHiddenAtStream { get; set; }
+
     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
     public PdfDictionary? Trailer { get; set; }
 
@@ -126,6 +132,7 @@ internal sealed class XRefSectionRecord
         CutByLimit = attempt.CutByLimit;
         TrailerCutByLimit = attempt.TrailerCutByLimit;
         ChainHiddenByGuard = attempt.ChainHiddenByGuard;
+        ChainHiddenAtStream = attempt.ChainHiddenAtStream;
         Trailer = attempt.Trailer;
         TrailerFault = attempt.TrailerFault;
         TrailerPosition = attempt.TrailerPosition;
