@@ -69,6 +69,13 @@ internal ref struct PdfObjectParser
     private int _headerAt = -1;
 
     /// <summary>
+    /// Whether the header <see cref="_headerAt"/> says is one a window's edge left undecided, which a larger window may show
+    /// is none: what the edge made of it, which ends the containers as a header does, but reports nothing and gives the key
+    /// before it no value (#230).
+    /// </summary>
+    private bool _headerUndecided;
+
+    /// <summary>
     /// Whether the last stream read kept a declared length that neither <c>endstream</c> nor <c>endobj</c> follows: where
     /// its object ends is unknown, and its <c>endobj</c> is not judged.
     /// </summary>
@@ -204,6 +211,7 @@ internal ref struct PdfObjectParser
     public PdfObject ParseObject()
     {
         _headerAt = -1;
+        _headerUndecided = false;
         return ParseValue(_lexer.Read(), 0);
     }
 
@@ -269,6 +277,7 @@ internal ref struct PdfObjectParser
         _objectNumber = id.Number;
         _headerStart = number.Start;
         _headerAt = -1;
+        _headerUndecided = false;
 
         // An empty object, "2 0 obj endobj", reads its endobj as its value, and says so; that endobj is its own.
         var beforeValue = _lexer.Position;
@@ -430,9 +439,22 @@ internal ref struct PdfObjectParser
             return PdfNull.Instance;
         }
 
-        // The buffer ended before the look-ahead could tell: "12 0" may be all there is, or what a
-        // window's edge left of "12 0 R" — or, inside a container, of the next object's header, as "12 0 ob" may be.
-        if (third.Kind == PdfTokenKind.EndOfInput || (depth > 0 && HeaderUndecided(second, third)))
+        // Inside a container, a window's edge may have cut a keyword that obj starts with after two integers, "12 0 ob": no
+        // reference, and maybe the next object's header, which a larger window shows. The containers end there, as at a
+        // header, and the number is no value of the file's. "12 0" alone may be what the edge left of a reference, and is
+        // kept as far as it was read, as any value the edge cuts.
+        if (depth > 0 && third.Kind == PdfTokenKind.Keyword && HeaderUndecided(token, second, third))
+        {
+            _truncated = true;
+            _headerAt = token.Start;
+            _headerUndecided = true;
+            _lexer.Position = saved;
+            return PdfNull.Instance;
+        }
+
+        // The buffer ended before the look-ahead could tell: "12 0" may be all there is, or what a window's edge left of
+        // "12 0 R".
+        if (third.Kind == PdfTokenKind.EndOfInput)
         {
             _truncated = true;
         }
@@ -494,7 +516,10 @@ internal ref struct PdfObjectParser
                         // array or a dictionary the element opened, reported there, and that element kept as it was read.
                         if (_headerAt == token.Start)
                         {
-                            ReportCut("an array", openedAt, depth, atHeader: true);
+                            if (!_headerUndecided)
+                            {
+                                ReportCut("an array", openedAt, depth, atHeader: true);
+                            }
                         }
                         else
                         {
@@ -629,7 +654,12 @@ internal ref struct PdfObjectParser
             {
                 // The next object's header ends the dictionary: where the value should be, the key given none and reported
                 // here; inside an array or a dictionary the value opened, reported there, and that value kept.
-                if (_headerAt == valueToken.Start)
+                if (_headerAt == valueToken.Start && _headerUndecided)
+                {
+                    // One a window's edge left undecided is the edge's: the key keeps what it held, and nothing is said.
+                    Give(dictionary, ref nullKeys, keyToken, key, PdfNull.Instance, keyAtEdge: true, valueCut: true);
+                }
+                else if (_headerAt == valueToken.Start)
                 {
                     ReportCut("a dictionary", openedAt, depth, valueMissing: true, atHeader: true);
                     Give(dictionary, ref nullKeys, keyToken, key, PdfNull.Instance, keyAtEdge, valueCut: false);
@@ -1442,7 +1472,7 @@ internal ref struct PdfObjectParser
 
         // Tokens a window's edge leaves undecided may be a header a larger window shows: the parse met the edge, and what it
         // reads from here — the number and the generation, as keys — is no fault of the file's.
-        if (HeaderUndecided(generation, keyword))
+        if (HeaderUndecided(number, generation, keyword))
         {
             _truncated = true;
         }
@@ -1452,10 +1482,12 @@ internal ref struct PdfObjectParser
 
     /// <summary>
     /// Determines whether a window's edge leaves undecided whether a number and the two tokens after it are the next
-    /// object's header: the edge comes before a generation, before a keyword, or inside one that <c>obj</c> starts with.
+    /// object's header: the edge comes before a generation, before a keyword, or inside one that <c>obj</c> starts with,
+    /// and no whole token read rules a header out — a number that is no object number, a generation that is none
+    /// (<see cref="MayBeginHeader"/>). An object stream's member is followed by no header.
     /// </summary>
-    private readonly bool HeaderUndecided(PdfToken generation, PdfToken keyword) =>
-        !_endsData &&
+    private readonly bool HeaderUndecided(PdfToken number, PdfToken generation, PdfToken keyword) =>
+        !_endsData && _member is null && MayBeginHeader(number, generation, _memory.Length) &&
         (generation.Kind == PdfTokenKind.EndOfInput ||
             (generation.Kind == PdfTokenKind.Integer &&
                 (keyword.Kind == PdfTokenKind.EndOfInput ||

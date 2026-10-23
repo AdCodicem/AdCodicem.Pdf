@@ -303,6 +303,56 @@ public class SyntaxFaultTests
         document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitObject);
     }
 
+    [Fact]
+    public void A_header_the_guard_s_cut_leaves_undecided_gives_the_key_before_it_no_value()
+    {
+        // "6" after the second /A may be the value it is given, or the next object's header, which a larger limit reads, the
+        // key then left out: the guard's cut decides neither, the key keeps the value the file gave first, and the repeat
+        // is not said to keep a last one (#230).
+        var document = CutAt(" /A 1 /A\n\n6 0 obj", 128);
+
+        document.GetObject(new PdfObjectId(4)).AsDictionary().Required().GetInteger(PdfName.Get("A")).Should().Be(1);
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxKeyRepeated);
+        document.Dispose();
+    }
+
+    [Theory]
+    [InlineData(" /A 1\n\n0 0 obj", 2)]
+    [InlineData(" /A 1 /B 6 70000 obj", 1)]
+    public void Tokens_no_header_begins_with_are_reported_at_the_guard_s_cut_as_past_it(string tail, int keys)
+    {
+        // An object number 0, or a generation past 65,535, rules a header out whatever the cut hides: the keys that are not
+        // names are the file's, reported as under a larger limit (#175, #230).
+        using var guarded = CutAt(tail, 128);
+        using var whole = CutAt(tail, 100_000);
+        guarded.GetObject(new PdfObjectId(4));
+        whole.GetObject(new PdfObjectId(4));
+
+        var reported = guarded.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken).Select(entry => entry.Position).ToArray();
+        reported.Should().HaveCount(keys);
+        whole.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken).Select(entry => entry.Position).Should().Contain(reported);
+    }
+
+    /// <summary>
+    /// Opens a document whose object 4 lost its <c>&gt;&gt;</c> and its endobj, its padding setting <paramref name="tail"/>'s
+    /// end where a <c>MaxObjectLength</c> of 128 cuts it, under <paramref name="limit"/>.
+    /// </summary>
+    private static PdfDocument CutAt(string tail, int limit)
+    {
+        const int Edge = 128;
+        var head = "4 0 obj\n<< /Pad (";
+        var body = "<< /Pad (" + new string('x', Edge - head.Length - (")" + tail).Length) + ")" + tail + "\n<< /Foo 7 >>";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, body),
+        };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        return PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit } });
+    }
+
     /// <summary>
     /// A sound document whose catalog names objects 4 and 5, object 4 holding <paramref name="value"/> and no endobj, then
     /// object 5 holding <paramref name="five"/> and its endobj.
