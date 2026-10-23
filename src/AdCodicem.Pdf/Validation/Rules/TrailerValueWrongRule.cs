@@ -30,7 +30,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// <para>
 /// Each trailer is judged as the file wrote it; a reference it holds is followed as any read follows it, through the index
 /// the validator had the reader settle on before its first rule — the chain's own, unless a read could still have rebuilt
-/// it, in which case it was rebuilt then (#237) —, so that what was read before validating changes nothing.
+/// it, in which case it was rebuilt then (#237) —, so that what was read before validating changes nothing. A hybrid file's
+/// stream's own <c>/Prev</c>, which the reader does not follow, the chain going on through the table's, is judged as the
+/// file wrote it, a reference it holds not followed (#263).
 /// </para>
 /// </remarks>
 internal sealed class TrailerValueWrongRule : IValidationRule
@@ -72,9 +74,11 @@ internal sealed class TrailerValueWrongRule : IValidationRule
                 judge.Integers(trailer, PdfName.W);
                 judge.Integers(trailer, PdfName.Index);
 
+                // A hybrid file's stream gives a /Prev of its own, which the reader does not follow, the chain going on through
+                // the table's (7.5.8.4): judged as the file wrote it, a reference it holds not followed (#263).
                 if (IsFollowed(sections, section, PdfName.Prev))
                 {
-                    judge.Value("its /Prev", trailer.GetRaw(PdfName.Prev), Iso1, "Table 17");
+                    judge.Value("its /Prev", trailer.GetRaw(PdfName.Prev), Iso1, "Table 17", resolve: section.NamedBy != "/XRefStm");
                 }
 
                 judge.Value("its /Length", trailer.GetRaw(PdfName.Length), pdf20 ? Iso2 : null, "Table 5");
@@ -96,8 +100,8 @@ internal sealed class TrailerValueWrongRule : IValidationRule
     }
 
     /// <summary>
-    /// Determines whether the chain went on through the <paramref name="key"/> of <paramref name="section"/>: one that
-    /// names no section is <see cref="PdfValidationRuleIds.XRefSectionNotFound"/>'s to report.
+    /// Determines whether the <paramref name="key"/> of <paramref name="section"/> named a section the chain found, or none
+    /// it looked for: one that names no section is <see cref="PdfValidationRuleIds.XRefSectionNotFound"/>'s to report.
     /// </summary>
     private static bool IsFollowed(IReadOnlyList<XRefSectionRecord> sections, XRefSectionRecord section, PdfName key)
     {
@@ -130,10 +134,14 @@ internal sealed class TrailerValueWrongRule : IValidationRule
         /// <param name="value">The value as the file wrote it, or null when there is none.</param>
         /// <param name="direct">What makes the value direct, or null when nothing does.</param>
         /// <param name="integer">The table that makes the value an integer, or null when none does.</param>
-        public void Value(string what, PdfObject? value, string? direct, string? integer)
+        /// <param name="resolve">
+        /// Whether a reference the value is written as is followed to judge what it leads to, which a value the reader does
+        /// not read is not: following it would read what the reading never did.
+        /// </param>
+        public void Value(string what, PdfObject? value, string? direct, string? integer, bool resolve = true)
         {
             var reference = direct is not null ? value as PdfReference : null;
-            var real = integer is not null && value?.Resolve() is PdfReal written && written.AsInteger() is not null;
+            var real = integer is not null && (resolve ? value?.Resolve() : value) is PdfReal written && written.AsInteger() is not null;
 
             if (reference is null && !real)
             {

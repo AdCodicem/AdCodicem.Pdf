@@ -7,6 +7,7 @@ using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using AdCodicem.Pdf.Validation.Rules;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -995,11 +996,14 @@ public class GuardCutValueTests
     [InlineData("9 0 R", true)]
     [InlineData("9 0 R", false)]
     [InlineData("12 0 R", false)]
-    public void A_hybrid_stream_s_own_prev_which_no_reader_follows_is_not_read(string prev, bool guarded)
+    [InlineData("4.0", false)]
+    public void A_hybrid_stream_s_own_prev_is_not_followed_the_chain_going_on_through_the_table_s(string prev, bool guarded)
     {
-        // A hybrid file's stream gives a /Prev of its own, which the chain does not follow: it goes on through the table's.
-        // Read anyway, one that leads to an object MaxObjectLength cuts ended the chain for the guard, the older table lost,
-        // and one no section places was said to name a missing section (#263).
+        // A hybrid file's stream gives a /Prev of its own, which the chain does not follow: it goes on through the table's,
+        // as ISO 32000-1 (7.5.8.4) describes. Read anyway, one that leads to an object MaxObjectLength cuts ended the chain
+        // for the guard, the older table lost, and one no section places was said to name a missing section (#263). The
+        // rule on trailer values judges it as the file wrote it, a reference or a real where Table 17 asks for a direct
+        // integer, without following it: following it reached the guard the reading never met.
         var file = ChainFiles.HybridWithStreamPrev(prev);
         using var document = PdfDocument.Open(file, guarded ? ObjectGuard : null);
 
@@ -1010,6 +1014,12 @@ public class GuardCutValueTests
         var report = new PdfValidator().Validate(document);
         report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse();
+
+        using var judged = PdfDocument.Open(file, guarded ? ObjectGuard : null);
+        var trailers = new ValidationProfile("trailers", 1, [new TrailerValueWrongRule()]);
+        new PdfValidator(new PdfValidatorOptions { Profile = trailers }).Validate(judged).Findings.Select(finding => finding.Message)
+            .Should().ContainSingle().Which.Should().Contain(prev == "4.0" ? "gives its /Prev as a real number" : $"writes its /Prev as the reference {prev}");
+        judged.Diagnostics.Should().BeEmpty();
     }
 
     [Theory]
