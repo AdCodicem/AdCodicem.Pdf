@@ -218,6 +218,47 @@ public class WindowEdgeTests
         failures.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_endobj_a_regular_byte_goes_on_is_missing_wherever_the_window_edge_cuts_it(bool stream)
+    {
+        // "endobjx" is no endobj: the object lacks it. One the window's edge reaches may be the start of a longer keyword,
+        // and is not taken whole: a stream's, as the file read on after its endstream says, and any other value's, as a larger
+        // window says (#174).
+        var failures = new List<string>();
+
+        for (var shift = -2; shift <= 2; shift++)
+        {
+            // The data's length that ends the keyword "4 0 obj\n" and the body leave at the edge, shifted.
+            var body = Enumerable.Range(0, Window)
+                .Select(data => stream
+                    ? string.Create(CultureInfo.InvariantCulture, $"<< /Length {data} >>\nstream\n") + new string('a', data) + "\nendstream\nendobj"
+                    : "(" + new string('a', data) + ")\nendobj")
+                .First(text => "4 0 obj\n".Length + text.Length == Window + shift);
+
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+                [4] = file.Object(4, body + "x"),
+                [6] = file.Object(6, "(six)"),
+            };
+            file.Table(7, rows, "/Size 7 /Root 1 0 R");
+            using var document = PdfDocument.Open(file.Bytes);
+
+            document.GetObject(new PdfObjectId(4));
+
+            if (!document.Reader.IsEndObjMissing(4, out _))
+            {
+                failures.Add(string.Create(CultureInfo.InvariantCulture, $"shift {shift}: endobj taken whole"));
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
     [Fact]
     public void A_cross_reference_stream_reads_whole_when_its_guard_s_window_ends_on_its_keyword()
     {
