@@ -58,10 +58,12 @@ public static class PdfStreamDecodingExtensions
     /// <exception cref="PdfLimitExceededException">
     /// Decoding reaches one of its document's guards — the encoded data runs past
     /// <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, the data decodes past
-    /// <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, or decoding reaches the filter past
-    /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> —, and the document was opened with
+    /// <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, decoding reaches the filter past
+    /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/>, or loading a value the filters read reaches one,
+    /// <see cref="Documents.PdfReaderLimits.MaxObjectLength"/> among them —, and the document was opened with
     /// <see cref="Documents.PdfReaderOptions.ThrowOnLimit"/>.
     /// </exception>
+    /// <exception cref="ObjectDisposedException">The stream was read from a document that is disposed.</exception>
     public static ReadOnlyMemory<byte> Decode(this PdfStream stream, PdfDiagnostics? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -80,6 +82,11 @@ public static class PdfStreamDecodingExtensions
     /// takes decoding it, and <see cref="Decode"/> reports what it meets. The filters' parameters are read as decoding reads
     /// them: one held in an object stream decodes that stream first.
     /// </remarks>
+    /// <exception cref="PdfLimitExceededException">
+    /// Loading a value the filters read reaches one of its document's guards, and the document was opened with
+    /// <see cref="Documents.PdfReaderOptions.ThrowOnLimit"/>.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">A value the filters read is to be loaded from a document that is disposed.</exception>
     public static bool HasImageFilter(this PdfStream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
