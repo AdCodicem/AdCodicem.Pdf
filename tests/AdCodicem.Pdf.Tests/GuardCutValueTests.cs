@@ -121,6 +121,38 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_deferred_length_a_guard_cut_leaves_a_stream_with_no_endstream_the_guard_s(bool chained)
+    {
+        // Stream 7 lost its endstream, and its /Length, object 5 — or object 6, which object 5 refers to —, which the newer
+        // table places, runs past MaxObjectLength: the section was called malformed because no section placed the length,
+        // and the index rebuilt. Without the guard the length is read, and the section with it: the section is the guard's.
+        var padded = new string(' ', 3000) + "56";
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R",
+            chained ? "6 0 R" : padded,
+            compressed: false,
+            predicted: false,
+            placed: true,
+            placedToo: chained ? new Dictionary<int, string> { [6] = padded } : null);
+        var text = Encoding.Latin1.GetString(file);
+        var at = text.IndexOf("endstream", StringComparison.Ordinal);
+        Encoding.ASCII.GetBytes("endstrXam").CopyTo(file, at);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
+        document.Reader.Structure.Sections[1].Fault.Should().EndWith(
+            string.Create(CultureInfo.InvariantCulture, $"the reference {(chained ? 6 : 5)} 0 R, which one of the reader's limits cut"));
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
     [InlineData("21 0 R")]
     [InlineData("20 0 R")]
     public void A_missing_endstream_is_the_file_s_fault_when_a_guard_left_the_length_out_of_the_index(string length)
