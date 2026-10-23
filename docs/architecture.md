@@ -98,12 +98,13 @@ separate types, separate severity scales, and vocabularies that never share a co
    (section 5), and decodes under the limits of the document it came from; a stream built in memory decodes
    under the defaults. A stream copied from one document to another travels **encoded**, with no
    decompress/recompress cycle. Its declared length is checked when it is parsed, against the `endstream` that
-   must follow it after white space and comments, however many: in the window the object is parsed through, or
-   in the file past it, read on as far as the white space and comments run. A length nothing confirms, or a
-   `/Length` that gives none, goes to one search for the first `endstream` after the data's start ([#174]): in
-   the bytes the parser holds, then in the file — once per stream, no further than the nearer of the next object
-   the file's index places, as the file wrote it (as the reader rebuilt it when the document opened, when the
-   file wrote none), and the first object header the file's bytes hold, or the end of the file, and the
+   must follow it after white space and comments, however many — in the window the object is parsed through, or
+   in the file past it, read on as far as they run —, a comment counting only once white space comes before it: a
+   `%` right where the length ends is the data's, and leaves the length unconfirmed. A length nothing confirms, or
+   a `/Length` that gives none, goes to one search for the first `endstream` after the data's start ([#174]): in
+   the bytes the parser holds, then forward in the file — once per stream, no further than the nearer of the next
+   object the file's index places, as the file wrote it (as the reader rebuilt it when the document opened, when
+   the file wrote none), and the first object header the file's bytes hold, or the end of the file, and the
    searches of a document reading a few times the file at most. A stream's data never counts toward its
    object's length: no window grows to find its `endstream`. Neither bound changes as objects are read: what a
    search keeps depends on the file's bytes and its index as written, and in the 401 corpus documents measured
@@ -111,18 +112,29 @@ separate types, separate severity scales, and vocabularies that never share a co
    crafted file can still make it depend on the number a stream is first read under, on the rebuild's scan for
    trailers, or, once the searches of a document have read four times the file, on which streams were searched
    first ([#138], M23). With no `endstream` before the stop, the object's `endobj` ends the data where it
-   follows the declared length, or where it ends the object before the stop; without one, a declared length
-   that ends before the stop is kept, and the data otherwise runs to the stop — to the end of the file, for a
-   stream the file ends inside. Each is a diagnostic.
+   follows the declared length as an `endstream` would, or where it is the last one, a whole keyword, and only
+   white space and comments run from it to the stop. That last `endobj` is followed forward through the search's
+   own reads, which read every byte up to the stop already: no byte before the stop is read a second time,
+   backward, and a comment, which can be told only from the start of its line, is read as one. Without either,
+   a declared length that ends before the stop is kept, and the data otherwise runs to the stop — to the end of
+   the file, for a stream the file ends inside. Each is a diagnostic. What the search found is kept for the
+   stream; whether `endobj` follows the declared length is read again only when a rebuild changes that length.
 5. **Guards** — every read sized by the file is bounded. A bound a valid file can exceed — a stream's data
    read at once and its decoded length, the filters it passes through, an object's length, a cross-reference
    section's length and their number, a trailer's length, the entries of the index — is a `PdfReaderLimits`
    option, on by default and reported under its own `limit.*` code when reached; a bound only an invalid file
    reaches is an internal constant (ADR 34). What a guard cut is the guard's, never the file's fault: a value
    that leads to an object a guard cut or left out of the index — a stream's `/Length`, `/Filter` or
-   `/DecodeParms`, a cross-reference stream's `/W` — is not judged as one the file gave: the stream's data is
-   found by its `endstream`, its chain of filters ends there with the data left encoded, and the chain of
-   cross-reference sections ends at that section.
+   `/DecodeParms`, a cross-reference stream's `/W`, a trailer's `/Prev` or `/XRefStm` — is not judged as one the
+   file gave. The stream's data is found by its `endstream`, an integer the cut left only a place to look for
+   one at, and a missing `endstream` is still the file's fault; its chain of filters ends there, with the data
+   left encoded; and the chain of cross-reference sections ends at that section, with nothing rebuilt and the
+   older sections and their trailers the guard's to hide. An object `MaxObjectLength` cut there is loaded once
+   the chain is read, which reaches the guard — thrown at opening under `ThrowOnLimit`. A cross-reference
+   stream's `/Length` the chain could not read, which leads to such an object, ends the chain so wherever only it
+   could say how far the data runs: with no `endstream` before the next object or the end of the file, the
+   section is the guard's, not malformed; where the rows spell one and no `endstream` confirms what the cut left
+   of the length, the rows past it are the guard's.
 
 ### 3.2 The write path
 

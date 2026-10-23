@@ -52,9 +52,10 @@ document it came from, however long after opening.
 A value read through a reference to an object a guard cut, or left out of the index, is the guard's too. What the cut
 left of it may be the start of what the file holds — `1` of `15`, `/Flate` of `/FlateDecode` —, so it is never judged
 as a value the file gave: the data of a stream whose `/Length` is so named is found by its `endstream`, and its length
-is not judged; decoding stops at a filter so named, or one whose parameters are, and leaves the rest of the data
-encoded, as past the most filters the reader runs; and a cross-reference stream whose values lead to an object a guard
-cut ends the chain as a section a guard cut does.
+is not judged, though an `endstream` the data lacks is still the file's to lack; decoding stops at a filter so named, or
+one whose parameters are, and leaves the rest of the data encoded, as past the most filters the reader runs; and a
+`/Prev` or an `/XRefStm` so named, or a cross-reference stream whose values lead to an object a guard cut, ends the
+chain as a section a guard cut does.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
 table's bound, the objects past the most the index holds — is no damage either. Those objects read as null, unknown

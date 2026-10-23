@@ -16,12 +16,14 @@ Opening a document builds an index, finds the catalog, and stops there.
 3. Builds a map from object number to a location: either a byte offset, or a position inside an object
    stream. Nothing is loaded meanwhile: a value a section refers to — a cross-reference stream's `/W` or
    `/Length` written as a reference, a `/Prev` — is read only where a section already read places it, so that
-   the map the chain gives is the file's own. A `/Length` no section read before places is read once the chain
-   is, and checked against the data the chain took up to the first `endstream` after the data's start, searched
-   for in the file up to the next object the sections read so far place, or its end — unless the section's own row
-   for that `/Length` lies among the rows the data holds: those rows spelled `endstream`, the object is read where
-   the row places it, without being kept, and the data is taken again to the length it gives when an `endstream`
-   confirms it.
+   the map the chain gives is the file's own. A `/Length` no section read before places, or that leads through
+   references to such an object, is read once the chain is, and checked against the data the chain took up to the
+   first `endstream` after the data's start, searched for in the file up to the next object the sections read so far
+   place, or its end; one that leads to an object `MaxObjectLength` cuts waits for the chain the same way, and is the
+   guard's: the guard is reached once the chain is read, and the length is not checked. Either way, when the section's
+   own row for that `/Length` — the row the reading of its rows keeps — lies among the rows the data holds, those
+   rows spelled `endstream`: the object is read where the row places it, without being kept, and the data is taken
+   again to the length it gives, or to the integer the guard's cut left of it, when an `endstream` confirms it.
 4. Resolves the trailer's `/Root`, which reads the document catalog, and decodes the object stream that holds
    it when one does. When `/Root` leads to no catalog, it loads the objects the map holds, one after the
    other, until one is a catalog (`trailer.root-recovered`), and rebuilds the map when none is.
@@ -57,9 +59,12 @@ An object the map does not hold is one the file does not define, and a reference
 specification says — or one a limit left out of the map, which reads as null too, until the limit is raised: the
 sections past `MaxXRefSectionCount`, the rows past `MaxXRefSectionLength` or past what `MaxStreamLength` reads or
 `MaxDecodedStreamLength` decodes of a cross-reference stream, a cross-reference stream whose `/W`, `/Index`, `/Size`,
-`/Filter` or `/DecodeParms` leads to an object `MaxObjectLength` cuts and the sections older than it, the numbers past
-`MaxIndexEntries`. That is no damage, and the map is not rebuilt for it. The map is rebuilt by scanning the whole file,
-once at most, and never while the chain is read:
+`/Filter` or `/DecodeParms` leads to an object `MaxObjectLength` cuts and the sections older than it — so too one whose
+`/Length` leads to such an object, when no `endstream` ends its data before the next object or the end of the file, or
+the rows past an `endstream` its rows spell, which only that length could tell from the end of its data —, the sections
+older than a `/Prev` or an `/XRefStm` that leads to such an object, the numbers past `MaxIndexEntries`. That is no
+damage, and the map is not rebuilt for it. The map is rebuilt by scanning the whole file, once at most, and never while
+the chain is read:
 
 - at opening, when `startxref` cannot be found or read, when the section it names cannot be read, when the
   chain indexes nothing, or when `/Root` leads to no catalog and no object of the map is one;
@@ -114,15 +119,18 @@ opening it reads less than 200,000 bytes of the file, and reading that content's
 500,000 more.
 
 Nor are the bytes kept once they have arrived: neither the stream nor the object cache holds them, and each call reads
-them again. A document held in memory — opened from bytes or from a stream — lends them where they lie, without a copy;
-one opened from a path reads them from the file into an array of their length. What a call hands back is the caller's
-to keep or let go, so that memory follows the streams being read or decoded, not those read before, and streams whose
-data share a stretch of the file — objects that overlap — do not each hold a copy of it. What one call reads is bounded
-by `PdfReaderLimits.MaxStreamLength`, 256 MB by default: past it the data is cut, its filters decode what was read as
-data the reader cut, and `limit.stream-length` is reported; `RawLength` stays the length the file holds.
+them again. A document held in memory — opened from bytes or from a stream — lends them where they lie, without a copy:
+what a call hands back is a view of that memory, which keeps it alive for as long as it is held, after the document is
+disposed too, and changes as it does. One opened from a path reads them from the file into an array of their length.
+Either is the caller's to keep or let go, so that memory follows the streams being read or decoded, not those read
+before, and streams whose data share a stretch of the file — objects that overlap — do not each hold a copy of it. What
+one call reads is bounded by `PdfReaderLimits.MaxStreamLength`, 256 MB by default: past it the data is cut, its filters
+decode what was read as data the reader cut, and `limit.stream-length` is reported; `RawLength` stays the length the
+file holds.
 
 Finding where a stream's data ends reads little of it. The reader parses an object through a window of the file, and
-confirms the declared `/Length` by the `endstream` that must follow it, after white space and comments, however many:
+confirms the declared `/Length` by the `endstream` that must follow it, after white space and comments, however many —
+a comment only once white space comes before it, since a `%` right where the declared length ends is the data's —:
 past the window, it asks the file for the bytes after the declared length rather than reading the data, and reads on
 as far as white space and comments run. A length nothing confirms, or a `/Length` that gives none, sends the reader on
 one search for the first `endstream` after the data's start: in the bytes the parser holds, then in the file, up to the
@@ -137,8 +145,8 @@ When it is read or decoded, a stream works under the [limits](reader-limits.md) 
 however long after opening — so with `ThrowOnLimit` set, `GetRawBytes()` and `Decode()` can throw long after `Open`
 returned. What decoding meets — a stream that lost its tail, a limit its filters reached — is reported when it is met,
 in the diagnostics you pass to `Decode`, or in the document's own when you pass none; data cut at `MaxStreamLength` is
-reported in the document's own, once for each stream. A damaged stream nobody decodes is never reported, since nothing
-reads it.
+reported in the document's own once for each stream, as the reader reads it, and in those you pass to `Decode` each time
+it decodes the cut data. A damaged stream nobody decodes is never reported, since nothing reads it.
 
 Holding a stream as an offset and a length is what will let a copy between documents — merging, assembling,
 stamping — move its **encoded** bytes as they are, with no decompress/recompress cycle in between, since nothing
