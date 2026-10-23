@@ -629,6 +629,43 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("cut before the value")]
+    [InlineData("cut inside the value")]
+    [InlineData("left out")]
+    public void An_endstream_the_data_spells_where_a_guard_hid_the_length_ends_data_that_is_the_guard_s(string guard)
+    {
+        // The content stream's data spells endstream inside a string, which its object's endobj does not follow; its own
+        // endstream and endobj come after the 40 bytes. Read whole, the length passes the spelled one. Where a guard cut the
+        // /Length, or left it out of the index, the search stops there, and the object was said to lack its endobj: the
+        // length that tells the two apart is the guard's, and so is the data up to it (#224).
+        const string Data = "BT /F1 12 Tf 72 712 Td (endstream) Tj ET";
+        var (twenty, options) = guard switch
+        {
+            "cut before the value" => (new string(' ', 2000) + "40", ObjectGuard),
+            "cut inside the value" => (new string(' ', 1024 - "20 0 obj\n".Length - 1) + "40" + new string(' ', 100), ObjectGuard),
+            _ => ("40", new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxIndexEntries = 20 } }),
+        };
+        var file = ContentLengthIn(twenty, Data);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal(Encoding.ASCII.GetBytes(Data));
+            whole.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file, options);
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.GetRawBytes().ToArray().Should().Equal(Encoding.ASCII.GetBytes("BT /F1 12 Tf 72 712 Td ("));
+        stream.Data.CutByGuard.Should().BeTrue();
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        document.Reader.TryGetStreamLengthFault(4, out _).Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            guard == "left out" ? PdfDiagnosticCodes.LimitIndexEntries : PdfDiagnosticCodes.LimitObject);
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("Rx", false)]
     [InlineData("RG", false)]
     [InlineData("R\n", true)]
@@ -1005,6 +1042,11 @@ public class GuardCutValueTests
         var section = document.Reader.Structure.Sections[1];
         section.CutByLimit.Should().BeTrue();
         section.Incomplete.Should().BeFalse();
+
+        // Loaded, the stream ends at the endstream its rows spell, which its object's endobj does not follow: the data is the
+        // guard's, and the object was said to lack its endobj.
+        document.GetObject(new PdfObjectId(7)).AsStream().Required().Data.CutByGuard.Should().BeTrue();
+        document.Reader.IsEndObjMissing(7, out _).Should().BeFalse();
 
         var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));

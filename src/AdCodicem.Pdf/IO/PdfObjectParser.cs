@@ -820,10 +820,22 @@ internal ref struct PdfObjectParser
         {
             // A length read once the chain is, or one a guard left out of the index or cut, is not judged: nothing is said
             // of it, nor a message made for it.
-            if (length != found && declared.Form is not (StreamLengthForm.Deferred or StreamLengthForm.ObjectUnindexed or StreamLengthForm.ObjectCut) &&
+            var hidden = declared.Form is StreamLengthForm.ObjectUnindexed or StreamLengthForm.ObjectCut;
+
+            if (length != found && declared.Form != StreamLengthForm.Deferred && !hidden &&
                 KeepLengthFault(Fault(declared, dataStart, found, found, EndStreamState.Found, null)))
             {
                 WarnLengthFault(PdfDiagnosticCodes.StreamLengthInvalid, DescribeRecovered(declared, found), dataStart);
+            }
+
+            // An endstream its object's endobj does not follow, where a guard cut the /Length or left it out of the index: one
+            // the data spells, as a valid stream's may, ends the search as the stream's own would, its object's endobj lost —
+            // the length that tells them apart is the guard's. The data up to it is the guard's, cut by it, the object's
+            // endobj unjudged, and nothing is said of the file, as at a header the data spells (#224).
+            if (hidden && settled.EndObj == EndObjState.Absent)
+            {
+                _endObjUnknown = true;
+                return Finish(dictionary, dataStart, found, span.Length, cutByGuard: true);
             }
 
             _endObjAfterStream = _streamData is null ? null : settled.EndObj;

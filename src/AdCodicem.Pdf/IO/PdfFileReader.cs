@@ -5029,7 +5029,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Records whether <c>endobj</c> follows an object read at <paramref name="offset"/>: it does not when another
     /// token follows it, or when the file ends first — not when the window the reader offered ended first, where
     /// what follows was never seen. A stream whose data runs past the window is seen to its end all the same: the
-    /// file is asked what follows its <c>endstream</c> (#55).
+    /// file is asked what follows its <c>endstream</c> (#55). A reading that finds it, or cannot tell where the object
+    /// ends — a stream whose end a guard hides —, takes back what an earlier one recorded: the chain reads a
+    /// cross-reference stream whose <c>/Length</c> it cannot read up to the first <c>endstream</c> it holds, which its rows
+    /// may spell (#224).
     /// </summary>
     private void RecordEndObj(int number, int found, EndObjState state, bool cut, long offset)
     {
@@ -5042,7 +5045,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             _endObjMissing[found] = offset;
         }
-        else if (state == EndObjState.Present)
+        else if (state is EndObjState.Present or EndObjState.Unknown)
         {
             _endObjMissing.Remove(found);
         }
