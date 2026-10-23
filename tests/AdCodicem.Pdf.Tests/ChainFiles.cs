@@ -491,6 +491,64 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file as <see cref="UpdatePlacingAPaddedLength"/> writes it, the rows that spell <c>endstream</c> numbering objects 8
+    /// and 9, but for a length a chain of <paramref name="objects"/> objects gives: stream 7's <c>/Length</c> names object 5
+    /// — or, with <paramref name="ownRow"/>, object 4, which only stream 7's own row places —, which holds <c>100 0 R</c>;
+    /// object 100 names object 101, and so on to the last, which holds the data's length after 3,000 spaces. The newer table
+    /// indexes object 5, unless <paramref name="ownRow"/>, and objects 100 to the last, where they are. The file is valid.
+    /// </summary>
+    public static byte[] UpdatePlacingAPaddedLengthChain(int objects, bool ownRow)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var lengthNumber = ownRow ? 4 : 5;
+        var last = 100 + objects - 2;
+        var spelled = "\nendstream\0\0\0\0"u8.ToArray();
+        file.Object(lengthNumber, "100 0 R");
+
+        for (var number = 100; number <= last; number++)
+        {
+            file.Object(
+                number,
+                number < last
+                    ? string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R")
+                    : new string(' ', 3000) + (6 * 7 + spelled.Length).ToString(CultureInfo.InvariantCulture));
+        }
+
+        var stream = file.Position;
+        var data = new List<byte>(Encode(
+            [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(lengthNumber), 0), (1, stream, 0)],
+            Rows.Raw));
+        data.AddRange(spelled);
+        data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
+        file.Stream(
+            7,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 10 /W [1 4 2] /Index [0 3 {lengthNumber} 1 7 1 8 2 3 1] /Root 1 0 R /Length {lengthNumber} 0 R"),
+            [.. data]);
+        file.Text("%" + new string('-', 1200) + "\n");
+        var xref = file.Position;
+        var rows = new StringBuilder("xref\n0 1\n0000000000 65535 f\r\n");
+
+        if (!ownRow)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"5 1\n{file.OffsetOf(5):D10} 00000 n\r\n");
+        }
+
+        rows.Append(CultureInfo.InvariantCulture, $"100 {objects - 1}\n");
+
+        for (var number = 100; number <= last; number++)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"{file.OffsetOf(number):D10} 00000 n\r\n");
+        }
+
+        rows.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {last + 1} /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n");
+        file.Text(rows.ToString());
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A hybrid update over a classic table that indexes the catalog, the page tree and the page. The update writes object 9,
     /// which holds 123 after <paramref name="padding"/> spaces, and object 10, which cross-reference stream 7 indexes; the
     /// stream's own <c>/Prev</c> is <paramref name="streamPrev"/>, which no reader follows. The update's table indexes object
@@ -518,6 +576,37 @@ internal static class ChainFiles
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
             $"xref\n0 1\n0000000000 65535 f\r\n9 1\n{file.OffsetOf(9):D10} 00000 n\r\ntrailer\n<< /Size 11 /Root 1 0 R /Prev {older} /XRefStm {stream} >>\nstartxref\n{table}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A classic table updated by a cross-reference stream. The table indexes the catalog, the page tree, the page and
+    /// object 12, the highest number; cross-reference stream 10, the update, indexes the first three with object 4, a page
+    /// the tree does not list, and object 9, which holds the table's offset after <paramref name="padding"/> spaces, and
+    /// names the table through <c>/Prev 9 0 R</c>. The table and the stream both give <c>/Size 13</c>.
+    /// </summary>
+    public static byte[] StreamUpdateHidingItsHighestNumber(int padding)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(12, "(twelve)");
+        var first = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\n12 1\n{file.OffsetOf(12):D10} 00000 n\r\ntrailer\n<< /Size 13 /Root 1 0 R >>\nstartxref\n{first}\n%%EOF\n"));
+        file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(9, new string(' ', padding) + first.ToString(CultureInfo.InvariantCulture));
+        var stream = file.Position;
+        var data = Encode(
+            [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, file.OffsetOf(4), 0), (1, file.OffsetOf(9), 0), (1, stream, 0)],
+            Rows.Raw);
+        file.Stream(
+            10,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 13 /W [1 4 2] /Index [0 5 9 2] /Root 1 0 R /Prev 9 0 R /Length {data.Length}"),
+            data);
+        file.StartXRef(stream);
         return file.ToArray();
     }
 

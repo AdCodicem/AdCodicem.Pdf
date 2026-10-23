@@ -640,6 +640,55 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData(31, "cut")]
+    [InlineData(32, "cut")]
+    [InlineData(31, "left out of the index")]
+    [InlineData(32, "left out of the index")]
+    public void A_missing_endstream_names_the_last_object_of_a_length_s_chain_a_guard_cut_or_left_out_of_the_index(int objects, string guard)
+    {
+        // As above, content stream 4 having lost its endstream, and the last object of its /Length's chain cut after 3,000
+        // spaces — or placed only by an older table, which MaxXRefSectionCount leaves unread: the fault and the report of the
+        // missing endstream name that object, the 32nd as the 31st, and not the one before it, which no guard cut and the
+        // index holds (#224).
+        var file = new HandWrittenFile();
+        var last = 100 + objects - 1;
+        var unindexed = guard == "left out of the index";
+        var rows = new Dictionary<int, long>();
+        var trailer = Invariant($"/Size {last + 1} /Root 1 0 R");
+
+        if (unindexed)
+        {
+            var older = file.Table(last + 1, new Dictionary<int, long> { [last] = file.Object(last, "5") }, Invariant($"/Size {last + 1}"));
+            trailer += Invariant($" /Prev {older}");
+        }
+        else
+        {
+            rows[last] = file.Object(last, new string(' ', 3000) + "5");
+        }
+
+        rows[1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        rows[2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        rows[4] = file.Object(4, "<< /Length 100 0 R >>\nstream\n0 0 m");
+
+        for (var number = 100; number < last; number++)
+        {
+            rows[number] = file.Object(number, Invariant($"{number + 1} 0 R"));
+        }
+
+        // The newer table numbers no row for the last object when only the older one places it.
+        file.Table(unindexed ? last : last + 1, rows, trailer);
+        var options = unindexed ? new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 } } : ObjectGuard;
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal("0 0 m"u8.ToArray());
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamTruncated).Which.Message.Should().StartWith(
+            Invariant($"The stream's /Length names object {last} 0, which one of the reader's limits {guard}, and no endstream follows its data"));
+        document.Reader.TryGetStreamLengthFault(4, out var fault).Should().BeTrue();
+        fault.Form.Should().Be(unindexed ? StreamLengthForm.ObjectUnindexed : StreamLengthForm.ObjectCut);
+        fault.Reference.Should().Be(new PdfObjectId(last));
+    }
+
+    [Theory]
     [InlineData(31)]
     [InlineData(32)]
     public void A_cross_reference_stream_s_length_whose_chain_ends_at_its_last_object_a_guard_cut_waits_for_the_chain(int objects)
@@ -668,6 +717,71 @@ public class GuardCutValueTests
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
         document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(32)]
+    public void A_cross_reference_stream_with_no_endstream_whose_length_s_chain_ends_at_its_last_object_a_guard_cut_is_the_guard_s(int objects)
+    {
+        // As above, stream 7 having lost its endstream: the fault that says its data ends nowhere follows the /Length as far
+        // as the parse resolves one, so the 32nd object, cut, leaves the section to the guard — not a chain of references
+        // that reaches no value, which rebuilt the index (#220, #224).
+        var placed = new Dictionary<int, string>();
+        var last = 100 + objects - 2;
+
+        for (var number = 100; number <= last; number++)
+        {
+            placed[number] = number < last ? Invariant($"{number + 1} 0 R") : new string(' ', 3000) + "56";
+        }
+
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "100 0 R", compressed: false, predicted: false, placed: true, placedToo: placed);
+        var at = Encoding.Latin1.GetString(file).IndexOf("endstream", StringComparison.Ordinal);
+        Encoding.ASCII.GetBytes("endstrXam").CopyTo(file, at);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
+        document.Reader.Structure.Sections[1].Fault.Should().EndWith(Invariant($"the reference {last} 0 R, which one of the reader's limits cut"));
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
+    [InlineData(31, false)]
+    [InlineData(32, false)]
+    [InlineData(31, true)]
+    [InlineData(32, true)]
+    public void Rows_past_a_spelled_endstream_are_the_guard_s_when_the_length_s_chain_ends_at_its_last_object_a_guard_cut(int objects, bool ownRow)
+    {
+        // Stream 7's /Length names object 5, which the newer table places — or object 4, which only stream 7's own row
+        // places —, which names object 100, the next, and so on; the last, after 3,000 spaces, holds the length, and the rows
+        // spell an endstream. Whether the length leads to a cut follows it as far as the parse resolves one, from the object
+        // the newer table places or from what the own row's object holds: the 32nd, cut, leaves the rows past the endstream
+        // to the guard — the page, whose row is one, reads as null —, where a shorter walk gave them to the file, the section
+        // incomplete and the index rebuilt (#220, #224).
+        var file = ChainFiles.UpdatePlacingAPaddedLengthChain(objects, ownRow);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+            whole.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfNull>();
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        var section = document.Reader.Structure.Sections[1];
+        section.CutByLimit.Should().BeTrue();
+        section.Incomplete.Should().BeFalse();
 
         var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
@@ -781,6 +895,40 @@ public class GuardCutValueTests
             key == "Prev"
                 ? $"The cross-reference section at offset {section} names older sections, but its /Prev is the reference {reference}, which one of the reader's limits cut: they were not checked."
                 : $"The cross-reference section at offset {section} names the cross-reference stream of its revision, but its /XRefStm is the reference {reference}, which one of the reader's limits cut: that stream, and any section older than it, were not checked.");
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_s_prev_a_guard_cut_ends_the_chain_as_the_guard_s()
+    {
+        // Cross-reference stream 10's /Prev, object 9, is one its own rows place, and MaxObjectLength cuts before its value:
+        // the chain ends there for the guard, as at a table's /Prev, thrown at opening when the caller asks for it (#263).
+        // Read whole, the stream's /Size 13 is one more than object 12, which only the older table indexes, and object 4 is
+        // a page the tree does not list: the validation says the table was not checked, and judges neither on the stream.
+        var file = ChainFiles.StreamUpdateHidingItsHighestNumber(padding: 3000);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.Structure.Sections.Should().HaveCount(2);
+            var report = new PdfValidator().Validate(whole);
+            report.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeFalse();
+            report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeTrue();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.Kind.Should().Be(XRefSectionKind.Stream);
+        section.ChainHiddenByGuard.Should().NotBeNull();
+        var guarded = new PdfValidator().Validate(document);
+        guarded.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Select(finding => finding.Message).Should().Equal(
+            $"The cross-reference section at offset {section.Offset} names older sections, but its /Prev is the reference 9 0 R, which one of the reader's limits cut: they were not checked.");
+        guarded.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeFalse();
+        guarded.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse();
 
         var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));

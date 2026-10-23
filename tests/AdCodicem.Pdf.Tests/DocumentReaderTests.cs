@@ -2144,6 +2144,38 @@ public class DocumentReaderTests
             "The /Length of cross-reference stream 7 names object 5 0, which holds the name /Foo, not a length; the chain took its data up to its endstream, after 56 bytes.");
     }
 
+    [Theory]
+    [InlineData(31, false)]
+    [InlineData(32, false)]
+    [InlineData(33, true)]
+    [InlineData(34, true)]
+    public void A_deferred_length_whose_chain_is_too_long_to_follow_is_reported_at_opening_as_a_later_load_reads_it(int objects, bool tooLong)
+    {
+        // Stream 7's /Length names object 5, which the newer table places, and which names object 100, the next, and so on;
+        // the last holds 56, and none is cut. The chain read follows as many objects as the parse resolves a /Length through,
+        // and reads a longer chain as null, as a later load of stream 7 does: the length is reported at opening, and the load
+        // adds nothing. Once, the parse resolved the reference the chain read gave back, took 56, and the report waited for
+        // the load (#220, #224).
+        var placed = new Dictionary<int, string>();
+        var last = 100 + objects - 2;
+
+        for (var number = 100; number <= last; number++)
+        {
+            placed[number] = number < last ? string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R") : "56";
+        }
+
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "100 0 R", compressed: false, predicted: false, placed: true, placedToo: placed);
+        string[] expected = tooLong ? [PdfDiagnosticCodes.StreamLengthInvalid] : [];
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(expected);
+
+        document.GetObject(new PdfObjectId(7)).AsStream().Required().GetRawBytes().Length.Should().Be(56);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(expected);
+    }
+
     [Fact]
     public void A_deferred_length_s_fault_names_the_reference_at_the_end_of_its_chain()
     {
