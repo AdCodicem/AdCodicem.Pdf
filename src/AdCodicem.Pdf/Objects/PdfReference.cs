@@ -62,7 +62,8 @@ public sealed class PdfReference : PdfObject
     {
         var reference = this;
 
-        // Resolve gives the value of a chain's 31st object at most: that object is the furthest a chain is followed to.
+        // Resolve gives the value of a chain's 31st object at most: it loads a 32nd, whose value it drops (#173), and the 31st
+        // is the furthest whose value it takes.
         for (var depth = 1; depth < objects; depth++)
         {
             if (reference.Source?.GetObject(reference.Id) is not PdfReference next)
