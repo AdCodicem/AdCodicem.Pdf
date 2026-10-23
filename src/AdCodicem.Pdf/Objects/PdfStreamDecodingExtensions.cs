@@ -19,7 +19,10 @@ public static class PdfStreamDecodingExtensions
     /// <remarks>
     /// <para>
     /// Decoding stops at an image filter: a stream encoded with <c>DCTDecode</c> comes back as the JPEG it
-    /// already is, rather than as pixels nobody asked for.
+    /// already is, rather than as pixels nobody asked for. Data no filter changes comes back as
+    /// <see cref="PdfStream.GetRawBytes"/> gives it — with no filter, or where decoding stops at the first: an image filter,
+    /// one the library does not know or could not decode the data with, the end of the chain —: from a document held in
+    /// memory, a view of that memory, which keeps it alive and changes as it does.
     /// </para>
     /// <para>
     /// Data that is damaged decodes as far as it can, and what decoded is kept: a Flate stream that lost its
@@ -42,9 +45,10 @@ public static class PdfStreamDecodingExtensions
     /// reported once as <see cref="PdfDiagnosticCodes.LimitDecodedStream"/>; the filters before the last share the
     /// bound for what they pass along together (<see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>). The
     /// filters after one the bound stopped decode what it kept, as data the reader cut: that it runs out is not
-    /// reported as damage. So do they data that runs past <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, of which
-    /// the reader reads what lies within it, reported as <see cref="PdfDiagnosticCodes.LimitStreamLength"/>: once in the
-    /// document's diagnostics, and in diagnostics of your own each time the stream is decoded. A <c>/Filter</c> array that
+    /// reported as damage. So do they decode data that runs past
+    /// <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, of which the reader reads what lies within it, reported as
+    /// <see cref="PdfDiagnosticCodes.LimitStreamLength"/>: once in the document's diagnostics, and in diagnostics of your
+    /// own each time the stream is decoded. A <c>/Filter</c> array that
     /// names more filters than
     /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> ends decoding before the first past them, reported as
     /// <see cref="PdfDiagnosticCodes.LimitFilterChain"/> when decoding reaches it.
