@@ -522,6 +522,22 @@ public class GuardCutValueTests
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
     }
 
+    [Fact]
+    public void Rows_past_a_spelled_endstream_are_the_file_s_when_the_length_s_chain_gives_a_wrong_length()
+    {
+        // As above, object 9 read whole, with no guard, and 1,000 more than the data's length: nothing confirms it, and the
+        // rows past the endstream the rows spell are the file's to lack — the section incomplete, the index rebuilt (#220).
+        var file = ChainFiles.UpdatePlacingAPaddedLength(chained: true, padding: 0, lengthOff: 1000);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(3));
+
+        var section = document.Reader.Structure.Sections[1];
+        section.Incomplete.Should().BeTrue();
+        section.CutByLimit.Should().BeFalse();
+        document.Diagnostics.Should().NotContain(entry => entry.Code.StartsWith("limit.", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData(31)]
     [InlineData(32)]

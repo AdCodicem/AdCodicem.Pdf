@@ -2223,6 +2223,34 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void A_stream_left_unsearched_is_reported_once_however_often_it_is_parsed()
+    {
+        // The last stream is left unsearched, as above; seventy objects read after it let the cache drop it, and parsed again,
+        // it keeps its data and says nothing more: its fault was reported the first time.
+        const int Streams = 30;
+        var after = Enumerable.Range(Streams + 3, 70).Select(number => Invariant($"{number} 0 obj\n({number})\nendobj\n")).ToArray();
+        var (file, _) = NestedStreams(Streams, 10_000_000, after);
+        using var document = PdfDocument.Open(file, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.Reader.TryGetStreamLengthFault(Streams + 2, out var last).Should().BeTrue();
+        last.EndStream.Should().Be(EndStreamState.NotSearched);
+        var length = document.GetObject(new PdfObjectId(Streams + 2)).AsStream().Required().RawLength;
+
+        for (var number = Streams + 3; number < Streams + 73; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(Streams + 2)).AsStream().Required().RawLength.Should().Be(length);
+        document.Diagnostics.Should().ContainSingle(d => d.Position == last.DataStart);
+    }
+
+    [Fact]
     public void A_comment_in_the_gap_that_runs_past_the_window_is_read_on_and_its_check_kept_for_a_second_reading()
     {
         // The declared length ends 20 bytes short of the window's edge, and a comment after it runs past the edge and past the
