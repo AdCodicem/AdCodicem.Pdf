@@ -193,8 +193,8 @@ public class ParserTests
     public void Ends_a_stream_s_data_at_its_object_s_endobj_that_only_white_space_and_comments_follow(string data, int length)
     {
         // Parsed alone, a stream with no endstream ends where its object's endobj ends it, a comment after which is white
-        // space; a token after it leaves the data running to the next object's header (#174). A name or a comment that the
-        // keyword would be part of makes it none: "/endobj" is a name.
+        // space; a token after it leaves the data running to the next object's header (#174). A solidus or a percent sign
+        // right before the keyword makes it part of a name or of a comment that starts there: "/endobj" is a name.
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("4 0 obj\n<< /Length 200 >>\nstream\n" + data));
 
         parser.TryReadIndirectObject(out _, out var value).Should().BeTrue();
