@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
@@ -478,5 +479,40 @@ public class GuardCutValueTests
 
         var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_parameter_a_guard_cut_before_an_image_filter_leaves_no_encoded_image(bool guarded)
+    {
+        // Object 4's Flate step, before its DCT, reads its parameters in object 20, which MaxObjectLength cuts: decoding ends
+        // there and gives the Flate data back, which HasImageFilter took for the JPEG (#263).
+        var jpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0xFF, 0xD9 };
+        using var output = new MemoryStream();
+
+        using (var zlib = new ZLibStream(output, CompressionLevel.NoCompression, leaveOpen: true))
+        {
+            zlib.Write(jpeg);
+        }
+
+        var flate = output.ToArray();
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(
+                4,
+                string.Create(CultureInfo.InvariantCulture, $"<< /Filter [/FlateDecode /DCTDecode] /DecodeParms [20 0 R null] /Length {flate.Length} >>\nstream\n") +
+                    Encoding.Latin1.GetString(flate) + "\nendstream"),
+            [20] = file.Object(20, new string(' ', 3000) + "<< /Predictor 1 >>"),
+        };
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, guarded ? ObjectGuard : null);
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.HasImageFilter().Should().Be(!guarded);
+        stream.Decode().ToArray().Should().Equal(guarded ? flate : jpeg);
     }
 }

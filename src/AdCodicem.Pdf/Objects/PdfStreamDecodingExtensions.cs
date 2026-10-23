@@ -69,11 +69,13 @@ public static class PdfStreamDecodingExtensions
     /// Determines whether the stream's data is an encoded image that <see cref="Decode"/> leaves alone: whether its
     /// <c>/Filter</c> entry names an image filter before anything that ends decoding whatever the data holds — a filter
     /// the library does not know, an element that names no filter, a filter past
-    /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/>.
+    /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/>, a filter's value or parameter that leads to an object
+    /// one of the reader's guards cut or left out of the index.
     /// </summary>
     /// <remarks>
     /// None of the data is read: whether a filter before the image filter fails on it, or whether the image is sound,
-    /// takes decoding it, and <see cref="Decode"/> reports what it meets.
+    /// takes decoding it, and <see cref="Decode"/> reports what it meets. The filters' parameters are read as decoding reads
+    /// them: one held in an object stream decodes that stream first.
     /// </remarks>
     public static bool HasImageFilter(this PdfStream stream)
     {
