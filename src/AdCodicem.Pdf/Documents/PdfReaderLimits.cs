@@ -134,7 +134,9 @@ public sealed record PdfReaderLimits
     /// </summary>
     /// <remarks>
     /// A classic trailer that ends within the window its cross-reference table was read through is read whole,
-    /// whatever its length: the guard bounds how far the reader follows one past that window. A value above
+    /// whatever its length: the guard bounds how far the reader follows one past that window. A cross-reference stream's
+    /// data is not a trailer: one whose <c>/Length</c> the reader cannot read while it reads the chain is searched for its
+    /// <c>endstream</c> in the file, up to the next object or the end of the file. A value above
     /// <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitTrailer"/>, and ends the cross-reference chain at the section cut: an
     /// older section, or a key, past the cut is unknown, and what only older sections index reads as null until the

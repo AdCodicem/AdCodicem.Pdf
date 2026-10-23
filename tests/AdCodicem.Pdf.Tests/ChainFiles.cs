@@ -116,41 +116,199 @@ internal static class ChainFiles
     }
 
     /// <summary>
-    /// A file of one cross-reference stream, object 5, whose <c>/Length</c> names object 4, which only that stream
-    /// indexes: valid, since ISO 32000-1 lets a stream's <c>/Length</c> be indirect, and 7.5.8.2 does not except a
-    /// cross-reference stream's. Object 4 gives the data's length, plus <paramref name="lengthOff"/>; with
-    /// <paramref name="spellingEndStream"/>, the rows of objects 6 and 7, of reserved types, spell <c>endstream</c> after
-    /// an end-of-line. With <paramref name="endingInCarriageReturn"/>, a last row gives object 6 free with generation 13, so
-    /// that the data's last byte is a carriage return. The rows are compressed when <paramref name="compressed"/>, and the
+    /// A file of one cross-reference stream, object 5, whose <c>/Length</c> names an object which only that stream
+    /// indexes — object 4, or with <paramref name="lengthLast"/> the one its last row places, object 4 then free —: valid,
+    /// since ISO 32000-1 lets a stream's <c>/Length</c> be indirect, and 7.5.8.2 does not except a cross-reference stream's.
+    /// The length gives the data's length, plus <paramref name="lengthOff"/>. After the rows of objects 0 to 5 come
+    /// <paramref name="padding"/> free rows; with <paramref name="endingInCarriageReturn"/>, a row that gives the next
+    /// object free with generation 13, so that it ends in a carriage return; then, with <paramref name="spellingEndStream"/>,
+    /// two rows of reserved types that spell <c>endstream</c> after an end-of-line, or with
+    /// <paramref name="spellingHeader"/> an object header. The rows are compressed when <paramref name="compressed"/>, and the
     /// data ends with <paramref name="endOfLine"/> before its <c>endstream</c>.
     /// </summary>
     public static byte[] AloneWithIndirectLength(
-        int lengthOff = 0, bool spellingEndStream = false, bool compressed = false, bool endingInCarriageReturn = false, string endOfLine = "\n")
+        int lengthOff = 0,
+        bool spellingEndStream = false,
+        bool compressed = false,
+        bool endingInCarriageReturn = false,
+        string endOfLine = "\n",
+        int padding = 0,
+        bool lengthLast = false,
+        bool spellingHeader = false)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
-        var size = 6 + (spellingEndStream ? 2 : 0) + (endingInCarriageReturn ? 1 : 0);
+        var spelled = spellingEndStream ? "\nendstream\0\0\0\0"u8.ToArray() : spellingHeader ? "\n1 0 obj\0\0\0\0\0\0"u8.ToArray() : [];
+        var size = 6 + padding + (endingInCarriageReturn ? 1 : 0) + (spelled.Length / 7) + (lengthLast ? 1 : 0);
+        var lengthNumber = lengthLast ? size - 1 : 4;
         var encoding = compressed ? Rows.Flate : Rows.Raw;
 
-        // Uncompressed rows, or stored in a block of their own, take as many bytes whatever they hold.
-        var length = Encode(new (int, long, int)[size - (spellingEndStream ? 2 : 0)], encoding).Length + (spellingEndStream ? 14 : 0);
-        file.Object(4, (length + lengthOff).ToString(CultureInfo.InvariantCulture));
+        // Uncompressed rows, or stored in blocks of their own, take as many bytes whatever they hold.
+        var length = Data(0, 0).Length + lengthOff;
+        file.Object(lengthNumber, length.ToString(CultureInfo.InvariantCulture));
         var stream = file.Position;
-        (int Type, long Second, int Third)[] rows =
-            [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, file.OffsetOf(4), 0), (1, stream, 0)];
-        var data = new List<byte>(Encode(endingInCarriageReturn ? [.. rows, (0, 0, 13)] : rows, encoding));
+        var filter = compressed ? " /Filter /FlateDecode" : string.Empty;
+        file.Stream(
+            5,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {size} /W [1 4 2]{filter} /Root 1 0 R /Length {lengthNumber} 0 R"),
+            Data(file.OffsetOf(lengthNumber), stream),
+            endOfLine);
+        file.StartXRef(stream);
+        return file.ToArray();
 
-        if (spellingEndStream)
+        byte[] Data(long lengthAt, long streamAt)
         {
-            // Types 10 and 101, reserved: the rows are ignored, and their bytes read "\nendstream".
-            data.AddRange("\nendstream\0\0\0\0"u8.ToArray());
+            var rows = new List<(int Type, long Second, int Third)>
+            {
+                (0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0),
+                lengthLast ? (0, 0, 0) : (1, lengthAt, 0), (1, streamAt, 0),
+            };
+
+            rows.AddRange(Enumerable.Repeat((0, 0L, 0), padding));
+
+            if (endingInCarriageReturn)
+            {
+                rows.Add((0, 0, 13));
+            }
+
+            // Types 10 and 101 or 106, reserved: the rows are ignored, and their bytes read "\nendstream", or "\n1 0 obj". The
+            // length's row past them is written as they are, uncompressed.
+            var data = new List<byte>(Encode([.. rows], encoding));
+            data.AddRange(spelled);
+
+            if (lengthLast)
+            {
+                data.AddRange(Encode([(1, lengthAt, 0)], Rows.Raw));
+            }
+
+            return [.. data];
+        }
+    }
+
+    /// <summary>
+    /// A file of two revisions. The first writes object 8 as <c>(old)</c> and indexes it in cross-reference stream 7. The
+    /// second writes it again as <c>(new)</c>, and indexes it in cross-reference stream 10, whose <c>/Length</c> names
+    /// object 4, which only that stream indexes, and whose rows of objects 5 and 6, of reserved types, spell
+    /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. With
+    /// <paramref name="olderIndirect"/>, stream 7's <c>/Length</c> names object 9, which only stream 7 indexes, and a comment
+    /// sets the update further from it than a search for a section's misplaced offset reaches. The file is valid.
+    /// </summary>
+    public static byte[] UpdateWithIndirectLength(bool spellingEndStream, bool olderIndirect = false)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(8, "(old)");
+        var olderRows = olderIndirect ? 10 : 9;
+
+        if (olderIndirect)
+        {
+            file.Object(9, (olderRows * 7).ToString(CultureInfo.InvariantCulture));
         }
 
-        var filter = compressed ? " /Filter /FlateDecode" : string.Empty;
-        file.Stream(5, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {size} /W [1 4 2]{filter} /Root 1 0 R /Length 4 0 R"), [.. data], endOfLine);
-        file.StartXRef(stream);
+        var first = file.Position;
+        (int Type, long Second, int Third)[] older =
+            [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (1, first, 0), (1, file.OffsetOf(8), 0)];
+        var rows = Encode(olderIndirect ? [.. older, (1, file.OffsetOf(9), 0)] : older, Rows.Raw);
+        var olderLength = olderIndirect ? "9 0 R" : rows.Length.ToString(CultureInfo.InvariantCulture);
+        file.Stream(7, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {olderRows} /W [1 4 2] /Root 1 0 R /Length {olderLength}"), rows);
+        file.StartXRef(first);
+
+        if (olderIndirect)
+        {
+            file.Text("%" + new string('x', 2 * AdCodicem.Pdf.IO.PdfFileReader.NearbySearchRadius) + "\n");
+        }
+
+        file.Object(8, "(new)");
+        var spelled = spellingEndStream ? "\nendstream\0\0\0\0"u8.ToArray() : Encode([(0, 0, 0), (0, 0, 0)], Rows.Raw);
+        file.Object(4, (7 + spelled.Length + 14).ToString(CultureInfo.InvariantCulture));
+        var second = file.Position;
+        var data = new List<byte>(Encode([(1, file.OffsetOf(4), 0)], Rows.Raw));
+        data.AddRange(spelled);
+        data.AddRange(Encode([(1, file.OffsetOf(8), 0), (1, second, 0)], Rows.Raw));
+        file.Stream(
+            10,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 11 /W [1 4 2] /Index [4 3 8 1 10 1] /Root 1 0 R /Prev {first} /Length 4 0 R"),
+            [.. data]);
+        file.StartXRef(second);
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A file of two revisions. The first writes object 8 as <c>(old)</c> and indexes it in cross-reference stream 7, whose
+    /// <c>/Length</c> names object 4, which only that stream indexes; its rows of objects 5 and 6, of reserved types, spell
+    /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. The second, set further from it than a
+    /// search for a section's misplaced offset reaches, writes object 8 again as <c>(new)</c> and indexes it in
+    /// cross-reference stream 9. The file is valid.
+    /// </summary>
+    public static byte[] OlderWithIndirectLength(bool spellingEndStream)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(8, "(old)");
+        file.Object(4, "63");
+        var first = file.Position;
+        var data = new List<byte>(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, file.OffsetOf(4), 0)], Rows.Raw));
+        data.AddRange(spellingEndStream ? "\nendstream\0\0\0\0"u8.ToArray() : Encode([(0, 0, 0), (0, 0, 0)], Rows.Raw));
+        data.AddRange(Encode([(1, first, 0), (1, file.OffsetOf(8), 0)], Rows.Raw));
+        file.Stream(7, "/Type /XRef /Size 9 /W [1 4 2] /Root 1 0 R /Length 4 0 R", [.. data]);
+        file.StartXRef(first);
+        file.Text("%" + new string('x', 2 * AdCodicem.Pdf.IO.PdfFileReader.NearbySearchRadius) + "\n");
+
+        file.Object(8, "(new)");
+        var second = file.Position;
+        var rows = Encode([(1, file.OffsetOf(8), 0), (1, second, 0)], Rows.Raw);
+        file.Stream(
+            9,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 10 /W [1 4 2] /Index [8 2] /Root 1 0 R /Prev {first} /Length {rows.Length}"),
+            rows);
+        file.StartXRef(second);
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A file of <paramref name="count"/> revisions, each a cross-reference stream whose <c>/Length</c> names an object only
+    /// that stream indexes, written before it, and whose rows give that object, the stream, and
+    /// <paramref name="padding"/> free objects after them; the first indexes the catalog, the page tree and the page as
+    /// well. The file is valid.
+    /// </summary>
+    public static byte[] UpdatesWithIndirectLengths(int count, int padding)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var previous = -1L;
+
+        for (var i = 0; i < count; i++)
+        {
+            var length = 4 + (i * (padding + 2));
+            var rows = new List<(int Type, long Second, int Third)>();
+
+            if (i == 0)
+            {
+                rows.AddRange([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0)]);
+            }
+
+            file.Object(length, ((rows.Count + padding + 2) * 7).ToString(CultureInfo.InvariantCulture));
+            var stream = file.Position;
+            rows.AddRange([(1, file.OffsetOf(length), 0), (1, stream, 0)]);
+            rows.AddRange(Enumerable.Repeat((0, 0L, 0), padding));
+            var index = i == 0 ? $"0 {length + padding + 2}" : $"{length} {padding + 2}";
+            var prev = previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}");
+            file.Stream(
+                length + 1,
+                string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {length + padding + 2} /W [1 4 2] /Index [{index}] /Root 1 0 R{prev} /Length {length} 0 R"),
+                Encode([.. rows], Rows.Raw));
+            file.StartXRef(stream);
+            previous = stream;
+        }
+
         return file.ToArray();
     }
 

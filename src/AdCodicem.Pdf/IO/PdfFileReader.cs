@@ -2099,8 +2099,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// The <c>/Length</c> is loaded as any object is: what that load finds or changes comes after the chain's index is
     /// copied (<see cref="PreserveChainIndex"/>). A length the <c>endstream</c> the chain stopped at confirms — the white
     /// space before it counted, or not all of it — is the stream's own, as the parser takes it for any stream, and says
-    /// nothing. One confirmed by an <c>endstream</c> past it gives data the chain did not read, rows included: they are not
-    /// read again, and the report says so. The stream is not parsed again, and each is reported once.
+    /// nothing; so is one the data was taken again to, the section's own row placing it (<see cref="RetakeDeferred"/>).
+    /// One confirmed by an <c>endstream</c> past it gives data the chain did not read, rows included — the section's row
+    /// for the <c>/Length</c> among them, or one that does not stand —: they are not read again, and the report says so.
+    /// The stream is not parsed again, and each is reported once.
     /// </remarks>
     private void CheckDeferredLengths()
     {
@@ -3427,6 +3429,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// malformed when the rows cannot be read without it (<see cref="UnreadValue"/>); a <c>/Length</c> no section read
     /// so far places is read once the chain is read (<see cref="CheckDeferredLengths"/>).
     /// </para>
+    /// <para>
+    /// The data of such a <c>/Length</c> runs to its first <c>endstream</c>, which the file is searched for past the bytes
+    /// the dictionary was read with — up to the next object the sections read so far place, or the end of the file —, as
+    /// a stream's whose length is not confirmed, but neither stopped by an object header its rows spell nor trimmed of a
+    /// carriage return its last row ends in (#220). With none there, the data ends nowhere the section says, and the
+    /// section is malformed. Rows that spell an <c>endstream</c> are told from the data's end by the section's own row for
+    /// the <c>/Length</c>, when it lies before them: the data is taken again to the length the object it places gives,
+    /// where an <c>endstream</c> confirms it (<see cref="RetakeDeferred"/>). <see cref="PdfReaderLimits.MaxTrailerLength"/>
+    /// bounds the dictionary alone.
+    /// </para>
     /// </remarks>
     private XRefSectionState TryReadXRefStream(long absolute, XRefSectionRecord section, out long previous, bool candidate)
     {
@@ -3488,12 +3500,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         // A /Length no section read so far places: the data was taken up to the first endstream it holds, and the /Length is
-        // read, and checked, once the chain is, if the section is read. Data a guard cut is the guard's, which says so
-        // (ADR 34), and is not checked against a length.
+        // read, and checked, once the chain is, if the section is read — or before its rows are, where the section places
+        // it among them. Data a guard cut is the guard's, which says so (ADR 34), and is not checked against a length.
         var deferred = dictionary.GetRaw(PdfName.Length) is PdfReference length && ReadWithoutLoading(length.Id) is null &&
             !section.CutByLimit && !xrefStream.Data.CutByGuard
             ? new DeferredLength(length.Id, xrefStream.Data.Length, number)
             : (DeferredLength?)null;
+
+        // Data a search found no endstream for, before the next object the sections read so far place or the end of the
+        // file, ends nowhere the section says: its rows are not read (#220).
+        if (deferred is { } unended && _endStreamSearches.TryGetValue((xrefStream.Data.Position, true), out var search) &&
+            search.Length is null)
+        {
+            var where = search.NextObject is { } next
+                ? string.Create(CultureInfo.InvariantCulture, $"before the next object, at {next}")
+                : "before the end of the file";
+            section.Fault = string.Create(
+                CultureInfo.InvariantCulture,
+                $"its /Length holds the reference {unended.Length.Number} {unended.Length.Generation} R, which no section read before it places where it can be read, and {(search.Searched ? "no endstream follows its data " + where : "its data was not searched for its endstream, the document's searches for endstream having read as much of the file as they may")}");
+            return XRefSectionState.Malformed;
+        }
 
         if (UnreadValue(dictionary) is { } unread)
         {
@@ -3554,29 +3580,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return XRefSectionState.Malformed;
         }
 
-        var decoding = _diagnostics.GetMark();
-        var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, out var leftEncoded);
-
-        // Data the guard on filters left encoded holds none of the section's rows: the section is cut before its first.
-        var data = leftEncoded ? default : decoded.Span;
-        var decodedWhole = !LimitSince(_diagnostics, decoding) && !xrefStream.Data.CutByGuard;
-        section.CutByLimit |= !decodedWhole;
-
-        // A row longer than the decoded data is one the data does not hold. Not a guard (ADR 34): the data's length is
-        // bounded by MaxDecodedStreamLength, a guard, and a valid section's rows are in its data. Each width is narrowed
-        // once it is known to be within the data, whose length an int holds, and their sum is then within a long.
-        Span<int> fieldWidths = stackalloc int[3];
-        long rowLength = 0;
-
-        for (var i = 0; i < 3; i++)
-        {
-            fieldWidths[i] = (int)Math.Min(declaredWidths[i], data.Length + 1L);
-            rowLength += fieldWidths[i];
-        }
-
-        var row = rowLength <= data.Length ? (int)rowLength : 0;
-        var held = row == 0 ? 0 : data.Length / row;
-        var position = 0;
         long declared = size.GetValueOrDefault();
 
         if (index is not null)
@@ -3590,6 +3593,56 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 declared += subsections[i];
             }
         }
+
+        // What a decoding reports of data taken again is dropped with it, and may be met again.
+        var decoding = deferred is null ? _diagnostics.GetMark() : _diagnostics.GetMarkWithDecodingReports();
+        Span<int> fieldWidths = stackalloc int[3];
+        ReadOnlySpan<byte> data;
+        bool decodedWhole;
+        int row;
+        long held;
+        var retaken = false;
+
+        while (true)
+        {
+            var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, out var leftEncoded);
+
+            // Data the guard on filters left encoded holds none of the section's rows: the section is cut before its first.
+            data = leftEncoded ? default : decoded.Span;
+            decodedWhole = !LimitSince(_diagnostics, decoding) && !xrefStream.Data.CutByGuard;
+
+            // A row longer than the decoded data is one the data does not hold. Not a guard (ADR 34): the data's length is
+            // bounded by MaxDecodedStreamLength, a guard, and a valid section's rows are in its data. Each width is narrowed
+            // once it is known to be within the data, whose length an int holds, and their sum is then within a long.
+            long rowLength = 0;
+
+            for (var i = 0; i < 3; i++)
+            {
+                fieldWidths[i] = (int)Math.Min(declaredWidths[i], data.Length + 1L);
+                rowLength += fieldWidths[i];
+            }
+
+            row = rowLength <= data.Length ? (int)rowLength : 0;
+            held = row == 0 ? 0 : data.Length / row;
+
+            // Fewer rows than the section declares, in data a /Length the chain could not read left to the first endstream:
+            // where the section's own row for that /Length, among those held, gives more data, which an endstream confirms,
+            // the rows spelled an endstream, and the data is taken again to that length (#220).
+            if (!retaken && deferred is { } unsettled && declared > held && decodedWhole && row > 0 &&
+                RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, index is null ? [0, declared] : subsections) is { } whole)
+            {
+                _diagnostics.RollBack(decoding);
+                xrefStream = whole;
+                deferred = unsettled with { Taken = whole.Data.Length };
+                retaken = true;
+                continue;
+            }
+
+            break;
+        }
+
+        section.CutByLimit |= !decodedWhole;
+        var position = 0;
 
         // A declared count is the file's claim: the index makes room for no more rows than the data holds.
         ReserveIndex(Math.Min(declared, held));
@@ -3653,6 +3706,65 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _xref.MergeTrailer(dictionary);
         previous = rowsCut ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute);
         return XRefSectionState.Read;
+    }
+
+    /// <summary>
+    /// Gives cross-reference stream <paramref name="stream"/> with its data taken again to the length its <c>/Length</c>
+    /// gives, which the chain could not read and took the data up to the first <c>endstream</c> for, when the rows
+    /// <paramref name="data"/> holds show that <c>endstream</c> was in the rows (#220): the section's own row for the object
+    /// the <c>/Length</c> names, among those held, places it, and the length it gives runs past the data taken, to an
+    /// <c>endstream</c> that confirms it. Null otherwise: the length is checked once the chain is read.
+    /// </summary>
+    /// <remarks>
+    /// The object is read where the row places it as <see cref="ReadWithoutLoading"/> reads one: nothing is corrected,
+    /// cached, recorded or reported, and one a guard cuts is not read. A row that does not stand — a newer section gave the
+    /// number, or refused it; the row is the second for the number, places it in an object stream, or under another
+    /// generation — leaves the data as it was taken.
+    /// </remarks>
+    private PdfStream? RetakeDeferred(
+        PdfStream stream, DeferredLength deferred, ReadOnlySpan<byte> data, ReadOnlySpan<int> widths, int row, long held, long[] subsections)
+    {
+        var number = deferred.Length.Number;
+
+        if (_xref.TryGet(number, out _) || _refusedNumbers?.Contains(number) == true)
+        {
+            return null;
+        }
+
+        // The rows before the first that numbers the object, in the order the subsections give them: their counts sum within
+        // a long, as the section's do.
+        long before = 0;
+        var numbered = false;
+
+        for (var i = 0; i < subsections.Length && !numbered; i += 2)
+        {
+            numbered = number >= subsections[i] && number - subsections[i] < subsections[i + 1];
+            before += numbered ? number - subsections[i] : subsections[i + 1];
+        }
+
+        if (!numbered || before >= held)
+        {
+            return null;
+        }
+
+        // The row lies within the data, whose length an int holds.
+        var fields = data.Slice((int)before * row, row);
+        var cursor = 0;
+        var type = widths[0] == 0 ? 1 : ReadField(fields, ref cursor, widths[0]);
+        var offset = ReadField(fields, ref cursor, widths[1]);
+        var generation = ReadField(fields, ref cursor, widths[2]);
+        var dataStart = stream.Data.Position;
+
+        if (type != 1 || offset > long.MaxValue || generation != (ulong)deferred.Length.Generation ||
+            !TryReadUnrecorded(deferred.Length, PositionOf((long)offset), out var value, out _) ||
+            value.AsInteger() is not { } length || length <= deferred.Taken || length > int.MaxValue ||
+            length > _source.Length - dataStart ||
+            ((IPdfStreamDataProvider)this).CheckEndStream(dataStart + length) is null)
+        {
+            return null;
+        }
+
+        return new PdfStream(stream.Dictionary, ((IPdfStreamDataProvider)this).Create(dataStart, (int)length));
     }
 
     /// <summary>

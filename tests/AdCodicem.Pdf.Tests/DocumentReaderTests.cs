@@ -5,7 +5,9 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -1818,21 +1820,233 @@ public class DocumentReaderTests
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(9_500)]
+    public void Rows_that_spell_endstream_after_the_length_s_own_row_are_read_as_the_length_gives(int padding)
+    {
+        // Two rows of reserved types spell an endstream after an end-of-line, a few bytes in or past the first 64 KB: the
+        // chain, which could not read the /Length, took the data up to it, and read the rows before it alone — once with a
+        // report, the section said to lack rows. The stream's own row for object 4 lies among them: the object it places
+        // gives the length, which the endstream after it confirms, and the data is taken again to it (#220).
+        var file = ChainFiles.AloneWithIndirectLength(spellingEndStream: true, padding: padding);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Index.Count.Should().Be(6 + padding);
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Rows_that_spell_endstream_in_an_update_leave_none_of_its_objects_to_the_revision_it_supersedes()
+    {
+        // The update's stream indexes its /Length, object 4, and object 8 after rows that spell an endstream: read up to it,
+        // the stream held object 4's row alone, and object 8 read as the first revision wrote it, a valid file said to have
+        // a malformed section. The update's rows are read whole, and object 8 reads as it does in its direct twin (#220).
+        using var document = PdfDocument.Open(ChainFiles.UpdateWithIndirectLength(spellingEndStream: true));
+        using var twin = PdfDocument.Open(ChainFiles.UpdateWithIndirectLength(spellingEndStream: false));
+
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
+        twin.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Index.Count.Should().Be(twin.Reader.Index.Count);
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
     [Fact]
     public void Reports_the_rows_a_deferred_length_shows_the_chain_did_not_read()
     {
-        // The rows of objects 6 and 7, of reserved types, spell an endstream after an end-of-line: the chain, which could
-        // not read the /Length, took the data up to it. The length, read once the chain is, gives 14 bytes more, which the
-        // endstream after them confirms: what the chain left unread is reported. The rows are not read again.
-        var file = ChainFiles.AloneWithIndirectLength(spellingEndStream: true);
+        // The rows spell an endstream before the stream's own row for its /Length, the last: what the chain read holds no
+        // row to place it by. The length, read once the chain is, gives 21 bytes more, which the endstream after them
+        // confirms: what the chain left unread is reported, and the section's missing rows set off a rebuild.
+        var file = ChainFiles.AloneWithIndirectLength(spellingEndStream: true, lengthLast: true);
         using var document = PdfDocument.Open(file);
 
-        var report = document.Diagnostics.Should().ContainSingle().Which;
-        report.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which;
         report.Position.Should().Be(PdfTemplate.OffsetOf(file, "stream\n", 1) + "stream\n".Length);
         report.Message.Should().Be(
-            "The /Length of cross-reference stream 5 gives 56 bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream 42 bytes in, and read no row past it.");
+            "The /Length of cross-reference stream 5 gives 63 bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream 42 bytes in, and read no row past it.");
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeTrue();
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("generation")]
+    [InlineData("object stream")]
+    [InlineData("name")]
+    [InlineData("short")]
+    [InlineData("unconfirmed")]
+    [InlineData("unreadable")]
+    [InlineData("superseded")]
+    public void A_length_row_that_does_not_stand_leaves_the_data_up_to_the_endstream_the_rows_spell(string fault)
+    {
+        // The stream's row for object 4 places it under another generation, or in an object stream; object 4 holds a name;
+        // it gives no more than the data taken, or more that no endstream confirms; its header is misspelled; an update
+        // gives object 4 a place that holds nothing. None says where the data ends: the rows before the endstream they
+        // spell are all the section holds, as the chain took them (#220).
+        var file = ChainFiles.AloneWithIndirectLength(
+            spellingEndStream: true, lengthOff: fault switch { "short" => -14, "unconfirmed" => 3, _ => 0 });
+        var row = (int)PdfTemplate.OffsetOf(file, "stream\n", 1) + "stream\n".Length + (4 * 7);
+
+        switch (fault)
+        {
+            case "generation":
+                file[row + 6] = 1;
+                break;
+            case "object stream":
+                file[row] = 2;
+                break;
+            case "name":
+            case "unreadable":
+                var replaced = Encoding.Latin1.GetString(file).Replace(
+                    "4 0 obj\n56\n", fault == "name" ? "4 0 obj\n/F\n" : "4 0 xbj\n56\n", StringComparison.Ordinal);
+                file = Encoding.Latin1.GetBytes(replaced);
+                break;
+            case "superseded":
+                file = WithUpdatePlacingFourOutside(file);
+                break;
+        }
+
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[^1].Incomplete.Should().BeTrue();
+        document.Reader.Structure.Sections[^1].Fault.Should().Be("it holds 6 rows where its /Index and /Size declare 8");
+
+        static byte[] WithUpdatePlacingFourOutside(byte[] file)
+        {
+            var stream = PdfTemplate.OffsetOf(file, "5 0 obj");
+            var update = new StringBuilder("%").Append('x', 2 * PdfFileReader.NearbySearchRadius).Append('\n');
+            var xref = file.Length + update.Length;
+            update.Append(CultureInfo.InvariantCulture, $"xref\n4 1\n0000099999 00000 n\r\ntrailer\n<< /Size 8 /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n");
+            return [.. file, .. Encoding.Latin1.GetBytes(update.ToString())];
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Rows_that_spell_endstream_in_an_older_section_are_read_as_its_length_gives(bool twin)
+    {
+        // The older section's /Length names object 4, which only it indexes, and two of its rows spell an endstream: the
+        // search for it stops at the update's first object, past them. Its data is taken again to the length object 4
+        // gives, as the newest section's is (#220).
+        var file = ChainFiles.OlderWithIndirectLength(spellingEndStream: !twin);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => !section.Incomplete);
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Updates_each_with_a_long_deferred_length_are_all_searched()
+    {
+        // Five revisions, each a cross-reference stream of 70,000 bytes of rows whose /Length only it indexes: each is
+        // searched for its endstream past the first window, up to the next object the newer sections place or the end of
+        // the file. Together they read about the file once, and one read past each: no search is left undone for want of
+        // what the document's searches may read (EndStreamSearchPasses).
+        var file = ChainFiles.UpdatesWithIndirectLengths(count: 5, padding: 10_000);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().HaveCount(5).And.OnlyContain(section => section.State == XRefSectionState.Read && !section.Incomplete);
+        document.Reader.Index.Count.Should().Be(4 + (5 * 10_002));
+        source.BytesRead.Should().BeLessThan(3L * file.Length);
+    }
+
+    [Theory]
+    [InlineData(false, false, "\n")]
+    [InlineData(true, false, "\n")]
+    [InlineData(false, true, "\r\n")]
+    public void A_cross_reference_stream_whose_length_only_it_indexes_is_read_past_the_first_window_as_its_direct_twin(
+        bool compressed, bool endingInCarriageReturn, string endOfLine)
+    {
+        // 70,000 bytes of rows, past the 64 KB the chain's window first holds: the data, whose /Length object 4 gives and
+        // only the stream indexes, was searched for its endstream within the window alone, which grew to MaxTrailerLength,
+        // reported reached, and 9,350 of 10,000 rows were read. It is searched in the file, as any stream's whose length is
+        // not confirmed, and read whole — its last byte a carriage return too (#220).
+        var file = ChainFiles.AloneWithIndirectLength(padding: 10_000, compressed: compressed, endingInCarriageReturn: endingInCarriageReturn, endOfLine: endOfLine);
+        var options = new PdfReaderOptions { ThrowOnLimit = true };
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Index.Count.Should().Be(10_006 + (endingInCarriageReturn ? 1 : 0));
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_is_read_once_more_than_its_direct_twin_s()
+    {
+        // The search reads the data to its endstream, and the decoding reads it again: the file is read once more than its
+        // direct twin, whose /Length, written in place of "4 0 R", takes as many bytes, and not a byte past the next read.
+        var file = ChainFiles.AloneWithIndirectLength(padding: 10_000);
+        var text = Encoding.Latin1.GetString(file);
+        var twin = Encoding.Latin1.GetBytes(text.Replace("/Length 4 0 R", "/Length 70042", StringComparison.Ordinal));
+        twin.Length.Should().Be(file.Length);
+
+        var read = BytesReadOpening(file);
+        var twinRead = BytesReadOpening(twin);
+
+        read.Should().BeInRange(twinRead, twinRead + 70_042 + PdfFileReader.EndStreamSearchChunk);
+
+        static long BytesReadOpening(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            document.Diagnostics.Should().BeEmpty();
+            return source.BytesRead;
+        }
+    }
+
+    [Fact]
+    public void Rows_that_spell_an_object_header_do_not_end_a_deferred_length_s_data()
+    {
+        // Rows of reserved types spell "1 0 obj" past the first 64 KB: a header the bytes hold ends a search for a stream's
+        // endstream, but not one whose /Length the chain could not read, whose rows may spell anything (#220).
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(padding: 10_000, spellingHeader: true));
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Index.Count.Should().Be(10_006);
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_with_no_endstream_before_the_end_of_the_file_makes_its_section_malformed()
+    {
+        // The stream's endstream is misspelled: its data, which no length the chain could read ends, ends nowhere, and the
+        // section is not read — once, the rest of the file was taken for its data (#220). The index is rebuilt.
+        var file = ChainFiles.AloneWithIndirectLength(padding: 10_000);
+        var at = (int)PdfTemplate.OffsetOf(file, "endstream");
+        file[at] = (byte)'x';
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.State.Should().Be(XRefSectionState.Malformed);
+        section.Fault.Should().Be(
+            "its /Length holds the reference 4 0 R, which no section read before it places where it can be read, and no endstream follows its data before the end of the file");
+        document.Diagnostics.Select(entry => entry.Code).Should().NotContain(code => code.StartsWith("limit.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_with_no_endstream_before_the_next_object_makes_its_section_malformed()
+    {
+        // The older stream's /Length names object 9, which only it indexes, and its endstream is misspelled: the search for
+        // it stops at the update's first object the newer section places (#220).
+        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, olderIndirect: true);
+        var at = (int)PdfTemplate.OffsetOf(file, "endstream");
+        file[at] = (byte)'x';
+        var next = PdfTemplate.OffsetOf(file, "8 0 obj\n(new)");
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[1].Fault.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"its /Length holds the reference 9 0 R, which no section read before it places where it can be read, and no endstream follows its data before the next object, at {next}"));
     }
 
     [Theory]

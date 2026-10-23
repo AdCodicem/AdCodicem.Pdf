@@ -19,6 +19,7 @@ public class HostileInputTests
 {
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(10);
 
+
     [Theory]
     [InlineData("/A 1 ")]
     [InlineData("/A null ")]
@@ -274,6 +275,24 @@ public class HostileInputTests
         document.Diagnostics.Should().NotContain(d => d.Code.StartsWith("limit.", StringComparison.Ordinal));
         document.Reader.IsCutAtLimit(5).Should().BeFalse();
         document.Reader.IsEndObjMissing(5, out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_with_no_endstream_makes_its_section_malformed_reading_the_file_a_few_times()
+    {
+        // A cross-reference stream whose /Length only it indexes, 3 MB of rows, and its endstream misspelled: its search
+        // reads the data to the end of the file, and its section is malformed — the file's fault, no guard's (#220). The
+        // rebuild scans the file, and its stream, its length read then, is searched again: the file is read about four
+        // times, as its sound twin is twice — the search and the decoding.
+        var file = ChainFiles.AloneWithIndirectLength(padding: 450_000);
+        file[(int)PdfTemplate.OffsetOf(file, "endstream")] = (byte)'x';
+        using var source = new StrictCountingSource(file);
+
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.State.Should().Be(XRefSectionState.Malformed);
+        document.Diagnostics.Should().NotContain(d => d.Code.StartsWith("limit.", StringComparison.Ordinal));
+        source.BytesRead.Should().BeLessThan(5L * file.Length);
     }
 
     [Fact]

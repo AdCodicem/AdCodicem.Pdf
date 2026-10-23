@@ -56,6 +56,21 @@ public class ReaderLimitsTests
         limits.MaxFilterChainLength.Should().Be(int.MaxValue);
     }
 
+    [Fact]
+    public void MaxTrailerLength_bounds_a_cross_reference_stream_s_dictionary_and_not_its_data()
+    {
+        // The data of a cross-reference stream whose /Length only it indexes was searched for its endstream within the
+        // window that read the dictionary, which MaxTrailerLength bounds: a kilobyte of rows past 256 bytes reached the guard.
+        // The data is searched in the file, as any stream's whose length is not confirmed (#220).
+        var file = ChainFiles.AloneWithIndirectLength(padding: 150);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 256 }, ThrowOnLimit = true };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Index.Count.Should().Be(156);
+    }
+
     [Theory]
     [InlineData(nameof(PdfReaderLimits.MaxDecodedStreamLength), 0)]
     [InlineData(nameof(PdfReaderLimits.MaxStreamLength), 0)]
