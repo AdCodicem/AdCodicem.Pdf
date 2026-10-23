@@ -269,6 +269,38 @@ public class SyntaxFaultTests
         document.Trailer.ContainsKey(PdfName.Info).Should().BeFalse();
         document.Trailer.ContainsKey(PdfName.Type).Should().BeFalse();
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse();
+
+        // A trailer is no object: the report said the header ended "the object" at the trailer's <<.
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
+            .Which.Message.Should().Be("An object header came inside a dictionary, which was never closed.");
+    }
+
+    [Theory]
+    [InlineData(" /A 1\n\n6 0 obj")]
+    [InlineData(" /A 1\n\n6 0 ")]
+    [InlineData(" /A 1 /A\n\n6 0 obj")]
+    public void A_header_the_guard_s_cut_leaves_undecided_is_the_guard_s(string tail)
+    {
+        // Object 4 lost its >> and its endobj, and the next object's header comes where MaxObjectLength cuts it: the header's
+        // number and generation were kept as keys that are not names, or as the value of the key before them, where a larger
+        // limit reads the header (#230).
+        const int Limit = 128;
+        var head = "4 0 obj\n<< /Pad (";
+        var body = "<< /Pad (" + new string('x', Limit - head.Length - (")" + tail).Length) + ")" + tail + "\n<< /Foo 7 >>";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, body),
+        };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = Limit } });
+
+        document.GetObject(new PdfObjectId(4));
+
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken);
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitObject);
     }
 
     /// <summary>

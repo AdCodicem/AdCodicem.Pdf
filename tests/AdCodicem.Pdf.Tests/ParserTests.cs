@@ -176,7 +176,29 @@ public class ParserTests
 
         id.Should().Be(new PdfObjectId(6));
         value.Should().BeOfType<PdfString>();
-        diagnostics.Should().ContainSingle().Which.Message.Should().Be("An object header ended the object inside an array, which was never closed.");
+        diagnostics.Should().ContainSingle().Which.Message.Should().Be("An object header came inside an array, which was never closed.");
+    }
+
+    [Theory]
+    [InlineData("<< /A 1\n6")]
+    [InlineData("<< /A 1\n6 0")]
+    [InlineData("<< /A 1\n6 0 ")]
+    [InlineData("<< /A 1\n6 0 o")]
+    [InlineData("<< /A 1\n6 0 ob")]
+    [InlineData("<< /A 1\n6 0 obj")]
+    [InlineData("<< /A 1 /B\n6 0 obj")]
+    [InlineData("<< /A [1\n6 0 obj")]
+    public void Tokens_a_window_s_edge_leaves_undecided_as_a_header_are_no_stray_keys(string text)
+    {
+        // Inside a dictionary, the next object's header the window's edge cuts short: its number and generation were reported
+        // as keys that are not names, and kept so wherever no larger window follows, where a larger one reads a header (#230).
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics, endsData: false);
+
+        parser.ParseObject().Should().BeOfType<PdfDictionary>();
+
+        parser.IsTruncated.Should().BeTrue();
+        diagnostics.Should().BeEmpty();
     }
 
     [Theory]
@@ -197,6 +219,7 @@ public class ParserTests
     [Theory]
     [InlineData("<< /A [1 << /B 2\n6 0 obj\n", 2)]
     [InlineData("<< /A 1\n6 0 obj\n", 1)]
+    [InlineData("<< /A\n6 0 obj\n", 1)]
     public void A_header_where_a_key_or_a_value_is_expected_ends_the_dictionary(string text, int depthOfCut)
     {
         var diagnostics = new PdfDiagnostics();
