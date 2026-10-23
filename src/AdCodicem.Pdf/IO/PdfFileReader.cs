@@ -6546,7 +6546,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>The objects packed inside one object stream, and where each of them starts.</summary>
-    private sealed class ObjectStreamContents
+    private sealed class ObjectStreamContents : IPdfFileEdge
     {
         private readonly ReadOnlyMemory<byte> _data;
         private readonly int[] _numbers;
@@ -6593,6 +6593,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         public int Count => _numbers.Length;
+
+        /// <summary>
+        /// Determines whether a token that reaches a member window's edge at byte <paramref name="absoluteOffset"/> of the
+        /// decoded data ends there: no regular character follows. A window MaxObjectLength bounds ends inside the data; past
+        /// the end of data a guard cut there is nothing to ask, and the token stays undecided.
+        /// </summary>
+        bool IPdfFileEdge.TokenEndsAt(long absoluteOffset) =>
+            absoluteOffset < _data.Length && !PdfCharacters.IsRegular(_data.Span[(int)absoluteOffset]);
 
         /// <summary>
         /// Gets what keeping the contents costs, in bytes: the decoded data, the header's two tables and the lookup of its
@@ -6782,7 +6790,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             var window = ObjectStreamMemberWindow.Of(_offsets, index, _first, _data.Length, _cutByGuard, maxLength);
             var parser = PdfObjectParser.ForObjectStreamMember(
-                _data[..window.End], _number, _position, expectedNumber, source, parsing, window.EndsData, window.EndsAtNextMember);
+                _data[..window.End], _number, _position, expectedNumber, source, parsing, window.EndsData, window.EndsAtNextMember, this);
             parser.Position = window.Start;
             var value = parser.ParseObject();
 
