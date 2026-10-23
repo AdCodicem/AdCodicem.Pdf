@@ -110,6 +110,9 @@ public sealed record CorpusReaderLimits
     /// <summary>What one stream may decode to, in bytes.</summary>
     public int? MaxDecodedStreamLength { get; init; }
 
+    /// <summary>The most of one stream's encoded data read at once, in bytes.</summary>
+    public int? MaxStreamLength { get; init; }
+
     /// <summary>The longest object, the data of a stream aside, in bytes.</summary>
     public int? MaxObjectLength { get; init; }
 

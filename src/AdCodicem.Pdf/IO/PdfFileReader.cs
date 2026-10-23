@@ -5882,7 +5882,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Streams whose data share a stretch of the file — overlapping objects —, or the many streams of a document read once
     /// each, hold none of it: what a caller keeps is its own, and memory follows what is being decoded. A source in
     /// memory lends the bytes where they lie, without a copy, valid for as long as its memory is; any other reads them
-    /// into an array of their length.
+    /// into an array of their length. No more than <see cref="PdfReaderLimits.MaxStreamLength"/> bytes are read: past it,
+    /// the data is cut there, marked cut by a guard, and the guard reported, once for each stream.
     /// </remarks>
     private sealed class FileStreamData(PdfFileReader reader, long offset, int length, PdfLimitGuard guard) : PdfStreamData
     {
@@ -5899,18 +5900,34 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         public void MarkCutByGuard() => _cutByGuard = true;
 
         /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
+        /// <exception cref="Diagnostics.PdfLimitExceededException">
+        /// The data runs past <see cref="PdfReaderLimits.MaxStreamLength"/>, and the document was opened to throw when it does.
+        /// </exception>
         public override ReadOnlyMemory<byte> GetBytes()
         {
             ObjectDisposedException.ThrowIf(reader._closed, typeof(PdfDocument));
 
-            if (reader._source.TryLend(offset, length, out var lent))
+            var count = length;
+            var bound = guard.Bound(PdfLimit.StreamLength);
+
+            if (count > bound)
+            {
+                _cutByGuard = true;
+                count = bound;
+                reader.ReachLimit(
+                    PdfLimit.StreamLength,
+                    $"A stream's data runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
+                    offset);
+            }
+
+            if (reader._source.TryLend(offset, count, out var lent))
             {
                 return lent;
             }
 
             // A source that gives less than it holds leaves the array longer than what it gave: the bytes it gave are
             // handed back, not copied again.
-            var buffer = new byte[length];
+            var buffer = new byte[count];
             var read = reader._source.Read(offset, buffer);
             return buffer.AsMemory(0, read);
         }

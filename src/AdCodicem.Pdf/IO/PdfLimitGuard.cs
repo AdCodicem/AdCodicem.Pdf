@@ -36,6 +36,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     public int Bound(PdfLimit limit) => limit switch
     {
         PdfLimit.DecodedStream => limits.MaxDecodedStreamLength,
+        PdfLimit.StreamLength => limits.MaxStreamLength,
         PdfLimit.Object => limits.MaxObjectLength,
         PdfLimit.XRefSectionLength => limits.MaxXRefSectionLength,
         PdfLimit.XRefSectionCount => limits.MaxXRefSectionCount,
@@ -78,6 +79,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     private static string Code(PdfLimit limit) => limit switch
     {
         PdfLimit.DecodedStream => PdfDiagnosticCodes.LimitDecodedStream,
+        PdfLimit.StreamLength => PdfDiagnosticCodes.LimitStreamLength,
         PdfLimit.Object => PdfDiagnosticCodes.LimitObject,
         PdfLimit.XRefSectionLength => PdfDiagnosticCodes.LimitXRefSectionLength,
         PdfLimit.XRefSectionCount => PdfDiagnosticCodes.LimitXRefSectionCount,
@@ -89,6 +91,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     private static string Name(PdfLimit limit) => limit switch
     {
         PdfLimit.DecodedStream => nameof(PdfReaderLimits.MaxDecodedStreamLength),
+        PdfLimit.StreamLength => nameof(PdfReaderLimits.MaxStreamLength),
         PdfLimit.Object => nameof(PdfReaderLimits.MaxObjectLength),
         PdfLimit.XRefSectionLength => nameof(PdfReaderLimits.MaxXRefSectionLength),
         PdfLimit.XRefSectionCount => nameof(PdfReaderLimits.MaxXRefSectionCount),

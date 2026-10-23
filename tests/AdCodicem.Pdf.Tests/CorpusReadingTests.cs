@@ -528,6 +528,7 @@ public class CorpusReadingTests
         return limits with
         {
             MaxDecodedStreamLength = raised.MaxDecodedStreamLength ?? limits.MaxDecodedStreamLength,
+            MaxStreamLength = raised.MaxStreamLength ?? limits.MaxStreamLength,
             MaxObjectLength = raised.MaxObjectLength ?? limits.MaxObjectLength,
             MaxXRefSectionLength = raised.MaxXRefSectionLength ?? limits.MaxXRefSectionLength,
             MaxXRefSectionCount = raised.MaxXRefSectionCount ?? limits.MaxXRefSectionCount,
@@ -542,6 +543,7 @@ public class CorpusReadingTests
         var defaults = PdfReaderLimits.Default;
 
         return (raised.MaxDecodedStreamLength != defaults.MaxDecodedStreamLength && message.Contains("PdfReaderLimits.MaxDecodedStreamLength", StringComparison.Ordinal))
+            || (raised.MaxStreamLength != defaults.MaxStreamLength && message.Contains("PdfReaderLimits.MaxStreamLength", StringComparison.Ordinal))
             || (raised.MaxObjectLength != defaults.MaxObjectLength && message.Contains("PdfReaderLimits.MaxObjectLength", StringComparison.Ordinal))
             || (raised.MaxXRefSectionLength != defaults.MaxXRefSectionLength && message.Contains("PdfReaderLimits.MaxXRefSectionLength", StringComparison.Ordinal))
             || (raised.MaxXRefSectionCount != defaults.MaxXRefSectionCount && message.Contains("PdfReaderLimits.MaxXRefSectionCount", StringComparison.Ordinal))

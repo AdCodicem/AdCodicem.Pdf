@@ -33,6 +33,7 @@ public sealed record PdfReaderLimits
     public static PdfReaderLimits Unbounded { get; } = new()
     {
         MaxDecodedStreamLength = int.MaxValue,
+        MaxStreamLength = int.MaxValue,
         MaxObjectLength = int.MaxValue,
         MaxXRefSectionLength = int.MaxValue,
         MaxXRefSectionCount = int.MaxValue,
@@ -60,6 +61,27 @@ public sealed record PdfReaderLimits
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
     public int MaxDecodedStreamLength { get; init => field = Length(value); } = 256 * 1024 * 1024;
+
+    /// <summary>
+    /// Gets the most of one stream's encoded data the reader reads at once, in bytes. Defaults to 256 MB: a <c>/Length</c>
+    /// of a few digits can claim gigabytes, and a scanned map can hold an uncompressed image of 300 MB.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The encoded data is read in one piece each time it is asked for — <see cref="Objects.PdfStream.GetRawBytes"/>, or
+    /// decoding it —, so a value above <see cref="Array.MaxLength"/> is taken as that length, and a <c>/Length</c> past it
+    /// is cut there. Data past the bound is cut at it: what lies within it is read, and decoded as data the reader cut,
+    /// whose lost tail is no damage. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitStreamLength"/>,
+    /// once for each stream. <see cref="Objects.PdfStreamData.Length"/> stays the length the file holds.
+    /// </para>
+    /// <para>
+    /// Data that decoding hands back as it is — no filter, an image filter, a filter the library does not know, one that
+    /// could not decode it — is bounded by this guard, not by <see cref="MaxDecodedStreamLength"/>, which bounds what the
+    /// filters produce: a large uncompressed image needs this bound raised alone (#170).
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
+    public int MaxStreamLength { get; init => field = Length(value); } = 256 * 1024 * 1024;
 
     /// <summary>
     /// Gets the longest object the reader parses, in bytes, the data of a stream aside, whether the file writes it

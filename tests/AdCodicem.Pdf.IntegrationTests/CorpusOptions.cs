@@ -18,6 +18,7 @@ internal static class CorpusOptions
             limits = limits with
             {
                 MaxDecodedStreamLength = raised.MaxDecodedStreamLength ?? limits.MaxDecodedStreamLength,
+                MaxStreamLength = raised.MaxStreamLength ?? limits.MaxStreamLength,
                 MaxObjectLength = raised.MaxObjectLength ?? limits.MaxObjectLength,
                 MaxXRefSectionLength = raised.MaxXRefSectionLength ?? limits.MaxXRefSectionLength,
                 MaxXRefSectionCount = raised.MaxXRefSectionCount ?? limits.MaxXRefSectionCount,

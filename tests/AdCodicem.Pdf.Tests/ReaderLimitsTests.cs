@@ -22,7 +22,7 @@ public class ReaderLimitsTests
 
     /// <summary>A guard for each bound of <see cref="PdfReaderLimits"/>, the trailer's reached two ways.</summary>
     public static TheoryData<string> Guards =>
-        ["decoded stream", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain"];
+        ["decoded stream", "stream length", "object", "section length", "section count", "trailer", "cross-reference stream", "index entries", "filter chain"];
 
     [Fact]
     public void The_defaults_are_the_bounds_the_reader_kept_before_they_were_options()
@@ -30,6 +30,7 @@ public class ReaderLimitsTests
         var limits = PdfReaderLimits.Default;
 
         limits.MaxDecodedStreamLength.Should().Be(256 * 1024 * 1024);
+        limits.MaxStreamLength.Should().Be(256 * 1024 * 1024);
         limits.MaxObjectLength.Should().Be(16 * 1024 * 1024);
         limits.MaxXRefSectionLength.Should().Be(64 * 1024 * 1024);
         limits.MaxXRefSectionCount.Should().Be(1024);
@@ -46,6 +47,7 @@ public class ReaderLimitsTests
         var limits = PdfReaderLimits.Unbounded;
 
         limits.MaxDecodedStreamLength.Should().Be(Array.MaxLength);
+        limits.MaxStreamLength.Should().Be(Array.MaxLength);
         limits.MaxObjectLength.Should().Be(Array.MaxLength);
         limits.MaxXRefSectionLength.Should().Be(Array.MaxLength);
         limits.MaxXRefSectionCount.Should().Be(int.MaxValue);
@@ -56,6 +58,7 @@ public class ReaderLimitsTests
 
     [Theory]
     [InlineData(nameof(PdfReaderLimits.MaxDecodedStreamLength), 0)]
+    [InlineData(nameof(PdfReaderLimits.MaxStreamLength), 0)]
     [InlineData(nameof(PdfReaderLimits.MaxObjectLength), -1)]
     [InlineData(nameof(PdfReaderLimits.MaxXRefSectionLength), int.MinValue)]
     [InlineData(nameof(PdfReaderLimits.MaxXRefSectionCount), 0)]
@@ -75,6 +78,7 @@ public class ReaderLimitsTests
         var limits = PdfReaderLimits.Default with
         {
             MaxDecodedStreamLength = int.MaxValue,
+            MaxStreamLength = int.MaxValue,
             MaxObjectLength = int.MaxValue,
             MaxXRefSectionLength = int.MaxValue,
             MaxXRefSectionCount = int.MaxValue,
@@ -112,6 +116,7 @@ public class ReaderLimitsTests
             throwOnLimit: false);
 
         unbounded.Reach(PdfLimit.DecodedStream, diagnostics, "Cut.", 7);
+        unbounded.Reach(PdfLimit.StreamLength, diagnostics, "Cut.", 7);
         unbounded.Reach(PdfLimit.XRefSectionCount, diagnostics, "Cut.", 8);
         justBelow.Reach(PdfLimit.XRefSectionCount, diagnostics, "Cut.", 9);
         unbounded.Reach(PdfLimit.IndexEntries, diagnostics, "Cut.", 10);
@@ -121,6 +126,7 @@ public class ReaderLimitsTests
 
         diagnostics.Select(entry => entry.Message).Should().Equal(
             "Cut. PdfReaderLimits.MaxDecodedStreamLength is already at the most the reader can hold.",
+            "Cut. PdfReaderLimits.MaxStreamLength is already at the most the reader can hold.",
             "Cut. PdfReaderLimits.MaxXRefSectionCount is already at the most the reader can hold.",
             "Cut. Raise PdfReaderLimits.MaxXRefSectionCount to read past it.",
             "Cut. PdfReaderLimits.MaxIndexEntries is already at the most the reader can hold.",
@@ -232,6 +238,95 @@ public class ReaderLimitsTests
 
         decoded.Length.Should().Be(1000);
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Fact]
+    public void A_stream_cut_at_MaxStreamLength_decodes_what_lies_within_it_as_data_the_reader_cut_and_is_reported_once()
+    {
+        // A hundred kilobytes of Flate data, which a bound of 10 KB cuts: the data is read up to the bound however often it
+        // is asked for, its length stays the file's, and what the Flate data lacks past the cut is the guard's, not damage
+        // in the file (#170).
+        var compressed = HostileInputTests.Compress(RandomBytes(100_000));
+        var written = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = written.Object(1, Catalog),
+            [2] = written.Object(2, Pages),
+            [3] = written.Object(3, string.Create(CultureInfo.InvariantCulture, $"<< /Filter /FlateDecode /Length {compressed.Length} >>\nstream\n{Encoding.Latin1.GetString(compressed)}\nendstream")),
+        };
+        written.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var file = written.Bytes;
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = 10 * 1024 } };
+        using var document = PdfDocument.Open(file, options);
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+
+        stream.GetRawBytes().Length.Should().Be(10 * 1024);
+        stream.GetRawBytes().ToArray().Should().Equal(compressed.AsSpan(0, 10 * 1024).ToArray());
+        stream.Data.Length.Should().Be(compressed.Length, "the length is the file's");
+        var decoded = stream.Decode(document.Diagnostics);
+
+        decoded.Length.Should().BeGreaterThan(0).And.BeLessThan(100_000);
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.LimitStreamLength);
+        report.Message.Should().Be("A stream's data runs past 10 KB; only what lies within it was read. Raise PdfReaderLimits.MaxStreamLength to read past it.");
+        report.Position.Should().Be(stream.Data.Position);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("/Filter 5")]
+    [InlineData("/Filter []")]
+    [InlineData("/Filter [null]")]
+    [InlineData("/Filter /DCTDecode")]
+    [InlineData("/Filter /JPXDecode")]
+    [InlineData("/Filter /JBIG2Decode")]
+    [InlineData("/Filter /CCITTFaxDecode")]
+    [InlineData("/Filter /FlateDecode")]
+    [InlineData("/Filter /Crypt")]
+    [InlineData("/Filter /Foo")]
+    [InlineData("/Filter [/Foo /FlateDecode]")]
+    public void Data_decoding_hands_back_as_it_is_is_bounded_by_MaxStreamLength_and_not_by_MaxDecodedStreamLength(string filter)
+    {
+        // Fifty thousand bytes that no filter decodes — none named, an image filter, one the library does not know, Flate
+        // over data that is none —: decoding hands them back as they are, whole under a decoded bound of 1 KB, unreported.
+        // Their bound is the one on what is read, here 10 KB, which a large uncompressed image raises alone (#170).
+        var file = new TestPdfBuilder()
+            .WithObject(1, Catalog)
+            .WithObject(2, Pages)
+            .Stream(3, filter, new string('4', 50_000))
+            .BuildClassic(rootNumber: 1);
+        var limits = PdfReaderLimits.Default with { MaxStreamLength = 10 * 1024, MaxDecodedStreamLength = 1024 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+
+        var decoded = stream.Decode(document.Diagnostics);
+
+        decoded.Length.Should().Be(10 * 1024);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitStreamLength);
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Theory]
+    [InlineData(2_147_483_600L)]
+    [InlineData(2_147_483_647L)]
+    public void A_length_past_what_an_array_holds_ends_at_the_guard_and_never_in_an_exhausted_memory(long declared)
+    {
+        // A file of about 2 GB whose stream declares a length between the most an array holds and the most an int does,
+        // which the file holds: reading its data threw an OutOfMemoryException each time, and reported nothing (#170). Under
+        // a bound of 1 MB, a megabyte is read and the guard reported; under no bound the guard's ceiling is the array's.
+        using var source = SparseSource.Huge(declared);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = 1024 * 1024 } };
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+
+        stream.RawLength.Should().Be((int)declared);
+        stream.GetRawBytes().Length.Should().Be(1024 * 1024);
+        stream.Decode(document.Diagnostics).Length.Should().Be(1024 * 1024);
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitStreamLength);
+
+        using var throwing = PdfDocument.Open(source, options with { ThrowOnLimit = true }, ownsSource: false);
+        var reading = () => throwing.GetObject(new PdfObjectId(3)).AsStream().Required().GetRawBytes();
+        reading.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxStreamLength));
     }
 
     [Fact]
@@ -3150,9 +3245,75 @@ public class ReaderLimitsTests
 
     private static string LongArray { get; } = "[" + string.Join(' ', Enumerable.Range(0, 2000)) + "]";
 
+    private static byte[] RandomBytes(int length)
+    {
+        var bytes = new byte[length];
+        new Random(170).NextBytes(bytes);
+        return bytes;
+    }
+
+    /// <summary>
+    /// A source of about 2 GB that holds none of it: a head, white space, and a tail at its end, read as the file would
+    /// be, so that a stream may declare a length no array holds.
+    /// </summary>
+    private sealed class SparseSource(byte[] head, long tailAt, byte[] tail) : PdfFileSource
+    {
+        public override long Length => tailAt + tail.Length;
+
+        /// <summary>
+        /// A file whose object 3 is a stream of <paramref name="declared"/> bytes, which an <c>endstream</c> after them
+        /// confirms, its table and trailer past them.
+        /// </summary>
+        public static SparseSource Huge(long declared)
+        {
+            var text = string.Create(
+                CultureInfo.InvariantCulture,
+                $"%PDF-1.7\n1 0 obj\n{Catalog}\nendobj\n2 0 obj\n{Pages}\nendobj\n3 0 obj\n<< /Length {declared} >>\nstream\n");
+            var head = Encoding.Latin1.GetBytes(text);
+            var tailAt = head.Length + declared;
+            var xref = tailAt + "\nendstream\nendobj\n".Length;
+            var tail = Encoding.Latin1.GetBytes(string.Create(
+                CultureInfo.InvariantCulture,
+                $"\nendstream\nendobj\nxref\n0 4\n0000000000 65535 f\r\n{9:D10} 00000 n\r\n{text.IndexOf("2 0 obj", StringComparison.Ordinal):D10} 00000 n\r\n{text.IndexOf("3 0 obj", StringComparison.Ordinal):D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"));
+            return new SparseSource(head, tailAt, tail);
+        }
+
+        public override int Read(long offset, Span<byte> buffer)
+        {
+            var count = (int)Math.Clamp(Length - offset, 0, buffer.Length);
+
+            for (var i = 0; i < count;)
+            {
+                var at = offset + i;
+                int run;
+
+                if (at < head.Length)
+                {
+                    run = (int)Math.Min(count - i, head.Length - at);
+                    head.AsSpan((int)at, run).CopyTo(buffer[i..]);
+                }
+                else if (at < tailAt)
+                {
+                    run = (int)Math.Min(count - i, tailAt - at);
+                    buffer.Slice(i, run).Fill((byte)' ');
+                }
+                else
+                {
+                    run = (int)Math.Min(count - i, tail.Length - (at - tailAt));
+                    tail.AsSpan((int)(at - tailAt), run).CopyTo(buffer[i..]);
+                }
+
+                i += run;
+            }
+
+            return count;
+        }
+    }
+
     private static PdfReaderLimits With(PdfReaderLimits limits, string limit, int value) => limit switch
     {
         nameof(PdfReaderLimits.MaxDecodedStreamLength) => limits with { MaxDecodedStreamLength = value },
+        nameof(PdfReaderLimits.MaxStreamLength) => limits with { MaxStreamLength = value },
         nameof(PdfReaderLimits.MaxObjectLength) => limits with { MaxObjectLength = value },
         nameof(PdfReaderLimits.MaxXRefSectionLength) => limits with { MaxXRefSectionLength = value },
         nameof(PdfReaderLimits.MaxXRefSectionCount) => limits with { MaxXRefSectionCount = value },
@@ -3165,6 +3326,7 @@ public class ReaderLimitsTests
     private static int Bound(PdfReaderLimits limits, string limit) => limit switch
     {
         nameof(PdfReaderLimits.MaxDecodedStreamLength) => limits.MaxDecodedStreamLength,
+        nameof(PdfReaderLimits.MaxStreamLength) => limits.MaxStreamLength,
         nameof(PdfReaderLimits.MaxObjectLength) => limits.MaxObjectLength,
         nameof(PdfReaderLimits.MaxXRefSectionLength) => limits.MaxXRefSectionLength,
         nameof(PdfReaderLimits.MaxXRefSectionCount) => limits.MaxXRefSectionCount,
@@ -3302,6 +3464,7 @@ public class ReaderLimitsTests
         public static Case For(string guard) => guard switch
         {
             "decoded stream" => DecodedStream(),
+            "stream length" => LongStream(),
             "object" => LongObject(),
             "section length" => LongSection(),
             "section count" => ManySections(),
@@ -3336,6 +3499,29 @@ public class ReaderLimitsTests
 
             static int Decoded(PdfDocument document) =>
                 document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(document.Diagnostics).Length;
+        }
+
+        private static Case LongStream()
+        {
+            // Ten thousand bytes of data no filter decodes, which a bound of a thousand cuts when they are read.
+            var file = new TestPdfBuilder()
+                .WithObject(1, Catalog)
+                .WithObject(2, Pages)
+                .Stream(3, string.Empty, new string('A', 10_000))
+                .BuildClassic(rootNumber: 1);
+
+            return new Case(
+                nameof(PdfReaderLimits.MaxStreamLength),
+                PdfDiagnosticCodes.LimitStreamLength,
+                file,
+                PdfReaderLimits.Default with { MaxStreamLength = 1000 },
+                PdfReaderLimits.Default,
+                document => document.GetObject(new PdfObjectId(3)).AsStream().Required().GetRawBytes().Length.ToString(CultureInfo.InvariantCulture),
+                "10000",
+                "A stream's data runs past 1,000 bytes; only what lies within it was read.",
+                OffsetOf(file, "stream\n") + "stream\n".Length,
+                ThrowsOnOpening: false,
+                ReportsNothingElse: true);
         }
 
         private static Case LongFilterChain()

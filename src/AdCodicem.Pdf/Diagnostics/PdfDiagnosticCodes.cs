@@ -219,6 +219,14 @@ public static class PdfDiagnosticCodes
     public const string LimitDecodedStream = "limit.decoded-stream";
 
     /// <summary>
+    /// A stream's encoded data runs past <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, and was read up to it:
+    /// what lies within it is decoded as data the reader cut, and handed back as it is where decoding hands its data back
+    /// undecoded. Reported once for each stream, when its data is first read. Like every <c>limit.*</c> code, the guard is
+    /// the reader's, not damage in the file.
+    /// </summary>
+    public const string LimitStreamLength = "limit.stream-length";
+
+    /// <summary>
     /// An object is longer than <see cref="Documents.PdfReaderLimits.MaxObjectLength"/>, and only the part
     /// within it was parsed. An object an object stream holds is bounded alike, and reported once for each definition of
     /// its object stream, where that stream's data starts, the object, the object stream and the byte the object starts at
