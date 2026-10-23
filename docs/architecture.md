@@ -112,7 +112,8 @@ separate types, separate severity scales, and vocabularies that never share a co
    crafted file can still make it depend on the number a stream is first read under, on the rebuild's scan for
    trailers, or, once the searches of a document have read four times the file, on which streams were searched
    first ([#138], M23). With no `endstream` before the stop, the object's `endobj` ends the data where it
-   follows the declared length as an `endstream` would, or where it is the last one, a whole keyword, and only
+   follows the declared length as an `endstream` would, or where it is the last one, a whole keyword — no regular
+   character, solidus or percent sign before it, which would make it part of a token, a name or a comment —, and only
    white space and comments run from it to the stop. That last `endobj` is followed forward through the search's
    own reads, which read every byte up to the stop already: no byte before the stop is read a second time,
    backward, and a comment, which can be told only from the start of its line, is read as one. Without either,
