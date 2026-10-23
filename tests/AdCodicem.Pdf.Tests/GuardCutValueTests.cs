@@ -548,6 +548,28 @@ public class GuardCutValueTests
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 0)]
+    [InlineData(false, 3)]
+    [InlineData(true, 3)]
+    public void The_integer_a_guard_cut_a_length_a_newer_section_places_after_is_where_spelled_rows_are_taken_again_to(
+        bool chained, int lengthOff)
+    {
+        // Stream 7's /Length leads to an object the newer table places — object 5 itself, or object 9 through object 4,
+        // which only stream 7's own row places — and MaxObjectLength cuts it after its value. The value the cut left is where
+        // to look for the endstream, as for an object the section's own row places: confirmed, the data is taken again to it
+        // and every row read; otherwise the rows past the endstream they spell are the guard's (#224).
+        var file = ChainFiles.UpdatePlacingAPaddedLength(chained, lengthOff: lengthOff, lengthFirst: true);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[1].CutByLimit.Should().Be(lengthOff != 0);
+        document.Reader.Structure.Sections[1].Incomplete.Should().BeFalse();
+        (document.GetObject(new PdfObjectId(3)).AsDictionary() is not null).Should().Be(lengthOff == 0);
+    }
+
     [Fact]
     public void Rows_past_an_endstream_they_spell_are_the_guard_s_when_it_cut_the_deferred_length_before_its_value()
     {

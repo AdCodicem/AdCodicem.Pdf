@@ -3898,11 +3898,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// reserved type is ignored there, as the specification says (<see cref="ReadXRefStreamRows"/>). The object is read
     /// where that row places it as <see cref="ReadWithoutLoading"/> reads one: nothing is corrected, cached, recorded or
     /// reported. One a guard cuts gives what the cut left of it, an integer read before the cut only a place to look for
-    /// <c>endstream</c> at (#224), and <paramref name="lengthCut"/> says so when no <c>endstream</c> confirms it — as it does
-    /// when the object holds a reference that leads to an object a guard cut, or when a newer section gave the number and
-    /// the object it places is one, or leads to one. A row that does not stand otherwise — a newer section gave the number,
-    /// or refused it; the row lies past those held, places the object in an object stream, or under another generation —
-    /// leaves the data as it was taken.
+    /// <c>endstream</c> at (#224), and <paramref name="lengthCut"/> says so when no <c>endstream</c> confirms it. So does the
+    /// object a guard cut at the end of a chain of references from the object read, or from the <c>/Length</c> when a newer
+    /// section gave the number: the integer the cut left of that object, read where the sections read so far place it, is
+    /// the place to look at then (<see cref="TakeAgainAtCut"/>). A row that does not stand otherwise — a newer section gave
+    /// the number, or refused it; the row lies past those held, places the object in an object stream, or under another
+    /// generation — leaves the data as it was taken.
     /// </remarks>
     private PdfStream? RetakeDeferred(
         PdfStream stream,
@@ -3920,9 +3921,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (_xref.TryGet(number, out _) || _refusedNumbers?.Contains(number) == true)
         {
             // The object a newer section places, which the chain could not read: a guard that cut it, or the object a chain
-            // of references from it leads to, leaves how far the data runs unknown.
-            lengthCut = LeadsToCut(stream.Dictionary.GetRaw(PdfName.Length), LengthLinks);
-            return null;
+            // of references from it leads to, leaves how far the data runs to the integer the cut left, where an endstream
+            // confirms it, and unknown otherwise.
+            return TakeAgainAtCut(stream, deferred, stream.Dictionary.GetRaw(PdfName.Length), LengthLinks, out lengthCut);
         }
 
         // The rows that number the object, in the order the subsections give them, up to the first of a type the reading
@@ -3962,21 +3963,53 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         var read = TryReadUnrecorded(deferred.Length, PositionOf((long)offset), out var value, out var pastGuard);
-        var dataStart = stream.Data.Position;
 
-        if ((read || pastGuard) && value.AsInteger() is { } length && length > deferred.Taken && length <= int.MaxValue &&
-            length <= _source.Length - dataStart && ((IPdfStreamDataProvider)this).CheckEndStream(dataStart + length) is not null)
+        if ((read || pastGuard) && TakeAgain(stream, deferred, value) is { } whole)
         {
-            return new PdfStream(stream.Dictionary, ((IPdfStreamDataProvider)this).Create(dataStart, (int)length));
+            return whole;
         }
 
         // The object read holds the chain's second link: the chain goes on as far as the parse resolves a /Length through.
-        lengthCut = pastGuard || (value is PdfReference && LeadsToCut(value, LengthLinks - 1));
-        return null;
+        lengthCut = pastGuard;
+        return !pastGuard && value is PdfReference ? TakeAgainAtCut(stream, deferred, value, LengthLinks - 1, out lengthCut) : null;
+    }
 
-        // Whether a value read through the sections read so far leads to an object a guard cut.
-        bool LeadsToCut(PdfObject? written, int links) =>
-            Follow(PdfName.Length, written, entry: true, out _, out var cut, links) is not null && cut is not null;
+    /// <summary>
+    /// Gives cross-reference stream <paramref name="stream"/> with its data taken again to the length
+    /// <paramref name="value"/> gives, when it gives more than the data taken and an <c>endstream</c> confirms it; null
+    /// otherwise.
+    /// </summary>
+    private PdfStream? TakeAgain(PdfStream stream, DeferredLength deferred, PdfObject value)
+    {
+        var dataStart = stream.Data.Position;
+
+        return value.AsInteger() is { } length && length > deferred.Taken && length <= int.MaxValue &&
+            length <= _source.Length - dataStart && ((IPdfStreamDataProvider)this).CheckEndStream(dataStart + length) is not null
+            ? new PdfStream(stream.Dictionary, ((IPdfStreamDataProvider)this).Create(dataStart, (int)length))
+            : null;
+    }
+
+    /// <summary>
+    /// Gives cross-reference stream <paramref name="stream"/> with its data taken again, when <paramref name="written"/>, read
+    /// through the sections read so far and <paramref name="links"/> references, leads to an object a guard cut: to the
+    /// integer the cut left of it, read where they place it, when an <c>endstream</c> confirms it (#224). Null otherwise,
+    /// and <paramref name="lengthCut"/> says whether a guard cut that object, which leaves how far the data runs unknown.
+    /// </summary>
+    private PdfStream? TakeAgainAtCut(PdfStream stream, DeferredLength deferred, PdfObject? written, int links, out bool lengthCut)
+    {
+        Follow(PdfName.Length, written, entry: true, out _, out var cut, links);
+        lengthCut = cut is not null;
+
+        // The object the guard cut is one a section read so far places, which ReadWithoutLoading read there.
+        if (cut is not { } id || !_xref.TryGet(id.Number, out var entry))
+        {
+            return null;
+        }
+
+        TryReadUnrecorded(id, PositionOf(entry), out var value, out _);
+        var whole = TakeAgain(stream, deferred, value);
+        lengthCut = whole is null;
+        return whole;
     }
 
     /// <summary>

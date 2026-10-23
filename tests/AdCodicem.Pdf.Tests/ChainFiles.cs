@@ -449,9 +449,11 @@ internal static class ChainFiles
     /// where it is, and names stream 7 through <c>/Prev</c>. The file is valid, unless <paramref name="lengthOff"/> is added
     /// to the length; <paramref name="padding"/> spaces come before it. With <paramref name="spelledFirst"/>, the rows that
     /// spell <c>endstream</c> come first: chained, stream 7's row of object 4 then lies past the data taken to that
-    /// <c>endstream</c>, and the file is read whole only by rebuilding its index.
+    /// <c>endstream</c>, and the file is read whole only by rebuilding its index. With <paramref name="lengthFirst"/>, the
+    /// spaces come after the length instead.
     /// </summary>
-    public static byte[] UpdatePlacingAPaddedLength(bool chained, int padding = 3000, int lengthOff = 0, bool spelledFirst = false)
+    public static byte[] UpdatePlacingAPaddedLength(
+        bool chained, int padding = 3000, int lengthOff = 0, bool spelledFirst = false, bool lengthFirst = false)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -459,7 +461,8 @@ internal static class ChainFiles
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
         var lengthNumber = chained ? 9 : 5;
         var spelled = "\nendstream\0\0\0\0"u8.ToArray();
-        file.Object(lengthNumber, new string(' ', padding) + (6 * 7 + spelled.Length + lengthOff).ToString(CultureInfo.InvariantCulture));
+        var length = (6 * 7 + spelled.Length + lengthOff).ToString(CultureInfo.InvariantCulture);
+        file.Object(lengthNumber, lengthFirst ? length + new string(' ', padding) : new string(' ', padding) + length);
 
         if (chained)
         {
