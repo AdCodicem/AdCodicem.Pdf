@@ -1552,6 +1552,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <inheritdoc/>
+    bool IPdfStreamDataProvider.TokenEndsAt(long absoluteOffset)
+    {
+        Span<byte> next = stackalloc byte[1];
+        return absoluteOffset < 0 || absoluteOffset >= _source.Length || _source.Read(absoluteOffset, next) == 0 ||
+            !PdfCharacters.IsRegular(next[0]);
+    }
+
+    /// <inheritdoc/>
     long IPdfStreamDataProvider.DataStart(long absoluteKeywordEnd)
     {
         // The end-of-line after "stream" is a carriage return and a line feed, or either alone, as the lexer skips it.

@@ -319,6 +319,8 @@ public class SyntaxFaultTests
     [Theory]
     [InlineData(" /A 1\n\n0 0 obj", 2)]
     [InlineData(" /A 1 /B 6 70000 obj", 1)]
+    [InlineData(" /A 1\n\n+6 0 obj", 2)]
+    [InlineData(" /A 1\n\n6 %c\n0 obj", 2)]
     public void Tokens_no_header_begins_with_are_reported_at_the_guard_s_cut_as_past_it(string tail, int keys)
     {
         // An object number 0, or a generation past 65,535, rules a header out whatever the cut hides: the keys that are not
@@ -331,6 +333,74 @@ public class SyntaxFaultTests
         var reported = guarded.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken).Select(entry => entry.Position).ToArray();
         reported.Should().HaveCount(keys);
         whole.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken).Select(entry => entry.Position).Should().Contain(reported);
+    }
+
+    [Theory]
+    [InlineData(" /A 1 /B +6 0 obj")]
+    [InlineData(" /A 1 /B 6 %c\n0 obj")]
+    public void A_value_no_header_can_begin_with_keeps_its_place_at_the_guard_s_cut(string tail)
+    {
+        // A sign, or a comment between the tokens, rules a header out whatever the cut hides: "+6" is the value of /B, as a
+        // larger limit reads it, not the start of a header the edge left undecided (#230).
+        using var document = CutAt(tail, 128);
+
+        document.GetObject(new PdfObjectId(4)).AsDictionary().Required().GetInteger(PdfName.Get("B")).Should().Be(6);
+    }
+
+    [Theory]
+    [InlineData("<< /Pad ({0}) /A 1 /B 6 0 objx >>", "obj")]
+    [InlineData("<< /Pad ({0}) /A 1 /B 6 0 objx >>", "ob")]
+    [InlineData("<< /Pad ({0}) /A 1 /B 6 0 objx >>", "o")]
+    [InlineData("<< /Pad ({0}) /A 1 /B [3 6 0 objx] >>", "obj")]
+    [InlineData("<< /Pad ({0}) /A 1 /B << /D 6 0 objx >> >>", "ob")]
+    public void An_object_a_guard_cuts_at_a_header_it_leaves_undecided_is_not_said_to_lack_its_endobj(string body, string kept)
+    {
+        // Object 4 is whole, its endobj after it; MaxObjectLength ends the window inside "objx", which may be the next object's
+        // header: the guard's cut, which says nothing of what follows the object (#230).
+        var text = string.Format(CultureInfo.InvariantCulture, body, new string('x', 40));
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Extra 4 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, text),
+        };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var limit = "4 0 obj\n".Length + text.IndexOf("objx", StringComparison.Ordinal) + kept.Length;
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit } });
+
+        document.GetObject(new PdfObjectId(4));
+
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitObject);
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("(abc)")]
+    [InlineData("<< /A 1 >>")]
+    [InlineData("[1 2 3]")]
+    public void An_object_exactly_as_long_as_MaxObjectLength_reads_whole(string body)
+    {
+        // The window MaxObjectLength allows ends right after the object's endobj: the file says no regular character goes on
+        // past it, and the object is whole, as under a larger limit (#174).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Extra 4 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, body),
+        };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var limit = ("4 0 obj\n" + body + "\nendobj").Length;
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit } });
+
+        document.GetObject(new PdfObjectId(4));
+
+        // The catalog, longer than the bound, is the guard's; object 4 is not.
+        document.Diagnostics.Should().NotContain(entry => entry.Position == rows[4]);
+        document.Reader.IsCutAtLimit(4).Should().BeFalse();
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
     }
 
     /// <summary>
