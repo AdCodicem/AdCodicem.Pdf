@@ -2296,9 +2296,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Forgets the objects read through since <see cref="_chainValuesCut"/> held <paramref name="mark"/> of them, which an
-    /// object at a place the section may have been moved to, and that is no section, led to: nothing of its reading is kept,
-    /// and a value the chain keeps that leads to one of them reads it anew, for it to be loaded once the chain is read.
+    /// Forgets the objects read through since <see cref="_chainValuesCut"/> held <paramref name="mark"/> of them, which a
+    /// place the section may have been moved to, and that is dropped, led to: nothing of its reading is kept, and a value
+    /// the chain keeps that leads to one of them reads it anew, for it to be loaded once the chain is read.
     /// </summary>
     private void ForgetReadThrough(int mark)
     {
@@ -2924,7 +2924,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <see cref="MaxRelocationCandidates"/> places in all, over the whole document: each is read through a window
     /// of up to 64 KB, the file chooses how many headers lie near a section, and a chain can name a section for
     /// each of its <see cref="PdfReaderLimits.MaxXRefSectionCount"/> links. Found, the section's record takes what
-    /// was read there; not found, it keeps what the named offset held.
+    /// was read there — a section a guard kept from being read too, which is not found to be read, the chain ending
+    /// there as the guard's —; not found, it keeps what the named offset held.
     /// </remarks>
     private bool TryRelocateXRefSection(long offset, XRefSectionRecord section, out long previous, out long hybrid)
     {
@@ -2962,8 +2963,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             var attempt = new XRefSectionRecord(section.NamedBy, candidate, section.NamedFrom);
+            var readThrough = _chainValuesCut?.Count ?? 0;
+            var state = TryReadXRefSection(candidate, attempt, out previous, out hybrid, candidate: true);
 
-            if (TryReadXRefSection(candidate, attempt, out previous, out hybrid, candidate: true) == XRefSectionState.Read)
+            // A section a guard kept from being read is the section all the same: found where it was moved, it is where a
+            // guard cut the chain, as where it is named (#263). Any other place is dropped with what it read through.
+            if (state == XRefSectionState.Read || (state == XRefSectionState.Malformed && attempt.CutByLimit))
             {
                 section.RelocateTo(attempt);
                 _diagnostics.Repair(
@@ -2972,8 +2977,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         CultureInfo.InvariantCulture,
                         $"The cross-reference section {section.NamedBy} names at offset {absolute} was found {candidate - absolute} bytes from there."),
                     candidate);
-                return true;
+
+                if (state == XRefSectionState.Read)
+                {
+                    return true;
+                }
+
+                section.State = XRefSectionState.Malformed;
+                break;
             }
+
+            ForgetReadThrough(readThrough);
         }
 
         previous = -1;
@@ -3631,7 +3645,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // trailer, and grows its window no further than a trailer may: the data never counts toward it, and a /Length the
         // chain cannot read has the data searched for its endstream past the window (#174, #220).
         var guards = _guardsReached;
-        var readThrough = _chainValuesCut?.Count ?? 0;
 
         // A place the section may have been moved to is a guess: what is there and is no section leaves nothing of its
         // reading, not even a guard its dictionary reached. Where the chain names a section, the guard is reported.
@@ -3646,11 +3659,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 candidate ? DeclaresCrossReferenceStream : null) ||
             !DeclaresCrossReferenceStream(value))
         {
-            if (candidate)
-            {
-                ForgetReadThrough(readThrough);
-            }
-
             if (!candidate && _guardsReached != guards && value is PdfDictionary { } cut && !cut.ContainsKey(PdfName.Type))
             {
                 // A dictionary MaxTrailerLength cut before it said what it is may be the section's: unknown, and the
