@@ -2239,11 +2239,22 @@ public class StreamLengthTests
         file.Raw(Before.Replace("0000", Invariant($"{length:D4}"), StringComparison.Ordinal) + new string('a', length) +
             "\n% " + new string('c', 200) + "\nendstream\nendobj\n");
         rows[6] = file.Object(6, "(six)");
-        file.Table(7, rows, "/Size 7 /Root 1 0 R");
-        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 1 });
+
+        for (var number = 10; number < 80; number++)
+        {
+            rows[number] = file.Object(number, Invariant($"({number})"));
+        }
+
+        file.Table(80, rows, "/Size 80 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 });
 
         document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
-        document.GetObject(new PdfObjectId(6));
+
+        for (var number = 10; number < 80; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
         document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
         document.Diagnostics.Should().BeEmpty();
         document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();

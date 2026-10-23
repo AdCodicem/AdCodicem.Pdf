@@ -200,9 +200,9 @@ public class ParserTests
     [Fact]
     public void Leaves_a_stream_with_no_endstream_in_a_window_to_a_larger_one()
     {
-        // Parsed alone in a window that is not the end of the data, a stream whose endstream and next header lie past it
-        // asks for a larger window, which may show them.
-        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("4 0 obj\n<< /Length 200 >>\nstream\nabc"), endsData: false);
+        // Parsed alone in a window that is not the end of the data, a stream with no length to confirm, whose endstream and
+        // next header lie past the window, asks for a larger one, which may show them.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("4 0 obj\n<< >>\nstream\nabc"), endsData: false);
 
         parser.TryReadIndirectObject(out _, out _);
 
