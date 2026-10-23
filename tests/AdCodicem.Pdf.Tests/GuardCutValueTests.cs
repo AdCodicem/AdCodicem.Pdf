@@ -604,6 +604,30 @@ public class GuardCutValueTests
     }
 
     [Fact]
+    public void Rows_data_taken_again_to_an_integer_a_guard_parted_still_lacks_are_the_guard_s()
+    {
+        // MaxObjectLength parts stream 7's /Length, 210, after its 21, which the rows' second spelled endstream confirms: the
+        // data taken again to it holds 3 rows of the 30 the section declares, and the 27 it lacks were the file's, the
+        // section incomplete and the index rebuilt. The integer is only a place to look at, the length that decides the
+        // guard's: what it leaves unread is the guard's (#224).
+        var file = ChainFiles.UpdatePlacingAPartedLength();
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+            whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
+        document.Reader.Structure.Sections[1].Incomplete.Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+    }
+
+    [Fact]
     public void Rows_past_an_endstream_they_spell_are_the_guard_s_when_it_cut_the_deferred_length_before_its_value()
     {
         // As above, object 4's value lying past the cut: how far the data runs is unknown, and the rows past the endstream are

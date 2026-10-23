@@ -3784,7 +3784,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     xrefStream = whole;
                     deferred = unsettled with { Taken = whole.Data.Length };
                     retaken = true;
-                    lengthCut = false;
                     continue;
                 }
             }
@@ -3881,10 +3880,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// reserved type is ignored there, as the specification says (<see cref="ReadXRefStreamRows"/>). The object is read
     /// where that row places it as <see cref="ReadWithoutLoading"/> reads one: nothing is corrected, cached, recorded or
     /// reported. One a guard cuts gives what the cut left of it, an integer read before the cut only a place to look for
-    /// <c>endstream</c> at (#224), and <paramref name="lengthCut"/> says so when no <c>endstream</c> confirms it. So does the
-    /// object a guard cut at the end of a chain of references from the object read, or from the <c>/Length</c> when a newer
-    /// section gave the number: the integer the cut left of that object, read where the sections read so far place it, is
-    /// the place to look at then (<see cref="TakeAgainAtCut"/>). A row that does not stand otherwise — a newer section gave
+    /// <c>endstream</c> at (#224), and <paramref name="lengthCut"/> says so, whether an <c>endstream</c> confirms it or not:
+    /// rows the data taken again still lacks are the guard's. So does the object a guard cut at the end of a chain of
+    /// references from the object read, or from the <c>/Length</c> when a newer section gave the number: the integer the cut
+    /// left of that object, read where the sections read so far place it, is the place to look at then
+    /// (<see cref="TakeAgainAtCut"/>). A row that does not stand otherwise — a newer section gave
     /// the number, or refused it; the row lies past those held, places the object in an object stream, or under another
     /// generation — leaves the data as it was taken.
     /// </remarks>
@@ -3947,13 +3947,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         var read = TryReadUnrecorded(deferred.Length, PositionOf((long)offset), out var value, out var pastGuard);
 
+        // Data taken again to an integer a guard's cut left is no length the file gave: rows it still lacks are the guard's.
+        lengthCut = pastGuard;
+
         if ((read || pastGuard) && TakeAgain(stream, deferred, value) is { } whole)
         {
             return whole;
         }
 
         // The object read holds the chain's second link: the chain goes on as far as the parse resolves a /Length through.
-        lengthCut = pastGuard;
         return !pastGuard && value is PdfReference ? TakeAgainAtCut(stream, deferred, value, LengthLinks - 1, out lengthCut) : null;
     }
 
@@ -3976,7 +3978,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Gives cross-reference stream <paramref name="stream"/> with its data taken again, when <paramref name="written"/>, read
     /// through the sections read so far and <paramref name="links"/> references, leads to an object a guard cut: to the
     /// integer the cut left of it, read where they place it, when an <c>endstream</c> confirms it (#224). Null otherwise,
-    /// and <paramref name="lengthCut"/> says whether a guard cut that object, which leaves how far the data runs unknown.
+    /// and <paramref name="lengthCut"/> says whether a guard cut that object, which leaves how far the data runs unknown, the
+    /// data taken again or not.
     /// </summary>
     private PdfStream? TakeAgainAtCut(PdfStream stream, DeferredLength deferred, PdfObject? written, int links, out bool lengthCut)
     {
@@ -3990,9 +3993,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return null;
         }
 
-        var whole = TakeAgain(stream, deferred, _cutWhileChainIsRead![id]);
-        lengthCut = whole is null;
-        return whole;
+        return TakeAgain(stream, deferred, _cutWhileChainIsRead![id]);
     }
 
     /// <summary>
