@@ -4795,9 +4795,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 {
                     if (windowSize >= maxWindow)
                     {
-                        // What the cut left of the object, which a caller may take as a place to look at, never as its value.
+                        // What the cut left of the object, which a caller may take as a place to look at, never as its value: a
+                        // header read whole that names another object, or a stream, returned above.
                         pastGuard = true;
-                        value = read && found == id && parsed is not PdfStream ? parsed : PdfNull.Instance;
+                        value = read ? parsed : PdfNull.Instance;
                         return false;
                     }
 
