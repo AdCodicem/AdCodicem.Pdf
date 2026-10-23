@@ -4932,6 +4932,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
+    /// Reaches <see cref="PdfReaderLimits.MaxStreamLength"/> for the stream whose data starts at <paramref name="position"/>,
+    /// as <see cref="ReachLimit"/> does: its message is made once, as the stream is reported once, however often its data is
+    /// read.
+    /// </summary>
+    private void ReachStreamLength(long position)
+    {
+        _guardsReached++;
+
+        if (!_limitsReached.Contains((PdfLimit.StreamLength, position)))
+        {
+            _guard.Reach(PdfLimit.StreamLength, _diagnostics, _guard.DescribeStreamLengthCut(), position);
+            _limitsReached.Add((PdfLimit.StreamLength, position));
+        }
+    }
+
+    /// <summary>
     /// Reports, once for each member, that <see cref="PdfReaderLimits.MaxObjectLength"/> cut member <paramref name="number"/>
     /// of the object stream whose data starts at <paramref name="position"/>: its members share that place, and each is
     /// reported. A document that throws on a guard throws each time.
@@ -6150,10 +6166,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 _cutByGuard = true;
                 count = bound;
-                reader.ReachLimit(
-                    PdfLimit.StreamLength,
-                    $"A stream's data runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
-                    offset);
+                reader.ReachStreamLength(offset);
             }
 
             if (reader._source.TryLend(offset, count, out var lent))

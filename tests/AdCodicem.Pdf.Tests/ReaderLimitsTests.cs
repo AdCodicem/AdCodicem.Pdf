@@ -3748,4 +3748,30 @@ public class ReaderLimitsTests
         var at = trailer + "trailer\n<<".Length;
         return [.. file.AsSpan(0, at), .. " /Prev 1 0 R"u8, .. file.AsSpan(at)];
     }
+
+    [Fact]
+    public void Decoding_into_diagnostics_of_one_s_own_reports_the_cut_max_stream_length_made_each_time()
+    {
+        // Object 4's 2,000 bytes run past MaxStreamLength: the reader reported the cut once, in the document's diagnostics,
+        // and diagnostics a caller passed to Decode never held it, though limit.decoded-stream reaches them each time.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, "<< /Length 2000 >>\nstream\n" + new string('x', 2000) + "\nendstream"),
+        };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = 1024 } });
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+        var mine = new PdfDiagnostics();
+
+        stream.Decode(mine).Length.Should().Be(1024);
+        stream.Decode(mine).Length.Should().Be(1024);
+
+        mine.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitStreamLength, PdfDiagnosticCodes.LimitStreamLength);
+        mine[0].Message.Should().Be(
+            "A stream's data runs past 1 KB; only what lies within it was read. Raise PdfReaderLimits.MaxStreamLength to read past it.");
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitStreamLength).Should().ContainSingle();
+    }
 }

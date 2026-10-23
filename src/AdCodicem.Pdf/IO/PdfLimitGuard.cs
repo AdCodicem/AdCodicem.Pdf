@@ -68,6 +68,13 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         (diagnostics ?? documentDiagnostics)?.ReachLimit(Code(limit), message, position);
     }
 
+    /// <summary>
+    /// Says what <see cref="PdfReaderLimits.MaxStreamLength"/> did to a stream's data it cut, as its report starts: the
+    /// reader's report, once for the stream, and decoding's, in diagnostics a caller passes of its own.
+    /// </summary>
+    public string DescribeStreamLengthCut() =>
+        $"A stream's data runs past {FormatLength(Bound(PdfLimit.StreamLength))}; only what lies within it was read.";
+
     /// <summary>Writes a length the way a message states a bound: <c>256 MB</c>, <c>64 KB</c>, <c>1,000 bytes</c>.</summary>
     public static string FormatLength(int length) => length switch
     {
