@@ -491,6 +491,36 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of two revisions. The first holds the catalog, the page tree and the page, object 5, which holds the data's
+    /// length, 210, after 1,014 spaces — a <c>MaxObjectLength</c> of 1,024 parts it after its 21 —, and cross-reference
+    /// stream 7, whose <c>/Length</c> names object 5 and whose rows spell <c>endstream</c> after an end-of-line twice, 7 and
+    /// 21 bytes in, before the rows of objects 1 to 3, 5 and 7 and twenty free ones. The second is a classic table that
+    /// indexes object 5 again, where it is, and names stream 7 through <c>/Prev</c>. The file is valid.
+    /// </summary>
+    public static byte[] UpdatePlacingAPartedLength()
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(5, new string(' ', 1014) + "210");
+        var stream = file.Position;
+        var spelled = "\nendstream\0\0\0\0"u8.ToArray();
+        var data = new List<byte>(Encode([(0, 0, 65535)], Rows.Raw));
+        data.AddRange(spelled);
+        data.AddRange(spelled);
+        data.AddRange(Encode([(1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, file.OffsetOf(5), 0), (1, stream, 0)], Rows.Raw));
+        data.AddRange(Encode([.. Enumerable.Repeat((0, 0L, 0), 20)], Rows.Raw));
+        file.Stream(7, "/Type /XRef /Size 50 /W [1 4 2] /Index [0 1 20 2 22 2 1 3 5 1 7 1 30 20] /Root 1 0 R /Length 5 0 R", [.. data]);
+        file.Text("%" + new string('-', 1200) + "\n");
+        var xref = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{file.OffsetOf(5):D10} 00000 n\r\ntrailer\n<< /Size 50 /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file as <see cref="UpdatePlacingAPaddedLength"/> writes it, the rows that spell <c>endstream</c> numbering objects 8
     /// and 9, but for a length a chain of <paramref name="objects"/> objects gives: stream 7's <c>/Length</c> names object 5
     /// — or, with <paramref name="ownRow"/>, object 4, which only stream 7's own row places —, which holds <c>100 0 R</c>;
