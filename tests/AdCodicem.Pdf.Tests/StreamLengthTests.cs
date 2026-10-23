@@ -1826,6 +1826,7 @@ public class StreamLengthTests
             Limits = PdfReaderLimits.Default with
             {
                 MaxDecodedStreamLength = raised.MaxDecodedStreamLength ?? PdfReaderLimits.Default.MaxDecodedStreamLength,
+                MaxStreamLength = raised.MaxStreamLength ?? PdfReaderLimits.Default.MaxStreamLength,
                 MaxObjectLength = raised.MaxObjectLength ?? PdfReaderLimits.Default.MaxObjectLength,
                 MaxXRefSectionLength = raised.MaxXRefSectionLength ?? PdfReaderLimits.Default.MaxXRefSectionLength,
                 MaxXRefSectionCount = raised.MaxXRefSectionCount ?? PdfReaderLimits.Default.MaxXRefSectionCount,
