@@ -37,7 +37,8 @@ it, and a file that kills the process is the worst outcome a document reader can
 ## Guards a valid file can reach
 
 Some of those bounds are reachable by a sound document: a large-format scan decodes past the 256 MB a stream may
-decode to by default, a file saved incrementally a thousand times has a thousand cross-reference sections, and nothing
+decode to by default, and stored without a filter its data runs past the 256 MB the reader reads of one stream at once;
+a file saved incrementally a thousand times has a thousand cross-reference sections, and nothing
 in PDF 2.0 forbids more objects than the 8,388,607 the index holds by default. A bound like that is a **guard**. It is on by default, so an application that opens files it did not produce is
 protected without configuring anything; it is reported under its own `limit.*` code when a document reaches it; and
 its message names the option that lifts it, so that the document stays readable by whoever needs to read it.
@@ -47,6 +48,13 @@ fault of the file, and it replaces what the parser met where it stopped: you are
 when it was the reader that stopped reading it. The bounds live on the options rather than on a static setting, so
 two documents opened side by side can be read under different ones, and a stream decodes under the limits of the
 document it came from, however long after opening.
+
+A value read through a reference to an object a guard cut, or left out of the index, is the guard's too. What the cut
+left of it may be the start of what the file holds — `1` of `15`, `/Flate` of `/FlateDecode` —, so it is never judged
+as a value the file gave: the data of a stream whose `/Length` is so named is found by its `endstream`, and its length
+is not judged; decoding stops at a filter so named, or one whose parameters are, and leaves the rest of the data
+encoded, as past the most filters the reader runs; and a cross-reference stream whose values lead to an object a guard
+cut ends the chain as a section a guard cut does.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
 table's bound, the objects past the most the index holds — is no damage either. Those objects read as null, unknown
