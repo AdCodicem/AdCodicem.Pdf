@@ -67,10 +67,11 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   that entry was not checked.
 - A stream whose data runs past `MaxStreamLength` is read up to the bound each time its data is asked for, by
   `GetRawBytes` or by decoding, and its filters decode what was read as data the reader cut: that it runs out is not
-  reported as damage. Data that decoding hands back as it is comes back as far as the bound. The guard is reported once for
-  each stream, in the document's own diagnostics whatever you pass to `Decode`, at the offset its data starts at; with
-  `ThrowOnLimit` each read throws. In an object stream so cut, an object that lies past the cut is the guard's, unknown
-  until you raise the limit, as what any limit leaves out is:
+  reported as damage. Data that decoding hands back as it is comes back as far as the bound. The guard is reported at the
+  offset the stream's data starts at: once in the document's own diagnostics, as the reader reads the data, and, as the
+  bound on decoded data is, in the diagnostics you pass to `Decode` each time it decodes the stream. `GetRawBytes` takes
+  no diagnostics: the document's hold its report. With `ThrowOnLimit` each read throws. In an object stream so cut, an
+  object that lies past the cut is the guard's, unknown until you raise the limit, as what any limit leaves out is:
 
   ```text
   Warning limit.stream-length at 1904: A stream's data runs past 256 MB; only what lies within it was read. Raise
@@ -110,20 +111,26 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   guard's, and nothing is reported of it but the guard. The data of a stream whose `/Length` is so named is found by
   the search for its `endstream`, and its length is not judged: an integer the cut left, which may be the first digits
   of a longer one, is only a place to look for `endstream` at. No `endstream` after the data of a stream whose
-  `/Length` names an object a guard cut is still the file's fault, and reported. Decoding stops at a filter so named,
-  or at the filter whose parameters are: the filters before it run, and the stream comes back as they decoded it,
-  still encoded by the rest, as past `MaxFilterChainLength`. An object stream the reader meets so is read as one a
-  guard cut before its data: its objects are unknown until you raise the limit, and when the catalog is among them the
-  reader does not look for another. A cross-reference stream whose `/W`, `/Index`, `/Size`, `/Filter` or `/DecodeParms`
-  leads to an object `MaxObjectLength` cuts while the chain is read is a section the guard cut: the chain ends there,
-  the index is not rebuilt, and the guard is reported once the chain is read, or thrown by `Open`.
+  `/Length` names an object a guard cut, or left out of the index, is still the file's fault, and reported; the report
+  names the object at the end of the chain of references. Decoding stops at a filter so named, or at the filter whose
+  parameters are: the filters before it run, and the stream comes back as they decoded it, still encoded by the rest,
+  as past `MaxFilterChainLength`. `HasImageFilter` reads what decoding reads before the image filter, the parameters of
+  a Flate or LZW filter that comes before it included, and says false when such a value ends the chain there; under
+  `ThrowOnLimit`, loading one throws where decoding would. An object stream the reader meets so
+  is read as one a guard cut before its data: its objects are unknown until you raise the limit, and when the catalog
+  is among them the reader does not look for another. While the chain is read, a `/Prev` or an `/XRefStm` that leads to
+  an object `MaxObjectLength` cuts, a cross-reference stream whose `/W`, `/Index`, `/Size`, `/Filter` or `/DecodeParms`
+  does, and one whose `/Length` does when no `endstream` ends its data, are the guard's, as a section it cut is: the
+  chain ends there, the older sections are not read, the index is not rebuilt, and the guard is reported once the chain
+  is read, or thrown by `Open`.
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever
   its length. `MaxTrailerLength` bounds how far the reader follows one past that window, and a cross-reference stream's
   dictionary, not its data: the data of one whose `/Length` the reader cannot read while it reads the chain is searched
   for its `endstream` in the file, up to the next object the sections read so far place, or the end of the file. Data
-  no `endstream` ends before there makes its section malformed, a fault of the file and not of a guard.
+  no `endstream` ends before there makes its section malformed, a fault of the file and not of a guard — unless its
+  `/Length` leads to an object `MaxObjectLength` cuts, which makes the section the guard's, as above.
 - Until the reader decodes streams a piece at a time, a stream that decodes past about 2 GB is cut there, and
   reported, even under `Unbounded`. A stream's data is read in one piece, and data past about 2 GB is read up to
   there, and reported under `limit.stream-length`, even under `Unbounded`.
@@ -151,6 +158,7 @@ The exception comes from whichever operation reaches the limit:
 | `GetObject`, or resolving a reference | When an object is too long, or the object stream that holds it runs past `MaxStreamLength`, decodes too far or names too many filters; when the read rebuilds the index, at any limit the rebuild reaches, once the rebuild is finished — the first reached: a limit the rebuild's scan reaches before the read's own, the read's own before one finishing the rebuild reaches; and each time it looks up an object a full index left out |
 | `GetRawBytes` | When the stream's data runs past `MaxStreamLength`, each time it is read |
 | `Decode` | When a stream's data runs past `MaxStreamLength`, the stream decodes too far, or its decoding reaches the filter past `MaxFilterChainLength` |
+| `HasImageFilter` | When loading a value decoding reads before the image filter — the `/Filter` entry, a filter's parameters — reaches a limit, as resolving a reference does |
 | `PdfValidator.Validate` | As it reads, like any other caller; and before its first rule, at any limit the rebuild it may run then reaches, once that rebuild is finished |
 
 A document whose index had to be rebuilt finishes the rebuild before throwing, so it stays usable afterwards.

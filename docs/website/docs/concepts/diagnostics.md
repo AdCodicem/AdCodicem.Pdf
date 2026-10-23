@@ -29,13 +29,17 @@ through a larger one when it runs past the edge. What the smaller window saw the
 without its end, is dropped with that attempt, so the report says what the object holds, not where a window
 happened to end. When `MaxObjectLength` allows no larger window, the object is kept as far as it was read and the
 guard is reported: what the parse met before the edge — a stray token, a key that is not a name — is reported beside
-it, and nothing of the token the edge cut, nor of what that token leaves open, is. A stream's data is no part of what
-a window must hold: where it ends is found in the file, whatever window its dictionary was read through, and it never
-counts toward `MaxObjectLength`.
+it, and nothing of the token the edge cut, nor of what that token leaves open, nor of the next object's header the edge
+cut short inside an array or a dictionary — `6 0` or `6 0 ob`, whose number and generation would otherwise read as keys
+that are not names, or the number as a value —, is. A stream's data is no part of what a window must hold: where it
+ends is found in the file, whatever window its dictionary was read through, and it never counts toward
+`MaxObjectLength`.
 
 A stream's declared length is confirmed by the `endstream` that must follow it, after any white space and comments,
-however many: past the window, the reader asks the file for the bytes after the declared length rather than reading
-the data, reading on as far as white space and comments run, and they tell it whether `endobj` follows too. Any other
+however many — a comment only once white space comes before it: ISO 32000-1 (7.2.3) counts a comment as white space
+outside a stream's data, and a `%` right where the declared length ends is the data's, the length too short. Past the
+window, the reader asks the file for the bytes after the declared length rather than reading the data, reading on as
+far as white space and comments run, and they tell it whether `endobj` follows too. Any other
 stream — its length unconfirmed, or a `/Length` that gives none — is searched once for the first `endstream` after the
 start of its data, which ends it: in the bytes the parser holds, then in the file, up to the next object — the one the
 file's index places as the file wrote it (as the reader rebuilt it when the document opened, if the file wrote none),
@@ -52,24 +56,26 @@ stream of a classic file's last object, which no object follows, is searched thr
 end of the file.
 
 With no `endstream` before the stop, the object's `endobj` plays its part. A declared length that ends before the stop,
-and that the object's `endobj` follows, is kept: the stream lost only its `endstream`. Otherwise, the object's own
-`endobj`, when only white space separates it from the stop, ends the data, the end-of-line before it left out. Both are
-reported as `stream.truncated`. Without one, a declared length that ends before the stop is kept, and whether the
-object ends with its `endobj` is not judged; and the data otherwise runs to the stop, a declared length past it cut
-there, the object judged to lack its `endobj` unless what is taken holds one. Both are reported as
+and that the object's `endobj` follows as an `endstream` would, is kept: the stream lost only its `endstream`. Otherwise,
+the object's own `endobj`, when only white space and comments separate it from the stop, ends the data, the end-of-line
+before it left out. Both are reported as `stream.truncated`. Without one, a declared length that ends before the stop is
+kept, and whether the object ends with its `endobj` is not judged; and the data otherwise runs to the stop, a declared
+length past it cut there, the object judged to lack its `endobj` unless what is taken holds one. Both are reported as
 `stream.length-invalid`, but data that runs to the end of the file as `stream.truncated`.
 
 A `/Length` that names an object one of the reader's limits cut is no length the file gave: what the cut left of it —
 null, or `1` of a `15` it parted — is the guard's. An integer read before the cut is only a place to look for
 `endstream` at, and the data is otherwise found by its `endstream`, as for a stream with no length; nothing is said of
 the length, while a missing `endstream` is still the file's, and reported. One that names an object a guard left out of
-the index is not judged either.
+the index is not judged either: its data is found the same way, and a missing `endstream` reported as the file's.
 
 A cross-reference stream whose `/Length` the chain cannot read yet, which a valid file may hold, is searched as well, up
 to the next object the sections read so far place, or the end of the file, and its length read once the chain is. Its
 rows may spell an object header and end in a carriage return: no header stops its search, and a carriage return before
 the line feed that precedes `endstream` is kept. Data with no `endstream` before that stop ends nowhere the section
-says, and its rows are not read.
+says, and its rows are not read — the file's fault, unless the `/Length` leads to an object one of the reader's limits
+cut: the length that would have said where the data ends is then the guard's, and so is the section, the chain ending
+there.
 
 The search is not one of the reader's limits: a valid file's `endstream` follows its length, so only a damaged stream is
 searched — and a cross-reference stream whose `/Length` the chain cannot read yet —, each once. Where it stops depends

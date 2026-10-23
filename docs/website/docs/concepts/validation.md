@@ -155,7 +155,9 @@ The document's [reader limits](reader-limits.md) apply to validation too. An obj
 limit is not a fault of the file, so a rule meeting one judges nothing of what it lacks or holds, or says, as
 information, that it could not check it whole, rather than calling the file broken; opening the document with a raised
 limit lets it check the rest. The same holds of a value that leads to such an object: a cross-reference stream whose
-`/W`, `/Index`, `/Size`, `/Filter` or `/DecodeParms` leads to one is said not checked rather than malformed, and an
+`/W`, `/Index`, `/Size`, `/Filter` or `/DecodeParms` leads to one is said not checked rather than malformed — so is one
+whose `/Length`, which the chain could not read, leads to one where only that length could say where its data ends —;
+a `/Prev` or an `/XRefStm` that leads to one ends the chain there rather than naming a section not found; and an
 object stream whose `/Filter` or `/DecodeParms` leads to one, or to an object a limit left out of the index, is left
 encoded, the objects it holds said not checked rather than lost
 ([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)). The page tree rules take a node so cut to give what its

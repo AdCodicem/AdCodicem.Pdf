@@ -96,12 +96,13 @@ read or decoded, and for as long as the caller keeps what that gave.
 | `Dictionary` | The stream's dictionary | Nothing: it was read with the stream |
 | `RawLength`, `Data.Length` | The count of the stream's encoded bytes in the file: its `/Length` where an `endstream` confirms it, otherwise as far as the reader takes the data to run ([Where a stream ends](../concepts/diagnostics.md#where-a-stream-ends)). Data longer than `MaxStreamLength` is counted whole | Nothing: found when the stream is parsed |
 | `Data.Position` | The offset in the file the data starts at | Nothing |
-| `GetRawBytes()`, `Data.GetBytes()` | The encoded bytes, as the file holds them, up to `MaxStreamLength`: past it, the bytes within the bound, and `limit.stream-length` reported once for the stream | A read, each call: from a document opened from bytes or from a stream, the bytes lent where they lie, without a copy; from one opened from a path, read from the file into an array of their length |
-| `Decode()` | The data the stream's filters decode, as far as they go: decoding stops at an image filter, at a filter the library does not know, and where the [reader limits](reader-limits.md) end it | A read, as `GetRawBytes()` makes, then what each filter produces; data no filter decodes comes back as it was read |
+| `GetRawBytes()`, `Data.GetBytes()` | The encoded bytes, as the file holds them, up to `MaxStreamLength`: past it, the bytes within the bound, and `limit.stream-length` reported once for the stream, in the document's diagnostics | A read, each call: from a document opened from bytes or from a stream, the bytes lent where they lie, without a copy — a view of that memory, which keeps it alive for as long as you hold it, and changes as it does; from one opened from a path, read from the file into an array of their length |
+| `Decode()` | The data the stream's filters decode, as far as they go: decoding stops at an image filter, at a filter the library does not know, and where the [reader limits](reader-limits.md) end it — a `/Filter`, a `/DecodeParms` or a parameter that leads to an object a limit cut or left out of the index among them. Data cut at `MaxStreamLength` is decoded as far as it was read, and `limit.stream-length` reported in the diagnostics you pass, each time | A read, as `GetRawBytes()` makes, then what each filter produces; data no filter decodes comes back as it was read |
+| `HasImageFilter()` | Whether `Decode()` hands back an encoded image: whether `/Filter` names an image filter before anything that ends decoding whatever the data holds — a filter the library does not know, an element that names no filter, a filter past `MaxFilterChainLength`, a value or parameter of the filters' that leads to an object a limit cut or left out of the index | None of the data: what decoding reads before the image filter — the filters' names, and the parameters of a Flate or LZW step before it —, which can load an object, and decode the object stream that holds it, as decoding would |
 
 Opened with `ThrowOnLimit`, a document's streams throw a `PdfLimitExceededException` from `GetRawBytes()` and
 `Decode()` instead, each time their data runs past `MaxStreamLength`; `Decode()` throws at the other limits it reaches
-too. No call's result is kept for the next: a caller that uses the data twice keeps what one call gave, rather than call
+too, and `HasImageFilter()` when loading a value the filters read reaches one. No call's result is kept for the next: a caller that uses the data twice keeps what one call gave, rather than call
 again ([Tune the reader's memory](../guides/tune-reader-memory.md#read-a-streams-data-once)).
 
 Data built with `PdfStreamData.FromMemory` is held by the stream, whatever its length, and handed back as it was given;
@@ -112,4 +113,6 @@ its `Position` is -1.
 An object keeps what it holds once its document is disposed: a dictionary's direct values, an array's items, a stream's
 `RawLength`, every object's `ToString()`. What reaches back into the document throws `ObjectDisposedException`, however
 the document was opened and whether or not it was read before: `Resolve()` on a reference, and every accessor that
-resolves one, such as `GetDictionary`; `GetRawBytes()` and `Decode()` on a stream read from the file.
+resolves one, such as `GetDictionary`; `GetRawBytes()` and `Decode()` on a stream read from the file, and
+`HasImageFilter()` when it has a value to load. Raw bytes taken before from a document held in memory stay a view of
+that memory: they keep it alive for as long as they are held.

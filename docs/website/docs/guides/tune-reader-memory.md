@@ -32,8 +32,11 @@ its dictionary and where its data lies, not the data: its size does not weigh on
 
 A stream keeps none of its data: each call to `GetRawBytes` or `Decode` reads it again. Opened from a path, each call
 reads the data from the file into an array of its length; opened from a stream or from bytes, which the document holds
-in memory, `GetRawBytes` lends the bytes where they lie, without a copy. When you use the same data more than once,
-keep what one call gave you rather than call again:
+in memory, `GetRawBytes` lends the bytes where they lie, without a copy, and so does `Decode` with data no filter
+decodes. What is lent is a view of the document's memory: for as long as you hold it, it keeps that memory alive, after
+`Dispose` too, and it changes if that memory does. Copy it before you reuse a buffer the document read in place.
+
+When you use the same data more than once, keep what one call gave you rather than call again:
 
 ```csharp
 using AdCodicem.Pdf.Objects;
