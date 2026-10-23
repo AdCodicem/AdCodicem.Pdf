@@ -414,6 +414,34 @@ public class WindowEdgeTests
             .Which.Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"its object's endobj ends it, after {length} bytes."));
     }
 
+    [Theory]
+    [InlineData(-7)]
+    [InlineData(-5)]
+    [InlineData(-3)]
+    [InlineData(-1)]
+    public void An_endobj_that_ends_a_longer_token_ends_no_data_wherever_the_reads_part_it(int shift)
+    {
+        // As above, but the keyword ends the token "aendobj", parted between the window and the first read past it: no endobj
+        // ends the data, and the declared length, which ends before the next object, is kept.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[4] = file.Position;
+        const string Before = "4 0 obj\n<< /Length 3 >>\nstream\n";
+        var length = Window + shift - Before.Length;
+        file.Raw(Before + new string('a', length) + "endobj\n% c\n7 0 obj\n(stray)\nendobj\n");
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(3);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().EndWith("the declared length is kept.");
+    }
+
     [Fact]
     public void An_object_whose_header_lies_past_the_window_is_read_where_the_index_says()
     {

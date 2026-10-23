@@ -183,6 +183,9 @@ public class ParserTests
     [InlineData("hello\nendobj\n% a note\n6 0 obj\n", 5)]
     [InlineData("hello\nendobj % note endobj\n6 0 obj\n", 5)]
     [InlineData("hello\nendobj\n% a note\nx\n6 0 obj\n", -1)]
+    [InlineData("hello endobjx\n6 0 obj\n", -1)]
+    [InlineData("helloendobj\n6 0 obj\n", -1)]
+    [InlineData("endobj\n6 0 obj\n", 0)]
     public void Ends_a_stream_s_data_at_its_object_s_endobj_that_only_white_space_and_comments_follow(string data, int length)
     {
         // Parsed alone, a stream with no endstream ends where its object's endobj ends it, a comment after which is white
@@ -192,6 +195,36 @@ public class ParserTests
         parser.TryReadIndirectObject(out _, out var value).Should().BeTrue();
 
         value.AsStream().Required().RawLength.Should().Be(length < 0 ? data.IndexOf("6 0 obj", StringComparison.Ordinal) : length);
+    }
+
+    [Fact]
+    public void Leaves_a_stream_with_no_endstream_in_a_window_to_a_larger_one()
+    {
+        // Parsed alone in a window that is not the end of the data, a stream whose endstream and next header lie past it
+        // asks for a larger window, which may show them.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("4 0 obj\n<< /Length 200 >>\nstream\nabc"), endsData: false);
+
+        parser.TryReadIndirectObject(out _, out _);
+
+        parser.IsTruncated.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("[", "an array")]
+    [InlineData("<< /A ", "a dictionary")]
+    public void Ends_a_container_skipped_for_its_depth_at_the_next_object_s_header(string opening, string what)
+    {
+        // Past the depth the parser follows, the container is skipped by counting brackets: the next object's header ends it,
+        // as it ends one the parser follows (#230).
+        var text = string.Concat(Enumerable.Repeat(opening, 130)) + "1\n6 0 obj\n";
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        diagnostics[1].Message.Should().Be(
+            $"An object header came inside {what}, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
     }
 
     [Theory]

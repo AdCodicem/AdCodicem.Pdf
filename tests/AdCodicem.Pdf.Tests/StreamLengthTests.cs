@@ -1548,30 +1548,7 @@ public class StreamLengthTests
         // it a few times over together; then a stream keeps its declared length without a search, and says so.
         const int Streams = 30;
         const int Declared = 100_000;
-        var nested = Invariant($"{Streams + 2} 0 obj<</Length {Declared}>>stream\n");
-
-        for (var number = Streams + 1; number >= 3; number--)
-        {
-            nested = Invariant($"{number} 0 obj<</S({nested})/Length {Declared}>>stream\n");
-        }
-
-        var head = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" + nested;
-        var offsets = new List<long> { 0, 9, head.IndexOf("2 0 obj", StringComparison.Ordinal) };
-
-        for (var number = 3; number <= Streams + 2; number++)
-        {
-            offsets.Add(head.IndexOf(Invariant($"{number} 0 obj<<"), StringComparison.Ordinal));
-        }
-
-        var body = head + new string('x', 1024 * 1024) + "\n";
-        var xref = new StringBuilder(Invariant($"xref\n0 {offsets.Count}\n0000000000 65535 f\r\n"));
-
-        foreach (var offset in offsets.Skip(1))
-        {
-            xref.Append(Invariant($"{offset:D10} 00000 n\r\n"));
-        }
-
-        var file = Encoding.Latin1.GetBytes(body + xref + Invariant($"trailer\n<< /Size {offsets.Count} /Root 1 0 R >>\nstartxref\n{body.Length}\n%%EOF\n"));
+        var (file, head) = NestedStreams(Streams, Declared);
 
         using var source = new StrictCountingSource(file);
         using var document = PdfDocument.Open(source, options: null, ownsSource: false);
@@ -2178,5 +2155,140 @@ public class StreamLengthTests
         rows[6] = file.Object(6, "(six)");
         file.Table(7, rows, "/Size 7 /Root 1 0 R");
         return file.Bytes;
+    }
+
+    /// <summary>
+    /// A document of <paramref name="streams"/> streams, objects 3 on, each declaring <paramref name="declared"/> bytes, whose
+    /// headers each lie inside the dictionary of the one before, as a string, followed by a megabyte of data no endstream
+    /// ends; and the text before that megabyte.
+    /// </summary>
+    private static (byte[] File, string Head) NestedStreams(int streams, int declared)
+    {
+        var nested = Invariant($"{streams + 2} 0 obj<</Length {declared}>>stream\n");
+
+        for (var number = streams + 1; number >= 3; number--)
+        {
+            nested = Invariant($"{number} 0 obj<</S({nested})/Length {declared}>>stream\n");
+        }
+
+        var head = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" + nested;
+        var offsets = new List<long> { 0, 9, head.IndexOf("2 0 obj", StringComparison.Ordinal) };
+
+        for (var number = 3; number <= streams + 2; number++)
+        {
+            offsets.Add(head.IndexOf(Invariant($"{number} 0 obj<<"), StringComparison.Ordinal));
+        }
+
+        var body = head + new string('x', 1024 * 1024) + "\n";
+        var xref = new StringBuilder(Invariant($"xref\n0 {offsets.Count}\n0000000000 65535 f\r\n"));
+
+        foreach (var offset in offsets.Skip(1))
+        {
+            xref.Append(Invariant($"{offset:D10} 00000 n\r\n"));
+        }
+
+        var file = Encoding.Latin1.GetBytes(body + xref + Invariant($"trailer\n<< /Size {offsets.Count} /Root 1 0 R >>\nstartxref\n{body.Length}\n%%EOF\n"));
+
+        return (file, head);
+    }
+
+    [Fact]
+    public void A_stream_left_unsearched_whose_length_runs_past_the_file_takes_the_data_its_object_holds()
+    {
+        // As streams whose data share a stretch exhaust what the searches may read, the last is left unsearched; its declared
+        // length runs past the end of the file, and the data up to it is taken, without a search, and said so.
+        const int Streams = 30;
+        const int Declared = 10_000_000;
+        var (file, _) = NestedStreams(Streams, Declared);
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.Reader.TryGetStreamLengthFault(Streams + 2, out var last).Should().BeTrue();
+        last.EndStream.Should().Be(EndStreamState.NotSearched);
+        last.Taken.Should().Be((int)(file.Length - last.DataStart));
+        document.Diagnostics.Should().ContainSingle(d => d.Position == last.DataStart).Which.Message.Should().Be(
+            Invariant($"The stream declared {Declared} bytes, and no endstream follows its data in the bytes read with its object; the {last.Taken} bytes to the end of the file are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."));
+    }
+
+    [Fact]
+    public void A_comment_in_the_gap_that_runs_past_the_window_is_read_on_and_its_check_kept_for_a_second_reading()
+    {
+        // The declared length ends 20 bytes short of the window's edge, and a comment after it runs past the edge and past the
+        // first read after it: the reader reads on through it to the endstream, and keeps what it found for the stream's next
+        // reading, after the cache let the stream go.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[4] = file.Position;
+        const string Before = "4 0 obj\n<< /Length 0000 >>\nstream\n";
+        var length = PdfFileReader.InitialObjectWindow - 20 - Before.Length;
+        file.Raw(Before.Replace("0000", Invariant($"{length:D4}"), StringComparison.Ordinal) + new string('a', length) +
+            "\n% " + new string('c', 200) + "\nendstream\nendobj\n");
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, PdfReaderOptions.Default with { ObjectCacheCapacity = 1 });
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
+        document.GetObject(new PdfObjectId(6));
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_endstreamx_read_on_past_the_window_confirms_the_length_and_is_no_endobj()
+    {
+        // White space after the declared length runs past the window's edge and the first read after it, to "endstreamx":
+        // read as the parser reads what follows a stream, the length is confirmed, and its object lacks its endobj.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[4] = file.Position;
+        const string Before = "4 0 obj\n<< /Length 0000 >>\nstream\n";
+        var length = PdfFileReader.InitialObjectWindow - 20 - Before.Length;
+        file.Raw(Before.Replace("0000", Invariant($"{length:D4}"), StringComparison.Ordinal) + new string('a', length) +
+            "\n" + new string(' ', 100) + "endstreamx\nendobj\n");
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
+        document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("endstream\nendobj", true)]
+    public void White_space_after_a_length_past_the_window_is_read_on_to_the_end_of_the_file(string end, bool ended)
+    {
+        // A file with no index, whose last object is a stream of 9,000 bytes followed by white space past the first read after
+        // it — to the end of the file, or to an endstream and an endobj that end it.
+        const int Length = 9000;
+        var text = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            Invariant($"4 0 obj\n<< /Length {Length} >>\nstream\n") + new string('a', Length) + new string(' ', 200) + end;
+        using var document = PdfDocument.Open(Encoding.ASCII.GetBytes(text));
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(Length);
+
+        if (ended)
+        {
+            document.Diagnostics.Should().NotContain(entry => entry.Code.StartsWith("stream.", StringComparison.Ordinal));
+            document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        }
+        else
+        {
+            document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
+                "The stream declared 9000 bytes, and no endstream follows them before the end of the file; the declared length is kept.");
+        }
     }
 }
