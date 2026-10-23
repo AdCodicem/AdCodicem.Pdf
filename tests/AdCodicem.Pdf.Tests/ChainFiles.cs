@@ -315,9 +315,10 @@ internal static class ChainFiles
     /// <summary>
     /// A hybrid file: a classic table indexes the catalog, the page tree and object 6, which holds the offset of
     /// cross-reference stream 7; its trailer's <c>/XRefStm</c> is <paramref name="xrefStm"/>, in which <c>{offset}</c>
-    /// stands for that offset. Only the stream indexes the page, object 3.
+    /// stands for that offset. Only the stream indexes the page, object 3. Object 6's value comes after
+    /// <paramref name="padding"/> spaces.
     /// </summary>
-    public static byte[] HybridNamingItsStream(string xrefStm)
+    public static byte[] HybridNamingItsStream(string xrefStm, int padding = 0)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -326,8 +327,8 @@ internal static class ChainFiles
 
         // The stream's offset is written in object 6 with a fixed width, so that it can be known before the stream is.
         var six = file.Position;
-        var streamAt = six + "6 0 obj\n0000000000\nendobj\n".Length;
-        file.Object(6, streamAt.ToString("D10", CultureInfo.InvariantCulture));
+        var streamAt = six + padding + "6 0 obj\n0000000000\nendobj\n".Length;
+        file.Object(6, new string(' ', padding) + streamAt.ToString("D10", CultureInfo.InvariantCulture));
         var stream = file.Position;
         var data = Encode([(1, file.OffsetOf(3), 0)], Rows.Raw);
         file.Stream(7, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 7 /W [1 4 2] /Index [3 1] /Length {data.Length}"), data);
@@ -342,9 +343,10 @@ internal static class ChainFiles
     /// <summary>
     /// A file of two classic tables: the first indexes the catalog, the page tree and the page; the second, an update,
     /// indexes object 4 and object 9, which holds the first table's offset, and names that table through
-    /// <paramref name="prev"/>, in which <c>{offset}</c> stands for the offset.
+    /// <paramref name="prev"/>, in which <c>{offset}</c> stands for the offset. Object 9's value comes after
+    /// <paramref name="padding"/> spaces.
     /// </summary>
-    public static byte[] UpdateNamingItsPrevious(string prev)
+    public static byte[] UpdateNamingItsPrevious(string prev, int padding = 0)
     {
         using var file = new Writer("1.4");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -355,7 +357,7 @@ internal static class ChainFiles
             CultureInfo.InvariantCulture,
             $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{first}\n%%EOF\n"));
         file.Object(4, "(an update)");
-        file.Object(9, first.ToString(CultureInfo.InvariantCulture));
+        file.Object(9, new string(' ', padding) + first.ToString(CultureInfo.InvariantCulture));
         var second = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,

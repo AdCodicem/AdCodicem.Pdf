@@ -402,4 +402,26 @@ public class GuardCutValueTests
         fault.Reference.Should().Be(new PdfObjectId(21));
         fault.Declared.Should().BeNull();
     }
+
+    [Theory]
+    [InlineData("Prev")]
+    [InlineData("XRefStm")]
+    public void A_section_offset_a_guard_cut_ends_the_chain_as_the_guard_s(string key)
+    {
+        // The newer section's /Prev, object 9, or its /XRefStm, object 6, is one that section places and MaxObjectLength cuts
+        // before its value: the section it names was said to be missing, and the index rebuilt. The chain ends there for the
+        // guard, which is reached once the chain is read — thrown at opening when the caller asks for it (#263).
+        var file = key == "Prev"
+            ? ChainFiles.UpdateNamingItsPrevious("9 0 R", padding: 3000)
+            : ChainFiles.HybridNamingItsStream("6 0 R", padding: 3000);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections.Should().ContainSingle();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
 }
