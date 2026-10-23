@@ -67,7 +67,10 @@ A `/Length` that names an object one of the reader's limits cut is no length the
 null, or `1` of a `15` it parted — is the guard's. An integer read before the cut is only a place to look for
 `endstream` at, and the data is otherwise found by its `endstream`, as for a stream with no length; nothing is said of
 the length, while a missing `endstream` is still the file's, and reported. One that names an object a guard left out of
-the index is not judged either: its data is found the same way, and a missing `endstream` reported as the file's.
+the index is not judged either: its data is found the same way, and a missing `endstream` reported as the file's. Such a
+stream may be valid, its length only hidden, and its data may spell an object header, as an embedded PDF file's does:
+the search goes on past that header to the next object the index places, and an `endstream` found there ends the data,
+as the length would have. With none, the header stops it as any other stream's.
 
 A cross-reference stream whose `/Length` the chain cannot read yet, which a valid file may hold, is searched as well, up
 to the next object the sections read so far place, or the end of the file, and its length read once the chain is. Its

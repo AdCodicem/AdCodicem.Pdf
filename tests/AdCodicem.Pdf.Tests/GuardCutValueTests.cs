@@ -184,6 +184,48 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("cut", true)]
+    [InlineData("left out", true)]
+    [InlineData("cut", false)]
+    [InlineData("left out", false)]
+    public void A_stream_a_guard_hid_the_length_of_is_searched_past_a_header_its_data_spells(string guard, bool endStream)
+    {
+        // Object 4 embeds a PDF file, whose data spells "1 0 obj", and its /Length, object 10, is one MaxObjectLength cuts or
+        // MaxIndexEntries leaves out of the index: searched for its endstream, the data stopped at the header it spells, and
+        // the file was said to lack the endstream it holds (#224). Without one, the header still stops it, the file's fault.
+        const string Embedded = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, "<< /Type /EmbeddedFile /Length 10 0 R >>\nstream\n" + Embedded + (endStream ? "\nendstream" : string.Empty)),
+            [6] = file.Object(6, "(six)"),
+            [10] = file.Object(10, (guard == "cut" ? new string(' ', 2000) : string.Empty) + Embedded.Length.ToString(CultureInfo.InvariantCulture)),
+        };
+        file.Table(11, rows, "/Size 11 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 8 };
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var data = document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray();
+        var codes = document.Diagnostics.Select(entry => entry.Code).ToArray();
+
+        if (endStream)
+        {
+            data.Should().Equal(Encoding.ASCII.GetBytes(Embedded));
+            codes.Should().Equal(guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
+            document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        }
+        else
+        {
+            data.Should().Equal("%PDF-1.4\n"u8.ToArray());
+            codes.Should().Contain(PdfDiagnosticCodes.StreamLengthInvalid);
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void A_deferred_length_a_guard_cut_is_not_judged_once_the_chain_is_read(bool inside)
