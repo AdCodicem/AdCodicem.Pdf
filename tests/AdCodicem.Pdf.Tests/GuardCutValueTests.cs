@@ -1542,6 +1542,28 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("7.0")]
+    [InlineData("padded")]
+    public void The_rule_on_trailer_values_judges_a_w_element_past_the_third_as_written(string five)
+    {
+        // Stream 7's /W gives a fourth element, a reference to object 5, which holds 7.0, or 7 past 3,000 spaces, which
+        // MaxObjectLength cuts. The reader reads three: the rule followed the fourth all the same, judged a real the reading
+        // never read, and reached the guard the reading never met. It is judged as written, a reference (#263).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2 5 0 R] /Length {length}",
+            five == "7.0" ? five : new string(' ', 3000) + "7",
+            compressed: false,
+            predicted: false,
+            placed: true);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+        var trailers = new ValidationProfile("trailers", 1, [new TrailerValueWrongRule()]);
+
+        new PdfValidator(new PdfValidatorOptions { Profile = trailers }).Validate(document).Findings.Select(finding => finding.Message)
+            .Should().ContainSingle().Which.Should().EndWith("writes element 3 of its /W as the reference 5 0 R, where ISO 32000-1 makes it direct (7.5.8.2).");
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("Prev", "9 0 R", true)]
     [InlineData("XRefStm", "9 0 R", true)]
     [InlineData("Prev", "12 0 R", false)]
