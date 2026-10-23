@@ -756,12 +756,10 @@ internal ref struct PdfObjectParser
         {
             // A length read once the chain is, or one a guard left out of the index or cut, is not judged: nothing is said
             // of it, nor a message made for it.
-            if (length != found && declared.Form is not (StreamLengthForm.Deferred or StreamLengthForm.ObjectUnindexed or StreamLengthForm.ObjectCut))
+            if (length != found && declared.Form is not (StreamLengthForm.Deferred or StreamLengthForm.ObjectUnindexed or StreamLengthForm.ObjectCut) &&
+                KeepLengthFault(Fault(declared, dataStart, found, found, EndStreamState.Found, null)))
             {
-                ReportLengthFault(
-                    PdfDiagnosticCodes.StreamLengthInvalid,
-                    DescribeRecovered(declared, found),
-                    Fault(declared, dataStart, found, found, EndStreamState.Found, null));
+                WarnLengthFault(PdfDiagnosticCodes.StreamLengthInvalid, DescribeRecovered(declared, found), dataStart);
             }
 
             _endObjAfterStream = _streamData is null ? null : settled.EndObj;
@@ -784,25 +782,26 @@ internal ref struct PdfObjectParser
         var stop = search.NextObject is { } next ? next - _baseOffset : endOfData;
         var fits = length >= 0 && dataStart + (long)length <= stop;
         var upToStop = (int)Math.Min(stop - dataStart, int.MaxValue);
-        var where = search.NextObject is { } nextObject
-            ? string.Create(CultureInfo.InvariantCulture, $"before the next object, at {nextObject}")
-            : "before the end of the file";
         var missing = search.NextObject is null ? EndStreamState.MissingBeforeEndOfFile : EndStreamState.MissingBeforeNextObject;
 
         if (!search.Searched)
         {
             // The document's searches read as much of the file as they may: what lies past the bytes held is not looked at.
             var kept = fits ? length : upToStop;
-            ReportLengthFault(
-                PdfDiagnosticCodes.StreamLengthInvalid,
-                fits
-                    ? string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"The stream declared {length} bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.")
-                    : string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object; the {kept} bytes {(search.NextObject is null ? "to the end of the file" : "up to the next object")} are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."),
-                Fault(declared, dataStart, kept, null, EndStreamState.NotSearched, null));
+
+            if (KeepLengthFault(Fault(declared, dataStart, kept, null, EndStreamState.NotSearched, null)))
+            {
+                WarnLengthFault(
+                    PdfDiagnosticCodes.StreamLengthInvalid,
+                    fits
+                        ? string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"The stream declared {length} bytes, and no endstream follows them; the declared length is kept without a search, the document's searches for endstream having read as much of the file as they may.")
+                        : string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"{Describe(declared)}, and no endstream follows its data in the bytes read with its object; the {kept} bytes {(search.NextObject is null ? "to the end of the file" : "up to the next object")} are taken as its data without a search, the document's searches for endstream having read as much of the file as they may."),
+                    dataStart);
+            }
 
             _endObjUnknown = true;
             return Finish(dictionary, dataStart, kept, span.Length);
@@ -810,12 +809,15 @@ internal ref struct PdfObjectParser
 
         if (fits && search.EndObjAfterDeclared)
         {
-            ReportLengthFault(
-                PdfDiagnosticCodes.StreamTruncated,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"The stream has no endstream: its object's endobj follows the {length} bytes it declared, which are taken as its data."),
-                Fault(declared, dataStart, length, null, EndStreamState.MissingBeforeEndObj, null));
+            if (KeepLengthFault(Fault(declared, dataStart, length, null, EndStreamState.MissingBeforeEndObj, null)))
+            {
+                WarnLengthFault(
+                    PdfDiagnosticCodes.StreamTruncated,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The stream has no endstream: its object's endobj follows the {length} bytes it declared, which are taken as its data."),
+                    dataStart);
+            }
 
             _endObjAfterStream = EndObjState.Present;
             return Finish(dictionary, dataStart, length, span.Length);
@@ -824,12 +826,16 @@ internal ref struct PdfObjectParser
         if (search.ObjectEnd >= 0)
         {
             var taken = (int)Math.Min(search.ObjectEnd - _baseOffset - dataStart, int.MaxValue);
-            ReportLengthFault(
-                PdfDiagnosticCodes.StreamTruncated,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"{Describe(declared)}, and no endstream follows its data {where}: its object's endobj ends it, after {taken} bytes."),
-                Fault(declared, dataStart, taken, null, EndStreamState.MissingBeforeEndObj, search.NextObject));
+
+            if (KeepLengthFault(Fault(declared, dataStart, taken, null, EndStreamState.MissingBeforeEndObj, search.NextObject)))
+            {
+                WarnLengthFault(
+                    PdfDiagnosticCodes.StreamTruncated,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}: its object's endobj ends it, after {taken} bytes."),
+                    dataStart);
+            }
 
             _endObjAfterStream = EndObjState.Present;
             return Finish(dictionary, dataStart, taken, span.Length);
@@ -837,12 +843,15 @@ internal ref struct PdfObjectParser
 
         if (fits)
         {
-            ReportLengthFault(
-                PdfDiagnosticCodes.StreamLengthInvalid,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"The stream declared {length} bytes, and no endstream follows them {where}; the declared length is kept."),
-                Fault(declared, dataStart, length, null, missing, search.NextObject));
+            if (KeepLengthFault(Fault(declared, dataStart, length, null, missing, search.NextObject)))
+            {
+                WarnLengthFault(
+                    PdfDiagnosticCodes.StreamLengthInvalid,
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The stream declared {length} bytes, and no endstream follows them {Where(search.NextObject)}; the declared length is kept."),
+                    dataStart);
+            }
 
             // Where the object ends is unknown, and its endobj is not judged.
             _endObjUnknown = true;
@@ -851,16 +860,24 @@ internal ref struct PdfObjectParser
 
         // The data runs to the next object, which no declared length passes, or to the end of the file. The object lacks its
         // endobj, unless what is taken as its data holds one, which may be the object's own: where it ends is then unknown.
-        ReportLengthFault(
-            search.NextObject is null ? PdfDiagnosticCodes.StreamTruncated : PdfDiagnosticCodes.StreamLengthInvalid,
-            string.Create(
-                CultureInfo.InvariantCulture,
-                $"{Describe(declared)}, and no endstream follows its data {where}; the {upToStop} bytes {(search.NextObject is null ? "to the end of the file" : "up to that object")} are taken as its data."),
-            Fault(declared, dataStart, upToStop, null, missing, search.NextObject));
+        if (KeepLengthFault(Fault(declared, dataStart, upToStop, null, missing, search.NextObject)))
+        {
+            WarnLengthFault(
+                search.NextObject is null ? PdfDiagnosticCodes.StreamTruncated : PdfDiagnosticCodes.StreamLengthInvalid,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{Describe(declared)}, and no endstream follows its data {Where(search.NextObject)}; the {upToStop} bytes {(search.NextObject is null ? "to the end of the file" : "up to that object")} are taken as its data."),
+                dataStart);
+        }
 
         _endObjUnknown = search.EndObjSeen;
         _endObjAfterStream = search.EndObjSeen ? EndObjState.Unknown : EndObjState.Absent;
         return Finish(dictionary, dataStart, upToStop, span.Length);
+
+        // Where the search stopped, as a report says it.
+        static string Where(long? nextObject) => nextObject is { } at
+            ? string.Create(CultureInfo.InvariantCulture, $"before the next object, at {at}")
+            : "before the end of the file";
     }
 
     /// <summary>
@@ -994,6 +1011,12 @@ internal ref struct PdfObjectParser
                     Hint: value.AsInteger() is { } hint and >= 0 and <= int.MaxValue ? (int)hint : null);
             }
 
+            // The object a guard left out of the index, as the one it cut, is the one the chain of references leads to.
+            if (presence == ObjectPresence.Unindexed)
+            {
+                return new DeclaredLength(StreamLengthForm.ObjectUnindexed, Reference: named.Target());
+            }
+
             if (presence != ObjectPresence.Defined)
             {
                 return new DeclaredLength(
@@ -1001,7 +1024,6 @@ internal ref struct PdfObjectParser
                     {
                         ObjectPresence.Missing => StreamLengthForm.ObjectMissing,
                         ObjectPresence.Deferred => StreamLengthForm.Deferred,
-                        ObjectPresence.Unindexed => StreamLengthForm.ObjectUnindexed,
                         _ => StreamLengthForm.ObjectUnreadable,
                     },
                     Reference: reference);
@@ -1065,6 +1087,7 @@ internal ref struct PdfObjectParser
                 StreamLengthForm.ObjectMissing => Names(reference, "which the file lacks"),
                 StreamLengthForm.ObjectUnreadable => Names(reference, "which could not be read"),
                 StreamLengthForm.ObjectCut => Names(reference, "which one of the reader's limits cut"),
+                StreamLengthForm.ObjectUnindexed => Names(reference, "which one of the reader's limits left out of the index"),
                 _ => Names(reference, "which holds " + Value(declared)),
             };
 
@@ -1106,25 +1129,27 @@ internal ref struct PdfObjectParser
         };
 
     /// <summary>
-    /// Keeps what was found of the stream being read, and reports it unless a reading of the same stream the reader
-    /// kept already has: a stream parsed again — after the cache let it go, or the index was rebuilt — is reported once.
+    /// Keeps what was found of the stream being read, and says whether to report it: unless a reading of the same stream the
+    /// reader kept already has — a stream parsed again, after the cache let it go or the index was rebuilt, is reported
+    /// once —, or no diagnostics are kept. The message is made only then.
     /// </summary>
-    private void ReportLengthFault(string code, string message, StreamLengthFault fault)
+    private bool KeepLengthFault(StreamLengthFault fault)
     {
         // A /Length read once the cross-reference chain is: whether the data ends where it should is known then (#182). One a
-        // guard left out of the index is unknown, and the guard's report says why.
-        if (fault.Form is StreamLengthForm.Deferred or StreamLengthForm.ObjectUnindexed)
+        // guard left out of the index, or cut, is unknown, and the guard's report says why; a missing endstream is still the
+        // file's (#224), and the only fault reported of it.
+        if (fault.Form == StreamLengthForm.Deferred)
         {
-            return;
+            return false;
         }
 
         _lengthFault = fault;
-
-        if (_streamData?.IsLengthFaultReported(fault.DataStart) != true)
-        {
-            _diagnostics?.Warn(code, message, fault.DataStart);
-        }
+        return _diagnostics is not null && _streamData?.IsLengthFaultReported(fault.DataStart) != true;
     }
+
+    /// <summary>Reports what was found of the stream being read, whose data starts at <paramref name="dataStart"/>.</summary>
+    private readonly void WarnLengthFault(string code, string message, int dataStart) =>
+        _diagnostics!.Warn(code, message, _baseOffset + dataStart);
 
     private PdfStream Finish(PdfDictionary dictionary, int dataStart, int length, int bufferLength)
     {
