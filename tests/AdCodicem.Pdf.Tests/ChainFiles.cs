@@ -589,7 +589,7 @@ internal static class ChainFiles
     /// <summary>
     /// A hybrid update over a classic table that indexes the catalog, the page tree and the page. The update writes object 9,
     /// which holds 123 after <paramref name="padding"/> spaces, and object 10, which cross-reference stream 7 indexes; the
-    /// stream's own <c>/Prev</c> is <paramref name="streamPrev"/>, which no reader follows. The update's table indexes object
+    /// stream's own <c>/Prev</c> is <paramref name="streamPrev"/>, which the reader does not follow. The update's table indexes object
     /// 9, and its trailer names the older table through <c>/Prev</c> and the stream through <c>/XRefStm</c>.
     /// </summary>
     public static byte[] HybridWithStreamPrev(string streamPrev, int padding = 3000)
