@@ -1870,6 +1870,18 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_deferred_length_is_taken_again_by_a_row_with_no_type_field()
+    {
+        // With no type field, every row is of type 1: the section's row for its /Length, before rows that spell an endstream,
+        // places it, and the data is taken again to the length it gives (#220).
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLengthAndNoTypeField());
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Fact]
     public void A_deferred_length_is_not_checked_against_data_a_guard_cut()
     {
         // The stream's data, taken up to the endstream its rows spell, runs past MaxStreamLength: decoding cut it, and the

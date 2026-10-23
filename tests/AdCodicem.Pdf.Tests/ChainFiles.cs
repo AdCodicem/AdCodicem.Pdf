@@ -213,6 +213,34 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of one cross-reference stream, object 5, whose rows have no type field — <c>/W [0 4 2]</c>, every row of type 1
+    /// —, whose <c>/Length</c> names object 4, which only that stream indexes, and whose rows of objects 6 and 7 spell
+    /// <c>endstream</c> after an end-of-line, before the page's row. The file is valid.
+    /// </summary>
+    public static byte[] AloneWithIndirectLengthAndNoTypeField()
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(4, "42");
+        var stream = file.Position;
+        var data = new List<byte>();
+
+        foreach (var offset in new[] { file.OffsetOf(1), file.OffsetOf(2), file.OffsetOf(4), stream })
+        {
+            data.AddRange([(byte)(offset >> 24), (byte)(offset >> 16), (byte)(offset >> 8), (byte)offset, 0, 0]);
+        }
+
+        data.AddRange("\nendstream\0\0"u8.ToArray());
+        var page = file.OffsetOf(3);
+        data.AddRange([(byte)(page >> 24), (byte)(page >> 16), (byte)(page >> 8), (byte)page, 0, 0]);
+        file.Stream(5, "/Type /XRef /Size 8 /W [0 4 2] /Index [1 2 4 2 6 2 3 1] /Root 1 0 R /Length 4 0 R", [.. data]);
+        file.StartXRef(stream);
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of two revisions. The first writes object 8 as <c>(old)</c> and indexes it in cross-reference stream 7. The
     /// second writes it again as <c>(new)</c>, and indexes it in cross-reference stream 10, whose <c>/Length</c> names
     /// object 4, which only that stream indexes, and whose rows of objects 5 and 6, of reserved types, spell
