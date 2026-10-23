@@ -2160,9 +2160,9 @@ public class StreamLengthTests
     /// <summary>
     /// A document of <paramref name="streams"/> streams, objects 3 on, each declaring <paramref name="declared"/> bytes, whose
     /// headers each lie inside the dictionary of the one before, as a string, followed by a megabyte of data no endstream
-    /// ends; and the text before that megabyte.
+    /// ends, then by <paramref name="after"/>, objects numbered on from the last stream; and the text before that megabyte.
     /// </summary>
-    private static (byte[] File, string Head) NestedStreams(int streams, int declared)
+    private static (byte[] File, string Head) NestedStreams(int streams, int declared, params string[] after)
     {
         var nested = Invariant($"{streams + 2} 0 obj<</Length {declared}>>stream\n");
 
@@ -2180,6 +2180,13 @@ public class StreamLengthTests
         }
 
         var body = head + new string('x', 1024 * 1024) + "\n";
+
+        foreach (var text in after)
+        {
+            offsets.Add(body.Length);
+            body += text;
+        }
+
         var xref = new StringBuilder(Invariant($"xref\n0 {offsets.Count}\n0000000000 65535 f\r\n"));
 
         foreach (var offset in offsets.Skip(1))
@@ -2289,6 +2296,38 @@ public class StreamLengthTests
         {
             document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
                 "The stream declared 9000 bytes, and no endstream follows them before the end of the file; the declared length is kept.");
+        }
+    }
+
+    [Fact]
+    public void A_stream_read_once_the_searches_read_as_much_as_they_may_is_not_read_on_past_its_window()
+    {
+        // Once streams whose data share a stretch have read as much of the file as the searches may, white space after a
+        // declared length that runs past the window is not read on: a length the first read after the window cannot confirm
+        // is kept without a search, and one whose endstream that read ends after leaves what follows the keyword unseen.
+        const int Streams = 30;
+        var unread = Gapped(Streams + 3, new string(' ', 200) + "endstream\nendobj\n", out var length);
+        var unseen = Gapped(Streams + 4, new string(' ', 50) + "endstream     endobj\n", out _);
+        var (file, _) = NestedStreams(Streams, 100_000, unread, unseen);
+        using var document = PdfDocument.Open(file);
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required().RawLength.Should().Be(length);
+        document.Reader.TryGetStreamLengthFault(Streams + 3, out var fault).Should().BeTrue();
+        fault.EndStream.Should().Be(EndStreamState.NotSearched);
+        document.GetObject(new PdfObjectId(Streams + 4)).AsStream().Required().RawLength.Should().Be(length);
+        document.Reader.TryGetStreamLengthFault(Streams + 4, out _).Should().BeFalse();
+
+        // An object whose declared length ends 20 bytes short of its window's edge, followed by what follows it.
+        static string Gapped(int number, string after, out int length)
+        {
+            var head = Invariant($"{number} 0 obj\n<< /Length 0000 >>\nstream\n");
+            length = PdfFileReader.InitialObjectWindow - 20 - head.Length;
+            return head.Replace("0000", Invariant($"{length:D4}"), StringComparison.Ordinal) + new string('a', length) + after;
         }
     }
 }
