@@ -175,11 +175,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// parsing of the object it loads besides. No level holds decoded data while it loads the next: a stream resolves
     /// its filters and every parameter they read before its first filter runs (<see cref="Filters.FilterChain"/>), so
     /// that a chain of loads holds at once one stream's decoding, and the object streams
-    /// <see cref="ObjectStreamBudget"/> keeps. One thing remains: each object stream loaded on the chain stays in the object
-    /// cache with the raw data it read, until the cache lets it go (#170). A stream an object stream holds, which ISO
-    /// 32000-1 (7.5.7) forbids, is no exception: it is no value, and its <c>/Length</c> is not read (#161). The count
-    /// alone does not bound the stack, since each load parses as deep as the parser allows: the stack is asked as well
-    /// before each load.
+    /// <see cref="ObjectStreamBudget"/> keeps; no stream keeps the raw data it read (#170). A stream an object stream
+    /// holds, which ISO 32000-1 (7.5.7) forbids, is no exception: it is no value, and its <c>/Length</c> is not read
+    /// (#161). The count alone does not bound the stack, since each load parses as deep as the parser allows: the stack
+    /// is asked as well before each load.
     /// </summary>
     private const int MaxNestedLoads = 64;
 
@@ -5875,9 +5874,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// A stream's data in the file, read the first time something asks for it, and refused, read or not, once the
     /// document is disposed.
     /// </summary>
+    /// <summary>
+    /// A stream's data in the file: where it lies and how long it is, read each time it is asked for, and kept by
+    /// nothing (#170).
+    /// </summary>
+    /// <remarks>
+    /// Streams whose data share a stretch of the file — overlapping objects —, or the many streams of a document read once
+    /// each, hold none of it: what a caller keeps is its own, and memory follows what is being decoded. A source in
+    /// memory lends the bytes where they lie, without a copy, valid for as long as its memory is; any other reads them
+    /// into an array of their length.
+    /// </remarks>
     private sealed class FileStreamData(PdfFileReader reader, long offset, int length, PdfLimitGuard guard) : PdfStreamData
     {
-        private byte[]? _bytes;
         private bool _cutByGuard;
 
         public override int Length => length;
@@ -5895,15 +5903,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             ObjectDisposedException.ThrowIf(reader._closed, typeof(PdfDocument));
 
-            if (_bytes is not null)
+            if (reader._source.TryLend(offset, length, out var lent))
             {
-                return _bytes;
+                return lent;
             }
 
+            // A source that gives less than it holds leaves the array longer than what it gave: the bytes it gave are
+            // handed back, not copied again.
             var buffer = new byte[length];
             var read = reader._source.Read(offset, buffer);
-            _bytes = read == length ? buffer : buffer[..read];
-            return _bytes;
+            return buffer.AsMemory(0, read);
         }
     }
 

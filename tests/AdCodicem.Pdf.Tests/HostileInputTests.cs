@@ -170,6 +170,37 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Reading_streams_whose_data_share_a_stretch_of_a_file_held_in_memory_allocates_none_of_their_data()
+    {
+        // Two hundred streams, each header inside the data of the one before, every /Length confirmed by the one endstream
+        // a megabyte on: each stream's data is the whole stretch, and reading each one's copied it, 200 MB from a file of
+        // 1 MB (#170). A source in memory lends each stream's data where it lies.
+        const int Streams = 200;
+        var file = Overlapping(Streams, filler: 1024 * 1024);
+
+        var allocated = Allocations.Least(() => PdfDocument.Open(file), ReadEvery, out var document, out var read);
+
+        using (document)
+        {
+            read.Should().BeGreaterThan(Streams * 1024L * 1024, "each stream's data is the whole stretch");
+            allocated.Should().BeLessThan(2L * 1024 * 1024, "the streams' objects, and none of their data");
+            document.Diagnostics.Should().BeEmpty();
+        }
+
+        static long ReadEvery(PdfDocument document)
+        {
+            long read = 0;
+
+            for (var k = 0; k < Streams; k++)
+            {
+                read += document.GetObject(new PdfObjectId(3 + k)).AsStream().Required().GetRawBytes().Length;
+            }
+
+            return read;
+        }
+    }
+
+    [Fact]
     public void An_object_stream_header_s_tables_grow_no_larger_than_its_bytes_can_hold()
     {
         // 1,100 pairs, each of object 1, and a /N of a billion: the header's 6,590 bytes hold 1,647 pairs at most, so the
@@ -3461,6 +3492,70 @@ public class HostileInputTests
             [6] = (2, 5, 0),
         };
         file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of <paramref name="streams"/> streams, objects 3 and on, each one's header inside the data of the one
+    /// before, every <c>/Length</c> ending at the one <c>endstream</c> after <paramref name="filler"/> bytes: each length
+    /// confirmed, each stream's data the whole stretch from its start to that <c>endstream</c> (#170). With
+    /// <paramref name="objectStreams"/>, objects 10 and on, each an object stream of one member, objects 3000 and on, that a
+    /// cross-reference stream places.
+    /// </summary>
+    internal static byte[] Overlapping(int streams, int filler, bool objectStreams = false)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var start = file.Position;
+        var body = new StringBuilder();
+        var lengthAt = new int[streams];
+        var dataStart = new int[streams];
+
+        for (var k = 0; k < streams; k++)
+        {
+            var number = (objectStreams ? 10 : 3) + k;
+            var member = string.Create(CultureInfo.InvariantCulture, $"{3000 + k} 0 ");
+            rows[number] = (1, start + body.Length, 0);
+            body.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< ");
+
+            if (objectStreams)
+            {
+                body.Append(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {member.Length} ");
+            }
+
+            body.Append("/Length ");
+            lengthAt[k] = body.Length;
+            body.Append("0000000000 >>\nstream\n");
+            dataStart[k] = body.Length;
+
+            if (objectStreams)
+            {
+                body.Append(member);
+                rows[3000 + k] = (2, number, 0);
+            }
+        }
+
+        body.Append('x', filler);
+        var end = body.Length;
+        body.Append("\nendstream\nendobj\n");
+
+        for (var k = 0; k < streams; k++)
+        {
+            var digits = (end - dataStart[k]).ToString("D10", CultureInfo.InvariantCulture);
+
+            for (var d = 0; d < digits.Length; d++)
+            {
+                body[lengthAt[k] + d] = digits[d];
+            }
+        }
+
+        file.Raw(body.ToString());
+        var index = objectStreams ? 6000 : 1000;
+        file.CrossReferenceStream(index, index + 1, rows, "/Root 1 0 R");
         return file.Bytes;
     }
 

@@ -677,6 +677,35 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_stream_s_data_is_read_from_the_file_each_time_it_is_asked_for_and_kept_by_nothing()
+    {
+        // A stream's data was read once and kept with the stream for as long as the stream was held, by the object cache or
+        // by the caller (#170). It is read each time it is asked for: a file in memory lends it where it lies, and any other
+        // source is read again.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, string.Empty, new string('A', 20_000))
+            .BuildClassic(rootNumber: 1);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+        var before = source.BytesRead;
+
+        var first = stream.GetRawBytes().ToArray();
+        var second = stream.GetRawBytes().ToArray();
+
+        first.Should().Equal(second);
+        first.Should().HaveCount(20_000).And.OnlyContain(value => value == (byte)'A');
+        (source.BytesRead - before).Should().Be(40_000, "the data is read each time it is asked for");
+
+        using var inMemory = PdfDocument.Open(file);
+        var lent = inMemory.GetObject(new PdfObjectId(3)).AsStream().Required().GetRawBytes();
+        System.Runtime.InteropServices.MemoryMarshal.TryGetArray(lent, out var segment).Should().BeTrue();
+        segment.Array.Should().BeSameAs(file, "a file in memory lends the data where it lies");
+    }
+
+    [Fact]
     public void Disposing_a_document_twice_is_harmless()
     {
         var document = PdfDocument.Open(SampleDocument().BuildClassic(rootNumber: 1));
