@@ -3845,8 +3845,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _rowsLeftUnread = RowsFrom(index is null ? [0, declared] : subsections, stopped, rowsCut ? long.MaxValue : held);
 
         _xref.MergeTrailer(dictionary);
+
+        // A hybrid file's stream gives a /Prev of its own, which no reader follows: the chain goes on through the table's,
+        // and the stream's is not read, to name a section missing or end the chain for a guard.
         string? previousHidden = null;
-        previous = rowsCut ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden);
+        previous = rowsCut || section.NamedBy == "/XRefStm" ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden);
         section.ChainHiddenByGuard = previousHidden;
         return XRefSectionState.Read;
     }

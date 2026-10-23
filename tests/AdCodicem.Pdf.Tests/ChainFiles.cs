@@ -476,6 +476,37 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A hybrid update over a classic table that indexes the catalog, the page tree and the page. The update writes object 9,
+    /// which holds 123 after <paramref name="padding"/> spaces, and object 10, which cross-reference stream 7 indexes; the
+    /// stream's own <c>/Prev</c> is <paramref name="streamPrev"/>, which no reader follows. The update's table indexes object
+    /// 9, and its trailer names the older table through <c>/Prev</c> and the stream through <c>/XRefStm</c>.
+    /// </summary>
+    public static byte[] HybridWithStreamPrev(string streamPrev, int padding = 3000)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var older = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{older}\n%%EOF\n"));
+        file.Object(9, new string(' ', padding) + "123");
+        file.Object(10, "(ten)");
+        var stream = file.Position;
+        var data = Encode([(1, file.OffsetOf(10), 0)], Rows.Raw);
+        file.Stream(
+            7,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 11 /W [1 4 2] /Index [10 1] /Prev {streamPrev} /Length {data.Length}"),
+            data);
+        var table = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\n9 1\n{file.OffsetOf(9):D10} 00000 n\r\ntrailer\n<< /Size 11 /Root 1 0 R /Prev {older} /XRefStm {stream} >>\nstartxref\n{table}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of two classic tables. The first indexes the catalog, the page tree, the page and object 12, the highest
     /// number; the second, an update, writes the catalog, the page tree and the page again, indexes them with object 4, a
     /// page the tree does not list, and object 9, which holds the first table's offset after <paramref name="padding"/>
