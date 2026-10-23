@@ -25,6 +25,10 @@ internal interface IPdfStreamDataProvider
     /// return after it, and so cannot say: a window a guard ended there is not grown for it, since stream data counts
     /// toward no window (#174).
     /// </summary>
+    /// <returns>
+    /// Where the data starts, or -1 when a regular character follows the keyword, which makes it a longer one, as a larger
+    /// window says: the parser asks for one.
+    /// </returns>
     long DataStart(long absoluteKeywordEnd);
 
     /// <summary>
