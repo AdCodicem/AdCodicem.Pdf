@@ -29,7 +29,9 @@ namespace AdCodicem.Pdf.Documents;
 /// every object's <c>ToString</c>. Disposing lets go of what the document kept: the objects it read, its index, and the
 /// file, closed when it was opened from a path, and held no longer when it was opened from memory or a stream. A stream's
 /// raw bytes taken before from a document held in memory are a view of that memory rather than a copy
-/// (<see cref="PdfStream.GetRawBytes"/>): for as long as they are held, they keep it alive, and they change as it does.
+/// (<see cref="PdfStream.GetRawBytes"/>), and so is what decoding gives back when no filter changes the data
+/// (<see cref="PdfStreamDecodingExtensions.Decode"/>): for as long as they are held, they keep it alive, and they change
+/// as it does.
 /// </para>
 /// </remarks>
 public sealed class PdfDocument : IDisposable

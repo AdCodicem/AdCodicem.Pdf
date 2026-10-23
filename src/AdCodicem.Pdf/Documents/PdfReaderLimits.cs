@@ -72,7 +72,9 @@ public sealed record PdfReaderLimits
     /// decoding it —, so a value above <see cref="Array.MaxLength"/> is taken as that length, and a <c>/Length</c> past it
     /// is cut there. Data past the bound is cut at it: what lies within it is read, and decoded as data the reader cut,
     /// whose lost tail is no damage. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitStreamLength"/>,
-    /// once for each stream. <see cref="Objects.PdfStreamData.Length"/> stays the length the file holds.
+    /// once for each stream in the document's diagnostics, and in diagnostics of your own each time you decode the stream
+    /// (<see cref="Objects.PdfStreamDecodingExtensions.Decode"/>). <see cref="Objects.PdfStreamData.Length"/> stays the
+    /// length the file holds.
     /// </para>
     /// <para>
     /// Data that decoding hands back as it is — no filter, an image filter, a filter the library does not know, one that

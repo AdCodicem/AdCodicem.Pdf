@@ -116,4 +116,6 @@ An object keeps what it holds once its document is disposed: a dictionary's dire
 the document was opened and whether or not it was read before: `Resolve()` on a reference, and every accessor that
 resolves one, such as `GetDictionary`; `GetRawBytes()` and `Decode()` on a stream read from the file, and
 `HasImageFilter()` when it has a value to load. Raw bytes taken before from a document held in memory stay a view of
-that memory: they keep it alive for as long as they are held.
+that memory, and so does what `Decode()` gave back when no filter changed the data — with no filter, or where decoding
+stopped at the first: an image filter, one the library does not know or could not decode the data with, the end of the
+chain —: they keep it alive for as long as they are held, and change as it does.

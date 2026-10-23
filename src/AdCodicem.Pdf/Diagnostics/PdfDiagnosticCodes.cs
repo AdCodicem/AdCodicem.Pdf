@@ -225,8 +225,9 @@ public static class PdfDiagnosticCodes
     /// <summary>
     /// A stream's encoded data runs past <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, and was read up to it:
     /// what lies within it is decoded as data the reader cut, and handed back as it is where decoding hands its data back
-    /// undecoded. Reported once for each stream, when its data is first read. Like every <c>limit.*</c> code, the guard is
-    /// the reader's, not damage in the file.
+    /// undecoded. Reported once for each stream in the document's diagnostics, when its data is first read, and in
+    /// diagnostics of your own each time you decode it. Like every <c>limit.*</c> code, the guard is the reader's, not
+    /// damage in the file.
     /// </summary>
     public const string LimitStreamLength = "limit.stream-length";
 
