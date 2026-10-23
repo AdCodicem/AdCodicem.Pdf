@@ -78,8 +78,8 @@ internal ref struct PdfObjectParser
 
     /// <summary>
     /// Whether a window's edge left the look-ahead of an integer undecided — "12 0" that may be what the edge left of
-    /// "12 0 R" —: what the parse reads after the integer is what the edge made of the reference, not what follows the
-    /// object (#224).
+    /// "12 0 R", or "12 0 R" that may be what it left of "12 0 RG" —: what the parse reads after the integer is what the
+    /// edge made of the reference, not what follows the object (#224).
     /// </summary>
     private bool _lookAheadCut;
 
@@ -173,6 +173,10 @@ internal ref struct PdfObjectParser
     /// data —, rather than where a guard cut it: only then is what its end cuts short the data's fault.
     /// </param>
     /// <param name="endsAtNextMember">Whether <paramref name="data"/> ends at the next member's start, which its reports then name.</param>
+    /// <param name="dataEdge">
+    /// Says what the decoded data holds past <paramref name="data"/>'s end, where a window's edge leaves a keyword undecided:
+    /// the data is in memory, so a member a window ends exactly with reads whole, as under a larger window.
+    /// </param>
     public static PdfObjectParser ForObjectStreamMember(
         ReadOnlyMemory<byte> data,
         int streamNumber,
@@ -181,9 +185,10 @@ internal ref struct PdfObjectParser
         IPdfObjectSource source,
         PdfDiagnostics diagnostics,
         bool endsData = true,
-        bool endsAtNextMember = false)
+        bool endsAtNextMember = false,
+        IPdfFileEdge? dataEdge = null)
     {
-        var parser = new PdfObjectParser(data, 0, source, diagnostics, endsData: endsData);
+        var parser = new PdfObjectParser(data, 0, source, diagnostics, endsData: endsData, fileEdge: dataEdge);
         parser._member = new ObjectStreamMember(streamNumber, dataStart, objectNumber, diagnostics, endsAtNextMember);
         return parser;
     }

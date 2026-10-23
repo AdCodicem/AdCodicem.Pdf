@@ -906,6 +906,35 @@ public class ReaderLimitsTests
     }
 
     [Fact]
+    public void A_member_whose_reference_ends_where_MaxObjectLength_ends_its_window_is_the_reference()
+    {
+        // Member 4's window ends where MaxObjectLength does, right after the R of "6 0 R": the decoded byte past it says the
+        // R is whole, as the file says of an object's, so the member is the reference the window the member would have
+        // without the guard reads, and nothing is reported, under ThrowOnLimit as without.
+        using var document = PdfDocument.Open(
+            MemberReachingItsBound("6 0 R"),
+            new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 205 }, ThrowOnLimit = true });
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(6));
+        document.Reader.IsCutAtLimit(4).Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_member_whose_R_the_byte_past_MaxObjectLength_continues_is_cut()
+    {
+        // The byte past member 4's window continues the R, "RG": what the window holds may be no reference, and the member
+        // is one the guard cut.
+        using var document = PdfDocument.Open(
+            MemberReachingItsBound("6 0 RG"), new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 205 } });
+
+        _ = document.GetObject(new PdfObjectId(4));
+
+        document.Reader.IsCutAtLimit(4).Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
     public void A_member_whose_array_ends_where_a_guard_cuts_the_data_is_read_whole()
     {
         // Member 10, the last, ends on byte 17, where MaxDecodedStreamLength cuts the data: the "]" that closes it is whole,
@@ -3158,6 +3187,25 @@ public class ReaderLimitsTests
     }
 
     private static int[] Numbers(int first, int count) => [.. Enumerable.Range(first, count)];
+
+    /// <summary>
+    /// Writes a file whose object stream 3 holds member 4, 200 spaces, then <paramref name="value"/> and 300 spaces, and
+    /// member 6, 42: a MaxObjectLength of 205 ends member 4's window right after the R of a reference.
+    /// </summary>
+    private static byte[] MemberReachingItsBound(string value)
+    {
+        var written = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, written.Object(1, Catalog), 0),
+            [2] = (1, written.Object(2, Pages), 0),
+            [3] = (1, written.ObjectStream(3, [(4, new string(' ', 200) + value + new string(' ', 300)), (6, "42")]), 0),
+            [4] = (2, 3, 0),
+            [6] = (2, 3, 1),
+        };
+        written.CrossReferenceStream(7, 8, rows, "/Root 1 0 R");
+        return written.Bytes;
+    }
 
     /// <summary>
     /// Writes a file whose chain places object 4 in object stream 10, whose dictionary runs past 128 bytes, and objects 6 and
