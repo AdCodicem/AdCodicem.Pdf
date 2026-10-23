@@ -307,11 +307,8 @@ internal ref struct PdfObjectParser
         var unseen = next.Kind == PdfTokenKind.EndOfInput || next.End >= _memory.Length || _headerUndecided;
 
         // What follows a stream whose data runs past the buffer lies past it too: the file was asked at the stream's
-        // end, and its answer stands where the buffer has none (#55). An endobj a window's edge reaches may be the start of
-        // a longer keyword: the file says whether a regular character follows it, so that an object a window ends exactly
-        // with reads whole, as under a larger window; a parser no file backs asks for a larger buffer (#174).
-        var endObj = IsEndObj(next) ||
-            (next.IsKeyword("endobj"u8) && !PastWindowEdge && _fileEdge is { } file && file.TokenEndsAt(_baseOffset + next.End));
+        // end, and its answer stands where the buffer has none (#55).
+        var endObj = IsEndObj(next);
         _endObj = endObj
             ? EndObjState.Present
             : _endObjUnknown ? EndObjState.Unknown
@@ -340,8 +337,8 @@ internal ref struct PdfObjectParser
     private PdfObject ParseValue(PdfToken token, int depth)
     {
         // A value that reaches the end of the buffer may go on past it: "12" of "1234", a string without
-        // its closing delimiter, the "<" of a "<<".
-        if (token.Kind != PdfTokenKind.EndOfInput && token.End >= _memory.Length)
+        // its closing delimiter, the "<" of a "<<". An endobj the file says ends there does not: an empty object's.
+        if (token.Kind != PdfTokenKind.EndOfInput && token.End >= _memory.Length && !IsEndObj(token))
         {
             _truncated = true;
         }
@@ -414,7 +411,7 @@ internal ref struct PdfObjectParser
                 return PdfNull.Instance;
 
             default:
-                if (!AtWindowEdge(token))
+                if (!AtWindowEdge(token) || IsEndObj(token))
                 {
                     Report(PdfDiagnosticCodes.SyntaxUnexpectedToken, "A token was found where a value was expected.", token.Start);
                 }
@@ -1474,9 +1471,13 @@ internal ref struct PdfObjectParser
 
     /// <summary>
     /// Determines whether <paramref name="token"/> is <c>endobj</c>, and whole: one that reaches the end of a buffer that is
-    /// a window's edge may be the start of a longer keyword.
+    /// a window's edge may be the start of a longer keyword, which the file says when it backs the parser, so that an object
+    /// a window ends exactly with reads whole, as under a larger window, wherever its endobj comes — after its value, where a
+    /// container it left open is, or as all it holds (#174); a parser no file backs asks for a larger buffer.
     /// </summary>
-    private readonly bool IsEndObj(PdfToken token) => token.IsKeyword("endobj"u8) && !AtWindowEdge(token);
+    private readonly bool IsEndObj(PdfToken token) =>
+        token.IsKeyword("endobj"u8) &&
+        (!AtWindowEdge(token) || (!PastWindowEdge && _fileEdge is { } file && file.TokenEndsAt(_baseOffset + token.End)));
 
     /// <summary>
     /// Determines whether <paramref name="number"/>, read where a key is expected, starts the next object's header

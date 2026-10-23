@@ -407,18 +407,22 @@ public class SyntaxFaultTests
     [InlineData("Prev", 9)]
     [InlineData("XRefStm", 6)]
     [InlineData("W", 5)]
-    [InlineData("Length", 5)]
+    [InlineData("W unclosed", 5)]
+    [InlineData("Prev empty", 9)]
     public void An_object_the_chain_reads_exactly_as_long_as_MaxObjectLength_reads_whole(string key, int number)
     {
-        // The chain reads object N — a /Prev, an /XRefStm, a cross-reference stream's /W or its /Length — through a window
-        // MaxObjectLength ends right after its endobj: the file says no regular character goes on past it, and the object is
-        // whole, as a load reads it. It ended the chain for the guard, which no load then reached (#174, #263).
+        // The chain reads object N — a /Prev, an /XRefStm, a cross-reference stream's /W — through a window MaxObjectLength
+        // ends right after its endobj: the file says no regular character goes on past it, and the object is whole, as a
+        // load reads it, whether the endobj follows its value, ends an array it left open, or is all it holds. It ended the
+        // chain for the guard, which no load then reached (#174, #263).
         var file = key switch
         {
             "Prev" => ChainFiles.UpdateNamingItsPrevious("9 0 R", padding: 200),
             "XRefStm" => ChainFiles.HybridNamingItsStream("6 0 R", padding: 200),
             "W" => ChainFiles.UnderAnUpdate("W", placed: true, padding: 200),
-            _ => ChainFiles.UpdatePlacingAPaddedLength(chained: false, padding: 200),
+            "W unclosed" => ChainFiles.UnderAnUpdate(
+                "/Type /XRef /Size 8 /W 5 0 R /Length {length}", "[1 4 2" + new string(' ', 200), compressed: false, predicted: false, placed: true),
+            _ => Blanked(ChainFiles.UpdateNamingItsPrevious("9 0 R", padding: 200)),
         };
         var text = Encoding.Latin1.GetString(file);
         var header = text.IndexOf(string.Create(CultureInfo.InvariantCulture, $"\n{number} 0 obj\n"), StringComparison.Ordinal) + 1;
@@ -440,6 +444,55 @@ public class SyntaxFaultTests
         var throwing = () => PdfDocument.Open(
             file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit }, ThrowOnLimit = true }).Dispose();
         throwing.Should().NotThrow();
+
+        // Object 9's value, the first table's offset, given to spaces: the object holds nothing but its endobj.
+        static byte[] Blanked(byte[] file)
+        {
+            var text = Encoding.Latin1.GetString(file);
+            var value = text.IndexOf("\nendobj", text.IndexOf("\n9 0 obj\n", StringComparison.Ordinal), StringComparison.Ordinal);
+            var start = text.LastIndexOf(' ', value) + 1;
+            return Encoding.Latin1.GetBytes(text[..start] + new string(' ', value - start) + text[value..]);
+        }
+    }
+
+    [Theory]
+    [InlineData("[1 2 3")]
+    [InlineData("<< /A 1 /B 2")]
+    [InlineData("<< /A 1 /B")]
+    [InlineData("<< /A [1 2")]
+    [InlineData("")]
+    public void An_object_whose_endobj_ends_its_containers_at_MaxObjectLength_reads_as_under_a_larger_bound(string body)
+    {
+        // Object 4 left an array or a dictionary open, or holds nothing, and MaxObjectLength's window ends right after its
+        // endobj: the file says no regular character follows that endobj, which ends the object as it does under a larger
+        // bound — the containers it left open reported as the file's —, where it was taken for the guard's cut (#174). Its
+        // value comes after 100 spaces, so that no other object is as long.
+        var padded = new string(' ', 100) + body;
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Extra 4 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, padded),
+        };
+        file.Table(5, rows, "/Size 5 /Root 1 0 R");
+        var limit = ("4 0 obj\n" + padded + "\nendobj").Length;
+
+        using var exact = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit } });
+        using var larger = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit + 1 } });
+
+        exact.GetObject(new PdfObjectId(4)).ToString().Should().Be(larger.GetObject(new PdfObjectId(4)).ToString());
+        exact.Reader.IsCutAtLimit(4).Should().BeFalse();
+        Of4(exact).Should().Equal(Of4(larger));
+        exact.Reader.IsEndObjMissing(4, out _).Should().Be(larger.Reader.IsEndObjMissing(4, out _));
+
+        var throwing = () => PdfDocument.Open(
+            file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit }, ThrowOnLimit = true }).GetObject(new PdfObjectId(4));
+        throwing.Should().NotThrow();
+
+        // What is reported of object 4, which starts at rows[4].
+        IEnumerable<(string, long)> Of4(PdfDocument document) =>
+            document.Diagnostics.Where(entry => entry.Position >= rows[4]).Select(entry => (entry.Code, entry.Position));
     }
 
     /// <summary>
