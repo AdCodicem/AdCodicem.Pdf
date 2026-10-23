@@ -1486,6 +1486,61 @@ public class GuardCutValueTests
         guarded.Diagnostics.Should().BeEmpty();
     }
 
+    [Fact]
+    public void The_rule_on_trailer_values_follows_no_parameter_past_the_step_MaxFilterChainLength_ends_decoding_at()
+    {
+        // Stream 7's second Flate step reads /Columns past its predictor, in object 6, which holds 7.0; MaxFilterChainLength
+        // lets the first step alone run. Decoding never read the parameter, and the rule, held to the bound the reader read
+        // under, judges nothing it leads to (#263).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Filter [/FlateDecode /FlateDecode] /DecodeParms [null 5 0 R] /Length {length}",
+            "<< /Predictor 12 /Columns 6 0 R >>",
+            compressed: true,
+            predicted: false,
+            placed: true,
+            placedToo: new Dictionary<int, string> { [6] = "7.0" });
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 1 } });
+        var trailers = new ValidationProfile("trailers", 1, [new TrailerValueWrongRule()]);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitFilterChain);
+        new PdfValidator(new PdfValidatorOptions { Profile = trailers }).Validate(document).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_rule_on_trailer_values_judges_a_parameter_decoding_read_whatever_the_cache_let_go_before_validating()
+    {
+        // Stream 7's /DecodeParms, object 5, gives /Columns past its predictor as a reference to object 100, which holds 7.0.
+        // Read before validating, with 63 objects after it, object 5 left a cache of 64: the rule read it again, a reference
+        // to /Columns decoding had not followed, and lost the finding decoding's own read gives (#263).
+        var placed = new Dictionary<int, string> { [100] = "7.0" };
+
+        for (var number = 200; number < 270; number++)
+        {
+            placed[number] = "(x)";
+        }
+
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Filter /FlateDecode /DecodeParms 5 0 R /Length {length}",
+            "<< /Predictor 12 /Columns 100 0 R >>",
+            compressed: true,
+            predicted: true,
+            placed: true,
+            placedToo: placed);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { ObjectCacheCapacity = 64 });
+        _ = document.GetObject(new PdfObjectId(5));
+
+        for (var number = 200; number < 263; number++)
+        {
+            _ = document.GetObject(new PdfObjectId(number));
+        }
+
+        var trailers = new ValidationProfile("trailers", 1, [new TrailerValueWrongRule()]);
+
+        new PdfValidator(new PdfValidatorOptions { Profile = trailers }).Validate(document).Findings.Select(finding => finding.Message)
+            .Should().ContainSingle(message => message.EndsWith(
+                "gives /Columns of its /DecodeParms as a real number, where Table 8 of ISO 32000-1 asks for an integer.", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("Prev", "9 0 R", true)]
     [InlineData("XRefStm", "9 0 R", true)]
