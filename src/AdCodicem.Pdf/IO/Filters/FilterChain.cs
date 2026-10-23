@@ -32,6 +32,13 @@ namespace AdCodicem.Pdf.IO.Filters;
 /// towards it, though decoding runs no step for it.
 /// </para>
 /// <para>
+/// It ends, as well, at a value that leads to an object one of the reader's guards cut, or left out of the index: the
+/// <c>/Filter</c> entry or an element of it, <c>/DecodeParms</c> or a value of a step's parameters. What the cut left of
+/// it — null, a name it parted, a value it may yet go on past — is the guard's, and no filter the file gave: the step it
+/// is read for, and those after it, do not run, and the data is left as the steps before them decode it, the guard
+/// reported where it was reached (#263).
+/// </para>
+/// <para>
 /// What was resolved is kept only where the file did not write it plainly. The <c>/Filter</c> array is read again as the
 /// steps run, so a name it holds costs nothing more; the name an element written as a reference led to is kept, a slot
 /// each. A dictionary that serves every step is read once for Flate and once for LZW, and of an array of parameters, only
@@ -107,9 +114,8 @@ internal sealed class FilterChain
     /// <param name="maxFilters">The most filters the stream's data may pass through: the chain ends at the element past them.</param>
     public static FilterChain Resolve(PdfDictionary dictionary, int maxFilters)
     {
-        var reader = default(Resolving);
-        TryRead(dictionary, maxFilters, ref reader, readParameters: true, keep: true, out var reading);
-        return reading.Filters is null ? NoFilter : new FilterChain(reading);
+        var reading = Read(dictionary, maxFilters, readParameters: true, keep: true);
+        return reading.Filters is null && reading.End == FilterChainEnd.None ? NoFilter : new FilterChain(reading);
     }
 
     /// <summary>
@@ -118,12 +124,8 @@ internal sealed class FilterChain
     /// </summary>
     /// <param name="dictionary">The stream's dictionary.</param>
     /// <param name="maxFilters">The most filters the stream's data may pass through: the chain ends at the element past them.</param>
-    public static FilterChainEnd EndOf(PdfDictionary dictionary, int maxFilters)
-    {
-        var reader = default(Resolving);
-        TryRead(dictionary, maxFilters, ref reader, readParameters: false, keep: false, out var reading);
-        return reading.End;
-    }
+    public static FilterChainEnd EndOf(PdfDictionary dictionary, int maxFilters) =>
+        Read(dictionary, maxFilters, readParameters: false, keep: false).End;
 
     /// <summary>
     /// Follows, through <paramref name="reader"/>, every value decoding the stream <paramref name="dictionary"/> describes
@@ -327,6 +329,27 @@ internal sealed class FilterChain
         return true;
     }
 
+    /// <summary>
+    /// Resolves the chain of filters the stream <paramref name="dictionary"/> describes, as decoding reads it: a value that
+    /// leads to an object one of the reader's guards cut, or left out of the index, ends it where it is read, as the
+    /// element past the guard on filters does — the steps before it run, and what they decode is left encoded by the rest
+    /// (#263).
+    /// </summary>
+    private static Reading Read(PdfDictionary dictionary, int maxFilters, bool readParameters, bool keep)
+    {
+        var reader = default(Resolving);
+
+        if (!TryRead(dictionary, maxFilters, ref reader, readParameters, keep, out var reading))
+        {
+            // The steps read whole before the value stand: the chain ends at the element that value was read for.
+            reading.End = FilterChainEnd.Guard;
+            reading.EndIndex = reading.Length;
+            reading.EndValue = null;
+        }
+
+        return reading;
+    }
+
     /// <summary>Adds <paramref name="item"/> to <paramref name="items"/>, which grows as a list does.</summary>
     private static void Append<T>(ref T[]? items, ref int count, T item)
     {
@@ -426,12 +449,22 @@ internal sealed class FilterChain
         public FilterParameters Lzw = new();
     }
 
-    /// <summary>Follows each value as <see cref="PdfReference.Resolve"/> does, and never ends the reading.</summary>
+    /// <summary>
+    /// Follows each value as <see cref="PdfReference.Resolve"/> does, and ends the reading at one that leads to an object
+    /// one of the reader's guards cut, or left out of the index (<see cref="PdfFileReader.LeftByGuard"/>).
+    /// </summary>
     private struct Resolving : IFilterValueReader
     {
         public readonly bool TryRead(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
         {
             value = written?.Resolve();
+
+            if (written is PdfReference reference && reference.Source is PdfFileReader reader && reader.LeftByGuard(reference))
+            {
+                value = null;
+                return false;
+            }
+
             return true;
         }
     }

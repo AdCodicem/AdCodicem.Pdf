@@ -33,23 +33,33 @@ internal static class PdfFilterPipeline
     /// </param>
     /// <param name="guard">Bounds what each filter's output may be and how many filters run, and says what reaching either does.</param>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard) =>
-        Decode(stream, diagnostics, guard, out _);
+        Decode(stream, diagnostics, guard, out _, out _);
 
     /// <summary>
-    /// Decodes a stream's data under its document's guards, and says whether the most filters the reader lets data pass
-    /// through ended decoding: what comes back is then the data still encoded by the filters past them, no part of what
-    /// the stream decodes to, as a reader of its rows or its objects must know.
+    /// Decodes a stream's data under its document's guards, and says whether one of them ended decoding — the most filters
+    /// the reader lets data pass through, or a value the filters read that a guard cut or left out of the index: what comes
+    /// back is then the data still encoded by the filters past it, no part of what the stream decodes to —, and whether one
+    /// cut the data, as a reader of its rows or its objects must know.
     /// </summary>
     /// <param name="stream">The stream to decode.</param>
     /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
-    /// <param name="leftEncoded">Whether <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> ended decoding.</param>
+    /// <param name="leftEncoded">
+    /// Whether <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> ended decoding, or a value the filters read that
+    /// a guard cut or left out of the index did (#263).
+    /// </param>
+    /// <param name="cutByGuard">
+    /// Whether the data decoded is cut by a guard: the stream's own data, which the reader read in part, or what a filter
+    /// stopped at <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>. A guard that loading a value the filters
+    /// read reaches is that value's, and does not cut the data.
+    /// </param>
     /// <exception cref="PdfLimitExceededException">
     /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
     /// </exception>
-    public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, out bool leftEncoded) =>
-        Decode(stream, diagnostics, stream.Data.LimitGuard, out leftEncoded);
+    public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, out bool leftEncoded, out bool cutByGuard) =>
+        Decode(stream, diagnostics, stream.Data.LimitGuard, out leftEncoded, out cutByGuard);
 
-    private static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard, out bool leftEncoded)
+    private static ReadOnlyMemory<byte> Decode(
+        PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard, out bool leftEncoded, out bool cutByGuard)
     {
         diagnostics ??= guard.DocumentDiagnostics;
 
@@ -66,7 +76,7 @@ internal static class PdfFilterPipeline
         // its own reports in.
         if (diagnostics is null || !ReferenceEquals(diagnostics, guard.DocumentDiagnostics))
         {
-            return DecodeChain(stream, chain, data, diagnostics, guard, out leftEncoded);
+            return DecodeChain(stream, chain, data, diagnostics, guard, out leftEncoded, out cutByGuard);
         }
 
         var decodings = diagnostics.Decodings;
@@ -74,7 +84,7 @@ internal static class PdfFilterPipeline
 
         try
         {
-            return DecodeChain(stream, chain, data, decodings, guard, out leftEncoded);
+            return DecodeChain(stream, chain, data, decodings, guard, out leftEncoded, out cutByGuard);
         }
         finally
         {
@@ -85,7 +95,13 @@ internal static class PdfFilterPipeline
 
     /// <summary>Decodes <paramref name="data"/> through the filters of <paramref name="chain"/>, reporting into <paramref name="diagnostics"/>.</summary>
     private static ReadOnlyMemory<byte> DecodeChain(
-        PdfStream stream, FilterChain chain, ReadOnlyMemory<byte> data, PdfDiagnostics? diagnostics, PdfLimitGuard guard, out bool leftEncoded)
+        PdfStream stream,
+        FilterChain chain,
+        ReadOnlyMemory<byte> data,
+        PdfDiagnostics? diagnostics,
+        PdfLimitGuard guard,
+        out bool leftEncoded,
+        out bool cutByGuard)
     {
         leftEncoded = false;
 
@@ -128,6 +144,7 @@ internal static class PdfFilterPipeline
             // library does not know: the filters after it would read what it encoded, and each fail on it again.
             if (failed)
             {
+                cutByGuard = cut;
                 return data;
             }
 
@@ -135,7 +152,11 @@ internal static class PdfFilterPipeline
         }
 
         ReportEnd(chain, diagnostics, stream.Data.Position, guard);
-        leftEncoded = chain.End == FilterChainEnd.Limit;
+
+        // A value a guard cut or left out of the index was reported where the guard was reached: the chain ends there in
+        // silence.
+        leftEncoded = chain.End is FilterChainEnd.Limit or FilterChainEnd.Guard;
+        cutByGuard = cut;
         return data;
     }
 

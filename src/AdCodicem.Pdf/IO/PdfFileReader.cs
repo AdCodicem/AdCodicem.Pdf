@@ -273,6 +273,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private HashSet<PdfObjectId>? _cutWhileChainIsRead;
 
     /// <summary>
+    /// The objects a guard cut that a cross-reference stream's values led to, which the chain could not read and ended at:
+    /// each is loaded once the chain is read, so that its guard is reached where a load reaches it (#263).
+    /// </summary>
+    private List<PdfObjectId>? _chainValuesCut;
+
+    /// <summary>
     /// The object numbers whose rows a guard left unread in the cross-reference stream just read — past the data it cut, or
     /// from the row the index had no room for —, as pairs of a first number and a count; null where the section just read
     /// is a table, whose rows past a guard may number any object. Set as each section is read, for its own trailer.
@@ -2097,6 +2103,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _structure.SizeAsWritten = Trailer.GetRaw(PdfName.Size);
         _structure.RootAsWritten = Trailer.GetRaw(PdfName.Root);
         CheckDeferredLengths();
+        ReachChainValuesCut();
 
         if (!HasUsableRoot())
         {
@@ -2185,6 +2192,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 _diagnostics.Warn(PdfDiagnosticCodes.StreamLengthInvalid, message, dataStart);
             }
+        }
+    }
+
+    /// <summary>
+    /// Loads, once the chain is read, each object a guard cut that a cross-reference stream's value led to, which the chain
+    /// ended at: the guard is reached, and reported, where a load reaches it — and thrown, when the caller asked for it —,
+    /// as for a <c>/Length</c> read once the chain is (#263).
+    /// </summary>
+    private void ReachChainValuesCut()
+    {
+        if (_chainValuesCut is not { } cut)
+        {
+            return;
+        }
+
+        _chainValuesCut = null;
+
+        foreach (var id in cut)
+        {
+            GetObject(id);
         }
     }
 
@@ -3365,12 +3392,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         return false;
     }
 
-    /// <summary>
-    /// Determines whether a guard was reached since <paramref name="mark"/>, its report kept or dropped: a cut taken for
-    /// the file's damage once the capacity is reached would let an older section's rows stand for what the cut hid.
-    /// </summary>
-    private static bool LimitSince(PdfDiagnostics diagnostics, PdfDiagnosticsMark mark) => diagnostics.LimitsReached > mark.Limits;
-
     /// <summary>Says what a token is, for a message about what stood where something else should have.</summary>
     private static string DescribeToken(PdfToken token) => token.Kind switch
     {
@@ -3548,9 +3569,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return XRefSectionState.Malformed;
         }
 
-        if (UnreadValue(dictionary) is { } unread)
+        if (UnreadValue(dictionary, out var unreadCut) is { } unread)
         {
+            // A value a guard cut is the guard's, as rows a guard cut are: the section counts as cut, the chain ends here,
+            // and nothing is rebuilt for it (ADR 34). The guard is reached once the chain is read (#263).
             section.Fault = unread;
+
+            if (unreadCut is { } cut)
+            {
+                section.CutByLimit = true;
+                (_chainValuesCut ??= []).Add(cut);
+            }
+
             return XRefSectionState.Malformed;
         }
 
@@ -3632,11 +3662,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         while (true)
         {
-            var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, out var leftEncoded);
+            var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, out var leftEncoded, out var cut);
 
             // Data the guard on filters left encoded holds none of the section's rows: the section is cut before its first.
             data = leftEncoded ? default : decoded.Span;
-            decodedWhole = !LimitSince(_diagnostics, decoding) && !xrefStream.Data.CutByGuard;
+            decodedWhole = !cut && !leftEncoded;
 
             // A row longer than the decoded data is one the data does not hold. Not a guard (ADR 34): the data's length is
             // bounded by MaxDecodedStreamLength, a guard, and a valid section's rows are in its data. Each width is narrowed
@@ -3816,22 +3846,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// rows are read without — <c>/Type</c>, <c>/Size</c> beside an <c>/Index</c>, an entry no filter reads — leaves the
     /// section readable; the validator reports how it is written.
     /// </remarks>
-    private string? UnreadValue(PdfDictionary dictionary)
+    /// <param name="dictionary">The cross-reference stream's dictionary.</param>
+    /// <param name="cut">The object a guard cut that the value which cannot be read leads to, or null when no guard did.</param>
+    private string? UnreadValue(PdfDictionary dictionary, out PdfObjectId? cut)
     {
-        if (Unread(dictionary, PdfName.W, out var widths) is { } fault)
+        if (Unread(dictionary, PdfName.W, out var widths, out cut) is { } fault)
         {
             return fault;
         }
 
         for (var i = 0; widths is PdfArray w && i < Math.Min(3, w.Count); i++)
         {
-            if (Follow(PdfName.W, w[i], entry: false, out _) is { } elementFault)
+            if (Follow(PdfName.W, w[i], entry: false, out _, out cut) is { } elementFault)
             {
                 return elementFault;
             }
         }
 
-        if (Unread(dictionary, PdfName.Index, out var index) is { } indexFault)
+        if (Unread(dictionary, PdfName.Index, out var index, out cut) is { } indexFault)
         {
             return indexFault;
         }
@@ -3840,19 +3872,21 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             foreach (var element in ranges)
             {
-                if (Follow(PdfName.Index, element, entry: false, out _) is { } elementFault)
+                if (Follow(PdfName.Index, element, entry: false, out _, out cut) is { } elementFault)
                 {
                     return elementFault;
                 }
             }
         }
-        else if ((index is null or PdfNull) && Unread(dictionary, PdfName.Size, out _) is { } sizeFault)
+        else if ((index is null or PdfNull) && Unread(dictionary, PdfName.Size, out _, out cut) is { } sizeFault)
         {
             return sizeFault;
         }
 
         var following = new Following(this);
-        return Filters.FilterChain.TryFollow(dictionary, _guard.Bound(PdfLimit.FilterChain), ref following) ? null : following.Fault;
+        var filtersRead = Filters.FilterChain.TryFollow(dictionary, _guard.Bound(PdfLimit.FilterChain), ref following);
+        cut = following.Cut;
+        return filtersRead ? null : following.Fault;
     }
 
     /// <summary>
@@ -3865,10 +3899,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         /// <summary>Gets what could not be read, once a value could not be.</summary>
         public string? Fault { get; private set; }
 
+        /// <summary>Gets the object a guard cut that the value which could not be read leads to, if a guard cut one.</summary>
+        public PdfObjectId? Cut { get; private set; }
+
         /// <inheritdoc/>
         public bool TryRead(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
         {
-            Fault = reader.Follow(key, written, entry, out value);
+            Fault = reader.Follow(key, written, entry, out value, out var cut);
+            Cut = cut;
             return Fault is null;
         }
     }
@@ -3877,8 +3915,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Follows the value <paramref name="key"/> gives in <paramref name="dictionary"/>, and says so when a reference it is,
     /// or leads to, cannot be read.
     /// </summary>
-    private string? Unread(PdfDictionary dictionary, PdfName key, out PdfObject? value) =>
-        Follow(key, dictionary.GetRaw(key), entry: true, out value);
+    private string? Unread(PdfDictionary dictionary, PdfName key, out PdfObject? value, out PdfObjectId? cut) =>
+        Follow(key, dictionary.GetRaw(key), entry: true, out value, out cut);
 
     /// <summary>
     /// Follows <paramref name="written"/> through as many references as <see cref="PdfReference.Resolve"/> does, each read
@@ -3889,9 +3927,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="written">The value as the file wrote it.</param>
     /// <param name="entry">Whether <paramref name="written"/> is the entry's own value, rather than an element of it.</param>
     /// <param name="value">The value it leads to, or null when it leads to none.</param>
-    private string? Follow(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
+    /// <param name="cut">The object a guard cut that left the value unread, or null when none did.</param>
+    private string? Follow(PdfName key, PdfObject? written, bool entry, out PdfObject? value, out PdfObjectId? cut)
     {
         value = written;
+        cut = null;
 
         for (var link = 0; value is PdfReference reference; link++)
         {
@@ -3903,10 +3943,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             if (ReadWithoutLoading(reference.Id) is not { } read)
             {
+                // An object a section read so far places, which runs past MaxObjectLength: the guard's, not the file's.
+                var place = "which no section read before it places where it can be read";
+
+                if (_cutWhileChainIsRead?.Contains(reference.Id) == true)
+                {
+                    cut = reference.Id;
+                    place = "which one of the reader's limits cut";
+                }
+
                 value = null;
                 return string.Create(
                     CultureInfo.InvariantCulture,
-                    $"its {FileQuote.Name(key)} {(entry && link == 0 ? "is" : "holds")} the reference {reference.Id.Number} {reference.Id.Generation} R, which no section read before it places where it can be read");
+                    $"its {FileQuote.Name(key)} {(entry && link == 0 ? "is" : "holds")} the reference {reference.Id.Number} {reference.Id.Generation} R, {place}");
             }
 
             value = read;
@@ -4971,9 +5020,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return ObjectStreamHeaderResult.Unreadable;
         }
 
-        var mark = _diagnostics.GetMark();
-        var data = Filters.PdfFilterPipeline.Decode(stream, _diagnostics, out var leftEncoded);
-        var cut = LimitSince(_diagnostics, mark) || stream.Data.CutByGuard;
+        var data = Filters.PdfFilterPipeline.Decode(stream, _diagnostics, out var leftEncoded, out var cut);
 
         // Data the guard on filters left encoded holds none of the stream's objects: what its header says is unknown.
         if (leftEncoded)
@@ -6327,9 +6374,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return null;
             }
 
-            var mark = diagnostics.GetMark();
-            var data = Filters.PdfFilterPipeline.Decode(stream, diagnostics, out var leftEncoded);
-            var cutByGuard = LimitSince(diagnostics, mark) || stream.Data.CutByGuard;
+            var data = Filters.PdfFilterPipeline.Decode(stream, diagnostics, out var leftEncoded, out var cutByGuard);
 
             // Data the guard on filters left encoded holds none of the stream's objects, as data a guard cut before /First.
             if (leftEncoded)

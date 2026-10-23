@@ -135,6 +135,143 @@ public class GuardCutValueTests
         document.Reader.Structure.Sections.Should().OnlyContain(section => section.State == IO.XRef.XRefSectionState.Read);
     }
 
+    /// <summary>The entries of object stream 10 that lead to object 20, and what object 20 holds.</summary>
+    private static readonly (string Entries, string Twenty)[] Values =
+    [
+        ("/Filter 20 0 R", "/FlateDecode"),
+        ("/Filter [20 0 R]", "/FlateDecode"),
+        ("/Filter /FlateDecode /DecodeParms 20 0 R", "<< /Predictor 1 >>"),
+        ("/Filter /FlateDecode /DecodeParms [20 0 R]", "<< /Predictor 1 >>"),
+        ("/Filter /FlateDecode /DecodeParms << /Predictor 20 0 R >>", "1"),
+    ];
+
+    public static TheoryData<string, string, string> Cuts
+    {
+        get
+        {
+            var data = new TheoryData<string, string, string>();
+
+            foreach (var (entries, twenty) in Values)
+            {
+                foreach (var cut in new[] { "before the value", "inside the value", "member past the data", "left out of the index" })
+                {
+                    data.Add(entries, twenty, cut);
+                }
+            }
+
+            return data;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Cuts))]
+    public void An_object_stream_whose_filter_values_a_guard_cut_is_hidden_and_its_members_taken_as_read(string entries, string twenty, string cut)
+    {
+        // The catalog is packed in object stream 10, whose /Filter, /DecodeParms or a value of its parameters leads to object
+        // 20, which a guard cut — before its value, or inside it: "/Flate" of "/FlateDecode" —, left past the data of an
+        // object stream it decoded, or out of the index. The stream decoded as no filter, or as "/Flate", unsupported, and
+        // its header read as stray bytes: the catalog was looked for elsewhere, and a sound file judged broken (#263). The
+        // filters end at the guard's value, the stream is left encoded and hidden, and its members are the guard's.
+        var (file, options) = PackedCatalog(entries, twenty, cut);
+        using var document = PdfDocument.Open(file, options);
+
+        document.Reader.Structure.RootCutByGuard.Should().BeTrue();
+        document.Diagnostics.Should().NotContain(entry =>
+            entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable || entry.Code == PdfDiagnosticCodes.FilterUnsupported ||
+            entry.Code == PdfDiagnosticCodes.TrailerRootRecovered);
+        var report = new PdfValidator().Validate(document);
+        report.Contains(PdfValidationRuleIds.FileRootInvalid).Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeTrue();
+
+        using var control = PdfDocument.Open(file);
+        control.Catalog.Should().NotBeNull();
+        control.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_content_stream_whose_filter_a_guard_cut_comes_back_as_the_filters_before_it_decode_it()
+    {
+        // The page's content stream decodes through /ASCIIHexDecode, then object 20, which MaxObjectLength cuts before
+        // "/ASCIIHexDecode": its data comes back as the first filter decodes it, as past MaxFilterChainLength, and nothing is
+        // said but the guard — once, it decoded as if the chain ended there, in silence (#263).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [4] = file.Object(4, "<< /Filter [/ASCIIHexDecode 20 0 R] /Length 23 >>\nstream\n333032303330323036443E>\nendstream"),
+            [20] = file.Object(20, new string(' ', 3000) + "/ASCIIHexDecode"),
+        };
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        Encoding.ASCII.GetString(stream.Decode().Span).Should().Be("302030206D>");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+
+        using var control = PdfDocument.Open(file.Bytes);
+        Encoding.ASCII.GetString(control.GetObject(new PdfObjectId(4)).AsStream().Required().Decode().Span).Should().Be("0 0 m");
+        control.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_guard_a_filter_value_reaches_as_it_loads_is_not_the_stream_s_own_cut()
+    {
+        // Object stream 10's /Filter is object 20, read whole from object stream 11, whose own decoding reaches
+        // MaxDecodedStreamLength on a later member; 10's /First lies past its data. The guard 20's load reached was taken for
+        // 10's: its fault went unreported, and its catalog was taken as cut, though the validator, reading 20 from the cache,
+        // judged it broken (#263). The guard is 11's: 10's fault is the file's, reported by both.
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"), 0),
+            [11] = (1, FlateObjectStream(file, 11, [(20, "/FlateDecode"), (21, "(" + new string('x', 300) + ")")]), 0),
+            [20] = (2, 11, 0),
+            [21] = (2, 11, 1),
+            [10] = (1, FlateObjectStream(file, 10, [(1, "<< /Type /Catalog /Pages 2 0 R >>")], "/First 999 ", filter: "20 0 R"), 0),
+            [1] = (2, 10, 0),
+        };
+        file.CrossReferenceStream(12, 22, rows, "/Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 100 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.Reader.Structure.RootCutByGuard.Should().BeFalse();
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable);
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Filter")]
+    [InlineData("DecodeParms")]
+    [InlineData("Columns")]
+    [InlineData("W")]
+    [InlineData("W element")]
+    [InlineData("Index")]
+    [InlineData("Index element")]
+    [InlineData("Size")]
+    public void A_cross_reference_stream_value_a_guard_cut_ends_the_chain_as_the_guard_s(string key)
+    {
+        // Stream 7's /Filter, /DecodeParms, /W or /Index is object 5, which the newer table places and MaxObjectLength cuts
+        // after its value. The chain said no section placed it, rebuilt the index and judged the section malformed. The
+        // section is the guard's: the chain ends there, nothing is rebuilt, and the guard is reached once the chain is read
+        // — thrown at opening when the caller asks for it (#263).
+        var file = ChainFiles.UnderAnUpdate(key, placed: true, padding: 3000);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
+        document.Reader.Structure.Sections[1].Fault.Should().EndWith("the reference 5 0 R, which one of the reader's limits cut");
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
     /// <summary>
     /// A page whose content stream, object 4, holds <paramref name="data"/>, its <c>/Length</c> object 20, which holds
     /// <paramref name="twenty"/>; with no <c>endstream</c> unless <paramref name="endStream"/>.
@@ -152,6 +289,66 @@ public class GuardCutValueTests
         };
         file.Table(21, rows, "/Size 21 /Root 1 0 R");
         return file.Bytes;
+    }
+
+    /// <summary>
+    /// The catalog, packed in Flate object stream 10, whose dictionary holds <paramref name="entries"/>, which lead to object
+    /// 20, holding <paramref name="twenty"/>; and the reader's options under which a guard cuts object 20 as
+    /// <paramref name="cut"/> says.
+    /// </summary>
+    private static (byte[] File, PdfReaderOptions Options) PackedCatalog(string entries, string twenty, string cut)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var older = -1L;
+
+        if (cut == "left out of the index")
+        {
+            older = file.Table(23, new Dictionary<int, long> { [20] = file.Object(20, twenty) }, "/Size 23");
+        }
+
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>"), 0),
+            [1] = (2, 10, 0),
+        };
+        var catalog = "<< /Type /Catalog /Pages 2 0 R >>";
+        var data = HostileInputTests.Compress(Encoding.ASCII.GetBytes("1 0 " + catalog));
+        rows[10] = (1, file.Object(
+            10,
+            string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 4 {entries} /Length {data.Length} >>\nstream\n{Encoding.Latin1.GetString(data)}\nendstream")),
+            0);
+        PdfReaderLimits limits;
+
+        switch (cut)
+        {
+            case "before the value":
+                rows[20] = (1, file.Object(20, new string(' ', 3000) + twenty), 0);
+                limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 };
+                break;
+
+            case "inside the value":
+                rows[20] = (1, file.Object(20, new string(' ', 1024 - "20 0 obj\n".Length - (twenty.Length / 2)) + twenty + new string(' ', 100)), 0);
+                limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 };
+                break;
+
+            case "member past the data":
+                rows[11] = (1, FlateObjectStream(file, 11, [(21, "(" + new string('x', 300) + ")"), (20, twenty)]), 0);
+                rows[21] = (2, 11, 0);
+                rows[20] = (2, 11, 1);
+                limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 100 };
+                break;
+
+            default:
+                limits = PdfReaderLimits.Default with { MaxXRefSectionCount = 1 };
+                break;
+        }
+
+        // Left out of the index, object 20 is numbered by no row of the newest section, which writes a row for every number
+        // below its /Size.
+        var size = older < 0 ? 23 : 13;
+        file.CrossReferenceStream(12, size, rows, "/Root 1 0 R" + (older < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {older}")));
+        return (file.Bytes, new PdfReaderOptions { Limits = limits });
     }
 
     /// <summary>

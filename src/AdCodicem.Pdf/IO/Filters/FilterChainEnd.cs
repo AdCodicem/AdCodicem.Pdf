@@ -20,4 +20,11 @@ internal enum FilterChainEnd
 
     /// <summary>An element past the most filters the reader's guard lets a stream's data pass through.</summary>
     Limit,
+
+    /// <summary>
+    /// A value decoding reads — the <c>/Filter</c> entry or an element of it, <c>/DecodeParms</c> or a value of a step's
+    /// parameters — that leads to an object one of the reader's guards cut, or left out of the index: what it holds is
+    /// the guard's, and the step it is read for, and those after it, do not run (#263).
+    /// </summary>
+    Guard,
 }
