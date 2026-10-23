@@ -550,6 +550,29 @@ public class GuardCutValueTests
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
     }
 
+    [Fact]
+    public void A_chain_a_guard_ends_at_a_hidden_prev_leaves_unjudged_what_needs_the_whole_chain()
+    {
+        // Read whole, the update's /Size 13 is one more than object 12, which only the older table indexes, and object 4 is
+        // a page the tree does not list. With the older table hidden by the guard, object 12 is unknown: /Size is not judged
+        // against the 9 the update alone gives, nor is a page judged left out of the tree (#263).
+        var file = ChainFiles.UpdateHidingItsHighestNumber(padding: 3000);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            var report = new PdfValidator().Validate(whole);
+            report.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeFalse();
+            report.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeTrue();
+        }
+
+        using var guarded = PdfDocument.Open(file, ObjectGuard);
+        var findings = new PdfValidator().Validate(guarded).Findings.Select(finding => finding.RuleId).ToArray();
+
+        findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart);
+        findings.Should().NotContain(PdfValidationRuleIds.FileSizeWrong);
+        findings.Should().NotContain(PdfValidationRuleIds.PageTreePageOrphaned);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
