@@ -2122,6 +2122,20 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_deferred_length_read_once_the_chain_is_says_what_its_chain_leads_to()
+    {
+        // Stream 7's /Length names object 5, which the newer table places, and which holds 6 0 R, which only stream 7 places:
+        // the length waits for the chain, then resolves to a name, which is said, as the parse says what it resolves to — not
+        // the reference object 5 holds (#220).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "6 0 R", compressed: false, predicted: false, placed: true, six: "/Foo");
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            "The /Length of cross-reference stream 7 names object 5 0, which holds the name /Foo, not a length; the chain took its data up to its endstream, after 56 bytes.");
+    }
+
+    [Fact]
     public void A_deferred_length_s_fault_names_the_reference_at_the_end_of_its_chain()
     {
         // As above, the update placing object 9, which holds the reference 11 0 R, which no section places: the fault names

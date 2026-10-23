@@ -522,6 +522,126 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData(31)]
+    [InlineData(32)]
+    public void A_length_whose_chain_ends_at_its_last_object_a_guard_cut_is_the_guard_s(int objects)
+    {
+        // Content stream 4's /Length names object 100, which names the next, the last, after 3,000 spaces, holding 4: the
+        // parse resolves a /Length through 32 objects, one more than a reference, and the last it reads, cut, is the guard's
+        // — the 31st no longer taken for the target unread, nor the 32nd left past it (#224).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, "<< /Length 100 0 R >>\nstream\n0 0 m\nendstream"),
+        };
+        var last = 100 + objects - 1;
+
+        for (var number = 100; number <= last; number++)
+        {
+            rows[number] = file.Object(number, number < last ? Invariant($"{number + 1} 0 R") : new string(' ', 3000) + "4");
+        }
+
+        file.Table(last + 1, rows, Invariant($"/Size {last + 1} /Root 1 0 R"));
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            whole.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().Length.Should().Be(5);
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.StreamLengthInvalid);
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().Length.Should().Be(5);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.TryGetStreamLengthFault(4, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(32)]
+    public void A_cross_reference_stream_s_length_whose_chain_ends_at_its_last_object_a_guard_cut_waits_for_the_chain(int objects)
+    {
+        // Stream 7's /Length names object 5, which the newer table places, and which names object 100, the next, and so on;
+        // the last, after 3,000 spaces, holds the length. The chain read follows as many objects as the parse resolves a
+        // /Length through, so the cut last one makes it wait for the chain, which then leaves it to the guard (#220, #224).
+        var placed = new Dictionary<int, string>();
+        var last = 100 + objects - 2;
+
+        for (var number = 100; number <= last; number++)
+        {
+            placed[number] = number < last ? Invariant($"{number + 1} 0 R") : new string(' ', 3000) + "56";
+        }
+
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "100 0 R", compressed: false, predicted: false, placed: true, placedToo: placed);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(32)]
+    public void A_prev_whose_chain_ends_at_its_last_object_a_guard_cut_ends_the_chain_as_the_guard_s(int objects)
+    {
+        // The newer table's /Prev names object 21, which names the next, the last, after 3,000 spaces, holding the older
+        // table's offset: a /Prev reads through 32 objects, as a whole read does, and the last, cut, ends the chain for the
+        // guard, which the 32nd did not: it was no offset, and the index was rebuilt (#263).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+        var older = file.Table(4, new Dictionary<int, long>(rows), "/Size 4 /Root 1 0 R");
+        var newer = new Dictionary<int, long>();
+        var last = 21 + objects - 1;
+
+        for (var number = 21; number <= last; number++)
+        {
+            newer[number] = file.Object(
+                number, number < last ? Invariant($"{number + 1} 0 R") : new string(' ', 3000) + older.ToString(CultureInfo.InvariantCulture));
+        }
+
+        var table = file.Position;
+        var text = new StringBuilder(Invariant($"xref\n0 1\n0000000000 65535 f \n21 {objects}\n"));
+
+        foreach (var number in newer.Keys)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"{newer[number]:D10} 00000 n \n");
+        }
+
+        text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {last + 1} /Root 1 0 R /Prev 21 0 R >>\nstartxref\n{table}\n%%EOF\n");
+        file.Raw(text.ToString());
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            whole.WasRepaired.Should().BeFalse();
+            whole.Reader.Structure.Sections.Should().HaveCount(2);
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.ChainHiddenByGuard.Should().NotBeNull();
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Rows_past_a_spelled_endstream_are_the_guard_s_when_the_length_leads_to_an_object_a_newer_section_places_and_it_cut(bool chained)
@@ -646,4 +766,6 @@ public class GuardCutValueTests
                 .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
         }
     }
+
+    private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 }

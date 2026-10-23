@@ -1015,14 +1015,14 @@ internal ref struct PdfObjectParser
             {
                 return new DeclaredLength(
                     StreamLengthForm.ObjectCut,
-                    Reference: named.Target(),
+                    Reference: named.Target(PdfReference.MaxChainLength),
                     Hint: value.AsInteger() is { } hint and >= 0 and <= int.MaxValue ? (int)hint : null);
             }
 
             // The object a guard left out of the index, as the one it cut, is the one the chain of references leads to.
             if (presence == ObjectPresence.Unindexed)
             {
-                return new DeclaredLength(StreamLengthForm.ObjectUnindexed, Reference: named.Target());
+                return new DeclaredLength(StreamLengthForm.ObjectUnindexed, Reference: named.Target(PdfReference.MaxChainLength));
             }
 
             if (presence != ObjectPresence.Defined)

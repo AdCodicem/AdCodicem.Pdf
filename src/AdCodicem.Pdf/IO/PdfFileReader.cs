@@ -195,6 +195,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     private const int MaxReferenceLinks = 31;
 
+    /// <summary>
+    /// How many references are followed from a value read from the object a reference names and then resolved, as a stream's
+    /// <c>/Length</c> is parsed and a trailer's <c>/Prev</c> and <c>/XRefStm</c> are read: one more than
+    /// <see cref="MaxReferenceLinks"/>, the first object's value resolving through as many as a reference does. No valid file
+    /// reaches it either.
+    /// </summary>
+    private const int LengthLinks = MaxReferenceLinks + 1;
+
     private static ReadOnlySpan<byte> ObjKeyword => "obj"u8;
     private static ReadOnlySpan<byte> TrailerKeyword => "trailer"u8;
     private static ReadOnlySpan<byte> StartXRefKeyword => "startxref"u8;
@@ -752,16 +760,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Reads, while the chain is read, what object <paramref name="id"/> leads to through as many references as
-    /// <see cref="Follow"/> follows, each read with <see cref="ReadWithoutLoading"/>; null when one of them cannot be read
-    /// — no section read so far places it, or a guard cut it —: a value whose chain leads there waits for the chain, as one
-    /// the first reference cannot read does.
+    /// Reads, while the chain is read, what the <c>/Length</c> object <paramref name="id"/> leads to through as many
+    /// references as the parse resolves a <c>/Length</c> through (<see cref="LengthLinks"/>), each read with
+    /// <see cref="ReadWithoutLoading"/>; null when one of them cannot be read — no section read so far places it, or a guard
+    /// cut it —: a value whose chain leads there waits for the chain, as one the first reference cannot read does. A value
+    /// still a reference past them is one the parse reads as null.
     /// </summary>
     private PdfObject? ReadThroughWithoutLoading(PdfObjectId id)
     {
         var read = ReadWithoutLoading(id);
 
-        for (var link = 1; read is PdfReference next && link < MaxReferenceLinks; link++)
+        for (var link = 1; read is PdfReference next && link < LengthLinks; link++)
         {
             read = ReadWithoutLoading(next.Id);
         }
@@ -1410,9 +1419,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// past the cut, or is unknown, and is the guard's until the guard is lifted, rather than a value the file gave
     /// (#224, #263). Call it once the reference is resolved.
     /// </summary>
-    internal bool LeftByGuard(PdfReference reference)
+    /// <param name="reference">The reference, as the file wrote it.</param>
+    /// <param name="objects">How many objects its chain is followed through (<see cref="PdfReference.Target"/>).</param>
+    internal bool LeftByGuard(PdfReference reference, int objects = PdfReference.MaxChainLength - 1)
     {
-        var target = reference.Target().Number;
+        var target = reference.Target(objects).Number;
         return IsCutAtLimit(target) || GetPresence(target) == ObjectPresence.Unindexed;
     }
 
@@ -1842,7 +1853,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // read once the chain is read: the data is found by its endstream meanwhile, and the length checked then (#182).
             var read = ReadThroughWithoutLoading(id);
             presence = read is null ? ObjectPresence.Deferred : ObjectPresence.Defined;
-            return read ?? PdfNull.Instance;
+
+            // A chain longer than the parse resolves a /Length through gives null, as it does once the chain is read.
+            return read is null or PdfReference ? PdfNull.Instance : read;
         }
 
         var reentries = _reentries;
@@ -1855,8 +1868,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // left it out of the index: a value the cut left, null or an integer it parted, is none the file gave (#224).
         if (presence != ObjectPresence.Unindexed)
         {
-            // The object is not loaded again unless its value leads further.
-            var target = value is PdfReference ? reference.Target().Number : id.Number;
+            // The object is not loaded again unless its value leads further: the chain is resolved first, as the parse
+            // resolves it, so that the object it leads to is read when it is asked whether a guard cut it.
+            if (value is PdfReference next)
+            {
+                next.Resolve();
+            }
+
+            var target = value is PdfReference ? reference.Target(PdfReference.MaxChainLength).Number : id.Number;
             presence = IsCutAtLimit(target) ? ObjectPresence.Cut
                 : target != id.Number && GetPresence(target) == ObjectPresence.Unindexed ? ObjectPresence.Unindexed
                 : presence;
@@ -2169,22 +2188,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var (number, generation) = (deferred.Length.Number, deferred.Length.Generation);
             string? message = null;
 
+            // The chain is resolved as the parse resolves a /Length, one object further than a reference: the object it
+            // leads to is read before it is asked whether a guard cut it, and what it holds is what is judged.
+            var resolved = value.Resolve();
+
             // A /Length a guard cut or left out of the index — or the object a chain of references from it leads to — is
             // unknown, not wrong: the guard's report says why, and what the cut left of it, null or a parted integer, is
             // none the file gave (#224).
-            if (LeftByGuard(new PdfReference(deferred.Length, this)))
+            if (LeftByGuard(new PdfReference(deferred.Length, this), PdfReference.MaxChainLength))
             {
                 continue;
             }
 
-            if (value.AsInteger() is not { } length || length is < 0 or > int.MaxValue)
+            if (resolved.AsInteger() is not { } length || length is < 0 or > int.MaxValue)
             {
                 var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(number);
                 var held = presence switch
                 {
                     ObjectPresence.Missing => "which the file lacks",
                     ObjectPresence.Unproduced => "which could not be read",
-                    _ => "which holds " + DescribeValue(value) + ", not a length",
+                    _ => "which holds " + DescribeValue(resolved) + ", not a length",
                 };
                 message = string.Create(
                     CultureInfo.InvariantCulture,
@@ -3587,7 +3610,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             // The fault names the link of the chain that could not be read — the one no section read so far places, or the
             // one a guard cut —, which the chain read without loading stopped at, as Follow does.
-            var lengthFault = Follow(PdfName.Length, dictionary.GetRaw(PdfName.Length), entry: true, out _, out var cutObject);
+            var lengthFault = Follow(PdfName.Length, dictionary.GetRaw(PdfName.Length), entry: true, out _, out var cutObject, LengthLinks);
 
             if (cutObject is { } past)
             {
@@ -3850,7 +3873,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             // The object a newer section places, which the chain could not read: a guard that cut it, or the object a chain
             // of references from it leads to, leaves how far the data runs unknown.
-            lengthCut = LeadsToCut(stream.Dictionary.GetRaw(PdfName.Length));
+            lengthCut = LeadsToCut(stream.Dictionary.GetRaw(PdfName.Length), LengthLinks);
             return null;
         }
 
@@ -3899,11 +3922,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return new PdfStream(stream.Dictionary, ((IPdfStreamDataProvider)this).Create(dataStart, (int)length));
         }
 
-        lengthCut = pastGuard || (value is PdfReference && LeadsToCut(value));
+        // The object read holds the chain's second link: the chain goes on as far as the parse resolves a /Length through.
+        lengthCut = pastGuard || (value is PdfReference && LeadsToCut(value, LengthLinks - 1));
         return null;
 
         // Whether a value read through the sections read so far leads to an object a guard cut.
-        bool LeadsToCut(PdfObject? written) => Follow(PdfName.Length, written, entry: true, out _, out var cut) is not null && cut is not null;
+        bool LeadsToCut(PdfObject? written, int links) =>
+            Follow(PdfName.Length, written, entry: true, out _, out var cut, links) is not null && cut is not null;
     }
 
     /// <summary>
@@ -4010,14 +4035,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="entry">Whether <paramref name="written"/> is the entry's own value, rather than an element of it.</param>
     /// <param name="value">The value it leads to, or null when it leads to none.</param>
     /// <param name="cut">The object a guard cut that left the value unread, or null when none did.</param>
-    private string? Follow(PdfName key, PdfObject? written, bool entry, out PdfObject? value, out PdfObjectId? cut)
+    /// <param name="links">
+    /// How many references are followed: one more for a value read from the object a reference names and then resolved —
+    /// a stream's <c>/Length</c>, a trailer's <c>/Prev</c> or <c>/XRefStm</c> —, as <see cref="LengthLinks"/> says.
+    /// </param>
+    private string? Follow(
+        PdfName key, PdfObject? written, bool entry, out PdfObject? value, out PdfObjectId? cut, int links = MaxReferenceLinks)
     {
         value = written;
         cut = null;
 
         for (var link = 0; value is PdfReference reference; link++)
         {
-            if (link == MaxReferenceLinks)
+            if (link == links)
             {
                 value = null;
                 return $"its {FileQuote.Name(key)} leads from reference to reference without reaching a value";
@@ -4166,7 +4196,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // So does one leading to an object a guard cut, whose loading, once the chain is read, reaches the guard (#263). The
         // older sections, and their trailers, are the guard's to hide.
-        if (value is PdfReference && Follow(key, value, entry: true, out _, out var cut) is { } fault && cut is { } past)
+        if (value is PdfReference && Follow(key, value, entry: true, out _, out var cut, LengthLinks) is { } fault && cut is { } past)
         {
             _cutByGuard = true;
             _structure.TrailersHiddenByGuard = true;

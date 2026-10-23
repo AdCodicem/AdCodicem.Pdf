@@ -32,8 +32,10 @@ internal enum StreamLengthForm : byte
     Deferred,
 
     /// <summary>
-    /// A reference to an object one of the reader's guards left out of the index: whether the file holds it is unknown. The
-    /// data is taken up to its <c>endstream</c>, and nothing is reported: the guard's report says why.
+    /// A reference to an object one of the reader's guards left out of the index, or that a chain of references from it
+    /// leads to: whether the file holds it is unknown. The data ends where its <c>endstream</c> ends it, or as a stream with
+    /// none ends; nothing is reported of the length, whose fault is the guard's, which reported it, and a missing
+    /// <c>endstream</c> is still the file's (#224).
     /// </summary>
     ObjectUnindexed,
 
