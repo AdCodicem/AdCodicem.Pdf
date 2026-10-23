@@ -3115,6 +3115,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                         previous = SectionOffset(trailer, PdfName.Prev, absolute, out var previousHidden);
                         hybrid = SectionOffset(trailer, PdfName.XRefStm, absolute, out var streamHidden);
                         section.ChainHiddenByGuard = streamHidden ?? previousHidden;
+                        section.ChainHiddenAtStream = streamHidden is not null;
 
                         // A stream a guard hid holds rows newer than the older sections': the chain ends with it, as with a
                         // stream a guard cut, since their rows would stand for the stream's.

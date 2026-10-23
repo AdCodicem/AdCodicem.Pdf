@@ -762,7 +762,8 @@ public class GuardCutValueTests
         // The newer section's /Prev, object 9, or its /XRefStm, object 6, is one that section places and MaxObjectLength cuts
         // before its value: the section it names was said to be missing, and the index rebuilt. The chain ends there for the
         // guard, which is reached once the chain is read — thrown at opening when the caller asks for it (#263). The
-        // validation says the sections it names were not checked, and judges nothing the chain they end would hold.
+        // validation says what it names was not checked — the older sections, or the stream of the hybrid's revision —, and
+        // judges nothing the chain they end would hold.
         var reference = key == "Prev" ? "9 0 R" : "6 0 R";
         var file = key == "Prev"
             ? ChainFiles.UpdateNamingItsPrevious(reference, padding: 3000)
@@ -777,7 +778,9 @@ public class GuardCutValueTests
         report.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeFalse();
         var section = document.Reader.Structure.Sections[0].Offset;
         report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Select(finding => finding.Message).Should().Equal(
-            $"The cross-reference section at offset {section} names older sections, but its /{key} is the reference {reference}, which one of the reader's limits cut: they were not checked.");
+            key == "Prev"
+                ? $"The cross-reference section at offset {section} names older sections, but its /Prev is the reference {reference}, which one of the reader's limits cut: they were not checked."
+                : $"The cross-reference section at offset {section} names the cross-reference stream of its revision, but its /XRefStm is the reference {reference}, which one of the reader's limits cut: that stream, and any section older than it, were not checked.");
 
         var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
@@ -804,12 +807,17 @@ public class GuardCutValueTests
         report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse();
     }
 
-    [Fact]
-    public void A_section_whose_prev_a_guard_cut_keeps_the_chain_it_hides_when_it_is_found_where_it_was_moved()
+    [Theory]
+    [InlineData("Prev")]
+    [InlineData("XRefStm")]
+    public void A_section_whose_prev_a_guard_cut_keeps_the_chain_it_hides_when_it_is_found_where_it_was_moved(string key)
     {
-        // A third table's /Prev names the table whose /Prev, object 9, MaxObjectLength cuts, 3 bytes before it: the section is
-        // found where it lies, and what its /Prev hides is said of it there, as where it is named (#263).
-        var two = ChainFiles.UpdateNamingItsPrevious("9 0 R", padding: 3000);
+        // A third table's /Prev names the table whose /Prev, object 9, or whose /XRefStm, object 6, MaxObjectLength cuts, 3
+        // bytes before it: the section is found where it lies, and what that value hides is said of it there, as where it is
+        // named (#263).
+        var two = key == "Prev"
+            ? ChainFiles.UpdateNamingItsPrevious("9 0 R", padding: 3000)
+            : ChainFiles.HybridNamingItsStream("6 0 R", padding: 3000);
         var text = Encoding.Latin1.GetString(two);
         var named = long.Parse(text[(text.LastIndexOf("startxref\n", StringComparison.Ordinal) + "startxref\n".Length)..].Split('\n')[0], CultureInfo.InvariantCulture);
         var five = two.Length;
@@ -825,7 +833,8 @@ public class GuardCutValueTests
         moved.ChainHiddenByGuard.Should().NotBeNull();
         new PdfValidator().Validate(document).Findings
             .Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart)
-            .Should().ContainSingle(finding => finding.Message.Contains("names older sections", StringComparison.Ordinal));
+            .Should().ContainSingle(finding => finding.Message.Contains(
+                key == "Prev" ? "names older sections" : "names the cross-reference stream of its revision", StringComparison.Ordinal));
     }
 
     [Fact]
