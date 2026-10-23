@@ -39,4 +39,10 @@ internal readonly record struct StreamEndSearch(int? Length, long? NextObject, E
     /// unknown.
     /// </summary>
     public bool EndObjSeen { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether, no <c>endstream</c> found, an object header the bytes hold stopped the search, which
+    /// <see cref="NextObject"/> then gives, rather than the next object the index places or the end of the file.
+    /// </summary>
+    public bool HeaderStopped { get; init; }
 }

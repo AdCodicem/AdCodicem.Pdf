@@ -114,21 +114,19 @@ internal static class StreamEnds
     /// </summary>
     /// <remarks>
     /// The overlap between reads puts the end-of-line before a keyword first seen in a read inside it, unless the keyword
-    /// starts the data. A cross-reference stream whose <c>/Length</c> the chain could not read is searched neither stopped
-    /// by a header nor trimmed of a carriage return: its rows may spell a header, and may end in a carriage return (#220).
-    /// A stream whose <c>/Length</c> a guard hid is searched on past a header its data spells, once the header stopped it
-    /// (#224).
+    /// starts the data. A cross-reference stream whose <c>/Length</c> the chain could not read is searched as
+    /// <paramref name="deferred"/>: its rows may spell a header, and may end in a carriage return, so neither stops nor
+    /// trims it (#220).
     /// </remarks>
     /// <param name="text">The bytes read, after what the reads before carry into them.</param>
     /// <param name="endsRange">Whether they end where the search does: at the next object the index places, or the end of the file.</param>
-    /// <param name="stopsAtHeader">Whether an object header the bytes hold before the keyword stops the search.</param>
-    /// <param name="keepsCarriageReturn">Whether a carriage return before the end-of-line's line feed is data.</param>
+    /// <param name="deferred">Whether the stream's <c>/Length</c> is one the chain could not read, which is no fault.</param>
     /// <param name="header">Where the header that stopped the search starts in the file, or -1.</param>
-    public static long SearchStretch(in HeaderText text, bool endsRange, bool stopsAtHeader, bool keepsCarriageReturn, out long header)
+    public static long SearchStretch(in HeaderText text, bool endsRange, bool deferred, out long header)
     {
         var span = text.Bytes;
         var keyword = span.IndexOf(EndStreamKeyword);
-        header = stopsAtHeader ? text.FindHeader(keyword >= 0 ? keyword : span.Length, endsRange) : -1;
+        header = deferred ? -1 : text.FindHeader(keyword >= 0 ? keyword : span.Length, endsRange);
 
         if (keyword < 0 || header >= 0)
         {
@@ -140,7 +138,7 @@ internal static class StreamEnds
             keyword--;
         }
 
-        if (!keepsCarriageReturn && keyword > 0 && span[keyword - 1] == (byte)'\r')
+        if (!deferred && keyword > 0 && span[keyword - 1] == (byte)'\r')
         {
             keyword--;
         }

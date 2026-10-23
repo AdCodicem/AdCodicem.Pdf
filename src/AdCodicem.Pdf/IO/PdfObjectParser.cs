@@ -730,8 +730,8 @@ internal ref struct PdfObjectParser
     /// The declared length is confirmed by an <c>endstream</c> after it, white space and comments between, however many.
     /// Unconfirmed, or with no length to confirm, the data is searched for its first <c>endstream</c>, which ends it: in the
     /// bytes the parser holds, then in the file, up to the nearer of the first object header the bytes hold and the next
-    /// object the index places, or to the end of the data — past such a header when a guard hid the length, as long as an
-    /// <c>endstream</c> follows it before that object. Stream data never counts toward the bytes the parser is given
+    /// object the index places, or to the end of the data. Where a guard hid the length, a header the data spells that
+    /// stops the search leaves the data up to it to the guard. Stream data never counts toward the bytes the parser is given
     /// to read an object through: a window is never grown to find an <c>endstream</c>. With none before the stop, the
     /// object's <c>endobj</c> plays its part: it ends the data where it follows the declared length, or where it ends the
     /// object before the stop; without it, a declared length that ends before the stop is kept, and the data otherwise
@@ -794,18 +794,11 @@ internal ref struct PdfObjectParser
 
         // A cross-reference stream whose /Length the chain could not read keeps a carriage return before the line feed as
         // data, which it may be — rows can end in 0x0D, and the length, once read, is checked against what was taken —,
-        // and is not stopped by rows that spell an object header (#182, #220). One whose /Length a guard cut or left out of
-        // the index is searched on past a header its data spells, which a valid stream's may (#224).
+        // and is not stopped by rows that spell an object header (#182, #220).
         var deferred = declared.Form == StreamLengthForm.Deferred;
         var declaredEnd = length < 0 ? -1 : _baseOffset + dataStart + length;
         var search = _streamData is not null
-            ? _streamData.FindEndStream(
-                _objectNumber,
-                _baseOffset + dataStart,
-                declaredEnd,
-                span[Math.Min(dataStart, span.Length)..],
-                deferred,
-                lengthHidden: declared.Form is StreamLengthForm.ObjectCut or StreamLengthForm.ObjectUnindexed)
+            ? _streamData.FindEndStream(_objectNumber, _baseOffset + dataStart, declaredEnd, span[Math.Min(dataStart, span.Length)..], deferred)
             : SearchBuffer(span, dataStart, declaredEnd, deferred);
 
         if (search is not { } settled)
@@ -920,6 +913,15 @@ internal ref struct PdfObjectParser
             return Finish(dictionary, dataStart, length, span.Length);
         }
 
+        // A /Length a guard cut or left out of the index hides where the data ends, which a header the data spells stops the
+        // search at, as a valid stream's may — an embedded file's does —, no endobj of the object's own before it: the data
+        // up to it is the guard's, cut by it, the object's endobj unjudged, and nothing is said of the file (#224).
+        if (declared.Form is StreamLengthForm.ObjectCut or StreamLengthForm.ObjectUnindexed && search.HeaderStopped)
+        {
+            _endObjUnknown = true;
+            return Finish(dictionary, dataStart, upToStop, span.Length, cutByGuard: true);
+        }
+
         // The data runs to the next object, which no declared length passes, or to the end of the file. The object lacks its
         // endobj, unless what is taken as its data holds one, which may be the object's own: where it ends is then unknown.
         if (KeepLengthFault(Fault(declared, dataStart, upToStop, null, missing, search.NextObject)))
@@ -1004,7 +1006,7 @@ internal ref struct PdfObjectParser
         var text = new HeaderText(carried, carriedAt, start);
         text.Read(span[dataStart..], start);
 
-        var dataEnd = StreamEnds.SearchStretch(text, endsRange: _endsData, stopsAtHeader: !deferred, keepsCarriageReturn: deferred, out var header);
+        var dataEnd = StreamEnds.SearchStretch(text, endsRange: _endsData, deferred, out var header);
 
         if (dataEnd >= 0)
         {
@@ -1023,6 +1025,7 @@ internal ref struct PdfObjectParser
 
         return new StreamEndSearch(null, header < 0 ? null : header, EndObjState.Unknown)
         {
+            HeaderStopped = header >= 0,
             EndObjSeen = StreamEnds.HoldsEndObj(stretch, stretch.Length),
             EndObjAfterDeclared = declaredEnd >= start && declaredEnd - _baseOffset <= stop &&
                 StreamEnds.IsEndObjAt(span[..stop], (int)(declaredEnd - _baseOffset), reachesEndOfFile: true) == true,
@@ -1213,12 +1216,12 @@ internal ref struct PdfObjectParser
     private readonly void WarnLengthFault(string code, string message, int dataStart) =>
         _diagnostics!.Warn(code, message, _baseOffset + dataStart);
 
-    private PdfStream Finish(PdfDictionary dictionary, int dataStart, int length, int bufferLength)
+    private PdfStream Finish(PdfDictionary dictionary, int dataStart, int length, int bufferLength, bool cutByGuard = false)
     {
         length = Math.Max(length, 0);
 
         var data = _streamData is not null
-            ? _streamData.Create(_baseOffset + dataStart, length)
+            ? _streamData.Create(_baseOffset + dataStart, length, cutByGuard)
             : PdfStreamData.FromMemory(_memory.Slice(dataStart, Math.Min(length, bufferLength - dataStart)));
 
         var afterData = (int)Math.Min((long)dataStart + length, bufferLength);

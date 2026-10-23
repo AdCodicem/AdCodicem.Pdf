@@ -16,8 +16,11 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     /// <summary>Gets the length of the file the stream data is read from.</summary>
     long SourceLength { get; }
 
-    /// <summary>Creates stream data for <paramref name="length"/> bytes at <paramref name="absoluteOffset"/>.</summary>
-    PdfStreamData Create(long absoluteOffset, int length);
+    /// <summary>
+    /// Creates stream data for <paramref name="length"/> bytes at <paramref name="absoluteOffset"/>, marked cut by a guard
+    /// when <paramref name="cutByGuard"/>: a guard hid what would have said where the data ends (#224).
+    /// </summary>
+    PdfStreamData Create(long absoluteOffset, int length, bool cutByGuard = false);
 
     /// <summary>
     /// Gives where the data of a stream starts in the file: past the end-of-line after its <c>stream</c> keyword, which ends
@@ -67,12 +70,7 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     /// Whether the stream is a cross-reference stream whose <c>/Length</c> the chain could not read (#182): its rows may
     /// spell an object header and end in a carriage return, so neither stops nor trims the search (#220).
     /// </param>
-    /// <param name="lengthHidden">
-    /// Whether the stream's <c>/Length</c> leads to an object a guard cut or left out of the index, which hides where the
-    /// data of a stream that may be valid ends: a header its data spells stops the search only when no <c>endstream</c>
-    /// follows it before the next object the index places, or the end of the file (#224).
-    /// </param>
-    StreamEndSearch FindEndStream(int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred, bool lengthHidden);
+    StreamEndSearch FindEndStream(int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred);
 
     /// <summary>
     /// Resolves the object a stream's <c>/Length</c> names, and says whether the file holds it and whether it could be

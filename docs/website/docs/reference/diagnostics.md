@@ -185,8 +185,9 @@ cut. A `/Length` that names an object a guard left out of the index, directly or
 judged either: the data is found by its `endstream` the same way, and a missing one is the file's, the message naming the
 object the guard left out — `The stream's /Length names object 21 0, which one of the reader's limits left out of the
 index, and no endstream follows its data`, then where the search stopped and what was taken. For either, an object
-header the data spells, as an embedded PDF file's does, stops the search only when no `endstream` follows it before the
-next object the index places: one that does ends the data, and nothing is reported of the stream.
+header the data spells, as an embedded PDF file's does, that stops the search — no `endobj` of the object's own before
+it — leaves the data up to it to the guard: nothing is reported of the stream, whose data is cut by the guard, and
+whether its object ends with `endobj` is not judged.
 
 ```text
 Warning stream.length-invalid at 5501: The stream declared 19954 bytes but ended after 19952.

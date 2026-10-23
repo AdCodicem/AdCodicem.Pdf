@@ -184,24 +184,31 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData("cut", true)]
-    [InlineData("left out", true)]
-    [InlineData("cut", false)]
-    [InlineData("left out", false)]
-    public void A_stream_a_guard_hid_the_length_of_is_searched_past_a_header_its_data_spells(string guard, bool endStream)
+    [InlineData("cut", "endstream")]
+    [InlineData("left out", "endstream")]
+    [InlineData("cut", "inner stream")]
+    [InlineData("left out", "inner stream")]
+    [InlineData("cut", "none")]
+    [InlineData("left out", "none")]
+    public void Data_a_header_stops_where_a_guard_hid_the_length_is_the_guard_s(string guard, string end)
     {
-        // Object 4 embeds a PDF file, whose data spells "1 0 obj", and its /Length, object 10, is one MaxObjectLength cuts or
-        // MaxIndexEntries leaves out of the index: searched for its endstream, the data stopped at the header it spells, and
-        // the file was said to lack the endstream it holds (#224). Without one, the header still stops it, the file's fault.
-        const string Embedded = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF";
+        // Object 4 embeds a PDF file, whose data spells "1 0 obj" — and holds a stream of its own, whose endstream comes
+        // after —, and its /Length, object 10, is one MaxObjectLength cuts or MaxIndexEntries leaves out of the index. The
+        // search for its endstream stops at the header the data spells: the file was said to lack the endstream it holds,
+        // or the data was taken to the embedded stream's. What decides is the length the guard hid: the data up to the
+        // header is the guard's, cut by it, the object's endobj unjudged, and nothing said of the file, whatever follows
+        // (#224).
+        var embedded = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n" +
+            (end == "inner stream" ? "2 0 obj\n<< /Length 5 >>\nstream\nhello\nendstream\nendobj\n" : string.Empty) +
+            "trailer\n<< /Root 1 0 R >>\n%%EOF";
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
-            [4] = file.Object(4, "<< /Type /EmbeddedFile /Length 10 0 R >>\nstream\n" + Embedded + (endStream ? "\nendstream" : string.Empty)),
+            [4] = file.Object(4, "<< /Type /EmbeddedFile /Length 10 0 R >>\nstream\n" + embedded + (end == "none" ? string.Empty : "\nendstream")),
             [6] = file.Object(6, "(six)"),
-            [10] = file.Object(10, (guard == "cut" ? new string(' ', 2000) : string.Empty) + Embedded.Length.ToString(CultureInfo.InvariantCulture)),
+            [10] = file.Object(10, (guard == "cut" ? new string(' ', 2000) : string.Empty) + embedded.Length.ToString(CultureInfo.InvariantCulture)),
         };
         file.Table(11, rows, "/Size 11 /Root 1 0 R");
         var limits = guard == "cut"
@@ -209,20 +216,46 @@ public class GuardCutValueTests
             : PdfReaderLimits.Default with { MaxIndexEntries = 8 };
         using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
 
-        var data = document.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray();
-        var codes = document.Diagnostics.Select(entry => entry.Code).ToArray();
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
 
-        if (endStream)
+        stream.GetRawBytes().ToArray().Should().Equal("%PDF-1.4\n"u8.ToArray());
+        stream.Data.CutByGuard.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
+        document.Reader.TryGetStreamLengthFault(4, out _).Should().BeFalse();
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("cut")]
+    [InlineData("left out")]
+    public void A_stream_a_guard_hid_the_length_of_ends_at_its_own_endobj_before_a_header(string guard)
+    {
+        // Object 4, whose /Length a guard hid, lost its endstream; its own endobj, then an object no row places, a stream
+        // with an endstream, follow: the header that object starts with is no header the data spells, and the endobj before
+        // it ends the data, the missing endstream the file's (#224).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
         {
-            data.Should().Equal(Encoding.ASCII.GetBytes(Embedded));
-            codes.Should().Equal(guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
-            document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
-        }
-        else
-        {
-            data.Should().Equal("%PDF-1.4\n"u8.ToArray());
-            codes.Should().Contain(PdfDiagnosticCodes.StreamLengthInvalid);
-        }
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, "<< /Length 10 0 R >>\nstream\nABC"),
+        };
+        file.Object(30, "<< /Length 3 >>\nstream\nxyz\nendstream");
+        rows[6] = file.Object(6, "(six)");
+        rows[10] = file.Object(10, (guard == "cut" ? new string(' ', 2000) : string.Empty) + "3");
+        file.Table(11, rows, "/Size 11 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 8 };
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.GetRawBytes().ToArray().Should().Equal("ABC"u8.ToArray());
+        stream.Data.CutByGuard.Should().BeFalse();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamTruncated);
     }
 
     [Theory]

@@ -112,8 +112,9 @@ separate types, separate severity scales, and vocabularies that never share a co
    crafted file can still make it depend on the number a stream is first read under, on the rebuild's scan for
    trailers, or, once the searches of a document have read four times the file, on which streams were searched
    first ([#138], M23). A stream whose `/Length` a guard cut or left out of the index may be valid, its length only
-   hidden: a header its data spells — an embedded file's does — stops its search only when no `endstream` follows
-   it before the next object the index places ([#224]). With no `endstream` before the stop, the object's `endobj` ends the data where it
+   hidden: when a header its data spells — an embedded file's does — stops its search, no `endobj` of its own before
+   it, the data up to the header is the guard's, cut by it, and nothing is said of the file ([#224]). With no
+   `endstream` before the stop, the object's `endobj` ends the data where it
    follows the declared length as an `endstream` would, or where it is the last one, a whole keyword — no regular
    character, solidus or percent sign right before it, which would make it part of a token, a name or a comment that
    starts there: the data before it, which no lexing reads, says nothing of one further back —, and only
