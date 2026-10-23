@@ -255,14 +255,14 @@ public class ParserTests
     }
 
     [Theory]
-    [InlineData("[1 2\n6 0 obj", true, 5)]
+    [InlineData("[1 2\n6 0 obj", true, 2)]
     [InlineData("[1 2\n6 0 obj ", false, 2)]
     [InlineData("[1 2\n6 0 obj\n", false, 2)]
     public void Takes_an_object_header_a_window_s_edge_reaches_for_none_until_a_larger_window_shows_obj_whole(
         string text, bool more, int count)
     {
         // "obj" the edge reaches may be the start of "objx", no keyword at all: what the window reads is dropped for a larger
-        // window, which says (#230).
+        // window, which says (#230). The window ends the array where the header may start, its number no element.
         var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false);
 
         parser.ParseObject().AsArray().Required().Should().HaveCount(count);
@@ -759,6 +759,23 @@ public class ParserTests
         dictionary.GetArray(PdfName.Get("B")).Required().Should().ContainSingle();
         literal.ToText().Should().Be("abc");
         hexadecimal.Bytes.ToArray().Should().Equal((byte)0x41, 0x42, 0x40);
+    }
+
+    [Theory]
+    [InlineData("5 0 << /A 6 0 o")]
+    [InlineData("5 0 << /A 6 0 ob")]
+    public void Reports_the_keys_of_a_member_a_window_s_edge_leaves_as_a_header_none_can_be(string text)
+    {
+        // An object stream's member has no header after it: its window's edge leaves none undecided, and the key 0 that is no
+        // name is the file's, as in the whole member (#230).
+        var diagnostics = new PdfDiagnostics();
+        var parser = PdfObjectParser.ForObjectStreamMember(
+            Encoding.ASCII.GetBytes(text), 9, 1000, 5, ObjectSourceReturning(new PdfObjectId(1), PdfNull.Instance), diagnostics, endsData: false);
+        parser.Position = 4;
+
+        _ = parser.ParseObject();
+
+        diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken);
     }
 
     [Fact]
