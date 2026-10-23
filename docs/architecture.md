@@ -111,7 +111,9 @@ separate types, separate severity scales, and vocabularies that never share a co
    each stream — each copy of an object at its offset — takes the same length whatever was read before it. A
    crafted file can still make it depend on the number a stream is first read under, on the rebuild's scan for
    trailers, or, once the searches of a document have read four times the file, on which streams were searched
-   first ([#138], M23). With no `endstream` before the stop, the object's `endobj` ends the data where it
+   first ([#138], M23). A stream whose `/Length` a guard cut or left out of the index may be valid, its length only
+   hidden: a header its data spells — an embedded file's does — stops its search only when no `endstream` follows
+   it before the next object the index places ([#224]). With no `endstream` before the stop, the object's `endobj` ends the data where it
    follows the declared length as an `endstream` would, or where it is the last one, a whole keyword — no regular
    character, solidus or percent sign before it, which would make it part of a token, a name or a comment —, and only
    white space and comments run from it to the stop. That last `endobj` is followed forward through the search's
@@ -266,3 +268,4 @@ publication.
 [#138]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/138
 [#170]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/170
 [#174]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/174
+[#224]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/224

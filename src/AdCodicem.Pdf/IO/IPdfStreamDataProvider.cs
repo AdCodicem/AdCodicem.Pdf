@@ -67,7 +67,12 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     /// Whether the stream is a cross-reference stream whose <c>/Length</c> the chain could not read (#182): its rows may
     /// spell an object header and end in a carriage return, so neither stops nor trims the search (#220).
     /// </param>
-    StreamEndSearch FindEndStream(int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred);
+    /// <param name="lengthHidden">
+    /// Whether the stream's <c>/Length</c> leads to an object a guard cut or left out of the index, which hides where the
+    /// data of a stream that may be valid ends: a header its data spells stops the search only when no <c>endstream</c>
+    /// follows it before the next object the index places, or the end of the file (#224).
+    /// </param>
+    StreamEndSearch FindEndStream(int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred, bool lengthHidden);
 
     /// <summary>
     /// Resolves the object a stream's <c>/Length</c> names, and says whether the file holds it and whether it could be
