@@ -53,7 +53,8 @@ public static class PdfStreamDecodingExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="PdfLimitExceededException">
-    /// Decoding reaches one of its document's guards — the data decodes past
+    /// Decoding reaches one of its document's guards — the encoded data runs past
+    /// <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, the data decodes past
     /// <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>, or decoding reaches the filter past
     /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> —, and the document was opened with
     /// <see cref="Documents.PdfReaderOptions.ThrowOnLimit"/>.

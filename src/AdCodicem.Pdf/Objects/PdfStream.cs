@@ -30,6 +30,17 @@ public sealed class PdfStream : PdfObject
     public int RawLength => Data.Length;
 
     /// <summary>Returns the encoded bytes, exactly as they appear in the file.</summary>
+    /// <remarks>
+    /// The bytes are read from the document's source each time they are asked for, and kept by nothing: a document held in
+    /// memory lends them where they lie, and any other source is read again. No more than
+    /// <see cref="Documents.PdfReaderLimits.MaxStreamLength"/> bytes are read: past it, what lies within it comes back, and
+    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitStreamLength"/> is reported once for the stream.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The stream's document is disposed.</exception>
+    /// <exception cref="Diagnostics.PdfLimitExceededException">
+    /// The data runs past <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, and the document was opened with
+    /// <see cref="Documents.PdfReaderOptions.ThrowOnLimit"/>.
+    /// </exception>
     public ReadOnlyMemory<byte> GetRawBytes() => Data.GetBytes();
 
     /// <summary>
