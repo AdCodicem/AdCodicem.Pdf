@@ -51,7 +51,10 @@ public static class PdfStreamDecodingExtensions
     /// own each time the stream is decoded. A <c>/Filter</c> array that
     /// names more filters than
     /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> ends decoding before the first past them, reported as
-    /// <see cref="PdfDiagnosticCodes.LimitFilterChain"/> when decoding reaches it.
+    /// <see cref="PdfDiagnosticCodes.LimitFilterChain"/> when decoding reaches it. A <c>/Filter</c>, a <c>/DecodeParms</c>
+    /// or a parameter that leads to an object one of the document's guards cut, or left out of the index, ends decoding
+    /// the same way, at the filter it names or whose parameters it gives: the guard was reported in the document's
+    /// diagnostics where it was reached, as everything loading a value meets is, and nothing more is reported.
     /// </para>
     /// <para>
     /// The filters and the values of their parameters are read before any of the data is: a parameter held in an
