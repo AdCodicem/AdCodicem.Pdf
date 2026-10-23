@@ -433,6 +433,48 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of two revisions. The first holds the catalog, the page tree and the page, and cross-reference stream 7, whose
+    /// <c>/Length</c> names object 5, which holds the data's length after 3,000 spaces; or, when <paramref name="chained"/>,
+    /// object 4, which holds <c>9 0 R</c>, object 9 holding the length so. Its rows of objects 8 and 9 — 10 and 11 when
+    /// <paramref name="chained"/> —, of reserved types, spell <c>endstream</c> after an end-of-line, and the page's row
+    /// comes after them. The second is a classic table that indexes object 5 — 9 when <paramref name="chained"/> — again,
+    /// where it is, and names stream 7 through <c>/Prev</c>. The file is valid.
+    /// </summary>
+    public static byte[] UpdatePlacingAPaddedLength(bool chained)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var lengthNumber = chained ? 9 : 5;
+        var spelled = "\nendstream\0\0\0\0"u8.ToArray();
+        file.Object(lengthNumber, new string(' ', 3000) + (6 * 7 + spelled.Length).ToString(CultureInfo.InvariantCulture));
+
+        if (chained)
+        {
+            file.Object(4, "9 0 R");
+        }
+
+        var stream = file.Position;
+        var data = new List<byte>(Encode(
+            [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(chained ? 4 : 5), 0), (1, stream, 0)],
+            Rows.Raw));
+        data.AddRange(spelled);
+        data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
+        var index = chained ? "[0 3 4 1 7 1 10 2 3 1]" : "[0 3 5 1 7 1 8 2 3 1]";
+        file.Stream(
+            7,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {(chained ? 12 : 10)} /W [1 4 2] /Index {index} /Root 1 0 R /Length {(chained ? 4 : 5)} 0 R"),
+            [.. data]);
+        file.Text("%" + new string('-', 1200) + "\n");
+        var xref = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\n{lengthNumber} 1\n{file.OffsetOf(lengthNumber):D10} 00000 n\r\ntrailer\n<< /Size {(chained ? 12 : 10)} /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of two classic tables. The first indexes the catalog, the page tree, the page and object 12, the highest
     /// number; the second, an update, writes the catalog, the page tree and the page again, indexes them with object 4, a
     /// page the tree does not list, and object 9, which holds the first table's offset after <paramref name="padding"/>
