@@ -92,6 +92,12 @@ internal ref struct PdfObjectParser
     private int _objectNumber;
 
     /// <summary>
+    /// Whether the value is an indirect object's, read after its header: a report of the header that ended a container left
+    /// open names the object it ended, which a trailer, or a value read alone, is not.
+    /// </summary>
+    private bool _inObject;
+
+    /// <summary>
     /// The object stream member the buffer holds, when it is an object stream's decoded data rather than bytes of the
     /// file; null otherwise.
     /// </summary>
@@ -269,6 +275,7 @@ internal ref struct PdfObjectParser
         var empty = _lexer.Read().IsKeyword("endobj"u8);
         _lexer.Position = beforeValue;
 
+        _inObject = true;
         value = ParseObject();
 
         if (empty)
@@ -424,8 +431,8 @@ internal ref struct PdfObjectParser
         }
 
         // The buffer ended before the look-ahead could tell: "12 0" may be all there is, or what a
-        // window's edge left of "12 0 R".
-        if (third.Kind == PdfTokenKind.EndOfInput)
+        // window's edge left of "12 0 R" — or, inside a container, of the next object's header, as "12 0 ob" may be.
+        if (third.Kind == PdfTokenKind.EndOfInput || (depth > 0 && HeaderUndecided(second, third)))
         {
             _truncated = true;
         }
@@ -1343,7 +1350,10 @@ internal ref struct PdfObjectParser
             return;
         }
 
-        var data = atEndObj ? "An endobj ended the object" : atHeader ? "An object header ended the object" : End;
+        // A trailer, or a value read alone, is no object a header can end: the header came inside the construct left open.
+        var data = atEndObj ? "An endobj ended the object"
+            : atHeader ? (_inObject ? "An object header ended the object" : "An object header came")
+            : End;
         var content = swallowed > 0
             ? string.Create(CultureInfo.InvariantCulture, $", which takes the {swallowed:N0} {(swallowed == 1 ? "byte" : "bytes")} from where it opens to that end")
             : valueMissing ? ", which was never closed, before the value of its last key" : ", which was never closed";
@@ -1392,8 +1402,27 @@ internal ref struct PdfObjectParser
         var generation = _lexer.Read();
         var keyword = generation.Kind == PdfTokenKind.Integer ? _lexer.Read() : generation;
         _lexer.Position = saved;
+
+        // Tokens a window's edge leaves undecided may be a header a larger window shows: the parse met the edge, and what it
+        // reads from here — the number and the generation, as keys — is no fault of the file's.
+        if (HeaderUndecided(generation, keyword))
+        {
+            _truncated = true;
+        }
+
         return IsHeader(number, generation, keyword);
     }
+
+    /// <summary>
+    /// Determines whether a window's edge leaves undecided whether a number and the two tokens after it are the next
+    /// object's header: the edge comes before a generation, before a keyword, or inside one that <c>obj</c> starts with.
+    /// </summary>
+    private readonly bool HeaderUndecided(PdfToken generation, PdfToken keyword) =>
+        !_endsData &&
+        (generation.Kind == PdfTokenKind.EndOfInput ||
+            (generation.Kind == PdfTokenKind.Integer &&
+                (keyword.Kind == PdfTokenKind.EndOfInput ||
+                    (keyword.Kind == PdfTokenKind.Keyword && keyword.End >= _memory.Length && "obj"u8.StartsWith(keyword.Text)))));
 
     /// <summary>
     /// Determines whether three tokens are an object header as the bytes hold one, the rule the search for a stream's
