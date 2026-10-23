@@ -277,15 +277,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// The objects <see cref="ReadWithoutLoading"/> could not read while the chain is read because they run past
-    /// <see cref="PdfReaderLimits.MaxObjectLength"/>, with the integer the cut left of each, or null, or null while none did:
-    /// what they hold is the guard's to hide, and the integer only a place to look for <c>endstream</c> at (#224), read once
-    /// however many sections ask. Let go with <see cref="_readWhileChainIsRead"/>.
+    /// <see cref="PdfReaderLimits.MaxObjectLength"/>, each with the integer the cut left of its value, or
+    /// <see cref="PdfNull"/> when it left none; null while none did. What they hold is the guard's to hide, and the integer
+    /// only a place to look for <c>endstream</c> at (#224), read once however many sections ask. One whose value the cut left
+    /// a whole reference is read through, and is not among them. Let go with <see cref="_readWhileChainIsRead"/>.
     /// </summary>
     private Dictionary<PdfObjectId, PdfObject>? _cutWhileChainIsRead;
 
     /// <summary>
-    /// The objects a guard cut that a cross-reference stream's values led to, which the chain could not read and ended at:
-    /// each is loaded once the chain is read, so that its guard is reached where a load reaches it (#263).
+    /// The objects a guard cut that a cross-reference stream's values led to, which the chain could not read and ended at, and
+    /// those it read through, the cut having left their value a whole reference: each is loaded once the chain is read, so
+    /// that its guard is reached where a load reaches it (#263).
     /// </summary>
     private List<PdfObjectId>? _chainValuesCut;
 
@@ -717,8 +719,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <para>
     /// The object is read within <see cref="PdfReaderLimits.MaxObjectLength"/>, as a load reads it; one the guard cuts is
     /// left unread, and the guard is neither reported nor counted: the chain's sections are cut only by their own windows
-    /// and decoding, and a guard that holds is reached when the object is loaded once the chain is read. The objects read
-    /// through it nest as loads do, within <see cref="MaxNestedLoads"/>.
+    /// and decoding, and a guard that holds is reached when the object is loaded once the chain is read. One whose value
+    /// the cut left a whole reference reads as that reference, as a load reads through it, and is loaded once the chain is
+    /// read for its guard to be reached. The objects read through it nest as loads do, within <see cref="MaxNestedLoads"/>.
     /// </para>
     /// </remarks>
     private PdfObject? ReadWithoutLoading(PdfObjectId id)
@@ -746,12 +749,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return null;
             }
 
-            var read = TryReadUnrecorded(id, PositionOf(entry), out var value, out var pastGuard) ? value : null;
+            // A reference the cut left whole leads on, as a load reads through it (#224): the guard hides nothing the chain
+            // needs of the object, and is reached once the chain is read, where loading the object reaches it.
+            var parsed = TryReadUnrecorded(id, PositionOf(entry), out var value, out var pastGuard);
+            var read = parsed || (pastGuard && value is PdfReference) ? value : null;
             (_readWhileChainIsRead ??= [])[id] = read;
 
-            if (pastGuard)
+            if (pastGuard && read is null)
             {
                 (_cutWhileChainIsRead ??= [])[id] = value.AsInteger() is null ? PdfNull.Instance : value;
+            }
+            else if (pastGuard)
+            {
+                (_chainValuesCut ??= []).Add(id);
             }
 
             return read;
@@ -2264,8 +2274,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Loads, once the chain is read, each object a guard cut that a cross-reference stream's value led to, which the chain
-    /// ended at: the guard is reached, and reported, where a load reaches it — and thrown, when the caller asked for it —,
-    /// as for a <c>/Length</c> read once the chain is (#263).
+    /// ended at or read through: the guard is reached, and reported, where a load reaches it — and thrown, when the caller
+    /// asked for it —, as for a <c>/Length</c> read once the chain is (#263).
     /// </summary>
     private void ReachChainValuesCut()
     {
@@ -3890,10 +3900,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// where that row places it as <see cref="ReadWithoutLoading"/> reads one: nothing is corrected, cached, recorded or
     /// reported. One a guard cuts gives what the cut left of it, an integer read before the cut only a place to look for
     /// <c>endstream</c> at (#224), and <paramref name="lengthCut"/> says so, whether an <c>endstream</c> confirms it or not:
-    /// rows the data taken again still lacks are the guard's. So does the object a guard cut at the end of a chain of
-    /// references from the object read, or from the <c>/Length</c> when a newer section gave the number: the integer the cut
-    /// left of that object, read where the sections read so far place it, is the place to look at then
-    /// (<see cref="TakeAgainAtCut"/>). A row that does not stand otherwise — a newer section gave
+    /// rows the data taken again still lacks are the guard's. A reference it holds, which a cut after it leaves whole, leads
+    /// on, as does the <c>/Length</c> when a newer section gave the number: to a length an object read whole holds, the
+    /// file's, or to the integer the cut left of an object a guard cut, read where the sections read so far place it, only a
+    /// place to look at then (<see cref="TakeAgainThrough"/>). A row that does not stand otherwise — a newer section gave
     /// the number, or refused it; the row lies past those held, places the object in an object stream, or under another
     /// generation — leaves the data as it was taken.
     /// </remarks>
@@ -3915,7 +3925,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // The object a newer section places, which the chain could not read: a guard that cut it, or the object a chain
             // of references from it leads to, leaves how far the data runs to the integer the cut left, where an endstream
             // confirms it, and unknown otherwise.
-            return TakeAgainAtCut(stream, deferred, stream.Dictionary.GetRaw(PdfName.Length), LengthLinks, out lengthCut);
+            return TakeAgainThrough(stream, deferred, stream.Dictionary.GetRaw(PdfName.Length), LengthLinks, out lengthCut);
         }
 
         // The rows that number the object, in the order the subsections give them, up to the first of a type the reading
@@ -3954,24 +3964,27 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return null;
         }
 
-        var read = TryReadUnrecorded(deferred.Length, PositionOf((long)offset), out var value, out var pastGuard);
+        if (!TryReadUnrecorded(deferred.Length, PositionOf((long)offset), out var value, out var pastGuard) && !pastGuard)
+        {
+            return null;
+        }
+
+        // The object read holds the chain's second link, which a cut after it leaves whole: the chain goes on as far as the
+        // parse resolves a /Length through.
+        if (value is PdfReference)
+        {
+            return TakeAgainThrough(stream, deferred, value, LengthLinks - 1, out lengthCut);
+        }
 
         // Data taken again to an integer a guard's cut left is no length the file gave: rows it still lacks are the guard's.
         lengthCut = pastGuard;
-
-        if ((read || pastGuard) && TakeAgain(stream, deferred, value) is { } whole)
-        {
-            return whole;
-        }
-
-        // The object read holds the chain's second link: the chain goes on as far as the parse resolves a /Length through.
-        return !pastGuard && value is PdfReference ? TakeAgainAtCut(stream, deferred, value, LengthLinks - 1, out lengthCut) : null;
+        return TakeAgain(stream, deferred, value);
     }
 
     /// <summary>
     /// Gives cross-reference stream <paramref name="stream"/> with its data taken again to the length
-    /// <paramref name="value"/> gives, when it gives more than the data taken and an <c>endstream</c> confirms it; null
-    /// otherwise.
+    /// <paramref name="value"/>, an integer, gives, when it gives more than the data taken and an <c>endstream</c> confirms
+    /// it; null otherwise.
     /// </summary>
     private PdfStream? TakeAgain(PdfStream stream, DeferredLength deferred, PdfObject value)
     {
@@ -3984,25 +3997,45 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Gives cross-reference stream <paramref name="stream"/> with its data taken again, when <paramref name="written"/>, read
-    /// through the sections read so far and <paramref name="links"/> references, leads to an object a guard cut: to the
-    /// integer the cut left of it, read where they place it, when an <c>endstream</c> confirms it (#224). Null otherwise,
-    /// and <paramref name="lengthCut"/> says whether a guard cut that object, which leaves how far the data runs unknown, the
-    /// data taken again or not.
+    /// Gives cross-reference stream <paramref name="stream"/> with its data taken again to the length
+    /// <paramref name="written"/> leads to, read through the sections read so far and <paramref name="links"/> references,
+    /// as <see cref="TakeAgain"/> takes it; null when the chain reaches no length.
     /// </summary>
-    private PdfStream? TakeAgainAtCut(PdfStream stream, DeferredLength deferred, PdfObject? written, int links, out bool lengthCut)
+    /// <remarks>
+    /// An object a guard cut ends the chain at the integer the cut left of it, read once, where a section read so far places
+    /// it (#224): only a place to look for <c>endstream</c> at, which <paramref name="lengthCut"/> says, the data taken again
+    /// or not — rows it still lacks are the guard's. One whose value the cut left a whole reference is read through, as a load
+    /// reads through it (<see cref="ReadWithoutLoading"/>). A chain that reaches no value — an object no section read so far
+    /// places, or a reference past the links — leaves the data as it was taken, as a whole read leaves it.
+    /// </remarks>
+    private PdfStream? TakeAgainThrough(PdfStream stream, DeferredLength deferred, PdfObject? written, int links, out bool lengthCut)
     {
-        Follow(PdfName.Length, written, entry: true, out _, out var cut, links);
-        lengthCut = cut is not null;
+        lengthCut = false;
+        var value = written;
 
-        // What the cut left of the object, which ReadWithoutLoading read where a section read so far places it, is kept with
-        // it: it is not read again for each section that asks.
-        if (cut is not { } id)
+        for (var link = 0; value is PdfReference reference; link++)
         {
-            return null;
+            if (link == links)
+            {
+                return null;
+            }
+
+            if (ReadWithoutLoading(reference.Id) is { } read)
+            {
+                value = read;
+            }
+            else if (_cutWhileChainIsRead?.TryGetValue(reference.Id, out var left) == true)
+            {
+                value = left;
+                lengthCut = true;
+            }
+            else
+            {
+                return null;
+            }
         }
 
-        return TakeAgain(stream, deferred, _cutWhileChainIsRead![id]);
+        return value is null ? null : TakeAgain(stream, deferred, value);
     }
 
     /// <summary>

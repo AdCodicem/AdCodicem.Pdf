@@ -529,6 +529,105 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of one cross-reference stream, object 7, whose <c>/Length</c> names object 5, which only the stream's own row
+    /// places, before the rows of objects 1 and 2; two rows of reserved types spell <c>endstream</c> after an end-of-line
+    /// after them, 28 and 42 bytes in, before the rows of objects 3 and 7 and fifty free ones, 420 bytes in all. Object 5
+    /// holds the length after 1,014 spaces — a <c>MaxObjectLength</c> of 1,024 parts it after its 42 —, or, with
+    /// <paramref name="throughReference"/>, <c>6 0 R</c> and 1,100 spaces after it — the same bound cuts it after the whole
+    /// reference —, object 6 holding the length, which a newer classic table indexes and names the stream through
+    /// <c>/Prev</c> from. The file is valid, unless <paramref name="lackingRow"/>: the stream's <c>/Index</c> declares one
+    /// row more than its data holds.
+    /// </summary>
+    public static byte[] OwnRowPlacingAPaddedLength(bool throughReference, bool lackingRow = false)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        const int Free = 50;
+        var spelled = "\nendstream\0\0\0\0"u8.ToArray();
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long five, long stream)
+        {
+            var data = new List<byte>(Encode([(0, 0, 65535), (1, five, 0), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0)], Rows.Raw));
+            data.AddRange(spelled);
+            data.AddRange(spelled);
+            data.AddRange(Encode([(1, file.OffsetOf(3), 0), (1, stream, 0), .. Enumerable.Repeat((0, 0L, 0), Free)], Rows.Raw));
+            return [.. data];
+        }
+
+        var length = Data(0, 0).Length.ToString(CultureInfo.InvariantCulture);
+
+        if (throughReference)
+        {
+            file.Object(6, length);
+        }
+
+        file.Object(5, throughReference ? "6 0 R" + new string(' ', 1100) : new string(' ', 1014) + length);
+        var stream = file.Position;
+        var size = 30 + Free + (lackingRow ? 1 : 0);
+        file.Stream(
+            7,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {size} /W [1 4 2] /Index [0 1 5 1 1 2 20 2 22 2 3 1 7 1 30 {size - 30}] /Root 1 0 R /Length 5 0 R"),
+            Data(file.OffsetOf(5), stream));
+
+        if (!throughReference)
+        {
+            file.StartXRef(stream);
+            return file.ToArray();
+        }
+
+        file.Text("%" + new string('-', 1200) + "\n");
+        var xref = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\n6 1\n{file.OffsetOf(6):D10} 00000 n\r\ntrailer\n<< /Size {size} /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A file of three revisions. The first holds the catalog, the page tree and the page, object 5, which holds
+    /// <c>6 0 R</c> and 1,100 spaces after it — a <c>MaxObjectLength</c> of 1,024 cuts it after the whole reference —,
+    /// object 6, which holds 49, and cross-reference stream 7, whose <c>/Length</c> names object 5 and whose rows of objects
+    /// 0 to 2 and 7 come before two rows of reserved types that spell <c>endstream</c> after an end-of-line, before the
+    /// page's row: 49 bytes. The second is cross-reference stream 20, of 49 bytes too, which indexes objects 6 and 20 to 25,
+    /// and names stream 7 through <c>/Prev</c>; its <c>/Length</c> is 49, or, with <paramref name="bothNameIt"/>,
+    /// <c>5 0 R</c>, which the chain then reads before any section places object 6. The third is a classic table that
+    /// indexes object 5 and names stream 20 through <c>/Prev</c>. The file is valid, unless <paramref name="lackingRow"/>:
+    /// stream 7's <c>/Index</c> declares one row more than its data holds.
+    /// </summary>
+    public static byte[] UpdatesReachingALengthThroughACutReference(bool bothNameIt, bool lackingRow = false)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        file.Object(5, "6 0 R" + new string(' ', 1100));
+        file.Object(6, "49");
+        var older = file.Position;
+        var data = new List<byte>(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, older, 0)], Rows.Raw));
+        data.AddRange("\nendstream\0\0\0\0"u8.ToArray());
+        data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
+        file.Stream(
+            7,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {(lackingRow ? 11 : 10)} /W [1 4 2] /Index [0 3 7 1 8 2 3 {(lackingRow ? 2 : 1)}] /Root 1 0 R /Length 5 0 R"),
+            [.. data]);
+        var newer = file.Position;
+        var rows = Encode([(1, file.OffsetOf(6), 0), (1, newer, 0), .. Enumerable.Repeat((0, 0L, 0), 5)], Rows.Raw);
+        file.Stream(
+            20,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 26 /W [1 4 2] /Index [6 1 20 6] /Root 1 0 R /Prev {older} /Length {(bothNameIt ? "5 0 R" : "49")}"),
+            rows);
+        file.Text("%" + new string('-', 1200) + "\n");
+        var xref = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{file.OffsetOf(5):D10} 00000 n\r\ntrailer\n<< /Size 26 /Root 1 0 R /Prev {newer} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file as <see cref="UpdatePlacingAPaddedLength"/> writes it, the rows that spell <c>endstream</c> numbering objects 8
     /// and 9, but for a length a chain of <paramref name="objects"/> objects gives: stream 7's <c>/Length</c> names object 5
     /// — or, with <paramref name="ownRow"/>, object 4, which only stream 7's own row places —, which holds <c>100 0 R</c>;
