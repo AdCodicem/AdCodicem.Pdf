@@ -1230,6 +1230,38 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("Prev", "9 0 R", true)]
+    [InlineData("XRefStm", "9 0 R", true)]
+    [InlineData("Prev", "12 0 R", false)]
+    [InlineData("XRefStm", "12 0 R", false)]
+    public void A_table_an_xrefstm_names_in_a_stream_s_place_has_its_own_links_left_unread(string key, string value, bool guarded)
+    {
+        // The update's /XRefStm names a classic table, where ISO 32000-1 names a cross-reference stream (Table 19): its rows
+        // are read, and the chain goes on through the update's /Prev, as past a stream. The table's own /Prev or /XRefStm,
+        // which a stream's is not since #263, was read all the same: one that leads to an object MaxObjectLength cuts ended
+        // the chain for the guard, the original table and the catalog lost, and one no section places was said to name a
+        // missing section. The rule on trailer values judges it as the file wrote it.
+        var file = ChainFiles.HybridNamingATable(key, value);
+        using var document = PdfDocument.Open(file, guarded ? ObjectGuard : null);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections.Should().HaveCount(3);
+        document.Diagnostics.Should().BeEmpty();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+        var report = new PdfValidator().Validate(document);
+        report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse();
+
+        using var judged = PdfDocument.Open(file, guarded ? ObjectGuard : null);
+        var trailers = new ValidationProfile("trailers", 1, [new TrailerValueWrongRule()]);
+        var findings = new PdfValidator(new PdfValidatorOptions { Profile = trailers }).Validate(judged).Findings.Select(finding => finding.Message);
+
+        // A table's /XRefStm may be a reference (Table 19); its /Prev is direct (Table 15).
+        findings.Should().HaveCount(key == "Prev" ? 1 : 0).And.OnlyContain(message => message.Contains($"writes its /Prev as the reference {value}", StringComparison.Ordinal));
+        judged.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("Prev")]
     [InlineData("XRefStm")]
     public void A_section_whose_prev_a_guard_cut_keeps_the_chain_it_hides_when_it_is_found_where_it_was_moved(string key)
