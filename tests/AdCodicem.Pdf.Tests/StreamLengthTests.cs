@@ -2090,4 +2090,93 @@ public class StreamLengthTests
         document.Reader.TryGetStreamLengthFault(5, out var fault).Should().BeTrue();
         fault.EndStream.Should().Be(EndStreamState.MissingBeforeEndOfFile);
     }
+
+    [Fact]
+    public void A_percent_sign_where_a_short_length_ends_is_data_and_no_comment_that_confirms_the_length()
+    {
+        // A /Length 7 bytes short ends on the "%" of the data: the rest of the line read as a comment before the endstream,
+        // which confirmed the length, and the 7 bytes were lost in silence. A comment counts only after white space.
+        using var document = PdfDocument.Open(OneStream("<< /Length 3 >>\nstream\nabc%\u00e9\u00ff\u0001xyz\nendstream"));
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(10);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().Be("The stream declared 3 bytes but ended after 10.");
+    }
+
+    [Theory]
+    [InlineData("abc\n% a note\nendstream")]
+    [InlineData("abc %a note\r\nendstream")]
+    public void A_comment_after_white_space_where_the_length_ends_confirms_it(string data)
+    {
+        // A comment is white space between the data and its endstream (ISO 32000-1, 7.2.3), once white space comes before it.
+        using var document = PdfDocument.Open(OneStream("<< /Length 3 >>\nstream\n" + data));
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(3);
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_percent_sign_where_a_short_length_ends_is_data_before_the_object_s_endobj_too()
+    {
+        // With no endstream, the endobj after the declared length kept "abc", the comment it skipped lost "%xyz": the endobj
+        // after the data ends it instead.
+        using var document = PdfDocument.Open(OneStream("<< /Length 3 >>\nstream\nabc%xyz"));
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(7);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamTruncated)
+            .Which.Message.Should().EndWith("its object's endobj ends it, after 7 bytes.");
+    }
+
+    [Theory]
+    [InlineData("\nendobj\n% a note\n")]
+    [InlineData("\nendobj % a note\n")]
+    [InlineData("\nendobj%a note\r")]
+    [InlineData("\r\nendobj\n%a\n  % b endobj x\n\n")]
+    [InlineData("\nendobj\n% a note")]
+    public void An_object_s_endobj_ends_data_with_no_endstream_whatever_comments_follow_it(string tail)
+    {
+        // A comment between the object's endobj and the next object kept the endobj from ending the data: the declared
+        // length was kept, or the data took in the endobj. A comment after it is white space (ISO 32000-1, 7.2.3).
+        foreach (var length in new[] { 3, 20_000 })
+        {
+            using var document = PdfDocument.Open(OneStream(
+                "<< /Length " + length.ToString(CultureInfo.InvariantCulture) + " >>\nstream\nhello" + tail, endObj: false));
+
+            document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(5);
+            document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamTruncated)
+                .Which.Message.Should().EndWith("its object's endobj ends it, after 5 bytes.");
+            document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        }
+    }
+
+    [Theory]
+    [InlineData("\nendobj\n% a note\nfoo\n")]
+    [InlineData("\nendobj % a note endobj\nx")]
+    public void An_endobj_a_token_follows_past_its_comments_ends_no_data(string tail)
+    {
+        // What follows the endobj past its comments is a token: the endobj is the data's, and the data runs to the next object.
+        using var document = PdfDocument.Open(OneStream("<< /Length 20000 >>\nstream\nhello" + tail, endObj: false));
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().BeGreaterThan(5);
+        document.Diagnostics.Should().NotContain(entry => entry.Message.EndsWith("after 5 bytes.", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A document whose object 4 is <paramref name="body"/>, followed by its <c>endobj</c> when <paramref name="endObj"/>, and
+    /// then by object 6.
+    /// </summary>
+    private static byte[] OneStream(string body, bool endObj = true)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[4] = file.Position;
+        file.Raw("4 0 obj\n" + body + (endObj ? "\nendobj\n" : string.Empty));
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        return file.Bytes;
+    }
 }

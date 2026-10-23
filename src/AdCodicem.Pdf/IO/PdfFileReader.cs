@@ -1611,8 +1611,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// Determines whether an <c>endobj</c> keyword, whole, follows the declared length of a stream whose data starts at
-    /// <paramref name="dataStart"/>, white space and comments between: in the bytes the parser holds when they say, in the
-    /// file otherwise.
+    /// <paramref name="dataStart"/>, white space and comments between, a comment only after white space: in the bytes the
+    /// parser holds when they say, in the file otherwise.
     /// </summary>
     private bool EndObjFollows(long dataStart, long declaredEnd, ReadOnlySpan<byte> buffered) =>
         (declaredEnd - dataStart <= buffered.Length
@@ -1620,23 +1620,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             : null) ?? IsEndObjAt(declaredEnd);
 
     /// <summary>
-    /// Gives where the data of a stream that has no <c>endstream</c> ends when its object's own <c>endobj</c> ends it before
-    /// <paramref name="stop"/>: in the bytes the parser holds when they reach the stop, in the file otherwise.
-    /// </summary>
-    private long EndObjBefore(long dataStart, long stop, ReadOnlySpan<byte> buffered)
-    {
-        if (stop - dataStart > buffered.Length)
-        {
-            return FindEndObjBefore(dataStart, stop);
-        }
-
-        var end = StreamEnds.EndObjBefore(buffered[..(int)(stop - dataStart)]);
-        return end < 0 ? -1 : dataStart + end;
-    }
-
-    /// <summary>
-    /// Determines whether an <c>endobj</c> keyword, whole, follows <paramref name="absoluteOffset"/> after white space and
-    /// comments: the end of a stream's object that has no <c>endstream</c>.
+    /// Determines whether an <c>endobj</c> keyword, whole, follows <paramref name="absoluteOffset"/>, where a stream's declared
+    /// length ends, after white space and comments, a comment only after white space (<see cref="StreamEnds.SkipGap"/>):
+    /// the end of a stream's object that has no <c>endstream</c>.
     /// </summary>
     private bool IsEndObjAt(long absoluteOffset)
     {
@@ -1655,53 +1641,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         var next = NextSignificant(absoluteOffset);
         return next >= 0 && IsEndObjKeywordAt(next);
-    }
-
-    /// <summary>
-    /// Gives where the data of a stream that has no <c>endstream</c> ends when its object's own <c>endobj</c> ends it: the
-    /// <c>endobj</c>, a whole keyword after <paramref name="absoluteDataStart"/>, that only white space separates from
-    /// <paramref name="stop"/>, the end-of-line before it left out; -1 when none does.
-    /// </summary>
-    /// <param name="absoluteDataStart">Where the data starts in the file.</param>
-    /// <param name="stop">Where the search for the stream's <c>endstream</c> stopped: an object, or the end of the file.</param>
-    private long FindEndObjBefore(long absoluteDataStart, long stop)
-    {
-        // The white space before the stop, read back a few bytes at a time and more as it runs on: the search read it
-        // already, and this reads it once more at most.
-        var end = stop;
-        var size = PdfObjectParser.EndObjLookahead;
-
-        while (end > absoluteDataStart)
-        {
-            var from = Math.Max(absoluteDataStart, end - size);
-            using var window = _source.GetWindow(from, (int)(end - from));
-            var span = window.Memory.Span;
-            _endStreamSearchBytes += span.Length;
-
-            if (span.Length < end - from)
-            {
-                return -1;
-            }
-
-            var last = span.LastIndexOfAnyExcept(PdfCharacters.Whitespace);
-
-            if (last >= 0)
-            {
-                end = from + last + 1;
-                break;
-            }
-
-            end = from;
-            size = (int)Math.Min(2L * size, EndStreamSearchChunk);
-        }
-
-        // The keyword, the byte before it and the end-of-line before that.
-        var before = Math.Max(absoluteDataStart, end - StreamEnds.EndObjKeyword.Length - 3);
-        Span<byte> bytes = stackalloc byte[StreamEnds.EndObjKeyword.Length + 3];
-        var length = (int)(end - before);
-        var held = _source.Read(before, bytes[..length]);
-        var dataEnd = held == length ? StreamEnds.EndObjEnding(bytes[..length], atDataStart: before == absoluteDataStart) : -1;
-        return dataEnd < 0 ? -1 : before + dataEnd;
     }
 
     /// <summary>
@@ -1846,11 +1785,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // cost no read.
         var readsFile = _endStreamSearchBytes < EndStreamSearchPasses * _source.Length;
         var dataEnd = SearchEndStream(
-            absoluteDataStart, buffered, nextObject ?? _source.Length, deferred, readsFile, out var header, out var searched, out var endObjSeen);
+            absoluteDataStart,
+            buffered,
+            nextObject ?? _source.Length,
+            deferred,
+            readsFile,
+            out var header,
+            out var searched,
+            out var endObjSeen,
+            out var objectEnd);
 
         // A header the bytes hold is looked for only before the next object the index places: found, it is the nearer.
         var stop = header >= 0 ? header : nextObject;
-        var end = stop ?? _source.Length;
 
         // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of more
         // than 2 GB can put one there, and the stream is read as one whose endstream is not found. With none, what the
@@ -1863,7 +1809,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             : new StreamEndSearch(null, stop, EndObjState.Unknown, searched)
             {
                 EndObjSeen = endObjSeen,
-                ObjectEnd = searched ? EndObjBefore(absoluteDataStart, end, buffered) : -1,
+                ObjectEnd = objectEnd,
             };
     }
 
@@ -1984,6 +1930,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="header">Where the header that stopped the search starts, or -1.</param>
     /// <param name="searched">Whether the search reached where it stops, rather than the end of what it might read.</param>
     /// <param name="endObjSeen">Whether the bytes searched, before a header that stopped the search, hold an <c>endobj</c>.</param>
+    /// <param name="objectEnd">
+    /// Where the data ends, when no <c>endstream</c> is found and the search reached where it stops, at the object's own
+    /// <c>endobj</c> that only white space and comments separate from there (<see cref="EndObjTail"/>); -1 otherwise.
+    /// </param>
     private long SearchEndStream(
         long dataStart,
         ReadOnlySpan<byte> buffered,
@@ -1992,20 +1942,25 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         bool readsFile,
         out long header,
         out bool searched,
-        out bool endObjSeen)
+        out bool endObjSeen,
+        out long objectEnd)
     {
         Span<byte> carried = stackalloc byte[HeaderText.CarriedLength];
         Span<long> carriedAt = stackalloc long[HeaderText.CarriedLength];
         var text = new HeaderText(carried, carriedAt, dataStart);
+        var tail = new EndObjTail(dataStart);
         searched = true;
+        objectEnd = -1;
 
         var inBuffer = (int)Math.Clamp(limit - dataStart, 0, buffered.Length);
         text.Read(buffered[..inBuffer], dataStart);
         var found = StreamEnds.SearchStretch(text, endsRange: dataStart + inBuffer >= limit, deferred, out header);
         endObjSeen = StreamEnds.HoldsEndObj(buffered[..inBuffer], header >= 0 ? (int)(header - dataStart) : inBuffer);
+        tail.Read(buffered[..inBuffer], dataStart, header >= 0 ? header : dataStart + inBuffer);
 
         if (found >= 0 || header >= 0)
         {
+            objectEnd = found < 0 ? tail.DataEnd(header) : -1;
             return found;
         }
 
@@ -2013,6 +1968,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (dataStart + buffered.Length >= end)
         {
+            objectEnd = tail.DataEnd(end);
             return -1;
         }
 
@@ -2041,9 +1997,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             text.Read(span, position);
             found = StreamEnds.SearchStretch(text, endsRange: position + span.Length >= end, deferred, out header);
             endObjSeen |= StreamEnds.HoldsEndObj(span, header >= 0 ? (int)(header - position) : span.Length);
+            tail.Read(span, position, header >= 0 ? header : position + span.Length);
 
             if (found >= 0 || header >= 0 || position + span.Length >= end)
             {
+                objectEnd = found < 0 ? tail.DataEnd(header >= 0 ? header : end) : -1;
                 return found;
             }
 
