@@ -717,6 +717,27 @@ public class GuardCutValueTests
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
     }
 
+    [Theory]
+    [InlineData("9 0 R", true)]
+    [InlineData("9 0 R", false)]
+    [InlineData("12 0 R", false)]
+    public void A_hybrid_stream_s_own_prev_which_no_reader_follows_is_not_read(string prev, bool guarded)
+    {
+        // A hybrid file's stream gives a /Prev of its own, which the chain does not follow: it goes on through the table's.
+        // Read anyway, one that leads to an object MaxObjectLength cuts ended the chain for the guard, the older table lost,
+        // and one no section places was said to name a missing section (#263).
+        var file = ChainFiles.HybridWithStreamPrev(prev);
+        using var document = PdfDocument.Open(file, guarded ? ObjectGuard : null);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections.Should().HaveCount(3);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+        document.Diagnostics.Should().BeEmpty();
+        var report = new PdfValidator().Validate(document);
+        report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.XRefCheckedInPart).Should().BeFalse();
+    }
+
     [Fact]
     public void A_section_whose_prev_a_guard_cut_keeps_the_chain_it_hides_when_it_is_found_where_it_was_moved()
     {
