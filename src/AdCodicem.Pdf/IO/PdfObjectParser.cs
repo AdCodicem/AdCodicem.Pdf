@@ -1223,7 +1223,8 @@ internal ref struct PdfObjectParser
     {
         // A /Length read once the cross-reference chain is: whether the data ends where it should is known then (#182). One a
         // guard left out of the index, or cut, is unknown, and the guard's report says why; a missing endstream is still the
-        // file's (#224), and the only fault reported of it.
+        // file's (#224), and the only fault reported of it, where no header the data spells, nor an endstream its endobj
+        // does not follow, stops the search.
         if (fault.Form == StreamLengthForm.Deferred)
         {
             return false;

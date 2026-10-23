@@ -114,7 +114,9 @@ and no guard's, unless that `/Length` leads to an object `MaxObjectLength` cut (
 to an object a guard cut or left out of the index — a stream's `/Length`, `/Filter` or `/DecodeParms`, a value of a
 filter's parameters, a cross-reference stream's `/W`, `/Index` or `/Size`, a trailer's `/Prev` or `/XRefStm` — is the
 guard's, not the file's: an integer the cut parted, `1` of `15`, is only a place to look for `endstream` at, never a
-declared length, though a stream that lacks its `endstream` is still the file's fault; a chain of filters ends there,
+declared length, though a stream that lacks its `endstream` is still the file's fault, unless a header its data spells,
+or an `endstream` its object's `endobj` does not follow, stops the search, the data up to it then the guard's; a whole
+reference the cut left leads on, as read whole; a chain of filters ends there,
 its data left encoded; and a cross-reference section whose values lead to an object `MaxObjectLength` cut ends the
 chain, nothing rebuilt, the older sections and their trailers the guard's to hide, and the guard reached once the chain
 is read. So does a cross-reference stream's `/Length` the chain could not read that leads to such an object, wherever
