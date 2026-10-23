@@ -37,8 +37,8 @@ it, and a file that kills the process is the worst outcome a document reader can
 ## Guards a valid file can reach
 
 Some of those bounds are reachable by a sound document: a large-format scan decodes past the 256 MB a stream may
-decode to by default, and stored without a filter its data runs past the 256 MB the reader reads of one stream at once;
-a file saved incrementally a thousand times has a thousand cross-reference sections, and nothing
+decode to by default, and stored without a filter its data would run past the 256 MB the reader reads of one stream at
+once; a file saved incrementally a thousand times has a thousand cross-reference sections; and nothing
 in PDF 2.0 forbids more objects than the 8,388,607 the index holds by default. A bound like that is a **guard**. It is on by default, so an application that opens files it did not produce is
 protected without configuring anything; it is reported under its own `limit.*` code when a document reaches it; and
 its message names the option that lifts it, so that the document stays readable by whoever needs to read it.
@@ -88,6 +88,15 @@ reader keeps, 32 MB together, the one it decoded last, whatever its size, and th
 more than its output: a Flate filter allocates up to about five times what it decodes to, and holds two to three times
 that while it decodes.
 
+Before its first filter runs, a stream's encoded data is read, and that read is bounded too. ISO 32000 sets no limit on
+a stream's length, and data no filter decodes — none named, an image filter, one the library does not know, one that
+could not decode it — comes back as it is, out of reach of `MaxDecodedStreamLength`, which bounds what filters produce.
+`MaxStreamLength` bounds what is read of one stream's data at once, 256 MB by default; past it the data is cut, and its
+filters decode what was read as data the reader cut. No stream keeps its data: it is read each time it is asked for,
+lent where it lies when the document is held in memory, read into an array of its length from a file. A stream costs
+its data only while it is read or decoded, and for as long as you keep what that gave you, and streams whose data share
+a stretch of the file do not each hold a copy of it.
+
 `PdfReaderLimits.Unbounded` takes every limit to the most the implementation can hold. It is for documents your own
 application produced, never for uploads: under it, a file can make the reader hold whatever it asks for, up to those
 maxima.
@@ -98,7 +107,12 @@ Other bounds protect the reader itself — its stack, the chains of references i
 documents producers write: real documents nest a handful of levels, not 128, and producers write an object rather
 than a reference to a reference. An object stream's header lists its objects by increasing offset, so that a sound
 one's objects each lie before the next one starts: the reader reads each no further, and a header that breaks that
-order ends where it breaks it. Those stay internal constants, since lifting them would let nothing more be read, and
+order ends where it breaks it. A sound stream's `endstream` follows its declared length; where it does not, or the
+`/Length` gives none, the reader searches the file for it past the bytes it parsed the object through, rather than parse
+the object through a larger window, so that a stream's data never counts toward its object's length. A document's
+searches read four times the file at most: a valid file is read past those bytes only for the data of a cross-reference
+stream whose `/Length` the chain cannot read yet, and for white space and comments after a declared length, about twice
+the file. Those stay internal constants, since lifting them would let nothing more be read, and
 each says where it is declared why no valid file reaches it.
 
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):
