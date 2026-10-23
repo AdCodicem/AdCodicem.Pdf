@@ -121,8 +121,8 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   is among them the reader does not look for another. While the chain is read, a `/Prev` or an `/XRefStm` that leads to
   an object `MaxObjectLength` cuts, a cross-reference stream whose `/W`, `/Index`, `/Size`, `/Filter` or `/DecodeParms`
   does, and one whose `/Length` does when no `endstream` ends its data, are the guard's, as a section it cut is: the
-  chain ends there, the older sections are not read, the index is not rebuilt, and the guard is reported once the chain
-  is read, or thrown by `Open`.
+  chain ends there, the sections it names are not read — the older ones, or a hybrid file's cross-reference stream —,
+  the index is not rebuilt, and the guard is reported once the chain is read, or thrown by `Open`.
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever
