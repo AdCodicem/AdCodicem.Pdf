@@ -1924,6 +1924,26 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_filter_guard_that_keeps_a_deferred_length_s_data_from_being_taken_again_leaves_no_filter_fault()
+    {
+        // The stream's data, taken up to the endstream its rows spell, is compressed twice in stored blocks, and
+        // MaxFilterChainLength lets the first Flate alone run: over data cut short at the spelled endstream, it failed, and
+        // the guard, which kept the data from being taken again to its length, left that failure to the file (#220).
+        var file = ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: false, stored: true, layers: 2);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 1 } });
+
+        whole.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitFilterChain);
+        document.Diagnostics.Should().NotContain(entry => entry.Code.StartsWith("filter.", StringComparison.Ordinal));
+
+        // The guard's report stands once, however often the stream is decoded again.
+        document.GetObject(new PdfObjectId(5)).AsStream().Required().Decode();
+        new PdfValidator().Validate(document);
+        document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.LimitFilterChain).Should().Be(1);
+    }
+
+    [Fact]
     public void A_deferred_length_whose_reference_leads_to_an_object_only_its_own_section_places_is_read_once_the_chain_is()
     {
         // The cross-reference stream's /Length, object 5, which the newer table places, holds a reference to object 6, which

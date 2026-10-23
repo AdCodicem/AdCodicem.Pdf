@@ -192,9 +192,10 @@ internal static class ChainFiles
     /// in a row before two rows of reserved types that spell <c>endstream</c> after an end-of-line; the page's row comes
     /// after them. With <paramref name="reservedRowFirst"/>, the <c>/Index</c> numbers object 4 twice: first in a row of a
     /// reserved type, which the specification says to ignore, then in the row that places it. With <paramref name="stored"/>,
-    /// the data is compressed in stored blocks, which show the rows as written. The file is valid.
+    /// the data is compressed in stored blocks, which show the rows as written, <paramref name="layers"/> times over, each
+    /// layer a Flate filter. The file is valid.
     /// </summary>
-    public static byte[] AloneWithIndirectLengthBeforeSpelledRows(bool reservedRowFirst, bool stored = false)
+    public static byte[] AloneWithIndirectLengthBeforeSpelledRows(bool reservedRowFirst, bool stored = false, int layers = 1)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -208,13 +209,20 @@ internal static class ChainFiles
             var data = new List<byte>(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), .. reserved, (1, four, 0), (1, stream, 0)], Rows.Raw));
             data.AddRange("\nendstream\0\0\0\0"u8.ToArray());
             data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
-            return stored ? Compress([.. data]) : [.. data];
+            byte[] bytes = [.. data];
+
+            for (var layer = 0; stored && layer < layers; layer++)
+            {
+                bytes = Compress(bytes);
+            }
+
+            return bytes;
         }
 
         file.Object(4, Data(0, 0).Length.ToString(CultureInfo.InvariantCulture));
         var stream = file.Position;
         var index = reservedRowFirst ? "0 3 4 1 4 2 6 2 3 1" : "0 3 4 2 6 2 3 1";
-        var filter = stored ? " /Filter /FlateDecode" : string.Empty;
+        var filter = stored ? " /Filter [" + string.Join(' ', Enumerable.Repeat("/FlateDecode", layers)) + "]" : string.Empty;
         file.Stream(5, $"/Type /XRef /Size 8 /W [1 4 2] /Index [{index}]{filter} /Root 1 0 R /Length 4 0 R", Data(file.OffsetOf(4), stream));
         file.StartXRef(stream);
         return file.ToArray();
