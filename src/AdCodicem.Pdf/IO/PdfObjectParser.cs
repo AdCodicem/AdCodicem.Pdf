@@ -77,6 +77,13 @@ internal ref struct PdfObjectParser
     private bool _headerUndecided;
 
     /// <summary>
+    /// Whether a window's edge left the look-ahead of an integer undecided — "12 0" that may be what the edge left of
+    /// "12 0 R" —: what the parse reads after the integer is what the edge made of the reference, not what follows the
+    /// object (#224).
+    /// </summary>
+    private bool _lookAheadCut;
+
+    /// <summary>
     /// Whether the last stream read kept a declared length that neither <c>endstream</c> nor <c>endobj</c> follows: where
     /// its object ends is unknown, and its <c>endobj</c> is not judged.
     /// </summary>
@@ -219,6 +226,7 @@ internal ref struct PdfObjectParser
     {
         _headerAt = -1;
         _headerUndecided = false;
+        _lookAheadCut = false;
         return ParseValue(_lexer.Read(), 0);
     }
 
@@ -285,6 +293,7 @@ internal ref struct PdfObjectParser
         _headerStart = number.Start;
         _headerAt = -1;
         _headerUndecided = false;
+        _lookAheadCut = false;
 
         // An empty object, "2 0 obj endobj", reads its endobj as its value, and says so; that endobj is its own.
         var beforeValue = _lexer.Position;
@@ -303,8 +312,9 @@ internal ref struct PdfObjectParser
         var afterValue = _lexer.Position;
         var next = _lexer.Read();
 
-        // A header a window's edge left undecided ended the value: what follows it is the edge's, not seen (#230).
-        var unseen = next.Kind == PdfTokenKind.EndOfInput || next.End >= _memory.Length || _headerUndecided;
+        // A header a window's edge left undecided ended the value, or a reference the edge cut after its generation: what
+        // follows it is the edge's, not seen (#224, #230).
+        var unseen = next.Kind == PdfTokenKind.EndOfInput || next.End >= _memory.Length || _headerUndecided || _lookAheadCut;
 
         // What follows a stream whose data runs past the buffer lies past it too: the file was asked at the stream's
         // end, and its answer stands where the buffer has none (#55).
@@ -467,6 +477,7 @@ internal ref struct PdfObjectParser
         if (third.Kind == PdfTokenKind.EndOfInput)
         {
             _truncated = true;
+            _lookAheadCut = !_endsData;
         }
 
         _lexer.Position = saved;

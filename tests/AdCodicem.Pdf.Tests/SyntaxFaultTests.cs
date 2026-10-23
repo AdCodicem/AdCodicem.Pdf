@@ -377,6 +377,36 @@ public class SyntaxFaultTests
     }
 
     [Theory]
+    [InlineData("6 0 ")]
+    [InlineData("6 0")]
+    [InlineData("6 0 R")]
+    [InlineData("6")]
+    public void An_object_a_guard_cuts_inside_a_reference_it_holds_alone_is_not_said_to_lack_its_endobj(string kept)
+    {
+        // Object 4 holds the reference 6 0 R alone, after 100 spaces, its endobj after it; MaxObjectLength ends the window
+        // inside it, after its generation, whose look-ahead the edge left undecided: the generation was taken for what follows
+        // the object, which was said to lack its endobj, at the guard's cut (#224).
+        var body = new string(' ', 100) + "6 0 R";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Extra 4 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(4, body),
+            [6] = file.Object(6, "(six)"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var limit = "4 0 obj\n".Length + 100 + kept.Length;
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit } });
+
+        document.GetObject(new PdfObjectId(4));
+
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitObject);
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("(abc)")]
     [InlineData("<< /A 1 >>")]
     [InlineData("[1 2 3]")]
