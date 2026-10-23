@@ -63,6 +63,12 @@ internal ref struct PdfObjectParser
     private bool _cutReported;
 
     /// <summary>
+    /// Where the header of the object after this one starts, in the buffer, when one ended the containers this object left
+    /// open, where a value or a key was expected (#230); -1 when none did.
+    /// </summary>
+    private int _headerAt = -1;
+
+    /// <summary>
     /// Whether the last stream read kept a declared length that neither <c>endstream</c> nor <c>endobj</c> follows: where
     /// its object ends is unknown, and its <c>endobj</c> is not judged.
     /// </summary>
@@ -189,7 +195,11 @@ internal ref struct PdfObjectParser
     }
 
     /// <summary>Parses the object at the current position.</summary>
-    public PdfObject ParseObject() => ParseValue(_lexer.Read(), 0);
+    public PdfObject ParseObject()
+    {
+        _headerAt = -1;
+        return ParseValue(_lexer.Read(), 0);
+    }
 
     /// <summary>
     /// Determines whether an object header may still begin with <paramref name="number"/> and <paramref name="generation"/>,
@@ -252,6 +262,7 @@ internal ref struct PdfObjectParser
         id = new PdfObjectId((int)number.Integer, (int)generation.Integer);
         _objectNumber = id.Number;
         _headerStart = number.Start;
+        _headerAt = -1;
 
         // An empty object, "2 0 obj endobj", reads its endobj as its value, and says so; that endobj is its own.
         var beforeValue = _lexer.Position;
@@ -325,7 +336,7 @@ internal ref struct PdfObjectParser
                 return PdfNull.Instance;
 
             case PdfTokenKind.Integer:
-                return ParseIntegerOrReference(token);
+                return ParseIntegerOrReference(token, depth);
 
             // A token a window's edge cut is the guard's, or the next window's, to judge: nothing is reported of it.
             case PdfTokenKind.Real when !double.IsFinite(token.Real) && AtWindowEdge(token):
@@ -383,7 +394,11 @@ internal ref struct PdfObjectParser
         }
     }
 
-    private PdfObject ParseIntegerOrReference(PdfToken token)
+    /// <summary>
+    /// Parses an integer, or the reference it starts, inside <paramref name="depth"/> containers: inside one, the header of
+    /// the next object it starts ends them (#230), and reads as null where <see cref="_headerAt"/> says.
+    /// </summary>
+    private PdfObject ParseIntegerOrReference(PdfToken token, int depth)
     {
         // "12 0 R" is only distinguishable from "12" by looking two tokens ahead. "0 0 R" is a reference too: object 0
         // heads the free list and is never in use (ISO 32000-1, 7.5.4), so it reads as null, as a reference to any
@@ -397,6 +412,15 @@ internal ref struct PdfObjectParser
             second.Integer is >= 0 and <= PdfObjectId.MaxGeneration)
         {
             return new PdfReference(new PdfObjectId((int)token.Integer, (int)second.Integer), _source);
+        }
+
+        // The next object's header where an element or a value should be: this object lost both its closing delimiter and
+        // its endobj, and its containers end where the next object starts (#230). A value alone is no container.
+        if (depth > 0 && IsHeader(token, second, third))
+        {
+            _headerAt = token.Start;
+            _lexer.Position = saved;
+            return PdfNull.Instance;
         }
 
         // The buffer ended before the look-ahead could tell: "12 0" may be all there is, or what a
@@ -447,14 +471,34 @@ internal ref struct PdfObjectParser
                     return array;
 
                 // An endobj where an element should be ends the object, the array with it, as PDFBox and pdfium read it:
-                // the array takes nothing past it, though it is the next object's when this one lost its own (#230).
+                // the array takes nothing past it. An object that lost its own endobj meets the next object's header
+                // first, which ends it there (#230).
                 case PdfTokenKind.Keyword when IsEndObj(token):
                     _lexer.Position = token.Start;
                     ReportCut("an array", openedAt, depth, atEndObj: true);
                     return array;
 
                 default:
-                    array.Add(ParseValue(token, depth + 1));
+                    var element = ParseValue(token, depth + 1);
+
+                    if (_headerAt >= 0)
+                    {
+                        // The next object's header ends the array: where an element should be, reported here; inside an
+                        // array or a dictionary the element opened, reported there, and that element kept as it was read.
+                        if (_headerAt == token.Start)
+                        {
+                            ReportCut("an array", openedAt, depth, atHeader: true);
+                        }
+                        else
+                        {
+                            array.Add(element);
+                        }
+
+                        _lexer.Position = _headerAt;
+                        return array;
+                    }
+
+                    array.Add(element);
 
                     if (IsMemberStream)
                     {
@@ -498,8 +542,8 @@ internal ref struct PdfObjectParser
                 return dictionary;
             }
 
-            // An endobj where a key should be ends the object, the dictionary with it: the dictionary takes nothing past it,
-            // though it is the next object's when this one lost its own (#230).
+            // An endobj where a key should be ends the object, the dictionary with it: the dictionary takes nothing past it.
+            // An object that lost its own endobj meets the next object's header first, which ends it there (#230).
             if (IsEndObj(keyToken))
             {
                 _lexer.Position = keyToken.Start;
@@ -509,6 +553,14 @@ internal ref struct PdfObjectParser
 
             if (keyToken.Kind != PdfTokenKind.Name)
             {
+                if (StartsHeader(keyToken))
+                {
+                    _headerAt = keyToken.Start;
+                    _lexer.Position = keyToken.Start;
+                    ReportCut("a dictionary", openedAt, depth, atHeader: true);
+                    return dictionary;
+                }
+
                 // A string where a key should be is a string all the same, which the end of the data can leave open inside
                 // the dictionary: it is the innermost construct then.
                 if (keyToken.Kind is PdfTokenKind.LiteralString)
@@ -563,6 +615,24 @@ internal ref struct PdfObjectParser
 
             if (IsMemberStream)
             {
+                return dictionary;
+            }
+
+            if (_headerAt >= 0)
+            {
+                // The next object's header ends the dictionary: where the value should be, the key given none and reported
+                // here; inside an array or a dictionary the value opened, reported there, and that value kept.
+                if (_headerAt == valueToken.Start)
+                {
+                    ReportCut("a dictionary", openedAt, depth, valueMissing: true, atHeader: true);
+                    Give(dictionary, ref nullKeys, keyToken, key, PdfNull.Instance, keyAtEdge, valueCut: false);
+                }
+                else
+                {
+                    Give(dictionary, ref nullKeys, keyToken, key, value, keyAtEdge, valueCut: false);
+                }
+
+                _lexer.Position = _headerAt;
                 return dictionary;
             }
 
@@ -1069,6 +1139,12 @@ internal ref struct PdfObjectParser
                     ReportCut(endKind == PdfTokenKind.ArrayEnd ? "an array" : "a dictionary", openedAt, enclosing, atEndObj: true);
                     return;
 
+                case PdfTokenKind.Integer when StartsHeader(token):
+                    _headerAt = token.Start;
+                    _lexer.Position = token.Start;
+                    ReportCut(endKind == PdfTokenKind.ArrayEnd ? "an array" : "a dictionary", openedAt, enclosing, atHeader: true);
+                    return;
+
                 case PdfTokenKind.ArrayStart when endKind == PdfTokenKind.ArrayEnd:
                 case PdfTokenKind.DictionaryStart when endKind == PdfTokenKind.DictionaryEnd:
                     depth++;
@@ -1227,9 +1303,11 @@ internal ref struct PdfObjectParser
     /// <param name="swallowed">The bytes a string took to the end of the data, or 0 for an array or a dictionary.</param>
     /// <param name="valueMissing">Whether the cut came after a dictionary's key, before its value.</param>
     /// <param name="atEndObj">Whether an <c>endobj</c> made the cut, rather than the end of the data.</param>
-    private void ReportCut(string what, int openedAt, int enclosing, int swallowed = 0, bool valueMissing = false, bool atEndObj = false)
+    /// <param name="atHeader">Whether the next object's header made the cut, rather than the end of the data (#230).</param>
+    private void ReportCut(
+        string what, int openedAt, int enclosing, int swallowed = 0, bool valueMissing = false, bool atEndObj = false, bool atHeader = false)
     {
-        if ((!_endsData && !atEndObj) || _cutReported)
+        if ((!_endsData && !atEndObj && !atHeader) || _cutReported)
         {
             return;
         }
@@ -1242,7 +1320,7 @@ internal ref struct PdfObjectParser
             return;
         }
 
-        var data = atEndObj ? "An endobj ended the object" : End;
+        var data = atEndObj ? "An endobj ended the object" : atHeader ? "An object header ended the object" : End;
         var content = swallowed > 0
             ? string.Create(CultureInfo.InvariantCulture, $", which takes the {swallowed:N0} {(swallowed == 1 ? "byte" : "bytes")} from where it opens to that end")
             : valueMissing ? ", which was never closed, before the value of its last key" : ", which was never closed";
@@ -1275,6 +1353,47 @@ internal ref struct PdfObjectParser
     /// a window's edge may be the start of a longer keyword.
     /// </summary>
     private readonly bool IsEndObj(PdfToken token) => token.IsKeyword("endobj"u8) && !AtWindowEdge(token);
+
+    /// <summary>
+    /// Determines whether <paramref name="number"/>, read where a key is expected, starts the next object's header
+    /// (<see cref="IsHeader"/>): the two tokens after it are read, and the lexer left where it was.
+    /// </summary>
+    private bool StartsHeader(PdfToken number)
+    {
+        if (number.Kind != PdfTokenKind.Integer || _member is not null)
+        {
+            return false;
+        }
+
+        var saved = _lexer.Position;
+        var generation = _lexer.Read();
+        var keyword = generation.Kind == PdfTokenKind.Integer ? _lexer.Read() : generation;
+        _lexer.Position = saved;
+        return IsHeader(number, generation, keyword);
+    }
+
+    /// <summary>
+    /// Determines whether three tokens are an object header as the bytes hold one, the rule the search for a stream's
+    /// <c>endstream</c> stops at (<see cref="HeaderText"/>): <c>N G obj</c>, digits alone for a number from 1 to
+    /// 2,147,483,647 and a generation from 0 to 65,535, white space alone between them — no comment —, and <c>obj</c> a
+    /// whole keyword, which one a window's edge reaches may not be. An object stream's member is never followed by a
+    /// header: its members have none (#230).
+    /// </summary>
+    private readonly bool IsHeader(PdfToken number, PdfToken generation, PdfToken keyword)
+    {
+        if (_member is not null || number.Kind != PdfTokenKind.Integer || generation.Kind != PdfTokenKind.Integer ||
+            !keyword.IsKeyword("obj"u8) || AtWindowEdge(keyword) ||
+            number.Integer is < 1 or > PdfObjectId.MaxNumber || generation.Integer is < 0 or > PdfObjectId.MaxGeneration)
+        {
+            return false;
+        }
+
+        var span = _memory.Span;
+        return !span[number.Start..number.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
+            !span[generation.Start..generation.End].ContainsAnyExceptInRange((byte)'0', (byte)'9') &&
+            !span[number.End..generation.Start].ContainsAnyExcept(PdfCharacters.Whitespace) &&
+            !span[generation.End..keyword.Start].ContainsAnyExcept(PdfCharacters.Whitespace);
+    }
 
     /// <summary>Gets what ended the buffer, as a report of what it cut short names it.</summary>
     private readonly string End => _member switch

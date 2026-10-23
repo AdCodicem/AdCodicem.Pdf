@@ -313,6 +313,35 @@ public class WindowEdgeTests
     }
 
     [Fact]
+    public void An_object_that_lost_its_end_ends_at_the_next_header_wherever_the_window_edge_cuts_it()
+    {
+        // The header that ends an array which lost its ] and its endobj meets the edge at every byte, and a byte or two
+        // before and after: the edge never makes the header an integer and a stray keyword, nor hides it (#230).
+        var failures = new List<string>();
+        const string Before = "[(";
+        const string After = ") 1 2 3\n6 0 obj\n(six)";
+        var header = Header(ObjectNumber);
+
+        for (var shortOfEdge = -2; shortOfEdge <= 10; shortOfEdge++)
+        {
+            var filler = Window - header.Length - Before.Length - ") 1 2 3\n".Length - shortOfEdge;
+            using var document = PdfDocument.Open(Document(Before + new string('x', filler) + After));
+
+            var read = document.GetObject(new PdfObjectId(ObjectNumber));
+            var reports = string.Join(" | ", document.Diagnostics.Select(entry => entry.Message));
+
+            if (read is not PdfArray { Count: 4 } ||
+                reports != "An object header ended the object inside an array, which was never closed." ||
+                !document.Reader.IsEndObjMissing(ObjectNumber, out _))
+            {
+                failures.Add($"the header {shortOfEdge} bytes before the edge: {read}, {reports}");
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
+    [Fact]
     public void An_object_whose_header_lies_past_the_window_is_read_where_the_index_says()
     {
         // The index points at white space that runs past the 8 KB window before the object's header: the

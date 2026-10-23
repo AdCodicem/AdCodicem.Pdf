@@ -145,6 +145,144 @@ public class SyntaxFaultTests
     }
 
     [Theory]
+    [InlineData("[1 2 3", "an array, which was never closed")]
+    [InlineData("<< /A 1", "a dictionary, which was never closed")]
+    [InlineData("<< /A", "a dictionary, which was never closed, before the value of its last key")]
+    public void An_object_that_lost_its_closing_delimiter_and_its_endobj_ends_at_the_next_object_s_header(string value, string what)
+    {
+        // Object 4 lost both its closing ] or >> and its endobj: its container took in object 5's header and value up to
+        // object 5's endobj, and the object read as ending with one, its missing endobj unreported (#230). The next object's
+        // header ends it, the cut reported once, and the object lacks its endobj.
+        var file = FourLostItsEnd(value);
+        using var document = PdfDocument.Open(file);
+
+        var read = document.GetObject(new PdfObjectId(4));
+
+        (read is PdfArray { Count: 3 } || read is PdfDictionary { Count: <= 1 }).Should().BeTrue();
+        (read is not PdfDictionary dictionary || dictionary.ContainsKey(PdfName.Get("A")) == !value.EndsWith("/A", StringComparison.Ordinal)).Should().BeTrue();
+        document.GetObject(new PdfObjectId(5)).AsDictionary().Required().Should().HaveCount(2);
+        var report = document.Diagnostics.Should().ContainSingle().Subject;
+        report.Code.Should().Be(PdfDiagnosticCodes.SyntaxTruncatedObject);
+        report.Position.Should().Be(PdfTemplate.OffsetOf(file, "4 0 obj\n") + "4 0 obj\n".Length);
+        report.Message.Should().Be($"An object header ended the object inside {what}.");
+        document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle()
+            .Which.RuleId.Should().Be(PdfValidationRuleIds.ObjectEndObjMissing);
+    }
+
+    [Fact]
+    public void The_next_object_s_header_ends_every_container_left_open_and_is_reported_at_the_innermost()
+    {
+        // The innermost dictionary took object 5's /Foo and /Author and closed at its >>: it ends at the header, which is
+        // reported where it opens, and the containers around it end there too (#230).
+        var file = FourLostItsEnd("<< /A [1 << /B 2");
+        using var document = PdfDocument.Open(file);
+
+        var outer = document.GetObject(new PdfObjectId(4)).AsDictionary().Required();
+        var array = outer.GetArray(PdfName.Get("A")).Required();
+        array.Should().HaveCount(2);
+        array[1].Should().BeOfType<PdfDictionary>().Which.Should().HaveCount(1, "the inner dictionary takes nothing of object 5");
+        var report = document.Diagnostics.Should().ContainSingle().Subject;
+        report.Position.Should().Be(PdfTemplate.OffsetOf(file, "<< /B 2"));
+        report.Message.Should().Be("An object header ended the object inside a dictionary, which was never closed; the 2 arrays or dictionaries around it were never closed either.");
+        document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("[1 (x 6 0 obj y) 2", 3, 0)]
+    [InlineData("[1 6 0 R", 2, 0)]
+    [InlineData("[1 6 65536 obj", 4, 1)]
+    [InlineData("[1 2147483648 0 obj", 4, 1)]
+    [InlineData("[1 6 %a comment\n0 obj", 4, 1)]
+    [InlineData("[1 +6 0 obj", 4, 1)]
+    public void Text_that_is_no_object_header_ends_no_container(string value, int count, int strays)
+    {
+        // A header in a string is no token; a reference is decided first; a generation or a number out of range, a comment
+        // between the tokens, a sign before the number: none is a header, as the search for a stream's endstream takes
+        // one, and the array goes on, a stray obj reported, to object 5's header (#230).
+        var file = FourLostItsEnd(value);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().HaveCount(count);
+        document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken).Should().Be(strays);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.SyntaxTruncatedObject)
+            .Which.Message.Should().Be("An object header ended the object inside an array, which was never closed.");
+    }
+
+    [Fact]
+    public void A_header_inside_a_closed_container_ends_it_there_and_its_endobj_is_judged_missing()
+    {
+        // The rule's cost: text an object holds that is a header ends the object there, though its container closes and
+        // its endobj follows; what follows the header is not read (#230). No document of the corpus holds one.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Catalog /Pages 2 0 R /Test 4 0 R >>", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", "4 0 obj\n[1 2 6 0 obj 3]\nendobj\nxref\n0 5\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 5", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().HaveCount(2);
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be("An object header ended the object inside an array, which was never closed.");
+        document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public void An_object_stream_member_holding_a_header_reads_it_as_tokens()
+    {
+        // A member has no header, and is followed by none: text in it that reads as one is a stray obj, as it was (#230).
+        var file = Packed("[1 2 5 0 obj 3]", last: true);
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).AsArray().Required().Should().HaveCount(6);
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.SyntaxUnexpectedToken);
+    }
+
+    [Fact]
+    public void Nesting_deeper_than_the_reader_follows_ends_at_the_next_object_s_header_too()
+    {
+        // Past the depth the parser follows, the containers are skipped to their end: an endobj, and now the next object's
+        // header, ends them (#230).
+        var file = FourLostItsEnd(new string('[', 200));
+        using var document = PdfDocument.Open(file);
+
+        document.GetObject(new PdfObjectId(4)).Should().BeOfType<PdfArray>();
+        document.GetObject(new PdfObjectId(5)).AsDictionary().Required().Should().HaveCount(2);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_trailer_that_lost_its_closing_delimiter_takes_nothing_of_the_update_after_it()
+    {
+        // An older trailer that lost its >>: it took the update's object 4, /Type and /Info, into the trailer the reader
+        // merged, and /Info named an object the file lacks. The update's header ends it (#230).
+        var file = TestPdfBuilder.AppendIncrementalUpdate(
+            new TestPdfBuilder().WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>").WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>").BuildClassic(rootNumber: 1),
+            rootNumber: 1,
+            [(4, "<< /Type /Foo /Info 9 0 R >>")]);
+        var text = Encoding.Latin1.GetString(file);
+        var trailer = text.IndexOf("/Root 1 0 R >>", StringComparison.Ordinal) + "/Root 1 0 R".Length;
+        Encoding.ASCII.GetBytes("   ").CopyTo(file, trailer);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Trailer.ContainsKey(PdfName.Info).Should().BeFalse();
+        document.Trailer.ContainsKey(PdfName.Type).Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectReferenceMissing).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A sound document whose catalog names objects 4 and 5, object 4 holding <paramref name="value"/> and no endobj, then
+    /// object 5 holding <paramref name="five"/> and its endobj.
+    /// </summary>
+    private static byte[] FourLostItsEnd(string value, string five = "<< /Foo 7 /Author (a) >>") =>
+        PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Catalog /Pages 2 0 R /Test 4 0 R /Other 5 0 R >>", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", $"4 0 obj\n{value}\n5 0 obj\n{five}\nendobj\nxref\n0 6\n", StringComparison.Ordinal)
+            .Replace("{row:3}\n", "{row:3}\n{row:4}\n{row:5}\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 6", StringComparison.Ordinal));
+
+    [Theory]
     [InlineData("/ID [<41zz42> <4142>]", PdfDiagnosticCodes.SyntaxHexStringInvalid)]
     [InlineData("/Info#zz 3 0 R", PdfDiagnosticCodes.SyntaxNameEscapeInvalid)]
     public void A_trailer_holding_a_malformed_string_or_name_is_malformed(string entry, string code)
