@@ -68,9 +68,11 @@ null, or `1` of a `15` it parted — is the guard's. An integer read before the 
 `endstream` at, and the data is otherwise found by its `endstream`, as for a stream with no length; nothing is said of
 the length, while a missing `endstream` is still the file's, and reported. One that names an object a guard left out of
 the index is not judged either: its data is found the same way, and a missing `endstream` reported as the file's. Such a
-stream may be valid, its length only hidden, and its data may spell an object header, as an embedded PDF file's does:
-the search goes on past that header to the next object the index places, and an `endstream` found there ends the data,
-as the length would have. With none, the header stops it as any other stream's.
+stream may be valid, its length only hidden, and its data may spell an object header, as an embedded PDF file's does —
+and the `endstream` of a stream the embedded file holds, which no search can tell from the stream's own. A header the
+data spells that stops the search, with no `endobj` of the object's own before it, leaves the data up to it to the
+guard: it is cut by the guard, as data `MaxStreamLength` cuts is, whether the object ends with `endobj` is not judged,
+and nothing is said of the file.
 
 A cross-reference stream whose `/Length` the chain cannot read yet, which a valid file may hold, is searched as well, up
 to the next object the sections read so far place, or the end of the file, and its length read once the chain is. Its
@@ -81,14 +83,15 @@ cut: the length that would have said where the data ends is then the guard's, an
 there.
 
 The search is not one of the reader's limits: a valid file's `endstream` follows its length, so only a damaged stream is
-searched — and a cross-reference stream whose `/Length` the chain cannot read yet —, each once. Where it stops depends
+searched — and a cross-reference stream whose `/Length` the chain cannot read yet, and a stream whose `/Length` a guard
+hid —, each once. Where it stops depends
 on the file's bytes and on its index as the file wrote it, which the reader rebuilding or correcting its own index later
 does not change: in the 401 documents of the project's test corpus measured, each stream takes the same length whatever
 was read before it — though a damaged index can still serve another copy of an object, at another offset, according to
 what was read first. A file crafted for it can still make what a stream holds depend on which object was asked for
 first. What the searches of one document read together is bounded: none starts once they have read four times the file's
-length. For a valid file, what they read — its cross-reference streams searched, the white space after a declared length
-read on — comes to about twice the file at most, and the searches of damaged streams read twice the file at most — 0.35
+length. For a valid file, what they read — its cross-reference streams searched, its streams whose length a guard hid,
+the white space after a declared length read on — comes to about twice the file at most, and the searches of damaged streams read twice the file at most — 0.35
 of it at most, all searches together, in the test corpus — unless their stretches overlap: one object's header inside
 another's dictionary, or a header the search does not take — a regular character glued before its number — that the
 index as the file wrote it does not place. Past the bound, only the bytes the parser holds are searched: a declared

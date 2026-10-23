@@ -145,11 +145,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     /// <remarks>
     /// Not a guard a valid file reaches (ADR 34), argued here once for every read it counts. A valid file is read past the
-    /// parser's window in two ways only: a cross-reference stream whose <c>/Length</c> the chain cannot read (#220) is
-    /// searched once to its <c>endstream</c>, and white space after a declared length that runs past a first read is read
-    /// on once for each place (#174). The data of different sections lies apart, and so do the runs of white space after
-    /// different streams: together those reads cover the file once, and one read past each — about twice the file at
-    /// most. Every other search is of an invalid stream, whose <c>endstream</c> does not follow its declared length. Each
+    /// parser's window in three ways only: a cross-reference stream whose <c>/Length</c> the chain cannot read (#220) is
+    /// searched once to its <c>endstream</c>; a stream whose <c>/Length</c> a guard cut or left out of the index (#224) is
+    /// searched once to its <c>endstream</c>, or to a header its data spells, which leaves the data up to it to the guard;
+    /// and white space after a declared length that runs past a first read is read on once for each place (#174). The data
+    /// of different streams lies apart, and so do the runs of white space after them: together those reads cover the file
+    /// once, and one read past each — about twice the file at most. Every other search is of an invalid stream, whose
+    /// <c>endstream</c> does not follow its declared length. Each
     /// reads from a stream's data to the first object header the bytes hold after it, or to the next object the index as
     /// written places, whichever is nearer, and its reads grow from twice what the parser holds of the data
     /// (<see cref="EndStreamSearchFirstRead"/>): it reads at most about twice what its object spans, and the searches of
@@ -374,7 +376,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// its <c>/Length</c> was one the chain could not read: the file is searched once for each stream, however many times
     /// it is parsed. With it, the declared end it last said what follows of, read again only when that end changes.
     /// </summary>
-    private readonly Dictionary<(long DataStart, bool Deferred, bool LengthHidden), (StreamEndSearch Search, long DeclaredEnd)> _endStreamSearches = [];
+    private readonly Dictionary<(long DataStart, bool Deferred), (StreamEndSearch Search, long DeclaredEnd)> _endStreamSearches = [];
 
     /// <summary>
     /// What follows each place the reader read on past white space and comments to find an <c>endstream</c> (#174): read
@@ -1543,12 +1545,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     long IPdfStreamDataProvider.SourceLength => _source.Length;
 
     /// <inheritdoc/>
-    PdfStreamData IPdfStreamDataProvider.Create(long absoluteOffset, int length)
+    PdfStreamData IPdfStreamDataProvider.Create(long absoluteOffset, int length, bool cutByGuard)
     {
         // A declared length is a claim made by the file, so it is clamped to what the file can hold.
         // Without this, "/Length 2147483647" would ask for two gigabytes of memory.
         var available = (int)Math.Clamp(_source.Length - absoluteOffset, 0, int.MaxValue);
-        return new FileStreamData(this, absoluteOffset, Math.Clamp(length, 0, available), _guard);
+        var data = new FileStreamData(this, absoluteOffset, Math.Clamp(length, 0, available), _guard);
+
+        if (cutByGuard)
+        {
+            data.MarkCutByGuard();
+        }
+
+        return data;
     }
 
     /// <inheritdoc/>
@@ -1781,25 +1790,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// but for a cross-reference stream whose <c>/Length</c> the chain could not read, which is searched with neither
     /// stop the rule for headers makes nor a carriage return trimmed, as <paramref name="deferred"/>: its rows may spell
     /// a header, and end in a carriage return; and for a stream whose <c>/Length</c> a guard cut or left out of the index,
-    /// <paramref name="lengthHidden"/>, whose data may spell a header, as an embedded file's does: the search goes on past
-    /// it to the next object the index places, and the header stops it only when no <c>endstream</c> follows it there
-    /// (#224). What it reads is the stretch between the stream and the next object,
+    /// which a valid file may hold, searched as an invalid one is: a header its data spells — an embedded file's does —
+    /// leaves the data up to it to the guard (#224). What it reads is the stretch between the stream and the next object,
     /// once for each stream: the result is kept, and a stream parsed again — after the cache let it go, or a rebuild of
     /// the index — is not searched again. What the searches read together is bounded by
     /// <see cref="EndStreamSearchPasses"/>.
     /// </para>
     /// </remarks>
     StreamEndSearch IPdfStreamDataProvider.FindEndStream(
-        int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred, bool lengthHidden)
+        int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred)
     {
-        var found = _endStreamSearches.TryGetValue((absoluteDataStart, deferred, lengthHidden), out var known);
+        var found = _endStreamSearches.TryGetValue((absoluteDataStart, deferred), out var known);
 
         if (found && known.DeclaredEnd == declaredEnd)
         {
             return known.Search;
         }
 
-        var search = found ? known.Search : SearchEndStreamOnce(number, absoluteDataStart, buffered, deferred, lengthHidden);
+        var search = found ? known.Search : SearchEndStreamOnce(number, absoluteDataStart, buffered, deferred);
 
         // Whether the object's endobj follows the declared length depends on the length the stream is read with now, which a
         // rebuild can change — the /Length an object another definition replaces —: it is read again when that length does,
@@ -1813,7 +1821,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             };
         }
 
-        _endStreamSearches[(absoluteDataStart, deferred, lengthHidden)] = (search, declaredEnd);
+        _endStreamSearches[(absoluteDataStart, deferred)] = (search, declaredEnd);
         return search;
     }
 
@@ -1822,8 +1830,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <c>endstream</c>, and reads what its object's <c>endobj</c> does when none is found; what follows the declared length
     /// is left to <see cref="IPdfStreamDataProvider.FindEndStream"/>.
     /// </summary>
-    private StreamEndSearch SearchEndStreamOnce(
-        int number, long absoluteDataStart, ReadOnlySpan<byte> buffered, bool deferred, bool lengthHidden)
+    private StreamEndSearch SearchEndStreamOnce(int number, long absoluteDataStart, ReadOnlySpan<byte> buffered, bool deferred)
     {
         var nextObject = NextObjectStart(number, absoluteDataStart);
 
@@ -1834,8 +1841,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             absoluteDataStart,
             buffered,
             nextObject ?? _source.Length,
-            stopsAtHeader: !deferred,
-            keepsCarriageReturn: deferred,
+            deferred,
             readsFile,
             out var header,
             out var searched,
@@ -1844,30 +1850,6 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // A header the bytes hold is looked for only before the next object the index places: found, it is the nearer.
         var stop = header >= 0 ? header : nextObject;
-
-        // A /Length a guard cut or left out of the index hides where the data of a stream that may be valid ends: data that
-        // spells an object header, as an embedded file's does, is searched on past it, up to the next object the index
-        // places, and an endstream found there ends it as the length would have. With none, the header stops it (#224).
-        if (dataEnd < 0 && header >= 0 && lengthHidden && _endStreamSearchBytes < EndStreamSearchPasses * _source.Length)
-        {
-            var pastHeader = SearchEndStream(
-                header,
-                [],
-                nextObject ?? _source.Length,
-                stopsAtHeader: false,
-                keepsCarriageReturn: false,
-                readsFile: true,
-                out _,
-                out _,
-                out _,
-                out _);
-
-            if (pastHeader >= 0)
-            {
-                dataEnd = pastHeader;
-                stop = nextObject;
-            }
-        }
 
         // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of more
         // than 2 GB can put one there, and the stream is read as one whose endstream is not found. With none, what the
@@ -1881,6 +1863,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 EndObjSeen = endObjSeen,
                 ObjectEnd = objectEnd,
+                HeaderStopped = header >= 0,
             };
     }
 
@@ -2004,8 +1987,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="dataStart">Where the data starts in the file.</param>
     /// <param name="buffered">The bytes of the data the parser holds, from its start.</param>
     /// <param name="limit">Where the next object the index places starts, or the end of the file.</param>
-    /// <param name="stopsAtHeader">Whether an object header the bytes hold stops the search.</param>
-    /// <param name="keepsCarriageReturn">Whether a carriage return before the end-of-line's line feed is data.</param>
+    /// <param name="deferred">Whether the stream's <c>/Length</c> is one the chain could not read, which no header stops.</param>
     /// <param name="readsFile">Whether the file past the bytes the parser holds may be read.</param>
     /// <param name="header">Where the header that stopped the search starts, or -1.</param>
     /// <param name="searched">Whether the search reached where it stops, rather than the end of what it might read.</param>
@@ -2018,8 +2000,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         long dataStart,
         ReadOnlySpan<byte> buffered,
         long limit,
-        bool stopsAtHeader,
-        bool keepsCarriageReturn,
+        bool deferred,
         bool readsFile,
         out long header,
         out bool searched,
@@ -2035,7 +2016,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         var inBuffer = (int)Math.Clamp(limit - dataStart, 0, buffered.Length);
         text.Read(buffered[..inBuffer], dataStart);
-        var found = StreamEnds.SearchStretch(text, endsRange: dataStart + inBuffer >= limit, stopsAtHeader, keepsCarriageReturn, out header);
+        var found = StreamEnds.SearchStretch(text, endsRange: dataStart + inBuffer >= limit, deferred, out header);
         endObjSeen = StreamEnds.HoldsEndObj(buffered[..inBuffer], header >= 0 ? (int)(header - dataStart) : inBuffer);
         tail.Read(buffered[..inBuffer], dataStart, header >= 0 ? header : dataStart + inBuffer);
 
@@ -2076,7 +2057,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             }
 
             text.Read(span, position);
-            found = StreamEnds.SearchStretch(text, endsRange: position + span.Length >= end, stopsAtHeader, keepsCarriageReturn, out header);
+            found = StreamEnds.SearchStretch(text, endsRange: position + span.Length >= end, deferred, out header);
             endObjSeen |= StreamEnds.HoldsEndObj(span, header >= 0 ? (int)(header - position) : span.Length);
             tail.Read(span, position, header >= 0 ? header : position + span.Length);
 
@@ -3650,7 +3631,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // file, ends nowhere the section says: its rows are not read (#220). Where the /Length leads to an object a guard cut,
         // the length that would have said is the guard's, as a value its rows are read with is (#263): the section counts as
         // cut, the chain ends here, and the guard is reached once the chain is read.
-        if (deferred is not null && _endStreamSearches.TryGetValue((xrefStream.Data.Position, true, false), out var known) &&
+        if (deferred is not null && _endStreamSearches.TryGetValue((xrefStream.Data.Position, true), out var known) &&
             known.Search is { Length: null } search)
         {
             // The fault names the link of the chain that could not be read — the one no section read so far places, or the

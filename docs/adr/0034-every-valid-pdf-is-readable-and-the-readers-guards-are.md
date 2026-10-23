@@ -98,8 +98,9 @@ bound, reading 21.5 MB to find five bytes and reporting `limit.object`; no windo
 one search past the window does. What that search reads, with the white space read on after a declared length, is
 bounded by `EndStreamSearchPasses`, four times the file for a document's searches together, which stays an internal
 constant with its reason rewritten: a valid file is read past the parser's window only by the search for the data of a
-cross-reference stream whose `/Length` the chain cannot read, and by white space and comments after a declared length
-that run past a first read — about twice the file at most. `MaxEndStreamGap`, the four bytes of white space accepted
+cross-reference stream whose `/Length` the chain cannot read, by the search for the data of a stream whose `/Length` a
+guard cut or left out of the index, and by white space and comments after a declared length that run past a first
+read — about twice the file at most. `MaxEndStreamGap`, the four bytes of white space accepted
 between a stream's data and its `endstream`, is removed: more, or a comment, made a right `/Length` a wrong one, and
 white space and comments are read on as far as they run, counted with the searches — a comment only once white space
 comes before it, since a `%` right where the length ends is the data's. Comments after the `endobj` that ends a stream
