@@ -21,7 +21,10 @@ namespace AdCodicem.Pdf.IO;
 /// </remarks>
 internal struct EndObjTail
 {
-    /// <summary>The most bytes before a keyword that what it ends needs: the byte before it, and an end-of-line of two.</summary>
+    /// <summary>
+    /// The bytes a read keeps of the reads before it: the part of an <c>endobj</c> they hold, five bytes at most, and the two
+    /// before it that say whether it starts a token and where its end-of-line starts — seven, rounded up.
+    /// </summary>
     private const int Kept = 8;
 
     private readonly long _dataStart;
@@ -187,10 +190,16 @@ internal struct EndObjTail
     /// Takes the <c>endobj</c> that starts at <paramref name="keyword"/>, unless the byte before it makes it part of a longer
     /// token, as the one the data may end at; whether the byte after it does is read next.
     /// </summary>
+    /// <remarks>
+    /// A regular character before it makes it part of the token that character is in; a solidus makes it a name,
+    /// <c>/endobj</c>, and a percent sign part of a comment. The bytes before the keyword are the data's, which no lexing
+    /// reads: any other delimiter ends a token or stands alone, wherever a string or a dictionary it may open would end.
+    /// </remarks>
     /// <returns>Whether the keyword starts a token.</returns>
     private bool Found(ReadOnlySpan<byte> bytes, long at, int start, long keyword)
     {
-        if (ByteAt(bytes, at, start, keyword - 1) is var before and >= 0 && PdfCharacters.IsRegular((byte)before))
+        if (ByteAt(bytes, at, start, keyword - 1) is var before and >= 0 &&
+            (PdfCharacters.IsRegular((byte)before) || before is '/' or '%'))
         {
             return false;
         }
