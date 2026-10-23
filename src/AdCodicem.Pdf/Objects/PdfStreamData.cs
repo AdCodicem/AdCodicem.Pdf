@@ -32,6 +32,16 @@ public abstract class PdfStreamData
     internal virtual bool CutByGuard => false;
 
     /// <summary>Returns the encoded bytes, exactly as they appear in the file.</summary>
+    /// <remarks>
+    /// Data read from a document gives no more than <see cref="Documents.PdfReaderLimits.MaxStreamLength"/> bytes: past it,
+    /// what lies within it comes back, fewer bytes than <see cref="Length"/> says, and
+    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitStreamLength"/> is reported once in the document's diagnostics.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The data was read from a document that is disposed.</exception>
+    /// <exception cref="Diagnostics.PdfLimitExceededException">
+    /// The data runs past <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, and its document was opened with
+    /// <see cref="Documents.PdfReaderOptions.ThrowOnLimit"/>.
+    /// </exception>
     public abstract ReadOnlyMemory<byte> GetBytes();
 
     /// <summary>Creates stream data over bytes already in memory.</summary>

@@ -76,6 +76,13 @@ internal static class PdfFilterPipeline
         // its own reports in.
         if (diagnostics is null || !ReferenceEquals(diagnostics, guard.DocumentDiagnostics))
         {
+            // Data MaxStreamLength cut is reported once in the document's diagnostics, as the reader reads it; diagnostics of
+            // a caller's own receive it with each decoding, as they receive what decoding meets.
+            if (diagnostics is not null && stream.Data.CutByGuard && stream.Data.Length > guard.Bound(PdfLimit.StreamLength))
+            {
+                guard.Reach(PdfLimit.StreamLength, diagnostics, guard.DescribeStreamLengthCut(), stream.Data.Position);
+            }
+
             return DecodeChain(stream, chain, data, diagnostics, guard, out leftEncoded, out cutByGuard);
         }
 

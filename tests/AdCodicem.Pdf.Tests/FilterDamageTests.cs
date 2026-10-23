@@ -1252,8 +1252,12 @@ public class FilterDamageTests
             using var document = PdfDocument.Open(file, options);
 
             Encoding.ASCII.GetString(document.GetObject(new PdfObjectId(3)).AsStream().Required().Decode(diagnostics).Span).Should().Be("Hello World");
+
+            // The guard is reported once in the document's diagnostics, as the reader reads the data, and in the caller's own,
+            // as decoding meets the cut.
             expected = [PdfDiagnosticCodes.LimitStreamLength];
-            document.Diagnostics.Select(d => d.Code).Concat(diagnostics.Select(d => d.Code)).Should().Equal(expected);
+            document.Diagnostics.Select(d => d.Code).Should().Equal(expected);
+            diagnostics.Select(d => d.Code).Should().Equal(expected);
             return;
         }
 

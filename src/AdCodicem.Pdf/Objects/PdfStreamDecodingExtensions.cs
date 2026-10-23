@@ -42,7 +42,10 @@ public static class PdfStreamDecodingExtensions
     /// reported once as <see cref="PdfDiagnosticCodes.LimitDecodedStream"/>; the filters before the last share the
     /// bound for what they pass along together (<see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/>). The
     /// filters after one the bound stopped decode what it kept, as data the reader cut: that it runs out is not
-    /// reported as damage. A <c>/Filter</c> array that names more filters than
+    /// reported as damage. So do they data that runs past <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, of which
+    /// the reader reads what lies within it, reported as <see cref="PdfDiagnosticCodes.LimitStreamLength"/>: once in the
+    /// document's diagnostics, and in diagnostics of your own each time the stream is decoded. A <c>/Filter</c> array that
+    /// names more filters than
     /// <see cref="Documents.PdfReaderLimits.MaxFilterChainLength"/> ends decoding before the first past them, reported as
     /// <see cref="PdfDiagnosticCodes.LimitFilterChain"/> when decoding reaches it.
     /// </para>
