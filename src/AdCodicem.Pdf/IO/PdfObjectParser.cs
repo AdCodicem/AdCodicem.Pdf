@@ -713,7 +713,9 @@ internal ref struct PdfObjectParser
             return Finish(dictionary, dataStart, Math.Max(length, 0), span.Length);
         }
 
-        var confirmed = ConfirmsLength(span, dataStart, length);
+        // An integer read from a /Length a guard cut is a place to check, never a length kept when nothing confirms it.
+        var checkedAt = declared.Form == StreamLengthForm.ObjectCut ? (int)declared.Value.GetValueOrDefault(-1) : length;
+        var confirmed = ConfirmsLength(span, dataStart, checkedAt);
 
         if (confirmed is null)
         {
@@ -724,7 +726,7 @@ internal ref struct PdfObjectParser
 
         if (confirmed == true)
         {
-            return Finish(dictionary, dataStart, length, span.Length);
+            return Finish(dictionary, dataStart, checkedAt, span.Length);
         }
 
         // A cross-reference stream whose /Length the chain could not read keeps a carriage return before the line feed as
@@ -744,7 +746,9 @@ internal ref struct PdfObjectParser
 
         if (settled.Length is { } found)
         {
-            if (length != found)
+            // A length read once the chain is, or one a guard left out of the index or cut, is not judged: nothing is said
+            // of it, nor a message made for it.
+            if (length != found && declared.Form is not (StreamLengthForm.Deferred or StreamLengthForm.ObjectUnindexed or StreamLengthForm.ObjectCut))
             {
                 ReportLengthFault(
                     PdfDiagnosticCodes.StreamLengthInvalid,
@@ -954,7 +958,7 @@ internal ref struct PdfObjectParser
 
             if (_streamData is not null)
             {
-                value = _streamData.ResolveLength(named.Id, out presence).Resolve();
+                value = _streamData.ResolveLength(named, out presence).Resolve();
             }
             else
             {
@@ -962,6 +966,13 @@ internal ref struct PdfObjectParser
                 // object, only the reader can say.
                 value = named.Resolve();
                 presence = value is PdfNull ? ObjectPresence.Unproduced : ObjectPresence.Defined;
+            }
+
+            // An integer the cut left, whole or parted, is only a place to look for endstream at (#224).
+            if (presence == ObjectPresence.Cut)
+            {
+                return new DeclaredLength(
+                    StreamLengthForm.ObjectCut, value.AsInteger() is { } hint and >= 0 and <= int.MaxValue ? hint : null, reference);
             }
 
             if (presence != ObjectPresence.Defined)
@@ -1034,6 +1045,7 @@ internal ref struct PdfObjectParser
             {
                 StreamLengthForm.ObjectMissing => Names(reference, "which the file lacks"),
                 StreamLengthForm.ObjectUnreadable => Names(reference, "which could not be read"),
+                StreamLengthForm.ObjectCut => Names(reference, "which one of the reader's limits cut"),
                 _ => Names(reference, "which holds " + Value(declared)),
             };
 

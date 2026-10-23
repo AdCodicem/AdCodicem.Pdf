@@ -59,9 +59,10 @@ internal interface IPdfStreamDataProvider
 
     /// <summary>
     /// Resolves the object a stream's <c>/Length</c> names, and says whether the file holds it and whether it could be
-    /// read — a reference to the stream itself, or to an object inside an object stream being decoded, cannot be.
+    /// read — a reference to the stream itself, or to an object inside an object stream being decoded, cannot be —, or
+    /// whether a guard cut it, or the object a chain of references from it leads to (#224).
     /// </summary>
-    PdfObject ResolveLength(PdfObjectId id, out ObjectPresence presence);
+    PdfObject ResolveLength(PdfReference reference, out ObjectPresence presence);
 
     /// <summary>
     /// Determines whether what is wrong with the length of the stream whose data starts at

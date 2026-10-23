@@ -31,4 +31,12 @@ internal enum ObjectPresence : byte
     /// Whether the file holds the object is unknown, and a reference to it reads as null until the guard is lifted.
     /// </summary>
     Unindexed,
+
+    /// <summary>
+    /// The object ran past one of the reader's guards, which cut it: what it holds may lie past the cut, and what was read
+    /// of it — null, or a token the cut parted — is the guard's until the guard is lifted (#224). Only a stream's
+    /// <c>/Length</c> asks: <see cref="PdfFileReader.GetPresence"/> says whether the file holds the object, and
+    /// <see cref="PdfFileReader.IsCutAtLimit"/> whether a guard cut it.
+    /// </summary>
+    Cut,
 }

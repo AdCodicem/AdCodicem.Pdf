@@ -36,4 +36,12 @@ internal enum StreamLengthForm : byte
     /// data is taken up to its <c>endstream</c>, and nothing is reported: the guard's report says why.
     /// </summary>
     ObjectUnindexed,
+
+    /// <summary>
+    /// A reference to an object one of the reader's guards cut, or that a chain of references from it leads to: what it
+    /// holds may lie past the cut. An integer read before the cut is only a place to look for <c>endstream</c> at, and
+    /// never kept as a length; the data is otherwise taken up to its <c>endstream</c>. Nothing is reported of the length,
+    /// whose fault is the guard's, which reported it; a missing <c>endstream</c> is still the file's (#224).
+    /// </summary>
+    ObjectCut,
 }

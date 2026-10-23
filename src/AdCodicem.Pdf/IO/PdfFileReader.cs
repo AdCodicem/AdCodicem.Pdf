@@ -1381,6 +1381,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal bool IsCutAtLimit(int number) => _cutAtLimit.Contains(number);
 
     /// <summary>
+    /// Determines whether the object <paramref name="reference"/> leads to — through a chain of references too, as
+    /// <see cref="PdfReference.Resolve"/> follows it — is one a guard cut, or left out of the index: what it holds may lie
+    /// past the cut, or is unknown, and is the guard's until the guard is lifted, rather than a value the file gave
+    /// (#224, #263). Call it once the reference is resolved.
+    /// </summary>
+    internal bool LeftByGuard(PdfReference reference)
+    {
+        var target = reference.Target().Number;
+        return IsCutAtLimit(target) || GetPresence(target) == ObjectPresence.Unindexed;
+    }
+
+    /// <summary>
     /// Determines whether object <paramref name="number"/>, as it was read, is a stream whose length the file did not
     /// confirm, and gives what the reader found of it.
     /// </summary>
@@ -1810,8 +1822,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <inheritdoc/>
-    PdfObject IPdfStreamDataProvider.ResolveLength(PdfObjectId id, out ObjectPresence presence)
+    PdfObject IPdfStreamDataProvider.ResolveLength(PdfReference reference, out ObjectPresence presence)
     {
+        var id = reference.Id;
+
         if (_readingChain)
         {
             // A /Length no section read so far places is read once the chain is read: the data is found by its endstream
@@ -1826,6 +1840,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // A null a guard against re-entry gave says nothing of the object: it could not be read from here.
         presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(id.Number);
+
+        // What the object holds, or the one a chain of references from it leads to, is the guard's when a guard cut it or
+        // left it out of the index: a value the cut left, null or an integer it parted, is none the file gave (#224).
+        if (presence != ObjectPresence.Unindexed)
+        {
+            // The object is not loaded again unless its value leads further.
+            var target = value is PdfReference ? reference.Target().Number : id.Number;
+            presence = IsCutAtLimit(target) ? ObjectPresence.Cut
+                : target != id.Number && GetPresence(target) == ObjectPresence.Unindexed ? ObjectPresence.Unindexed
+                : presence;
+        }
+
         return value;
     }
 
@@ -2118,16 +2144,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var (number, generation) = (deferred.Length.Number, deferred.Length.Generation);
             string? message = null;
 
+            // A /Length a guard cut or left out of the index — or the object a chain of references from it leads to — is
+            // unknown, not wrong: the guard's report says why, and what the cut left of it, null or a parted integer, is
+            // none the file gave (#224).
+            if (LeftByGuard(new PdfReference(deferred.Length, this)))
+            {
+                continue;
+            }
+
             if (value.AsInteger() is not { } length || length is < 0 or > int.MaxValue)
             {
                 var presence = value is PdfNull && reentries != _reentries ? ObjectPresence.Unproduced : GetPresence(number);
-
-                // A /Length a guard left out of the index is unknown, not wrong: the guard's report says why.
-                if (presence == ObjectPresence.Unindexed)
-                {
-                    continue;
-                }
-
                 var held = presence switch
                 {
                     ObjectPresence.Missing => "which the file lacks",
