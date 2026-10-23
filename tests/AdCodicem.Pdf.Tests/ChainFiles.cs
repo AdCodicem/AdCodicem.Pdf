@@ -502,29 +502,81 @@ internal static class ChainFiles
     /// A file of two revisions. The first holds the catalog, the page tree and the page, object 5, which holds the data's
     /// length, 210, after 1,014 spaces — a <c>MaxObjectLength</c> of 1,024 parts it after its 21 —, and cross-reference
     /// stream 7, whose <c>/Length</c> names object 5 and whose rows spell <c>endstream</c> after an end-of-line twice, 7 and
-    /// 21 bytes in, before the rows of objects 1 to 3, 5 and 7 and twenty free ones. The second is a classic table that
-    /// indexes object 5 again, where it is, and names stream 7 through <c>/Prev</c>. The file is valid.
+    /// 21 bytes in, before the rows of objects 1 to 3, 5 and 7 and <paramref name="free"/> free ones. With
+    /// <paramref name="compressed"/>, the rows are compressed in a stored block, which shows them as written 7 bytes in: the
+    /// data is 284 bytes with 29 free rows, which the same bound parts after its 28, where the second <c>endstream</c> is,
+    /// and 221 with 20, parted after its 22, where none is. The second is a classic table that indexes object 5 again, where
+    /// it is, and names stream 7 through <c>/Prev</c>. The file is valid.
     /// </summary>
-    public static byte[] UpdatePlacingAPartedLength()
+    public static byte[] UpdatePlacingAPartedLength(int free = 20, bool compressed = false)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
         file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
-        file.Object(5, new string(' ', 1014) + "210");
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long five, long stream)
+        {
+            var spelled = "\nendstream\0\0\0\0"u8.ToArray();
+            var data = new List<byte>(Encode([(0, 0, 65535)], Rows.Raw));
+            data.AddRange(spelled);
+            data.AddRange(spelled);
+            data.AddRange(Encode([(1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, five, 0), (1, stream, 0)], Rows.Raw));
+            data.AddRange(Encode([.. Enumerable.Repeat((0, 0L, 0), free)], Rows.Raw));
+            return compressed ? Compress([.. data]) : [.. data];
+        }
+
+        file.Object(5, new string(' ', 1014) + Data(0, 0).Length.ToString(CultureInfo.InvariantCulture));
         var stream = file.Position;
-        var spelled = "\nendstream\0\0\0\0"u8.ToArray();
-        var data = new List<byte>(Encode([(0, 0, 65535)], Rows.Raw));
-        data.AddRange(spelled);
-        data.AddRange(spelled);
-        data.AddRange(Encode([(1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, file.OffsetOf(5), 0), (1, stream, 0)], Rows.Raw));
-        data.AddRange(Encode([.. Enumerable.Repeat((0, 0L, 0), 20)], Rows.Raw));
-        file.Stream(7, "/Type /XRef /Size 50 /W [1 4 2] /Index [0 1 20 2 22 2 1 3 5 1 7 1 30 20] /Root 1 0 R /Length 5 0 R", [.. data]);
+        var size = 30 + free;
+        file.Stream(
+            7,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"/Type /XRef /Size {size} /W [1 4 2] /Index [0 1 20 2 22 2 1 3 5 1 7 1 30 {free}]{(compressed ? " /Filter /FlateDecode" : string.Empty)} /Root 1 0 R /Length 5 0 R"),
+            Data(file.OffsetOf(5), stream));
         file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
-            $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{file.OffsetOf(5):D10} 00000 n\r\ntrailer\n<< /Size 50 /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n"));
+            $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{file.OffsetOf(5):D10} 00000 n\r\ntrailer\n<< /Size {size} /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A file of two revisions. The first holds the catalog, the page tree and the page, object 4, and cross-reference stream
+    /// 5, whose rows of objects 0 to 5, none spelling <c>endstream</c>, are compressed in a stored block and written in
+    /// hexadecimal after a stray <c>x</c>, which encodes nothing: <c>/Filter [/ASCIIHexDecode /FlateDecode]</c>. Its
+    /// <c>/Length</c> names object 4, which holds it and which only the stream indexes — or, unless
+    /// <paramref name="deferred"/>, is written direct. The second is a classic table that indexes objects 1 to 3 and names
+    /// stream 5 through <c>/Prev</c>.
+    /// </summary>
+    public static byte[] UpdateOverAStrayHexByte(bool deferred)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long four, long stream) => Encoding.ASCII.GetBytes(
+            "x" + Convert.ToHexString(Compress(Encode(
+                [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, four, 0), (1, stream, 0)],
+                Rows.Raw))) + ">");
+
+        var length = Data(0, 0).Length.ToString(CultureInfo.InvariantCulture);
+        file.Object(4, length);
+        var at = file.Position;
+        file.Stream(
+            5,
+            $"/Type /XRef /Size 6 /W [1 4 2] /Filter [/ASCIIHexDecode /FlateDecode] /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
+            Data(file.OffsetOf(4), at));
+        file.Text("%" + new string('-', 1200) + "\n");
+        var xref = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 6 /Root 1 0 R /Prev {at} >>\nstartxref\n{xref}\n%%EOF\n"));
         return file.ToArray();
     }
 
