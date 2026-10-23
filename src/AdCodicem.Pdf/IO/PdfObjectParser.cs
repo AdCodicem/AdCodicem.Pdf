@@ -43,6 +43,7 @@ internal ref struct PdfObjectParser
     private readonly IPdfObjectSource? _source;
     private readonly PdfDiagnostics? _diagnostics;
     private readonly IPdfStreamDataProvider? _streamData;
+    private readonly IPdfFileEdge? _fileEdge;
     private readonly long _baseOffset;
 
     /// <summary>
@@ -126,13 +127,18 @@ internal ref struct PdfObjectParser
     /// Whether the bytes end where the file does; when they end at a window's edge instead, what that edge cuts short is
     /// not reported, and <see cref="IsTruncated"/> asks for a larger window.
     /// </param>
+    /// <param name="fileEdge">
+    /// Says what the file holds right past the bytes given, for a parser no <paramref name="streamData"/> backs; one that
+    /// serves stream data says it too.
+    /// </param>
     public PdfObjectParser(
         ReadOnlyMemory<byte> memory,
         long baseOffset = 0,
         IPdfObjectSource? source = null,
         PdfDiagnostics? diagnostics = null,
         IPdfStreamDataProvider? streamData = null,
-        bool endsData = true)
+        bool endsData = true,
+        IPdfFileEdge? fileEdge = null)
     {
         _memory = memory;
         _lexer = new PdfLexer(memory.Span);
@@ -140,6 +146,7 @@ internal ref struct PdfObjectParser
         _source = source;
         _diagnostics = diagnostics;
         _streamData = streamData;
+        _fileEdge = fileEdge ?? streamData;
         _endsData = endsData;
     }
 
@@ -304,7 +311,7 @@ internal ref struct PdfObjectParser
         // a longer keyword: the file says whether a regular character follows it, so that an object a window ends exactly
         // with reads whole, as under a larger window; a parser no file backs asks for a larger buffer (#174).
         var endObj = IsEndObj(next) ||
-            (next.IsKeyword("endobj"u8) && !PastWindowEdge && _streamData is { } file && file.TokenEndsAt(_baseOffset + next.End));
+            (next.IsKeyword("endobj"u8) && !PastWindowEdge && _fileEdge is { } file && file.TokenEndsAt(_baseOffset + next.End));
         _endObj = endObj
             ? EndObjState.Present
             : _endObjUnknown ? EndObjState.Unknown

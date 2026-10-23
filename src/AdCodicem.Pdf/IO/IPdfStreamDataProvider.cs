@@ -11,7 +11,7 @@ namespace AdCodicem.Pdf.IO;
 /// provider is also the parser's way to the rest of the file, for what its buffer does not hold: the bytes
 /// after a stream's data, and the objects a stream's <c>/Length</c> names.
 /// </remarks>
-internal interface IPdfStreamDataProvider
+internal interface IPdfStreamDataProvider : IPdfFileEdge
 {
     /// <summary>Gets the length of the file the stream data is read from.</summary>
     long SourceLength { get; }
@@ -30,13 +30,6 @@ internal interface IPdfStreamDataProvider
     /// window says: the parser asks for one.
     /// </returns>
     long DataStart(long absoluteKeywordEnd);
-
-    /// <summary>
-    /// Determines whether a token that reaches the end of the parser's buffer at <paramref name="absoluteOffset"/> ends there:
-    /// the file ends there, or no regular character follows. The parser asks of an <c>endobj</c> its window's edge reaches,
-    /// which may be the start of a longer keyword (#174).
-    /// </summary>
-    bool TokenEndsAt(long absoluteOffset);
 
     /// <summary>
     /// Determines whether an <c>endstream</c> keyword follows <paramref name="absoluteOffset"/>, after white space and

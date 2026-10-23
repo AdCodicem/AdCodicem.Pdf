@@ -1552,7 +1552,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <inheritdoc/>
-    bool IPdfStreamDataProvider.TokenEndsAt(long absoluteOffset)
+    bool IPdfFileEdge.TokenEndsAt(long absoluteOffset)
     {
         Span<byte> next = stackalloc byte[1];
         return absoluteOffset < 0 || absoluteOffset >= _source.Length || _source.Read(absoluteOffset, next) == 0 ||
@@ -4862,7 +4862,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 using var window = _source.GetWindow(offset, windowSize);
                 var cut = window.Length == windowSize && offset + window.Length < _source.Length;
-                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut);
+                // The file says where a token the window's edge reaches ends, as it does to a load; no stream's data is read.
+                var parser = new PdfObjectParser(window.Memory, offset, this, _pending, endsData: !cut, fileEdge: this);
                 var read = parser.TryReadIndirectObject(out var found, out var parsed);
 
                 // A header read whole that names another object, or another generation, is not this object, however far

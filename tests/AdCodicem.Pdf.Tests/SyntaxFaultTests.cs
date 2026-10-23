@@ -403,6 +403,45 @@ public class SyntaxFaultTests
         document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("Prev", 9)]
+    [InlineData("XRefStm", 6)]
+    [InlineData("W", 5)]
+    [InlineData("Length", 5)]
+    public void An_object_the_chain_reads_exactly_as_long_as_MaxObjectLength_reads_whole(string key, int number)
+    {
+        // The chain reads object N — a /Prev, an /XRefStm, a cross-reference stream's /W or its /Length — through a window
+        // MaxObjectLength ends right after its endobj: the file says no regular character goes on past it, and the object is
+        // whole, as a load reads it. It ended the chain for the guard, which no load then reached (#174, #263).
+        var file = key switch
+        {
+            "Prev" => ChainFiles.UpdateNamingItsPrevious("9 0 R", padding: 200),
+            "XRefStm" => ChainFiles.HybridNamingItsStream("6 0 R", padding: 200),
+            "W" => ChainFiles.UnderAnUpdate("W", placed: true, padding: 200),
+            _ => ChainFiles.UpdatePlacingAPaddedLength(chained: false, padding: 200),
+        };
+        var text = Encoding.Latin1.GetString(file);
+        var header = text.IndexOf(string.Create(CultureInfo.InvariantCulture, $"\n{number} 0 obj\n"), StringComparison.Ordinal) + 1;
+        var limit = text.IndexOf("endobj", header, StringComparison.Ordinal) + "endobj".Length - header;
+        using var whole = PdfDocument.Open(file);
+
+        using (var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit } }))
+        {
+            document.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+            document.Reader.Structure.Sections.Should().OnlyContain(section => !section.CutByLimit && section.ChainHiddenByGuard == null);
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(whole.Diagnostics.Select(entry => entry.Code));
+        }
+
+        using (var cut = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit - 1 } }))
+        {
+            cut.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
+        }
+
+        var throwing = () => PdfDocument.Open(
+            file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = limit }, ThrowOnLimit = true }).Dispose();
+        throwing.Should().NotThrow();
+    }
+
     /// <summary>
     /// Opens a document whose object 4 lost its <c>&gt;&gt;</c> and its endobj, its padding setting <paramref name="tail"/>'s
     /// end where a <c>MaxObjectLength</c> of 128 cuts it, under <paramref name="limit"/>.
