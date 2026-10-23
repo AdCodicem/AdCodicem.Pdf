@@ -278,6 +278,48 @@ public class HostileInputTests
     }
 
     [Fact]
+    public void Sections_whose_lengths_name_one_object_a_guard_cut_read_it_once()
+    {
+        // A hundred cross-reference streams, chained by /Prev, each with /Length 5 0 R and rows that spell an endstream
+        // first; the newest table places object 5, which holds 28 then 2,000,000 spaces, past MaxObjectLength. Each section
+        // takes its data again to the 28 the cut left, which an endstream confirms, and the chain goes on: the cut object
+        // was read again for each section, and opening read the file several times over (#224).
+        const int Sections = 100;
+        var file = new HandWrittenFile(version: "1.5");
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var five = file.Object(5, "28" + new string(' ', 2_000_000));
+        var rows = Row(1, one) + Row(1, two);
+        long previous = -1;
+
+        for (var k = 0; k < Sections; k++)
+        {
+            var at = file.Position;
+            var prev = previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}");
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj\n<< /Type /XRef /Size 200 /W [1 4 2] /Index [8 2 1 2] /Root 1 0 R /Length 5 0 R{prev} >>\nstream\n"));
+            file.Raw("\nendstream\0\0\0\0" + rows + "\nendstream\nendobj\n");
+            previous = at;
+        }
+
+        var table = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{five:D10} 00000 n\r\ntrailer\n<< /Size 200 /Root 1 0 R /Prev {previous} >>\nstartxref\n{table}\n%%EOF\n"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 64 * 1024 } };
+
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        document.Reader.Structure.Sections.Should().HaveCount(Sections + 1).And.OnlyContain(section => !section.CutByLimit);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        source.BytesRead.Should().BeLessThan(bytes.Length);
+
+        static string Row(int type, long offset) => string.Concat(
+            (char)type, (char)((offset >> 24) & 0xFF), (char)((offset >> 16) & 0xFF), (char)((offset >> 8) & 0xFF), (char)(offset & 0xFF), '\0', '\0');
+    }
+
+    [Fact]
     public void A_deferred_length_s_data_with_no_endstream_makes_its_section_malformed_reading_the_file_a_few_times()
     {
         // A cross-reference stream whose /Length only it indexes, 3 MB of rows, and its endstream misspelled: its search

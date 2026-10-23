@@ -277,10 +277,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// The objects <see cref="ReadWithoutLoading"/> could not read while the chain is read because they run past
-    /// <see cref="PdfReaderLimits.MaxObjectLength"/>, or null while none did: what they hold is the guard's to hide. Let go
-    /// with <see cref="_readWhileChainIsRead"/>.
+    /// <see cref="PdfReaderLimits.MaxObjectLength"/>, with the integer the cut left of each, or null, or null while none did:
+    /// what they hold is the guard's to hide, and the integer only a place to look for <c>endstream</c> at (#224), read once
+    /// however many sections ask. Let go with <see cref="_readWhileChainIsRead"/>.
     /// </summary>
-    private HashSet<PdfObjectId>? _cutWhileChainIsRead;
+    private Dictionary<PdfObjectId, PdfObject>? _cutWhileChainIsRead;
 
     /// <summary>
     /// The objects a guard cut that a cross-reference stream's values led to, which the chain could not read and ended at:
@@ -750,7 +751,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             if (pastGuard)
             {
-                (_cutWhileChainIsRead ??= []).Add(id);
+                (_cutWhileChainIsRead ??= [])[id] = value.AsInteger() is null ? PdfNull.Instance : value;
             }
 
             return read;
@@ -2416,7 +2417,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 var number = reference.Id.Number;
                 read = null;
                 return number > 0 && _refusedNumbers?.Contains(number) != true &&
-                    (_cutWhileChainIsRead?.Contains(reference.Id) == true || (!_xref.TryGet(number, out _) && MayBeLeftUnread(number)));
+                    (_cutWhileChainIsRead?.ContainsKey(reference.Id) == true || (!_xref.TryGet(number, out _) && MayBeLeftUnread(number)));
             }
         }
 
@@ -3982,14 +3983,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         Follow(PdfName.Length, written, entry: true, out _, out var cut, links);
         lengthCut = cut is not null;
 
-        // The object the guard cut is one a section read so far places, which ReadWithoutLoading read there.
-        if (cut is not { } id || !_xref.TryGet(id.Number, out var entry))
+        // What the cut left of the object, which ReadWithoutLoading read where a section read so far places it, is kept with
+        // it: it is not read again for each section that asks.
+        if (cut is not { } id)
         {
             return null;
         }
 
-        TryReadUnrecorded(id, PositionOf(entry), out var value, out _);
-        var whole = TakeAgain(stream, deferred, value);
+        var whole = TakeAgain(stream, deferred, _cutWhileChainIsRead![id]);
         lengthCut = whole is null;
         return whole;
     }
@@ -4121,7 +4122,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // An object a section read so far places, which runs past MaxObjectLength: the guard's, not the file's.
                 var place = "which no section read before it places where it can be read";
 
-                if (_cutWhileChainIsRead?.Contains(reference.Id) == true)
+                if (_cutWhileChainIsRead?.ContainsKey(reference.Id) == true)
                 {
                     cut = reference.Id;
                     place = "which one of the reader's limits cut";
