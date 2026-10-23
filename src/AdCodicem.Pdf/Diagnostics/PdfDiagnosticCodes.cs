@@ -62,14 +62,16 @@ public static class PdfDiagnosticCodes
     /// <c>/Length</c> gives no length the reader can take and the <c>endstream</c> ends the data, or no <c>endstream</c>
     /// follows the declared length — none before the next object or the end of the file, or none looked for once the
     /// document's searches read as much of the file as they may — and that length is kept, or the data runs to the next
-    /// object. A <c>/Length</c> that leads to an object one of the reader's limits cut, or left out of the index, is not
+    /// object, or, taken without a search, to the end of the file. A <c>/Length</c> that leads to an object one of the reader's limits cut, or left out of the index, is not
     /// judged: the limit's report says why.
     /// </summary>
     public const string StreamLengthInvalid = "stream.length-invalid";
 
     /// <summary>
-    /// A stream has no <c>endstream</c>: its object's <c>endobj</c> ends its data — after its declared length, or where the
-    /// object ends —, or its data runs to the end of the file.
+    /// A stream has no <c>endstream</c> before the next object or the end of the file: its object's <c>endobj</c> ends its
+    /// data — after its declared length, or where the object ends —, or its data runs to the end of the file. Data taken
+    /// without a search, the document's searches having read as much of the file as they may, is
+    /// <see cref="StreamLengthInvalid"/>'s, whose <c>endstream</c> no search said is missing.
     /// </summary>
     public const string StreamTruncated = "stream.truncated";
 

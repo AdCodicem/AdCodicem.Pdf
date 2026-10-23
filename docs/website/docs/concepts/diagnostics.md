@@ -31,7 +31,7 @@ happened to end. When `MaxObjectLength` allows no larger window, the object is k
 guard is reported: what the parse met before the edge — a stray token, a key that is not a name — is reported beside
 it, and nothing of the token the edge cut, nor of what that token leaves open, nor of the next object's header the edge
 cut short inside an array or a dictionary — `6 0` or `6 0 ob`, whose number and generation would otherwise read as keys
-that are not names, or the number as a value —, is. A stream's data is no part of what a window must hold: where it
+that are not names, or, for `6 0 ob`, which no reference can be, the number as a value —, is. A stream's data is no part of what a window must hold: where it
 ends is found in the file, whatever window its dictionary was read through, and it never counts toward
 `MaxObjectLength`.
 
