@@ -188,14 +188,40 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of one cross-reference stream, object 5, whose <c>/Length</c> names object 4, which only that stream indexes,
+    /// in a row before two rows of reserved types that spell <c>endstream</c> after an end-of-line; the page's row comes
+    /// after them. With <paramref name="reservedRowFirst"/>, the <c>/Index</c> numbers object 4 twice: first in a row of a
+    /// reserved type, which the specification says to ignore, then in the row that places it. The file is valid.
+    /// </summary>
+    public static byte[] AloneWithIndirectLengthBeforeSpelledRows(bool reservedRowFirst)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var rowCount = reservedRowFirst ? 9 : 8;
+        file.Object(4, (rowCount * 7).ToString(CultureInfo.InvariantCulture));
+        var stream = file.Position;
+        var reserved = reservedRowFirst ? [(3, 0L, 0)] : Array.Empty<(int, long, int)>();
+        var data = new List<byte>(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), .. reserved, (1, file.OffsetOf(4), 0), (1, stream, 0)], Rows.Raw));
+        data.AddRange("\nendstream\0\0\0\0"u8.ToArray());
+        data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
+        var index = reservedRowFirst ? "0 3 4 1 4 2 6 2 3 1" : "0 3 4 2 6 2 3 1";
+        file.Stream(5, $"/Type /XRef /Size 8 /W [1 4 2] /Index [{index}] /Root 1 0 R /Length 4 0 R", [.. data]);
+        file.StartXRef(stream);
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of two revisions. The first writes object 8 as <c>(old)</c> and indexes it in cross-reference stream 7. The
     /// second writes it again as <c>(new)</c>, and indexes it in cross-reference stream 10, whose <c>/Length</c> names
     /// object 4, which only that stream indexes, and whose rows of objects 5 and 6, of reserved types, spell
     /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. With
     /// <paramref name="olderIndirect"/>, stream 7's <c>/Length</c> names object 9, which only stream 7 indexes, and a comment
-    /// sets the update further from it than a search for a section's misplaced offset reaches. The file is valid.
+    /// sets the update further from it than a search for a section's misplaced offset reaches. Object 4 holds
+    /// <paramref name="four"/>, in which <c>{length}</c> stands for the length. The file is valid.
     /// </summary>
-    public static byte[] UpdateWithIndirectLength(bool spellingEndStream, bool olderIndirect = false)
+    public static byte[] UpdateWithIndirectLength(bool spellingEndStream, bool olderIndirect = false, string four = "{length}")
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -224,7 +250,7 @@ internal static class ChainFiles
 
         file.Object(8, "(new)");
         var spelled = spellingEndStream ? "\nendstream\0\0\0\0"u8.ToArray() : Encode([(0, 0, 0), (0, 0, 0)], Rows.Raw);
-        file.Object(4, (7 + spelled.Length + 14).ToString(CultureInfo.InvariantCulture));
+        file.Object(4, four.Replace("{length}", (7 + spelled.Length + 14).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
         var second = file.Position;
         var data = new List<byte>(Encode([(1, file.OffsetOf(4), 0)], Rows.Raw));
         data.AddRange(spelled);

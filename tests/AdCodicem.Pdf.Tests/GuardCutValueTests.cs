@@ -403,6 +403,61 @@ public class GuardCutValueTests
         fault.Declared.Should().BeNull();
     }
 
+    [Fact]
+    public void A_deferred_length_whose_reference_leads_to_an_object_a_guard_cut_is_not_judged_once_the_chain_is_read()
+    {
+        // The cross-reference stream's /Length, object 5, holds a reference to object 6, which the newer table places and
+        // MaxObjectLength cuts: the chain read object 5 alone, judged the length as holding null, and never reached the guard
+        // (#224).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R",
+            "6 0 R",
+            compressed: false,
+            predicted: false,
+            placed: true,
+            placedToo: new Dictionary<int, string> { [6] = new string(' ', 3000) + "56" });
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections.Should().OnlyContain(section => section.State == IO.XRef.XRefSectionState.Read);
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Fact]
+    public void The_integer_a_guard_cut_a_deferred_length_after_is_where_rows_that_spell_an_endstream_are_taken_again_to()
+    {
+        // The update's stream indexes its /Length, object 4, and object 8 after rows that spell an endstream, and
+        // MaxObjectLength cuts object 4 after its 35: the section was said to lack the rows past the endstream, and object 8
+        // read as the first revision wrote it. The 35 the cut left is where to look for the endstream, which confirms it
+        // (#224).
+        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: true, four: "{length}" + new string(' ', 3000));
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Rows_past_an_endstream_they_spell_are_the_guard_s_when_it_cut_the_deferred_length_before_its_value()
+    {
+        // As above, object 4's value lying past the cut: how far the data runs is unknown, and the rows past the endstream are
+        // the guard's. Object 8 read as the first revision wrote it, its section said to lack them (#224).
+        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: true, four: new string(' ', 3000) + "{length}");
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfNull>();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections[0].CutByLimit.Should().BeTrue();
+        document.Reader.Structure.Sections[0].Incomplete.Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("Prev")]
     [InlineData("XRefStm")]
