@@ -3027,12 +3027,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     if (ReadTrailer(window.Memory, absolute, lexer.Position, windowFull, section) is { } trailer)
                     {
                         MergeSectionTrailer(trailer, section);
-                        previous = SectionOffset(trailer, PdfName.Prev, absolute, out _);
+                        previous = SectionOffset(trailer, PdfName.Prev, absolute, out var previousHidden);
                         hybrid = SectionOffset(trailer, PdfName.XRefStm, absolute, out var streamHidden);
+                        section.ChainHiddenByGuard = streamHidden ?? previousHidden;
 
                         // A stream a guard hid holds rows newer than the older sections': the chain ends with it, as with a
                         // stream a guard cut, since their rows would stand for the stream's.
-                        previous = streamHidden ? -1 : previous;
+                        previous = streamHidden is null ? previous : -1;
                     }
 
                     return true;
@@ -3787,7 +3788,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _rowsLeftUnread = RowsFrom(index is null ? [0, declared] : subsections, stopped, rowsCut ? long.MaxValue : held);
 
         _xref.MergeTrailer(dictionary);
-        previous = rowsCut ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out _);
+        string? previousHidden = null;
+        previous = rowsCut ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden);
+        section.ChainHiddenByGuard = previousHidden;
         return XRefSectionState.Read;
     }
 
@@ -4103,10 +4106,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="trailer">The section's trailer, or its stream's dictionary.</param>
     /// <param name="key">The entry to read, <c>/Prev</c> or <c>/XRefStm</c>.</param>
     /// <param name="section">The offset of the section, which a report names.</param>
-    /// <param name="hidden">Whether the entry leads to an object a guard cut, which ends the chain.</param>
-    private long SectionOffset(PdfDictionary trailer, PdfName key, long section, out bool hidden)
+    /// <param name="hidden">
+    /// What the entry is, when it leads to an object a guard cut, which ends the chain — "its /Prev is the reference 9 0 R,
+    /// which one of the reader's limits cut" —; null otherwise.
+    /// </param>
+    private long SectionOffset(PdfDictionary trailer, PdfName key, long section, out string? hidden)
     {
-        hidden = false;
+        hidden = null;
 
         var value = trailer.GetRaw(key);
 
@@ -4131,12 +4137,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // So does one leading to an object a guard cut, whose loading, once the chain is read, reaches the guard (#263). The
         // older sections, and their trailers, are the guard's to hide.
-        if (value is PdfReference && Follow(key, value, entry: true, out _, out var cut) is not null && cut is { } past)
+        if (value is PdfReference && Follow(key, value, entry: true, out _, out var cut) is { } fault && cut is { } past)
         {
             _cutByGuard = true;
             _structure.TrailersHiddenByGuard = true;
             (_chainValuesCut ??= []).Add(past);
-            hidden = true;
+            hidden = fault;
             return -1;
         }
 

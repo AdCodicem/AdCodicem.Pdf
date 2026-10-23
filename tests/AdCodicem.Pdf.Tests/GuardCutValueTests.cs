@@ -528,16 +528,23 @@ public class GuardCutValueTests
     {
         // The newer section's /Prev, object 9, or its /XRefStm, object 6, is one that section places and MaxObjectLength cuts
         // before its value: the section it names was said to be missing, and the index rebuilt. The chain ends there for the
-        // guard, which is reached once the chain is read — thrown at opening when the caller asks for it (#263).
+        // guard, which is reached once the chain is read — thrown at opening when the caller asks for it (#263). The
+        // validation says the sections it names were not checked, and judges nothing the chain they end would hold.
+        var reference = key == "Prev" ? "9 0 R" : "6 0 R";
         var file = key == "Prev"
-            ? ChainFiles.UpdateNamingItsPrevious("9 0 R", padding: 3000)
-            : ChainFiles.HybridNamingItsStream("6 0 R", padding: 3000);
+            ? ChainFiles.UpdateNamingItsPrevious(reference, padding: 3000)
+            : ChainFiles.HybridNamingItsStream(reference, padding: 3000);
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
         document.Reader.Structure.Sections.Should().ContainSingle();
-        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
+        var report = new PdfValidator().Validate(document);
+        report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
+        report.Contains(PdfValidationRuleIds.FileSizeWrong).Should().BeFalse();
+        var section = document.Reader.Structure.Sections[0].Offset;
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Select(finding => finding.Message).Should().Equal(
+            $"The cross-reference section at offset {section} names older sections, but its /{key} is the reference {reference}, which one of the reader's limits cut: they were not checked.");
 
         var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
