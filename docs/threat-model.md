@@ -261,7 +261,7 @@ Known gaps:
 - [#163] Nesting past 128 levels, and loads nested past 64, are cut though a valid file can reach both. They become
   guards.
 - [#262] A reference a guard cuts between its generation and its `R` reads as two integers.
-- Its issue is still to be filed: a name, an integer or a real that a guard's cut parts is kept as the part read —
+- [#279] A name, an integer or a real that a guard's cut parts is kept as the part read —
   `/Flate` of `/FlateDecode`, `1` of `15`, `1.0` of `1.5` — by every reader of the object it cut. A stream's `/Length`
   and the values its filters read take such an object for the guard's ([#224], [#263]); a caller reading it is told of
   the cut, not of the token it parted.
@@ -360,7 +360,7 @@ Known gaps:
 
 Known gaps:
 
-- Its issue is still to be filed: streams whose data share a stretch of the file each read that stretch again from a
+- [#280] Streams whose data share a stretch of the file each read that stretch again from a
   source not held in memory, whenever their data is asked for. What overlapping streams cost is time rather than
   memory, bounded for each read by `MaxStreamLength` alone; a check for overlapping data is proposed.
 - [#138] A stream searched for its `endstream` can keep a length that depends on the object read first.
@@ -742,3 +742,5 @@ The last column also names the questions they leave open, which that milestone s
 [#275]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/275
 [#276]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/276
 [#277]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/277
+[#279]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/279
+[#280]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/280

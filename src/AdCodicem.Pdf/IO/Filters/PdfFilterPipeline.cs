@@ -105,9 +105,9 @@ internal static class PdfFilterPipeline
     {
         leftEncoded = false;
 
-        // Whether the data a filter is given is data the reader cut at one of its limits: the parser's window cut the
-        // stream, or a filter before it stopped at MaxDecodedStreamLength. Every filter after a cut is given cut data,
-        // and the cut is reported once, by the guard that made it.
+        // Whether the data a filter is given is data the reader cut at one of its limits: MaxStreamLength, or the window a
+        // guard stopped at, cut the stream's data, or a filter before it stopped at MaxDecodedStreamLength. Every filter
+        // after a cut is given cut data, and the cut is reported once, by the guard that made it.
         var cut = stream.Data.CutByGuard;
         var limitReported = false;
 

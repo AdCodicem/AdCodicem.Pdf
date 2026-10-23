@@ -4823,8 +4823,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// Marks a stream whose data reaches the edge of the window a guard stopped at: the reader cut it there,
-    /// where its <c>endstream</c> was still to be found, and its lost tail is the guard's, not the file's.
+    /// Marks a stream whose data reaches the edge of the window a guard stopped at — its dictionary ran to that edge, the
+    /// data no search can be anchored at past it —: the reader cut it there, and its lost tail is the guard's, not the
+    /// file's. A stream whose data starts within the window is found by its <c>endstream</c>, which no window bounds.
     /// </summary>
     private static void MarkCutByGuard(PdfObject parsed, long windowEnd)
     {
@@ -6038,12 +6039,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>
-    /// A stream's data in the file, read the first time something asks for it, and refused, read or not, once the
-    /// document is disposed.
-    /// </summary>
-    /// <summary>
-    /// A stream's data in the file: where it lies and how long it is, read each time it is asked for, and kept by
-    /// nothing (#170).
+    /// A stream's data in the file: where it lies and how long it is, read each time it is asked for, kept by nothing
+    /// (#170), and refused once the document is disposed.
     /// </summary>
     /// <remarks>
     /// Streams whose data share a stretch of the file — overlapping objects —, or the many streams of a document read once

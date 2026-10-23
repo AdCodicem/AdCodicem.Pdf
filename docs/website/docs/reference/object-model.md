@@ -21,7 +21,7 @@ references they hold. Every one derives from `PdfObject`. How a document reads t
 | `PdfString` | A string's bytes, text or binary | `Bytes`; `ToText()` for its text | Its text between double quotes, escaped: `"Annual report"` |
 | `PdfArray` | An ordered list of objects | Its items, by index | `[array of 3]` |
 | `PdfDictionary` | Entries, each keyed by a name | Its entries, by key | `<</Type /Page ... 5 entries>>`, or `<<dictionary of 5>>` when its `/Type` is no name |
-| `PdfStream` | A dictionary and its encoded data | `Dictionary`, `GetRawBytes()`; `Decode()` for the decoded data | `<</Image stream of 4096 bytes>>`, by its `/Subtype`, else its `/Type` |
+| `PdfStream` | A dictionary and its encoded data, which a stream read from a document [reads each time it is asked for](#a-streams-data) | `Dictionary`, `GetRawBytes()`; `Decode()` for the decoded data | `<</Image stream of 4096 bytes>>`, by its `/Subtype`, else its `/Type` |
 | `PdfReference` | A reference to an object, such as `12 0 R` | `Id`; `Resolve()` for the object | `12 0 R` |
 
 ## What `ToString()` gives
@@ -83,6 +83,29 @@ writes past what a `long` holds is read as a real, and so described with its poi
 | `NaN`, `Infinity`, which only a caller can build | `NaN`, `Infinity`, `-Infinity` |
 
 The longest description is 327 characters, that of -4.9E-324, the negative of the smallest positive double.
+
+## A stream's data
+
+A `PdfStream` holds its dictionary and a `PdfStreamData`. For a stream read from a document, that says where the
+encoded bytes lie and how many there are, not what they are: they are read each time something asks for them, and kept
+by nothing — neither the stream nor the document's object cache —, so that a stream costs its data only while it is
+read or decoded, and for as long as the caller keeps what that gave.
+
+| Member | What it gives | What it costs |
+|---|---|---|
+| `Dictionary` | The stream's dictionary | Nothing: it was read with the stream |
+| `RawLength`, `Data.Length` | The count of the stream's encoded bytes in the file: its `/Length` where an `endstream` confirms it, otherwise as far as the reader takes the data to run ([Where a stream ends](../concepts/diagnostics.md#where-a-stream-ends)). Data longer than `MaxStreamLength` is counted whole | Nothing: found when the stream is parsed |
+| `Data.Position` | The offset in the file the data starts at | Nothing |
+| `GetRawBytes()`, `Data.GetBytes()` | The encoded bytes, as the file holds them, up to `MaxStreamLength`: past it, the bytes within the bound, and `limit.stream-length` reported once for the stream | A read, each call: from a document opened from bytes or from a stream, the bytes lent where they lie, without a copy; from one opened from a path, read from the file into an array of their length |
+| `Decode()` | The data the stream's filters decode, as far as they go: decoding stops at an image filter, at a filter the library does not know, and where the [reader limits](reader-limits.md) end it | A read, as `GetRawBytes()` makes, then what each filter produces; data no filter decodes comes back as it was read |
+
+Opened with `ThrowOnLimit`, a document's streams throw a `PdfLimitExceededException` from `GetRawBytes()` and
+`Decode()` instead, each time their data runs past `MaxStreamLength`; `Decode()` throws at the other limits it reaches
+too. No call's result is kept for the next: a caller that uses the data twice keeps what one call gave, rather than call
+again ([Tune the reader's memory](../guides/tune-reader-memory.md#read-a-streams-data-once)).
+
+Data built with `PdfStreamData.FromMemory` is held by the stream, whatever its length, and handed back as it was given;
+its `Position` is -1.
 
 ## Objects from a disposed document
 

@@ -154,8 +154,12 @@ before the first rule —, one rule also looks at every object it holds, to name
 The document's [reader limits](reader-limits.md) apply to validation too. An object the reader cut at a
 limit is not a fault of the file, so a rule meeting one judges nothing of what it lacks or holds, or says, as
 information, that it could not check it whole, rather than calling the file broken; opening the document with a raised
-limit lets it check the rest. The page tree rules take a node so cut to give what its pages inherit, and leave its
-`/Count`, the value of those above it and the pages the tree may leave out unjudged; the reader takes a catalog so cut for the
-catalog, as it read it, rather than look for another, and does not look for one either when a limit left the object
-`/Root` names out of the index. Validation
-throws only for the caller's own mistakes, and for a limit when the document was opened to throw on one.
+limit lets it check the rest. The same holds of a value that leads to such an object: a cross-reference stream whose
+`/W`, `/Index`, `/Size`, `/Filter` or `/DecodeParms` leads to one is said not checked rather than malformed, and an
+object stream whose `/Filter` or `/DecodeParms` leads to one, or to an object a limit left out of the index, is left
+encoded, the objects it holds said not checked rather than lost
+([#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263)). The page tree rules take a node so cut to give what its
+pages inherit, and leave its `/Count`, the value of those above it and the pages the tree may leave out unjudged; the
+reader takes a catalog so cut for the catalog, as it read it — one such an object stream holds included —, rather than
+look for another, and does not look for one either when a limit left the object `/Root` names out of the index.
+Validation throws only for the caller's own mistakes, and for a limit when the document was opened to throw on one.

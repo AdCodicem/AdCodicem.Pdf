@@ -11,9 +11,9 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// was evidently meant, a warning (ADR 45). An empty object, <c>2 0 obj endobj</c>, has its <c>endobj</c>.
 /// </para>
 /// <para>
-/// The objects checked are those the reader read, reached from the trailer; what follows a stream whose data runs past
-/// the window the reader first reads through is not seen until #55 checks such a stream's length, nor what follows an
-/// object one of the reader's limits cut. An object stream's members have no <c>endobj</c> of their own.
+/// The objects checked are those the reader read, reached from the trailer; what follows an object one of the reader's
+/// limits cut is not seen, nor what follows a stream whose declared length no <c>endstream</c> nor <c>endobj</c> follows,
+/// kept with its object's end unknown. An object stream's members have no <c>endobj</c> of their own.
 /// </para>
 /// </remarks>
 internal sealed class EndObjMissingRule : IValidationRule
