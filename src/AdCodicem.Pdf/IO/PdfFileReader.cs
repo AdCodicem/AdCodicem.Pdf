@@ -3831,11 +3831,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
             }
 
-            // Data a /Length the chain could not read left to an endstream nothing confirmed, which a guard on decoding kept
-            // from being taken again to its length, or taken to what a guard's cut left of the length: where it ends is the
-            // guard's, which a filter run over data the endstream its rows spell cut short says nothing of the file at. The
-            // data is decoded once more knowing it, as data a guard cut is: a fault in what a filter read stands (#220, #224).
-            if (!endHidden && deferred is not null && !xrefStream.Data.CutByGuard && (lengthCut || (!retaken && !decodedWhole)))
+            // Data a /Length the chain could not read left to an endstream nothing confirmed, where the length that would say
+            // whether it is the data's own is one a guard cut, or where a guard on decoding kept the data, which lacks rows,
+            // from being taken again to the length: where it ends is the guard's, and a filter run out there says nothing of
+            // the file. The data is decoded once more knowing it, to the same bytes, whose faults stand (#220, #224).
+            if (!endHidden && deferred is not null && !xrefStream.Data.CutByGuard &&
+                (lengthCut || (!retaken && !decodedWhole && declared > held)))
             {
                 _diagnostics.RollBack(decoding);
                 endHidden = true;

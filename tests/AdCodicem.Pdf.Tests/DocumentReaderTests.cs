@@ -2006,6 +2006,21 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_deferred_length_s_data_whose_rows_a_guard_on_decoding_holds_all_of_reports_its_filters_ends()
+    {
+        // Stream 5's rows and 30 zero bytes, compressed, are written in hexadecimal with no ">", and MaxDecodedStreamLength
+        // stops the Flate output past every row the section declares: no row is missing, so nothing would take the data
+        // again, and the endstream it was taken to ends it whatever the guard does. Its missing ">" is the file's, as for
+        // the direct twin (#220).
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 50 } };
+        using var direct = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: false, compressed: true, padding: 30), options);
+        using var deferred = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: true, compressed: true, padding: 30), options);
+
+        direct.Diagnostics.Should().Contain(entry => entry.Message.StartsWith("An ASCIIHex stream ends without its > end marker", StringComparison.Ordinal));
+        deferred.Diagnostics.Select(entry => entry.Message).Should().Equal(direct.Diagnostics.Select(entry => entry.Message));
+    }
+
+    [Fact]
     public void A_deferred_length_whose_reference_leads_to_an_object_only_its_own_section_places_is_read_once_the_chain_is()
     {
         // The cross-reference stream's /Length, object 5, which the newer table places, holds a reference to object 6, which
