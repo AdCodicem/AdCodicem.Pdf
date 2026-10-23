@@ -522,6 +522,36 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Rows_past_a_spelled_endstream_are_the_guard_s_when_the_length_leads_to_an_object_a_newer_section_places_and_it_cut(bool chained)
+    {
+        // Stream 7's /Length leads to an object the newer table places — object 5 itself, or object 9 through object 4,
+        // which only stream 7's own row places — and MaxObjectLength cuts before its value: the rows past the endstream they
+        // spell are the guard's, as when the cut object is the one the section's own row places (#224). Read whole, the
+        // file is clean.
+        var file = ChainFiles.UpdatePlacingAPaddedLength(chained);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.GetObject(new PdfObjectId(3)).AsDictionary().Should().NotBeNull();
+            whole.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        var section = document.Reader.Structure.Sections[1];
+        section.CutByLimit.Should().BeTrue();
+        section.Incomplete.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Should().NotContain(finding => finding.Severity == PdfValidationSeverity.Error);
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
     [InlineData("Prev")]
     [InlineData("XRefStm")]
     public void A_section_offset_a_guard_cut_ends_the_chain_as_the_guard_s(string key)
