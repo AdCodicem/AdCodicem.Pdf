@@ -724,6 +724,93 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("cut", false)]
+    [InlineData("left out", false)]
+    [InlineData("cut", true)]
+    [InlineData("left out", true)]
+    public void An_endstream_the_next_object_follows_where_a_guard_hid_the_length_lacks_its_endobj_as_the_file_s_fault(string guard, bool flate)
+    {
+        // Object 4's endstream lost its endobj, and object 5, which the table places, follows it directly. No endstream the
+        // data spells can be followed by an object the index places, so the one found is the stream's own, whatever the
+        // guard hid: what the object lacks is the file's, as read whole, and so is the end of its Flate data, which lost its
+        // last bytes (#224).
+        var data = "BT /F1 12 Tf 72 712 Td (Hello) Tj ET";
+
+        if (flate)
+        {
+            using var output = new MemoryStream();
+
+            using (var zlib = new ZLibStream(output, CompressionLevel.NoCompression, leaveOpen: true))
+            {
+                zlib.Write(Encoding.ASCII.GetBytes(data));
+            }
+
+            data = Encoding.Latin1.GetString(output.ToArray()[..^6]);
+        }
+
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + data.Length.ToString(CultureInfo.InvariantCulture)),
+            [4] = file.Position,
+        };
+        file.Raw($"4 0 obj\n<< /Length 20 0 R{(flate ? " /Filter /FlateDecode" : string.Empty)} >>\nstream\n{data}\nendstream\n");
+        rows[5] = file.Object(5, "(five)");
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+        _ = stream.Decode();
+
+        stream.GetRawBytes().ToArray().Should().Equal(Encoding.Latin1.GetBytes(data));
+        stream.Data.CutByGuard.Should().BeFalse();
+        document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            flate
+                ? [guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.FilterFailed]
+                : [guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries]);
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("cut")]
+    [InlineData("left out")]
+    public void An_endstream_only_the_table_follows_where_a_guard_hid_the_length_ends_data_that_is_the_guard_s(string guard)
+    {
+        // Object 4, the last, lost its endobj, and the table follows its endstream: data may spell "endstream" and "xref" —
+        // an embedded file's does —, the stream's own endstream and endobj after, so only the length the guard hid tells
+        // the two apart. The data up to it is the guard's, the object's endobj unjudged (#224).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + "5"),
+            [4] = file.Position,
+        };
+        file.Raw("4 0 obj\n<< /Length 20 0 R >>\nstream\nBT ET\nendstream\n");
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
+        stream.Data.CutByGuard.Should().BeTrue();
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("Rx", false)]
     [InlineData("RG", false)]
     [InlineData("R\n", true)]
