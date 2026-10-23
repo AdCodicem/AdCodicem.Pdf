@@ -1856,6 +1856,46 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_deferred_length_is_taken_again_by_the_row_the_section_keeps_for_it()
+    {
+        // The stream's /Index numbers its /Length, object 4, first in a row of a reserved type, which reading the rows ignores,
+        // then in the row that places it, before rows that spell an endstream: the data was not taken again by the first, and
+        // the section was said to lack the rows past them, the page's among them (#220).
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: true));
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_deferred_length_is_not_checked_against_data_a_guard_cut()
+    {
+        // The stream's data, taken up to the endstream its rows spell, runs past MaxStreamLength: decoding cut it, and the
+        // length, read once the chain is, was checked against it, the guard's cut reported as the file's (ADR 34).
+        var file = ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: false);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = 30 } });
+        using var whole = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitStreamLength);
+        whole.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_deferred_length_whose_reference_leads_to_an_object_only_its_own_section_places_is_read_once_the_chain_is()
+    {
+        // The cross-reference stream's /Length, object 5, which the newer table places, holds a reference to object 6, which
+        // only the stream indexes: the chain read object 5 alone, and judged the length as holding null (#182).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "6 0 R", compressed: false, predicted: false, placed: true, six: "56");
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().OnlyContain(section => section.State == IO.XRef.XRefSectionState.Read);
+    }
+
+    [Fact]
     public void Reports_the_rows_a_deferred_length_shows_the_chain_did_not_read()
     {
         // The rows spell an endstream before the stream's own row for its /Length, the last: what the chain read holds no
