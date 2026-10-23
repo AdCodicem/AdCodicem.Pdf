@@ -35,10 +35,10 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// reader does not read is judged as the file wrote it, a reference it holds not followed: following it would read what
 /// the reading never did, and could reach a guard it never met (#263). So are a hybrid file's stream's own <c>/Prev</c>,
 /// which the reader does not follow, the chain going on through the table's; the <c>/Prev</c> and <c>/XRefStm</c> of a
-/// table an <c>/XRefStm</c> names in a stream's place; and what of a cross-reference stream's <c>/Filter</c> and
-/// <c>/DecodeParms</c> decoding does not read — the parameters of a filter that reads none, past its predictor where it
-/// has none, or past the element that ends the chain —, what decoding reads judged as it read it, whatever the cache let
-/// go since.
+/// table an <c>/XRefStm</c> names in a stream's place; the elements of a <c>/W</c> past the third; and what of a
+/// cross-reference stream's <c>/Filter</c> and <c>/DecodeParms</c> decoding does not read — the parameters of a filter
+/// that reads none, past its predictor where it has none, or past the element that ends the chain —, what decoding reads
+/// judged as it read it, whatever the cache let go since.
 /// </para>
 /// </remarks>
 internal sealed class TrailerValueWrongRule : IValidationRule
@@ -193,9 +193,11 @@ internal sealed class TrailerValueWrongRule : IValidationRule
                 return;
             }
 
+            // The reader reads three elements of a /W, the widths of three fields, and every element of an /Index.
             for (var i = 0; i < array.Count; i++)
             {
-                Value(string.Create(CultureInfo.InvariantCulture, $"element {i} of its {name}"), array[i], Iso1, "Table 17");
+                Value(
+                    string.Create(CultureInfo.InvariantCulture, $"element {i} of its {name}"), array[i], Iso1, "Table 17", key != PdfName.W || i < 3);
             }
         }
 
