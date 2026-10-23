@@ -180,6 +180,21 @@ public class ParserTests
     }
 
     [Theory]
+    [InlineData("hello\nendobj\n% a note\n6 0 obj\n", 5)]
+    [InlineData("hello\nendobj % note endobj\n6 0 obj\n", 5)]
+    [InlineData("hello\nendobj\n% a note\nx\n6 0 obj\n", -1)]
+    public void Ends_a_stream_s_data_at_its_object_s_endobj_that_only_white_space_and_comments_follow(string data, int length)
+    {
+        // Parsed alone, a stream with no endstream ends where its object's endobj ends it, a comment after which is white
+        // space; a token after it leaves the data running to the next object's header (#174).
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("4 0 obj\n<< /Length 200 >>\nstream\n" + data));
+
+        parser.TryReadIndirectObject(out _, out var value).Should().BeTrue();
+
+        value.AsStream().Required().RawLength.Should().Be(length < 0 ? data.IndexOf("6 0 obj", StringComparison.Ordinal) : length);
+    }
+
+    [Theory]
     [InlineData("<< /A 1\n6")]
     [InlineData("<< /A 1\n6 0")]
     [InlineData("<< /A 1\n6 0 ")]

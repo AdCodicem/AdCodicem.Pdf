@@ -373,6 +373,47 @@ public class WindowEdgeTests
         document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(-30)]
+    [InlineData(-21)]
+    [InlineData(-18)]
+    [InlineData(-15)]
+    [InlineData(-13)]
+    [InlineData(-11)]
+    [InlineData(-9)]
+    [InlineData(-7)]
+    [InlineData(-5)]
+    [InlineData(-3)]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(8)]
+    [InlineData(12)]
+    public void An_object_s_endobj_ends_data_with_no_endstream_wherever_the_reads_part_what_follows_it(int shift)
+    {
+        // Object 4 lost its endstream. Its endobj, a comment, and a header no index places, which stops the search, fall
+        // across the edge of the window and of the first read of the file past it: the keyword parted between two reads, the
+        // header started in the read before the one that shows it whole. The data ends at the endobj wherever they fall (#174).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[4] = file.Position;
+        const string Before = "4 0 obj\n<< /Length 3 >>\nstream\n";
+        var length = Window + shift - Before.Length;
+        file.Raw(Before + new string('a', length) + "\nendobj\n% c\n7 0 obj\n(stray)\nendobj\n");
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamTruncated)
+            .Which.Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"its object's endobj ends it, after {length} bytes."));
+    }
+
     [Fact]
     public void An_object_whose_header_lies_past_the_window_is_read_where_the_index_says()
     {

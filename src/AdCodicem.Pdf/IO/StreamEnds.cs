@@ -15,12 +15,19 @@ internal static class StreamEnds
     public static ReadOnlySpan<byte> EndObjKeyword => "endobj"u8;
 
     /// <summary>
-    /// Gives where the first byte at or after <paramref name="index"/> lies that is neither white space nor part of a
-    /// comment, or the length of <paramref name="bytes"/> when they run to its end. ISO 32000-1 (7.2.3) makes a comment
-    /// outside a string or a stream's data count as white space.
+    /// Gives where the first byte at or after <paramref name="index"/>, where a stream's declared length ends, lies that is
+    /// neither white space nor part of a comment, or the length of <paramref name="bytes"/> when they run to its end. ISO
+    /// 32000-1 (7.2.3) makes a comment outside a string or a stream's data count as white space; one counts here only after
+    /// white space, since a <c>%</c> right where the length ends is the data's, a length too short, and the rest of its line
+    /// the rest of the data.
     /// </summary>
-    public static int SkipBlanks(ReadOnlySpan<byte> bytes, int index)
+    public static int SkipGap(ReadOnlySpan<byte> bytes, int index)
     {
+        if (index < bytes.Length && bytes[index] == (byte)'%')
+        {
+            return index;
+        }
+
         var lexer = new PdfLexer(bytes, index);
         lexer.SkipWhitespaceAndComments();
         return lexer.Position;
@@ -28,16 +35,15 @@ internal static class StreamEnds
 
     /// <summary>
     /// Reads, at the start of <paramref name="bytes"/>, whether <c>endstream</c> follows a stream's data — after white
-    /// space and comments, as many as there are (#174) — and what follows the keyword: <c>endobj</c>, another token, or
-    /// nothing the bytes show.
+    /// space and comments, as many as there are (#174), a comment only after white space (<see cref="SkipGap"/>) — and what
+    /// follows the keyword: <c>endobj</c>, another token, or nothing the bytes show.
     /// </summary>
     /// <param name="bytes">The bytes after the data.</param>
     /// <param name="reachesEndOfFile">Whether the bytes end where the file does, which then follows what they hold.</param>
     public static StreamEnd ReadEnd(ReadOnlySpan<byte> bytes, bool reachesEndOfFile)
     {
-        var lexer = new PdfLexer(bytes);
-        lexer.SkipWhitespaceAndComments();
-        var at = lexer.Position;
+        var at = SkipGap(bytes, 0);
+        var lexer = new PdfLexer(bytes, at);
         var rest = bytes[at..];
 
         if (!rest.StartsWith(EndStreamKeyword))
@@ -71,12 +77,13 @@ internal static class StreamEnds
     }
 
     /// <summary>
-    /// Determines whether <c>endobj</c>, a whole keyword, starts at <paramref name="index"/> once white space and comments are
-    /// skipped; null when they, or the keyword, run to the end of <paramref name="bytes"/>, which do not end the file.
+    /// Determines whether <c>endobj</c>, a whole keyword, starts at <paramref name="index"/>, where a stream's declared length
+    /// ends, once white space and comments are skipped (<see cref="SkipGap"/>); null when they, or the keyword, run to the
+    /// end of <paramref name="bytes"/>, which do not end the file.
     /// </summary>
     public static bool? IsEndObjAt(ReadOnlySpan<byte> bytes, int index, bool reachesEndOfFile)
     {
-        var at = SkipBlanks(bytes, index);
+        var at = SkipGap(bytes, index);
         var rest = bytes[at..];
 
         if (rest.Length <= EndObjKeyword.Length)
@@ -98,54 +105,6 @@ internal static class StreamEnds
     /// </summary>
     public static bool HoldsEndObj(ReadOnlySpan<byte> bytes, int before) =>
         bytes[..Math.Clamp(before, 0, bytes.Length)].IndexOf(EndObjKeyword) >= 0;
-
-    /// <summary>
-    /// Gives where the data of a stream that has no <c>endstream</c> ends when its object's own <c>endobj</c> ends it: the
-    /// <c>endobj</c>, a whole keyword, that only white space separates from the end of <paramref name="stretch"/>, the
-    /// end-of-line before it left out; -1 when none does.
-    /// </summary>
-    /// <param name="stretch">The bytes from the start of the data to where the search for its <c>endstream</c> stopped.</param>
-    public static int EndObjBefore(ReadOnlySpan<byte> stretch)
-    {
-        var end = stretch.LastIndexOfAnyExcept(PdfCharacters.Whitespace) + 1;
-        return EndObjEnding(stretch[..end], atDataStart: true);
-    }
-
-    /// <summary>
-    /// Gives where the data ends when <paramref name="bytes"/> end with a whole <c>endobj</c>: where the keyword starts, the
-    /// end-of-line before it left out; -1 when they do not.
-    /// </summary>
-    /// <param name="bytes">Bytes that end where the white space before the stop starts.</param>
-    /// <param name="atDataStart">Whether the bytes start where the data does, before which no byte belongs to it.</param>
-    public static int EndObjEnding(ReadOnlySpan<byte> bytes, bool atDataStart)
-    {
-        if (!bytes.EndsWith(EndObjKeyword))
-        {
-            return -1;
-        }
-
-        var keyword = bytes.Length - EndObjKeyword.Length;
-
-        // The keyword is whole: what precedes it ends a token, or is the start of the data.
-        if (keyword > 0 ? PdfCharacters.IsRegular(bytes[keyword - 1]) : !atDataStart)
-        {
-            return -1;
-        }
-
-        var end = keyword;
-
-        if (end > 0 && bytes[end - 1] == (byte)'\n')
-        {
-            end--;
-        }
-
-        if (end > 0 && bytes[end - 1] == (byte)'\r')
-        {
-            end--;
-        }
-
-        return end;
-    }
 
     /// <summary>
     /// Searches one read of a search for <c>endstream</c> — the parser's bytes, or a window of the file — for the first

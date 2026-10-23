@@ -939,14 +939,15 @@ internal ref struct PdfObjectParser
 
         var stop = header < 0 ? span.Length : (int)(header - _baseOffset);
         var stretch = span[dataStart..stop];
-        var objectEnd = StreamEnds.EndObjBefore(stretch);
+        var tail = new EndObjTail(start);
+        tail.Read(stretch, start, _baseOffset + stop);
 
         return new StreamEndSearch(null, header < 0 ? null : header, EndObjState.Unknown)
         {
             EndObjSeen = StreamEnds.HoldsEndObj(stretch, stretch.Length),
             EndObjAfterDeclared = declaredEnd >= start && declaredEnd - _baseOffset <= stop &&
                 StreamEnds.IsEndObjAt(span[..stop], (int)(declaredEnd - _baseOffset), reachesEndOfFile: true) == true,
-            ObjectEnd = objectEnd < 0 ? -1 : start + objectEnd,
+            ObjectEnd = tail.DataEnd(_baseOffset + stop),
         };
     }
 
