@@ -427,9 +427,9 @@ internal static class ChainFiles
     /// A file of two classic tables: the first indexes the catalog, the page tree and the page; the second, an update,
     /// indexes object 4 and object 9, which holds the first table's offset, and names that table through
     /// <paramref name="prev"/>, in which <c>{offset}</c> stands for the offset. Object 9's value comes after
-    /// <paramref name="padding"/> spaces.
+    /// <paramref name="padding"/> spaces; with <paramref name="real"/>, it is written as a real with no fractional part.
     /// </summary>
-    public static byte[] UpdateNamingItsPrevious(string prev, int padding = 0)
+    public static byte[] UpdateNamingItsPrevious(string prev, int padding = 0, bool real = false)
     {
         using var file = new Writer("1.4");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -440,7 +440,7 @@ internal static class ChainFiles
             CultureInfo.InvariantCulture,
             $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{first}\n%%EOF\n"));
         file.Object(4, "(an update)");
-        file.Object(9, new string(' ', padding) + first.ToString(CultureInfo.InvariantCulture));
+        file.Object(9, new string(' ', padding) + first.ToString(CultureInfo.InvariantCulture) + (real ? ".0" : string.Empty));
         var second = file.Position;
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
@@ -738,12 +738,13 @@ internal static class ChainFiles
     }
 
     /// <summary>
-    /// A hybrid update over a classic table that indexes the catalog, the page tree and the page. The update writes object 9,
-    /// which holds 123 after <paramref name="padding"/> spaces, and object 10, which cross-reference stream 7 indexes; the
-    /// stream's own <c>/Prev</c> is <paramref name="streamPrev"/>, which the reader does not follow. The update's table indexes object
-    /// 9, and its trailer names the older table through <c>/Prev</c> and the stream through <c>/XRefStm</c>.
+    /// A hybrid update over a classic table that indexes the catalog, the page tree and the page. The update writes object
+    /// 9, which holds <paramref name="nine"/> after <paramref name="padding"/> spaces, and object 10, which cross-reference
+    /// stream 7 indexes; the stream's own <c>/Prev</c> is <paramref name="streamPrev"/>, which the reader does not follow.
+    /// The update's table indexes object 9, and its trailer names the older table through <c>/Prev</c> and the stream
+    /// through <c>/XRefStm</c>.
     /// </summary>
-    public static byte[] HybridWithStreamPrev(string streamPrev, int padding = 3000)
+    public static byte[] HybridWithStreamPrev(string streamPrev, int padding = 3000, string nine = "123")
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -753,7 +754,7 @@ internal static class ChainFiles
         file.Text(string.Create(
             CultureInfo.InvariantCulture,
             $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{older}\n%%EOF\n"));
-        file.Object(9, new string(' ', padding) + "123");
+        file.Object(9, new string(' ', padding) + nine);
         file.Object(10, "(ten)");
         var stream = file.Position;
         var data = Encode([(1, file.OffsetOf(10), 0)], Rows.Raw);
@@ -799,10 +800,11 @@ internal static class ChainFiles
     /// <summary>
     /// A classic table updated by a cross-reference stream. The table indexes the catalog, the page tree, the page and
     /// object 12, the highest number; cross-reference stream 10, the update, indexes the first three with object 4, a page
-    /// the tree does not list, and object 9, which holds the table's offset after <paramref name="padding"/> spaces, and
-    /// names the table through <c>/Prev 9 0 R</c>. The table and the stream both give <c>/Size 13</c>.
+    /// the tree does not list, and object 9, which holds the table's offset after <paramref name="padding"/> spaces —
+    /// written as a real with no fractional part with <paramref name="real"/> —, and names the table through
+    /// <c>/Prev 9 0 R</c>. The table and the stream both give <c>/Size 13</c>.
     /// </summary>
-    public static byte[] StreamUpdateHidingItsHighestNumber(int padding)
+    public static byte[] StreamUpdateHidingItsHighestNumber(int padding, bool real = false)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -814,7 +816,7 @@ internal static class ChainFiles
             CultureInfo.InvariantCulture,
             $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\n12 1\n{file.OffsetOf(12):D10} 00000 n\r\ntrailer\n<< /Size 13 /Root 1 0 R >>\nstartxref\n{first}\n%%EOF\n"));
         file.Object(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
-        file.Object(9, new string(' ', padding) + first.ToString(CultureInfo.InvariantCulture));
+        file.Object(9, new string(' ', padding) + first.ToString(CultureInfo.InvariantCulture) + (real ? ".0" : string.Empty));
         var stream = file.Position;
         var data = Encode(
             [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, file.OffsetOf(4), 0), (1, file.OffsetOf(9), 0), (1, stream, 0)],

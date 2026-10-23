@@ -229,6 +229,64 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("cut", "next object")]
+    [InlineData("left out", "next object")]
+    [InlineData("cut", "end of file")]
+    [InlineData("left out", "end of file")]
+    public void A_missing_endstream_no_header_stops_the_search_at_is_the_file_s_where_a_guard_hid_the_length(string guard, string stop)
+    {
+        // Object 4, whose /Length a guard hid, lost its endstream and its endobj, and its data spells no header: the search
+        // stops at the next object the index places, or at the end of the file. Nothing the guard hides would say where the
+        // data ends otherwise: the missing endstream is the file's, as read whole (#224).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+
+        if (stop == "end of file")
+        {
+            WriteOthers();
+        }
+
+        rows[4] = file.Position;
+        file.Raw("4 0 obj\n<< /Length 10 0 R >>\nstream\nABC\n");
+
+        if (stop == "next object")
+        {
+            WriteOthers();
+        }
+
+        file.Table(11, rows, "/Size 11 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 8 };
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.Data.CutByGuard.Should().BeFalse();
+        document.Reader.TryGetStreamLengthFault(4, out var fault).Should().BeTrue();
+        fault.Form.Should().Be(guard == "cut" ? StreamLengthForm.ObjectCut : StreamLengthForm.ObjectUnindexed);
+        var code = stop == "next object" ? PdfDiagnosticCodes.StreamLengthInvalid : PdfDiagnosticCodes.StreamTruncated;
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == code).Which.Message.Should().StartWith(
+                $"The stream's /Length names object 10 0, which one of the reader's limits {(guard == "cut" ? "cut" : "left out of the index")}, " +
+                $"and no endstream follows its data before the {(stop == "next object" ? "next object" : "end of the file")}");
+
+        if (stop == "next object")
+        {
+            stream.GetRawBytes().ToArray().Should().Equal("ABC\n"u8.ToArray());
+        }
+
+        void WriteOthers()
+        {
+            rows[6] = file.Object(6, "(six)");
+            rows[10] = file.Object(10, (guard == "cut" ? new string(' ', 2000) : string.Empty) + "3");
+        }
+    }
+
+    [Theory]
     [InlineData("cut")]
     [InlineData("left out")]
     public void A_stream_a_guard_hid_the_length_of_ends_at_its_own_endobj_before_a_header(string guard)
@@ -1227,6 +1285,28 @@ public class GuardCutValueTests
         new PdfValidator(new PdfValidatorOptions { Profile = trailers }).Validate(judged).Findings.Select(finding => finding.Message)
             .Should().ContainSingle().Which.Should().Contain(prev == "4.0" ? "gives its /Prev as a real number" : $"writes its /Prev as the reference {prev}");
         judged.Diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("stream", "writes its /Prev as the reference 9 0 R, to a real number: ISO 32000-1 makes it direct (7.5.8.2), and Table 17 of ISO 32000-1 an integer.")]
+    [InlineData("table", "writes its /Prev as the reference 9 0 R, to a real number: ISO 32000-1 makes it direct (Table 15), and Table 15 of ISO 32000-1 an integer.")]
+    [InlineData("hybrid stream", "writes its /Prev as the reference 9 0 R, where ISO 32000-1 makes it direct (7.5.8.2).")]
+    public void A_prev_written_as_a_reference_to_a_real_is_judged_through_it_only_where_the_reader_follows_it(string section, string expected)
+    {
+        // Object 9, which a /Prev names, holds a real with no fractional part. The reader follows a cross-reference stream's
+        // /Prev and a table's: the rule says both faults of each. A hybrid file's stream's own /Prev it does not follow, and
+        // the rule judges it as written, a reference (#263).
+        var file = section switch
+        {
+            "stream" => ChainFiles.StreamUpdateHidingItsHighestNumber(padding: 0, real: true),
+            "table" => ChainFiles.UpdateNamingItsPrevious("9 0 R", real: true),
+            _ => ChainFiles.HybridWithStreamPrev("9 0 R", padding: 0, nine: "4.0"),
+        };
+        using var document = PdfDocument.Open(file);
+        var trailers = new ValidationProfile("trailers", 1, [new TrailerValueWrongRule()]);
+
+        new PdfValidator(new PdfValidatorOptions { Profile = trailers }).Validate(document).Findings.Select(finding => finding.Message)
+            .Should().ContainSingle().Which.Should().EndWith(expected);
     }
 
     [Theory]
