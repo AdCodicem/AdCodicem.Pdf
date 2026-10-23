@@ -298,15 +298,17 @@ internal ref struct PdfObjectParser
         var unseen = next.Kind == PdfTokenKind.EndOfInput || next.End >= _memory.Length;
 
         // What follows a stream whose data runs past the buffer lies past it too: the file was asked at the stream's
-        // end, and its answer stands where the buffer has none (#55).
-        _endObj = next.IsKeyword("endobj"u8)
+        // end, and its answer stands where the buffer has none (#55). An endobj a window's edge reaches may be the start of
+        // a longer keyword, which the file read on after a stream says, or a larger window (#174).
+        var endObj = IsEndObj(next);
+        _endObj = endObj
             ? EndObjState.Present
             : _endObjUnknown ? EndObjState.Unknown
             : !unseen ? EndObjState.Absent
             : value is PdfStream && _endObjAfterStream is { } afterStream ? afterStream
             : EndObjState.Unseen;
 
-        if (!next.IsKeyword("endobj"u8))
+        if (!endObj)
         {
             // A value followed by the end of the buffer, or by a token the end of the buffer may have cut,
             // may itself have been cut there: a string that lost its closing parenthesis, a dictionary whose
