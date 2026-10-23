@@ -836,8 +836,9 @@ internal ref struct PdfObjectParser
             // An endstream its object's endobj does not follow, where a guard cut the /Length or left it out of the index: one
             // the data spells, as a valid stream's may, ends the search as the stream's own would, its object's endobj lost —
             // the length that tells them apart is the guard's. The data up to it is the guard's, cut by it, the object's
-            // endobj unjudged, and nothing is said of the file, as at a header the data spells (#224).
-            if (hidden && settled.EndObj == EndObjState.Absent)
+            // endobj unjudged, and nothing is said of the file, as at a header the data spells (#224). One the next object
+            // the index places follows is the stream's own, which no data spells: its object lacks the endobj.
+            if (hidden && settled.EndObj == EndObjState.Absent && !settled.NextObjectFollows)
             {
                 _endObjUnknown = true;
                 return Finish(dictionary, dataStart, found, span.Length, cutByGuard: true);

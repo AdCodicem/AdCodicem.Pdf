@@ -1871,17 +1871,31 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of more
         // than 2 GB can put one there, and the stream is read as one whose endstream is not found. With none, what the
         // object's endobj does is read once with the search, as long as the searches may read.
-        return dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue
-            ? new StreamEndSearch(
-                (int)(dataEnd - absoluteDataStart),
-                stop,
-                ((IPdfStreamDataProvider)this).CheckEndStream(dataEnd) ?? EndObjState.Unseen)
-            : new StreamEndSearch(null, stop, EndObjState.Unknown, searched)
+        if (dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue)
+        {
+            var endObj = ((IPdfStreamDataProvider)this).CheckEndStream(dataEnd) ?? EndObjState.Unseen;
+            return new StreamEndSearch((int)(dataEnd - absoluteDataStart), stop, endObj)
             {
-                EndObjSeen = endObjSeen,
-                ObjectEnd = objectEnd,
-                HeaderStopped = header >= 0,
+                NextObjectFollows = endObj == EndObjState.Absent && nextObject is { } next && EndStreamLeadsTo(dataEnd, next),
             };
+        }
+
+        return new StreamEndSearch(null, stop, EndObjState.Unknown, searched)
+        {
+            EndObjSeen = endObjSeen,
+            ObjectEnd = objectEnd,
+            HeaderStopped = header >= 0,
+        };
+    }
+
+    /// <summary>
+    /// Determines whether the first token after the <c>endstream</c> that ends data at <paramref name="dataEnd"/>, white space
+    /// and comments between, starts at <paramref name="next"/>, as far as the searches may read.
+    /// </summary>
+    private bool EndStreamLeadsTo(long dataEnd, long next)
+    {
+        var keyword = NextSignificant(dataEnd);
+        return keyword >= 0 && NextSignificant(keyword + StreamEnds.EndStreamKeyword.Length) == next;
     }
 
     /// <inheritdoc/>
