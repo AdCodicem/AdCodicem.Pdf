@@ -1943,6 +1943,49 @@ public class DocumentReaderTests
         document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.LimitFilterChain).Should().Be(1);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0)]
+    public void A_guard_s_report_the_capacity_drops_beside_a_deferred_length_s_decoding_is_counted(int capacity)
+    {
+        // As above, under a capacity with room for one report, or none: the guard's report, which the capacity dropped, went
+        // with the decoding's other reports, neither kept nor counted (#220).
+        var file = ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: false, stored: true, layers: 2);
+        var limits = PdfReaderLimits.Default with { MaxFilterChainLength = 1 };
+        using var full = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, DiagnosticCapacity = capacity });
+
+        document.Diagnostics.Should().Equal(full.Diagnostics.Take(capacity));
+        (document.Diagnostics.Count + document.Diagnostics.SuppressedCount).Should().Be(full.Diagnostics.Count);
+    }
+
+    [Theory]
+    [InlineData(nameof(PdfReaderLimits.MaxFilterChainLength))]
+    [InlineData(nameof(PdfReaderLimits.MaxDecodedStreamLength))]
+    [InlineData(nameof(PdfReaderLimits.MaxStreamLength))]
+    public void A_fault_a_deferred_length_s_data_holds_before_a_guard_stops_it_is_the_file_s_as_for_a_direct_one(string limit)
+    {
+        // Stream 5's hexadecimal data starts with a stray x, which encodes nothing, and its rows spell no endstream. Read
+        // whole, the fault is the file's, whether the /Length names object 4, which only the stream places, or is written
+        // direct. Under a guard on decoding, or MaxStreamLength, only the guard's report stood when the /Length waited for
+        // the chain: but the fault lies before the guard stops, where the whole data meets it, and only how the data ends is
+        // the guard's to hide (#220).
+        var limits = limit switch
+        {
+            nameof(PdfReaderLimits.MaxFilterChainLength) => PdfReaderLimits.Default with { MaxFilterChainLength = 1 },
+            nameof(PdfReaderLimits.MaxDecodedStreamLength) => PdfReaderLimits.Default with { MaxDecodedStreamLength = 20 },
+            _ => PdfReaderLimits.Default with { MaxStreamLength = 40 },
+        };
+        using var direct = PdfDocument.Open(ChainFiles.UpdateOverAStrayHexByte(deferred: false), new PdfReaderOptions { Limits = limits });
+        using var deferred = PdfDocument.Open(ChainFiles.UpdateOverAStrayHexByte(deferred: true), new PdfReaderOptions { Limits = limits });
+
+        Faults(direct).Should().ContainSingle().Which.Should().StartWith("An ASCIIHex stream holds a byte that encodes nothing");
+        Faults(deferred).Should().Equal(Faults(direct));
+
+        static string[] Faults(PdfDocument document) =>
+            [.. document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.FilterFailed).Select(entry => entry.Message)];
+    }
+
     [Fact]
     public void A_deferred_length_whose_reference_leads_to_an_object_only_its_own_section_places_is_read_once_the_chain_is()
     {

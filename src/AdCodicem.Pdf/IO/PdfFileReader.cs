@@ -3760,9 +3760,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // Whether a guard cut the /Length the section's own row places, which leaves how far the data runs unknown.
         var lengthCut = false;
 
+        // Whether where the data ends is the guard's to hide, which the data is decoded knowing.
+        var endHidden = false;
+
         while (true)
         {
-            var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, out var leftEncoded, out var cut);
+            var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, endHidden, out var leftEncoded, out var cut);
 
             // Data the guard on filters left encoded holds none of the section's rows: the section is cut before its first.
             data = leftEncoded ? default : decoded.Span;
@@ -3786,7 +3789,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // where the section's own row for that /Length, among those held, gives more data, which an endstream confirms,
             // the rows spelled an endstream, and the data is taken again to that length (#220). Data that holds no row whole
             // is asked too: a newer section may place the object, which a guard cut.
-            if (!retaken && deferred is { } unsettled && declared > held && decodedWhole)
+            if (!retaken && !endHidden && deferred is { } unsettled && declared > held && decodedWhole)
             {
                 if (RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, index is null ? [0, declared] : subsections, out lengthCut) is { } whole)
                 {
@@ -3794,19 +3797,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     xrefStream = whole;
                     deferred = unsettled with { Taken = whole.Data.Length };
                     retaken = true;
+                    endHidden = lengthCut;
                     continue;
                 }
             }
 
-            break;
-        }
+            // Data a /Length the chain could not read left to an endstream nothing confirmed, which a guard on decoding kept
+            // from being taken again to its length, or taken to what a guard's cut left of the length: where it ends is the
+            // guard's, which a filter run over data the endstream its rows spell cut short says nothing of the file at. The
+            // data is decoded once more knowing it, as data a guard cut is: a fault in what a filter read stands (#220, #224).
+            if (!endHidden && deferred is not null && !xrefStream.Data.CutByGuard && (lengthCut || (!retaken && !decodedWhole)))
+            {
+                _diagnostics.RollBack(decoding);
+                endHidden = true;
+                continue;
+            }
 
-        // Data a /Length the chain could not read left to an endstream nothing confirmed, which a guard on decoding kept from
-        // being taken again to its length: what decoding it met beside the guard — a filter run over data the endstream its
-        // rows spell cut short — is no fault the file holds, and only the guard's report stands (#220).
-        if (deferred is not null && !retaken && !decodedWhole)
-        {
-            _diagnostics.RollBackBesideLimits(decoding);
+            break;
         }
 
         section.CutByLimit |= !decodedWhole;

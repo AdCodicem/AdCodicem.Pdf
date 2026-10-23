@@ -33,7 +33,7 @@ internal static class PdfFilterPipeline
     /// </param>
     /// <param name="guard">Bounds what each filter's output may be and how many filters run, and says what reaching either does.</param>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard) =>
-        Decode(stream, diagnostics, guard, out _, out _);
+        Decode(stream, diagnostics, guard, endHidden: false, out _, out _);
 
     /// <summary>
     /// Decodes a stream's data under its document's guards, and says whether one of them ended decoding — the most filters
@@ -56,10 +56,30 @@ internal static class PdfFilterPipeline
     /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
     /// </exception>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, out bool leftEncoded, out bool cutByGuard) =>
-        Decode(stream, diagnostics, stream.Data.LimitGuard, out leftEncoded, out cutByGuard);
+        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden: false, out leftEncoded, out cutByGuard);
+
+    /// <summary>
+    /// Decodes a stream's data as <see cref="Decode(PdfStream, PdfDiagnostics?, out bool, out bool)"/> does, its end, with
+    /// <paramref name="endHidden"/>, one a guard hides: a filter that runs out there says nothing of the file, as for data a
+    /// guard cut, while a fault in what it read is the file's still.
+    /// </summary>
+    /// <param name="stream">The stream to decode.</param>
+    /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
+    /// <param name="endHidden">
+    /// Whether where the data ends is the guard's to hide: data a search took up to an <c>endstream</c> nothing confirmed,
+    /// the length that would say a guard's. The data is not counted as cut by it.
+    /// </param>
+    /// <param name="leftEncoded">As the other overload gives it.</param>
+    /// <param name="cutByGuard">As the other overload gives it.</param>
+    /// <exception cref="PdfLimitExceededException">
+    /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
+    /// </exception>
+    public static ReadOnlyMemory<byte> Decode(
+        PdfStream stream, PdfDiagnostics? diagnostics, bool endHidden, out bool leftEncoded, out bool cutByGuard) =>
+        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden, out leftEncoded, out cutByGuard);
 
     private static ReadOnlyMemory<byte> Decode(
-        PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard, out bool leftEncoded, out bool cutByGuard)
+        PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard, bool endHidden, out bool leftEncoded, out bool cutByGuard)
     {
         diagnostics ??= guard.DocumentDiagnostics;
 
@@ -83,7 +103,7 @@ internal static class PdfFilterPipeline
                 guard.Reach(PdfLimit.StreamLength, diagnostics, guard.DescribeStreamLengthCut(), stream.Data.Position);
             }
 
-            return DecodeChain(stream, chain, data, diagnostics, guard, out leftEncoded, out cutByGuard);
+            return DecodeChain(stream, chain, data, diagnostics, guard, endHidden, out leftEncoded, out cutByGuard);
         }
 
         var decodings = diagnostics.Decodings;
@@ -91,7 +111,7 @@ internal static class PdfFilterPipeline
 
         try
         {
-            return DecodeChain(stream, chain, data, decodings, guard, out leftEncoded, out cutByGuard);
+            return DecodeChain(stream, chain, data, decodings, guard, endHidden, out leftEncoded, out cutByGuard);
         }
         finally
         {
@@ -107,15 +127,17 @@ internal static class PdfFilterPipeline
         ReadOnlyMemory<byte> data,
         PdfDiagnostics? diagnostics,
         PdfLimitGuard guard,
+        bool endHidden,
         out bool leftEncoded,
         out bool cutByGuard)
     {
         leftEncoded = false;
 
-        // Whether the data a filter is given is data the reader cut at one of its limits: MaxStreamLength, or the window a
-        // guard stopped at, cut the stream's data, or a filter before it stopped at MaxDecodedStreamLength. Every filter
-        // after a cut is given cut data, and the cut is reported once, by the guard that made it.
-        var cut = stream.Data.CutByGuard;
+        // Whether the data a filter is given ends where the file's may not: data the reader cut at one of its limits —
+        // MaxStreamLength, or the window a guard stopped at, cut the stream's data, or a filter before it stopped at
+        // MaxDecodedStreamLength —, or data whose end a guard hides. Every filter after it is given such data, and a cut is
+        // reported once, by the guard that made it; data whose end is hidden is no cut.
+        var cut = stream.Data.CutByGuard || endHidden;
         var limitReported = false;
 
         // The filters before the last share one bound for what they pass along together, and the last keeps its own: a
@@ -151,7 +173,7 @@ internal static class PdfFilterPipeline
             // library does not know: the filters after it would read what it encoded, and each fail on it again.
             if (failed)
             {
-                cutByGuard = cut;
+                cutByGuard = stream.Data.CutByGuard || limitReported;
                 return data;
             }
 
@@ -163,7 +185,7 @@ internal static class PdfFilterPipeline
         // A value a guard cut or left out of the index was reported where the guard was reached: the chain ends there in
         // silence.
         leftEncoded = chain.End is FilterChainEnd.Limit or FilterChainEnd.Guard;
-        cutByGuard = cut;
+        cutByGuard = stream.Data.CutByGuard || limitReported;
         return data;
     }
 

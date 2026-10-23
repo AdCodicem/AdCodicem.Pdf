@@ -628,6 +628,29 @@ public class GuardCutValueTests
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(29)]
+    [InlineData(20)]
+    public void A_filter_run_out_where_a_guard_s_cut_of_the_length_leaves_the_data_says_nothing_of_the_file(int free)
+    {
+        // As above, the rows compressed in a stored block. With 29 free rows the data is 284 bytes, which MaxObjectLength
+        // parts after its 28, where the rows' second spelled endstream confirms it: the data is taken again to it; with 20,
+        // 221, parted after its 22, which nothing confirms: the data stays at the first spelled endstream. Either way it ends
+        // where the guard hides the length, and the Flate run out there was reported as the file's fault (#224).
+        var file = ChainFiles.UpdatePlacingAPartedLength(free, compressed: true);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[1].CutByLimit.Should().BeTrue();
+    }
+
     [Fact]
     public void Rows_data_taken_again_to_an_integer_a_guard_parted_in_the_own_row_s_object_still_lacks_are_the_guard_s()
     {
