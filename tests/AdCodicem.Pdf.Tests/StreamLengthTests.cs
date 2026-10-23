@@ -1178,17 +1178,18 @@ public class StreamLengthTests
     }
 
     [Fact]
-    public void A_stream_whose_data_start_a_limit_cuts_records_nothing_of_its_length()
+    public void A_stream_whose_keyword_a_limit_cuts_records_nothing_of_its_length()
     {
-        // The window MaxObjectLength allows ends on the stream keyword: where the data starts is past it, the guard's, and
-        // what the parser found of the stream is the limit's.
+        // The window MaxObjectLength allows ends inside the stream keyword: whether a stream follows the dictionary is past
+        // it, the guard's, and what the parser found of the object is the limit's. A window that ends on the whole keyword
+        // reads the stream as a larger one does: its data counts toward no window (#174).
         var header = Invariant($"{StreamNumber} 0 obj\n");
         var dictionary = "<< /Pad (" + new string('x', 1024 - header.Length - "<< /Pad () >>\nstream".Length) + ") >>\nstream";
         var file = Document((StreamNumber, dictionary + "\n" + Data(100) + "\nendstream"));
-        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        var options = PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 - "eam".Length } };
 
         using var document = PdfDocument.Open(file, options);
-        document.GetObject(new PdfObjectId(StreamNumber)).AsStream().Required();
+        document.GetObject(new PdfObjectId(StreamNumber));
 
         document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.LimitObject);
         document.Reader.TryGetStreamLengthFault(StreamNumber, out _).Should().BeFalse();
