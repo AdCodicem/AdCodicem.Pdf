@@ -112,7 +112,13 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   the search for its `endstream`, and its length is not judged: an integer the cut left, which may be the first digits
   of a longer one, is only a place to look for `endstream` at. No `endstream` after the data of a stream whose
   `/Length` names an object a guard cut, or left out of the index, is still the file's fault, and reported; the report
-  names the object at the end of the chain of references. Decoding stops at a filter so named, or at the filter whose
+  names the object at the end of the chain of references. The search may stop short of it, though, at an object header
+  the data spells, as an embedded PDF file's does, or at an `endstream` the object's `endobj` does not follow, as a
+  string may spell one: the length that tells those from the end of the data is the guard's, so the data up to there
+  comes back cut by the guard, `CutByGuard`, whether the object ends with `endobj` is not judged, and nothing is said of
+  the file. A reference the cut left whole, the cut falling after `6 0 R`, hides nothing: it is read through to the
+  object it names, as it is read whole, while the chain is read as afterward. Decoding stops at a filter so named, or
+  at the filter whose
   parameters are: the filters before it run, and the stream comes back as they decoded it, still encoded by the rest,
   as past `MaxFilterChainLength`. `HasImageFilter` reads what decoding reads before the image filter, the parameters of
   a Flate or LZW filter that comes before it included, and says false when such a value ends the chain there; under

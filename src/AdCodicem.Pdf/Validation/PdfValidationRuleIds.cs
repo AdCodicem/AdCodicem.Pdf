@@ -72,8 +72,10 @@ public static class PdfValidationRuleIds
 
     /// <summary>
     /// A value a section's trailer — a classic table's, or a cross-reference stream's dictionary — gives the reader to read
-    /// the chain is written as the specification does not allow, and read all the same: a reference where it must be
-    /// direct, a real with no fractional part where it must be an integer. <see cref="PdfValidationSeverity.Warning"/>.
+    /// the chain is written as the specification does not allow: a reference where it must be direct, a real with no
+    /// fractional part where it must be an integer. The reader reads such a value all the same, or does not read it at all
+    /// — a hybrid file's stream's own <c>/Prev</c> —, which is then judged as written.
+    /// <see cref="PdfValidationSeverity.Warning"/>.
     /// </summary>
     public const string FileTrailerValueWrong = "file.trailer-value-wrong";
 

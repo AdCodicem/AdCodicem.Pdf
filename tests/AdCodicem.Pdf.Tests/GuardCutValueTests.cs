@@ -292,8 +292,8 @@ public class GuardCutValueTests
     public void A_stream_a_guard_hid_the_length_of_ends_at_its_own_endobj_before_a_header(string guard)
     {
         // Object 4, whose /Length a guard hid, lost its endstream; its own endobj, then an object no row places, a stream
-        // with an endstream, follow: the header that object starts with is no header the data spells, and the endobj before
-        // it ends the data, the missing endstream the file's (#224).
+        // with an endstream, follow: the endobj, which comes before that object's header, ends the data before any header
+        // can, and the missing endstream is the file's (#224).
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {

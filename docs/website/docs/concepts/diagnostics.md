@@ -71,8 +71,10 @@ the index is not judged either: its data is found the same way, and a missing `e
 stream may be valid, its length only hidden, and its data may spell an object header, as an embedded PDF file's does —
 and the `endstream` of a stream the embedded file holds, which no search can tell from the stream's own. A header the
 data spells that stops the search, with no `endobj` of the object's own before it, leaves the data up to it to the
-guard: it is cut by the guard, as data `MaxStreamLength` cuts is, whether the object ends with `endobj` is not judged,
-and nothing is said of the file.
+guard, and so does an `endstream` the data spells — inside a string, say — that the object's `endobj` does not
+follow: the data is marked cut by the guard, whose report the document holds, whether the object ends with `endobj` is
+not judged, and nothing is said of the file. A whole reference the cut left, `6 0 R` before the window's end, is no length
+it hid: it leads on to the object it names, as read whole.
 
 A cross-reference stream whose `/Length` the chain cannot read yet, which a valid file may hold, is searched as well, up
 to the next object the sections read so far place, or the end of the file, and its length read once the chain is. Its
