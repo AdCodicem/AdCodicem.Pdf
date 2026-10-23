@@ -576,5 +576,14 @@ public class GuardCutValueTests
 
         stream.HasImageFilter().Should().Be(!guarded);
         stream.Decode().ToArray().Should().Equal(guarded ? flate : jpeg);
+
+        // Loading the parameter reaches the guard, as decoding would: a caller who asked for it is told so.
+        if (guarded)
+        {
+            using var throwing = PdfDocument.Open(file.Bytes, ObjectGuard with { ThrowOnLimit = true });
+            var image = throwing.GetObject(new PdfObjectId(4)).AsStream().Required();
+            image.Invoking(value => value.HasImageFilter()).Should().Throw<PdfLimitExceededException>()
+                .Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+        }
     }
 }
