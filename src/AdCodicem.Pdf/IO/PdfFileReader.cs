@@ -1559,6 +1559,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var read = absoluteKeywordEnd < 0 || absoluteKeywordEnd >= _source.Length
             ? 0
             : _source.Read(absoluteKeywordEnd, endOfLine[..(int)Math.Min(endOfLine.Length, _source.Length - absoluteKeywordEnd)]);
+        if (read > 0 && PdfCharacters.IsRegular(endOfLine[0]))
+        {
+            return -1;
+        }
+
         var skipped = read > 0 && endOfLine[0] == (byte)'\r' ? 1 : 0;
 
         if (skipped < read && endOfLine[skipped] == (byte)'\n')

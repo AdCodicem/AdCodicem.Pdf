@@ -182,6 +182,42 @@ public class WindowEdgeTests
         guarded.Diagnostics.Select(entry => entry.Message).Should().Equal(whole.Diagnostics.Select(entry => entry.Message));
     }
 
+    [Theory]
+    [InlineData("X\nhello\nendstream")]
+    [InlineData("endstream")]
+    public void A_keyword_longer_than_stream_reads_the_same_wherever_the_window_edge_cuts_it(string tail)
+    {
+        // "streamX" is no stream keyword: the dictionary before it stands alone, its object lacking its endobj. A window that
+        // ends right after "stream" cannot say so, and the file is not asked where the data starts past a keyword a regular
+        // byte may go on: a larger window says (#174).
+        var failures = new List<string>();
+
+        for (var shift = -2; shift <= 2; shift++)
+        {
+            var head = "4 0 obj\n<< /Length 5 /Pad () >>\nstream";
+            var pad = Window + shift - head.Length;
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+                [4] = file.Object(4, $"<< /Length 5 /Pad ({new string('x', pad)}) >>\nstream" + tail),
+                [6] = file.Object(6, "(six)"),
+            };
+            file.Table(7, rows, "/Size 7 /Root 1 0 R");
+            using var document = PdfDocument.Open(file.Bytes);
+
+            var value = document.GetObject(new PdfObjectId(4));
+
+            if (value is not PdfDictionary || !document.Reader.IsEndObjMissing(4, out _))
+            {
+                failures.Add($"shift {shift}: {value.GetType().Name}, endobj missing {document.Reader.IsEndObjMissing(4, out _)}");
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
     [Fact]
     public void A_cross_reference_stream_reads_whole_when_its_guard_s_window_ends_on_its_keyword()
     {
