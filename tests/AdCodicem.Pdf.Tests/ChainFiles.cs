@@ -247,9 +247,14 @@ internal static class ChainFiles
     /// <c>endstream</c> after an end-of-line when <paramref name="spellingEndStream"/>. With
     /// <paramref name="olderIndirect"/>, stream 7's <c>/Length</c> names object 9, which only stream 7 indexes, and a comment
     /// sets the update further from it than a search for a section's misplaced offset reaches. Object 4 holds
-    /// <paramref name="four"/>, in which <c>{length}</c> stands for the length. The file is valid.
+    /// <paramref name="four"/>, in which <c>{length}</c> stands for the length. The file is valid. With
+    /// <paramref name="nine"/>, the update writes object 9 again, holding it, and stream 10 indexes it there.
     /// </summary>
-    public static byte[] UpdateWithIndirectLength(bool spellingEndStream, bool olderIndirect = false, string four = "{length}")
+    public static byte[] UpdateWithIndirectLength(
+        bool spellingEndStream,
+        bool olderIndirect = false,
+        string four = "{length}",
+        string? nine = null)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -277,15 +282,23 @@ internal static class ChainFiles
         }
 
         file.Object(8, "(new)");
+
+        if (nine is not null)
+        {
+            file.Object(9, nine);
+        }
+
         var spelled = spellingEndStream ? "\nendstream\0\0\0\0"u8.ToArray() : Encode([(0, 0, 0), (0, 0, 0)], Rows.Raw);
-        file.Object(4, four.Replace("{length}", (7 + spelled.Length + 14).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        var after = nine is null ? 14 : 21;
+        file.Object(4, four.Replace("{length}", (7 + spelled.Length + after).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
         var second = file.Position;
         var data = new List<byte>(Encode([(1, file.OffsetOf(4), 0)], Rows.Raw));
         data.AddRange(spelled);
-        data.AddRange(Encode([(1, file.OffsetOf(8), 0), (1, second, 0)], Rows.Raw));
+        data.AddRange(Encode(nine is null ? [(1, file.OffsetOf(8), 0), (1, second, 0)] : [(1, file.OffsetOf(8), 0), (1, file.OffsetOf(9), 0), (1, second, 0)], Rows.Raw));
+        var index = nine is null ? "4 3 8 1 10 1" : "4 3 8 3";
         file.Stream(
             10,
-            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 11 /W [1 4 2] /Index [4 3 8 1 10 1] /Root 1 0 R /Prev {first} /Length 4 0 R"),
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 11 /W [1 4 2] /Index [{index}] /Root 1 0 R /Prev {first} /Length 4 0 R"),
             [.. data]);
         file.StartXRef(second);
         return file.ToArray();

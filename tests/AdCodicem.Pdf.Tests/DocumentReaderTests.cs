@@ -2101,7 +2101,7 @@ public class DocumentReaderTests
         var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
         section.State.Should().Be(XRefSectionState.Malformed);
         section.Fault.Should().Be(
-            "its /Length holds the reference 4 0 R, which no section read before it places where it can be read, and no endstream follows its data before the end of the file");
+            "its /Length is the reference 4 0 R, which no section read before it places where it can be read, and no endstream follows its data before the end of the file");
         document.Diagnostics.Select(entry => entry.Code).Should().NotContain(code => code.StartsWith("limit.", StringComparison.Ordinal));
     }
 
@@ -2118,7 +2118,23 @@ public class DocumentReaderTests
 
         document.Reader.Structure.Sections[1].Fault.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"its /Length holds the reference 9 0 R, which no section read before it places where it can be read, and no endstream follows its data before the next object, at {next}"));
+            $"its /Length is the reference 9 0 R, which no section read before it places where it can be read, and no endstream follows its data before the next object, at {next}"));
+    }
+
+    [Fact]
+    public void A_deferred_length_s_fault_names_the_reference_at_the_end_of_its_chain()
+    {
+        // As above, the update placing object 9, which holds the reference 11 0 R, which no section places: the fault names
+        // the link the chain could not read, not the first, which it read (#220).
+        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, olderIndirect: true, nine: "11 0 R");
+        var at = (int)PdfTemplate.OffsetOf(file, "endstream");
+        file[at] = (byte)'x';
+        var next = PdfTemplate.OffsetOf(file, "8 0 obj\n(new)");
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[1].Fault.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"its /Length holds the reference 11 0 R, which no section read before it places where it can be read, and no endstream follows its data before the next object, at {next}"));
     }
 
     [Theory]
