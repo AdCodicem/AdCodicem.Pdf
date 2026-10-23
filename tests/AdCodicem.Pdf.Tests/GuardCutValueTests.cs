@@ -659,15 +659,17 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Rows_past_a_spelled_endstream_are_the_guard_s_when_the_length_leads_to_an_object_a_newer_section_places_and_it_cut(bool chained)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Rows_past_a_spelled_endstream_are_the_guard_s_when_the_length_leads_to_an_object_a_newer_section_places_and_it_cut(
+        bool chained, bool spelledFirst)
     {
         // Stream 7's /Length leads to an object the newer table places — object 5 itself, or object 9 through object 4,
         // which only stream 7's own row places — and MaxObjectLength cuts before its value: the rows past the endstream they
-        // spell are the guard's, as when the cut object is the one the section's own row places (#224). Read whole, the
-        // file is clean.
-        var file = ChainFiles.UpdatePlacingAPaddedLength(chained);
+        // spell are the guard's, as when the cut object is the one the section's own row places (#224) — the data taken to it
+        // holding no row whole too, the spelled rows first. Read whole, the file is clean.
+        var file = ChainFiles.UpdatePlacingAPaddedLength(chained, spelledFirst: spelledFirst);
 
         using (var whole = PdfDocument.Open(file))
         {
