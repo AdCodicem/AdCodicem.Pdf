@@ -37,7 +37,8 @@ namespace AdCodicem.Pdf.Validation.Rules;
 /// which the reader does not follow, the chain going on through the table's; the <c>/Prev</c> and <c>/XRefStm</c> of a
 /// table an <c>/XRefStm</c> names in a stream's place; and what of a cross-reference stream's <c>/Filter</c> and
 /// <c>/DecodeParms</c> decoding does not read — the parameters of a filter that reads none, past its predictor where it
-/// has none, or past the element that ends the chain.
+/// has none, or past the element that ends the chain —, what decoding reads judged as it read it, whatever the cache let
+/// go since.
 /// </para>
 /// </remarks>
 internal sealed class TrailerValueWrongRule : IValidationRule
@@ -248,27 +249,31 @@ internal sealed class TrailerValueWrongRule : IValidationRule
 
     /// <summary>
     /// The references among a cross-reference stream's <c>/Filter</c> and <c>/DecodeParms</c> that decoding follows, each as
-    /// the file wrote it, which <see cref="FilterChain.TryFollow"/> gives in the order decoding reads them (#263).
+    /// the file wrote it, which <see cref="FilterChain.TryFollow"/> gives in the order decoding reads them, with what it led
+    /// to (#263). The rule walks what they led to, not what a second read of them gives: the cache may have let an object go
+    /// since, and its references read again are other instances, which decoding did not follow.
     /// </summary>
     private readonly struct DecodingReads() : IFilterValueReader
     {
-        private readonly HashSet<PdfObject> _followed = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<PdfObject, PdfObject?> _followed = new(ReferenceEqualityComparer.Instance);
 
         /// <summary>Determines whether <paramref name="written"/> is no reference, or one decoding follows.</summary>
-        public bool Follows(PdfObject? written) => written is not PdfReference || _followed.Contains(written);
+        public bool Follows(PdfObject? written) => written is not PdfReference || _followed.ContainsKey(written);
 
-        /// <summary>Gives what <paramref name="written"/> leads to where decoding follows it, and itself otherwise.</summary>
-        public PdfObject? Resolve(PdfObject? written) => Follows(written) ? written?.Resolve() : written;
+        /// <summary>Gives what <paramref name="written"/> led to where decoding follows it, and itself otherwise.</summary>
+        public PdfObject? Resolve(PdfObject? written) =>
+            written is PdfReference && _followed.TryGetValue(written, out var value) ? value : written;
 
         /// <inheritdoc/>
         public bool TryRead(PdfName key, PdfObject? written, bool entry, out PdfObject? value)
         {
+            value = written?.Resolve();
+
             if (written is PdfReference)
             {
-                _followed.Add(written);
+                _followed[written] = value;
             }
 
-            value = written?.Resolve();
             return true;
         }
     }
