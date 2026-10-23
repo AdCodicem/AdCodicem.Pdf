@@ -842,6 +842,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     internal bool ChainStoppedByGuard => _chainFilledIndex || _cutByGuard;
 
     /// <summary>
+    /// Gets the most filters a stream's data passes through as the reader decodes it
+    /// (<see cref="PdfReaderLimits.MaxFilterChainLength"/>): the chain ends at the element past them.
+    /// </summary>
+    internal int FilterChainBound => _guard.Bound(PdfLimit.FilterChain);
+
+    /// <summary>
     /// Gets where the index first had no room for an object number, <see cref="PdfReaderLimits.MaxIndexEntries"/> reached —
     /// as the document opened, or in a rebuild run since —, or -1 while it had room for every number it met.
     /// <see cref="FileStructure.IndexFullAt"/> keeps what it was when the document opened.
