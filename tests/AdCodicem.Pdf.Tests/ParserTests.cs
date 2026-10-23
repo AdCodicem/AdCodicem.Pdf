@@ -202,6 +202,20 @@ public class ParserTests
         value.AsStream().Required().RawLength.Should().Be(length < 0 ? data.IndexOf("6 0 obj", StringComparison.Ordinal) : length);
     }
 
+    [Theory]
+    [InlineData("4 0 obj\n<< /Length 3 >>\nstream")]
+    [InlineData("4 0 obj\n<< /Length 3 >>\nstream\r")]
+    public void Leaves_a_stream_whose_window_ends_on_its_keyword_to_a_larger_one(string text)
+    {
+        // Parsed alone, which no file backs, a buffer that ends on the stream keyword, or on its carriage return, cannot say
+        // where the data starts: a larger one says.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false);
+
+        parser.TryReadIndirectObject(out _, out _);
+
+        parser.IsTruncated.Should().BeTrue();
+    }
+
     [Fact]
     public void Leaves_a_stream_with_no_endstream_in_a_window_to_a_larger_one()
     {

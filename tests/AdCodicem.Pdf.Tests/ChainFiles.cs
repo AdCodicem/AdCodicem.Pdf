@@ -438,9 +438,10 @@ internal static class ChainFiles
     /// object 4, which holds <c>9 0 R</c>, object 9 holding the length so. Its rows of objects 8 and 9 — 10 and 11 when
     /// <paramref name="chained"/> —, of reserved types, spell <c>endstream</c> after an end-of-line, and the page's row
     /// comes after them. The second is a classic table that indexes object 5 — 9 when <paramref name="chained"/> — again,
-    /// where it is, and names stream 7 through <c>/Prev</c>. The file is valid.
+    /// where it is, and names stream 7 through <c>/Prev</c>. The file is valid, unless <paramref name="lengthOff"/> is added
+    /// to the length; <paramref name="padding"/> spaces come before it.
     /// </summary>
-    public static byte[] UpdatePlacingAPaddedLength(bool chained)
+    public static byte[] UpdatePlacingAPaddedLength(bool chained, int padding = 3000, int lengthOff = 0)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -448,7 +449,7 @@ internal static class ChainFiles
         file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
         var lengthNumber = chained ? 9 : 5;
         var spelled = "\nendstream\0\0\0\0"u8.ToArray();
-        file.Object(lengthNumber, new string(' ', 3000) + (6 * 7 + spelled.Length).ToString(CultureInfo.InvariantCulture));
+        file.Object(lengthNumber, new string(' ', padding) + (6 * 7 + spelled.Length + lengthOff).ToString(CultureInfo.InvariantCulture));
 
         if (chained)
         {
