@@ -341,6 +341,38 @@ public class WindowEdgeTests
         failures.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(-40)]
+    [InlineData(-20)]
+    [InlineData(-3)]
+    [InlineData(0)]
+    [InlineData(5)]
+    public void What_follows_an_endstream_the_window_holds_is_read_wherever_the_window_edge_falls(int shift)
+    {
+        // An integer follows object 4's endstream in place of its endobj, starting shift bytes past the window's edge: where
+        // the edge cut that integer, or the white space before it, the object's endobj was judged unseen, and its loss went
+        // unreported. What follows the keyword is read on in the file, as past the buffer (#174).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var start = file.Position;
+        rows[4] = start;
+        const string Before = "4 0 obj\n<< /Length 0000 >>\nstream\n";
+        const string After = "\nendstream ";
+        var length = Window + shift - Before.Length - After.Length;
+        file.Raw(Before.Replace("0000", length.ToString("D4", CultureInfo.InvariantCulture), StringComparison.Ordinal) +
+            new string('a', length) + After + "7777777777\n");
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
+        document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
+    }
+
     [Fact]
     public void An_object_whose_header_lies_past_the_window_is_read_where_the_index_says()
     {

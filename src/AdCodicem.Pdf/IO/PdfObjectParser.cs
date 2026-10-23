@@ -699,8 +699,9 @@ internal ref struct PdfObjectParser
         _endObjUnknown = false;
 
         // The end-of-line after "stream" is not data. A buffer that ends on the keyword, or on the carriage
-        // return of a CR LF, cannot say where the data starts; a larger one can.
-        if (dataStart >= span.Length && (dataStart == keywordEnd || span[dataStart - 1] != (byte)'\n'))
+        // return of a CR LF, cannot say where the data starts; a larger one can — unless the buffer ends the data, and the
+        // stream's data, which starts there, holds nothing.
+        if (!_endsData && dataStart >= span.Length && (dataStart == keywordEnd || span[dataStart - 1] != (byte)'\n'))
         {
             _truncated = true;
         }
@@ -875,6 +876,13 @@ internal ref struct PdfObjectParser
 
             if (end.Kind != StreamEndKind.Undecided)
             {
+                // What follows an endstream the buffer holds, when the buffer ends before it shows, is read on in the file,
+                // as it is past the buffer: where the window ends decides nothing of the object's endobj (#174).
+                if (end is { Kind: StreamEndKind.EndStream, EndObj: EndObjState.Unseen } && _streamData is not null)
+                {
+                    _endObjAfterStream = _streamData.CheckEndStream(_baseOffset + dataEnd);
+                }
+
                 return end.Kind == StreamEndKind.EndStream;
             }
         }
