@@ -439,9 +439,11 @@ internal static class ChainFiles
     /// <paramref name="chained"/> —, of reserved types, spell <c>endstream</c> after an end-of-line, and the page's row
     /// comes after them. The second is a classic table that indexes object 5 — 9 when <paramref name="chained"/> — again,
     /// where it is, and names stream 7 through <c>/Prev</c>. The file is valid, unless <paramref name="lengthOff"/> is added
-    /// to the length; <paramref name="padding"/> spaces come before it.
+    /// to the length; <paramref name="padding"/> spaces come before it. With <paramref name="spelledFirst"/>, the rows that
+    /// spell <c>endstream</c> come first: chained, stream 7's row of object 4 then lies past the data taken to that
+    /// <c>endstream</c>, and the file is read whole only by rebuilding its index.
     /// </summary>
-    public static byte[] UpdatePlacingAPaddedLength(bool chained, int padding = 3000, int lengthOff = 0)
+    public static byte[] UpdatePlacingAPaddedLength(bool chained, int padding = 3000, int lengthOff = 0, bool spelledFirst = false)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -457,12 +459,14 @@ internal static class ChainFiles
         }
 
         var stream = file.Position;
-        var data = new List<byte>(Encode(
+        var rows = Encode(
             [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(chained ? 4 : 5), 0), (1, stream, 0)],
-            Rows.Raw));
-        data.AddRange(spelled);
+            Rows.Raw);
+        var data = new List<byte>(spelledFirst ? spelled : rows);
+        data.AddRange(spelledFirst ? rows : spelled);
         data.AddRange(Encode([(1, file.OffsetOf(3), 0)], Rows.Raw));
-        var index = chained ? "[0 3 4 1 7 1 10 2 3 1]" : "[0 3 5 1 7 1 8 2 3 1]";
+        var (spelledRows, lengthRow) = chained ? ("10 2", "4 1") : ("8 2", "5 1");
+        var index = spelledFirst ? $"[{spelledRows} 0 3 {lengthRow} 7 1 3 1]" : $"[0 3 {lengthRow} 7 1 {spelledRows} 3 1]";
         file.Stream(
             7,
             string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size {(chained ? 12 : 10)} /W [1 4 2] /Index {index} /Root 1 0 R /Length {(chained ? 4 : 5)} 0 R"),

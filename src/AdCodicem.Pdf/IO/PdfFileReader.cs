@@ -3760,8 +3760,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             // Fewer rows than the section declares, in data a /Length the chain could not read left to the first endstream:
             // where the section's own row for that /Length, among those held, gives more data, which an endstream confirms,
-            // the rows spelled an endstream, and the data is taken again to that length (#220).
-            if (!retaken && deferred is { } unsettled && declared > held && decodedWhole && row > 0)
+            // the rows spelled an endstream, and the data is taken again to that length (#220). Data that holds no row whole
+            // is asked too: a newer section may place the object, which a guard cut.
+            if (!retaken && deferred is { } unsettled && declared > held && decodedWhole)
             {
                 if (RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, index is null ? [0, declared] : subsections, out lengthCut) is { } whole)
                 {
