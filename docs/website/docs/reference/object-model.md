@@ -102,8 +102,9 @@ read or decoded, and for as long as the caller keeps what that gave.
 
 Opened with `ThrowOnLimit`, a document's streams throw a `PdfLimitExceededException` from `GetRawBytes()` and
 `Decode()` instead, each time their data runs past `MaxStreamLength`; `Decode()` throws at the other limits it reaches
-too, and `HasImageFilter()` when loading a value the filters read reaches one. No call's result is kept for the next: a caller that uses the data twice keeps what one call gave, rather than call
-again ([Tune the reader's memory](../guides/tune-reader-memory.md#read-a-streams-data-once)).
+too, and `HasImageFilter()` when loading a value the filters read reaches one. No call's result is kept for the next:
+a caller that uses the data twice keeps what one call gave, rather than call again
+([Tune the reader's memory](../guides/tune-reader-memory.md#read-a-streams-data-once)).
 
 Data built with `PdfStreamData.FromMemory` is held by the stream, whatever its length, and handed back as it was given;
 its `Position` is -1.
