@@ -130,6 +130,43 @@ public sealed class PdfDiagnostics : IReadOnlyList<PdfDiagnostic>
     }
 
     /// <summary>
+    /// Drops every entry recorded since <paramref name="mark"/> but the guards reached, their <c>limit.*</c> reports and
+    /// their count standing: what a reading a guard stopped short met beside the guard is no fault the file holds. The
+    /// reports decodings moved in that the mark recorded are held again, with the guards' kept, so that a decoding that
+    /// meets one again does not report it twice.
+    /// </summary>
+    internal void RollBackBesideLimits(PdfDiagnosticsMark mark)
+    {
+        var kept = mark.Count;
+        var held = mark.DecodingReports is { } recorded ? new Dictionary<PdfDiagnostic, int>(recorded) : null;
+
+        for (var i = mark.Count; i < _entries.Count; i++)
+        {
+            var entry = _entries[i];
+
+            if (!entry.Code.StartsWith("limit.", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            _entries[kept++] = entry;
+
+            if (held is not null && _decodingReports?.ContainsKey(entry) == true)
+            {
+                held[entry] = held.GetValueOrDefault(entry) + 1;
+            }
+        }
+
+        _entries.RemoveRange(kept, _entries.Count - kept);
+        _suppressed = mark.Suppressed;
+
+        if (held is not null)
+        {
+            _decodingReports = held;
+        }
+    }
+
+    /// <summary>
     /// Moves every entry recorded since <paramref name="mark"/> into <paramref name="target"/>, which applies
     /// its own capacity, and drops them from this instance.
     /// </summary>

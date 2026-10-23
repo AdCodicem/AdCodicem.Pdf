@@ -3791,6 +3791,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             break;
         }
 
+        // Data a /Length the chain could not read left to an endstream nothing confirmed, which a guard on decoding kept from
+        // being taken again to its length: what decoding it met beside the guard — a filter run over data the endstream its
+        // rows spell cut short — is no fault the file holds, and only the guard's report stands (#220).
+        if (deferred is not null && !retaken && !decodedWhole)
+        {
+            _diagnostics.RollBackBesideLimits(decoding);
+        }
+
         section.CutByLimit |= !decodedWhole;
         var position = 0;
 
