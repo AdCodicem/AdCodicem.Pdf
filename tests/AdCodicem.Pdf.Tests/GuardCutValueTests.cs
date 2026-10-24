@@ -2307,6 +2307,7 @@ public class GuardCutValueTests
         using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 128 } });
 
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics[0].Message.Should().StartWith("The dictionary of the object read as a cross-reference stream runs past 128 bytes");
         document.Reader.Structure.Sections[^1].Offset.Should().Be(stream);
         document.GetObject(new PdfObjectId(1)).AsDictionary().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.WasRepaired.Should().BeFalse();

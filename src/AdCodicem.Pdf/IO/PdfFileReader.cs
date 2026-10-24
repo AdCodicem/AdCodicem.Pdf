@@ -5477,7 +5477,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private static string LimitSubject(int number, int bound) => number switch
     {
         DirectObject => $"A trailer runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
-        AnyObject => $"A cross-reference stream's dictionary runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
+        AnyObject => $"The dictionary of the object read as a cross-reference stream runs past {PdfLimitGuard.FormatLength(bound)}; only what lies within it was read.",
         _ => string.Create(
             CultureInfo.InvariantCulture,
             $"Object {number} runs past {PdfLimitGuard.FormatLength(bound)}, its stream data aside; only what lies within it was read."),

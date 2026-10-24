@@ -3760,7 +3760,7 @@ public class ReaderLimitsTests
                 PdfReaderLimits.Default with { MaxTrailerLength = 1024 * 1024 },
                 IndexState,
                 "as written",
-                "A cross-reference stream's dictionary runs past 64 KB; only what lies within it was read.",
+                "The dictionary of the object read as a cross-reference stream runs past 64 KB; only what lies within it was read.",
                 OffsetOf(file, "<< /Type /XRef") - "4 0 obj\n".Length,
                 ThrowsOnOpening: true,
                 ReportsNothingElse: false);
