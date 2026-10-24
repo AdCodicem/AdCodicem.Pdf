@@ -296,8 +296,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     /// <summary>
     /// The objects a guard cut that a cross-reference stream's values led to, which the chain could not read and ended at, and
-    /// those it read through, the cut having left their value a whole reference — but for an object it read as a section
-    /// and refused —: each is loaded once the chain is read, so that its guard is reached where a load reaches it (#263).
+    /// those it read through, the cut having left their value a whole reference — but for an object it read at a place the
+    /// section may have been moved to, and refused; what the offset the chain names holds keeps all of its reading —: each
+    /// is loaded once the chain is read, so that its guard is reached where a load reaches it (#263).
     /// Let go then, or when the chain is rebuilt.
     /// </summary>
     private List<PdfObjectId>? _chainValuesCut;
