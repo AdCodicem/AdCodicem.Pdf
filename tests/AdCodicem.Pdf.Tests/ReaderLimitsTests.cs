@@ -789,9 +789,10 @@ public class ReaderLimitsTests
     {
         // Member 3 is a dictionary of 100 bytes and the stream after it, which an object stream cannot hold. The bound ends
         // the member's window right after the dictionary, inside "stream", or on its last byte, where it may be a longer
-        // keyword: what follows the dictionary is unknown, as it is of an object written in the file whose window ends
-        // there, and the member is cut at the guard, not read as a dictionary in silence. A byte past "stream", the member
-        // is a stream, and reads as null.
+        // keyword: what follows the dictionary is unknown, and the member is cut at the guard, not read as a dictionary in
+        // silence — on the last byte, though the byte past it lies in the decoded data, which #282 is to ask, as an object
+        // written in the file whose window ends there asks the file. A byte past "stream", the member is a stream, and
+        // reads as null.
         const string Member = "<< /A (" + "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" + ") >>\nstream\nabc\nendstream";
         Member.IndexOf(">>", StringComparison.Ordinal).Should().Be(98);
         var file = new TestPdfBuilder()
