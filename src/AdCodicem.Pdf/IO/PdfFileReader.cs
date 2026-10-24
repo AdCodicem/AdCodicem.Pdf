@@ -2038,7 +2038,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             end = end < 0 || end >= _source.Length ? -1 : end + StreamEnds.EndObjKeyword.Length;
         }
 
-        var next = end < 0 ? -1 : NextSignificant(end, ProofRead);
+        // What follows a keyword no endobj follows the reader read on to already, through the white space between.
+        var next = end < 0 ? -1 : endObj != EndObjState.Present && _endObjStarts.TryGetValue(end, out var after)
+            ? after
+            : NextSignificant(end, ProofRead);
         var follower = (next, next >= 0 &&
             (next == _source.Length || IsKeywordAt(next, "xref"u8) || IsKeywordAt(next, StartXRefKeyword)));
         _endStreamFollowers[(dataEnd, endObj)] = follower;

@@ -1577,6 +1577,44 @@ public class GuardCutValueTests
         document.Reader.EndStreamSearchBytes.Should().BeLessThan(3L * bytes.Length);
     }
 
+    [Fact]
+    public void The_proofs_of_endstreams_data_spells_before_white_space_read_less_than_three_times_the_file()
+    {
+        // Thirty streams whose /Length, object 20, MaxObjectLength cuts spell an endstream in their data, 65,520 bytes of white
+        // space and a regular byte after it, which no endobj follows. The reader read on through the white space to tell
+        // whether an endobj follows, and the proof read it again from the keyword to what follows: close to four times the
+        // file, the most the searches may read, where three were said (#224).
+        const int Streams = 30;
+        var run = new string(' ', 65_520);
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, Invariant($"{new string(' ', 1100)}{12 + run.Length}")),
+        };
+
+        for (var number = 30; number < 30 + Streams; number++)
+        {
+            rows[number] = file.Position;
+            file.Raw(Invariant($"{number} 0 obj\n<< /Length 20 0 R >>\nstream\nq\nendstream{run}x\nendstream\nendobj\n"));
+        }
+
+        rows[30 + Streams] = file.Object(30 + Streams, "(end)");
+        file.Table(31 + Streams, rows, Invariant($"/Size {31 + Streams} /Root 1 0 R"));
+        var bytes = file.Bytes;
+
+        using var document = PdfDocument.Open(bytes, ObjectGuard);
+
+        for (var number = 30; number < 30 + Streams; number++)
+        {
+            document.GetObject(new PdfObjectId(number)).AsStream().Required().Data.CutByGuard.Should().BeTrue();
+        }
+
+        document.Reader.EndStreamSearchBytes.Should().BeLessThan(3L * bytes.Length);
+    }
+
     [Theory]
     [InlineData("Rx", false)]
     [InlineData("RG", false)]
