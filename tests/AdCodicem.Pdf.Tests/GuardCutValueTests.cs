@@ -899,6 +899,78 @@ public class GuardCutValueTests
             guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
     }
 
+    [Theory]
+    [InlineData("cut", "(world)", "world")]
+    [InlineData("left out", "(world)", "world")]
+    [InlineData("cut", "(w)", "w")]
+    [InlineData("left out", "(w)", "w")]
+    public void An_ascii85_object_stream_that_lacks_its_end_marker_before_a_proven_endstream_decodes_as_read_whole(
+        string guard, string last, string text)
+    {
+        // Object stream 10's ASCII85 data lacks its ~> and ends inside a group, then an end-of-line and its endstream, which
+        // the next object proves its own, under a /Length a guard hid. White space parts no group: the data decodes as read
+        // whole. Its last group was dropped, as one a cut parts, and the member it shortened charged to the file — (wor), or
+        // (w) past the 16 bytes left, the object stream broken (#224).
+        var encoded = Ascii85Text(Encoding.Latin1.GetBytes("6 0 7 8 (hello) " + last));
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [20] = (1, file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + encoded.Length.ToString(CultureInfo.InvariantCulture)), 0),
+            [10] = (1, file.Object(10, $"<< /Type /ObjStm /N 2 /First 8 /Length 20 0 R /Filter /ASCII85Decode >>\nstream\n{encoded}\nendstream"), 0),
+            [11] = (1, file.Object(11, "(eleven)"), 0),
+            [6] = (2, 10, 0),
+            [7] = (2, 10, 1),
+        };
+        file.CrossReferenceStream(21, 22, rows, "/Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            whole.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(text);
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+
+        document.GetObject(new PdfObjectId(7)).Should().BeOfType<PdfString>().Which.ToText().Should().Be(text);
+        document.GetObject(new PdfObjectId(10)).AsStream().Required().Data.EndHidden.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeFalse();
+    }
+
+    /// <summary>Writes <paramref name="bytes"/> in ASCII85, whole groups but the last, with no <c>z</c> and no <c>~&gt;</c>.</summary>
+    private static string Ascii85Text(ReadOnlySpan<byte> bytes)
+    {
+        var text = new StringBuilder();
+        Span<char> digits = stackalloc char[5];
+
+        for (var i = 0; i < bytes.Length; i += 4)
+        {
+            var count = Math.Min(4, bytes.Length - i);
+            uint value = 0;
+
+            for (var j = 0; j < 4; j++)
+            {
+                value = (value << 8) | (j < count ? bytes[i + j] : 0u);
+            }
+
+            for (var j = 4; j >= 0; j--)
+            {
+                digits[j] = (char)('!' + (value % 85));
+                value /= 85;
+            }
+
+            text.Append(digits[..(count + 1)]);
+        }
+
+        return text.ToString();
+    }
+
     private static byte[] ZLibDecompress(byte[] zlib)
     {
         using var input = new MemoryStream(zlib);
