@@ -68,6 +68,13 @@ internal sealed class XRefSectionRecord
     public bool CutByLimit { get; set; }
 
     /// <summary>
+    /// Gets a value indicating whether what cut the section is a value it is read with — one its rows are read with, or its
+    /// <c>/Length</c> — that leads to an object one of the reader's guards cut: the section was found whole, and is the
+    /// guard's to keep from being read (#263). A guard that cut the section's own dictionary leaves it unknown.
+    /// </summary>
+    public bool CutByValue { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> cut the section's
     /// trailer: what lay past the cut — an older section's <c>/Prev</c>, a key a newer trailer gives — is unknown.
     /// </summary>
@@ -130,6 +137,7 @@ internal sealed class XRefSectionRecord
         RefusedRow = attempt.RefusedRow;
         Incomplete = attempt.Incomplete;
         CutByLimit = attempt.CutByLimit;
+        CutByValue = attempt.CutByValue;
         TrailerCutByLimit = attempt.TrailerCutByLimit;
         ChainHiddenByGuard = attempt.ChainHiddenByGuard;
         ChainHiddenAtStream = attempt.ChainHiddenAtStream;

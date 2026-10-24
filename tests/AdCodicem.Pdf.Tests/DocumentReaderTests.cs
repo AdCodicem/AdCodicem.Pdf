@@ -2384,11 +2384,13 @@ public class DocumentReaderTests
     [Theory]
     [InlineData("<< /A 1 /B >>", 64 * 1024)]
     [InlineData("<< /Producer (an object longer than the trailer guard allows, which a place the section was moved to is only a guess at; it is read as itself when it is asked for, under the guard that bounds objects) >>", 128)]
+    [InlineData("<< /Type /Font /Subtype /CIDFontType2 /BaseFont /Foo /DW 1000 /W [0 [500] 1 [500] 2 [500] 3 [500] 4 [500] 5 [500] 6 [500] 7 [500] 8 [500] 9 [500] 10 [500] 11 [500] 12 [500] 13 [500] 14 [500] 15 [500] 16 [500] 17 [500] 18 [500] 19 [500] 20 [500] 21 [500] 22 [500] 23 [500] 24 [500] 25 [500] 26 [500] 27 [500] 28 [500] 29 [500]] >>", 128)]
     public void A_place_a_section_may_have_moved_to_that_holds_another_object_leaves_nothing_of_its_reading(string six, int maxTrailerLength)
     {
         // /Prev names a place 2 bytes into object 6, just before the older stream: object 6, nearer, is tried first, and is
-        // no section — a dictionary with a key short of a value, or one the trailer guard cuts. Neither its syntax fault
-        // nor the guard is reported: it was read as a section, and is read as itself when asked for.
+        // no section — a dictionary with a key short of a value, or one the trailer guard cuts, a CIDFont's whose /W gives
+        // its glyphs' widths among them. Neither its syntax fault nor the guard is reported: it was read as a section, and
+        // is read as itself when asked for. The font, once taken for the moved section, ended the chain as the guard's.
         var built = ChainFiles.UnderAnUpdate("/Type /XRef /Size 8 /W [1 4 2] /Length {length}", "0", compressed: false, predicted: false, placed: true, six: six);
         var stream = PdfTemplate.OffsetOf(built, "\n7 0 obj") + 1;
         var named = PdfTemplate.OffsetOf(built, "\n6 0 obj") + 3;
@@ -2403,6 +2405,29 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
         document.GetObject(new PdfObjectId(6)).Should().NotBeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void A_place_a_section_may_have_moved_to_whose_dictionary_a_guard_cuts_is_no_section_the_chain_ends_at()
+    {
+        // Object 6 is a CIDFont that writes its /Type past a /W the trailer guard cuts: cut before it says what it is, the
+        // dictionary may be a section's, and the guard that hid it is reported. It is not the section all the same — only a
+        // value a section is read with that leads to an object a guard cut is (#263) —: the older stream, farther, is found.
+        var built = ChainFiles.UnderAnUpdate("/Type /XRef /Size 8 /W [1 4 2] /Length {length}", "0", compressed: false, predicted: false, placed: true, six: "<< /Subtype /CIDFontType2 /W [0 [500] 1 [500] 2 [500] 3 [500] 4 [500] 5 [500] 6 [500] 7 [500] 8 [500] 9 [500] 10 [500] 11 [500] 12 [500] 13 [500] 14 [500] 15 [500] 16 [500] 17 [500] 18 [500] 19 [500] 20 [500] 21 [500] 22 [500] 23 [500] 24 [500] 25 [500] 26 [500] 27 [500] 28 [500] 29 [500]] /Type /Font >>");
+        var stream = PdfTemplate.OffsetOf(built, "\n7 0 obj") + 1;
+        var named = PdfTemplate.OffsetOf(built, "\n6 0 obj") + 3;
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(built).Replace(
+            string.Create(CultureInfo.InvariantCulture, $"/Prev {stream}"),
+            string.Create(CultureInfo.InvariantCulture, $"/Prev {named}"),
+            StringComparison.Ordinal));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 128 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics[1].Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"was found {stream - named} bytes from there."));
+        document.GetObject(new PdfObjectId(6)).AsDictionary().IsOfType(PdfName.Font).Should().BeTrue();
     }
 
     [Fact]
