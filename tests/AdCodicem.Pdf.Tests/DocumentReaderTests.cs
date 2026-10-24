@@ -2006,6 +2006,36 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData("A85 RL RL RL")]
+    [InlineData("A85 RL RL Fl")]
+    [InlineData("A85 RL Fl RL")]
+    public void Data_whose_end_a_guard_hides_holds_no_more_rows_than_its_direct_twin_through_four_filters(string chain)
+    {
+        // As below, through four filters: the second, given less, wrote less, and left the third more room than the direct
+        // twin's decoding did, which read on, and the last read rows past where the direct twin stopped at the bound — the
+        // page indexed beside a guard, or rows and no rebuild where the direct twin rebuilds (#220).
+        var direct = ChainFiles.RowsThroughFilters(deferred: false, chain.Split(' '));
+        var deferred = ChainFiles.RowsThroughFilters(deferred: true, chain.Split(' '));
+
+        for (var bound = 1; bound <= 1500; bound++)
+        {
+            var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = bound } };
+            using var directDocument = PdfDocument.Open(direct, options);
+            using var deferredDocument = PdfDocument.Open(deferred, options);
+
+            Read(deferredDocument).Should().Be(Read(directDocument), $"MaxDecodedStreamLength is {bound}");
+        }
+
+        static string Read(PdfDocument document) => string.Join(
+            ' ',
+            document.WasRepaired,
+            document.Reader.Structure.Sections[^1].CutByLimit,
+            document.GetObject(new PdfObjectId(1)) is PdfDictionary,
+            document.GetObject(new PdfObjectId(39)) is PdfDictionary,
+            document.Reader.ChainIndex?.Count);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Data_whose_end_a_guard_hides_leaves_the_filters_after_a_dropped_group_the_room_its_direct_twin_s_have(bool hex)

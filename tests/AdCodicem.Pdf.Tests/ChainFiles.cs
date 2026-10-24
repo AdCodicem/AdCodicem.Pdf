@@ -1236,7 +1236,15 @@ internal static class ChainFiles
     /// otherwise <c>/Filter [/ASCII85Decode /FlateDecode /RunLengthDecode]</c>, the last ASCII85 group partial. RunLength
     /// writes literal runs of 128 bytes.
     /// </summary>
-    public static byte[] RowsThroughThreeFilters(bool deferred, bool hex)
+    public static byte[] RowsThroughThreeFilters(bool deferred, bool hex) =>
+        RowsThroughFilters(deferred, hex ? ["AHx", "RL", "Fl"] : ["A85", "Fl", "RL"]);
+
+    /// <summary>
+    /// A file as <see cref="RowsThroughThreeFilters"/> writes it, its rows passing through <paramref name="filters"/>, as
+    /// <c>/Filter</c> names them: <c>A85</c>, <c>AHx</c>, <c>Fl</c> or <c>RL</c>. The first is ASCII85, its last group
+    /// partial and no <c>~&gt;</c>, or ASCIIHex short of its last digit and its <c>&gt;</c>.
+    /// </summary>
+    public static byte[] RowsThroughFilters(bool deferred, string[] filters)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -1251,25 +1259,30 @@ internal static class ChainFiles
         rows[4] = (1, four, 0);
         rows[5] = (1, at, 0);
         rows[39] = (1, file.OffsetOf(39), 0);
-        var raw = Encode(rows, Rows.Raw);
-        byte[] data;
+        var data = Encode(rows, Rows.Raw);
 
-        if (hex)
+        for (var i = filters.Length - 1; i >= 0; i--)
         {
-            var digits = Convert.ToHexString(RunLength(Deflate(raw)));
-            data = Encoding.ASCII.GetBytes(digits[..^1]);
-        }
-        else
-        {
-            data = Encoding.ASCII.GetBytes(Ascii85(Deflate(RunLength(raw))));
+            data = filters[i] switch
+            {
+                "A85" => Encoding.ASCII.GetBytes(Ascii85(data)),
+                "AHx" => Encoding.ASCII.GetBytes(Convert.ToHexString(data)[..^1]),
+                "Fl" => Deflate(data),
+                "RL" => RunLength(data),
+                _ => throw new ArgumentOutOfRangeException(nameof(filters), filters[i], "No such filter."),
+            };
         }
 
+        var names = string.Join(' ', Array.ConvertAll(filters, filter => filter switch
+        {
+            "A85" => "/ASCII85Decode",
+            "AHx" => "/ASCIIHexDecode",
+            "Fl" => "/FlateDecode",
+            _ => "/RunLengthDecode",
+        }));
         var length = data.Length.ToString("D6", CultureInfo.InvariantCulture);
         file.Object(4, length);
-        file.Stream(
-            5,
-            $"/Type /XRef /Size 40 /W [1 4 2] /Filter {(hex ? "[/ASCIIHexDecode /RunLengthDecode /FlateDecode]" : "[/ASCII85Decode /FlateDecode /RunLengthDecode]")} /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
-            data);
+        file.Stream(5, $"/Type /XRef /Size 40 /W [1 4 2] /Filter [{names}] /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}", data);
         file.StartXRef(at);
         return file.ToArray();
 
