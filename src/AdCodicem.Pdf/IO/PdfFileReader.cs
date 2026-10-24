@@ -4892,9 +4892,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var most = _guard.Bound(PdfLimit.IndexEntries);
         var room = (int)Math.Min(rows, int.MaxValue);
 
-        // The /Size as written, which ISO 32000-1 makes direct (Table 15, 7.5.8.2): a reference is not read through to make
-        // room by, as the newest cross-reference stream's beside an /Index, which numbers no row, would be while the chain is.
-        if (_xref.Trailer.GetRaw(PdfName.Size) is PdfInteger { Value: var size })
+        // The /Size as written, which ISO 32000-1 makes direct (Table 15, 7.5.8.2), an integral real read as the integer it
+        // is: a reference is not read through to make room by, as the newest cross-reference stream's beside an /Index, which
+        // numbers no row, would be while the chain is.
+        if (_xref.Trailer.GetRaw(PdfName.Size) is { } written and not PdfReference && written.AsInteger() is { } size)
         {
             // A size the index holds as many entries as already asks for no room, nor does one below zero, which is not
             // narrowed to an int that would. One the sections read so far number past is stale, and they stand for it.

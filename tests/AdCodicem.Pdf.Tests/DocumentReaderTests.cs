@@ -2725,15 +2725,21 @@ public class DocumentReaderTests
         document.Reader.Index.Capacity.Should().BeLessThan(4000, "the map doubles from the newest section's 1,103 slots");
     }
 
-    [Fact]
-    public void An_update_s_rows_and_the_original_s_make_room_for_the_objects_the_newest_size_numbers()
+    [Theory]
+    [InlineData("3000")]
+    [InlineData("3000.0")]
+    public void An_update_s_rows_and_the_original_s_make_room_for_the_objects_the_newest_size_numbers(string size)
     {
         // The update rewrites a thousand of the original's 3,000 objects: the original's rows for them supersede nothing,
-        // and room made for all its rows on top of the update's doubled the map. The newest /Size numbers every object.
-        var file = TestPdfBuilder.AppendIncrementalUpdate(
+        // and room made for all its rows on top of the update's doubled the map. The newest /Size numbers every object,
+        // written direct, as an integer or as a real with no fractional part, which the reader reads as the integer it is.
+        var built = TestPdfBuilder.AppendIncrementalUpdate(
             ChainOfSections(sections: 1, rows: 3000),
             rootNumber: 1,
             [.. Enumerable.Range(3, 1000).Select(number => (number, "(updated)"))]);
+        var text = Encoding.Latin1.GetString(built);
+        var newest = text.LastIndexOf("/Size 3000", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, newest), "/Size " + size, text.AsSpan(newest + "/Size 3000".Length)));
 
         using var document = PdfDocument.Open(file);
 
