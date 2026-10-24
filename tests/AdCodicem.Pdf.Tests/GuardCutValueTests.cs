@@ -900,6 +900,48 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData("cut", true)]
+    [InlineData("left out", true)]
+    [InlineData("cut", false)]
+    public void Data_that_ends_in_white_space_right_before_a_proven_endstream_ends_where_the_guard_hides(string guard, bool space)
+    {
+        // Content stream 4's hexadecimal data lacks its > and ends in a space, the endstream right after it, which the next
+        // object proves its own: whether the space is the data's only the hidden length says, and the missing > is no fault
+        // the file shows where the data ends. With no space, the data ends where the file's does, and the > it lacks is the
+        // file's fault (#224).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + (space ? "11" : "10")),
+            [4] = file.Object(4, $"<< /Length 20 0 R /Filter /ASCIIHexDecode >>\nstream\n48656C6C6F{(space ? " " : string.Empty)}endstream"),
+            [5] = file.Object(5, "(five)"),
+        };
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            _ = whole.GetObject(new PdfObjectId(4)).AsStream().Required().Decode();
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed);
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+        var content = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+        var reached = guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries;
+
+        content.Decode().ToArray().Should().Equal("Hello"u8.ToArray());
+        content.Data.CutByGuard.Should().BeFalse();
+        content.Data.EndHidden.Should().Be(space);
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(space ? [reached] : [reached, PdfDiagnosticCodes.FilterFailed]);
+    }
+
+    [Theory]
     [InlineData("cut", "(world)", "world")]
     [InlineData("left out", "(world)", "world")]
     [InlineData("cut", "(w)", "w")]
@@ -1131,6 +1173,34 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData(1000, 1, 0)]
+    [InlineData(1, 0, 1)]
+    [InlineData(0, 0, 1)]
+    public void A_decoding_guard_deferred_data_reached_is_reported_once_whatever_room_the_diagnostics_have(
+        int capacity, int reports, int leftOut)
+    {
+        // As above, under 279: the guard the first decoding reached stands, its report held as the stream's decoding
+        // reports are, so that decoding the stream again reports it no more; where the diagnostics had no room for it, it
+        // is counted as left out, while the ASCIIHex end fault the first decoding met, dropped with that decoding, is not
+        // (#144, #220, #224).
+        var options = new PdfReaderOptions
+        {
+            Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 279 },
+            DiagnosticCapacity = capacity,
+        };
+        using var document = PdfDocument.Open(ChainFiles.HexFlateRowsLackingTheirLastDigit(), options);
+
+        document.Diagnostics.Count.Should().Be(reports);
+        document.Diagnostics.SuppressedCount.Should().Be(leftOut);
+
+        var stream = document.GetObject(new PdfObjectId(5)).AsStream().Required();
+        _ = stream.Decode();
+        _ = stream.Decode();
+
+        document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.LimitDecodedStream).Should().Be(reports);
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void A_cross_reference_stream_with_no_row_of_its_own_proves_the_endstream_before_it(bool ownRow)
@@ -1155,6 +1225,54 @@ public class GuardCutValueTests
         stream.Data.CutByGuard.Should().BeFalse();
         stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_the_chain_read_proves_the_endstream_of_the_older_one_before_it()
+    {
+        // Older cross-reference stream 6 takes its /Length from object 9, which MaxObjectLength cuts, and declares 11 rows
+        // where its data holds 10; newer stream 7, which no row of its own places, follows its endobj, the only startxref
+        // after it. The chain read stream 7 first, which proves the endstream before it the older stream's own: the row it
+        // lacks is the file's to lack, as read whole, not the guard's (#224).
+        var file = new HandWrittenFile(version: "1.5");
+        var placed = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [9] = (1, file.Object(9, new string(' ', 2000) + "70"), 0),
+        };
+        var older = file.Position;
+        placed[6] = (1, older, 0);
+        file.Object(6, "<< /Type /XRef /Size 11 /W [1 4 2] /Root 1 0 R /Length 9 0 R >>\nstream\n" + Rows(10, placed) + "\nendstream");
+        var newer = file.Position;
+        var rows = Rows(10, placed);
+        file.Object(7, Invariant($"<< /Type /XRef /Size 10 /W [1 4 2] /Root 1 0 R /Prev {older} /Length {rows.Length} >>\nstream\n{rows}\nendstream"));
+        file.Raw(Invariant($"startxref\n{newer}\n%%EOF\n"));
+
+        using var whole = PdfDocument.Open(file.Bytes);
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+        var section = document.Reader.Structure.Sections[^1];
+
+        section.Incomplete.Should().BeTrue();
+        section.CutByLimit.Should().BeFalse();
+        section.Fault.Should().Be(whole.Reader.Structure.Sections[^1].Fault).And.Be("it holds 10 rows where its /Index and /Size declare 11");
+
+        static string Rows(int size, Dictionary<int, (int Type, long Field2, int Field3)> placed)
+        {
+            var data = new StringBuilder();
+
+            for (var row = 0; row < size; row++)
+            {
+                var (type, field2, field3) = row == 0 ? (0, 0L, 65535) : placed.TryGetValue(row, out var given) ? given : (0, 0L, 0);
+                data.Append((char)type)
+                    .Append((char)((field2 >> 24) & 0xFF)).Append((char)((field2 >> 16) & 0xFF))
+                    .Append((char)((field2 >> 8) & 0xFF)).Append((char)(field2 & 0xFF))
+                    .Append((char)((field3 >> 8) & 0xFF)).Append((char)(field3 & 0xFF));
+            }
+
+            return data.ToString();
+        }
     }
 
     [Theory]

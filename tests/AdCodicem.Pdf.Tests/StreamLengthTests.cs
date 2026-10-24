@@ -2231,21 +2231,27 @@ public class StreamLengthTests
         document.Reader.IsEndObjMissing(Streams + 3, out _).Should().BeFalse();
     }
 
-    [Fact]
-    public void A_stream_left_unsearched_whose_length_a_guard_hid_is_the_guard_s()
+    [Theory]
+    [InlineData("cut")]
+    [InlineData("left out")]
+    public void A_stream_left_unsearched_whose_length_a_guard_hid_is_the_guard_s(string guard)
     {
-        // As above, stream 13's data running 3,000 bytes past the bytes its object is parsed with: once the searches have
-        // read as much as they may, it is not searched past them, and where it ends is unknown — the length that would say
-        // is the guard's. The data up to the next object, its endstream and endobj taken in, was the file's, reported as a
-        // length the reader did not search past; it is the guard's, as an endstream found and not proven is (#224).
+        // As above, stream 13's data running 20,000 bytes past the bytes its object is parsed with, its /Length cut by
+        // MaxObjectLength or left out of the index by MaxIndexEntries: once the searches have read as much as they may, it is
+        // not searched past them, and where it ends is unknown — the length that would say is the guard's. The data up to the
+        // next object, its endstream and endobj taken in, or to the end of the file, was the file's, reported as a length the
+        // reader did not search past; it is the guard's, as an endstream found and not proven is (#224).
         const int Streams = 10;
-        var data = "BT " + new string('x', 3000) + " ET";
+        var data = "BT " + new string('x', 20_000) + " ET";
         var (file, _) = NestedStreams(
             Streams,
             100_000,
             Invariant($"{Streams + 3} 0 obj\n<< /Length {Streams + 4} 0 R >>\nstream\n{data}\nendstream\nendobj\n"),
-            Invariant($"{Streams + 4} 0 obj\n{new string(' ', 2000)}{data.Length}\nendobj\n"));
-        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+            Invariant($"{Streams + 4} 0 obj\n{(guard == "cut" ? new string(' ', 2000) : string.Empty)}{data.Length}\nendobj\n"));
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = Streams + 4 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
 
         for (var number = 3; number <= Streams + 2; number++)
         {
@@ -2257,7 +2263,8 @@ public class StreamLengthTests
 
         stream.Data.CutByGuard.Should().BeTrue();
         document.Reader.IsEndObjMissing(Streams + 3, out _).Should().BeFalse();
-        document.Diagnostics.Skip(reports).Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Skip(reports).Select(entry => entry.Code).Should().Equal(
+            guard == "cut" ? [PdfDiagnosticCodes.LimitObject] : []);
     }
 
     [Fact]
