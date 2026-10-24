@@ -74,8 +74,8 @@ data spells that stops the search, with no `endobj` of the object's own before i
 guard, and so does an `endstream` the data spells — inside a string, say, an `endobj` after it or not —: the data is
 marked cut by the guard, whose report the document holds, whether the object ends with `endobj` is not judged, and
 nothing is said of the file. Only what follows the object's end — its `endobj`, or the `endstream` where none follows —
-can prove an `endstream` the stream's own: the next object the index places or the end of the file, which data that
-goes on is never followed by, or the `xref` or `startxref` keyword, which the data may spell as well — data that spells
+can prove an `endstream` the stream's own: the next object the index places, or a cross-reference stream the chain
+read, or the end of the file, which data that goes on is never followed by, or the `xref` or `startxref` keyword, which the data may spell as well — data that spells
 `endstream`, then one of them, and goes on is taken to end there, which only the hidden length could tell. The end is
 then the file's, and so is an `endobj` the object lacks. A whole reference the cut left, `6 0 R` before the window's end, is no length
 it hid: it leads on to the object it names, as read whole.

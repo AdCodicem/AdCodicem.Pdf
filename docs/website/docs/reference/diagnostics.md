@@ -189,8 +189,8 @@ header the data spells, as an embedded PDF file's does, that stops the search �
 it —, or an `endstream` the data spells, an `endobj` after it or not, leaves the data up to it to the guard: nothing is
 reported of the stream, whose data is cut by the guard, and whether its object ends with `endobj` is not judged. An
 `endstream` is taken for the stream's own, its end the file's, only where what follows its object's end — its
-`endobj`, or the `endstream` where none follows — is the next object the index places, the end of the file, or the
-`xref` or `startxref` keyword.
+`endobj`, or the `endstream` where none follows — is the next object the index places, a cross-reference stream the
+chain read, the end of the file, or the `xref` or `startxref` keyword.
 
 ```text
 Warning stream.length-invalid at 5501: The stream declared 19954 bytes but ended after 19952.

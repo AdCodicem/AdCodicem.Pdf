@@ -988,6 +988,33 @@ public class GuardCutValueTests
         findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart).And.NotContain(PdfValidationRuleIds.XRefSectionMalformed);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_cross_reference_stream_with_no_row_of_its_own_proves_the_endstream_before_it(bool ownRow)
+    {
+        // Content stream 4's /Length, object 5, is cut by MaxObjectLength, and the cross-reference stream follows it, with a
+        // row of its own or none, as PDFBox writes it: the chain read it there, and it places it all the same. With no row,
+        // nothing proved the endstream the stream's own, and its data, whole, was the guard's (#224).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [5] = (1, file.Object(5, new string(' ', 2000) + "5"), 0),
+            [4] = (1, file.Object(4, "<< /Length 5 0 R >>\nstream\nBT ET\nendstream"), 0),
+        };
+        file.CrossReferenceStream(6, ownRow ? 7 : 6, rows, "/Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.Data.CutByGuard.Should().BeFalse();
+        stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
     [Fact]
     public void The_place_a_row_names_before_the_next_header_is_read_once_however_often_the_stream_is_parsed()
     {

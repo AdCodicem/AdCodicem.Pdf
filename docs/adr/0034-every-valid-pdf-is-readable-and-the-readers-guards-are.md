@@ -117,8 +117,9 @@ to an object a guard cut or left out of the index — a stream's `/Length`, `/Fi
 filter's parameters, a cross-reference stream's `/W`, `/Index` or `/Size`, a trailer's `/Prev` or `/XRefStm` — is the
 guard's, not the file's: an integer the cut parted, `1` of `15`, is only a place to look for `endstream` at, never a
 declared length, though a stream that lacks its `endstream` is still the file's fault, unless a header its data spells,
-or an `endstream` nothing after it proves the stream's own — the next object the index places, the end of the file,
-`xref` or `startxref`, after the object's `endobj` or in its place (amended on 2026-10-24) —, stops the search, the
+or an `endstream` nothing after it proves the stream's own — the next object the index places, a cross-reference
+stream the chain read, the end of the file, `xref` or `startxref`, after the object's `endobj` or in its place (amended
+on 2026-10-24) —, stops the search, the
 data up to it then the guard's; a whole
 reference the cut left leads on, as read whole; a chain of filters ends there,
 its data left encoded; and a cross-reference section whose values lead to an object `MaxObjectLength` cut ends the

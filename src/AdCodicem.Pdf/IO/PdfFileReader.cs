@@ -1926,7 +1926,28 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     bool IPdfStreamDataProvider.IsOwnEndStream(long absoluteDataEnd, EndObjState endObj, long? nextObject)
     {
         var (position, boundary) = EndStreamFollower(absoluteDataEnd, endObj);
-        return position >= 0 && (boundary || IsPlacedAt(position, nextObject));
+        return position >= 0 && (boundary || IsPlacedAt(position, nextObject) || IsStreamSectionAt(position));
+    }
+
+    /// <summary>
+    /// Determines whether the object of a cross-reference stream the chain read starts at <paramref name="position"/>: the
+    /// section places it, though no row of its own does — PDFBox writes it so (#224).
+    /// </summary>
+    /// <remarks>
+    /// The sections are as many as <see cref="PdfReaderLimits.MaxXRefSectionCount"/> lets the chain read, and each says where
+    /// its object's header lies, past the white space and comments before it: nothing is read.
+    /// </remarks>
+    private bool IsStreamSectionAt(long position)
+    {
+        foreach (var section in _structure.Sections)
+        {
+            if (section.Kind == XRefSectionKind.Stream && section.StreamObjectNumber > 0 && section.Offset + section.Padding == position)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

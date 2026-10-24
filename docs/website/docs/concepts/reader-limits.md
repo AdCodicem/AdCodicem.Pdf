@@ -55,9 +55,11 @@ as a value the file gave; a whole reference it left, though, leads on to the obj
 of a stream whose `/Length` is so named is found by its `endstream`, and its length is not judged, though an `endstream`
 the data lacks is still the file's to lack — unless an object header the data spells stops the search, or an
 `endstream` it spells, which only the hidden length could tell from the end of the data: the data is then the guard's
-too. An `endstream` is the stream's own beyond doubt only where what follows its object's end is something data that
-goes on cannot be followed by — the next object the index places, the end of the file, a cross-reference section's
-keyword —, and the end is then the file's. Decoding stops at a filter so named, or one whose parameters are, and leaves
+too. An `endstream` is taken for the stream's own only where what follows its object's end is the next object the
+index places, a cross-reference stream the chain read, or the end of the file, which data that goes on is never followed
+by, or a cross-reference section's keyword, `xref` or `startxref`, which the data may spell as well: data that spells
+`endstream`, then one of them, and goes on is taken to end there, which only the hidden length could tell. The end is
+then the file's. Decoding stops at a filter so named, or one whose parameters are, and leaves
 the rest of the data encoded, as past the most filters the reader runs; and a `/Prev` or an `/XRefStm` the reader
 follows that is so named, or a cross-reference stream whose values lead to an object a guard cut, ends the chain as a
 section a guard cut does, wherever near its named offset the section is found.
