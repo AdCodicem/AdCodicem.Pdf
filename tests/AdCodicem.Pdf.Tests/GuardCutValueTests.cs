@@ -949,6 +949,43 @@ public class GuardCutValueTests
             guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
     }
 
+    [Fact]
+    public void The_proofs_of_small_streams_whose_length_a_guard_hid_read_less_than_the_file()
+    {
+        // 400 streams of a byte share a /Length, object 9, which MaxObjectLength cuts before its value: each one's endstream is
+        // found among the bytes the parser holds, and proven its own by the next object the index places, a few bytes past
+        // its endobj. The proofs read those few bytes, which count toward what the searches may read, four times the file: a
+        // file of such streams has them read less than itself (#224).
+        const int Streams = 400;
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [9] = (1, file.Object(9, new string(' ', 2000) + "1"), 0),
+        };
+
+        for (var number = 10; number < 10 + Streams; number++)
+        {
+            rows[number] = (1, file.Object(number, "<< /Length 9 0 R >>\nstream\nq\nendstream"), 0);
+        }
+
+        file.CrossReferenceStream(10 + Streams, 11 + Streams, rows, "/Root 1 0 R");
+        var bytes = file.Bytes;
+
+        using var document = PdfDocument.Open(bytes, ObjectGuard);
+
+        for (var number = 10; number < 10 + Streams; number++)
+        {
+            var stream = document.GetObject(new PdfObjectId(number)).AsStream().Required();
+            stream.Data.CutByGuard.Should().BeFalse(Invariant($"stream {number}'s endstream is proven its own"));
+            stream.Data.Length.Should().Be(1);
+        }
+
+        document.Reader.EndStreamSearchBytes.Should().Be(Streams * 48, "each proof reads three times 16 bytes").And.BeLessThan(bytes.Length);
+    }
+
     [Theory]
     [InlineData("Rx", false)]
     [InlineData("RG", false)]
