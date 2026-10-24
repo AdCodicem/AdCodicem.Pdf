@@ -3910,9 +3910,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // Whether where the data ends is the guard's to hide, which the data is decoded knowing.
         var endHidden = false;
 
+        // Whether the decoding before stopped at MaxDecodedStreamLength, which the data decoded again knowing its end is
+        // hidden keeps reached: the whole data holds at least what that decoding read.
+        var reachedBefore = false;
+
         while (true)
         {
-            var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, endHidden, out var leftEncoded, out var cut);
+            var decoded = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, endHidden, reachedBefore, out var leftEncoded, out var cut);
 
             // Data the guard on filters left encoded holds none of the section's rows: the section is cut before its first.
             data = leftEncoded ? default : decoded.Span;
@@ -3959,11 +3963,23 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // Data a /Length the chain could not read left to an endstream nothing confirmed, where the length that would say
             // whether it is the data's own is one a guard cut, or where a guard on decoding kept the data, which lacks rows,
             // from being taken again to the length: where it ends is the guard's, and a filter run out there says nothing of
-            // the file. The data is decoded once more knowing it, to the same bytes, whose faults stand (#220, #224).
+            // the file. The data is decoded once more knowing it, as data a guard cut, a group its end parts dropped, the
+            // faults in what it read standing (#220, #224). A guard on decoding the first decoding reached stands too, with
+            // its report: a filter after the one that drops the group, given less, may stay within the bound.
             if (!endHidden && deferred is not null && !xrefStream.Data.CutByGuard &&
                 (lengthCut || (!retaken && !decodedWhole && declared > held)))
             {
-                _diagnostics.RollBack(decoding);
+                reachedBefore = cut;
+
+                if (reachedBefore)
+                {
+                    _diagnostics.RollBackBesideLimits(decoding);
+                }
+                else
+                {
+                    _diagnostics.RollBack(decoding);
+                }
+
                 endHidden = true;
                 continue;
             }

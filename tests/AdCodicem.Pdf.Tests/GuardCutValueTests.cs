@@ -949,6 +949,45 @@ public class GuardCutValueTests
             guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
     }
 
+    [Theory]
+    [InlineData(279, false)]
+    [InlineData(279, true)]
+    [InlineData(200, false)]
+    public void A_decoding_guard_deferred_data_reached_stands_when_the_data_is_decoded_again_knowing_its_end_hidden(int bound, bool throwOnLimit)
+    {
+        // Stream 5's rows decode to 280 bytes, through ASCIIHex then Flate, under a /Length only it places. Under 279, Flate
+        // stops at the bound, and the data, which lacks the page's row, is decoded again knowing its end hidden: ASCIIHex
+        // drops the digit its end parts, and Flate, given less, stayed within the bound. The guard went unreported, and the
+        // page's row was charged to the file — the section incomplete, the index rebuilt (#220, #224).
+        var file = ChainFiles.HexFlateRowsLackingTheirLastDigit();
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.FilterFailed);
+            whole.GetObject(new PdfObjectId(39)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = bound }, ThrowOnLimit = throwOnLimit };
+
+        if (throwOnLimit)
+        {
+            var opening = () => PdfDocument.Open(file, options);
+            opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxDecodedStreamLength));
+            return;
+        }
+
+        using var document = PdfDocument.Open(file, options);
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        section.CutByLimit.Should().BeTrue();
+        section.Incomplete.Should().BeFalse();
+        document.GetObject(new PdfObjectId(39)).Should().BeOfType<PdfNull>();
+        document.WasRepaired.Should().BeFalse();
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId);
+        findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart).And.NotContain(PdfValidationRuleIds.XRefSectionMalformed);
+    }
+
     [Fact]
     public void The_proofs_of_small_streams_whose_length_a_guard_hid_read_less_than_the_file()
     {

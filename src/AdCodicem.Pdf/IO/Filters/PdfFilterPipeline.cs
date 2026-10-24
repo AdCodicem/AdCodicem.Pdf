@@ -33,7 +33,7 @@ internal static class PdfFilterPipeline
     /// </param>
     /// <param name="guard">Bounds what each filter's output may be and how many filters run, and says what reaching either does.</param>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard) =>
-        Decode(stream, diagnostics, guard, endHidden: false, out _, out _);
+        Decode(stream, diagnostics, guard, endHidden: false, reachedBefore: false, out _, out _);
 
     /// <summary>
     /// Decodes a stream's data under its document's guards, and says whether one of them ended decoding — the most filters
@@ -56,7 +56,7 @@ internal static class PdfFilterPipeline
     /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
     /// </exception>
     public static ReadOnlyMemory<byte> Decode(PdfStream stream, PdfDiagnostics? diagnostics, out bool leftEncoded, out bool cutByGuard) =>
-        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden: false, out leftEncoded, out cutByGuard);
+        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden: false, reachedBefore: false, out leftEncoded, out cutByGuard);
 
     /// <summary>
     /// Decodes a stream's data as <see cref="Decode(PdfStream, PdfDiagnostics?, out bool, out bool)"/> does, its end, with
@@ -71,8 +71,13 @@ internal static class PdfFilterPipeline
     /// it. The data decodes as data a guard cut does — a last group a filter holds in part, which the hidden end may have
     /// parted, is dropped, and a predictor's last row undone as far as it goes —, though it is not counted as cut by it: a
     /// group dropped so counts against <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/> all the same, the
-    /// whole data holding at least as much, so that whether the guard is reached does not depend on where the end is
-    /// hidden.
+    /// whole data holding at least as much. A filter after it is given less, and may stay within the bound where the whole
+    /// data would not: a decoding of data whose end is hidden that a decoding of it reached the bound before keeps that
+    /// verdict, with <paramref name="reachedBefore"/>.
+    /// </param>
+    /// <param name="reachedBefore">
+    /// Whether a decoding of the same data stopped at <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/> before,
+    /// and reported it: the data comes back cut by the guard, and no filter reports it again.
     /// </param>
     /// <param name="leftEncoded">As the other overload gives it.</param>
     /// <param name="cutByGuard">As the other overload gives it.</param>
@@ -80,11 +85,17 @@ internal static class PdfFilterPipeline
     /// Decoding reaches one of its document's guards, and the document was opened to throw when it does.
     /// </exception>
     public static ReadOnlyMemory<byte> Decode(
-        PdfStream stream, PdfDiagnostics? diagnostics, bool endHidden, out bool leftEncoded, out bool cutByGuard) =>
-        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden, out leftEncoded, out cutByGuard);
+        PdfStream stream, PdfDiagnostics? diagnostics, bool endHidden, bool reachedBefore, out bool leftEncoded, out bool cutByGuard) =>
+        Decode(stream, diagnostics, stream.Data.LimitGuard, endHidden, reachedBefore, out leftEncoded, out cutByGuard);
 
     private static ReadOnlyMemory<byte> Decode(
-        PdfStream stream, PdfDiagnostics? diagnostics, PdfLimitGuard guard, bool endHidden, out bool leftEncoded, out bool cutByGuard)
+        PdfStream stream,
+        PdfDiagnostics? diagnostics,
+        PdfLimitGuard guard,
+        bool endHidden,
+        bool reachedBefore,
+        out bool leftEncoded,
+        out bool cutByGuard)
     {
         diagnostics ??= guard.DocumentDiagnostics;
 
@@ -108,7 +119,7 @@ internal static class PdfFilterPipeline
                 guard.Reach(PdfLimit.StreamLength, diagnostics, guard.DescribeStreamLengthCut(), stream.Data.Position);
             }
 
-            return DecodeChain(stream, chain, data, diagnostics, guard, endHidden, out leftEncoded, out cutByGuard);
+            return DecodeChain(stream, chain, data, diagnostics, guard, endHidden, reachedBefore, out leftEncoded, out cutByGuard);
         }
 
         var decodings = diagnostics.Decodings;
@@ -116,7 +127,7 @@ internal static class PdfFilterPipeline
 
         try
         {
-            return DecodeChain(stream, chain, data, decodings, guard, endHidden, out leftEncoded, out cutByGuard);
+            return DecodeChain(stream, chain, data, decodings, guard, endHidden, reachedBefore, out leftEncoded, out cutByGuard);
         }
         finally
         {
@@ -133,6 +144,7 @@ internal static class PdfFilterPipeline
         PdfDiagnostics? diagnostics,
         PdfLimitGuard guard,
         bool endHidden,
+        bool reachedBefore,
         out bool leftEncoded,
         out bool cutByGuard)
     {
@@ -144,7 +156,9 @@ internal static class PdfFilterPipeline
         // reported once, by the guard that made it; data whose end is hidden is no cut. A filter drops a last group such
         // data holds in part, and counts it against the bound all the same (Ascii85Filter, AsciiHexFilter).
         var cut = stream.Data.CutByGuard || endHidden;
-        var limitReported = false;
+
+        // A guard a decoding of the same data reached before was reported then: its verdict stands, whatever this one meets.
+        var limitReported = reachedBefore;
 
         // The filters before the last share one bound for what they pass along together, and the last keeps its own: a
         // stream of one or two filters decodes as each filter alone would, and a chain however long holds, and fills, no

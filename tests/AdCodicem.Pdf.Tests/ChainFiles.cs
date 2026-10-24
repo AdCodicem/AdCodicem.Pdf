@@ -1136,6 +1136,70 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of one revision, whose cross-reference stream 5 indexes objects 0 to 39, the page object 39 last, under
+    /// <c>/Filter [/ASCIIHexDecode /FlateDecode]</c> and a <c>/Length</c> that names object 4, which only stream 5 indexes. Its
+    /// Flate data is rows 0 to 38 deflated, then a stored block that holds the page's row, with no checksum; its hex text
+    /// lacks its last digit, a 0 the page's row ends in, and its <c>&gt;</c>. The rows decode to 280 bytes. Read whole, the
+    /// file is valid but for the hex text's end and the checksum.
+    /// </summary>
+    public static byte[] HexFlateRowsLackingTheirLastDigit()
+    {
+        using var output = new MemoryStream();
+        var offsets = new Dictionary<int, long>();
+
+        void Text(string text) => output.Write(Encoding.Latin1.GetBytes(text));
+
+        void Object(int number, string body)
+        {
+            offsets[number] = output.Position;
+            Text(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+        }
+
+        static byte[] Row(int type, long second, int third) =>
+            [(byte)type, (byte)(second >> 24), (byte)(second >> 16), (byte)(second >> 8), (byte)second, (byte)(third >> 8), (byte)third];
+
+        Text("%PDF-1.5\n");
+        Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        Object(2, "<< /Type /Pages /Kids [39 0 R] /Count 1 >>");
+        Object(39, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var four = output.Position;
+        var five = four + "4 0 obj\n000000\nendobj\n".Length;
+        var head = new List<byte>();
+
+        for (var i = 0; i < 39; i++)
+        {
+            head.AddRange(i switch
+            {
+                0 => Row(0, 0, 65535),
+                1 => Row(1, offsets[1], 0),
+                2 => Row(1, offsets[2], 0),
+                4 => Row(1, four, 0),
+                5 => Row(1, five, 0),
+                _ => Row(0, 0, 0),
+            });
+        }
+
+        using var deflated = new MemoryStream();
+        using var deflate = new DeflateStream(deflated, CompressionLevel.SmallestSize, leaveOpen: true);
+        deflate.Write([.. head]);
+
+        // Flushed, not closed: the deflate data ends synced, with no final block, and the stored block after it is the last.
+        deflate.Flush();
+        var zlib = new List<byte> { 0x78, 0xDA };
+        zlib.AddRange(deflated.ToArray());
+        var tail = Row(1, offsets[39], 0);
+        zlib.AddRange([0x01, (byte)tail.Length, 0, (byte)~tail.Length, 0xFF]);
+        zlib.AddRange(tail);
+        var hex = Convert.ToHexString([.. zlib])[..^1];
+
+        Object(4, hex.Length.ToString("D6", CultureInfo.InvariantCulture));
+        Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"5 0 obj\n<< /Type /XRef /Size 40 /W [1 4 2] /Filter [/ASCIIHexDecode /FlateDecode] /Root 1 0 R /Length 4 0 R >>\nstream\n{hex}\nendstream\nendobj\nstartxref\n{five}\n%%EOF\n"));
+        return output.ToArray();
+    }
+
+    /// <summary>
     /// A file of two classic tables. The first indexes the catalog, the page tree, the page and object 12, the highest
     /// number; the second, an update, writes the catalog, the page tree and the page again, indexes them with object 4, a
     /// page the tree does not list, and object 9, which holds the first table's offset after <paramref name="padding"/>

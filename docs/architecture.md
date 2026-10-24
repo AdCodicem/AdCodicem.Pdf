@@ -147,7 +147,8 @@ separate types, separate severity scales, and vocabularies that never share a co
    section is the guard's, not malformed; where the rows spell one and no `endstream` confirms what the cut left
    of the length, the rows past it are the guard's — unless what follows the `endstream` the data was taken to
    proves it the stream's own, as in item 4, which leaves the rows the data lacks to the file. Data whose end a
-   guard hides is decoded to the bytes the file gives, only what a filter says of the end silenced.
+   guard hides is decoded as data a guard cut, a group its end parts dropped and what a filter says of the end
+   silenced; a decoding guard the first decoding reached stands.
 
 ### 3.2 The write path
 
