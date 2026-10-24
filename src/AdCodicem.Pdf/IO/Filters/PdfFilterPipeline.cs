@@ -291,7 +291,10 @@ internal static class PdfFilterPipeline
                 diagnostics,
                 position);
             Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
-            return ApplyPredictor(decoded, step, diagnostics, position, cut);
+
+            // Data that ran out where a guard hides its end may have lost the end of its last row there: it is undone as far
+            // as it goes, as of data a guard cut.
+            return ApplyPredictor(decoded, step, diagnostics, position, cut || (silenced && ending == FlateEnding.TailLost));
         }
 
         if (name == PdfName.LZWDecode)
@@ -326,7 +329,8 @@ internal static class PdfFilterPipeline
             }
 
             Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
-            return ApplyPredictor(decoded, step, diagnostics, position, cut);
+            return ApplyPredictor(
+                decoded, step, diagnostics, position, cut || (silenced && ending is DataEnding.Unmarked or DataEnding.UnmarkedInsideCode));
         }
 
         byte[] text;

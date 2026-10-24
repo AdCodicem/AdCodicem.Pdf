@@ -1013,6 +1013,105 @@ public class GuardCutValueTests
         return text.ToString();
     }
 
+    [Theory]
+    [InlineData("cut", 12)]
+    [InlineData("left out", 12)]
+    [InlineData("cut", 2)]
+    public void Predicted_rows_a_hidden_end_leaves_a_byte_short_are_undone_as_far_as_they_go(string guard, int predictor)
+    {
+        // Content stream 4's Flate data, raw deflate with no zlib header nor checksum, stores two predicted rows of 40 bytes
+        // whose last byte is 0x0D, then an end-of-line and its endstream, which the next object proves its own. The search
+        // leaves the carriage return out with the line feed, which only the hidden length says is the data's or not: the
+        // stored block runs out a byte short, which says nothing of the file, and the row it parts is the guard's, undone as
+        // far as it goes. It was dropped, or left predicted (#224).
+        var content = new List<byte>();
+
+        for (var row = 0; row < 2; row++)
+        {
+            var bytes = Encoding.ASCII.GetBytes(Invariant($"Row {row} of predicted data, padded to forty.")[..40]);
+            bytes[^1] = 0x0D;
+
+            if (predictor != 2)
+            {
+                content.Add((byte)(row == 0 ? 0 : 2));
+            }
+
+            content.AddRange(bytes);
+        }
+
+        var length = content.Count;
+        byte[] raw = [0x01, (byte)length, (byte)(length >> 8), (byte)~length, (byte)(~length >> 8), .. content];
+        var data = Encoding.Latin1.GetString(raw);
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + raw.Length.ToString(CultureInfo.InvariantCulture)),
+            [4] = file.Object(4, Invariant($"<< /Length 20 0 R /Filter /FlateDecode /DecodeParms << /Predictor {predictor} /Columns 40 >> >>\nstream\n{data}\nendstream")),
+            [5] = file.Object(5, "(five)"),
+        };
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+        byte[] whole;
+
+        using (var document = PdfDocument.Open(file.Bytes))
+        {
+            whole = document.GetObject(new PdfObjectId(4)).AsStream().Required().Decode().ToArray();
+            whole.Should().HaveCount(80);
+        }
+
+        using var guarded = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+        var stream = guarded.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.Decode().ToArray().Should().Equal(whole[..^1]);
+        stream.Data.EndHidden.Should().BeTrue();
+        guarded.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.FilterFailed).Select(entry => entry.Message)
+            .Should().Equal("A Flate stream was not valid zlib data.");
+    }
+
+    [Theory]
+    [InlineData("cut")]
+    [InlineData("left out")]
+    public void Lzw_data_that_lacks_its_end_code_before_a_proven_endstream_past_an_end_of_line_is_no_fault_of_the_file(string guard)
+    {
+        // Content stream 4's LZW data, the codes 256 and 113, "q", lacks its end-of-data code, then an end-of-line and its
+        // endstream, which the next object proves its own: whether the end-of-line is the data's only the hidden length says,
+        // and that the codes run out there says nothing of the file (#224).
+        var data = Encoding.Latin1.GetString([0x80, 0x1C, 0x40]);
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + "3"),
+            [4] = file.Object(4, $"<< /Length 20 0 R /Filter /LZWDecode >>\nstream\n{data}\nendstream"),
+            [5] = file.Object(5, "(five)"),
+        };
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            whole.GetObject(new PdfObjectId(4)).AsStream().Required().Decode().ToArray().Should().Equal("q"u8.ToArray());
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed);
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.Decode().ToArray().Should().Equal("q"u8.ToArray());
+        stream.Data.EndHidden.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
+    }
+
     private static byte[] ZLibDecompress(byte[] zlib)
     {
         using var input = new MemoryStream(zlib);
