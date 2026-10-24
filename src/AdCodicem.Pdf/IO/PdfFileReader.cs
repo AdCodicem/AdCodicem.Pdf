@@ -3890,7 +3890,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // is asked too: a newer section may place the object, which a guard cut.
             if (!retaken && !endHidden && deferred is { } unsettled && declared > held && decodedWhole)
             {
-                if (RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, index is null ? [0, declared] : subsections, out lengthCut) is { } whole)
+                var whole = RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, index is null ? [0, declared] : subsections, out lengthCut);
+
+                // Where a guard cut the length, the endstream the data ends at is the stream's own, and the rows it lacks
+                // the file's, only where what follows proves it, as a load of the stream reads it (#224).
+                lengthCut = lengthCut && !EndsAtOwnEndStream(whole ?? xrefStream);
+
+                if (whole is not null)
                 {
                     _diagnostics.RollBack(decoding);
                     xrefStream = whole;
@@ -3992,6 +3998,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         previous = rowsCut || section.NamedBy == "/XRefStm" ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out previousHidden);
         section.ChainHiddenByGuard = previousHidden;
         return XRefSectionState.Read;
+    }
+
+    /// <summary>
+    /// Determines whether the <c>endstream</c> cross-reference stream <paramref name="stream"/>'s data ends at, as the chain
+    /// took it or took it again, is the stream's own beyond what a <c>/Length</c> a guard cut could say
+    /// (<see cref="IPdfStreamDataProvider.IsOwnEndStream"/>): where the data ends is then the file's (#224).
+    /// </summary>
+    private bool EndsAtOwnEndStream(PdfStream stream)
+    {
+        var dataStart = stream.Data.Position;
+        var dataEnd = dataStart + stream.Data.Length;
+        var provider = (IPdfStreamDataProvider)this;
+
+        return _endStreamSearches.TryGetValue((dataStart, true), out var known) &&
+            provider.CheckEndStream(dataEnd) is EndObjState endObj and (EndObjState.Absent or EndObjState.Present) &&
+            provider.IsOwnEndStream(dataEnd, endObj, known.Search.NextObject);
     }
 
     /// <summary>
