@@ -123,8 +123,10 @@ internal static class ChainFiles
     /// <paramref name="padding"/> free rows; with <paramref name="endingInCarriageReturn"/>, a row that gives the next
     /// object free with generation 13, so that it ends in a carriage return; then, with <paramref name="spellingEndStream"/>,
     /// two rows of reserved types that spell <c>endstream</c> after an end-of-line, or with
-    /// <paramref name="spellingHeader"/> an object header. The rows are compressed when <paramref name="compressed"/>, and the
-    /// data ends with <paramref name="endOfLine"/> before its <c>endstream</c>.
+    /// <paramref name="spellingHeader"/> an object header. The rows are compressed when <paramref name="compressed"/>, the
+    /// data loses its last <paramref name="dropped"/> bytes, and it ends with <paramref name="endOfLine"/> before its
+    /// <c>endstream</c>, which its <c>endobj</c> and the <c>startxref</c> follow. The object that holds the length holds
+    /// <paramref name="lengthPadding"/> spaces before it.
     /// </summary>
     public static byte[] AloneWithIndirectLength(
         int lengthOff = 0,
@@ -134,7 +136,9 @@ internal static class ChainFiles
         string endOfLine = "\n",
         int padding = 0,
         bool lengthLast = false,
-        bool spellingHeader = false)
+        bool spellingHeader = false,
+        int dropped = 0,
+        int lengthPadding = 0)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -147,7 +151,7 @@ internal static class ChainFiles
 
         // Uncompressed rows, or stored in blocks of their own, take as many bytes whatever they hold.
         var length = Data(0, 0).Length + lengthOff;
-        file.Object(lengthNumber, length.ToString(CultureInfo.InvariantCulture));
+        file.Object(lengthNumber, new string(' ', lengthPadding) + length.ToString(CultureInfo.InvariantCulture));
         var stream = file.Position;
         var filter = compressed ? " /Filter /FlateDecode" : string.Empty;
         file.Stream(
@@ -183,6 +187,7 @@ internal static class ChainFiles
                 data.AddRange(Encode([(1, lengthAt, 0)], Rows.Raw));
             }
 
+            data.RemoveRange(data.Count - dropped, dropped);
             return [.. data];
         }
     }

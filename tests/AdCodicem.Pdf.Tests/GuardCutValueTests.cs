@@ -875,6 +875,33 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_cross_reference_stream_s_length_a_guard_cut_leaves_rows_its_proven_endstream_ends_to_the_file(bool compressed)
+    {
+        // Stream 5's /Length, object 4, which only its own row places, is one MaxObjectLength cuts before its value; its data
+        // lost its last bytes — its Flate data, its checksum and the end of its last row —, and its endstream, endobj and
+        // the startxref follow. The chain took the rows the data lacks for the guard's, and the Flate data run out said
+        // nothing, where a load of the stream, its endstream proven its own, reads the file's end. They are the file's, as
+        // read whole: the section is incomplete, and the index rebuilt (#224).
+        var file = ChainFiles.AloneWithIndirectLength(compressed: compressed, dropped: 6, lengthPadding: 1100);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        whole.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeTrue();
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeTrue();
+        document.Reader.Structure.Sections[0].CutByLimit.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Where(code => code != PdfDiagnosticCodes.LimitObject)
+            .Should().Equal(whole.Diagnostics.Select(entry => entry.Code));
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
+
+        if (compressed)
+        {
+            document.Diagnostics.Should().Contain(entry => entry.Message.StartsWith("A Flate stream ends before its data does", StringComparison.Ordinal));
+        }
+    }
+
+    [Theory]
     [InlineData("cut", false)]
     [InlineData("left out", false)]
     [InlineData("cut", true)]
