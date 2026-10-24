@@ -100,7 +100,9 @@ bounded by `EndStreamSearchPasses`, four times the file for a document's searche
 constant with its reason rewritten: a valid file is read past the parser's window only by the search for the data of a
 cross-reference stream whose `/Length` the chain cannot read, by the search for the data of a stream whose `/Length` a
 guard cut or left out of the index, and by white space and comments after a declared length that run past a first
-read — about twice the file at most. `MaxEndStreamGap`, the four bytes of white space accepted
+read — about twice the file at most; the proof that an `endstream` found under a hidden `/Length` is the stream's
+own reads 48 bytes past each, about the file once more, three times it in all (amended on 2026-10-24).
+`MaxEndStreamGap`, the four bytes of white space accepted
 between a stream's data and its `endstream`, is removed: more, or a comment, made a right `/Length` a wrong one, and
 white space and comments are read on as far as they run, counted with the searches — a comment only once white space
 comes before it, since a `%` right where the length ends is the data's. Comments after the `endobj` that ends a stream

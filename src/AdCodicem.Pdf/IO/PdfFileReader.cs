@@ -152,11 +152,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// of different streams lies apart, and so do the runs of white space after them: together those reads cover the file
     /// once, and one read past each — about twice the file at most. A fourth adds a little to each stream of the second
     /// way: the proof that an <c>endstream</c> found is the stream's own (#224) reads past it to its object's end and what
-    /// follows, three first reads of <see cref="ProofRead"/> bytes, which double only as white space runs on — a few times
-    /// a stream of a few bytes, so that a file of such streams alone reads about three times itself. Every other search is of an invalid stream, whose
-    /// <c>endstream</c> does not follow its declared length. Each
-    /// reads from a stream's data to the first object header the bytes hold after it, or to the next object the index as
-    /// written places, whichever is nearer, and its reads grow from twice what the parser holds of the data
+    /// follows, three first reads of <see cref="ProofRead"/> bytes, which double only as white space runs on — 48 bytes,
+    /// about what the smallest such stream spans with its header, so that the proofs add the file once more at most: three
+    /// times it in all, within the four the searches may read. Every other search is of an invalid stream, whose
+    /// <c>endstream</c> does not follow its declared length. Each reads from a stream's data to the first object header the
+    /// bytes hold after it, or to the next object the index as written places, whichever is nearer, and its reads grow
+    /// from twice what the parser holds of the data
     /// (<see cref="EndStreamSearchFirstRead"/>): it reads at most about twice what its object spans, and the searches of
     /// objects whose headers follow one another read disjoint stretches — the file twice over at most. Only searches that
     /// share a stretch read more: objects that overlap, the header of one inside the dictionary of another, before its
@@ -1451,6 +1452,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// kept as far as the limit let it be read.
     /// </summary>
     internal bool IsCutAtLimit(int number) => _cutAtLimit.Contains(number);
+
+    /// <summary>
+    /// Gets how many bytes the searches for <c>endstream</c>, and the proofs that what they found is a stream's own, have
+    /// read so far: what <see cref="EndStreamSearchPasses"/> bounds.
+    /// </summary>
+    internal long EndStreamSearchBytes => _endStreamSearchBytes;
 
     /// <summary>
     /// Determines whether the object <paramref name="reference"/> leads to — through a chain of references too, as
