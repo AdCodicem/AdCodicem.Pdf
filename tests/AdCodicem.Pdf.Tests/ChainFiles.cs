@@ -640,6 +640,111 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of one cross-reference stream, object 7, in ASCII85, whose <c>/Length</c> names object 5, which only the
+    /// stream's own row places, holding the length after 1,015 spaces: a <c>MaxObjectLength</c> of 1,024 parts it after its
+    /// first digit. Its rows are those of objects 0, 5, 1 to 3, 20 and 21, of reserved types, and 7 (<c>/Index</c>). The text
+    /// spells an end-of-line and <c>endstream</c> four digits into the group that holds the page's row's last three bytes and
+    /// row 20's type, which is chosen so that the group's fifth digit is the <c>e</c> of <c>endstream</c>: one that a
+    /// <c>u</c> in its place carries into the page's row's generation where <paramref name="carry"/>, and that it does not
+    /// otherwise. The file is valid.
+    /// </summary>
+    public static byte[] Ascii85RowsPartedBySpelledEndStream(bool carry)
+    {
+        for (var pad = 0; ; pad++)
+        {
+            using var file = new Writer("1.5");
+            file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+            file.Text("%" + new string('-', pad) + "\n");
+            file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+            var low = (int)(file.OffsetOf(3) & 0xFF);
+
+            // The group [low 00 00 type] sums to low + type modulo 85, 2^24 being 1 there: its fifth digit is "e", 68, for one
+            // type in each range. A "u" in its place adds 16 to the group, which carries into the generation past 239.
+            var type = -1;
+
+            for (var candidate = carry ? 240 : 200; candidate <= (carry ? 255 : 239) && type < 0; candidate++)
+            {
+                type = (low + candidate) % 85 == 68 ? candidate : -1;
+            }
+
+            if (type < 0)
+            {
+                continue;
+            }
+
+            // The digits "ndstr" and "eam!!" that follow the group are rows 20 and 21's bytes.
+            string Text(long five, long stream) =>
+                Ascii85(Encode([(0, 0, 65535), (1, five, 0), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0)], Rows.Raw)) +
+                Ascii85([1, (byte)(file.OffsetOf(3) >> 24), (byte)(file.OffsetOf(3) >> 16), (byte)(file.OffsetOf(3) >> 8)]) +
+                Ascii85([(byte)low, 0, 0, (byte)type])[..4] + "\nendstr" + "eam\n!!" + Ascii85([.. new byte[5], .. Encode([(1, stream, 0)], Rows.Raw)]) + "~>";
+
+            file.Object(5, new string(' ', 1015) + Text(0, 0).Length.ToString(CultureInfo.InvariantCulture));
+            var at = file.Position;
+            file.Stream(
+                7,
+                "/Type /XRef /Size 22 /W [1 4 2] /Index [0 1 5 1 1 3 20 2 7 1] /Filter /ASCII85Decode /Root 1 0 R /Length 5 0 R",
+                Encoding.ASCII.GetBytes(Text(file.OffsetOf(5), at)));
+            file.StartXRef(at);
+            return file.ToArray();
+        }
+    }
+
+    /// <summary>
+    /// A file of two revisions. The first holds the catalog, the page tree, the page, object 5, which holds the length of
+    /// cross-reference stream 7 after 1,015 spaces — a <c>MaxObjectLength</c> of 1,024 parts it after its first digit —, and
+    /// stream 7, Flate in a stored block with a PNG predictor of <paramref name="columns"/> columns, whose rows are the
+    /// catalog's, two of reserved types that spell <c>endstream</c> after an end-of-line, then the page tree's, the page's,
+    /// object 5's and its own (<c>/Index [1 1 20 2 2 2 5 1 7 1]</c>). The second is a classic table that places object 5
+    /// and names stream 7 through <c>/Prev</c>. The file is valid.
+    /// </summary>
+    public static byte[] PredictedRowsPartedBySpelledEndStream(int columns)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long five, long stream)
+        {
+            var rows = new List<byte>(Encode([(1, file.OffsetOf(1), 0)], Rows.Raw));
+            rows.AddRange("\nendstream\0\0\0\0"u8.ToArray());
+            rows.AddRange(Encode([(1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, five, 0), (1, stream, 0)], Rows.Raw));
+
+            while (rows.Count % columns != 0)
+            {
+                rows.Add(0);
+            }
+
+            var predicted = new List<byte>();
+
+            for (var i = 0; i < rows.Count; i += columns)
+            {
+                predicted.Add(0);
+                predicted.AddRange(rows.GetRange(i, columns));
+            }
+
+            return Compress([.. predicted]);
+        }
+
+        file.Object(5, new string(' ', 1015) + Data(0, 0).Length.ToString(CultureInfo.InvariantCulture));
+        var at = file.Position;
+        file.Stream(
+            7,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"/Type /XRef /Size 22 /W [1 4 2] /Index [1 1 20 2 2 2 5 1 7 1] /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns {columns} >> /Root 1 0 R /Length 5 0 R"),
+            Data(file.OffsetOf(5), at));
+        file.Text("%" + new string('-', 1200) + "\n");
+        var xref = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{file.OffsetOf(5):D10} 00000 n\r\ntrailer\n<< /Size 22 /Root 1 0 R /Prev {at} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of one cross-reference stream, object 7, whose <c>/Length</c> names object 5, which only the stream's own row
     /// places, before the rows of objects 1 and 2; two rows of reserved types spell <c>endstream</c> after an end-of-line
     /// after them, 28 and 42 bytes in, before the rows of objects 3 and 7 and fifty free ones, 420 bytes in all. Object 5
@@ -940,6 +1045,34 @@ internal static class ChainFiles
         }
 
         return encoding == Rows.Raw ? [.. data] : Compress([.. data]);
+    }
+
+    /// <summary>Writes <paramref name="bytes"/> in ASCII85, whole groups but the last, with no <c>z</c> and no <c>~&gt;</c>.</summary>
+    private static string Ascii85(ReadOnlySpan<byte> bytes)
+    {
+        var text = new StringBuilder();
+        Span<char> digits = stackalloc char[5];
+
+        for (var i = 0; i < bytes.Length; i += 4)
+        {
+            var count = Math.Min(4, bytes.Length - i);
+            uint value = 0;
+
+            for (var j = 0; j < 4; j++)
+            {
+                value = (value << 8) | (j < count ? bytes[i + j] : 0u);
+            }
+
+            for (var j = 4; j >= 0; j--)
+            {
+                digits[j] = (char)('!' + (value % 85));
+                value /= 85;
+            }
+
+            text.Append(digits[..(count + 1)]);
+        }
+
+        return text.ToString();
     }
 
     /// <summary>Compresses data in stored blocks, which show it as written.</summary>
