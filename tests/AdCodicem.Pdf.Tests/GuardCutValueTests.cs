@@ -1299,6 +1299,32 @@ public class GuardCutValueTests
     }
 
     [Fact]
+    public void What_the_offset_a_section_is_named_at_holds_keeps_what_it_read_through_as_a_load_would()
+    {
+        // As above, the /Prev naming object 8's header exactly: the place the chain names is read as a load reads it, and
+        // keeps all of its reading though it holds no section — its stream's length reported, and object 5, read through,
+        // loaded once the chain is read, the guard reported, or thrown. Only a place guessed near it leaves nothing (#263).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "6 0 R" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            placedToo: new Dictionary<int, string> { [6] = "8", [8] = "<< /Length 5 0 R >>\nstream\nabc\nendstream" });
+        var text = Encoding.Latin1.GetString(file);
+        var stream = text.IndexOf("7 0 obj", StringComparison.Ordinal);
+        var eight = text.IndexOf("8 0 obj", StringComparison.Ordinal);
+        file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {eight} "), StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.StreamLengthInvalid, PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.LimitObject);
+
+        var opening = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true }).Dispose();
+        opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Fact]
     public void A_size_beside_an_index_that_names_an_object_a_guard_cut_after_a_whole_reference_is_not_read()
     {
         // Stream 7's /Size names object 5, which MaxObjectLength cuts after "9 0 R", whole, beside an /Index the rows are
