@@ -202,9 +202,9 @@ guard: active by default, reported when it is reached, and lifted by an option.
   property is raised: the index is not rebuilt for them, which turned a sound file into an `xref.rebuilt` error
   (ADR 45) and could lose what the chain had read. A classic table cut by its length keeps its trailer. The chain ends
   at a cut — a table's, a stream's rows, a section or a trailer cut wherever the cut falls, a cross-reference stream
-  whose `/W`, `/Index`, `/Size`, `/Filter` or `/DecodeParms` leads to an object `MaxObjectLength` cut, or whose
-  `/Length` does where only it could say how far the data runs, a `/Prev` or an `/XRefStm` that does (amended on
-  2026-10-23) —, since an older section, or its trailer, would stand for what the cut left out; and a section a guard
+  whose `/W`, `/Index`, `/Filter` or `/DecodeParms`, or `/Size` with no `/Index`, leads to an object `MaxObjectLength`
+  cut, or whose `/Length` does where only it could say how far the data runs, a `/Prev` or an `/XRefStm` the reader
+  follows that does (amended on 2026-10-23 and 2026-10-24) —, since an older section, or its trailer, would stand for what the cut left out; and a section a guard
   cut is where it was named, not looked for near there. One found near where it is named, whose values a guard keeps
   from being read, is the guard's there too (amended on 2026-10-24). A rebuild that damage forces on such a chain keeps the entries
   the chain read; one the chain cannot do without — a guard that leaves it no section — runs as before.

@@ -116,8 +116,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   the data spells, as an embedded PDF file's does, or at an `endstream` the data spells, as a string may, an `endobj`
   after it or not: the length that tells those from the end of the data is the guard's. An `endstream` ends data that
   is the file's only where what follows its object's end — its `endobj`, or the `endstream` itself where none follows —
-  proves it the stream's own: the next object the index places, the end of the file, or the `xref` or `startxref`
-  keyword, which no data that goes on can be followed by. Elsewhere the data up to there comes back cut by the guard,
+  proves it the stream's own: the next object the index places or the end of the file, which no data that goes on is
+  followed by, or the `xref` or `startxref` keyword — which data may spell too: data that spells `endstream`, then
+  `xref` or `startxref`, and goes on is taken to end there as the file's, which only the hidden length could tell. Elsewhere the data up to there comes back cut by the guard,
   `CutByGuard`, whether the object ends with `endobj` is not judged, and nothing is said of the file. A reference the cut
   left whole, the cut falling after `6 0 R`, hides nothing: it is read through to the
   object it names, as it is read whole, while the chain is read as afterward. Decoding stops at a filter so named, or
@@ -139,7 +140,8 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   where its `/Length` so leads and its data was taken to the first `endstream`, are the guard's too, unless what follows
   that `endstream` proves it the stream's own, as above: they are then the file's to lack, and the index is rebuilt. An
   object the chain read through a reference the cut left whole is loaded once the chain is read only for a value it
-  keeps: not for a place it dropped as no section.
+  keeps, or for what the offset a section is named at holds, which is read as a load reads it, its reports kept: not
+  for a place near there it guessed the section was moved to and dropped as none.
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever

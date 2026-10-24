@@ -58,8 +58,8 @@ can take 436 MB.
 An object the map does not hold is one the file does not define, and a reference to it reads as null, as the
 specification says — or one a limit left out of the map, which reads as null too, until the limit is raised: the
 sections past `MaxXRefSectionCount`, the rows past `MaxXRefSectionLength` or past what `MaxStreamLength` reads or
-`MaxDecodedStreamLength` decodes of a cross-reference stream, a cross-reference stream whose `/W`, `/Index`, `/Size`,
-`/Filter` or `/DecodeParms` leads to an object `MaxObjectLength` cuts and the sections older than it — so too one whose
+`MaxDecodedStreamLength` decodes of a cross-reference stream, a cross-reference stream whose `/W`, `/Index`, `/Filter`
+or `/DecodeParms`, or `/Size` with no `/Index`, leads to an object `MaxObjectLength` cuts and the sections older than it — so too one whose
 `/Length` leads to such an object, when no `endstream` ends its data before the next object or the end of the file, or
 the rows past an `endstream` its rows spell, which only that length could tell from the end of its data —, the sections
 a `/Prev` or an `/XRefStm` that leads to such an object names — the older ones, or the cross-reference stream of a hybrid
