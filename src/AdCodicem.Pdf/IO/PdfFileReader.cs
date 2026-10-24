@@ -3278,10 +3278,24 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return section.State;
         }
 
-        using (var probe = _source.GetWindow(absolute, XRefProbeLength))
+        // A probe that holds white space and comments alone, or a first token its edge may cut, is read on as far as a
+        // trailer's window reaches, past which a stream's header is not looked for either: the keyword is the table's
+        // however far the offset falls short of it.
+        var probeLength = XRefProbeLength;
+
+        while (true)
         {
+            using var probe = _source.GetWindow(absolute, probeLength);
             var lexer = new PdfLexer(probe.Memory.Span);
             var first = lexer.Read();
+
+            if ((first.Kind == PdfTokenKind.EndOfInput || first.End >= probe.Length) && probe.Length == probeLength &&
+                probeLength < _guard.Bound(PdfLimit.Trailer))
+            {
+                probeLength = (int)Math.Min(_guard.Bound(PdfLimit.Trailer), (long)probeLength * 8);
+                continue;
+            }
+
             section.Padding = first.Kind == PdfTokenKind.EndOfInput ? probe.Length : first.Start;
 
             if (first.IsKeyword("xref"u8))
@@ -3292,6 +3306,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     : XRefSectionState.Malformed;
                 return section.State;
             }
+
+            break;
         }
 
         section.State = TryReadXRefStream(absolute, section, out previous, candidate);

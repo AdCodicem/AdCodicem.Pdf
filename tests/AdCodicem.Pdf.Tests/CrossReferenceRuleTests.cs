@@ -1307,6 +1307,36 @@ public class CrossReferenceRuleTests
         findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart);
     }
 
+    [Theory]
+    [InlineData(29)]
+    [InlineData(32)]
+    [InlineData(600)]
+    public void A_startxref_naming_white_space_far_before_a_classic_table_is_imprecise_and_the_table_read(int padding)
+    {
+        // Startxref names the start of white space before the xref keyword. The keyword lay past the first 32 bytes the
+        // reader looks at, or across them: the table was not read, the index was rebuilt, and startxref said to name neither
+        // the keyword nor an object, where a cross-reference stream is read past however much white space comes first.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        file.Raw(new string(' ', padding));
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
+            .Replace(
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"),
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table - padding}\n"),
+                StringComparison.Ordinal));
+        using var document = PdfDocument.Open(bytes);
+
+        document.Diagnostics.Should().BeEmpty();
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().EndWith(
+            string.Create(CultureInfo.InvariantCulture, $"startxref gives offset {table - padding}, {padding} bytes before the xref keyword."));
+    }
+
     [Fact]
     public void A_startxref_naming_the_line_feed_before_a_cross_reference_stream_is_imprecise()
     {
