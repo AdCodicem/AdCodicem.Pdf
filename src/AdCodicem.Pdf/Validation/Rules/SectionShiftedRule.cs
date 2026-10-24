@@ -1,5 +1,4 @@
 using System.Globalization;
-using AdCodicem.Pdf.IO.XRef;
 
 namespace AdCodicem.Pdf.Validation.Rules;
 
@@ -26,7 +25,8 @@ internal sealed class SectionShiftedRule : IValidationRule
     {
         foreach (var section in context.Structure.Sections)
         {
-            if (section.State != XRefSectionState.Relocated)
+            // Found there and read, or found there and kept from being read by a guard, the section's own fault (#263).
+            if (!section.WasRelocated)
             {
                 continue;
             }

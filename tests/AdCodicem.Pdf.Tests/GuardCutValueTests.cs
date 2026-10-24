@@ -1918,6 +1918,9 @@ public class GuardCutValueTests
         moved.CutByLimit.Should().BeTrue();
         var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId);
         findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart).And.NotContain(PdfValidationRuleIds.XRefSectionNotFound);
+
+        // The /Prev names the wrong offset whatever the guard did: the section moved is reported, as read whole.
+        findings.Should().Contain(PdfValidationRuleIds.XRefSectionShifted);
     }
 
     [Fact]
