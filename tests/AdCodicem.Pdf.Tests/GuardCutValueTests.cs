@@ -471,6 +471,64 @@ public class GuardCutValueTests
     }
 
     /// <summary>
+    /// A page whose content stream, object 4, holds <c>BT ET</c>, its <c>/Length</c> object 20, which holds 5 after 2,000
+    /// spaces where <paramref name="guard"/> is <c>cut</c>; its <c>endstream</c>, and its <c>endobj</c> where
+    /// <paramref name="endObj"/>, followed by <paramref name="follower"/>: object 6, which the table places, or which no row
+    /// places; the table; the <c>startxref</c> after the table, which comes before object 4; or the end of the file, past
+    /// the one the table's <c>%%EOF</c> marks.
+    /// </summary>
+    private static byte[] StreamFollowedBy(string guard, string follower, bool endObj)
+    {
+        var four = "4 0 obj\n<< /Length 20 0 R >>\nstream\nBT ET\nendstream\n" + (endObj ? "endobj\n" : string.Empty);
+        var late = follower is "startxref" or "end of file";
+
+        if (!late)
+        {
+            return Encoding.Latin1.GetBytes(Text(0));
+        }
+
+        // The table's row for object 4 gives where it lies after the table: an offset as many digits long wherever it lies.
+        var first = Text(0);
+        var at = follower == "startxref" ? first.LastIndexOf("startxref", StringComparison.Ordinal) : first.Length;
+        return Encoding.Latin1.GetBytes(Text(at).Insert(at, four));
+
+        string Text(long at)
+        {
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+                [3] = file.Object(3, Page),
+                [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + "5"),
+            };
+
+            if (late)
+            {
+                rows[4] = at;
+            }
+            else
+            {
+                rows[4] = file.Position;
+                file.Raw(four);
+
+                if (follower != "xref")
+                {
+                    var six = file.Object(6, "(six)");
+
+                    if (follower == "next object")
+                    {
+                        rows[6] = six;
+                    }
+                }
+            }
+
+            file.Table(21, rows, "/Size 21 /Root 1 0 R");
+            return Encoding.Latin1.GetString(file.Bytes);
+        }
+    }
+
+    /// <summary>
     /// A page whose content stream, object 4, holds <paramref name="data"/>, its <c>/Length</c> object 20, which holds
     /// <paramref name="twenty"/>; with no <c>endstream</c> unless <paramref name="endStream"/>.
     /// </summary>
@@ -779,35 +837,85 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData("cut")]
-    [InlineData("left out")]
-    public void An_endstream_only_the_table_follows_where_a_guard_hid_the_length_ends_data_that_is_the_guard_s(string guard)
+    [InlineData("next object", true)]
+    [InlineData("next object", false)]
+    [InlineData("xref", true)]
+    [InlineData("xref", false)]
+    [InlineData("startxref", true)]
+    [InlineData("startxref", false)]
+    [InlineData("end of file", true)]
+    [InlineData("end of file", false)]
+    [InlineData("object no row places", true)]
+    [InlineData("object no row places", false)]
+    public void An_endstream_where_a_guard_hid_the_length_ends_data_that_is_the_file_s_where_what_follows_proves_it_its_own(
+        string follower, bool endObj)
     {
-        // Object 4, the last, lost its endobj, and the table follows its endstream: data may spell "endstream" and "xref" —
-        // an embedded file's does —, the stream's own endstream and endobj after, so only the length the guard hid tells
-        // the two apart. The data up to it is the guard's, the object's endobj unjudged (#224).
+        // Object 4's /Length, object 20, is one MaxObjectLength cuts or MaxIndexEntries leaves out of the index, and its
+        // endstream, which its endobj follows or not, is followed by the next object the index places, a cross-reference
+        // section's keyword, or the end of the file: no endstream the data spells is, and the data is the file's, the
+        // object's endobj judged. Followed by an object no row places, the endstream may be one the data spells, which only
+        // the length tells from the stream's own: the data up to it is the guard's, the object's endobj unjudged (#224).
+        var proven = follower != "object no row places";
+
+        foreach (var guard in (string[])["cut", "left out"])
+        {
+            var limits = guard == "cut"
+                ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+                : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+            using var document = PdfDocument.Open(StreamFollowedBy(guard, follower, endObj), new PdfReaderOptions { Limits = limits });
+
+            var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+            stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
+            stream.Data.CutByGuard.Should().Be(!proven, guard);
+            document.Reader.IsEndObjMissing(4, out _).Should().Be(proven && !endObj, guard);
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+                guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
+        }
+    }
+
+    [Theory]
+    [InlineData("cut", false)]
+    [InlineData("left out", false)]
+    [InlineData("cut", true)]
+    [InlineData("left out", true)]
+    public void An_endstream_and_an_endobj_the_data_spells_where_a_guard_hid_the_length_end_data_that_is_the_guard_s(string guard, bool hex)
+    {
+        // Object 4's content spells "endstream" and "endobj" in a string, which more of the content follows: read whole, the
+        // length passes them. Where a guard hid it, the search stopped there, the endobj taken for the object's own and the
+        // data, cut short, for the file's — its ASCIIHex data said to lack its ">". Nothing after them proves the endstream
+        // the stream's own: the data up to it is the guard's (#224).
+        const string Spelled = "\nendstream\nendobj\n";
+        var data = hex ? "4254202861" + Spelled + "29205466>" : "BT (a" + Spelled + ") Tf ET";
         var file = new HandWrittenFile();
         var rows = new Dictionary<int, long>
         {
             [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
             [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
             [3] = file.Object(3, Page),
-            [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + "5"),
-            [4] = file.Position,
+            [4] = file.Object(4, $"<< /Length 20 0 R{(hex ? " /Filter /ASCIIHexDecode" : string.Empty)} >>\nstream\n{data}\nendstream"),
+            [6] = file.Object(6, "(six)"),
+            [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + data.Length.ToString(CultureInfo.InvariantCulture)),
         };
-        file.Raw("4 0 obj\n<< /Length 20 0 R >>\nstream\nBT ET\nendstream\n");
         file.Table(21, rows, "/Size 21 /Root 1 0 R");
         var limits = guard == "cut"
             ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
             : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            whole.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal(Encoding.Latin1.GetBytes(data));
+        }
+
         using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
-
         var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+        _ = stream.Decode();
 
-        stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
+        stream.GetRawBytes().ToArray().Should().Equal(Encoding.Latin1.GetBytes(data[..data.IndexOf('\n', StringComparison.Ordinal)]));
         stream.Data.CutByGuard.Should().BeTrue();
         document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
-        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
     }
 
     [Theory]
