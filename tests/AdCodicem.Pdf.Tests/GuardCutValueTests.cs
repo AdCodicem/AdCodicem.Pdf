@@ -1112,6 +1112,54 @@ public class GuardCutValueTests
             guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
     }
 
+    [Theory]
+    [InlineData("cut", " ")]
+    [InlineData("left out", " ")]
+    [InlineData("cut", "\n\n")]
+    public void A_checksum_short_of_a_byte_white_space_before_a_proven_endstream_completes_is_no_fault_of_the_file(
+        string guard, string tail)
+    {
+        // Content stream 4's Flate data lacks its checksum's last byte, then white space before its endstream, which the next
+        // object proves its own. The search took a byte of white space in as data, which only the hidden length says is the
+        // data's or not, and which the inflater reads as the checksum's last byte: a checksum that disagrees was reported, a
+        // warning, where read whole the checksum is only short (#224).
+        byte[] zlib;
+
+        using (var output = new MemoryStream())
+        {
+            using (var stream = new ZLibStream(output, CompressionLevel.Optimal, leaveOpen: true))
+            {
+                stream.Write("BT (Hello) Tj ET"u8);
+            }
+
+            zlib = output.ToArray()[..^1];
+        }
+
+        var data = Encoding.Latin1.GetString(zlib);
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + zlib.Length.ToString(CultureInfo.InvariantCulture)),
+            [4] = file.Object(4, $"<< /Length 20 0 R /Filter /FlateDecode >>\nstream\n{data}{tail}endstream"),
+            [5] = file.Object(5, "(five)"),
+        };
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+        var content = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        content.Decode().ToArray().Should().Equal("BT (Hello) Tj ET"u8.ToArray());
+        content.Data.EndHidden.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
+    }
+
     private static byte[] ZLibDecompress(byte[] zlib)
     {
         using var input = new MemoryStream(zlib);

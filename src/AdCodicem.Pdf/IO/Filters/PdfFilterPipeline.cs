@@ -40,8 +40,8 @@ internal static class PdfFilterPipeline
     /// the reader lets data pass through, or a value the filters read that a guard cut or left out of the index: what comes
     /// back is then the data still encoded by the filters past it, no part of what the stream decodes to —, and whether one
     /// cut the data, as a reader of its rows or its objects must know. Data a proven <c>endstream</c> ended past white space
-    /// that only a hidden length says is the data's or not (<see cref="PdfStreamData.EndHidden"/>) decodes as read whole,
-    /// and a filter that runs out at its end says nothing of the file.
+    /// that only a hidden length says is the data's or not (<see cref="PdfStreamData.EndHidden"/>) is not decoded as cut,
+    /// and a filter that runs out at its end, or whose checksum ends in that white space, says nothing of the file.
     /// </summary>
     /// <param name="stream">The stream to decode.</param>
     /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
@@ -162,7 +162,8 @@ internal static class PdfFilterPipeline
 
         // Data whose endstream is proven its own past white space only a hidden length says is the data's or not ends where
         // the file's does but for that white space, which parts no ASCII85 or ASCIIHex group and falls in a Flate stream's
-        // checksum: it decodes as it would read whole, and a filter that runs out there says nothing of the file.
+        // checksum: no group is dropped and no row undone for it, so that it decodes as read whole, but for LZW or RunLength
+        // data that lacks its end marker and takes the white space in; a filter that runs out there says nothing of the file.
         var silenced = stream.Data.EndHidden;
 
         // A guard a decoding of the same data reached before was reported then: its verdict stands, whatever this one meets.
@@ -240,7 +241,7 @@ internal static class PdfFilterPipeline
     /// </param>
     /// <param name="silenced">
     /// Whether where the data ends says nothing of the file, though it is no cut: a filter that runs out there reports
-    /// nothing, and decodes as it would read whole.
+    /// nothing, drops no group the end parts, and undoes a predictor's last row as far as it goes only where it ran out.
     /// </param>
     /// <param name="limitReported">Whether the stream reported a filter that stopped at the bound already.</param>
     /// <param name="dropped">How many bytes a last group the cut parted would decode to, which the filter did not write.</param>
@@ -282,9 +283,13 @@ internal static class PdfFilterPipeline
             // Data a guard of the reader's cut ends early because the reader stopped reading it, or a filter before
             // this one stopped decoding it, which the guard reported, and data whose end a guard hides ends where the guard
             // may: that it ran out says nothing of the file. A fault, or a checksum that disagrees, lies in bytes the reader
-            // did read, and the whole data would meet it at the same point: it is the file's.
+            // did read, and the whole data would meet it at the same point: it is the file's — but for a checksum that ends
+            // in white space only a hidden length says is the data's or not, which may be read in place of the checksum's
+            // last bytes.
+            var endHidden = (quiet && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing) ||
+                (silenced && ending == FlateEnding.ChecksumMismatch && PdfCharacters.IsWhitespace(data.Span[^1]));
             ReportEnding(
-                quiet && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing ? FlateEnding.Whole : ending,
+                endHidden ? FlateEnding.Whole : ending,
                 decoded.Length,
                 faultAt,
                 data.Length,
