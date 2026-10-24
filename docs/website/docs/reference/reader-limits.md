@@ -113,10 +113,13 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   of a longer one, is only a place to look for `endstream` at. No `endstream` after the data of a stream whose
   `/Length` names an object a guard cut, or left out of the index, is still the file's fault, and reported; the report
   names the object at the end of the chain of references. The search may stop short of it, though, at an object header
-  the data spells, as an embedded PDF file's does, or at an `endstream` the object's `endobj` does not follow, as a
-  string may spell one: the length that tells those from the end of the data is the guard's, so the data up to there
-  comes back cut by the guard, `CutByGuard`, whether the object ends with `endobj` is not judged, and nothing is said of
-  the file. A reference the cut left whole, the cut falling after `6 0 R`, hides nothing: it is read through to the
+  the data spells, as an embedded PDF file's does, or at an `endstream` the data spells, as a string may, an `endobj`
+  after it or not: the length that tells those from the end of the data is the guard's. An `endstream` ends data that
+  is the file's only where what follows its object's end — its `endobj`, or the `endstream` itself where none follows —
+  proves it the stream's own: the next object the index places, the end of the file, or the `xref` or `startxref`
+  keyword, which no data that goes on can be followed by. Elsewhere the data up to there comes back cut by the guard,
+  `CutByGuard`, whether the object ends with `endobj` is not judged, and nothing is said of the file. A reference the cut
+  left whole, the cut falling after `6 0 R`, hides nothing: it is read through to the
   object it names, as it is read whole, while the chain is read as afterward. Decoding stops at a filter so named, or
   at the filter whose
   parameters are: the filters before it run, and the stream comes back as they decoded it, still encoded by the rest,
@@ -124,11 +127,18 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   a Flate or LZW filter that comes before it included, and says false when such a value ends the chain there; under
   `ThrowOnLimit`, loading one throws where decoding would. An object stream the reader meets so
   is read as one a guard cut before its data: its objects are unknown until you raise the limit, and when the catalog
-  is among them the reader does not look for another. While the chain is read, a `/Prev` or an `/XRefStm` that leads to
-  an object `MaxObjectLength` cuts, a cross-reference stream whose `/W`, `/Index`, `/Size`, `/Filter` or `/DecodeParms`
-  does, and one whose `/Length` does when no `endstream` ends its data, are the guard's, as a section it cut is: the
-  chain ends there, the sections it names are not read — the older ones, or a hybrid file's cross-reference stream —,
-  the index is not rebuilt, and the guard is reported once the chain is read, or thrown by `Open`.
+  is among them the reader does not look for another. While the chain is read, a `/Prev` or an `/XRefStm` the reader
+  follows that leads to an object `MaxObjectLength` cuts — not a hybrid file's cross-reference stream's own `/Prev`,
+  nor the links of a table an `/XRefStm` names in a stream's place, which it leaves unread —, a cross-reference stream
+  whose `/W`, `/Index`, `/Filter` or `/DecodeParms` does, or whose `/Size` does with no `/Index`, and one whose
+  `/Length` does when no `endstream` ends its data, are the guard's, as a section it cut is: the chain ends there, the
+  sections it names are not read — the older ones, or a hybrid file's cross-reference stream —, the index is not
+  rebuilt, and the guard is reported once the chain is read, or thrown by `Open`. So does a section found near the
+  offset it is named at, which such a value keeps from being read. The rows a cross-reference stream's data lacks,
+  where its `/Length` so leads and its data was taken to the first `endstream`, are the guard's too, unless what follows
+  that `endstream` proves it the stream's own, as above: they are then the file's to lack, and the index is rebuilt. An
+  object the chain read through a reference the cut left whole is loaded once the chain is read only for a value it
+  keeps: not for a place it dropped as no section.
 - A stream read from a document decodes under **that document's** limits, however long after opening you decode it.
   A stream you build in memory decodes under `PdfReaderLimits.Default`.
 - A classic trailer that ends within the window its cross-reference table was read through is read whole, whatever

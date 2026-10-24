@@ -113,8 +113,10 @@ separate types, separate severity scales, and vocabularies that never share a co
    trailers, or, once the searches of a document have read four times the file, on which streams were searched
    first ([#138], M23). A stream whose `/Length` a guard cut or left out of the index may be valid, its length only
    hidden: when a header its data spells — an embedded file's does — stops its search, no `endobj` of its own before
-   it, or an `endstream` it spells, which its object's `endobj` does not follow, ends it, the data up to there is the
-   guard's, cut by it, and nothing is said of the file ([#224]). With no
+   it, or an `endstream` it spells ends it, the data up to there is the guard's, cut by it, and nothing is said of the
+   file. An `endstream` is the stream's own, and its end the file's, only where what follows the object's end — its
+   `endobj`, or the `endstream` where none follows — is the next object the index places, the end of the file, or
+   `xref` or `startxref`, read once for each place ([#224]). With no
    `endstream` before the stop, the object's `endobj` ends the data where it
    follows the declared length as an `endstream` would, or where it is the last one, a whole keyword — no regular
    character, solidus or percent sign right before it, which would make it part of a token, a name or a comment that
@@ -134,15 +136,18 @@ separate types, separate severity scales, and vocabularies that never share a co
    `/DecodeParms`, a cross-reference stream's `/W`, a trailer's `/Prev` or `/XRefStm` — is not judged as one the
    file gave. The stream's data is found by its `endstream`, an integer the cut left only a place to look for
    one at, and a missing `endstream` is still the file's fault but where the search stops at a header the data
-   spells or an `endstream` its `endobj` does not follow (item 4); a reference the cut left whole is read through,
-   as a load reads it; its chain of filters ends there, with the data
+   spells or an `endstream` nothing after it proves the stream's own (item 4); a reference the cut left whole is read
+   through, as a load reads it; its chain of filters ends there, with the data
    left encoded; and the chain of cross-reference sections ends at that section, with nothing rebuilt and the
-   older sections and their trailers the guard's to hide. An object `MaxObjectLength` cut there is loaded once
-   the chain is read, which reaches the guard — thrown at opening under `ThrowOnLimit`. A cross-reference
+   older sections and their trailers the guard's to hide, wherever near its named offset the section is found. An
+   object `MaxObjectLength` cut there is loaded once the chain is read, which reaches the guard — thrown at opening
+   under `ThrowOnLimit` —, for a value the chain keeps: not for a place it dropped as no section. A cross-reference
    stream's `/Length` the chain could not read, which leads to such an object, ends the chain so wherever only it
    could say how far the data runs: with no `endstream` before the next object or the end of the file, the
    section is the guard's, not malformed; where the rows spell one and no `endstream` confirms what the cut left
-   of the length, the rows past it are the guard's.
+   of the length, the rows past it are the guard's — unless what follows the `endstream` the data was taken to
+   proves it the stream's own, as in item 4, which leaves the rows the data lacks to the file. Data whose end a
+   guard hides is decoded to the bytes the file gives, only what a filter says of the end silenced.
 
 ### 3.2 The write path
 

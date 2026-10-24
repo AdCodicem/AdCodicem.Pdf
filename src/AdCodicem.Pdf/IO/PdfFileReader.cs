@@ -728,7 +728,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// left unread, and the guard is neither reported nor counted: the chain's sections are cut only by their own windows
     /// and decoding, and a guard that holds is reached when the object is loaded once the chain is read. One whose value
     /// the cut left a whole reference reads as that reference, as a load reads through it, and is loaded once the chain is
-    /// read for its guard to be reached. The objects read through it nest as loads do, within <see cref="MaxNestedLoads"/>.
+    /// read for its guard to be reached — unless what read it was a place the section may have been moved to, which the
+    /// chain dropped (<see cref="ForgetReadThrough"/>). The objects read through it nest as loads do, within
+    /// <see cref="MaxNestedLoads"/>.
     /// </para>
     /// </remarks>
     private PdfObject? ReadWithoutLoading(PdfObjectId id)

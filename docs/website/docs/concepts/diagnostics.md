@@ -71,9 +71,12 @@ the index is not judged either: its data is found the same way, and a missing `e
 stream may be valid, its length only hidden, and its data may spell an object header, as an embedded PDF file's does —
 and the `endstream` of a stream the embedded file holds, which no search can tell from the stream's own. A header the
 data spells that stops the search, with no `endobj` of the object's own before it, leaves the data up to it to the
-guard, and so does an `endstream` the data spells — inside a string, say — that the object's `endobj` does not
-follow: the data is marked cut by the guard, whose report the document holds, whether the object ends with `endobj` is
-not judged, and nothing is said of the file. A whole reference the cut left, `6 0 R` before the window's end, is no length
+guard, and so does an `endstream` the data spells — inside a string, say, an `endobj` after it or not —: the data is
+marked cut by the guard, whose report the document holds, whether the object ends with `endobj` is not judged, and
+nothing is said of the file. Only what follows the object's end — its `endobj`, or the `endstream` where none follows —
+can prove an `endstream` the stream's own: the next object the index places, the end of the file, or the `xref` or
+`startxref` keyword, which data that goes on is never followed by. The end is then the file's, and so is an `endobj`
+the object lacks. A whole reference the cut left, `6 0 R` before the window's end, is no length
 it hid: it leads on to the object it names, as read whole.
 
 A cross-reference stream whose `/Length` the chain cannot read yet, which a valid file may hold, is searched as well, up
@@ -82,7 +85,8 @@ rows may spell an object header and end in a carriage return: no header stops it
 the line feed that precedes `endstream` is kept. Data with no `endstream` before that stop ends nowhere the section
 says, and its rows are not read — the file's fault, unless the `/Length` leads to an object one of the reader's limits
 cut: the length that would have said where the data ends is then the guard's, and so is the section, the chain ending
-there.
+there. Where such a `/Length` leaves the data at the first `endstream`, the rows it lacks are the guard's too, unless
+what follows that `endstream` proves it the stream's own, as above: they are then the file's to lack.
 
 The search is not one of the reader's limits: a valid file's `endstream` follows its length, so only a damaged stream is
 searched — and a cross-reference stream whose `/Length` the chain cannot read yet, and a stream whose `/Length` a guard
