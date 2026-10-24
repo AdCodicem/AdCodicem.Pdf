@@ -1337,6 +1337,72 @@ public class CrossReferenceRuleTests
             string.Create(CultureInfo.InvariantCulture, $"startxref gives offset {table - padding}, {padding} bytes before the xref keyword."));
     }
 
+    [Theory(Timeout = 60_000)]
+    [InlineData(300, false)]
+    [InlineData(70_000, false)]
+    [InlineData(300, true)]
+    public async Task A_startxref_naming_more_white_space_than_a_trailer_s_window_before_a_classic_table_reaches_the_guard(
+        int padding, bool throwOnLimit)
+    {
+        // The reader reads on past white space for the xref keyword as far as MaxTrailerLength reaches, past which it would
+        // read the same window again and again: the guard is reached, the index rebuilt, or the guard thrown.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        file.Raw(new string(' ', padding));
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
+            .Replace(
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"),
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table - padding}\n"),
+                StringComparison.Ordinal));
+        var limits = padding > PdfReaderLimits.Default.MaxTrailerLength
+            ? PdfReaderLimits.Default
+            : PdfReaderLimits.Default with { MaxTrailerLength = 256 };
+        var options = new PdfReaderOptions { Limits = limits, ThrowOnLimit = throwOnLimit };
+
+        if (throwOnLimit)
+        {
+            await Task.Run(() => FluentActions.Invoking(() => PdfDocument.Open(bytes, options)).Should().Throw<PdfLimitExceededException>(), TestContext.Current.CancellationToken);
+            return;
+        }
+
+        using var document = await Task.Run(() => PdfDocument.Open(bytes, options), TestContext.Current.CancellationToken);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefRebuilt);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_startxref_naming_white_space_that_runs_to_the_end_of_the_file_names_no_table()
+    {
+        // The white space runs out before the reader's window does: there is nothing more to read on to.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var text = Encoding.Latin1.GetString(file.Bytes).Replace(
+            string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"),
+            "startxref\n##########\n",
+            StringComparison.Ordinal);
+        var bytes = Encoding.Latin1.GetBytes(
+            text.Replace("##########", text.Length.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal) +
+            new string(' ', 100));
+        using var document = PdfDocument.Open(bytes);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileStartXRefWrong).Message.Should().EndWith(
+            "which holds neither the xref keyword nor an object.");
+    }
+
     [Fact]
     public void A_startxref_naming_the_line_feed_before_a_cross_reference_stream_is_imprecise()
     {
