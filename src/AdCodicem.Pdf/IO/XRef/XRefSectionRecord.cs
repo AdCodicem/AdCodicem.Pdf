@@ -43,6 +43,12 @@ internal sealed class XRefSectionRecord
     /// <summary>Gets where the section was read, which is where it was named unless it was relocated.</summary>
     public long Offset { get; private set; }
 
+    /// <summary>
+    /// Gets a value indicating whether the section was found away from where it was named, whatever became of it there:
+    /// read, or kept from being read by a guard, which leaves its state <see cref="XRefSectionState.Malformed"/>.
+    /// </summary>
+    public bool WasRelocated => Offset != NamedOffset;
+
     /// <summary>Gets what became of the section.</summary>
     public XRefSectionState State { get; set; }
 
