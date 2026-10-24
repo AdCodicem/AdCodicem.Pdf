@@ -150,7 +150,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// searched once to its <c>endstream</c>, or to a header its data spells, which leaves the data up to it to the guard;
     /// and white space after a declared length that runs past a first read is read on once for each place (#174). The data
     /// of different streams lies apart, and so do the runs of white space after them: together those reads cover the file
-    /// once, and one read past each — about twice the file at most. Every other search is of an invalid stream, whose
+    /// once, and one read past each — about twice the file at most. A fourth adds a little to each stream of the second
+    /// way: the proof that an <c>endstream</c> found is the stream's own (#224) reads past it to its object's end and what
+    /// follows, three first reads of <see cref="ProofRead"/> bytes, which double only as white space runs on — a few times
+    /// a stream of a few bytes, so that a file of such streams alone reads about three times itself. Every other search is of an invalid stream, whose
     /// <c>endstream</c> does not follow its declared length. Each
     /// reads from a stream's data to the first object header the bytes hold after it, or to the next object the index as
     /// written places, whichever is nearer, and its reads grow from twice what the parser holds of the data
@@ -164,6 +167,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// crafted files reach it, and no document of the corpus comes near, whose searches read 0.35 of a file at most.
     /// </remarks>
     internal const int EndStreamSearchPasses = 4;
+
+    /// <summary>
+    /// How many bytes the first read of each step of an <c>endstream</c>'s proof reads (<see cref="EndStreamFollower"/>):
+    /// what follows a keyword is mostly an end-of-line away, and the reads double past it as white space runs on.
+    /// </summary>
+    private const int ProofRead = 16;
 
     /// <summary>Asks <see cref="TryParseNumberedAt"/> for a direct object, with no object header: a trailer.</summary>
     private const int DirectObject = -1;
@@ -389,10 +398,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly Dictionary<long, EndObjState?> _endStreamChecks = [];
 
     /// <summary>
-    /// Whether the <c>endstream</c> after each place a search ended data at is the stream's own beyond what its length
-    /// could say (<see cref="IPdfStreamDataProvider.IsOwnEndStream"/>): read once, however many times its stream is parsed.
+    /// What follows the object's end after each place a search ended data at, with what was said follows the
+    /// <c>endstream</c> there, as <see cref="IPdfStreamDataProvider.IsOwnEndStream"/> reads it: where its first significant
+    /// byte lies, -1 where nothing could be read, and whether the end of the file or a cross-reference section's keyword
+    /// stands there. Read once, however many times its stream is parsed; each caller's next object is weighed against it.
     /// </summary>
-    private readonly Dictionary<long, bool> _ownEndStreams = [];
+    private readonly Dictionary<(long DataEnd, EndObjState EndObj), (long Position, bool Boundary)> _endStreamFollowers = [];
 
     /// <summary>
     /// Where the data starts of each stream whose length fault a reading the reader kept reported: the stream is not
@@ -1724,11 +1735,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Gives where the first byte at or after <paramref name="position"/> lies that is neither white space nor part of a
     /// comment, reading the file on as far as they run, or the length of the file when they run to its end; -1 when the
     /// searches for <c>endstream</c> have read as much as they may (<see cref="EndStreamSearchPasses"/>), which these reads
-    /// count with, or the source gives less than it holds.
+    /// count with, or the source gives less than it holds. The first read is <paramref name="firstRead"/> bytes, and each
+    /// after it twice the one before, up to <see cref="EndStreamSearchChunk"/>.
     /// </summary>
-    private long NextSignificant(long position)
+    private long NextSignificant(long position, int firstRead = PdfObjectParser.EndObjLookahead)
     {
-        var size = PdfObjectParser.EndObjLookahead;
+        var size = firstRead;
         var inComment = false;
 
         while (position < _source.Length)
@@ -1896,27 +1908,48 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <inheritdoc/>
     bool IPdfStreamDataProvider.IsOwnEndStream(long absoluteDataEnd, EndObjState endObj, long? nextObject)
     {
-        if (_ownEndStreams.TryGetValue(absoluteDataEnd, out var known))
+        var (position, boundary) = EndStreamFollower(absoluteDataEnd, endObj);
+        return position >= 0 && (boundary || IsPlacedAt(position, nextObject));
+    }
+
+    /// <summary>
+    /// Reads, once for each place, what follows the end of the object whose data a search ended at
+    /// <paramref name="dataEnd"/>: past the <c>endstream</c> keyword, whole, and the <c>endobj</c> after it where
+    /// <paramref name="endObj"/> says one follows, white space and comments between, through first reads of
+    /// <see cref="ProofRead"/> bytes counted with the searches (<see cref="EndStreamSearchPasses"/>).
+    /// </summary>
+    private (long Position, bool Boundary) EndStreamFollower(long dataEnd, EndObjState endObj)
+    {
+        if (_endStreamFollowers.TryGetValue((dataEnd, endObj), out var known))
         {
             return known;
         }
 
-        // The endstream keyword, then the endobj that follows it, where one does: each found where a reading said it lies.
-        var end = NextSignificant(absoluteDataEnd);
-        end = end < 0 || end >= _source.Length ? -1 : end + StreamEnds.EndStreamKeyword.Length;
+        // "endstreamxref" is no keyword, and ends no data: what follows it proves nothing.
+        var keyword = NextSignificant(dataEnd, ProofRead);
+        var end = keyword >= 0 && keyword < _source.Length && IsKeywordAt(keyword, StreamEnds.EndStreamKeyword)
+            ? keyword + StreamEnds.EndStreamKeyword.Length
+            : -1;
 
         if (end >= 0 && endObj == EndObjState.Present)
         {
-            end = NextSignificant(end);
+            end = NextSignificant(end, ProofRead);
             end = end < 0 || end >= _source.Length ? -1 : end + StreamEnds.EndObjKeyword.Length;
         }
 
-        var next = end < 0 ? -1 : NextSignificant(end);
-        var own = next >= 0 &&
-            (next == _source.Length || next == nextObject || IsKeywordAt(next, "xref"u8) || IsKeywordAt(next, StartXRefKeyword));
-        _ownEndStreams[absoluteDataEnd] = own;
-        return own;
+        var next = end < 0 ? -1 : NextSignificant(end, ProofRead);
+        var follower = (next, next >= 0 &&
+            (next == _source.Length || IsKeywordAt(next, "xref"u8) || IsKeywordAt(next, StartXRefKeyword)));
+        _endStreamFollowers[(dataEnd, endObj)] = follower;
+        return follower;
     }
+
+    /// <summary>
+    /// Determines whether the object an index places at <paramref name="placed"/> starts at <paramref name="position"/>:
+    /// there, or past the white space and comments its row names, as the reader reads an object at a row's offset.
+    /// </summary>
+    private bool IsPlacedAt(long position, long? placed) =>
+        placed is { } at && (at == position || (at < position && NextSignificant(at, ProofRead) == position));
 
     /// <summary>
     /// Determines whether <paramref name="keyword"/>, whole, starts at <paramref name="position"/>: the file ends after it,
@@ -2184,8 +2217,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _endStreamSearches.TrimExcess();
         _endStreamChecks.Clear();
         _endStreamChecks.TrimExcess();
-        _ownEndStreams.Clear();
-        _ownEndStreams.TrimExcess();
+        _endStreamFollowers.Clear();
+        _endStreamFollowers.TrimExcess();
         Release(_lengthFaultsReported);
         Release(_syntaxReported);
         Release(_limitsReached);
@@ -3892,21 +3925,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // is asked too: a newer section may place the object, which a guard cut.
             if (!retaken && !endHidden && deferred is { } unsettled && declared > held && decodedWhole)
             {
-                var whole = RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, index is null ? [0, declared] : subsections, out lengthCut);
-
-                // Where a guard cut the length, the endstream the data ends at is the stream's own, and the rows it lacks
-                // the file's, only where what follows proves it, as a load of the stream reads it (#224).
-                lengthCut = lengthCut && !EndsAtOwnEndStream(whole ?? xrefStream);
-
-                if (whole is not null)
+                if (RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, index is null ? [0, declared] : subsections, out lengthCut) is { } whole)
                 {
                     _diagnostics.RollBack(decoding);
                     xrefStream = whole;
                     deferred = unsettled with { Taken = whole.Data.Length };
                     retaken = true;
-                    endHidden = lengthCut;
                     continue;
                 }
+            }
+
+            // Where a guard cut the length, the endstream the data ends at — as the chain took it, or took it again — is the
+            // stream's own, and the rows it lacks the file's, only where what follows proves it, as a load of the stream
+            // reads it: the rows the data holds place objects too (#224).
+            if (lengthCut && !endHidden && EndsAtOwnEndStream(xrefStream, data, fieldWidths, row, held))
+            {
+                lengthCut = false;
             }
 
             // Data a /Length the chain could not read left to an endstream nothing confirmed, where the length that would say
@@ -4008,17 +4042,41 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Determines whether the <c>endstream</c> cross-reference stream <paramref name="stream"/>'s data ends at, as the chain
     /// took it or took it again, is the stream's own beyond what a <c>/Length</c> a guard cut could say
-    /// (<see cref="IPdfStreamDataProvider.IsOwnEndStream"/>): where the data ends is then the file's (#224).
+    /// (<see cref="IPdfStreamDataProvider.IsOwnEndStream"/>): where the data ends is then the file's (#224). The next
+    /// object an index places is the nearer of the one the sections read so far place and the first the
+    /// <paramref name="held"/> rows of <paramref name="data"/> place past the start of the data, as the index a load of the
+    /// stream reads with holds them.
     /// </summary>
-    private bool EndsAtOwnEndStream(PdfStream stream)
+    private bool EndsAtOwnEndStream(PdfStream stream, ReadOnlySpan<byte> data, ReadOnlySpan<int> widths, int row, long held)
     {
         var dataStart = stream.Data.Position;
         var dataEnd = dataStart + stream.Data.Length;
         var provider = (IPdfStreamDataProvider)this;
 
-        return _endStreamSearches.TryGetValue((dataStart, true), out var known) &&
-            provider.CheckEndStream(dataEnd) is EndObjState endObj and (EndObjState.Absent or EndObjState.Present) &&
-            provider.IsOwnEndStream(dataEnd, endObj, known.Search.NextObject);
+        if (!_endStreamSearches.TryGetValue((dataStart, true), out var known) ||
+            provider.CheckEndStream(dataEnd) is not EndObjState endObj || endObj is not (EndObjState.Absent or EndObjState.Present))
+        {
+            return false;
+        }
+
+        var next = known.Search.NextObject;
+
+        // Each row lies within the data, whose length an int holds.
+        for (var at = 0L; at < held; at++)
+        {
+            var fields = data.Slice((int)at * row, row);
+            var cursor = 0;
+            var type = widths[0] == 0 ? 1 : ReadField(fields, ref cursor, widths[0]);
+            var offset = ReadField(fields, ref cursor, widths[1]);
+
+            if (type == 1 && offset <= long.MaxValue && PositionOf((long)offset) is var placed && placed > dataStart &&
+                (next is null || placed < next))
+            {
+                next = placed;
+            }
+        }
+
+        return provider.IsOwnEndStream(dataEnd, endObj, next);
     }
 
     /// <summary>
