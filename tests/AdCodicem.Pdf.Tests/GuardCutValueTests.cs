@@ -751,8 +751,9 @@ public class GuardCutValueTests
     [InlineData("left out")]
     public void An_endstream_the_data_spells_where_a_guard_hid_the_length_ends_data_that_is_the_guard_s(string guard)
     {
-        // The content stream's data spells endstream inside a string, which its object's endobj does not follow; its own
-        // endstream and endobj come after the 40 bytes. Read whole, the length passes the spelled one. Where a guard cut the
+        // The content stream's data spells endstream inside a string, which nothing that would prove it the stream's own
+        // follows — an object the index places, the end of the file, xref or startxref —; its own endstream and endobj come
+        // after the 40 bytes. Read whole, the length passes the spelled one. Where a guard cut the
         // /Length, or left it out of the index, the search stops there, and the object was said to lack its endobj: the
         // length that tells the two apart is the guard's, and so is the data up to it (#224).
         const string Data = "BT /F1 12 Tf 72 712 Td (endstream) Tj ET";
@@ -1510,8 +1511,9 @@ public class GuardCutValueTests
         section.CutByLimit.Should().BeTrue();
         section.Incomplete.Should().BeFalse();
 
-        // Loaded, the stream ends at the endstream its rows spell, which its object's endobj does not follow: the data is the
-        // guard's, and the object was said to lack its endobj.
+        // Loaded, the stream ends at the endstream its rows spell, which nothing past its object's end proves its own — an
+        // object the index places, the end of the file, xref or startxref —: the data is the guard's, and the object is not
+        // said to lack its endobj, which is the guard's to hide.
         document.GetObject(new PdfObjectId(7)).AsStream().Required().Data.CutByGuard.Should().BeTrue();
         document.Reader.IsEndObjMissing(7, out _).Should().BeFalse();
 
