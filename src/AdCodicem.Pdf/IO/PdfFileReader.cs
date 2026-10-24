@@ -3792,11 +3792,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <para>
     /// An object that declares itself a cross-reference stream — <c>/Type /XRef</c>, or a <c>/W</c>, beside no other
     /// <c>/Type</c> at a place the section may have been moved to — and cannot be read is a malformed section; any
-    /// other object there, or none, is no section at all, and a guard that cut what declares another type cut no
-    /// section. What it writes direct that numbers its rows wrongly is the file's fault, whatever a value a guard cut
-    /// hides. At a place the section may have been moved to (<paramref name="candidate"/>), nothing such an object's
-    /// reading met is reported or recorded — its search for an <c>endstream</c> aside, which is kept as every search is
-    /// —: it was read as a section, through a section's window, and is read as itself when something asks for it.
+    /// other object there, or none, is no section at all, and a guard that cut what declares another type, its dictionary
+    /// or a value of it, cut no section. What makes it unreadable whatever a value a guard cut holds is the file's fault,
+    /// as read whole (<see cref="FaultBesideCut"/>). At a place the section may have been moved to
+    /// (<paramref name="candidate"/>), nothing such an object's reading met is reported or recorded — its search for an
+    /// <c>endstream</c> aside, which is kept as every search is —: it was read as a section, through a section's window,
+    /// and is read as itself when something asks for it.
     /// </para>
     /// <para>
     /// ISO 32000-1 (7.5.8.2) makes the values of this dictionary direct, the elements of <c>/W</c> and <c>/Index</c>
@@ -3901,18 +3902,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             if (cutObject is { } past)
             {
-                // What the section writes direct that makes it unreadable whatever the guard hid is the file's, as read whole.
-                if (WrittenNumberingFault(dictionary) is { } numberingWritten)
-                {
-                    section.Fault = numberingWritten;
-                    return XRefSectionState.Malformed;
-                }
-
-                section.Fault = lengthFault;
-                section.CutByLimit = true;
-                section.CutByValue = true;
-                (_chainValuesCut ??= []).Add(past);
-                return XRefSectionState.Malformed;
+                // What makes the section unreadable whatever the length the guard hid holds is the file's, as read whole: a
+                // value no section read so far places, or what the values read give.
+                var file = UnreadValue(dictionary, out var unreadCut) is { } unplaced && unreadCut is null
+                    ? unplaced
+                    : FaultBesideCut(dictionary);
+                section.Fault = file ?? lengthFault;
+                return file is null ? CutByValue(section, value, past) : XRefSectionState.Malformed;
             }
 
             var where = search.NextObject is { } next
@@ -3924,34 +3920,31 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return XRefSectionState.Malformed;
         }
 
-        if (UnreadValue(dictionary, out var unreadCut) is { } unread)
+        if (UnreadValue(dictionary, out var valueCut) is { } unread)
         {
-            // A value a guard cut is the guard's, as rows a guard cut are: the section counts as cut, the chain ends here,
-            // and nothing is rebuilt for it (ADR 34). The guard is reached once the chain is read (#263).
             section.Fault = unread;
 
-            if (unreadCut is { } cut)
+            // A value no section read so far places is the file's fault. One a guard cut is the guard's, as rows a guard cut
+            // are (CutByValue), but for what makes the section unreadable whatever the value holds: the file's, as read whole.
+            if (valueCut is not { } cut)
             {
-                // What the section writes direct that makes it unreadable whatever the guard hid is the file's, as read whole.
-                if (WrittenNumberingFault(dictionary) is { } numberingWritten)
-                {
-                    section.Fault = numberingWritten;
-                    return XRefSectionState.Malformed;
-                }
-
-                section.CutByLimit = true;
-                section.CutByValue = true;
-                (_chainValuesCut ??= []).Add(cut);
+                return XRefSectionState.Malformed;
             }
 
-            return XRefSectionState.Malformed;
+            if (FaultBesideCut(dictionary) is { } file)
+            {
+                section.Fault = file;
+                return XRefSectionState.Malformed;
+            }
+
+            return CutByValue(section, value, cut);
         }
 
         var widths = dictionary.GetArray(PdfName.W);
 
         if (widths is null || widths.Count < 3)
         {
-            section.Fault = "its /W does not give the widths of three fields";
+            section.Fault = WidthsMissing;
             return XRefSectionState.Malformed;
         }
 
@@ -3964,25 +3957,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             var width = widths.Resolved(i).AsInteger();
 
-            if (width is null)
+            if (WidthFault(width) is { } widthFault)
             {
-                section.Fault = "its /W gives a field a width that is not an integer";
+                section.Fault = widthFault;
                 return XRefSectionState.Malformed;
             }
 
-            if (width < 0)
-            {
-                section.Fault = "its /W gives a field a negative width";
-                return XRefSectionState.Malformed;
-            }
-
-            declaredWidths[i] = width.Value;
+            declaredWidths[i] = width.GetValueOrDefault();
             anyWidth |= width > 0;
         }
 
         if (!anyWidth)
         {
-            section.Fault = "its /W gives rows of no bytes";
+            section.Fault = NoRowBytes;
             return XRefSectionState.Malformed;
         }
 
@@ -4389,40 +4376,117 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         (dictionary.IsOfType(PdfName.XRef) || dictionary.ContainsKey(PdfName.W));
 
     /// <summary>
-    /// Says what is wrong with how a cross-reference stream numbers its rows, as far as it writes it direct: an
-    /// <c>/Index</c> or <c>/Size</c> written as a reference, or an <c>/Index</c> element, may lead to what a guard cut, and
-    /// says nothing then. Null when nothing written direct is wrong.
+    /// Takes a section a value's cut keeps from being read for the guard's: the section counts as cut, the chain ends there
+    /// and nothing is rebuilt for it (ADR 34), and the object the guard cut is loaded once the chain is read, which reaches
+    /// the guard (#263). What declares another type is no section a guard cut, a font's <c>/W</c> giving widths: it is the
+    /// file's to be, as read whole.
     /// </summary>
-    private static string? WrittenNumberingFault(PdfDictionary dictionary)
+    /// <param name="section">The section, whose fault names the value.</param>
+    /// <param name="value">What the offset holds.</param>
+    /// <param name="cut">The object the guard cut that the value leads to.</param>
+    private XRefSectionState CutByValue(XRefSectionRecord section, PdfObject value, PdfObjectId cut)
     {
-        var written = dictionary.GetRaw(PdfName.Index);
+        if (DeclaresOnlyCrossReferenceStream(value))
+        {
+            section.CutByLimit = true;
+            section.CutByValue = true;
+            (_chainValuesCut ??= []).Add(cut);
+        }
 
-        if (written is PdfReference)
+        return XRefSectionState.Malformed;
+    }
+
+    /// <summary>
+    /// Says what makes a cross-reference stream unreadable whatever the values a guard cut hold, as a whole read says it:
+    /// the widths its <c>/W</c> gives, then how it numbers its rows, as far as the values read say. A value a guard cut, or
+    /// an element of one, says nothing, nor does what depends on it — the <c>/Size</c> an <c>/Index</c> so cut may stand
+    /// beside —; an <c>/Index</c> that holds no pairs is wrong whatever its elements hold. Null when nothing read is wrong:
+    /// the section is then the guard's.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="UnreadValue"/> followed every value read here, and found none that no section read so far places: a value
+    /// that cannot be read is one a guard cut.
+    /// </remarks>
+    private string? FaultBesideCut(PdfDictionary dictionary)
+    {
+        if (Unread(dictionary, PdfName.W, out var w, out _) is null)
+        {
+            if (w is not PdfArray widths || widths.Count < 3)
+            {
+                return WidthsMissing;
+            }
+
+            var known = true;
+            var anyWidth = false;
+
+            for (var i = 0; i < 3; i++)
+            {
+                if (Follow(PdfName.W, widths[i], entry: false, out var element, out _) is not null)
+                {
+                    known = false;
+                    continue;
+                }
+
+                var width = element?.AsInteger();
+
+                if (WidthFault(width) is { } fault)
+                {
+                    return fault;
+                }
+
+                anyWidth |= width > 0;
+            }
+
+            if (known && !anyWidth)
+            {
+                return NoRowBytes;
+            }
+        }
+
+        if (Unread(dictionary, PdfName.Index, out var index, out _) is not null)
         {
             return null;
         }
 
-        if (written is PdfArray ranges)
+        if (index is null or PdfNull)
         {
-            foreach (var element in ranges)
+            return Unread(dictionary, PdfName.Size, out var size, out _) is null
+                ? NumberingFault(null, null, size?.AsInteger(), out _)
+                : null;
+        }
+
+        if (index is not PdfArray ranges || PairsFault(ranges) is not null)
+        {
+            return NumberingFault(dictionary.GetRaw(PdfName.Index), index, null, out _);
+        }
+
+        for (var i = 0; i < ranges.Count; i += 2)
+        {
+            if (Follow(PdfName.Index, ranges[i], entry: false, out var start, out _) is null &&
+                Follow(PdfName.Index, ranges[i + 1], entry: false, out var count, out _) is null &&
+                SubsectionFault(ranges, i, start?.AsInteger(), count?.AsInteger()) is { } fault)
             {
-                if (element is PdfReference)
-                {
-                    return null;
-                }
+                return fault;
             }
-
-            return NumberingFault(written, written, null, out _);
         }
 
-        if (written is not (null or PdfNull))
-        {
-            return NumberingFault(written, written, null, out _);
-        }
-
-        var size = dictionary.GetRaw(PdfName.Size);
-        return size is PdfReference ? null : NumberingFault(null, null, size?.AsInteger(), out _);
+        return null;
     }
+
+    /// <summary>The fault of a <c>/W</c> that is no array of three widths.</summary>
+    private const string WidthsMissing = "its /W does not give the widths of three fields";
+
+    /// <summary>The fault of a <c>/W</c> whose widths are all 0.</summary>
+    private const string NoRowBytes = "its /W gives rows of no bytes";
+
+    /// <summary>Says what is wrong with a width a <c>/W</c> gives, or null when nothing is.</summary>
+    /// <param name="width">The width, when it is an integer.</param>
+    private static string? WidthFault(long? width) => width switch
+    {
+        null => "its /W gives a field a width that is not an integer",
+        < 0 => "its /W gives a field a negative width",
+        _ => null,
+    };
 
     /// <summary>
     /// Determines whether what a place a section may have been moved to holds declares itself a cross-reference stream, and
@@ -4449,45 +4513,91 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </remarks>
     /// <param name="dictionary">The cross-reference stream's dictionary.</param>
     /// <param name="cut">The object a guard cut that the value which cannot be read leads to, or null when no guard did.</param>
+    /// <returns>
+    /// The first value that no section read so far places, which the sections a whole read reads before make the file's
+    /// fault; otherwise the first a guard cut, the values past it read on — but for what depends on it: the <c>/Size</c>
+    /// an <c>/Index</c> so cut may stand beside, and the filters' values past one (#263).
+    /// </returns>
     private string? UnreadValue(PdfDictionary dictionary, out PdfObjectId? cut)
     {
-        if (Unread(dictionary, PdfName.W, out var widths, out cut) is { } fault)
+        var first = default(FirstUnread);
+
+        if (first.Ends(Unread(dictionary, PdfName.W, out var widths, out cut), cut))
         {
-            return fault;
+            return first.Fault;
         }
 
         for (var i = 0; widths is PdfArray w && i < Math.Min(3, w.Count); i++)
         {
-            if (Follow(PdfName.W, w[i], entry: false, out _, out cut) is { } elementFault)
+            if (first.Ends(Follow(PdfName.W, w[i], entry: false, out _, out cut), cut))
             {
-                return elementFault;
+                return first.Fault;
             }
         }
 
-        if (Unread(dictionary, PdfName.Index, out var index, out cut) is { } indexFault)
+        var indexFault = Unread(dictionary, PdfName.Index, out var index, out cut);
+
+        if (first.Ends(indexFault, cut))
         {
-            return indexFault;
+            return first.Fault;
         }
 
         if (index is PdfArray ranges)
         {
             foreach (var element in ranges)
             {
-                if (Follow(PdfName.Index, element, entry: false, out _, out cut) is { } elementFault)
+                if (first.Ends(Follow(PdfName.Index, element, entry: false, out _, out cut), cut))
                 {
-                    return elementFault;
+                    return first.Fault;
                 }
             }
         }
-        else if ((index is null or PdfNull) && Unread(dictionary, PdfName.Size, out _, out cut) is { } sizeFault)
+        else if (indexFault is null && (index is null or PdfNull) && first.Ends(Unread(dictionary, PdfName.Size, out _, out cut), cut))
         {
-            return sizeFault;
+            return first.Fault;
         }
 
         var following = new Following(this);
-        var filtersRead = Filters.FilterChain.TryFollow(dictionary, _guard.Bound(PdfLimit.FilterChain), ref following);
-        cut = following.Cut;
-        return filtersRead ? null : following.Fault;
+
+        if (!Filters.FilterChain.TryFollow(dictionary, _guard.Bound(PdfLimit.FilterChain), ref following))
+        {
+            first.Ends(following.Fault, following.Cut);
+        }
+
+        cut = first.Cut;
+        return first.Fault;
+    }
+
+    /// <summary>
+    /// Keeps the first value of a cross-reference stream's dictionary a guard cut, until one that no section read so far
+    /// places, which replaces it.
+    /// </summary>
+    private struct FirstUnread
+    {
+        /// <summary>Gets what could not be read.</summary>
+        public string? Fault { get; private set; }
+
+        /// <summary>Gets the object a guard cut that the value which could not be read leads to, if a guard cut one.</summary>
+        public PdfObjectId? Cut { get; private set; }
+
+        /// <summary>Takes what a value could not be read for, and says whether it ends the reading: no guard cut it.</summary>
+        /// <param name="fault">What the value could not be read for, or null when it could be.</param>
+        /// <param name="cut">The object a guard cut that left it unread, or null when none did.</param>
+        public bool Ends(string? fault, PdfObjectId? cut)
+        {
+            if (fault is null)
+            {
+                return false;
+            }
+
+            if (cut is null || Fault is null)
+            {
+                Fault = fault;
+                Cut = cut;
+            }
+
+            return cut is null;
+        }
     }
 
     /// <summary>
@@ -4600,11 +4710,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return $"its /Index is {DescribeValue(written)}, not an array";
         }
 
-        if (ranges.Count == 0 || ranges.Count % 2 != 0)
+        if (PairsFault(ranges) is { } pairs)
         {
-            return string.Create(
-                CultureInfo.InvariantCulture,
-                $"its /Index holds {ranges.Count} {(ranges.Count == 1 ? "value" : "values")}, not pairs of a first object number and a count of rows");
+            return pairs;
         }
 
         var checkedSubsections = new long[ranges.Count];
@@ -4614,31 +4722,53 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var start = ranges.Resolved(i).AsInteger();
             var count = ranges.Resolved(i + 1).AsInteger();
 
-            if (start is null || count is null)
+            if (SubsectionFault(ranges, i, start, count) is { } fault)
             {
-                return $"its /Index holds {DescribeValue(ranges[start is null ? i : i + 1])} where an integer belongs";
+                return fault;
             }
 
-            if (count < 0)
-            {
-                return "its /Index gives a subsection a count of rows out of range";
-            }
-
-            // The last number is compared by subtraction: a count as large as a long would carry start + count - 1 past what
-            // one holds, and the rows past int.MaxValue would be read under negative numbers.
-            if (start is < 0 or > PdfObjectId.MaxNumber || count > PdfObjectId.MaxNumber - start + 1)
-            {
-                return string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"its /Index gives a subsection of {count:N0} {(count == 1 ? "row" : "rows")} from object {start}, outside object numbers 0 to {PdfObjectId.MaxNumber}");
-            }
-
-            checkedSubsections[i] = start.Value;
-            checkedSubsections[i + 1] = count.Value;
+            checkedSubsections[i] = start.GetValueOrDefault();
+            checkedSubsections[i + 1] = count.GetValueOrDefault();
         }
 
         subsections = checkedSubsections;
         return null;
+    }
+
+    /// <summary>Says what is wrong with how many values an <c>/Index</c> holds, or null when it holds pairs.</summary>
+    private static string? PairsFault(PdfArray ranges) => ranges.Count == 0 || ranges.Count % 2 != 0
+        ? string.Create(
+            CultureInfo.InvariantCulture,
+            $"its /Index holds {ranges.Count} {(ranges.Count == 1 ? "value" : "values")}, not pairs of a first object number and a count of rows")
+        : null;
+
+    /// <summary>
+    /// Says what is wrong with the subsection an <c>/Index</c> gives at <paramref name="at"/>, or null when nothing is: its
+    /// first number is an object number, and its count numbers object numbers alone.
+    /// </summary>
+    /// <param name="ranges">The <c>/Index</c>, whose written elements a fault describes.</param>
+    /// <param name="at">Where the subsection's first number lies.</param>
+    /// <param name="start">The first number, when it is an integer.</param>
+    /// <param name="count">The count, when it is an integer.</param>
+    private static string? SubsectionFault(PdfArray ranges, int at, long? start, long? count)
+    {
+        if (start is null || count is null)
+        {
+            return $"its /Index holds {DescribeValue(ranges[start is null ? at : at + 1])} where an integer belongs";
+        }
+
+        if (count < 0)
+        {
+            return "its /Index gives a subsection a count of rows out of range";
+        }
+
+        // The last number is compared by subtraction: a count as large as a long would carry start + count - 1 past what one
+        // holds, and the rows past int.MaxValue would be read under negative numbers.
+        return start is < 0 or > PdfObjectId.MaxNumber || count > PdfObjectId.MaxNumber - start + 1
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"its /Index gives a subsection of {count:N0} {(count == 1 ? "row" : "rows")} from object {start}, outside object numbers 0 to {PdfObjectId.MaxNumber}")
+            : null;
     }
 
     /// <summary>
