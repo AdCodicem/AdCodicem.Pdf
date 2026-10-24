@@ -1388,6 +1388,49 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void The_proofs_of_streams_white_space_follows_read_no_stretch_of_the_file_more_than_three_times(
+        bool beforeEndObj, bool beforeNextHeader)
+    {
+        // Thirty streams whose /Length, object 20, MaxObjectLength cuts end in 65,520 bytes of white space, before their endobj
+        // or before the next object's header, which its row names the start of. The proof read again the white space before
+        // the endobj the reader had read on through, and doubled through that before the next header before reading it once
+        // more from the row: close to four times the file, the most the searches may read, where three were said (#224).
+        const int Streams = 30;
+        var run = new string(' ', 65_520);
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, new string(' ', 1100) + "1"),
+        };
+
+        for (var number = 30; number < 30 + Streams; number++)
+        {
+            rows[number] = file.Position;
+            file.Raw(Invariant(
+                $"{(beforeNextHeader ? run : string.Empty)}{number} 0 obj\n<< /Length 20 0 R >>\nstream\nq\nendstream{(beforeEndObj ? run : string.Empty)}\nendobj\n"));
+        }
+
+        rows[30 + Streams] = file.Object(30 + Streams, "(end)");
+        file.Table(31 + Streams, rows, Invariant($"/Size {31 + Streams} /Root 1 0 R"));
+        var bytes = file.Bytes;
+
+        using var document = PdfDocument.Open(bytes, ObjectGuard);
+
+        for (var number = 30; number < 30 + Streams; number++)
+        {
+            document.GetObject(new PdfObjectId(number)).AsStream().Required().Data.CutByGuard.Should().BeFalse();
+        }
+
+        document.Reader.EndStreamSearchBytes.Should().BeLessThan(3L * bytes.Length);
+    }
+
+    [Theory]
     [InlineData("Rx", false)]
     [InlineData("RG", false)]
     [InlineData("R\n", true)]

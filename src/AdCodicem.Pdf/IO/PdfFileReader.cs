@@ -154,20 +154,22 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// fourth adds a little to each stream of the second way: the proof that an <c>endstream</c> found is the stream's
     /// own (#224) reads past it to its object's end and what follows, three first reads of <see cref="ProofRead"/>
     /// bytes, and a fourth past a row that names the white space before the next object's header, each once however
-    /// often the stream is parsed, doubling only as white space runs on — 48 or 64 bytes, about what the smallest such
-    /// stream spans with its header, so that the proofs add the file once more at most: three times it in all, within
-    /// the four the searches may read. Every other search is of an invalid stream, whose <c>endstream</c> does not
-    /// follow its declared length. Each reads from a stream's data to the first object header the bytes hold after it,
-    /// or to the next object the index as written places, whichever is nearer, and its reads grow from twice what the
-    /// parser holds of the data (<see cref="EndStreamSearchFirstRead"/>): it reads at most about twice what its object
-    /// spans, and the searches of objects whose headers follow one another read disjoint stretches — the file twice
-    /// over at most. Only searches that share a stretch read more: objects that overlap, the header of one inside the
-    /// dictionary of another, before its data; or a stream whose header the search does not take — a regular character
-    /// glued before its number, where a rebuild's scan takes the digits after it for one — and the index as written
-    /// does not place, which only a rebuilt one does. This keeps what they read in proportion to the file, as a window
-    /// keeps the parsing of their dictionaries. Which streams keep their declared length unsearched past it depends on
-    /// the order they are read in: crafted files reach it, and no document of the corpus comes near, whose searches
-    /// read 0.35 of a file at most.
+    /// often the stream is parsed — 48 or 64 bytes, about what the smallest such stream spans with its header. White
+    /// space it crosses adds to that: the run before the object's <c>endobj</c> it takes from the read-on that read it,
+    /// the run after it it doubles through, as the read-on does, and the run a row names before the next header it
+    /// reads once from there, a first read reaching the header. No run is read more than three times, and the file
+    /// about three times at most in all, within the four the searches may read. Every other search is of an invalid
+    /// stream, whose <c>endstream</c> does not follow its declared length. Each reads from a stream's data to the first
+    /// object header the bytes hold after it, or to the next object the index as written places, whichever is nearer,
+    /// and its reads grow from twice what the parser holds of the data (<see cref="EndStreamSearchFirstRead"/>): it reads
+    /// at most about twice what its object spans, and the searches of objects whose headers follow one another read
+    /// disjoint stretches — the file twice over at most. Only searches that share a stretch read more: objects that
+    /// overlap, the header of one inside the dictionary of another, before its data; or a stream whose header the
+    /// search does not take — a regular character glued before its number, where a rebuild's scan takes the digits
+    /// after it for one — and the index as written does not place, which only a rebuilt one does. This keeps what they
+    /// read in proportion to the file, as a window keeps the parsing of their dictionaries. Which streams keep their
+    /// declared length unsearched past it depends on the order they are read in: crafted files reach it, and no
+    /// document of the corpus comes near, whose searches read 0.35 of a file at most.
     /// </remarks>
     internal const int EndStreamSearchPasses = 4;
 
@@ -400,6 +402,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// once, however many times its stream is parsed.
     /// </summary>
     private readonly Dictionary<long, EndObjState?> _endStreamChecks = [];
+
+    /// <summary>
+    /// Where the first significant byte lies past each <c>endstream</c> keyword the reader read on past (#174), which an
+    /// <c>endobj</c> there starts at: the proof that the keyword ends the stream's own data (#224) takes it rather than read
+    /// the white space again.
+    /// </summary>
+    private readonly Dictionary<long, long> _endObjStarts = [];
 
     /// <summary>
     /// What follows the object's end after each place a search ended data at, with what was said follows the
@@ -1722,6 +1731,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var next = NextSignificant(keywordEnd);
         state = next < 0 ? EndObjState.Unseen : IsEndObjKeywordAt(next) ? EndObjState.Present : EndObjState.Absent;
         _endStreamChecks[absoluteOffset] = state;
+
+        if (state == EndObjState.Present)
+        {
+            _endObjStarts[keywordEnd] = next;
+        }
+
         return state;
     }
 
@@ -2012,7 +2027,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (end >= 0 && endObj == EndObjState.Present)
         {
-            end = NextSignificant(end, ProofRead);
+            end = _endObjStarts.TryGetValue(end, out var endObjAt) ? endObjAt : NextSignificant(end, ProofRead);
             end = end < 0 || end >= _source.Length ? -1 : end + StreamEnds.EndObjKeyword.Length;
         }
 
@@ -2042,9 +2057,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return true;
         }
 
+        // The first read reaches the place weighed: white space before it is read once, not doubled through.
         if (!_placedStarts.TryGetValue(at, out var start))
         {
-            start = NextSignificant(at, ProofRead);
+            start = NextSignificant(at, (int)Math.Clamp(position - at + 1, ProofRead, EndStreamSearchChunk));
             _placedStarts[at] = start;
         }
 
@@ -2317,6 +2333,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _endStreamSearches.TrimExcess();
         _endStreamChecks.Clear();
         _endStreamChecks.TrimExcess();
+        _endObjStarts.Clear();
+        _endObjStarts.TrimExcess();
         _endStreamFollowers.Clear();
         _endStreamFollowers.TrimExcess();
         _placedStarts.Clear();
