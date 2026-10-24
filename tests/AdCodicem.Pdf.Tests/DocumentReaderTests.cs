@@ -2022,6 +2022,26 @@ public class DocumentReaderTests
         document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitDecodedStream);
     }
 
+    [Theory]
+    [InlineData(39, true)]
+    [InlineData(29, true)]
+    [InlineData(28, false)]
+    public void A_deferred_length_s_data_MaxStreamLength_cuts_past_every_row_is_checked_against_its_length(int bound, bool everyRow)
+    {
+        // As above, MaxStreamLength cutting the data past every row, from 29 bytes on: the run the cut parts is the guard's,
+        // but the length, checked against where the search found the endstream, which no cut moves, says the chain took the
+        // data short, as read whole. It was left unchecked, as data a guard cut that lacks rows is, which the cut keeps from
+        // being taken again (#220).
+        var file = ChainFiles.UpdateOverRunsSpellingAnEndStream(deferred: true);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = bound } });
+        var invalid = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which;
+
+        document.Diagnostics.Should().Equal(everyRow ? [document.Diagnostics[0], invalid] : [document.Diagnostics[0]]);
+        document.Diagnostics[0].Code.Should().Be(PdfDiagnosticCodes.LimitStreamLength);
+        document.Reader.Structure.Sections[^1].CutByLimit.Should().BeTrue();
+    }
+
     [Fact]
     public void A_deferred_length_s_data_whose_rows_a_guard_on_decoding_holds_all_of_reports_its_filters_ends()
     {
