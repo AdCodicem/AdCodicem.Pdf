@@ -1938,10 +1938,11 @@ public class FilterDamageTests
     }
 
     /// <summary>
-    /// Encodes as the PDF variant of LZW does: a clear first, the end-of-data code last, and the code width
-    /// growing one code early when <paramref name="earlyChange"/> is 1.
+    /// Encodes as the PDF variant of LZW does: a clear first, the end-of-data code last unless
+    /// <paramref name="endCode"/> says not to, and the code width growing one code early when
+    /// <paramref name="earlyChange"/> is 1.
     /// </summary>
-    private static byte[] LzwEncode(byte[] data, int earlyChange = 1)
+    internal static byte[] LzwEncode(byte[] data, int earlyChange = 1, bool endCode = true)
     {
         var table = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var i = 0; i < 256; i++)
@@ -1976,12 +1977,17 @@ public class FilterDamageTests
         }
 
         codes.Add((table[current], bits));
-        codes.Add((257, bits));
+
+        if (endCode)
+        {
+            codes.Add((257, bits));
+        }
+
         return Pack(codes);
     }
 
     /// <summary>Packs LZW codes nine bits each, most significant bit first, as the filter reads them.</summary>
-    private static byte[] NineBitCodes(params int[] codes) => Pack([.. codes.Select(code => (code, 9))]);
+    internal static byte[] NineBitCodes(params int[] codes) => Pack([.. codes.Select(code => (code, 9))]);
 
     private static byte[] Pack(List<(int Code, int Bits)> codes)
     {

@@ -33,10 +33,10 @@ public abstract class PdfStreamData
 
     /// <summary>
     /// Gets a value indicating whether where the data ends is the guard's to hide, though the data is the file's: an
-    /// <c>endstream</c> proven the stream's own ended it under a <c>/Length</c> a guard hid, with white space before the
-    /// keyword that only the length could say is the data's or not (#224). Decoding then says nothing of the file where the
-    /// data ends, which it does not decode as cut: white space parts no ASCII85 or ASCIIHex group, and falls in a Flate
-    /// stream's checksum.
+    /// <c>endstream</c> proven the stream's own ended it under a <c>/Length</c> a guard hid, with white space, or comments,
+    /// before the keyword that only the length could say are the data's or not (#224). The data decodes as read whole where
+    /// its first filter ends it as its format says; otherwise up to where that run starts, what lies before it the file's,
+    /// a filter that runs out there saying nothing of the file, and the end of what it may lack the guard's.
     /// </summary>
     internal virtual bool EndHidden => false;
 
