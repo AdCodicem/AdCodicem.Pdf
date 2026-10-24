@@ -203,8 +203,9 @@ internal sealed class TrailerValueWrongRule : IValidationRule
 
         /// <summary>
         /// Reports a cross-reference stream's <c>/Filter</c> or <c>/DecodeParms</c> written as a reference, and, in a file
-        /// that declares PDF 2.0, each element and entry written as one; and the integers of Table 8 written as reals. A
-        /// reference among them is followed where decoding follows it, as <paramref name="reads"/> says.
+        /// that declares PDF 2.0, each element and entry written as one; and the integers of Table 8 a <c>/DecodeParms</c>
+        /// gives written as reals — not a dictionary a <c>/Filter</c> gives, which ends decoding unread. A reference among
+        /// them is followed where decoding follows it, as <paramref name="reads"/> says.
         /// </summary>
         public void Decoding(PdfDictionary trailer, bool pdf20, DecodingReads reads)
         {
@@ -214,6 +215,7 @@ internal sealed class TrailerValueWrongRule : IValidationRule
             {
                 var name = FileQuote.Name(key);
                 var value = trailer.GetRaw(key);
+                var decodeParms = key == PdfName.DecodeParms;
                 Value("its " + name, value, Iso1, integer: null);
 
                 switch (reads.Resolve(value))
@@ -226,24 +228,24 @@ internal sealed class TrailerValueWrongRule : IValidationRule
 
                             if (reads.Resolve(array[i]) is PdfDictionary parameters)
                             {
-                                Parameters(parameters, what, inside, reads);
+                                Parameters(parameters, what, inside, reads, decodeParms);
                             }
                         }
 
                         break;
 
                     case PdfDictionary parameters:
-                        Parameters(parameters, "its " + name, inside, reads);
+                        Parameters(parameters, "its " + name, inside, reads, decodeParms);
                         break;
                 }
             }
         }
 
-        private void Parameters(PdfDictionary parameters, string where, string? inside, DecodingReads reads)
+        private void Parameters(PdfDictionary parameters, string where, string? inside, DecodingReads reads, bool decodeParms)
         {
             foreach (var (key, value) in parameters)
             {
-                var integer = Array.IndexOf(IntegerParameters, key) >= 0 ? "Table 8" : null;
+                var integer = decodeParms && Array.IndexOf(IntegerParameters, key) >= 0 ? "Table 8" : null;
                 Value(FileQuote.Name(key) + " of " + where, value, inside, integer, reads.Follows(value));
             }
         }

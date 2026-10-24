@@ -1611,6 +1611,21 @@ public class CrossReferenceRuleTests
             "gives /Predictor of element 0 of its /DecodeParms as a real number, where Table 8 of ISO 32000-1 asks for an integer.");
     }
 
+    [Theory]
+    [InlineData("/Filter 5 0 R", "<< /Predictor 12.0 /Columns 7.0 >>")]
+    [InlineData("/Filter [5 0 R]", "<< /Predictor 12.0 /Columns 7.0 >>")]
+    [InlineData("/Filter << /Predictor 12.0 /Columns 7.0 >>", "0")]
+    [InlineData("/Filter [<< /Predictor 12.0 /Columns 7.0 >>]", "0")]
+    public void Parameters_a_filter_gives_as_a_dictionary_are_not_judged_by_what_decode_parameters_ask(string filter, string five)
+    {
+        // A /Filter, or an element of one, that is a dictionary ends decoding, the data left as it is: decoding reads nothing
+        // it holds, which Table 8, a /DecodeParms', does not govern. Its reals were reported as Table 8 asks (#263).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] " + filter + " /Length {length}", five, compressed: false, predicted: false, placed: true);
+
+        Validate(file).Findings.Select(finding => finding.Message).Should().NotContain(message => message.Contains("Table 8", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void The_entry_a_deferred_length_found_off_its_object_is_judged_as_the_file_wrote_it()
     {
