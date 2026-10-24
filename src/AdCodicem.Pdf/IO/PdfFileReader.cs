@@ -144,28 +144,30 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// parser holds, and white space after a declared length is read no further than a first read.
     /// </summary>
     /// <remarks>
-    /// Not a guard a valid file reaches (ADR 34), argued here once for every read it counts. A valid file is read past the
-    /// parser's window in three ways only: a cross-reference stream whose <c>/Length</c> the chain cannot read (#220) is
-    /// searched once to its <c>endstream</c>; a stream whose <c>/Length</c> a guard cut or left out of the index (#224) is
-    /// searched once to its <c>endstream</c>, or to a header its data spells, which leaves the data up to it to the guard;
-    /// and white space after a declared length that runs past a first read is read on once for each place (#174). The data
-    /// of different streams lies apart, and so do the runs of white space after them: together those reads cover the file
-    /// once, and one read past each — about twice the file at most. A fourth adds a little to each stream of the second
-    /// way: the proof that an <c>endstream</c> found is the stream's own (#224) reads past it to its object's end and what
-    /// follows, three first reads of <see cref="ProofRead"/> bytes, which double only as white space runs on — 48 bytes,
-    /// about what the smallest such stream spans with its header, so that the proofs add the file once more at most: three
-    /// times it in all, within the four the searches may read. Every other search is of an invalid stream, whose
-    /// <c>endstream</c> does not follow its declared length. Each reads from a stream's data to the first object header the
-    /// bytes hold after it, or to the next object the index as written places, whichever is nearer, and its reads grow
-    /// from twice what the parser holds of the data
-    /// (<see cref="EndStreamSearchFirstRead"/>): it reads at most about twice what its object spans, and the searches of
-    /// objects whose headers follow one another read disjoint stretches — the file twice over at most. Only searches that
-    /// share a stretch read more: objects that overlap, the header of one inside the dictionary of another, before its
-    /// data; or a stream whose header the search does not take — a regular character glued before its number, where a
-    /// rebuild's scan takes the digits after it for one — and the index as written does not place, which only a rebuilt
-    /// one does. This keeps what they read in proportion to the file, as a window keeps the parsing of their
-    /// dictionaries. Which streams keep their declared length unsearched past it depends on the order they are read in:
-    /// crafted files reach it, and no document of the corpus comes near, whose searches read 0.35 of a file at most.
+    /// Not a guard a valid file reaches (ADR 34), argued here once for every read it counts. A valid file is read past
+    /// the parser's window in four ways only. Three read the data: a cross-reference stream whose <c>/Length</c> the
+    /// chain cannot read (#220) is searched once to its <c>endstream</c>; a stream whose <c>/Length</c> a guard cut or
+    /// left out of the index (#224) is searched once to its <c>endstream</c>, or to a header its data spells, which
+    /// leaves the data up to it to the guard; and white space after a declared length that runs past a first read is
+    /// read on once for each place (#174). The data of different streams lies apart, and so do the runs of white space
+    /// after them: together those reads cover the file once, and one read past each — about twice the file at most. The
+    /// fourth adds a little to each stream of the second way: the proof that an <c>endstream</c> found is the stream's
+    /// own (#224) reads past it to its object's end and what follows, three first reads of <see cref="ProofRead"/>
+    /// bytes, and a fourth past a row that names the white space before the next object's header, each once however
+    /// often the stream is parsed, doubling only as white space runs on — 48 or 64 bytes, about what the smallest such
+    /// stream spans with its header, so that the proofs add the file once more at most: three times it in all, within
+    /// the four the searches may read. Every other search is of an invalid stream, whose <c>endstream</c> does not
+    /// follow its declared length. Each reads from a stream's data to the first object header the bytes hold after it,
+    /// or to the next object the index as written places, whichever is nearer, and its reads grow from twice what the
+    /// parser holds of the data (<see cref="EndStreamSearchFirstRead"/>): it reads at most about twice what its object
+    /// spans, and the searches of objects whose headers follow one another read disjoint stretches — the file twice
+    /// over at most. Only searches that share a stretch read more: objects that overlap, the header of one inside the
+    /// dictionary of another, before its data; or a stream whose header the search does not take — a regular character
+    /// glued before its number, where a rebuild's scan takes the digits after it for one — and the index as written
+    /// does not place, which only a rebuilt one does. This keeps what they read in proportion to the file, as a window
+    /// keeps the parsing of their dictionaries. Which streams keep their declared length unsearched past it depends on
+    /// the order they are read in: crafted files reach it, and no document of the corpus comes near, whose searches
+    /// read 0.35 of a file at most.
     /// </remarks>
     internal const int EndStreamSearchPasses = 4;
 
@@ -406,6 +408,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// stands there. Read once, however many times its stream is parsed; each caller's next object is weighed against it.
     /// </summary>
     private readonly Dictionary<(long DataEnd, EndObjState EndObj), (long Position, bool Boundary)> _endStreamFollowers = [];
+
+    /// <summary>
+    /// Where the first significant byte lies past each offset a row names before the place it is weighed against, as
+    /// <see cref="IsPlacedAt"/> reads it: -1 where nothing could be read. Read once, however many times its stream is
+    /// parsed.
+    /// </summary>
+    private readonly Dictionary<long, long> _placedStarts = [];
 
     /// <summary>
     /// Where the data starts of each stream whose length fault a reading the reader kept reported: the stream is not
@@ -1956,8 +1965,29 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// Determines whether the object an index places at <paramref name="placed"/> starts at <paramref name="position"/>:
     /// there, or past the white space and comments its row names, as the reader reads an object at a row's offset.
     /// </summary>
-    private bool IsPlacedAt(long position, long? placed) =>
-        placed is { } at && (at == position || (at < position && NextSignificant(at, ProofRead) == position));
+    /// <remarks>
+    /// What lies past an offset is read once, counted with the searches, however many times its stream is parsed.
+    /// </remarks>
+    private bool IsPlacedAt(long position, long? placed)
+    {
+        if (placed is not { } at || at > position)
+        {
+            return false;
+        }
+
+        if (at == position)
+        {
+            return true;
+        }
+
+        if (!_placedStarts.TryGetValue(at, out var start))
+        {
+            start = NextSignificant(at, ProofRead);
+            _placedStarts[at] = start;
+        }
+
+        return start == position;
+    }
 
     /// <summary>
     /// Determines whether <paramref name="keyword"/>, whole, starts at <paramref name="position"/>: the file ends after it,
@@ -2227,6 +2257,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _endStreamChecks.TrimExcess();
         _endStreamFollowers.Clear();
         _endStreamFollowers.TrimExcess();
+        _placedStarts.Clear();
+        _placedStarts.TrimExcess();
         Release(_lengthFaultsReported);
         Release(_syntaxReported);
         Release(_limitsReached);

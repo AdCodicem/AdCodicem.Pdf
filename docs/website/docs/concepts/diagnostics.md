@@ -99,7 +99,7 @@ what was read first. A file crafted for it can still make what a stream holds de
 first. What the searches of one document read together is bounded: none starts once they have read four times the file's
 length. For a valid file, what they read — its cross-reference streams searched, its streams whose length a guard hid,
 the white space after a declared length read on — comes to about twice the file at most, and the proofs that an `endstream`
-found under a hidden length is the stream's own, 48 bytes past each, to about the file once more; the searches of damaged
+found under a hidden length is the stream's own, 48 or 64 bytes past each, once, to about the file once more; the searches of damaged
 streams read twice the file at most — 0.35
 of it at most, all searches together, in the test corpus — unless their stretches overlap: one object's header inside
 another's dictionary, or a header the search does not take — a regular character glued before its number — that the

@@ -76,9 +76,10 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     /// Determines whether the <c>endstream</c> that ends data at <paramref name="absoluteDataEnd"/>, which a search found,
     /// is the stream's own beyond what its length could say: what follows its object's end — its <c>endobj</c>, where
     /// <paramref name="endObj"/> says one follows it, or the <c>endstream</c> itself otherwise —, white space and comments
-    /// between, is the next object the index places, <paramref name="nextObject"/>, the end of the file, or the
-    /// <c>xref</c> or <c>startxref</c> keyword. Anything else may follow an <c>endstream</c> the data spells, which only
-    /// the length tells from the stream's own (#224).
+    /// between, is the next object the index places, <paramref name="nextObject"/> — there, or past the white space and
+    /// comments a row names before its header —, the end of the file, or the <c>xref</c> or <c>startxref</c> keyword.
+    /// Anything else may follow an <c>endstream</c> the data spells, which only the length tells from the stream's own
+    /// (#224).
     /// </summary>
     /// <remarks>
     /// Read once for each place, as far as the searches for <c>endstream</c> may read; past that, nothing is proven.

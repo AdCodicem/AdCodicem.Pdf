@@ -989,6 +989,50 @@ public class GuardCutValueTests
     }
 
     [Fact]
+    public void The_place_a_row_names_before_the_next_header_is_read_once_however_often_the_stream_is_parsed()
+    {
+        // Stream 10's /Length, object 9, is cut by MaxObjectLength, and object 11, which follows it, is placed by a row
+        // naming the line feed before its header: the proof reads past that offset to the header. It was read again on
+        // every parse of the stream, the cache having let it go, counted with the searches each time, until they could read
+        // no more and the stream, proven its own at first, came back cut by the guard (#224).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [9] = (1, file.Object(9, new string(' ', 2000) + "1"), 0),
+            [10] = (1, file.Object(10, "<< /Length 9 0 R >>\nstream\nq\nendstream"), 0),
+        };
+        rows[11] = (1, file.Object(11, "(eleven)") - 1, 0);
+
+        for (var number = 12; number < 90; number++)
+        {
+            rows[number] = (1, file.Object(number, Invariant($"({number})")), 0);
+        }
+
+        file.CrossReferenceStream(90, 91, rows, "/Root 1 0 R");
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64, Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } };
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.GetObject(new PdfObjectId(10)).AsStream().Required().Data.CutByGuard.Should().BeFalse();
+        var read = document.Reader.EndStreamSearchBytes;
+        read.Should().Be(64, "four first reads of 16 bytes: past the data, the endstream, the endobj, and the row's offset");
+
+        for (var round = 0; round < 20; round++)
+        {
+            for (var number = 12; number < 90; number++)
+            {
+                _ = document.GetObject(new PdfObjectId(number));
+            }
+
+            document.GetObject(new PdfObjectId(10)).AsStream().Required().Data.CutByGuard.Should().BeFalse();
+        }
+
+        document.Reader.EndStreamSearchBytes.Should().Be(read);
+    }
+
+    [Fact]
     public void The_proofs_of_small_streams_whose_length_a_guard_hid_read_less_than_the_file()
     {
         // 400 streams of a byte share a /Length, object 9, which MaxObjectLength cuts before its value: each one's endstream is
