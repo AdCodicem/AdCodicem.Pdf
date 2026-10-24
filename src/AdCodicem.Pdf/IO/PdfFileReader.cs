@@ -2990,8 +2990,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <see cref="MaxRelocationCandidates"/> places in all, over the whole document: each is read through a window
     /// of up to 64 KB, the file chooses how many headers lie near a section, and a chain can name a section for
     /// each of its <see cref="PdfReaderLimits.MaxXRefSectionCount"/> links. Found, the section's record takes what
-    /// was read there — a section a guard kept from being read too, which is not found to be read, the chain ending
-    /// there as the guard's —; not found, it keeps what the named offset held.
+    /// was read there — a section a value it is read with kept from being read too, leading to an object a guard cut, which
+    /// is not found to be read, the chain ending there as the guard's —; not found, it keeps what the named offset held. A
+    /// place is a guess: it must declare a cross-reference stream and no other type, and one a guard cut the dictionary of
+    /// is dropped.
     /// </remarks>
     private bool TryRelocateXRefSection(long offset, XRefSectionRecord section, out long previous, out long hybrid)
     {
@@ -3032,9 +3034,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             var readThrough = _chainValuesCut?.Count ?? 0;
             var state = TryReadXRefSection(candidate, attempt, out previous, out hybrid, candidate: true);
 
-            // A section a guard kept from being read is the section all the same: found where it was moved, it is where a
-            // guard cut the chain, as where it is named (#263). Any other place is dropped with what it read through.
-            if (state == XRefSectionState.Read || (state == XRefSectionState.Malformed && attempt.CutByLimit))
+            // A section a value it is read with kept from being read, leading to an object a guard cut, is the section all the
+            // same: found where it was moved, it is where a guard cut the chain, as where it is named (#263). A place a guard
+            // cut the dictionary of says nothing of what is there, and is dropped as any other is, with what it read through.
+            if (state == XRefSectionState.Read || (state == XRefSectionState.Malformed && attempt.CutByValue))
             {
                 section.RelocateTo(attempt);
                 _diagnostics.Repair(
@@ -3722,8 +3725,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 out var number,
                 out var syntaxFault,
                 XRefWindow,
-                candidate ? DeclaresCrossReferenceStream : null) ||
-            !DeclaresCrossReferenceStream(value))
+                candidate ? DeclaresOnlyCrossReferenceStream : null) ||
+            !(candidate ? DeclaresOnlyCrossReferenceStream(value) : DeclaresCrossReferenceStream(value)))
         {
             if (!candidate && _guardsReached != guards && value is PdfDictionary { } cut && !cut.ContainsKey(PdfName.Type))
             {
@@ -3785,6 +3788,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             {
                 section.Fault = lengthFault;
                 section.CutByLimit = true;
+                section.CutByValue = true;
                 (_chainValuesCut ??= []).Add(past);
                 return XRefSectionState.Malformed;
             }
@@ -3807,6 +3811,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (unreadCut is { } cut)
             {
                 section.CutByLimit = true;
+                section.CutByValue = true;
                 (_chainValuesCut ??= []).Add(cut);
             }
 
@@ -4237,6 +4242,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private static bool DeclaresCrossReferenceStream(PdfObject value) =>
         (value is PdfStream stream ? stream.Dictionary : value as PdfDictionary) is { } dictionary &&
         (dictionary.IsOfType(PdfName.XRef) || dictionary.ContainsKey(PdfName.W));
+
+    /// <summary>
+    /// Determines whether what a place a section may have been moved to holds declares itself a cross-reference stream, and
+    /// no other type: <c>/Type /XRef</c>, or a <c>/W</c> beside no <c>/Type</c> that names another. A guess is no section
+    /// where it says it is something else — a CIDFont's <c>/W</c> gives its glyphs' widths.
+    /// </summary>
+    private static bool DeclaresOnlyCrossReferenceStream(PdfObject value) =>
+        (value is PdfStream stream ? stream.Dictionary : value as PdfDictionary) is { } dictionary &&
+        (dictionary.IsOfType(PdfName.XRef) || (dictionary.ContainsKey(PdfName.W) && dictionary.GetRaw(PdfName.Type) is not PdfName));
 
     /// <summary>
     /// Says which value a cross-reference stream's dictionary refers to, among those its rows are read with, that no section
