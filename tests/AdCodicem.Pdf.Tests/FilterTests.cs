@@ -28,12 +28,14 @@ public class FilterTests
 
     [Theory]
     [InlineData(4, true)]
+    [InlineData(5, true)]
     [InlineData(6, false)]
     public void A_group_ascii85_data_that_ends_where_the_file_s_may_not_parts_is_dropped_and_counted_against_the_bound(int maxLength, bool limited)
     {
         // "5sdq," is ABCD, and "77I" the part of the group EF's: data the reader cut, or whose end a guard hides, may end
         // inside the group, whose bytes the missing digits decide. They are not written, but the whole data holds them,
-        // and a bound they do not fit within is reached (#224).
+        // and a bound they do not fit within is reached (#224): with no room for them, with room for one of the two, not
+        // with room for both.
         var decoded = Ascii85Filter.Decode("5sdq,77I"u8, out var reached, out _, maxLength, cut: true);
 
         decoded.Should().Equal("ABCD"u8.ToArray());
