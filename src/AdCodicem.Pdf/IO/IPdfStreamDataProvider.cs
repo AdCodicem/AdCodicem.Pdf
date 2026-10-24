@@ -73,6 +73,19 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     StreamEndSearch FindEndStream(int number, long absoluteDataStart, long declaredEnd, ReadOnlySpan<byte> buffered, bool deferred);
 
     /// <summary>
+    /// Determines whether the <c>endstream</c> that ends data at <paramref name="absoluteDataEnd"/>, which a search found,
+    /// is the stream's own beyond what its length could say: what follows its object's end — its <c>endobj</c>, where
+    /// <paramref name="endObj"/> says one follows it, or the <c>endstream</c> itself otherwise —, white space and comments
+    /// between, is the next object the index places, <paramref name="nextObject"/>, the end of the file, or the
+    /// <c>xref</c> or <c>startxref</c> keyword. Anything else may follow an <c>endstream</c> the data spells, which only
+    /// the length tells from the stream's own (#224).
+    /// </summary>
+    /// <remarks>
+    /// Read once for each place, as far as the searches for <c>endstream</c> may read; past that, nothing is proven.
+    /// </remarks>
+    bool IsOwnEndStream(long absoluteDataEnd, EndObjState endObj, long? nextObject);
+
+    /// <summary>
     /// Resolves the object a stream's <c>/Length</c> names, and says whether the file holds it and whether it could be
     /// read — a reference to the stream itself, or to an object inside an object stream being decoded, cannot be —, or
     /// whether a guard cut it, or the object a chain of references from it leads to (#224).

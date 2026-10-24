@@ -389,6 +389,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly Dictionary<long, EndObjState?> _endStreamChecks = [];
 
     /// <summary>
+    /// Whether the <c>endstream</c> after each place a search ended data at is the stream's own beyond what its length
+    /// could say (<see cref="IPdfStreamDataProvider.IsOwnEndStream"/>): read once, however many times its stream is parsed.
+    /// </summary>
+    private readonly Dictionary<long, bool> _ownEndStreams = [];
+
+    /// <summary>
     /// Where the data starts of each stream whose length fault a reading the reader kept reported: the stream is not
     /// reported again when it is parsed again.
     /// </summary>
@@ -1872,31 +1878,54 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // Past int.MaxValue bytes, no length the reader holds a stream by reaches the endstream found: only a file of more
         // than 2 GB can put one there, and the stream is read as one whose endstream is not found. With none, what the
         // object's endobj does is read once with the search, as long as the searches may read.
-        if (dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue)
-        {
-            var endObj = ((IPdfStreamDataProvider)this).CheckEndStream(dataEnd) ?? EndObjState.Unseen;
-            return new StreamEndSearch((int)(dataEnd - absoluteDataStart), stop, endObj)
+        return dataEnd >= 0 && dataEnd - absoluteDataStart <= int.MaxValue
+            ? new StreamEndSearch(
+                (int)(dataEnd - absoluteDataStart),
+                stop,
+                ((IPdfStreamDataProvider)this).CheckEndStream(dataEnd) ?? EndObjState.Unseen)
+            : new StreamEndSearch(null, stop, EndObjState.Unknown, searched)
             {
-                NextObjectFollows = endObj == EndObjState.Absent && nextObject is { } next && EndStreamLeadsTo(dataEnd, next),
+                EndObjSeen = endObjSeen,
+                ObjectEnd = objectEnd,
+                HeaderStopped = header >= 0,
             };
+    }
+
+    /// <inheritdoc/>
+    bool IPdfStreamDataProvider.IsOwnEndStream(long absoluteDataEnd, EndObjState endObj, long? nextObject)
+    {
+        if (_ownEndStreams.TryGetValue(absoluteDataEnd, out var known))
+        {
+            return known;
         }
 
-        return new StreamEndSearch(null, stop, EndObjState.Unknown, searched)
+        // The endstream keyword, then the endobj that follows it, where one does: each found where a reading said it lies.
+        var end = NextSignificant(absoluteDataEnd);
+        end = end < 0 || end >= _source.Length ? -1 : end + StreamEnds.EndStreamKeyword.Length;
+
+        if (end >= 0 && endObj == EndObjState.Present)
         {
-            EndObjSeen = endObjSeen,
-            ObjectEnd = objectEnd,
-            HeaderStopped = header >= 0,
-        };
+            end = NextSignificant(end);
+            end = end < 0 || end >= _source.Length ? -1 : end + StreamEnds.EndObjKeyword.Length;
+        }
+
+        var next = end < 0 ? -1 : NextSignificant(end);
+        var own = next >= 0 &&
+            (next == _source.Length || next == nextObject || IsKeywordAt(next, "xref"u8) || IsKeywordAt(next, StartXRefKeyword));
+        _ownEndStreams[absoluteDataEnd] = own;
+        return own;
     }
 
     /// <summary>
-    /// Determines whether the first token after the <c>endstream</c> that ends data at <paramref name="dataEnd"/>, white space
-    /// and comments between, starts at <paramref name="next"/>, as far as the searches may read.
+    /// Determines whether <paramref name="keyword"/>, whole, starts at <paramref name="position"/>: the file ends after it,
+    /// or no regular character follows.
     /// </summary>
-    private bool EndStreamLeadsTo(long dataEnd, long next)
+    private bool IsKeywordAt(long position, ReadOnlySpan<byte> keyword)
     {
-        var keyword = NextSignificant(dataEnd);
-        return keyword >= 0 && NextSignificant(keyword + StreamEnds.EndStreamKeyword.Length) == next;
+        Span<byte> bytes = stackalloc byte[StartXRefKeyword.Length + 1];
+        var length = Math.Min(keyword.Length + 1, _source.Length - position);
+        var read = _source.Read(position, bytes[..(int)length]);
+        return bytes[..read].StartsWith(keyword) && (read == keyword.Length ? position + read >= _source.Length : !PdfCharacters.IsRegular(bytes[keyword.Length]));
     }
 
     /// <inheritdoc/>
@@ -2153,6 +2182,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _endStreamSearches.TrimExcess();
         _endStreamChecks.Clear();
         _endStreamChecks.TrimExcess();
+        _ownEndStreams.Clear();
+        _ownEndStreams.TrimExcess();
         Release(_lengthFaultsReported);
         Release(_syntaxReported);
         Release(_limitsReached);

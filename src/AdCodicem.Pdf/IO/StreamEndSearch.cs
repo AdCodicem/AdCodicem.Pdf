@@ -45,11 +45,4 @@ internal readonly record struct StreamEndSearch(int? Length, long? NextObject, E
     /// <see cref="NextObject"/> then gives, rather than the next object the index places or the end of the file.
     /// </summary>
     public bool HeaderStopped { get; init; }
-
-    /// <summary>
-    /// Gets a value indicating whether the next object the index places follows the <c>endstream</c> found, white space and
-    /// comments between: no <c>endstream</c> the data spells can be followed by an object the index places, so the one found
-    /// is the stream's own, and the <c>endobj</c> it lacks the file's, whatever hid the length (#224).
-    /// </summary>
-    public bool NextObjectFollows { get; init; }
 }
