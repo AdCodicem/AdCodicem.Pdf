@@ -3582,7 +3582,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         section.TrailerPosition = found;
         var guards = _guardsReached;
-        _ = TryParseNumberedAt(found + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out var syntaxFault);
+        _ = TryParseNumberedAt(found + TrailerKeyword.Length, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out var syntaxFault);
 
         if (_guardsReached != guards)
         {
@@ -3647,7 +3647,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // The trailer starts inside the window, so inside the file as long as the source's length holds;
         // where nothing can be parsed the value is null, and anything that is not a dictionary is no trailer.
         var guards = _guardsReached;
-        _ = TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out var syntaxFault);
+        _ = TryParseNumberedAt(absolute + position, DirectObject, PdfLimit.Trailer, out var value, out _, out _, out var syntaxFault);
 
         if (_guardsReached != guards)
         {
@@ -3835,6 +3835,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 PdfLimit.Trailer,
                 out var value,
                 out var number,
+                out var header,
                 out var syntaxFault,
                 XRefWindow,
                 candidate ? DeclaresOnlyCrossReferenceStream : null) ||
@@ -3861,6 +3862,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var dictionary = value is PdfStream parsed ? parsed.Dictionary : (PdfDictionary)value;
         section.Kind = XRefSectionKind.Stream;
         section.StreamObjectNumber = number;
+
+        // The probe that looked for the xref keyword says where the header lies only within its first bytes.
+        section.Padding = (int)(header - absolute);
         section.TrailerPosition = absolute;
         section.TypedXRef = dictionary.IsOfType(PdfName.XRef);
 
@@ -5280,7 +5284,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// past its end. Returns false when nothing with that number is there.
     /// </summary>
     private bool TryParseObjectAt(int number, long offset, out PdfObject value, long recordedAt = RecordedAnywhere) =>
-        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, recordedAt: recordedAt);
+        TryParseNumberedAt(offset, number, PdfLimit.Object, out value, out _, out _, out _, recordedAt: recordedAt);
 
     /// <summary>
     /// Parses what starts at an exact offset — object <paramref name="number"/>, any object for
@@ -5302,6 +5306,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="limit">The guard that bounds the window.</param>
     /// <param name="value">The object read.</param>
     /// <param name="foundNumber">The number of the object found, even when <paramref name="keep"/> refuses it.</param>
+    /// <param name="headerAt">Where in the file the object read starts, past the white space and comments before it.</param>
     /// <param name="syntaxFault">
     /// Whether the reading kept met a fault of the syntax, or may have, the pending diagnostics full: reported now or
     /// already, by an earlier reading of the same bytes.
@@ -5323,6 +5328,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         PdfLimit limit,
         out PdfObject value,
         out int foundNumber,
+        out long headerAt,
         out bool syntaxFault,
         int initialWindow = InitialObjectWindow,
         Func<PdfObject, bool>? keep = null,
@@ -5330,6 +5336,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         value = PdfNull.Instance;
         foundNumber = 0;
+        headerAt = offset;
         syntaxFault = false;
 
         if (offset < 0 || offset >= _source.Length)
@@ -5435,6 +5442,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 RecordEndObj(noted ? number : DirectObject, foundNumber, parser.EndObj, cut, offset);
                 RecordStreamLength(noted ? number : DirectObject, foundNumber, parsed, lengthFault);
                 value = parsed;
+                headerAt = offset + parser.HeaderStart;
                 return true;
             }
         }

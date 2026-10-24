@@ -1157,6 +1157,37 @@ public class GuardCutValueTests
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
     }
 
+    [Theory]
+    [InlineData(20)]
+    [InlineData(40)]
+    public void A_cross_reference_stream_named_before_white_space_proves_the_endstream_before_it_however_much(int padding)
+    {
+        // As above, with no row, startxref naming the white space before the cross-reference stream's header: the section
+        // said where the header lies only within the first 32 bytes its probe read, and past them nothing proved the
+        // endstream the stream's own. The validator said the offset lies 32 bytes before the header (#224).
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), 0),
+            [3] = (1, file.Object(3, Page), 0),
+            [5] = (1, file.Object(5, new string(' ', 2000) + "5"), 0),
+            [4] = (1, file.Object(4, "<< /Length 5 0 R >>\nstream\nBT ET\nendstream"), 0),
+        };
+        file.Raw(new string(' ', padding));
+        var header = file.CrossReferenceStream(6, 6, rows, "/Root 1 0 R");
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
+            .Replace(Invariant($"startxref\n{header}\n"), Invariant($"startxref\n{header - padding}\n"), StringComparison.Ordinal));
+        using var document = PdfDocument.Open(bytes, ObjectGuard);
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.Data.CutByGuard.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        new PdfValidator().Validate(document).Findings.Should().ContainSingle(finding => finding.RuleId == PdfValidationRuleIds.XRefOffsetImprecise)
+            .Which.Message.Should().Contain(Invariant($"{padding} bytes before the header"));
+    }
+
     [Fact]
     public void The_place_a_row_names_before_the_next_header_is_read_once_however_often_the_stream_is_parsed()
     {
