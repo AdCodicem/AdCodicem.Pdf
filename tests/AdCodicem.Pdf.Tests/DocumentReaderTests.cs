@@ -2006,6 +2006,23 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void A_deferred_length_s_data_that_holds_every_row_under_a_guard_on_decoding_is_checked_against_its_length()
+    {
+        // Stream 5's RunLength runs hold its Flate rows and zero bytes, then the bytes of a spelled endstream, where the
+        // deferred search stops; MaxDecodedStreamLength stops the Flate output past every row. Nothing would take the data
+        // again, and the RunLength run the spelled endstream parts is reported as read whole, but the length, which says the
+        // chain took the data short, was not checked under the guard: the run-out stood as the file's fault alone (#220).
+        var file = ChainFiles.UpdateOverRunsSpellingAnEndStream(deferred: true);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 100 } });
+
+        whole.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid);
+        document.Diagnostics.Select(entry => entry.Code).Where(code => code != PdfDiagnosticCodes.LimitDecodedStream)
+            .Should().Equal(whole.Diagnostics.Select(entry => entry.Code));
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Fact]
     public void A_deferred_length_s_data_whose_rows_a_guard_on_decoding_holds_all_of_reports_its_filters_ends()
     {
         // Stream 5's rows and 30 zero bytes, compressed, are written in hexadecimal with no ">", and MaxDecodedStreamLength

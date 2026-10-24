@@ -640,6 +640,67 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of two revisions, as <see cref="UpdateOverAStrayHexByte"/> writes it, but stream 5 is
+    /// <c>/Filter [/RunLengthDecode /FlateDecode]</c>: a first literal run of RunLength holds the Flate data, which decodes to
+    /// its rows and 1,000 zero bytes, and a second the bytes of an end-of-line, <c>endstream</c>, another end-of-line and
+    /// <c>XYZ</c>, where a deferred search stops. Its <c>/Length</c> names object 4, which only the stream's own row places,
+    /// unless <paramref name="deferred"/> is false: written direct. The file is valid.
+    /// </summary>
+    public static byte[] UpdateOverRunsSpellingAnEndStream(bool deferred)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+
+        // Compressed, the data's length depends on the offsets its rows hold: written in four digits, it does not move them.
+        byte[] Data(long four, long stream)
+        {
+            var rows = Encode(
+                [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, four, 0), (1, stream, 0)],
+                Rows.Raw);
+            using var output = new MemoryStream();
+
+            using (var zlib = new ZLibStream(output, CompressionLevel.Optimal, leaveOpen: true))
+            {
+                zlib.Write([.. rows, .. new byte[1000]]);
+            }
+
+            var flate = output.ToArray();
+            var data = new List<byte>();
+
+            for (var i = 0; i < flate.Length; i += 128)
+            {
+                var count = Math.Min(128, flate.Length - i);
+                data.Add((byte)(count - 1));
+                data.AddRange(flate.AsSpan(i, count).ToArray());
+            }
+
+            var spelled = "\nendstream\nXYZ"u8.ToArray();
+            data.Add((byte)(spelled.Length - 1));
+            data.AddRange(spelled);
+            data.Add(128);
+            return [.. data];
+        }
+
+        var four = file.Position;
+        var at = four + "4 0 obj\n0000\nendobj\n".Length;
+        var data = Data(four, at);
+        var length = data.Length.ToString("D4", CultureInfo.InvariantCulture);
+        file.Object(4, length);
+        file.Stream(
+            5,
+            $"/Type /XRef /Size 6 /W [1 4 2] /Filter [/RunLengthDecode /FlateDecode] /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
+            data);
+        file.Text("%" + new string('-', 1200) + "\n");
+        var xref = file.Position;
+        file.Text(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 6 /Root 1 0 R /Prev {at} >>\nstartxref\n{xref}\n%%EOF\n"));
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of one cross-reference stream, object 7, in ASCII85, whose <c>/Length</c> names object 5, which only the
     /// stream's own row places, holding the length after 1,015 spaces: a <c>MaxObjectLength</c> of 1,024 parts it after its
     /// first digit. Its rows are those of objects 0, 5, 1 to 3, 20 and 21, of reserved types, and 7 (<c>/Index</c>). The text
