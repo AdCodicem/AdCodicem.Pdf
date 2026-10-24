@@ -18,8 +18,8 @@ internal static class Ascii85Filter
     /// <param name="faults">What the data holds that the format does not allow.</param>
     /// <param name="maxLength">The most the data may decode to.</param>
     /// <param name="cut">
-    /// Whether the data ends where the file's may not — the reader cut it short at one of its limits, or a guard hides
-    /// where it ends —: a group left partial at its end, before any <c>~</c>, is one the cut parted, and is dropped rather
+    /// Whether the data ends where the file's may not — the reader cut it short at one of its limits, or the caller says a
+    /// guard hides where it ends —: a group left partial at its end, before any <c>~</c>, is one the cut parted, and is dropped rather
     /// than completed, though the bytes it encodes count against <paramref name="maxLength"/>, which
     /// <paramref name="limited"/> then says, and <see cref="DataFaults.Dropped"/> counts them.
     /// </param>

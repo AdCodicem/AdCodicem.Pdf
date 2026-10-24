@@ -63,7 +63,8 @@ then the file's, though white space before the keyword, which only the length sa
 ends to the guard as the data decodes: a filter that runs out there says nothing of the file. Decoding stops at a filter so named, or one whose parameters are, and leaves
 the rest of the data encoded, as past the most filters the reader runs; and a `/Prev` or an `/XRefStm` the reader
 follows that is so named, or a cross-reference stream whose values lead to an object a guard cut, ends the chain as a
-section a guard cut does, wherever near its named offset the section is found.
+section a guard cut does, wherever near its named offset the section is found — unless what the values read say makes
+the section unreadable whatever the cut hides: a fault of the file, as read whole.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
 table's bound, the objects past the most the index holds — is no damage either. Those objects read as null, unknown
@@ -121,8 +122,10 @@ order ends where it breaks it. A sound stream's `endstream` follows its declared
 the object through a larger window, so that a stream's data — and the end-of-line after its `stream` keyword — never
 counts toward its object's length. A document's
 searches read four times the file at most: a valid file is read past those bytes only for the data of a cross-reference
-stream whose `/Length` the chain cannot read yet, and for white space and comments after a declared length, about twice
-the file. Those stay internal constants, since lifting them would let nothing more be read, and
+stream whose `/Length` the chain cannot read yet, for the data of a stream whose `/Length` a guard cut or left out of the
+index, and for white space and comments after a declared length, about twice the file, and for the proof that an
+`endstream` found under a hidden `/Length` is the stream's own, about three times the file in all. Those stay internal
+constants, since lifting them would let nothing more be read, and
 each says where it is declared why no valid file reaches it.
 
 A new bound is classified when it is added ([ADR 34](/project/adr/every-valid-pdf-is-readable-and-the-readers-guards-are)):

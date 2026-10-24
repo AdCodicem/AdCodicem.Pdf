@@ -18,8 +18,8 @@ internal static class AsciiHexFilter
     /// <param name="faults">What the data holds that the format does not allow.</param>
     /// <param name="maxLength">The most the data may decode to.</param>
     /// <param name="cut">
-    /// Whether the data ends where the file's may not — the reader cut it short at one of its limits, or a guard hides
-    /// where it ends —: a digit left alone at its end, before any <c>&gt;</c>, is the first of a pair the cut parted, and is
+    /// Whether the data ends where the file's may not — the reader cut it short at one of its limits, or the caller says a
+    /// guard hides where it ends —: a digit left alone at its end, before any <c>&gt;</c>, is the first of a pair the cut parted, and is
     /// dropped rather than completed with a zero, though the byte counts against <paramref name="maxLength"/>, which
     /// <paramref name="limited"/> then says, and <see cref="DataFaults.Dropped"/> counts it.
     /// </param>

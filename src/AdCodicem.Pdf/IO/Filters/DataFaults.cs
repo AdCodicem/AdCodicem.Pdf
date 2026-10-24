@@ -47,8 +47,8 @@ internal struct DataFaults
     public int UnitHeld;
 
     /// <summary>
-    /// For data the reader cut that ends inside an ASCII85 group or an ASCIIHex pair: how many bytes the unit would decode
-    /// to, which were not written.
+    /// For data the reader cut, or whose end the caller says a guard hides, that ends inside an ASCII85 group or an
+    /// ASCIIHex pair: how many bytes the unit would decode to, which were not written.
     /// </summary>
     public int Dropped;
 

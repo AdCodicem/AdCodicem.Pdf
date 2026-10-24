@@ -125,7 +125,8 @@ on 2026-10-24) —, stops the search, the
 data up to it then the guard's; a whole
 reference the cut left leads on, as read whole; a chain of filters ends there,
 its data left encoded; and a cross-reference section whose values lead to an object `MaxObjectLength` cut ends the
-chain, nothing rebuilt, the older sections and their trailers the guard's to hide, and the guard reached once the chain
+chain, nothing rebuilt — unless what the values read say makes it unreadable whatever the cut hides, the file's fault
+(amended on 2026-10-24) —, the older sections and their trailers the guard's to hide, and the guard reached once the chain
 is read. So does a cross-reference stream's `/Length` the chain could not read that leads to such an object, wherever
 only that length could say how far the data runs: no `endstream` comes before the next object or the end of the file, or
 the rows spell one and none confirms what the cut left of the length, the rows past it then the guard's. A guard that

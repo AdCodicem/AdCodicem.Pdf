@@ -1490,7 +1490,7 @@ public class GuardCutValueTests
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
-    public void The_proofs_of_streams_white_space_follows_read_no_stretch_of_the_file_more_than_three_times(
+    public void The_proofs_of_streams_white_space_follows_read_less_than_three_times_the_file(
         bool beforeEndObj, bool beforeNextHeader)
     {
         // Thirty streams whose /Length, object 20, MaxObjectLength cuts end in 65,520 bytes of white space, before their endobj

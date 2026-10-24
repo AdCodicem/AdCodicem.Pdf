@@ -141,16 +141,19 @@ separate types, separate severity scales, and vocabularies that never share a co
    spells or an `endstream` nothing after it proves the stream's own (item 4); a reference the cut left whole is read
    through, as a load reads it; its chain of filters ends there, with the data
    left encoded; and the chain of cross-reference sections ends at that section, with nothing rebuilt and the
-   older sections and their trailers the guard's to hide, wherever near its named offset the section is found. An
+   older sections and their trailers the guard's to hide, wherever near its named offset the section is found —
+   unless what the values read say makes it unreadable whatever the cut hides, which is the file's fault. An
    object `MaxObjectLength` cut there is loaded once the chain is read, which reaches the guard — thrown at opening
    under `ThrowOnLimit` —, for a value the chain keeps: not for a place it dropped as no section. A cross-reference
    stream's `/Length` the chain could not read, which leads to such an object, ends the chain so wherever only it
    could say how far the data runs: with no `endstream` before the next object or the end of the file, the
    section is the guard's, not malformed; where the rows spell one and no `endstream` confirms what the cut left
    of the length, the rows past it are the guard's — unless what follows the `endstream` the data was taken to
-   proves it the stream's own, as in item 4, which leaves the rows the data lacks to the file. Data whose end a
-   guard hides is decoded as data a guard cut, a group its end parts dropped and what a filter says of the end
-   silenced; a decoding guard the first decoding reached stands.
+   proves it the stream's own, as in item 4, which leaves the rows the data lacks to the file. Such data, whose end
+   a guard hides, is decoded again as data a guard cut, a group its end parts dropped and what a filter says of the
+   end silenced, no more rows held than the first decoding read; a decoding guard the first decoding reached stands.
+   Data an `endstream` proven its own ends past white space (item 4) decodes as read whole, what a filter says of
+   its end silenced.
 
 ### 3.2 The write path
 
