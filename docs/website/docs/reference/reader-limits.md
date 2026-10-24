@@ -118,7 +118,9 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   is the file's only where what follows its object's end — its `endobj`, or the `endstream` itself where none follows —
   proves it the stream's own: the next object the index places, a cross-reference stream the chain read, or the end of
   the file, which no data that goes on is followed by, or the `xref` or `startxref` keyword — which data may spell too: data that spells `endstream`, then
-  `xref` or `startxref`, and goes on is taken to end there as the file's, which only the hidden length could tell. Elsewhere the data up to there comes back cut by the guard,
+  `xref` or `startxref`, and goes on is taken to end there as the file's, which only the hidden length could tell; white
+  space before the keyword, which only the length says is the data's or not, leaves the data's end to the guard as it
+  decodes, so that a filter that runs out there says nothing of the file. Elsewhere the data up to there comes back cut by the guard,
   `CutByGuard`, whether the object ends with `endobj` is not judged, and nothing is said of the file. A reference the cut
   left whole, the cut falling after `6 0 R`, hides nothing: it is read through to the
   object it names, as it is read whole, while the chain is read as afterward. Decoding stops at a filter so named, or

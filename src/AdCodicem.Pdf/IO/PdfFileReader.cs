@@ -417,6 +417,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly Dictionary<long, long> _placedStarts = [];
 
     /// <summary>
+    /// Where the first significant byte lies past each place a search ended data at, the <c>endstream</c> keyword it found:
+    /// -1 where nothing could be read. Read once, however many times its stream is parsed.
+    /// </summary>
+    private readonly Dictionary<long, long> _endStreamKeywords = [];
+
+    /// <summary>
     /// Where the data starts of each stream whose length fault a reading the reader kept reported: the stream is not
     /// reported again when it is parsed again.
     /// </summary>
@@ -1599,7 +1605,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     long IPdfStreamDataProvider.SourceLength => _source.Length;
 
     /// <inheritdoc/>
-    PdfStreamData IPdfStreamDataProvider.Create(long absoluteOffset, int length, bool cutByGuard)
+    PdfStreamData IPdfStreamDataProvider.Create(long absoluteOffset, int length, bool cutByGuard, bool endHidden)
     {
         // A declared length is a claim made by the file, so it is clamped to what the file can hold.
         // Without this, "/Length 2147483647" would ask for two gigabytes of memory.
@@ -1609,6 +1615,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (cutByGuard)
         {
             data.MarkCutByGuard();
+        }
+
+        if (endHidden)
+        {
+            data.MarkEndHidden();
         }
 
         return data;
@@ -1929,6 +1940,36 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         return position >= 0 && (boundary || IsPlacedAt(position, nextObject) || IsStreamSectionAt(position));
     }
 
+    /// <inheritdoc/>
+    bool IPdfStreamDataProvider.EndsBesideWhiteSpace(long absoluteDataEnd)
+    {
+        // The keyword is found as the proof found it, once for each place: past the data's end, white space or comments.
+        if (absoluteDataEnd <= 0 || absoluteDataEnd > _source.Length)
+        {
+            return false;
+        }
+
+        Span<byte> last = stackalloc byte[1];
+        return SignificantAfterData(absoluteDataEnd) != absoluteDataEnd ||
+            (_source.Read(absoluteDataEnd - 1, last) == 1 && PdfCharacters.IsWhitespace(last[0]));
+    }
+
+    /// <summary>
+    /// Gives where the first significant byte lies past <paramref name="dataEnd"/>, where a search ended data: the
+    /// <c>endstream</c> keyword it found, past the white space and comments it left out; -1 where nothing could be read.
+    /// Read once for each place, counted with the searches.
+    /// </summary>
+    private long SignificantAfterData(long dataEnd)
+    {
+        if (!_endStreamKeywords.TryGetValue(dataEnd, out var keyword))
+        {
+            keyword = NextSignificant(dataEnd, ProofRead);
+            _endStreamKeywords[dataEnd] = keyword;
+        }
+
+        return keyword;
+    }
+
     /// <summary>
     /// Determines whether the object of a cross-reference stream the chain read starts at <paramref name="position"/>: the
     /// section places it, though no row of its own does — PDFBox writes it so (#224).
@@ -1964,7 +2005,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         // "endstreamxref" is no keyword, and ends no data: what follows it proves nothing.
-        var keyword = NextSignificant(dataEnd, ProofRead);
+        var keyword = SignificantAfterData(dataEnd);
         var end = keyword >= 0 && keyword < _source.Length && IsKeywordAt(keyword, StreamEnds.EndStreamKeyword)
             ? keyword + StreamEnds.EndStreamKeyword.Length
             : -1;
@@ -2280,6 +2321,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         _endStreamFollowers.TrimExcess();
         _placedStarts.Clear();
         _placedStarts.TrimExcess();
+        _endStreamKeywords.Clear();
+        _endStreamKeywords.TrimExcess();
         Release(_lengthFaultsReported);
         Release(_syntaxReported);
         Release(_limitsReached);
@@ -6603,6 +6646,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         private bool _cutByGuard;
 
+        private bool _endHidden;
+
         public override int Length => length;
 
         public override long Position => offset;
@@ -6611,7 +6656,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         internal override bool CutByGuard => _cutByGuard;
 
+        internal override bool EndHidden => _endHidden;
+
         public void MarkCutByGuard() => _cutByGuard = true;
+
+        public void MarkEndHidden() => _endHidden = true;
 
         /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
         /// <exception cref="Diagnostics.PdfLimitExceededException">

@@ -18,9 +18,10 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
 
     /// <summary>
     /// Creates stream data for <paramref name="length"/> bytes at <paramref name="absoluteOffset"/>, marked cut by a guard
-    /// when <paramref name="cutByGuard"/>: a guard hid what would have said where the data ends (#224).
+    /// when <paramref name="cutByGuard"/>: a guard hid what would have said where the data ends (#224); or, with
+    /// <paramref name="endHidden"/>, the data's, its end only the guard's to hide.
     /// </summary>
-    PdfStreamData Create(long absoluteOffset, int length, bool cutByGuard = false);
+    PdfStreamData Create(long absoluteOffset, int length, bool cutByGuard = false, bool endHidden = false);
 
     /// <summary>
     /// Gives where the data of a stream starts in the file: past the end-of-line after its <c>stream</c> keyword, which ends
@@ -86,6 +87,13 @@ internal interface IPdfStreamDataProvider : IPdfFileEdge
     /// Read once for each place, as far as the searches for <c>endstream</c> may read; past that, nothing is proven.
     /// </remarks>
     bool IsOwnEndStream(long absoluteDataEnd, EndObjState endObj, long? nextObject);
+
+    /// <summary>
+    /// Determines whether data a search ended at <paramref name="absoluteDataEnd"/>, at an <c>endstream</c>, may end
+    /// elsewhere among the white space before the keyword: white space lies between them, which the search left out, or the
+    /// data's last byte is white space. Only a length says which (#224).
+    /// </summary>
+    bool EndsBesideWhiteSpace(long absoluteDataEnd);
 
     /// <summary>
     /// Resolves the object a stream's <c>/Length</c> names, and says whether the file holds it and whether it could be

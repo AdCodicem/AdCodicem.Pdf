@@ -116,7 +116,9 @@ separate types, separate severity scales, and vocabularies that never share a co
    it, or an `endstream` it spells ends it, the data up to there is the guard's, cut by it, and nothing is said of the
    file. An `endstream` is the stream's own, and its end the file's, only where what follows the object's end — its
    `endobj`, or the `endstream` where none follows — is the next object the index places, a cross-reference stream
-   the chain read, the end of the file, or `xref` or `startxref`, read once for each place ([#224]). With no
+   the chain read, the end of the file, or `xref` or `startxref`, read once for each place ([#224]); white space
+   before the keyword, which only the hidden length says is the data's or not, leaves the data's end to the guard as it
+   decodes (`PdfStreamData.EndHidden`). With no
    `endstream` before the stop, the object's `endobj` ends the data where it
    follows the declared length as an `endstream` would, or where it is the last one, a whole keyword — no regular
    character, solidus or percent sign right before it, which would make it part of a token, a name or a comment that

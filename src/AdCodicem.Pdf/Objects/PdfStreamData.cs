@@ -31,6 +31,14 @@ public abstract class PdfStreamData
     /// </summary>
     internal virtual bool CutByGuard => false;
 
+    /// <summary>
+    /// Gets a value indicating whether where the data ends is the guard's to hide, though the data is the file's: an
+    /// <c>endstream</c> proven the stream's own ended it under a <c>/Length</c> a guard hid, with white space before the
+    /// keyword that only the length could say is the data's or not (#224). Decoding then takes its end as one a guard hides,
+    /// and says nothing of the file there.
+    /// </summary>
+    internal virtual bool EndHidden => false;
+
     /// <summary>Returns the encoded bytes, as they appear in the file, up to the reader's bound.</summary>
     /// <remarks>
     /// Data read from a document held in memory is a view of that memory, which keeps it alive and changes as it does. Data

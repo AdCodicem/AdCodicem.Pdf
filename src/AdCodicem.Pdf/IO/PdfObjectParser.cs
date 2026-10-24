@@ -847,8 +847,11 @@ internal ref struct PdfObjectParser
                 return Finish(dictionary, dataStart, found, span.Length, cutByGuard: true);
             }
 
+            // Proven its own, the endstream ends data that is the file's; but white space before it, which the search left out
+            // or took in, only the hidden length says is the data's or not: its end is the guard's to hide when decoded (#224).
             _endObjAfterStream = _streamData is null ? null : settled.EndObj;
-            return Finish(dictionary, dataStart, found, span.Length);
+            var endHidden = hidden && _streamData is { } proven && proven.EndsBesideWhiteSpace(_baseOffset + dataStart + found);
+            return Finish(dictionary, dataStart, found, span.Length, endHidden: endHidden);
         }
 
         return FinishWithoutEndStream(dictionary, declared, dataStart, length, settled);
@@ -1256,12 +1259,13 @@ internal ref struct PdfObjectParser
     private readonly void WarnLengthFault(string code, string message, int dataStart) =>
         _diagnostics!.Warn(code, message, _baseOffset + dataStart);
 
-    private PdfStream Finish(PdfDictionary dictionary, int dataStart, int length, int bufferLength, bool cutByGuard = false)
+    private PdfStream Finish(
+        PdfDictionary dictionary, int dataStart, int length, int bufferLength, bool cutByGuard = false, bool endHidden = false)
     {
         length = Math.Max(length, 0);
 
         var data = _streamData is not null
-            ? _streamData.Create(_baseOffset + dataStart, length, cutByGuard)
+            ? _streamData.Create(_baseOffset + dataStart, length, cutByGuard, endHidden)
             : PdfStreamData.FromMemory(_memory.Slice(dataStart, Math.Min(length, bufferLength - dataStart)));
 
         var afterData = (int)Math.Min((long)dataStart + length, bufferLength);

@@ -152,10 +152,12 @@ internal static class PdfFilterPipeline
 
         // Whether the data a filter is given ends where the file's may not: data the reader cut at one of its limits —
         // MaxStreamLength, or the window a guard stopped at, cut the stream's data, or a filter before it stopped at
-        // MaxDecodedStreamLength —, or data whose end a guard hides. Every filter after it is given such data, and a cut is
-        // reported once, by the guard that made it; data whose end is hidden is no cut. A filter drops a last group such
-        // data holds in part, and counts it against the bound all the same (Ascii85Filter, AsciiHexFilter).
-        var cut = stream.Data.CutByGuard || endHidden;
+        // MaxDecodedStreamLength —, or data whose end a guard hides: the caller says so, or the data does, its endstream
+        // proven its own past white space only a hidden length says is the data's or not. Every filter after it is given
+        // such data, and a cut is reported once, by the guard that made it; data whose end is hidden is no cut. A filter
+        // drops a last group such data holds in part, and counts it against the bound all the same (Ascii85Filter,
+        // AsciiHexFilter).
+        var cut = stream.Data.CutByGuard || endHidden || stream.Data.EndHidden;
 
         // A guard a decoding of the same data reached before was reported then: its verdict stands, whatever this one meets.
         var limitReported = reachedBefore;

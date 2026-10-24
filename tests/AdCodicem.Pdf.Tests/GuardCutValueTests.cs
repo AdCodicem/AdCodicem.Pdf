@@ -784,16 +784,19 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData("cut", false)]
-    [InlineData("left out", false)]
-    [InlineData("cut", true)]
-    [InlineData("left out", true)]
-    public void An_endstream_the_next_object_follows_where_a_guard_hid_the_length_lacks_its_endobj_as_the_file_s_fault(string guard, bool flate)
+    [InlineData("cut", false, true)]
+    [InlineData("left out", false, true)]
+    [InlineData("cut", true, true)]
+    [InlineData("left out", true, true)]
+    [InlineData("cut", true, false)]
+    [InlineData("left out", true, false)]
+    public void An_endstream_the_next_object_follows_where_a_guard_hid_the_length_lacks_its_endobj_as_the_file_s_fault(string guard, bool flate, bool endOfLine)
     {
         // Object 4's endstream lost its endobj, and object 5, which the table places, follows it directly. No endstream the
         // data spells can be followed by an object the index places, so the one found is the stream's own, whatever the
-        // guard hid: what the object lacks is the file's, as read whole, and so is the end of its Flate data, which lost its
-        // last bytes (#224).
+        // guard hid: what the object lacks is the file's, as read whole. So is the end of its Flate data, which lost its
+        // last bytes, where the endstream follows it directly; past an end-of-line, which only the hidden length says is
+        // the data's or not, its end is the guard's to hide, and the run-out says nothing of the file (#224).
         var data = "BT /F1 12 Tf 72 712 Td (Hello) Tj ET";
 
         if (flate)
@@ -805,7 +808,7 @@ public class GuardCutValueTests
                 zlib.Write(Encoding.ASCII.GetBytes(data));
             }
 
-            data = Encoding.Latin1.GetString(output.ToArray()[..^6]);
+            data = Encoding.Latin1.GetString(output.ToArray()[..(endOfLine ? ^6 : ^4)]);
         }
 
         var file = new HandWrittenFile();
@@ -817,7 +820,7 @@ public class GuardCutValueTests
             [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + data.Length.ToString(CultureInfo.InvariantCulture)),
             [4] = file.Position,
         };
-        file.Raw($"4 0 obj\n<< /Length 20 0 R{(flate ? " /Filter /FlateDecode" : string.Empty)} >>\nstream\n{data}\nendstream\n");
+        file.Raw($"4 0 obj\n<< /Length 20 0 R{(flate ? " /Filter /FlateDecode" : string.Empty)} >>\nstream\n{data}{(endOfLine ? "\n" : string.Empty)}endstream\n");
         rows[5] = file.Object(5, "(five)");
         file.Table(21, rows, "/Size 21 /Root 1 0 R");
         var limits = guard == "cut"
@@ -832,10 +835,77 @@ public class GuardCutValueTests
         stream.Data.CutByGuard.Should().BeFalse();
         document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(
-            flate
+            flate && !endOfLine
                 ? [guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries, PdfDiagnosticCodes.FilterFailed]
                 : [guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries]);
+        stream.Data.EndHidden.Should().Be(endOfLine);
         new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.ObjectEndObjMissing).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("cut", "\n")]
+    [InlineData("left out", "\n")]
+    [InlineData("cut", "\r\n")]
+    public void Flate_data_whose_last_byte_is_a_carriage_return_before_a_proven_endstream_is_no_fault_of_the_file(string guard, string endOfLine)
+    {
+        // Content stream 4's Flate data ends in 0x0D, its checksum's last byte, then an end-of-line and its endstream, which the
+        // next object proves its own. The search leaves a carriage return out before a line feed, the length that would
+        // say it is the data's hidden by the guard: the data lacked its last byte, and its Flate data, short of its checksum,
+        // was reported as the file's fault, which read whole it is not (#224).
+        byte[] zlib = [];
+
+        for (var i = 0; zlib.Length == 0 || zlib[^1] != 0x0D; i++)
+        {
+            using var output = new MemoryStream();
+
+            using (var stream = new ZLibStream(output, CompressionLevel.Optimal, leaveOpen: true))
+            {
+                stream.Write(Encoding.ASCII.GetBytes(Invariant($"BT /F1 12 Tf ({i}) Tj ET")));
+            }
+
+            zlib = output.ToArray();
+        }
+
+        var data = Encoding.Latin1.GetString(zlib);
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, (guard == "cut" ? new string(' ', 2000) : string.Empty) + data.Length.ToString(CultureInfo.InvariantCulture)),
+            [4] = file.Object(4, $"<< /Length 20 0 R /Filter /FlateDecode >>\nstream\n{data}{endOfLine}endstream"),
+            [5] = file.Object(5, "(five)"),
+        };
+        file.Table(21, rows, "/Size 21 /Root 1 0 R");
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            _ = whole.GetObject(new PdfObjectId(4)).AsStream().Required().Decode();
+            whole.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, new PdfReaderOptions { Limits = limits });
+        var content = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        content.Decode().ToArray().Should().Equal(ZLibDecompress(zlib));
+        content.Data.CutByGuard.Should().BeFalse();
+        content.Data.EndHidden.Should().BeTrue();
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
+    }
+
+    private static byte[] ZLibDecompress(byte[] zlib)
+    {
+        using var input = new MemoryStream(zlib);
+        using var stream = new ZLibStream(input, CompressionMode.Decompress);
+        using var output = new MemoryStream();
+        stream.CopyTo(output);
+        return output.ToArray();
     }
 
     [Theory]
