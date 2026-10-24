@@ -2006,6 +2006,22 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void Deferred_lengths_followed_by_long_white_space_have_it_read_on_once_however_their_data_ends(string endOfLine)
+    {
+        // Thirty revisions, each a cross-reference stream whose /Length only its own rows place, its endstream followed by
+        // 65,472 spaces before endobj. With a carriage return before the line feed, which a deferred length's data keeps, the
+        // search's end and the length's lie apart before one keyword, and each read on through the spaces: the file's
+        // searches read close to four times its length, the most they may, where twice is said (#174, #220).
+        var file = ChainFiles.UpdatesWithDeferredLengthsBeforeWhiteSpace(30, 65_472, endOfLine);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.EndStreamSearchBytes.Should().BeLessThan(2L * file.Length + 1024);
+    }
+
+    [Theory]
     [InlineData("A85 RL RL RL")]
     [InlineData("A85 RL RL Fl")]
     [InlineData("A85 RL Fl RL")]

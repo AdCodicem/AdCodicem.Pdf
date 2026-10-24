@@ -149,12 +149,14 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <c>/Length</c> the chain cannot read (#220) is searched once to its <c>endstream</c>; a stream whose
     /// <c>/Length</c> a guard cut or left out of the index (#224) is searched once to its <c>endstream</c>, or to a
     /// header its data spells, which leaves the data up to it to the guard; and white space after a declared length
-    /// that runs past a first read is read on once for each place (#174). The data of different streams lies apart, and so do the runs of white space
-    /// after them: together those reads cover the file once, and one read past each — about twice the file at most. The
-    /// fourth adds a little to each stream of the second way: the proof that an <c>endstream</c> found is the stream's
-    /// own (#224) reads past it to its object's end and what follows, three first reads of <see cref="ProofRead"/>
-    /// bytes, and a fourth past a row that names the white space before the next object's header, each once however
-    /// often the stream is parsed — 48 or 64 bytes, about what the smallest such stream spans with its header. White
+    /// that runs past a first read is read on once for each place, and past an <c>endstream</c> once for each keyword
+    /// however many places lead to it (#174). The data of different streams lies apart, and so do the runs of white
+    /// space after them: together those reads cover the file once, and one read past each — about twice the file at
+    /// most. The fourth adds a little to each stream of the second way: the proof that an <c>endstream</c> found is the
+    /// stream's own (#224) reads past it to its object's end and what follows, three first reads of
+    /// <see cref="ProofRead"/> bytes, and a fourth past a row that names the white space before the next object's
+    /// header, each once however often the stream is parsed — 48 or 64 bytes, about what the smallest such stream spans
+    /// with its header. White
     /// space it crosses adds to that: the run before the object's <c>endobj</c> it takes from the read-on that read it,
     /// the run after it it doubles through, as the read-on does, and the run a row names before the next header it
     /// reads once from there, a first read reaching the header. No run is read more than three times, and the file
@@ -404,9 +406,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly Dictionary<long, EndObjState?> _endStreamChecks = [];
 
     /// <summary>
-    /// Where the first significant byte lies past each <c>endstream</c> keyword the reader read on past (#174), which an
-    /// <c>endobj</c> there starts at: the proof that the keyword ends the stream's own data (#224) takes it rather than read
-    /// the white space again.
+    /// Where the first significant byte lies past each <c>endstream</c> keyword the reader read on past (#174), an
+    /// <c>endobj</c> there or not: another place that leads to the keyword, and the proof that the keyword ends the stream's
+    /// own data (#224), take it rather than read the white space again.
     /// </summary>
     private readonly Dictionary<long, long> _endObjStarts = [];
 
@@ -1728,15 +1730,20 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             keywordEnd = at + StreamEnds.EndStreamKeyword.Length;
         }
 
-        var next = NextSignificant(keywordEnd);
-        state = next < 0 ? EndObjState.Unseen : IsEndObjKeywordAt(next) ? EndObjState.Present : EndObjState.Absent;
-        _endStreamChecks[absoluteOffset] = state;
-
-        if (state == EndObjState.Present)
+        // Two places may lead to one keyword — a cross-reference stream's data, whose carriage return is kept, and the
+        // length that ends before it —: what follows the keyword is read once.
+        if (!_endObjStarts.TryGetValue(keywordEnd, out var next))
         {
-            _endObjStarts[keywordEnd] = next;
+            next = NextSignificant(keywordEnd);
+
+            if (next >= 0)
+            {
+                _endObjStarts[keywordEnd] = next;
+            }
         }
 
+        state = next < 0 ? EndObjState.Unseen : IsEndObjKeywordAt(next) ? EndObjState.Present : EndObjState.Absent;
+        _endStreamChecks[absoluteOffset] = state;
         return state;
     }
 

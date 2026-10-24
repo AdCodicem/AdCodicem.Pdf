@@ -1314,6 +1314,42 @@ internal static class ChainFiles
         }
     }
 
+    /// <summary>
+    /// A file of <paramref name="count"/> revisions, each a cross-reference stream whose <c>/Length</c> names an object only
+    /// its own rows place, its rows ending in <paramref name="endOfLine"/> before <c>endstream</c>, then
+    /// <paramref name="run"/> spaces before <c>endobj</c>: valid, its searches reading on through each run.
+    /// </summary>
+    public static byte[] UpdatesWithDeferredLengthsBeforeWhiteSpace(int count, int run, string endOfLine)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var previous = -1L;
+
+        for (var i = 0; i < count; i++)
+        {
+            var length = 4 + (2 * i);
+            var stream = length + 1;
+            file.Object(length, Invariant($"{(i == 0 ? 6 : 2) * 7}"));
+            var at = file.Position;
+            (int Type, long Second, int Third)[] own = [(1, file.OffsetOf(length), 0), (1, at, 0)];
+            var rows = i == 0
+                ? Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), .. own], Rows.Raw)
+                : Encode(own, Rows.Raw);
+            file.Text(Invariant(
+                $"{stream} 0 obj\n<< /Type /XRef /Size {stream + 1} /W [1 4 2] /Index [{(i == 0 ? "0 6" : $"{length} 2")}] /Root 1 0 R{(previous < 0 ? string.Empty : $" /Prev {previous}")} /Length {length} 0 R >>\nstream\r\n"));
+            file.Bytes(rows);
+            file.Text(endOfLine + "endstream" + new string(' ', run) + "endobj\n");
+            file.StartXRef(at);
+            previous = at;
+        }
+
+        return file.ToArray();
+
+        static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+    }
+
     private enum Rows
     {
         Raw,
@@ -1393,6 +1429,8 @@ internal static class ChainFiles
         public long OffsetOf(int number) => _offsets[number];
 
         public void Text(string text) => _output.Write(Encoding.Latin1.GetBytes(text));
+
+        public void Bytes(byte[] bytes) => _output.Write(bytes);
 
         public void Object(int number, string body)
         {
