@@ -145,11 +145,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     /// <remarks>
     /// Not a guard a valid file reaches (ADR 34), argued here once for every read it counts. A valid file is read past
-    /// the parser's window in four ways only. Three read the data: a cross-reference stream whose <c>/Length</c> the
-    /// chain cannot read (#220) is searched once to its <c>endstream</c>; a stream whose <c>/Length</c> a guard cut or
-    /// left out of the index (#224) is searched once to its <c>endstream</c>, or to a header its data spells, which
-    /// leaves the data up to it to the guard; and white space after a declared length that runs past a first read is
-    /// read on once for each place (#174). The data of different streams lies apart, and so do the runs of white space
+    /// the parser's window in four ways only. Three read the data or what follows it: a cross-reference stream whose
+    /// <c>/Length</c> the chain cannot read (#220) is searched once to its <c>endstream</c>; a stream whose
+    /// <c>/Length</c> a guard cut or left out of the index (#224) is searched once to its <c>endstream</c>, or to a
+    /// header its data spells, which leaves the data up to it to the guard; and white space after a declared length
+    /// that runs past a first read is read on once for each place (#174). The data of different streams lies apart, and so do the runs of white space
     /// after them: together those reads cover the file once, and one read past each — about twice the file at most. The
     /// fourth adds a little to each stream of the second way: the proof that an <c>endstream</c> found is the stream's
     /// own (#224) reads past it to its object's end and what follows, three first reads of <see cref="ProofRead"/>

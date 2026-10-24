@@ -135,8 +135,8 @@ separate types, separate severity scales, and vocabularies that never share a co
    option, on by default and reported under its own `limit.*` code when reached; a bound only an invalid file
    reaches is an internal constant (ADR 34). What a guard cut is the guard's, never the file's fault: a value
    that leads to an object a guard cut or left out of the index — a stream's `/Length`, `/Filter` or
-   `/DecodeParms`, a cross-reference stream's `/W`, a trailer's `/Prev` or `/XRefStm` — is not judged as one the
-   file gave. The stream's data is found by its `endstream`, an integer the cut left only a place to look for
+   `/DecodeParms`, a cross-reference stream's `/W`, a trailer's `/Prev` or `/XRefStm` the reader follows — is not
+   judged as one the file gave. The stream's data is found by its `endstream`, an integer the cut left only a place to look for
    one at, and a missing `endstream` is still the file's fault but where the search stops at a header the data
    spells or an `endstream` nothing after it proves the stream's own (item 4); a reference the cut left whole is read
    through, as a load reads it; its chain of filters ends there, with the data

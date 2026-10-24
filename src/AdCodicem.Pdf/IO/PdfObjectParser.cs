@@ -835,8 +835,9 @@ internal ref struct PdfObjectParser
 
             // Where a guard cut the /Length or left it out of the index, an endstream the data spells, as a valid stream's may —
             // in a string, followed by endobj or not —, ends the search as the stream's own would: the length that tells them
-            // apart is the guard's. One what follows proves its own — the next object the index places, the end of the file,
-            // a cross-reference section's keyword, after the object's endobj or in its place — ends the data, the file's.
+            // apart is the guard's. One what follows proves its own — the next object the index places, a cross-reference
+            // stream the chain read, the end of the file, a cross-reference section's keyword, after the object's endobj or
+            // in its place — ends the data, the file's.
             // Any other's data is the guard's, cut by it, the object's endobj unjudged, and nothing is said of the file, as
             // at a header the data spells (#224): one past which the searches could read nothing more, too.
             if (hidden && _streamData is { } file &&

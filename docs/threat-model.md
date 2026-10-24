@@ -380,6 +380,11 @@ Known gaps:
 - Accepted, with no issue: under a `/Length` a guard cut or left out of the index, data that spells `endstream`, an
   `endobj` or not, then `xref` or `startxref`, and goes on, ends there as the file's data, and its object as ending
   there: only the hidden length could tell, and a valid file's last stream before its table is told so ([#224]).
+- Accepted, with no issue: under a `/Length` a guard cut or left out of the index, data an `endstream` proven its own
+  ends past white space — the end-of-line the search leaves out before the keyword, above all — decodes with its end
+  the guard's: a Flate stream that lost its tail or its checksum, or ASCII85, ASCIIHex, RunLength or LZW data without
+  its end marker, is not reported there, though a whole read reports it; only the hidden length says whether that white
+  space is the data's ([#224]).
 
 ### Decoding
 
