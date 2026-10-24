@@ -797,10 +797,12 @@ internal static class ChainFiles
     /// cross-reference stream 7 after 1,015 spaces — a <c>MaxObjectLength</c> of 1,024 parts it after its first digit —, and
     /// stream 7, Flate in a stored block with a PNG predictor of <paramref name="columns"/> columns, whose rows are the
     /// catalog's, two of reserved types that spell <c>endstream</c> after an end-of-line, then the page tree's, the page's,
-    /// object 5's and its own (<c>/Index [1 1 20 2 2 2 5 1 7 1]</c>). The second is a classic table that places object 5
-    /// and names stream 7 through <c>/Prev</c>. The file is valid.
+    /// object 5's and its own (<c>/Index [1 1 20 2 2 2 5 1 7 1]</c>); with <paramref name="pageBefore"/>, the free row 0's,
+    /// the catalog's, the page tree's and the page's come first, then the two that spell <c>endstream</c>, then object 5's
+    /// and its own (<c>/Index [0 4 20 2 5 1 7 1]</c>). The second is a classic table that places object 5 and names stream 7
+    /// through <c>/Prev</c>. The file is valid.
     /// </summary>
-    public static byte[] PredictedRowsPartedBySpelledEndStream(int columns)
+    public static byte[] PredictedRowsPartedBySpelledEndStream(int columns, bool pageBefore = false)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -810,9 +812,13 @@ internal static class ChainFiles
         // The data's length does not depend on the offsets its rows hold.
         byte[] Data(long five, long stream)
         {
-            var rows = new List<byte>(Encode([(1, file.OffsetOf(1), 0)], Rows.Raw));
+            var rows = new List<byte>(pageBefore
+                ? Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0)], Rows.Raw)
+                : Encode([(1, file.OffsetOf(1), 0)], Rows.Raw));
             rows.AddRange("\nendstream\0\0\0\0"u8.ToArray());
-            rows.AddRange(Encode([(1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, five, 0), (1, stream, 0)], Rows.Raw));
+            rows.AddRange(pageBefore
+                ? Encode([(1, five, 0), (1, stream, 0)], Rows.Raw)
+                : Encode([(1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, five, 0), (1, stream, 0)], Rows.Raw));
 
             while (rows.Count % columns != 0)
             {
@@ -836,7 +842,7 @@ internal static class ChainFiles
             7,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"/Type /XRef /Size 22 /W [1 4 2] /Index [1 1 20 2 2 2 5 1 7 1] /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns {columns} >> /Root 1 0 R /Length 5 0 R"),
+                $"/Type /XRef /Size 22 /W [1 4 2] /Index {(pageBefore ? "[0 4 20 2 5 1 7 1]" : "[1 1 20 2 2 2 5 1 7 1]")} /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns {columns} >> /Root 1 0 R /Length 5 0 R"),
             Data(file.OffsetOf(5), at));
         file.Text("%" + new string('-', 1200) + "\n");
         var xref = file.Position;

@@ -4069,7 +4069,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // hidden keeps reached: the whole data holds at least what that decoding read.
         var reachedBefore = false;
 
-        // How many rows the decoding before held, which the data decoded again knowing its end hidden holds no more of.
+        // How many rows the decoding before held where it stopped at MaxDecodedStreamLength, which the data decoded again
+        // knowing its end hidden reads no more of.
         long heldBefore = 0;
 
         while (true)
@@ -4096,8 +4097,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
             // The data decoded again knowing its end hidden lacks the group a filter dropped there, and a filter after it,
             // given less, may be given more room than the decoding before gave it, and read rows past where that one stopped
-            // at a guard on decoding: the whole data holds no more of them than that decoding read (#220).
-            if (endHidden && held > heldBefore)
+            // at a guard on decoding: the guard stops it where it stops the data read whole, the decoding before (#220). A
+            // decoding no guard stopped holds fewer rows only where its end, decoded as the file's, lost a predicted row the
+            // data decoded again undoes as far as it goes: those it completes are the file's.
+            if (endHidden && reachedBefore && held > heldBefore)
             {
                 held = heldBefore;
                 data = data[..(int)(held * row)];

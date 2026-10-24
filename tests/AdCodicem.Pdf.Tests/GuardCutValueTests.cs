@@ -1717,6 +1717,28 @@ public class GuardCutValueTests
         document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
+    [Fact]
+    public void Rows_a_predicted_row_undone_as_far_as_it_goes_completes_are_read_though_no_guard_stopped_the_decoding_before()
+    {
+        // As above, the rows of objects 0 to 3 before those that spell an endstream, 21 columns: the data up to it decodes to
+        // a predicted row that holds three, and a second, parted, that holds the page's. Decoded as data whose end the file
+        // gives, the parted row was dropped; decoded again knowing its end hidden, it is undone as far as it goes, and holds
+        // the page's row whole. That the data decoded again holds no more rows than the decoding before is for a decoding a
+        // guard stopped, whose bound a filter after a dropped group may be given more room under (#220).
+        var file = ChainFiles.PredictedRowsPartedBySpelledEndStream(21, pageBefore: true);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+            whole.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData(29)]
     [InlineData(20)]
