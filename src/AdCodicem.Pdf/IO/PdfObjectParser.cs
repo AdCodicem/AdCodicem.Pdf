@@ -838,9 +838,10 @@ internal ref struct PdfObjectParser
             // apart is the guard's. One what follows proves its own — the next object the index places, the end of the file,
             // a cross-reference section's keyword, after the object's endobj or in its place — ends the data, the file's.
             // Any other's data is the guard's, cut by it, the object's endobj unjudged, and nothing is said of the file, as
-            // at a header the data spells (#224).
-            if (hidden && settled.EndObj is EndObjState.Absent or EndObjState.Present && _streamData is { } file &&
-                !file.IsOwnEndStream(_baseOffset + dataStart + found, settled.EndObj, settled.NextObject))
+            // at a header the data spells (#224): one past which the searches could read nothing more, too.
+            if (hidden && _streamData is { } file &&
+                (settled.EndObj is not (EndObjState.Absent or EndObjState.Present) ||
+                    !file.IsOwnEndStream(_baseOffset + dataStart + found, settled.EndObj, settled.NextObject)))
             {
                 _endObjUnknown = true;
                 return Finish(dictionary, dataStart, found, span.Length, cutByGuard: true);

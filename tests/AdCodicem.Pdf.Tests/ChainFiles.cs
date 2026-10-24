@@ -701,6 +701,47 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of one cross-reference stream, object 5, whose <c>/Length</c> names object 4, which only the stream's own row
+    /// places and which holds the length after 1,100 spaces — a <c>MaxObjectLength</c> of 1,024 cuts it before its value.
+    /// Its rows, of objects 0 to 2, 4, 5 and 8, then 3 (<c>/Index [0 3 4 2 8 1 3 1]</c>), lose their last 3 bytes: the page's
+    /// row lacks, the file's fault. With <paramref name="objectAfter"/>, object 8, which its row places, follows the stream,
+    /// and the <c>startxref</c> otherwise.
+    /// </summary>
+    public static byte[] AloneWithACutLengthLackingItsLastRow(bool objectAfter)
+    {
+        // Every row and offset is as wide whatever it holds: where object 8 lies is read once, then written.
+        _ = Build(0, out var eight);
+        return Build(eight, out _);
+
+        byte[] Build(long eightAt, out long eight)
+        {
+            using var file = new Writer("1.5");
+            file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+            file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+            var four = file.Position;
+            var at = four + ("4 0 obj\n" + new string(' ', 1100) + "46\nendobj\n").Length;
+            var rows = Encode(
+                [
+                    (0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, four, 0), (1, at, 0), (1, eightAt, 0),
+                    (1, file.OffsetOf(3), 0),
+                ],
+                Rows.Raw);
+            file.Object(4, new string(' ', 1100) + "46");
+            file.Stream(5, "/Type /XRef /Size 9 /W [1 4 2] /Index [0 3 4 2 8 1 3 1] /Root 1 0 R /Length 4 0 R", rows[..^3]);
+            eight = file.Position;
+
+            if (objectAfter)
+            {
+                file.Object(8, "(eight)");
+            }
+
+            file.StartXRef(at);
+            return file.ToArray();
+        }
+    }
+
+    /// <summary>
     /// A file of one cross-reference stream, object 7, in ASCII85, whose <c>/Length</c> names object 5, which only the
     /// stream's own row places, holding the length after 1,015 spaces: a <c>MaxObjectLength</c> of 1,024 parts it after its
     /// first digit. Its rows are those of objects 0, 5, 1 to 3, 20 and 21, of reserved types, and 7 (<c>/Index</c>). The text

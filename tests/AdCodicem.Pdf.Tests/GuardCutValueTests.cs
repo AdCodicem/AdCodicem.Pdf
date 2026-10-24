@@ -474,8 +474,8 @@ public class GuardCutValueTests
     /// A page whose content stream, object 4, holds <c>BT ET</c>, its <c>/Length</c> object 20, which holds 5 after 2,000
     /// spaces where <paramref name="guard"/> is <c>cut</c>; its <c>endstream</c>, and its <c>endobj</c> where
     /// <paramref name="endObj"/>, followed by <paramref name="follower"/>: object 6, which the table places, or which no row
-    /// places; the table; the <c>startxref</c> after the table, which comes before object 4; or the end of the file, past
-    /// the one the table's <c>%%EOF</c> marks.
+    /// places — at its header, or on the end-of-line before it —; the table; the <c>startxref</c> after the table, which
+    /// comes before object 4; or the end of the file, past the one the table's <c>%%EOF</c> marks.
     /// </summary>
     private static byte[] StreamFollowedBy(string guard, string follower, bool endObj)
     {
@@ -516,9 +516,10 @@ public class GuardCutValueTests
                 {
                     var six = file.Object(6, "(six)");
 
-                    if (follower == "next object")
+                    // A row may name the white space before the header, where the reader reads the object all the same.
+                    if (follower is "next object" or "next object past white space")
                     {
-                        rows[6] = six;
+                        rows[6] = follower == "next object" ? six : six - 1;
                     }
                 }
             }
@@ -839,6 +840,8 @@ public class GuardCutValueTests
     [Theory]
     [InlineData("next object", true)]
     [InlineData("next object", false)]
+    [InlineData("next object past white space", true)]
+    [InlineData("next object past white space", false)]
     [InlineData("xref", true)]
     [InlineData("xref", false)]
     [InlineData("startxref", true)]
@@ -974,6 +977,65 @@ public class GuardCutValueTests
         Encoding.ASCII.GetString(data).Should().Be(reference ? "ABC" : "414243>");
         document.Reader.IsCutAtLimit(4).Should().BeTrue();
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void The_proof_of_an_endstream_weighs_each_caller_s_next_object_against_what_follows_its_object()
+    {
+        // What follows object 4's end is read once, and each caller's next object weighed against it: the answer kept for a
+        // first caller that knew of no next object was served to every later one, whose index places object 6 there (#224).
+        var file = StreamFollowedBy("cut", "next object", endObj: true);
+        var six = (long)Encoding.Latin1.GetString(file).IndexOf("6 0 obj", StringComparison.Ordinal);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+        var data = document.GetObject(new PdfObjectId(4)).AsStream().Required().Data;
+        var provider = (IPdfStreamDataProvider)document.Reader;
+
+        provider.IsOwnEndStream(data.Position + data.Length, EndObjState.Present, null).Should().BeFalse();
+        provider.IsOwnEndStream(data.Position + data.Length, EndObjState.Present, six).Should().BeTrue();
+        provider.IsOwnEndStream(data.Position + data.Length, EndObjState.Present, six - 1).Should().BeTrue();
+        provider.IsOwnEndStream(data.Position + data.Length, EndObjState.Present, six + 1).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("xref")]
+    [InlineData("startxref")]
+    public void An_endstream_the_data_glues_to_a_section_keyword_where_a_guard_hid_the_length_ends_data_that_is_the_guard_s(string keyword)
+    {
+        // Object 4's content spells "endstreamxref" in a string, one token and no endstream keyword: the proof stepped over
+        // nine bytes and found the section's keyword past them, and the data, cut short there, was taken for the file's, its
+        // object said to lack its endobj. A token that is no endstream proves nothing: the data is the guard's (#224).
+        var data = "BT (aendstream" + keyword + " ) Tj ET";
+        var file = ContentLengthIn(new string(' ', 2000) + data.Length.ToString(CultureInfo.InvariantCulture), data);
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        stream.GetRawBytes().ToArray().Should().Equal("BT (a"u8.ToArray());
+        stream.Data.CutByGuard.Should().BeTrue();
+        document.Reader.IsEndObjMissing(4, out _).Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Rows_a_cross_reference_stream_whose_length_a_guard_cut_lacks_are_the_file_s_where_what_follows_its_endstream_proves_it(bool objectAfter)
+    {
+        // Stream 5's /Length, object 4, which only its own row places, is one MaxObjectLength cuts before its value, and its
+        // data lacks the page's row. Its endobj is followed by object 8, which only its own rows place, or by the startxref:
+        // either proves its endstream its own. The chain asked the sections read before it alone, and took the row the data
+        // lacks for the guard's, the page unread; a load of the stream then kept the chain's answer. The row is the file's
+        // to lack, as read whole: the index is rebuilt, the page read (#224).
+        var file = ChainFiles.AloneWithACutLengthLackingItsLastRow(objectAfter);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        whole.Reader.Structure.Sections[0].Incomplete.Should().BeTrue();
+        document.Reader.Structure.Sections[0].Incomplete.Should().BeTrue();
+        document.Reader.Structure.Sections[0].CutByLimit.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(5)).AsStream().Required().Data.CutByGuard.Should().BeFalse();
     }
 
     [Theory]

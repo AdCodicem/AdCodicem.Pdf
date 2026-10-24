@@ -2200,6 +2200,37 @@ public class StreamLengthTests
         return (file, head);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_endstream_the_data_spells_past_which_the_searches_may_read_no_more_ends_data_that_is_the_guard_s(bool endObj)
+    {
+        // Ten streams whose data share a megabyte read as much of the file as the searches may. Then stream 13, whose
+        // /Length, object 14, MaxObjectLength cuts, spells an endstream in a string, a long comment after it, then an endobj
+        // or not: what follows the comment lies past what the searches may read, and nothing proves the endstream the
+        // stream's own. The data was taken for the file's, cut short unmarked, its object said to lack its endobj where the
+        // data spells none; it is the guard's (#224).
+        const int Streams = 10;
+        var data = "BT (a\nendstream\n%" + new string('c', 80) + (endObj ? "\nendobj\n" : "\n") + ") Tj ET";
+        var (file, _) = NestedStreams(
+            Streams,
+            100_000,
+            Invariant($"{Streams + 3} 0 obj\n<< /Length {Streams + 4} 0 R >>\nstream\n{data}\nendstream\nendobj\n"),
+            Invariant($"{Streams + 4} 0 obj\n{new string(' ', 2000)}{data.Length}\nendobj\n"));
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var stream = document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required();
+
+        stream.GetRawBytes().ToArray().Should().Equal("BT (a"u8.ToArray());
+        stream.Data.CutByGuard.Should().BeTrue();
+        document.Reader.IsEndObjMissing(Streams + 3, out _).Should().BeFalse();
+    }
+
     [Fact]
     public void A_stream_left_unsearched_whose_length_runs_past_the_file_takes_the_data_its_object_holds()
     {
