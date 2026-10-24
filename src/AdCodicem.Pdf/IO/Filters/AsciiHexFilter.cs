@@ -21,7 +21,7 @@ internal static class AsciiHexFilter
     /// Whether the data ends where the file's may not — the reader cut it short at one of its limits, or a guard hides
     /// where it ends —: a digit left alone at its end, before any <c>&gt;</c>, is the first of a pair the cut parted, and is
     /// dropped rather than completed with a zero, though the byte counts against <paramref name="maxLength"/>, which
-    /// <paramref name="limited"/> then says.
+    /// <paramref name="limited"/> then says, and <see cref="DataFaults.Dropped"/> counts it.
     /// </param>
     public static byte[] Decode(
         ReadOnlySpan<byte> data, out bool limited, out DataFaults faults, int maxLength, bool cut = false)
@@ -93,6 +93,7 @@ internal static class AsciiHexFilter
             // Data that ends where the file's may not leaves its last byte half read, which the next digit decides: it is
             // not written, and the whole data, which holds it, counts it against the bound all the same.
             limited = length >= maxLength;
+            faults.Dropped = 1;
         }
 
         return buffer.AsSpan(0, length).ToArray();

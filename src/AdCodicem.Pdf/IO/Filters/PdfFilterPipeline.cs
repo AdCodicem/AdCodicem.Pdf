@@ -70,10 +70,10 @@ internal static class PdfFilterPipeline
     /// where the length that would say is one a guard cut, or a guard on decoding kept the data from being taken again to
     /// it. The data decodes as data a guard cut does — a last group a filter holds in part, which the hidden end may have
     /// parted, is dropped, and a predictor's last row undone as far as it goes —, though it is not counted as cut by it: a
-    /// group dropped so counts against <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/> all the same, the
-    /// whole data holding at least as much. A filter after it is given less, and may stay within the bound where the whole
-    /// data would not: a decoding of data whose end is hidden that a decoding of it reached the bound before keeps that
-    /// verdict, with <paramref name="reachedBefore"/>.
+    /// group dropped so counts against <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/> all the same, and
+    /// against what the filters before the last share, the whole data holding at least as much. A filter after it is given
+    /// less, and may stay within the bound where the whole data would not: a decoding of data whose end is hidden that a
+    /// decoding of it reached the bound before keeps that verdict, with <paramref name="reachedBefore"/>.
     /// </param>
     /// <param name="reachedBefore">
     /// Whether a decoding of the same data stopped at <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/> before,
@@ -154,7 +154,8 @@ internal static class PdfFilterPipeline
         // MaxStreamLength, or the window a guard stopped at, cut the stream's data, or a filter before it stopped at
         // MaxDecodedStreamLength —, or data whose end the caller says a guard hides. Every filter after it is given such
         // data, and a cut is reported once, by the guard that made it; data whose end is hidden is no cut. A filter drops a
-        // last group such data holds in part, and counts it against the bound all the same (Ascii85Filter, AsciiHexFilter).
+        // last group such data holds in part, and counts it against the bound all the same (Ascii85Filter, AsciiHexFilter),
+        // and against what the filters before the last share.
         var cut = stream.Data.CutByGuard || endHidden;
 
         // Data whose endstream is proven its own past white space only a hidden length says is the data's or not ends where
@@ -193,6 +194,7 @@ internal static class PdfFilterPipeline
                 ref cut,
                 silenced,
                 ref limitReported,
+                out var dropped,
                 out var failed);
 
             // Data a filter could not decode at all comes back as the filters before it left it, as it does at a filter the
@@ -203,7 +205,9 @@ internal static class PdfFilterPipeline
                 return data;
             }
 
-            shared -= data.Length;
+            // A group the filter dropped at the cut is data the whole would decode to, and leaves the filters after it no
+            // more room than the whole data would.
+            shared -= data.Length + dropped;
         }
 
         ReportEnd(chain, diagnostics, stream.Data.Position, guard);
@@ -237,6 +241,7 @@ internal static class PdfFilterPipeline
     /// nothing, and decodes as it would read whole.
     /// </param>
     /// <param name="limitReported">Whether the stream reported a filter that stopped at the bound already.</param>
+    /// <param name="dropped">How many bytes a last group the cut parted would decode to, which the filter did not write.</param>
     /// <param name="failed">Whether the filter could decode nothing, which ends the chain.</param>
     private static ReadOnlyMemory<byte> ApplyOne(
         in FilterStep step,
@@ -248,12 +253,14 @@ internal static class PdfFilterPipeline
         ref bool cut,
         bool silenced,
         ref bool limitReported,
+        out int dropped,
         out bool failed)
     {
         var name = step.Name;
         var maxLength = bounds.MaxLength;
         var given = cut;
         var quiet = given || silenced;
+        dropped = 0;
         failed = false;
 
         if (name == PdfName.FlateDecode)
@@ -342,6 +349,7 @@ internal static class PdfFilterPipeline
         // the reader's: only what the filter read is the file's.
         ReportFaults(faults, name, data.Length, textLimited, ended: !quiet && !textLimited, diagnostics, position);
         Reached(textLimited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
+        dropped = faults.Dropped;
         return text;
     }
 

@@ -46,6 +46,12 @@ internal struct DataFaults
     /// <summary>For data that ends inside a RunLength run: how many of its bytes it holds.</summary>
     public int UnitHeld;
 
+    /// <summary>
+    /// For data the reader cut that ends inside an ASCII85 group or an ASCIIHex pair: how many bytes the unit would decode
+    /// to, which were not written.
+    /// </summary>
+    public int Dropped;
+
     /// <summary>Counts a byte passed over at <paramref name="index"/>, counted from 0.</summary>
     public void Pass(int index)
     {

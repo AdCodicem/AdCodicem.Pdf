@@ -2005,6 +2005,37 @@ public class DocumentReaderTests
         deferred.Reader.Structure.Sections[^1].Incomplete.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Data_whose_end_a_guard_hides_leaves_the_filters_after_a_dropped_group_the_room_its_direct_twin_s_have(bool hex)
+    {
+        // Stream 5's rows pass through three filters, the first lacking its end marker and ending inside a unit. Decoded once
+        // more knowing its end hidden, the first filter drops the unit, whose bytes counted against MaxDecodedStreamLength
+        // but not against what the filters before the last share: the filter after it was given more room than the direct
+        // twin's, and read a row past where it stopped — the page indexed beside a guard where the direct twin leaves it out,
+        // or a row and no rebuild where the direct twin rebuilds (#220).
+        var direct = ChainFiles.RowsThroughThreeFilters(deferred: false, hex);
+        var deferred = ChainFiles.RowsThroughThreeFilters(deferred: true, hex);
+
+        for (var bound = 1; bound <= 400; bound++)
+        {
+            var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = bound } };
+            using var directDocument = PdfDocument.Open(direct, options);
+            using var deferredDocument = PdfDocument.Open(deferred, options);
+
+            Read(deferredDocument).Should().Be(Read(directDocument), $"MaxDecodedStreamLength is {bound}");
+        }
+
+        static string Read(PdfDocument document) => string.Join(
+            ' ',
+            document.WasRepaired,
+            document.Reader.Structure.Sections[^1].CutByLimit,
+            document.GetObject(new PdfObjectId(1)) is PdfDictionary,
+            document.GetObject(new PdfObjectId(39)) is PdfDictionary,
+            document.Reader.ChainIndex?.Count);
+    }
+
     [Fact]
     public void A_deferred_length_s_data_that_holds_every_row_under_a_guard_on_decoding_is_checked_against_its_length()
     {

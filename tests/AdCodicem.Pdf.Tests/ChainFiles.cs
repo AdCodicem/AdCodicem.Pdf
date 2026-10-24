@@ -1228,6 +1228,79 @@ internal static class ChainFiles
         return file.ToArray();
     }
 
+    /// <summary>
+    /// A file of one revision whose cross-reference stream 5 numbers 40 rows, 39 the page's, and takes its <c>/Length</c>
+    /// from object 4 when <paramref name="deferred"/>, which only it places. Its rows pass through three filters, the first
+    /// lacking its end marker and ending inside a unit: with <paramref name="hex"/>,
+    /// <c>/Filter [/ASCIIHexDecode /RunLengthDecode /FlateDecode]</c>, the hexadecimal digits short of their last;
+    /// otherwise <c>/Filter [/ASCII85Decode /FlateDecode /RunLengthDecode]</c>, the last ASCII85 group partial. RunLength
+    /// writes literal runs of 128 bytes.
+    /// </summary>
+    public static byte[] RowsThroughThreeFilters(bool deferred, bool hex)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [39 0 R] /Count 1 >>");
+        file.Object(39, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var four = file.Position;
+        var at = four + "4 0 obj\n000000\nendobj\n".Length;
+        var rows = new (int Type, long Second, int Third)[40];
+        rows[0] = (0, 0, 65535);
+        rows[1] = (1, file.OffsetOf(1), 0);
+        rows[2] = (1, file.OffsetOf(2), 0);
+        rows[4] = (1, four, 0);
+        rows[5] = (1, at, 0);
+        rows[39] = (1, file.OffsetOf(39), 0);
+        var raw = Encode(rows, Rows.Raw);
+        byte[] data;
+
+        if (hex)
+        {
+            var digits = Convert.ToHexString(RunLength(Deflate(raw)));
+            data = Encoding.ASCII.GetBytes(digits[..^1]);
+        }
+        else
+        {
+            data = Encoding.ASCII.GetBytes(Ascii85(Deflate(RunLength(raw))));
+        }
+
+        var length = data.Length.ToString("D6", CultureInfo.InvariantCulture);
+        file.Object(4, length);
+        file.Stream(
+            5,
+            $"/Type /XRef /Size 40 /W [1 4 2] /Filter {(hex ? "[/ASCIIHexDecode /RunLengthDecode /FlateDecode]" : "[/ASCII85Decode /FlateDecode /RunLengthDecode]")} /Root 1 0 R /Length {(deferred ? "4 0 R" : length)}",
+            data);
+        file.StartXRef(at);
+        return file.ToArray();
+
+        static byte[] Deflate(byte[] bytes)
+        {
+            using var output = new MemoryStream();
+
+            using (var zlib = new ZLibStream(output, CompressionLevel.SmallestSize, leaveOpen: true))
+            {
+                zlib.Write(bytes);
+            }
+
+            return output.ToArray();
+        }
+
+        static byte[] RunLength(byte[] bytes)
+        {
+            var runs = new List<byte>();
+
+            for (var i = 0; i < bytes.Length; i += 128)
+            {
+                var count = Math.Min(128, bytes.Length - i);
+                runs.Add((byte)(count - 1));
+                runs.AddRange(bytes.AsSpan(i, count));
+            }
+
+            runs.Add(128);
+            return [.. runs];
+        }
+    }
+
     private enum Rows
     {
         Raw,
