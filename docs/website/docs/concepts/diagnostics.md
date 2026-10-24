@@ -100,7 +100,8 @@ was read before it — though a damaged index can still serve another copy of an
 what was read first. A file crafted for it can still make what a stream holds depend on which object was asked for
 first. What the searches of one document read together is bounded: none starts once they have read four times the file's
 length. For a valid file, what they read — its cross-reference streams searched, its streams whose length a guard hid,
-the white space after a declared length read on — comes to about twice the file at most, and the proofs that an `endstream`
+the white space after a declared length read on — comes to about twice the file, three times over white space that is
+both the data a search takes and the run a declared length is read on through, and the proofs that an `endstream`
 found under a hidden length is the stream's own, 48 or 64 bytes past each, once, and the white space they cross once more at
 most, to about three times the file in all; the searches of damaged
 streams read twice the file at most — 0.35

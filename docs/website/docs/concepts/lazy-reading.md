@@ -145,8 +145,9 @@ through its own reads, the comments after it taken for white space, rather than 
 backward. The search is made once for each stream, however often the stream is parsed again, and whether the object's
 `endobj` follows the declared length is read again only when a rebuild changes that length; no window grows to find an
 `endstream`, so that a stream's data never counts toward `MaxObjectLength`; and the searches of a document read four
-times the file at most — a valid file's, about twice, for the white space after a declared length and the
-cross-reference streams whose `/Length` the chain cannot read yet. What each case keeps, and reports, is in [Diagnostics](diagnostics.md#where-a-stream-ends).
+times the file at most — a valid file's, about three times, for the white space after a declared length, the
+cross-reference streams whose `/Length` the chain cannot read yet, and the streams whose `/Length` a guard hid, with the
+proof that their `endstream` is their own. What each case keeps, and reports, is in [Diagnostics](diagnostics.md#where-a-stream-ends).
 
 When it is read or decoded, a stream works under the [limits](reader-limits.md) of the document it came from,
 however long after opening — so with `ThrowOnLimit` set, `GetRawBytes()` and `Decode()` can throw long after `Open`

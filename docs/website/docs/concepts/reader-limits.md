@@ -63,8 +63,9 @@ then the file's, though white space before the keyword, which only the length sa
 ends to the guard as the data decodes: a filter that runs out there says nothing of the file. Decoding stops at a filter so named, or one whose parameters are, and leaves
 the rest of the data encoded, as past the most filters the reader runs; and a `/Prev` or an `/XRefStm` the reader
 follows that is so named, or a cross-reference stream whose values lead to an object a guard cut, ends the chain as a
-section a guard cut does, wherever near its named offset the section is found — unless what the values read say makes
-the section unreadable whatever the cut hides: a fault of the file, as read whole.
+section a guard cut does, wherever near its named offset the section is found — unless what the values read, and data
+whose length the file gives, say makes the section unreadable whatever the cut hides: a fault of the file, as read
+whole.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
 table's bound, the objects past the most the index holds — is no damage either. Those objects read as null, unknown
@@ -123,8 +124,9 @@ the object through a larger window, so that a stream's data — and the end-of-l
 counts toward its object's length. A document's
 searches read four times the file at most: a valid file is read past those bytes only for the data of a cross-reference
 stream whose `/Length` the chain cannot read yet, for the data of a stream whose `/Length` a guard cut or left out of the
-index, and for white space and comments after a declared length, about twice the file, and for the proof that an
-`endstream` found under a hidden `/Length` is the stream's own, about three times the file in all. Those stay internal
+index, and for white space and comments after a declared length, about twice the file — three times over the white
+space a cross-reference stream's search takes as data that its length, once read, is read on through —, and for the
+proof that an `endstream` found under a hidden `/Length` is the stream's own, about three times the file in all. Those stay internal
 constants, since lifting them would let nothing more be read, and
 each says where it is declared why no valid file reaches it.
 

@@ -157,7 +157,8 @@ information, that it could not check it whole, rather than calling the file brok
 limit lets it check the rest. The same holds of a value that leads to such an object: a cross-reference stream whose
 `/W`, `/Index`, `/Filter` or `/DecodeParms`, or `/Size` with no `/Index`, leads to one is said not checked rather than
 malformed — so is one whose `/Length`, which the chain could not read, leads to one where only that length could say
-where its data ends —, unless what the values read say makes it unreadable whatever the guard hid, which is the file's;
+where its data ends —, unless what the values read, and data whose length the file gives, say makes it unreadable whatever the guard hid,
+which is the file's;
 a `/Prev` or an `/XRefStm` the reader follows that leads to one ends the chain there rather than naming a section not found; and an
 object stream whose `/Filter` or `/DecodeParms` leads to one, or to an object a limit left out of the index, is left
 encoded, the objects it holds said not checked rather than lost

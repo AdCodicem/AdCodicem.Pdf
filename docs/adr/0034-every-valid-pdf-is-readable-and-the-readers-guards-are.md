@@ -100,7 +100,8 @@ bounded by `EndStreamSearchPasses`, four times the file for a document's searche
 constant with its reason rewritten: a valid file is read past the parser's window only by the search for the data of a
 cross-reference stream whose `/Length` the chain cannot read, by the search for the data of a stream whose `/Length` a
 guard cut or left out of the index, and by white space and comments after a declared length that run past a first
-read — about twice the file at most; the proof that an `endstream` found under a hidden `/Length` is the stream's
+read — about twice the file, three times over the white space a cross-reference stream's search takes as data that its
+length, once read, is read on through; the proof that an `endstream` found under a hidden `/Length` is the stream's
 own reads 48 or 64 bytes past each, once, and the white space it crosses once more at most — the run before an
 `endobj` taken from the read-on that read it, a run a row names before the next header read once from the row —, about
 three times the file in all (amended on 2026-10-24).
@@ -125,7 +126,7 @@ on 2026-10-24) —, stops the search, the
 data up to it then the guard's; a whole
 reference the cut left leads on, as read whole; a chain of filters ends there,
 its data left encoded; and a cross-reference section whose values lead to an object `MaxObjectLength` cut ends the
-chain, nothing rebuilt — unless what the values read say makes it unreadable whatever the cut hides, the file's fault
+chain, nothing rebuilt — unless what the values read, and data whose length the file gives, say makes it unreadable whatever the cut hides, the file's fault
 (amended on 2026-10-24) —, the older sections and their trailers the guard's to hide, and the guard reached once the chain
 is read. So does a cross-reference stream's `/Length` the chain could not read that leads to such an object, wherever
 only that length could say how far the data runs: no `endstream` comes before the next object or the end of the file, or

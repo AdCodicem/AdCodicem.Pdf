@@ -37,7 +37,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>What the codes of the faults of the object syntax start with.</summary>
     private const string SyntaxCodePrefix = "syntax.";
 
-    /// <summary>How much of a section is read to tell a classic table from a cross-reference stream.</summary>
+    /// <summary>
+    /// How much of a section is read first to tell a classic table from a cross-reference stream: a read that holds
+    /// white space and comments alone, or a first token its edge may cut, is read again eight times larger, as far as a
+    /// trailer's window reaches.
+    /// </summary>
     internal const int XRefProbeLength = 32;
 
     /// <summary>
@@ -151,14 +155,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// header its data spells, which leaves the data up to it to the guard; and white space after a declared length
     /// that runs past a first read is read on once for each place, and past an <c>endstream</c> once for each keyword
     /// however many places lead to it (#174). The data of different streams lies apart, and so do the runs of white
-    /// space after them: together those reads cover the file once, and one read past each — about twice the file at
-    /// most. The fourth adds a little to each stream of the second way: the proof that an <c>endstream</c> found is the
+    /// space after them: together those reads cover the file once, and one read past each — about twice the file —, but
+    /// where one run is two ways' at once: the white space before the <c>endstream</c> of a cross-reference stream whose
+    /// <c>/Length</c> the chain cannot read is the data its search takes and the run its length, once read, is read on
+    /// through, about three times. The fourth adds a little to each stream of the second way: the proof that an <c>endstream</c> found is the
     /// stream's own (#224) reads past it to its object's end and what follows, three first reads of
     /// <see cref="ProofRead"/> bytes, and a fourth past a row that names the white space before the next object's
     /// header, each once however often the stream is parsed — 48 or 64 bytes, about what the smallest such stream spans
     /// with its header. White
-    /// space it crosses adds to that: the run before the object's <c>endobj</c> it takes from the read-on that read it,
-    /// the run after it it doubles through, as the read-on does, and the run a row names before the next header it
+    /// space it crosses adds to that: the run before the object's <c>endobj</c>, or before what follows the keyword where
+    /// no <c>endobj</c> does, it takes from the read-on that read it, the run after an <c>endobj</c> it doubles through, as
+    /// the read-on does, and the run a row names before the next header it
     /// reads once from there, a first read reaching the header. No run is read more than three times, and the file
     /// about three times at most in all, within the four the searches may read. Every other search is of an invalid
     /// stream, whose <c>endstream</c> does not follow its declared length. Each reads from a stream's data to the first
@@ -3283,7 +3290,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         // A probe that holds white space and comments alone, or a first token its edge may cut, is read on as far as a
         // trailer's window reaches, past which a stream's header is not looked for either: the keyword is the table's
-        // however far the offset falls short of it.
+        // wherever within that window the offset falls short of it.
         var probeLength = XRefProbeLength;
 
         while (true)
@@ -3837,7 +3844,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// An object that declares itself a cross-reference stream — <c>/Type /XRef</c>, or a <c>/W</c>, beside no other
     /// <c>/Type</c> at a place the section may have been moved to — and cannot be read is a malformed section; any
     /// other object there, or none, is no section at all, and a guard that cut the dictionary of what declares another
-    /// type cut no section, though one that cut a value of a stream there leaves it the section, as read whole. What
+    /// type cut no section, though one that cut a value of a stream with a <c>/W</c> where the chain names the section
+    /// leaves it the section, as read whole — a place it may have been moved to takes no stream of another type. What
     /// makes it unreadable whatever a value a guard cut holds is the file's fault, as read whole
     /// (<see cref="FaultBesideCut"/>). At a place the section may have been moved to (<paramref name="candidate"/>),
     /// nothing such an object's reading met is reported or recorded — its search for an <c>endstream</c> aside, which is
@@ -3908,7 +3916,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         section.Kind = XRefSectionKind.Stream;
         section.StreamObjectNumber = number;
 
-        // The probe that looked for the xref keyword says where the header lies only within its first bytes.
+        // The header lies where the object read starts, past however much white space the offset falls short by.
         section.Padding = (int)(header - absolute);
         section.TrailerPosition = absolute;
         section.TypedXRef = dictionary.IsOfType(PdfName.XRef);
@@ -4447,8 +4455,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Takes a section a value's cut keeps from being read for the guard's: the section counts as cut, the chain ends there
     /// and nothing is rebuilt for it (ADR 34), and the object the guard cut is loaded once the chain is read, which reaches
-    /// the guard (#263). Whatever <c>/Type</c> the stream gives, as where the chain names it a stream with a <c>/W</c> is read
-    /// as the section whole: the value hides whether its rows are.
+    /// the guard (#263). Where the chain names the section, whatever <c>/Type</c> the stream gives, as a stream with a
+    /// <c>/W</c> is read there as the section whole — a place it may have been moved to takes no stream of another type —:
+    /// the value hides whether its rows are, but for what <see cref="FaultBesideCut"/> finds wrong whatever it holds.
     /// </summary>
     /// <param name="section">The section, whose fault names the value.</param>
     /// <param name="cut">The object the guard cut that the value leads to.</param>
