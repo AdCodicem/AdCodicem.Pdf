@@ -2802,11 +2802,13 @@ public class GuardCutValueTests
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R -1]", "Index element", null)]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R /x]", "Index element", null)]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [/x 5 0 R]", "Index element", null)]
-    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 3000000000]", "Index element", null, false)]
-    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [-1 5 0 R]", "Index element", null, false)]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 3000000000]", "Index element", null, false, "its /Index gives a subsection of 3,000,000,000 rows, more than object numbers 0 to 2147483647 hold")]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 2147483649]", "Index element", null, false, "its /Index gives a subsection of 2,147,483,649 rows, more than object numbers 0 to 2147483647 hold")]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [-1 5 0 R]", "Index element", null, false, "its /Index gives a subsection from object -1, outside object numbers 0 to 2147483647")]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [2147483648 5 0 R]", "Index element", null, false, "its /Index gives a subsection from object 2147483648, outside object numbers 0 to 2147483647")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [9 0 R -1] /Length 5 0 R", "Length", "cut:0")]
     public void What_makes_a_cross_reference_stream_unreadable_whatever_a_value_a_guard_cut_holds_is_the_file_s(
-        string entries, string cut, string? nine, bool asReadWhole = true)
+        string entries, string cut, string? nine, bool asReadWhole = true, string? message = null)
     {
         // Stream 7's /Filter, an /Index element, its /W or its /Length names object 5, which MaxObjectLength cuts — the length
         // where no endstream ends the data. Its /W gives no three widths, or none past 0; its /Index holds no pairs, or a
@@ -2851,6 +2853,11 @@ public class GuardCutValueTests
         {
             guarded.Message.Should().Be(unreadable.Message);
         }
+        else
+        {
+            guarded.Message.Should().Contain(message);
+        }
+
         document.WasRepaired.Should().BeTrue();
         document.Reader.Structure.Sections.Should().NotContain(section => section.CutByLimit);
         document.GetObject(new PdfObjectId(1)).AsDictionary().IsOfType(PdfName.Catalog).Should().BeTrue();
@@ -2862,6 +2869,8 @@ public class GuardCutValueTests
     [InlineData("/Type /XRef /Size 8 /W [0 0 5 0 R]", "7", "/W holds the reference 5 0 R")]
     [InlineData("/Type /XRef /Size 8 /W [1 5 0 R 2] /Index [0 9 0 R]", "4", "/W holds the reference 5 0 R")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 8]", "0", "/Index holds the reference 5 0 R")]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 0]", "0", "/Index holds the reference 5 0 R")]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [2147483647 5 0 R]", "1", "/Index holds the reference 5 0 R")]
     public void A_section_a_value_s_cut_keeps_from_being_read_is_the_guard_s_where_nothing_read_says_it_is_wrong(
         string entries, string five, string named)
     {
