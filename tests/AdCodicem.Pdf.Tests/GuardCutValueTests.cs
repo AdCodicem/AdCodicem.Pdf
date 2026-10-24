@@ -2592,15 +2592,23 @@ public class GuardCutValueTests
     [InlineData("/Type /XRef /Size 8 /W [1 4] /Length 5 0 R", "Length", null)]
     [InlineData("/Type /XRef /W [1 4 2] /Index [0] /Length 5 0 R", "Length", null)]
     [InlineData("/Type /XRef /Size 8 /W 9 0 R /Length 5 0 R", "Length", null)]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R -1]", "Index element", null)]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R /x]", "Index element", null)]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [/x 5 0 R]", "Index element", null)]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 3000000000]", "Index element", null, false)]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [-1 5 0 R]", "Index element", null, false)]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [9 0 R -1] /Length 5 0 R", "Length", "cut:0")]
     public void What_makes_a_cross_reference_stream_unreadable_whatever_a_value_a_guard_cut_holds_is_the_file_s(
-        string entries, string cut, string? nine)
+        string entries, string cut, string? nine, bool asReadWhole = true)
     {
         // Stream 7's /Filter, an /Index element, its /W or its /Length names object 5, which MaxObjectLength cuts — the length
         // where no endstream ends the data. Its /W gives no three widths, or none past 0; its /Index holds no pairs, or a
         // count of rows below 0, and its /Size no count, written direct or through object 9; or a value past the cut names
         // object 9, which nothing places: no value the guard hid makes the section readable, and read whole it is the
         // file's fault. Only a numbering written direct was judged: the section was the guard's, the chain ended, the index
-        // was not rebuilt and the catalog was lost (#263).
+        // was not rebuilt and the catalog was lost (#263). Nor was a subsection one of whose elements the guard cut, though
+        // the other is wrong whatever the cut one holds: no integer, a count below 0 or past what object numbers hold, a
+        // first number outside them — said as read whole where the cut element is in no part of what is said.
         var (five, compressed) = cut switch
         {
             "Filter" => ("/FlateDecode" + new string(' ', 1100), true),
@@ -2614,7 +2622,9 @@ public class GuardCutValueTests
             compressed,
             predicted: false,
             placed: true,
-            placedToo: nine is null ? null : new Dictionary<int, string> { [9] = nine });
+            placedToo: nine is null
+                ? null
+                : new Dictionary<int, string> { [9] = nine.StartsWith("cut:", StringComparison.Ordinal) ? nine[4..] + new string(' ', 1100) : nine });
         var text = Encoding.Latin1.GetString(built);
 
         if (cut == "Length")
@@ -2628,11 +2638,47 @@ public class GuardCutValueTests
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         var unreadable = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Which;
-        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefSectionUnreadable)
-            .Which.Message.Should().Be(unreadable.Message);
+        var guarded = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.XRefSectionUnreadable).Which;
+
+        if (asReadWhole)
+        {
+            guarded.Message.Should().Be(unreadable.Message);
+        }
         document.WasRepaired.Should().BeTrue();
         document.Reader.Structure.Sections.Should().NotContain(section => section.CutByLimit);
         document.GetObject(new PdfObjectId(1)).AsDictionary().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("/Type /XRef /Size 9 0 R /W [1 4 2] /Index 5 0 R", "[0 8]", "/Index is the reference 5 0 R")]
+    [InlineData("/Type /XRef /W [1 4 2] /Index 5 0 R", "[0 8]", "/Index is the reference 5 0 R")]
+    [InlineData("/Type /XRef /Size 8 /W [0 0 5 0 R]", "7", "/W holds the reference 5 0 R")]
+    [InlineData("/Type /XRef /Size 8 /W [1 5 0 R 2] /Index [0 9 0 R]", "4", "/W holds the reference 5 0 R")]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 8]", "0", "/Index holds the reference 5 0 R")]
+    public void A_section_a_value_s_cut_keeps_from_being_read_is_the_guard_s_where_nothing_read_says_it_is_wrong(
+        string entries, string five, string named)
+    {
+        // Stream 7's /W, a /W element, its /Index or an /Index element names object 5, which MaxObjectLength cuts, and what
+        // the rest says is right for some value of it: a /Size no section places beside an /Index, which the rows are read
+        // without; no /Size beside an /Index; widths of 0 beside the one cut; a count that numbers objects; a second value
+        // cut, object 9, after the first. The section is the guard's, named by the first value it cut (#263).
+        var file = ChainFiles.UnderAnUpdate(
+            entries + " /Length {length}",
+            five + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            placedToo: entries.Contains("[0 9 0 R]", StringComparison.Ordinal)
+                ? new Dictionary<int, string> { [9] = "8" + new string(' ', 1100) }
+                : null);
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+        var section = document.Reader.Structure.Sections[^1];
+
+        section.CutByLimit.Should().BeTrue();
+        section.Fault.Should().Contain(named);
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
     }
 
     [Theory]
@@ -2667,13 +2713,15 @@ public class GuardCutValueTests
     [Theory]
     [InlineData("<< /Type /Font /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]")]
     [InlineData("<< /Type /Font /W [1 4 2] /Size 8 /Length 5 0 R >>\nstream\nabc\nendstreaX", "3")]
-    public void A_stream_of_another_type_whose_value_a_guard_cut_where_the_chain_names_a_section_is_no_section_the_guard_cut(
+    [InlineData("<< /Type /Xref /W [1 5 0 R 2] /Size 8 /Length 3 >>\nstream\nabc\nendstream", "4")]
+    public void A_stream_whose_value_a_guard_cut_where_the_chain_names_a_section_is_the_section_the_guard_cut_whatever_its_type(
         string six, string five)
     {
-        // The /Prev names object 6 exactly, a stream that declares /Type /Font, whose /W, or whose /Length where no endstream
-        // ends its data before object 8, names object 5, which MaxObjectLength cuts: the guard cut no section, the stream
-        // saying what it is, as when the guard cuts its dictionary. It was taken for the section the guard cut, the chain
-        // ended there, and the catalog was lost; the section is found farther on (#263).
+        // The /Prev names object 6 exactly, a stream that declares /Type /Font, or misspells XRef, whose /W, a /W element, or
+        // whose /Length where no endstream ends its data before object 8, names object 5, which MaxObjectLength cuts. Where
+        // the chain names it, a stream with a /W is read as the section whole, whatever its type: the value hides whether its
+        // rows are, and the section is the guard's. It was taken for no section, the section looked for nearby, and a stream
+        // found there — an older revision's — read in its place (#263).
         var built = ChainFiles.UnderAnUpdate(
             "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
             five == "3" ? new string(' ', 1100) + five : five + new string(' ', 1100),
@@ -2689,11 +2737,32 @@ public class GuardCutValueTests
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
-        document.Reader.Structure.Sections[^1].Offset.Should().Be(stream);
-        document.Reader.Structure.Sections.Should().NotContain(section => section.CutByLimit);
-        document.GetObject(new PdfObjectId(1)).AsDictionary().IsOfType(PdfName.Catalog).Should().BeTrue();
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(sixAt);
+        section.CutByLimit.Should().BeTrue();
         document.WasRepaired.Should().BeFalse();
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_that_misspells_its_type_and_whose_value_a_guard_cut_is_the_section_the_guard_cut()
+    {
+        // Stream 7 writes /Type /Xref, which read whole is no fault of the reader's to report, and a /W element that names
+        // object 5, which MaxObjectLength cuts. It was refused for the type it gives, the file charged with a section it could
+        // not read, and the index rebuilt (#263).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /Xref /Size 8 /W [1 5 0 R 2] /Length {length}", "4" + new string(' ', 1100), compressed: false, predicted: false, placed: true);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.Reader.Structure.Sections[^1].CutByLimit.Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Fact]

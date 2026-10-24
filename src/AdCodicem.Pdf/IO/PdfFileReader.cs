@@ -3810,12 +3810,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <para>
     /// An object that declares itself a cross-reference stream — <c>/Type /XRef</c>, or a <c>/W</c>, beside no other
     /// <c>/Type</c> at a place the section may have been moved to — and cannot be read is a malformed section; any
-    /// other object there, or none, is no section at all, and a guard that cut what declares another type, its dictionary
-    /// or a value of it, cut no section. What makes it unreadable whatever a value a guard cut holds is the file's fault,
-    /// as read whole (<see cref="FaultBesideCut"/>). At a place the section may have been moved to
-    /// (<paramref name="candidate"/>), nothing such an object's reading met is reported or recorded — its search for an
-    /// <c>endstream</c> aside, which is kept as every search is —: it was read as a section, through a section's window,
-    /// and is read as itself when something asks for it.
+    /// other object there, or none, is no section at all, and a guard that cut the dictionary of what declares another
+    /// type cut no section, though one that cut a value of a stream there leaves it the section, as read whole. What
+    /// makes it unreadable whatever a value a guard cut holds is the file's fault, as read whole
+    /// (<see cref="FaultBesideCut"/>). At a place the section may have been moved to (<paramref name="candidate"/>),
+    /// nothing such an object's reading met is reported or recorded — its search for an <c>endstream</c> aside, which is
+    /// kept as every search is —: it was read as a section, through a section's window, and is read as itself when
+    /// something asks for it.
     /// </para>
     /// <para>
     /// ISO 32000-1 (7.5.8.2) makes the values of this dictionary direct, the elements of <c>/W</c> and <c>/Index</c>
@@ -3886,8 +3887,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         section.TrailerPosition = absolute;
         section.TypedXRef = dictionary.IsOfType(PdfName.XRef);
 
-        // A guard that cut what declares another type — a font's /W gives widths — cut no section: what is there is the
-        // file's to be, as read whole (#263).
+        // A guard that cut the dictionary of what declares another type cut no section: such a dictionary — a CIDFont's,
+        // whose /W gives widths — has no stream data read whole, and is no section. A stream of that type, which the cut
+        // hides, would be read as the section whole: the cut takes it for none (#263).
         section.CutByLimit |= _guardsReached != guards && DeclaresOnlyCrossReferenceStream(value);
 
         if (value is not PdfStream xrefStream)
@@ -3930,7 +3932,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     ? unplaced
                     : FaultBesideCut(dictionary);
                 section.Fault = file ?? lengthFault;
-                return file is null ? CutByValue(section, value, past) : XRefSectionState.Malformed;
+                return file is null ? CutByValue(section, past) : XRefSectionState.Malformed;
             }
 
             var where = search.NextObject is { } next
@@ -3959,7 +3961,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return XRefSectionState.Malformed;
             }
 
-            return CutByValue(section, value, cut);
+            return CutByValue(section, cut);
         }
 
         var widths = dictionary.GetArray(PdfName.W);
@@ -4400,21 +4402,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Takes a section a value's cut keeps from being read for the guard's: the section counts as cut, the chain ends there
     /// and nothing is rebuilt for it (ADR 34), and the object the guard cut is loaded once the chain is read, which reaches
-    /// the guard (#263). What declares another type is no section a guard cut, a font's <c>/W</c> giving widths: it is the
-    /// file's to be, as read whole.
+    /// the guard (#263). Whatever <c>/Type</c> the stream gives, as where the chain names it a stream with a <c>/W</c> is read
+    /// as the section whole: the value hides whether its rows are.
     /// </summary>
     /// <param name="section">The section, whose fault names the value.</param>
-    /// <param name="value">What the offset holds.</param>
     /// <param name="cut">The object the guard cut that the value leads to.</param>
-    private XRefSectionState CutByValue(XRefSectionRecord section, PdfObject value, PdfObjectId cut)
+    private XRefSectionState CutByValue(XRefSectionRecord section, PdfObjectId cut)
     {
-        if (DeclaresOnlyCrossReferenceStream(value))
-        {
-            section.CutByLimit = true;
-            section.CutByValue = true;
-            (_chainValuesCut ??= []).Add(cut);
-        }
-
+        section.CutByLimit = true;
+        section.CutByValue = true;
+        (_chainValuesCut ??= []).Add(cut);
         return XRefSectionState.Malformed;
     }
 
@@ -4484,15 +4481,55 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         for (var i = 0; i < ranges.Count; i += 2)
         {
-            if (Follow(PdfName.Index, ranges[i], entry: false, out var start, out _) is null &&
-                Follow(PdfName.Index, ranges[i + 1], entry: false, out var count, out _) is null &&
-                SubsectionFault(ranges, i, start?.AsInteger(), count?.AsInteger()) is { } fault)
+            var startRead = Follow(PdfName.Index, ranges[i], entry: false, out var start, out _) is null;
+            var countRead = Follow(PdfName.Index, ranges[i + 1], entry: false, out var count, out _) is null;
+
+            if ((startRead && countRead
+                    ? SubsectionFault(ranges, i, start?.AsInteger(), count?.AsInteger())
+                    : HalfSubsectionFault(ranges, i, startRead, start?.AsInteger(), countRead, count?.AsInteger())) is { } fault)
             {
                 return fault;
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Says what is wrong with the subsection an <c>/Index</c> gives at <paramref name="at"/>, one of whose two elements a
+    /// guard cut, whatever that element holds: the other one is no integer, or a count below 0 or past what object numbers
+    /// hold, or a first number outside them. Null when the element read is right for some value of the other.
+    /// </summary>
+    /// <param name="ranges">The <c>/Index</c>, whose written elements a fault describes.</param>
+    /// <param name="at">Where the subsection's first number lies.</param>
+    /// <param name="startRead">Whether the first number was read.</param>
+    /// <param name="start">The first number, when it was read and is an integer.</param>
+    /// <param name="countRead">Whether the count was read.</param>
+    /// <param name="count">The count, when it was read and is an integer.</param>
+    private static string? HalfSubsectionFault(PdfArray ranges, int at, bool startRead, long? start, bool countRead, long? count)
+    {
+        if ((startRead && start is null) || (countRead && count is null))
+        {
+            return $"its /Index holds {DescribeValue(ranges[startRead && start is null ? at : at + 1])} where an integer belongs";
+        }
+
+        if (countRead && count < 0)
+        {
+            return "its /Index gives a subsection a count of rows out of range";
+        }
+
+        if (countRead && count > PdfObjectId.MaxNumber + 1L)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"its /Index gives a subsection of {count:N0} rows, more than object numbers 0 to {PdfObjectId.MaxNumber} hold");
+        }
+
+        return startRead && start is < 0 or > PdfObjectId.MaxNumber
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"its /Index gives a subsection from object {start}, outside object numbers 0 to {PdfObjectId.MaxNumber}")
+            : null;
     }
 
     /// <summary>The fault of a <c>/W</c> that is no array of three widths.</summary>
