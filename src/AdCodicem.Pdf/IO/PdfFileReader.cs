@@ -4696,7 +4696,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// Makes room in the index for the <paramref name="rows"/> a section is about to give, so that the map is sized once
     /// rather than grown by doubling, and for no more numbers than <see cref="PdfReaderLimits.MaxIndexEntries"/> lets it
-    /// take from here on, nor than the newest section's <c>/Size</c> numbers once it is read: one more than the document's
+    /// take from here on, nor than the newest section's <c>/Size</c> numbers, written direct, once it is read: one more than the document's
     /// highest object number (ISO 32000-1, 7.5.5), which an older section's rows, superseded, add nothing to. The caller
     /// bounds the rows by those the section holds: a count the file declares is a claim.
     /// </summary>
@@ -4711,7 +4711,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var most = _guard.Bound(PdfLimit.IndexEntries);
         var room = (int)Math.Min(rows, int.MaxValue);
 
-        if (_xref.Trailer.GetInteger(PdfName.Size) is { } size)
+        // The /Size as written, which ISO 32000-1 makes direct (Table 15, 7.5.8.2): a reference is not read through to make
+        // room by, as the newest cross-reference stream's beside an /Index, which numbers no row, would be while the chain is.
+        if (_xref.Trailer.GetRaw(PdfName.Size) is PdfInteger { Value: var size })
         {
             // A size the index holds as many entries as already asks for no room, nor does one below zero, which is not
             // narrowed to an int that would. One the sections read so far number past is stale, and they stand for it.

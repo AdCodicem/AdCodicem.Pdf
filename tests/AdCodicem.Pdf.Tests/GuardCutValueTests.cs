@@ -1280,6 +1280,23 @@ public class GuardCutValueTests
         document.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => section.State == IO.XRef.XRefSectionState.Read);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_size_beside_an_index_in_the_newest_section_is_not_read_to_make_room_for_an_older_section_s_rows(bool olderStream)
+    {
+        // As above, stream 7 the newest section, over an older table or stream: its dictionary, the index's trailer, gave the
+        // /Size the index made room by for the older section's rows, read through to object 5 and loaded at opening. Room is
+        // made by a /Size as written, which ISO 32000-1 makes direct (Table 15, 7.5.8.2): a reference gives none.
+        var file = ChainFiles.StreamSizedThroughAReferenceOverAnOlderSection(olderStream);
+
+        using var document = PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => section.State == IO.XRef.XRefSectionState.Read);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
     [Fact]
     public void Rows_past_an_endstream_they_spell_are_the_guard_s_when_it_cut_the_deferred_length_before_its_value()
     {

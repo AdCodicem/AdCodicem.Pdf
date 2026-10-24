@@ -1096,6 +1096,46 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of two revisions. The first indexes the catalog, the page tree and the page, in a classic table or, with
+    /// <paramref name="olderStream"/>, in cross-reference stream 4. The second writes object 5, <c>9 0 R</c> followed by
+    /// 1,100 spaces, and object 9, <c>10</c>, and indexes them in cross-reference stream 7, the newest section, whose
+    /// <c>/Size</c> names object 5 beside an <c>/Index</c> the rows are numbered by. A reader that reads object 5 whole finds
+    /// a valid file but for that indirect <c>/Size</c>.
+    /// </summary>
+    public static byte[] StreamSizedThroughAReferenceOverAnOlderSection(bool olderStream)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var first = file.Position;
+
+        if (olderStream)
+        {
+            var rows = Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, first, 0)], Rows.Raw);
+            file.Stream(4, string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 5 /W [1 4 2] /Root 1 0 R /Length {rows.Length}"), rows);
+        }
+        else
+        {
+            file.Text(string.Create(
+                CultureInfo.InvariantCulture,
+                $"xref\n0 4\n0000000000 65535 f\r\n{file.OffsetOf(1):D10} 00000 n\r\n{file.OffsetOf(2):D10} 00000 n\r\n{file.OffsetOf(3):D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\n"));
+        }
+
+        file.StartXRef(first);
+        file.Object(5, "9 0 R" + new string(' ', 1100));
+        file.Object(9, "10");
+        var stream = file.Position;
+        var data = Encode([(1, file.OffsetOf(5), 0), (1, stream, 0), (1, file.OffsetOf(9), 0)], Rows.Raw);
+        file.Stream(
+            7,
+            string.Create(CultureInfo.InvariantCulture, $"/Type /XRef /Size 5 0 R /Index [5 1 7 1 9 1] /W [1 4 2] /Root 1 0 R /Prev {first} /Length {data.Length}"),
+            data);
+        file.StartXRef(stream);
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of two classic tables. The first indexes the catalog, the page tree, the page and object 12, the highest
     /// number; the second, an update, writes the catalog, the page tree and the page again, indexes them with object 4, a
     /// page the tree does not list, and object 9, which holds the first table's offset after <paramref name="padding"/>
