@@ -204,8 +204,9 @@ internal sealed class TrailerValueWrongRule : IValidationRule
         /// <summary>
         /// Reports a cross-reference stream's <c>/Filter</c> or <c>/DecodeParms</c> written as a reference, and, in a file
         /// that declares PDF 2.0, each element and entry written as one; and the integers of Table 8 a <c>/DecodeParms</c>
-        /// gives written as reals — not a dictionary a <c>/Filter</c> gives, which ends decoding unread. A reference among
-        /// them is followed where decoding follows it, as <paramref name="reads"/> says.
+        /// gives written as reals — not a dictionary a <c>/Filter</c> gives, which is no decode parameters, Table 8 not
+        /// governing it, and ends decoding unread. A reference among them is followed where decoding follows it, as
+        /// <paramref name="reads"/> says.
         /// </summary>
         public void Decoding(PdfDictionary trailer, bool pdf20, DecodingReads reads)
         {

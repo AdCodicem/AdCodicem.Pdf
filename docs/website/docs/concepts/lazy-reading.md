@@ -62,7 +62,7 @@ sections past `MaxXRefSectionCount`, the rows past `MaxXRefSectionLength` or pas
 or `/DecodeParms`, or `/Size` with no `/Index`, leads to an object `MaxObjectLength` cuts and the sections older than it — so too one whose
 `/Length` leads to such an object, when no `endstream` ends its data before the next object or the end of the file, or
 the rows past an `endstream` its rows spell, which only that length could tell from the end of its data —, the sections
-a `/Prev` or an `/XRefStm` that leads to such an object names — the older ones, or the cross-reference stream of a hybrid
+a `/Prev` or an `/XRefStm` the reader follows that leads to such an object names — the older ones, or the cross-reference stream of a hybrid
 file's revision, with the sections older than it, the chain ending with it —, the numbers past `MaxIndexEntries`. An
 object the guard cut after a whole reference it holds hides none of them: the chain reads through it. That is no
 damage, and the map is not rebuilt for it. The map is rebuilt by scanning the whole file, once at most, and never while
