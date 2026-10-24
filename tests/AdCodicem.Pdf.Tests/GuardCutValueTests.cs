@@ -2804,6 +2804,7 @@ public class GuardCutValueTests
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [/x 5 0 R]", "Index element", null)]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 3000000000]", "Index element", null, false, "its /Index gives a subsection of 3,000,000,000 rows, more than object numbers 0 to 2147483647 hold")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 2147483649]", "Index element", null, false, "its /Index gives a subsection of 2,147,483,649 rows, more than object numbers 0 to 2147483647 hold")]
+    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 2147483648]", "Index element", null, false, "its data, 56 bytes decoded, holds at most 8 of the 2,147,483,648 rows its /Index and /Size declare")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [-1 5 0 R]", "Index element", null, false, "its /Index gives a subsection from object -1, outside object numbers 0 to 2147483647")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [2147483648 5 0 R]", "Index element", null, false, "its /Index gives a subsection from object 2147483648, outside object numbers 0 to 2147483647")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [9 0 R -1] /Length 5 0 R", "Length", "cut:0")]
@@ -2927,9 +2928,9 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData("<< /Type /Font /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]")]
+    [InlineData("<< /Type /Font /W 5 0 R /Size 8 /Length 56 >>\nstream\n{data}\nendstream", "[1 4 2]")]
     [InlineData("<< /Type /Font /W [1 4 2] /Size 8 /Length 5 0 R >>\nstream\nabc\nendstreaX", "3")]
-    [InlineData("<< /Type /Xref /W [1 5 0 R 2] /Size 8 /Length 3 >>\nstream\nabc\nendstream", "4")]
+    [InlineData("<< /Type /Xref /W [1 5 0 R 2] /Size 8 /Length 56 >>\nstream\n{data}\nendstream", "4")]
     public void A_stream_whose_value_a_guard_cut_where_the_chain_names_a_section_is_the_section_the_guard_cut_whatever_its_type(
         string six, string five)
     {
@@ -2938,6 +2939,7 @@ public class GuardCutValueTests
         // the chain names it, a stream with a /W is read as the section whole, whatever its type: the value hides whether its
         // rows are, and the section is the guard's. It was taken for no section, the section looked for nearby, and a stream
         // found there — an older revision's — read in its place (#263).
+        six = six.Replace("{data}", new string('0', 56), StringComparison.Ordinal);
         var built = ChainFiles.UnderAnUpdate(
             "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
             five == "3" ? new string(' ', 1100) + five : five + new string(' ', 1100),
@@ -2958,6 +2960,66 @@ public class GuardCutValueTests
         section.CutByLimit.Should().BeTrue();
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
+    [InlineData("<< /Type /Font /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "holds at most 3 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "holds at most 3 of the 8 rows")]
+    [InlineData("<< /Type /Xref /W [1 5 0 R 2] /Size 8 /Length 3 >>\nstream\nabc\nendstream", "4", "holds at most 1 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 8] /Length 3 >>\nstream\nabc\nendstream", "0", "holds at most 0 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 1 9 5 0 R] /Length 3 >>\nstream\nabc\nendstream", "0", "holds at most 0 of the 1 or more rows")]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Filter /FlateDecode /Length {length} >>\nstream\n{flate}\nendstream", "[1 4 2]", "its data, 5 bytes decoded, holds at most 5 of the 8 rows")]
+    public void A_section_whose_data_holds_fewer_rows_than_it_declares_whatever_a_value_a_guard_cut_holds_is_the_file_s_to_lack(
+        string six, string five, string fault)
+    {
+        // As above, object 6's data, whose length it gives, holds fewer rows than its /Size or the /Index counts read declare,
+        // however few bytes the widths read and the one cut give a row: read whole, it lacks rows, the file's, and the index
+        // is rebuilt. It was taken for the guard's: the chain ended, nothing was rebuilt and the catalog was lost (#263). It
+        // is not looked for nearby either, where an older revision's stream would stand for it.
+        using var output = new MemoryStream();
+
+        using (var zlib = new ZLibStream(output, CompressionLevel.NoCompression, leaveOpen: true))
+        {
+            zlib.Write(new byte[5]);
+        }
+
+        var flate = output.ToArray();
+        six = six
+            .Replace("{flate}", Encoding.Latin1.GetString(flate), StringComparison.Ordinal)
+            .Replace("{length}", Invariant($"{flate.Length}"), StringComparison.Ordinal);
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            five + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: six,
+            placedToo: new Dictionary<int, string> { [8] = "(eight)" });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.WasRepaired.Should().BeTrue();
+            whole.Reader.Structure.Sections[^1].Incomplete.Should().BeTrue();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(sixAt);
+        section.State.Should().Be(XRefSectionState.Malformed);
+        section.CutByLimit.Should().BeFalse();
+        section.Incomplete.Should().BeTrue();
+        section.Fault.Should().Contain(fault);
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+
+        // The rebuild reaches the object the guard cut, as it reaches every object.
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject);
     }
 
     [Fact]

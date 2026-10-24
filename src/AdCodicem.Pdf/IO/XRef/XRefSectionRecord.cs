@@ -64,7 +64,10 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public string? RefusedRow { get; set; }
 
-    /// <summary>Gets a value indicating whether a cross-reference stream holds fewer rows than it declares.</summary>
+    /// <summary>
+    /// Gets a value indicating whether a cross-reference stream holds fewer rows than it declares: read, the rows it holds
+    /// placing objects, or left unread beside a value a guard cut, whose data holds too few whatever the value holds.
+    /// </summary>
     public bool Incomplete { get; set; }
 
     /// <summary>
