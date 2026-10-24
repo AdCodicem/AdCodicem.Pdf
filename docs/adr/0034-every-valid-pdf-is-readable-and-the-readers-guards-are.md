@@ -207,7 +207,8 @@ guard: active by default, reported when it is reached, and lifted by an option.
   cut, or whose `/Length` does where only it could say how far the data runs, a `/Prev` or an `/XRefStm` the reader
   follows that does (amended on 2026-10-23 and 2026-10-24) —, since an older section, or its trailer, would stand for what the cut left out; and a section a guard
   cut is where it was named, not looked for near there. One found near where it is named, whose values a guard keeps
-  from being read, is the guard's there too (amended on 2026-10-24). A rebuild that damage forces on such a chain keeps the entries
+  from being read, or that declared itself a section — the `xref` keyword, `/Type /XRef` — before a guard cut it, is the
+  guard's there too (amended on 2026-10-24). A rebuild that damage forces on such a chain keeps the entries
   the chain read; one the chain cannot do without — a guard that leaves it no section — runs as before.
 - **Or it throws.** `PdfReaderOptions.ThrowOnLimit`, false by default, turns every guard reached into a
   `PdfLimitExceededException`, a `PdfException` carrying the code and the name of the property: from

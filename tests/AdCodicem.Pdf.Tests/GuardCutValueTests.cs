@@ -2168,6 +2168,150 @@ public class GuardCutValueTests
         findings.Should().Contain(PdfValidationRuleIds.XRefSectionShifted);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_cross_reference_stream_whose_deferred_length_a_guard_cut_is_found_where_it_was_moved(bool typed)
+    {
+        // The newer table's /Prev lands 3 bytes into stream 7, whose /Length names object 5, which MaxObjectLength cuts before
+        // its value, and whose endstream is misspelled: no endstream ends its data, and where it would end is the guard's.
+        // Found 3 bytes away, it is the section moved, which the guard ends the chain at, as where the /Prev names it, whether
+        // or not it gives its /Type (#263).
+        var built = ChainFiles.UnderAnUpdate(
+            (typed ? "/Type /XRef " : string.Empty) + "/Size 8 /W [1 4 2] /Length 5 0 R", new string(' ', 1100) + "56", compressed: false, predicted: false, placed: true);
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("7 0 obj", StringComparison.Ordinal);
+        var endStream = text.IndexOf("endstream", stream, StringComparison.Ordinal);
+        text = text[..endStream] + "endstreaX" + text[(endStream + "endstream".Length)..];
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {stream + 3} "), StringComparison.Ordinal));
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.StreamLengthInvalid, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted, PdfDiagnosticCodes.LimitObject);
+        document.WasRepaired.Should().BeFalse();
+        var moved = document.Reader.Structure.Sections[^1];
+        moved.Offset.Should().Be(stream);
+        moved.CutByLimit.Should().BeTrue();
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId);
+        findings.Should().Contain([PdfValidationRuleIds.XRefCheckedInPart, PdfValidationRuleIds.XRefSectionShifted])
+            .And.NotContain(PdfValidationRuleIds.XRefSectionNotFound);
+
+        var opening = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true }).Dispose();
+        opening.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void A_cross_reference_stream_a_guard_cut_the_dictionary_of_after_its_type_is_the_section_where_it_was_moved(int shift)
+    {
+        // Stream 7 writes /Type /XRef, then a string MaxTrailerLength cuts: the guard keeps it from being read. Named 3 bytes
+        // off, it was dropped as a place that says nothing of what it is — the section said missing, the index rebuilt, an
+        // error found —, though it declared itself a section before the cut, as named exactly, where it is the guard's (#263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Pad (" + new string('x', 300) + ") /Length {length}", "0", compressed: false, predicted: false, placed: true);
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("7 0 obj", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {stream + shift} "), StringComparison.Ordinal));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 128 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            shift == 0 ? [PdfDiagnosticCodes.LimitTrailer] : [PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted]);
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections[^1].CutByLimit.Should().BeTrue();
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId);
+        findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart).And.NotContain(PdfValidationRuleIds.XRefSectionNotFound);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void A_classic_table_a_guard_cut_the_rows_of_is_the_section_where_it_was_moved(int shift)
+    {
+        // The older table's first row lies past MaxXRefSectionLength, beyond a long comment: the guard keeps it from being
+        // read. Named 2 bytes off, it was dropped — the section said missing, an error found — though its xref keyword
+        // declares a section, as named exactly, where it is the guard's (#263).
+        var file = new HandWrittenFile();
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var three = file.Object(3, Page);
+        var older = file.Position;
+        file.Raw(Invariant(
+            $"xref\n%{new string('x', 2000)}\n0 4\n0000000000 65535 f\r\n{one:D10} 00000 n\r\n{two:D10} 00000 n\r\n{three:D10} 00000 n\r\ntrailer\n<< /Size 4 /Root 1 0 R >>\n"));
+        var newer = file.Position;
+        file.Raw(Invariant($"xref\ntrailer\n<< /Size 4 /Root 1 0 R /Prev {older + shift} >>\nstartxref\n{newer}\n%%EOF\n"));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxXRefSectionLength = 1024 } };
+
+        using var document = PdfDocument.Open(file.Bytes, options);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitXRefSectionLength)
+            .And.NotContain(PdfDiagnosticCodes.XRefSectionMissing);
+        var findings = new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId);
+        findings.Should().Contain(PdfValidationRuleIds.XRefCheckedInPart).And.NotContain(PdfValidationRuleIds.XRefSectionNotFound);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_stream_with_no_numbering_whose_width_a_guard_cut_is_no_section_the_guard_cut(bool named)
+    {
+        // Object 6, a stream 61 bytes before stream 7, writes its /W as 5 0 R, which MaxObjectLength cuts, and neither /Size
+        // nor /Index: no section, whatever the guard hid, as read whole. Where the /Prev names it, or a place inside it, it
+        // was taken for the section the guard cut, and stream 7, the section, was lost (#263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "[1 4 2]" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /W 5 0 R /Length 3 >>\nstream\nabc\nendstream");
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var six = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var prev = named ? six : six + 21;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {prev} "), StringComparison.Ordinal));
+
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+
+        document.Diagnostics.Select(entry => entry.Message).Should().Equal(whole.Diagnostics.Select(entry => entry.Message));
+        document.Reader.Structure.Sections[^1].Offset.Should().Be(stream);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_font_whose_widths_a_guard_cut_where_the_chain_names_a_section_is_no_section_the_guard_cut()
+    {
+        // The /Prev names object 6 exactly, a CIDFont whose /W precedes what MaxTrailerLength cuts: the guard reached, which
+        // the place the chain names keeps, cut no section, the font saying what it is. It was taken for the section the
+        // guard cut, the chain ended there, and the catalog was lost; read whole, the section is found farther on (#263).
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "0",
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: "<< /Type /Font /Subtype /CIDFontType2 /W [0 [500]] /BaseFont /" + new string('F', 200) + " >>");
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        var six = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {six} "), StringComparison.Ordinal));
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 128 } });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Reader.Structure.Sections[^1].Offset.Should().Be(stream);
+        document.GetObject(new PdfObjectId(1)).AsDictionary().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.WasRepaired.Should().BeFalse();
+    }
+
     [Fact]
     public void A_place_a_section_may_have_moved_to_that_cannot_be_read_leaves_what_it_read_through_to_the_rebuild()
     {

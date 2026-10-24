@@ -137,8 +137,12 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   `/Length` does when no `endstream` ends its data, are the guard's, as a section it cut is: the chain ends there, the
   sections it names are not read — the older ones, or a hybrid file's cross-reference stream —, the index is not
   rebuilt, and the guard is reported once the chain is read, or thrown by `Open`. So does a section found near the
-  offset it is named at, which such a value keeps from being read; a place there that declares another type — a CIDFont,
-  whose `/W` gives widths —, or whose own dictionary a guard cut, is not taken for the section, and the next is tried. The rows a cross-reference stream's data lacks,
+  offset it is named at, which such a value keeps from being read, or which declared itself one — a table's `xref`
+  keyword, `/Type /XRef` — before a guard cut it; a place there that declares another type — a CIDFont, whose `/W` gives
+  widths —, or whose dictionary a guard cut before it said what it is, is not taken for the section, and the next is
+  tried. A guard that cut, where the chain names a section, what declares another type cut no section; and a section
+  that numbers its rows wrongly in what it writes direct — neither `/Size` nor `/Index` — is the file's fault, whatever a
+  value a guard cut hides. The rows a cross-reference stream's data lacks,
   where its `/Length` so leads and its data was taken to the first `endstream`, are the guard's too, unless what follows
   that `endstream` proves it the stream's own, as above: they are then the file's to lack, and the index is rebuilt. An
   object the chain read through a reference the cut left whole is loaded once the chain is read only for a value it

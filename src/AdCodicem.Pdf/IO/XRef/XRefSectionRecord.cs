@@ -81,6 +81,12 @@ internal sealed class XRefSectionRecord
     public bool CutByValue { get; set; }
 
     /// <summary>
+    /// Gets a value indicating whether the cross-reference stream's dictionary, as far as it was read, gives
+    /// <c>/Type /XRef</c>: what is there declared itself a section before any guard's cut.
+    /// </summary>
+    public bool TypedXRef { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> cut the section's
     /// trailer: what lay past the cut — an older section's <c>/Prev</c>, a key a newer trailer gives — is unknown.
     /// </summary>
@@ -144,6 +150,7 @@ internal sealed class XRefSectionRecord
         Incomplete = attempt.Incomplete;
         CutByLimit = attempt.CutByLimit;
         CutByValue = attempt.CutByValue;
+        TypedXRef = attempt.TypedXRef;
         TrailerCutByLimit = attempt.TrailerCutByLimit;
         ChainHiddenByGuard = attempt.ChainHiddenByGuard;
         ChainHiddenAtStream = attempt.ChainHiddenAtStream;
