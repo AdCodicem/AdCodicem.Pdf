@@ -958,6 +958,41 @@ public class ReaderLimitsTests
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_member_whose_R_ends_where_a_guard_cuts_the_data_is_cut(bool throwOnLimit)
+    {
+        // Member 10, "6 0 R", ends on byte 10, where MaxDecodedStreamLength cuts the data: what follows the R, which would
+        // say whether it ends a reference, is the guard's, and nothing past the data is asked. The member reads as the
+        // number before it, cut, or the guard is thrown.
+        const string Data = "10 0 6 0 R (more data) ";
+        var hex = Convert.ToHexString(Encoding.Latin1.GetBytes(Data)) + ">";
+        var written = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, written.Object(1, Catalog), 0),
+            [2] = (1, written.Object(2, Pages), 0),
+            [3] = (1, written.Object(3, string.Create(CultureInfo.InvariantCulture, $"<< /Type /ObjStm /N 1 /First 5 /Filter /ASCIIHexDecode /Length {hex.Length} >>\nstream\n{hex}\nendstream")), 0),
+            [10] = (2, 3, 0),
+        };
+        written.CrossReferenceStream(12, 13, rows, "/Root 1 0 R");
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 10 }, ThrowOnLimit = throwOnLimit };
+
+        using var document = PdfDocument.Open(written.Bytes, options);
+
+        if (throwOnLimit)
+        {
+            var reading = () => document.GetObject(new PdfObjectId(10));
+            reading.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxDecodedStreamLength));
+            return;
+        }
+
+        document.GetObject(new PdfObjectId(10)).Should().BeOfType<PdfInteger>().Which.Value.Should().Be(6);
+        document.Reader.IsCutAtLimit(10).Should().BeTrue();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
     [Fact]
     public void A_member_left_open_where_a_guard_cuts_the_data_at_the_next_member_s_start_is_the_file_s_fault()
     {
