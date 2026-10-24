@@ -2232,6 +2232,35 @@ public class StreamLengthTests
     }
 
     [Fact]
+    public void A_stream_left_unsearched_whose_length_a_guard_hid_is_the_guard_s()
+    {
+        // As above, stream 13's data running 3,000 bytes past the bytes its object is parsed with: once the searches have
+        // read as much as they may, it is not searched past them, and where it ends is unknown — the length that would say
+        // is the guard's. The data up to the next object, its endstream and endobj taken in, was the file's, reported as a
+        // length the reader did not search past; it is the guard's, as an endstream found and not proven is (#224).
+        const int Streams = 10;
+        var data = "BT " + new string('x', 3000) + " ET";
+        var (file, _) = NestedStreams(
+            Streams,
+            100_000,
+            Invariant($"{Streams + 3} 0 obj\n<< /Length {Streams + 4} 0 R >>\nstream\n{data}\nendstream\nendobj\n"),
+            Invariant($"{Streams + 4} 0 obj\n{new string(' ', 2000)}{data.Length}\nendobj\n"));
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 1024 } });
+
+        for (var number = 3; number <= Streams + 2; number++)
+        {
+            document.GetObject(new PdfObjectId(number));
+        }
+
+        var reports = document.Diagnostics.Count;
+        var stream = document.GetObject(new PdfObjectId(Streams + 3)).AsStream().Required();
+
+        stream.Data.CutByGuard.Should().BeTrue();
+        document.Reader.IsEndObjMissing(Streams + 3, out _).Should().BeFalse();
+        document.Diagnostics.Skip(reports).Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Fact]
     public void A_stream_left_unsearched_whose_length_runs_past_the_file_takes_the_data_its_object_holds()
     {
         // As streams whose data share a stretch exhaust what the searches may read, the last is left unsearched; its declared

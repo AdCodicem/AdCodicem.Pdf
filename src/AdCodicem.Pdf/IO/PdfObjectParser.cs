@@ -872,6 +872,15 @@ internal ref struct PdfObjectParser
         if (!search.Searched)
         {
             // The document's searches read as much of the file as they may: what lies past the bytes held is not looked at.
+            // Where a /Length a guard cut or left out of the index would say how far the data runs, where it ends is the
+            // guard's, as where an endstream found is not proven the stream's own: the data up to the stop is cut by it, the
+            // object's endobj unjudged, and nothing is said of the file (#224).
+            if (declared.Form is StreamLengthForm.ObjectCut or StreamLengthForm.ObjectUnindexed)
+            {
+                _endObjUnknown = true;
+                return Finish(dictionary, dataStart, upToStop, span.Length, cutByGuard: true);
+            }
+
             var kept = fits ? length : upToStop;
 
             if (KeepLengthFault(Fault(declared, dataStart, kept, null, EndStreamState.NotSearched, null)))

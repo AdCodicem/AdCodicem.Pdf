@@ -105,7 +105,8 @@ of it at most, all searches together, in the test corpus — unless their stretc
 another's dictionary, or a header the search does not take — a regular character glued before its number — that the
 index as the file wrote it does not place. Past the bound, only the bytes the parser holds are searched: a declared
 length that ends before the next object is kept, the data otherwise taken up to it or to the end of the file, and the
-report says so.
+report says so — but for a stream whose length a guard hid, whose data up to there is the guard's, as an `endstream`
+nothing proves is.
 
 ## Damaged stream data
 
