@@ -26,6 +26,35 @@ public class FilterTests
         0x49, 0x2D, 0x2A, 0x56, 0xF4, 0x20, 0x4A, 0x08, 0x00,
     ];
 
+    [Theory]
+    [InlineData(4, true)]
+    [InlineData(6, false)]
+    public void A_group_ascii85_data_that_ends_where_the_file_s_may_not_parts_is_dropped_and_counted_against_the_bound(int maxLength, bool limited)
+    {
+        // "5sdq," is ABCD, and "77I" the part of the group EF's: data the reader cut, or whose end a guard hides, may end
+        // inside the group, whose bytes the missing digits decide. They are not written, but the whole data holds them,
+        // and a bound they do not fit within is reached (#224).
+        var decoded = Ascii85Filter.Decode("5sdq,77I"u8, out var reached, out _, maxLength, cut: true);
+
+        decoded.Should().Equal("ABCD"u8.ToArray());
+        reached.Should().Be(limited);
+        Ascii85Filter.Decode("5sdq,77I"u8, out _, out _, 6).Should().Equal("ABCDEF"u8.ToArray());
+    }
+
+    [Theory]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    public void A_digit_asciihex_data_that_ends_where_the_file_s_may_not_leaves_alone_is_dropped_and_counted_against_the_bound(int maxLength, bool limited)
+    {
+        // The last digit's byte, which the next digit decides, is not written, but the whole data holds it, and a bound it
+        // does not fit within is reached (#224).
+        var decoded = AsciiHexFilter.Decode("41424"u8, out var reached, out _, maxLength, cut: true);
+
+        decoded.Should().Equal("AB"u8.ToArray());
+        reached.Should().Be(limited);
+        AsciiHexFilter.Decode("41424"u8, out _, out _, 3).Should().Equal([0x41, 0x42, 0x40]);
+    }
+
     [Fact]
     public void Decodes_a_flate_stream()
     {

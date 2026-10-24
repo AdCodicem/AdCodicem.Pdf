@@ -977,6 +977,56 @@ public class GuardCutValueTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_group_an_unproven_endstream_parts_where_a_guard_cut_the_length_leaves_its_rows_to_the_guard(bool carry)
+    {
+        // Stream 7's /Length, which only its own row places, is one MaxObjectLength parts after its first digit, and its
+        // ASCII85 text spells an endstream four digits into the group that holds the page's row's last bytes: nothing after
+        // it proves it the stream's own, and where the data ends is the guard's. Decoded as data whose end the file gives,
+        // the group was completed with u's, which guessed its bytes — and carried into the page's row's generation, read
+        // then as 1 —: the row the parted group holds is the guard's, the page read as null until the guard is lifted (#224).
+        var file = ChainFiles.Ascii85RowsPartedBySpelledEndStream(carry);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+            whole.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfNull>();
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Should().NotContain(PdfValidationRuleIds.XRefGenerationMismatch);
+    }
+
+    [Theory]
+    [InlineData(20)]
+    [InlineData(49)]
+    public void A_predicted_row_an_unproven_endstream_parts_where_a_guard_cut_the_length_is_undone_as_far_as_it_goes(int columns)
+    {
+        // Stream 7's /Length, object 5, which the newer table places, is one MaxObjectLength parts after its first digit, and
+        // its rows, Flate behind a PNG predictor, spell an endstream after the catalog's: the data up to it decodes to the
+        // catalog's row behind its tag, shorter than one predicted row. Decoded as data whose end the file gives, it was left
+        // as decoded, the tag read as the catalog's row's type, the catalog freed and the index rebuilt. Where the end is
+        // the guard's, the row is undone as far as the data goes, and the catalog read (#224).
+        var file = ChainFiles.PredictedRowsPartedBySpelledEndStream(columns);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData(29)]
     [InlineData(20)]
     public void A_filter_run_out_where_a_guard_s_cut_of_the_length_leaves_the_data_says_nothing_of_the_file(int free)

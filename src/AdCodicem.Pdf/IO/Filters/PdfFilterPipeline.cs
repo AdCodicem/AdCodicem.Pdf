@@ -68,8 +68,11 @@ internal static class PdfFilterPipeline
     /// <param name="endHidden">
     /// Whether where the data ends is the guard's to hide: data a search took up to an <c>endstream</c> nothing confirmed,
     /// where the length that would say is one a guard cut, or a guard on decoding kept the data from being taken again to
-    /// it. Only what decoding says of the end hears of it: the data decodes as data whose end the file gives — not as data
-    /// a guard cut, whose last group a filter drops —, so that whether a guard is reached does not depend on it.
+    /// it. The data decodes as data a guard cut does — a last group a filter holds in part, which the hidden end may have
+    /// parted, is dropped, and a predictor's last row undone as far as it goes —, though it is not counted as cut by it: a
+    /// group dropped so counts against <see cref="Documents.PdfReaderLimits.MaxDecodedStreamLength"/> all the same, the
+    /// whole data holding at least as much, so that whether the guard is reached does not depend on where the end is
+    /// hidden.
     /// </param>
     /// <param name="leftEncoded">As the other overload gives it.</param>
     /// <param name="cutByGuard">As the other overload gives it.</param>
@@ -137,9 +140,10 @@ internal static class PdfFilterPipeline
 
         // Whether the data a filter is given ends where the file's may not: data the reader cut at one of its limits —
         // MaxStreamLength, or the window a guard stopped at, cut the stream's data, or a filter before it stopped at
-        // MaxDecodedStreamLength. Every filter after it is given such data, and a cut is reported once, by the guard that
-        // made it. Data whose end a guard hides is no cut: every filter is given it, and says nothing of its end.
-        var cut = stream.Data.CutByGuard;
+        // MaxDecodedStreamLength —, or data whose end a guard hides. Every filter after it is given such data, and a cut is
+        // reported once, by the guard that made it; data whose end is hidden is no cut. A filter drops a last group such
+        // data holds in part, and counts it against the bound all the same (Ascii85Filter, AsciiHexFilter).
+        var cut = stream.Data.CutByGuard || endHidden;
         var limitReported = false;
 
         // The filters before the last share one bound for what they pass along together, and the last keeps its own: a
@@ -167,7 +171,6 @@ internal static class PdfFilterPipeline
                 diagnostics,
                 stream.Data.Position,
                 guard,
-                endHidden,
                 ref cut,
                 ref limitReported,
                 out var failed);
@@ -206,10 +209,6 @@ internal static class PdfFilterPipeline
     /// <param name="diagnostics">Receives what decoding met.</param>
     /// <param name="position">Where the stream's data starts, where every report is placed.</param>
     /// <param name="guard">Says what reaching the bound does.</param>
-    /// <param name="endHidden">
-    /// Whether where <paramref name="data"/> ends is the guard's to hide: the filter decodes it as it is, and says nothing of
-    /// its end.
-    /// </param>
     /// <param name="cut">
     /// Whether <paramref name="data"/> is data the reader cut; set when this filter stops at the bound too.
     /// </param>
@@ -222,7 +221,6 @@ internal static class PdfFilterPipeline
         PdfDiagnostics? diagnostics,
         long position,
         PdfLimitGuard guard,
-        bool endHidden,
         ref bool cut,
         ref bool limitReported,
         out bool failed)
@@ -230,10 +228,6 @@ internal static class PdfFilterPipeline
         var name = step.Name;
         var maxLength = bounds.MaxLength;
         var given = cut;
-
-        // Whether how the data ends is the reader's, or the guard's, rather than the file's: data the reader cut, or whose
-        // end a guard hides. Only what is reported depends on the latter.
-        var endUnknown = given || endHidden;
         failed = false;
 
         if (name == PdfName.FlateDecode)
@@ -251,18 +245,18 @@ internal static class PdfFilterPipeline
             }
 
             // Data a guard of the reader's cut ends early because the reader stopped reading it, or a filter before
-            // this one stopped decoding it, which the guard reported: that it ran out says nothing of the file. A fault,
-            // or a checksum that disagrees, lies in bytes the reader did read, and the whole data would meet it at the
-            // same point: it is the file's.
+            // this one stopped decoding it, which the guard reported, and data whose end a guard hides ends where the guard
+            // may: that it ran out says nothing of the file. A fault, or a checksum that disagrees, lies in bytes the reader
+            // did read, and the whole data would meet it at the same point: it is the file's.
             ReportEnding(
-                endUnknown && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing ? FlateEnding.Whole : ending,
+                given && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing ? FlateEnding.Whole : ending,
                 decoded.Length,
                 faultAt,
                 data.Length,
                 diagnostics,
                 position);
             Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
-            return ApplyPredictor(decoded, step, diagnostics, position, cut, endHidden);
+            return ApplyPredictor(decoded, step, diagnostics, position, cut);
         }
 
         if (name == PdfName.LZWDecode)
@@ -279,16 +273,16 @@ internal static class PdfFilterPipeline
                         $"An LZW stream uses code {undefinedCode}, which it has not defined; what decoded before it was kept."),
                     position);
             }
-            else if (ending == DataEnding.Unmarked && !endUnknown)
+            else if (ending == DataEnding.Unmarked && !given)
             {
-                // Data the reader cut ends early because the reader stopped reading it: that no code ends it says nothing
-                // of the file.
+                // Data the reader cut ends early because the reader stopped reading it, and data whose end a guard hides
+                // ends where the guard may: that no code ends it says nothing of the file.
                 diagnostics?.Repair(
                     PdfDiagnosticCodes.FilterFailed,
                     "An LZW stream ends without its end-of-data code; it decoded to the end of its data.",
                     position);
             }
-            else if (ending == DataEnding.UnmarkedInsideCode && !endUnknown)
+            else if (ending == DataEnding.UnmarkedInsideCode && !given)
             {
                 diagnostics?.Warn(
                     PdfDiagnosticCodes.FilterFailed,
@@ -297,7 +291,7 @@ internal static class PdfFilterPipeline
             }
 
             Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
-            return ApplyPredictor(decoded, step, diagnostics, position, cut, endHidden);
+            return ApplyPredictor(decoded, step, diagnostics, position, cut);
         }
 
         byte[] text;
@@ -318,9 +312,9 @@ internal static class PdfFilterPipeline
             text = RunLengthFilter.Decode(data.Span, out textLimited, out faults, maxLength);
         }
 
-        // The end of data the reader cut, or of data the filter stopped decoding at the bound, is the reader's: only what
-        // the filter read is the file's.
-        ReportFaults(faults, name, data.Length, textLimited, ended: !endUnknown && !textLimited, diagnostics, position);
+        // The end of data the reader cut, or whose end a guard hides, or of data the filter stopped decoding at the bound, is
+        // the reader's: only what the filter read is the file's.
+        ReportFaults(faults, name, data.Length, textLimited, ended: !given && !textLimited, diagnostics, position);
         Reached(textLimited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
         return text;
     }
@@ -336,7 +330,8 @@ internal static class PdfFilterPipeline
     /// <param name="stopped">Whether the filter stopped at the bound, the faults it counts being those of the part it read.</param>
     /// <param name="ended">
     /// Whether the filter read its data to the end the file gave it, which its end then says something of: an end marker
-    /// missing, or a <c>~</c> no <c>&gt;</c> follows, where the reader cut the data or the filter stopped is the cut's.
+    /// missing, or a <c>~</c> no <c>&gt;</c> follows, where the reader cut the data, a guard hides its end, or the filter
+    /// stopped is the cut's.
     /// </param>
     /// <param name="diagnostics">Receives the reports.</param>
     /// <param name="position">Where the stream's data starts.</param>
@@ -563,12 +558,8 @@ internal static class PdfFilterPipeline
     /// <param name="Shared">Whether the bound the filters before the last share holds it to less than the bound itself.</param>
     private readonly record struct Bounds(int MaxLength, bool Shared);
 
-    /// <summary>
-    /// Undoes the predictor <paramref name="step"/> names, if any: data shorter than one of its rows, whose end the file
-    /// gives, is left as decoded, and reported unless a guard hides where it ends (<paramref name="endHidden"/>).
-    /// </summary>
     private static ReadOnlyMemory<byte> ApplyPredictor(
-        byte[] decoded, in FilterStep step, PdfDiagnostics? diagnostics, long position, bool cut, bool endHidden)
+        byte[] decoded, in FilterStep step, PdfDiagnostics? diagnostics, long position, bool cut)
     {
         var parameters = step.Parameters;
 
@@ -578,8 +569,7 @@ internal static class PdfFilterPipeline
         }
 
         if (!PredictorTransform.TryApply(
-                decoded, parameters.Predictor, parameters.Colors, parameters.BitsPerComponent, parameters.Columns, cut, out var result) &&
-            !endHidden)
+                decoded, parameters.Predictor, parameters.Colors, parameters.BitsPerComponent, parameters.Columns, cut, out var result))
         {
             diagnostics?.Warn(
                 PdfDiagnosticCodes.FilterFailed,

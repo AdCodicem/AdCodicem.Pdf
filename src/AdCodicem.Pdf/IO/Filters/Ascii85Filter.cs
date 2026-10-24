@@ -18,8 +18,10 @@ internal static class Ascii85Filter
     /// <param name="faults">What the data holds that the format does not allow.</param>
     /// <param name="maxLength">The most the data may decode to.</param>
     /// <param name="cut">
-    /// Whether the reader cut the data short at one of its limits: a group left partial at its end, before any
-    /// <c>~</c>, is one the cut parted, and is dropped rather than completed.
+    /// Whether the data ends where the file's may not — the reader cut it short at one of its limits, or a guard hides
+    /// where it ends —: a group left partial at its end, before any <c>~</c>, is one the cut parted, and is dropped rather
+    /// than completed, though the bytes it encodes count against <paramref name="maxLength"/>, which
+    /// <paramref name="limited"/> then says.
     /// </param>
     public static byte[] Decode(
         ReadOnlySpan<byte> data, out bool limited, out DataFaults faults, int maxLength, bool cut = false)
@@ -141,6 +143,12 @@ internal static class Ascii85Filter
             }
 
             limited = !WriteGroup(output, (uint)tuple, count - 1, group);
+        }
+        else if (count > 1)
+        {
+            // Data that ends where the file's may not leaves a group it parts, whose bytes the missing digits decide: none is
+            // written. The whole data holds at least the count-1 bytes it encodes, which the bound counts all the same.
+            limited = count - 1 > maxLength - output.Count;
         }
 
         if (!ended)
