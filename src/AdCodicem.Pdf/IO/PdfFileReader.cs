@@ -4137,7 +4137,25 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             // is asked too: a newer section may place the object, which a guard cut.
             if (!retaken && !endHidden && deferred is { } unsettled && declared > held && decodedWhole)
             {
-                if (RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, index is null ? [0, declared] : subsections, out lengthCut) is { } whole)
+                long[] ranges = index is null ? [0, declared] : subsections;
+                var whole = RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, ranges, out lengthCut, out var past);
+
+                // The row for the /Length may lie in a predicted row the spelled endstream parts, which the data decoded as
+                // data whose end the file gives dropped: the data decoded knowing its end hidden undoes it as far as it goes,
+                // and holds the rows before the endstream whole. What that decoding reports is dropped with it.
+                if (whole is null && past && row > 0)
+                {
+                    var again = _diagnostics.GetMarkWithDecodingReports();
+                    var undone = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, endHidden: true, reachedBefore: false, out var leftAgain, out _);
+                    _diagnostics.RollBack(again);
+
+                    if (!leftAgain && undone.Length / row > held)
+                    {
+                        whole = RetakeDeferred(xrefStream, unsettled, undone.Span, fieldWidths, row, undone.Length / row, ranges, out lengthCut, out _);
+                    }
+                }
+
+                if (whole is not null)
                 {
                     _diagnostics.RollBack(decoding);
                     xrefStream = whole;
@@ -4309,7 +4327,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// gives, which the chain could not read and took the data up to the first <c>endstream</c> for, when the rows
     /// <paramref name="data"/> holds show that <c>endstream</c> was in the rows (#220): the section's own row for the object
     /// the <c>/Length</c> names, among those held, places it, and the length it gives runs past the data taken, to an
-    /// <c>endstream</c> that confirms it. Null otherwise: the length is checked once the chain is read.
+    /// <c>endstream</c> that confirms it. Null otherwise: the length is checked once the chain is read — and the row lies
+    /// past those held where <c>past</c> says so.
     /// </summary>
     /// <remarks>
     /// The section's row for the object is the first that numbers it with a type the reading of its rows takes: one of a
@@ -4332,9 +4351,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         int row,
         long held,
         long[] subsections,
-        out bool lengthCut)
+        out bool lengthCut,
+        out bool past)
     {
         lengthCut = false;
+        past = false;
         var number = deferred.Length.Number;
 
         if (_xref.TryGet(number, out _) || _refusedNumbers?.Contains(number) == true)
@@ -4361,6 +4382,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 if (at >= held)
                 {
+                    past = true;
                     return null;
                 }
 

@@ -3125,4 +3125,22 @@ public class DocumentReaderTests
             base.Dispose(disposing);
         }
     }
+
+    [Theory]
+    [InlineData(28)]
+    [InlineData(21)]
+    public void Reads_a_cross_reference_stream_whose_length_row_a_spelled_endstream_parts_the_predicted_row_of(int columns)
+    {
+        // Stream 7's /Length names object 5, which only its own row places, and its rows spell an endstream right after that
+        // row, which parts the second predicted row: the data up to it decodes, as data whose end the file gives, to the first
+        // row alone, the parted one dropped, and the row for the /Length was not found. The section was charged with the
+        // rows it lacked and the index rebuilt (#220).
+        var file = ChainFiles.DeferredLengthRowPartedBySpelledEndStream(columns);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
 }

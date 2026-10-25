@@ -853,6 +853,58 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file of one revision: the catalog, the page tree, the page, object 5, which holds the length of cross-reference
+    /// stream 7's data, and stream 7, Flate in a stored block with a PNG predictor of <paramref name="columns"/> columns,
+    /// whose <c>/Length</c> names object 5, which only its own rows place: the free row 0's, the catalog's, the page tree's
+    /// and the page's, then object 5's, two of reserved types that spell <c>endstream</c> after an end-of-line, and its own
+    /// (<c>/Index [0 4 5 1 19 2 7 1]</c>). With 28 columns, the spelled <c>endstream</c> parts the second predicted row
+    /// right after object 5's row. The file is valid.
+    /// </summary>
+    public static byte[] DeferredLengthRowPartedBySpelledEndStream(int columns)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long five, long stream)
+        {
+            var rows = new List<byte>(Encode(
+                [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, five, 0)],
+                Rows.Raw));
+            rows.AddRange("\nendstream\0\0\0\0"u8.ToArray());
+            rows.AddRange(Encode([(1, stream, 0)], Rows.Raw));
+
+            while (rows.Count % columns != 0)
+            {
+                rows.Add(0);
+            }
+
+            var predicted = new List<byte>();
+
+            for (var i = 0; i < rows.Count; i += columns)
+            {
+                predicted.Add(0);
+                predicted.AddRange(rows.GetRange(i, columns));
+            }
+
+            return Compress([.. predicted]);
+        }
+
+        file.Object(5, Data(0, 0).Length.ToString(CultureInfo.InvariantCulture));
+        var at = file.Position;
+        file.Stream(
+            7,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"/Type /XRef /Size 21 /W [1 4 2] /Index [0 4 5 1 19 2 7 1] /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns {columns} >> /Root 1 0 R /Length 5 0 R"),
+            Data(file.OffsetOf(5), at));
+        file.StartXRef(at);
+        return file.ToArray();
+    }
+
+    /// <summary>
     /// A file of one cross-reference stream, object 7, whose <c>/Length</c> names object 5, which only the stream's own row
     /// places, before the rows of objects 1 and 2; two rows of reserved types spell <c>endstream</c> after an end-of-line
     /// after them, 28 and 42 bytes in, before the rows of objects 3 and 7 and fifty free ones, 420 bytes in all. Object 5
