@@ -132,7 +132,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   others passing. On [#297]'s branch, run 76, on `8f6a085`, passed whole; run 78, on `241d701`, lost the ipres2017
   archive the same way and failed one test, whose bounds the zlib of this container set and the zlib-ng of the runtime
   CI installs does not keep, which `d468352` corrected; run 80, on that commit, passed whole at its first attempt:
-  7,742 acceptance tests and 3,760 referee checks.
+  7,742 acceptance tests and 3,760 referee checks. Run 81, on `b9df537`, the first form of the record [#297] ends with,
+  lost two documents at its first attempt, web.archive.org refusing the connection or timing out ([#204]), every test
+  over the 240 others passing, and passed whole at its one rerun; CI run 780 is green on that code.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
@@ -483,7 +485,7 @@ not a fault of the file: the rules on it report at most, as information, that it
     compiler adds, five reached only by faults. The passes met four faults, each reproduced and filed rather than
     pinned ([#292] to [#295]): one the batch made, a false warning once a crafted file has spent the searches
     ([#293]), and three older ones, each of which the batch narrowed.
-- **Done**, in [#297], 145 commits:
+- **Done**, in [#297], 145 commits, squashed into one at the maintainer's choice, too many for a rebase:
   - [#174]: a `/Length` confirmed past any white space and comments, read on past the window; one memoized search for
     every unconfirmed length, up to the next object's header or the next object the index places, which never grows a
     window; with no `endstream`, the object's `endobj` ending the data, as the file wrote it, `stream.truncated` or
@@ -537,7 +539,11 @@ not a fault of the file: the rules on it report at most, as information, that it
   project copy are kept, unmodified, in a repository of their own ([#291]), `tests/corpus/remote/` is cached between
   runs where no pull request can restore it, and the fetcher waits as hosts ask; one pull request after this batch.
 - **Checked**:
-  - PENDING-PERCOMMIT
+  - each commit of the branch built alone with no warning and run through the unit suite, a check still running when
+    this record was written: the first 30 build and pass, 7,065 to 7,297 tests with the remote documents fetched, but
+    for one run of the test of the validator's linear time over an object stream's members, on `d3c44d1`, a commit
+    that does not touch what it times, while other work loaded the machine. The squashed tree is the one CI and the
+    checks below ran on. commitlint finds no problem in the messages;
   - the integration suite twice on `241d701`, 3,688 tests, 3,682 passed and 6 skipped, both runs; the commits after it
     change tests alone;
   - the unit suite under the runtime Microsoft ships, as CI installs it, zlib-ng included, at `2055eeb`: 7,704 tests,
@@ -567,7 +573,9 @@ not a fault of the file: the rules on it report at most, as information, that it
     archive, its host timing out ([#204]), and failed one test, a deferred length checked on data `MaxStreamLength` cuts
     past every row, whose bounds were those of the Flate data this container's zlib writes, which the zlib-ng of the
     runtime CI installs writes otherwise: `d468352` stores that data, and run 80, on it, passed whole, 242 documents,
-    7,742 acceptance tests and 3,760 referee checks.
+    7,742 acceptance tests and 3,760 referee checks. Run 81, on `b9df537`, the first form of this record, lost two
+    documents at its first attempt, web.archive.org refusing the connection or timing out ([#204]), every test over the
+    240 others passing, and passed whole at its one rerun.
 - **Next**: batch 17, [#155].
 
 ### 2026-10-22 — Batch 15: object stream members ([#160], [#161], [#200], [#202], [#255], [#257], [#273], [#274], [#275])
