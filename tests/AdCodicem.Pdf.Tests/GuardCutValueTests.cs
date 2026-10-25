@@ -1439,6 +1439,60 @@ public class GuardCutValueTests
         }
     }
 
+    [Theory]
+    [InlineData("cut", false)]
+    [InlineData("left out", true)]
+    public void A_decoding_guard_flate_data_a_hidden_length_ends_reaches_is_reached_as_read_whole(string guard, bool checksumWrong)
+    {
+        // Content stream 4's zlib data, its checksum right or wrong, under a /Length a guard cut or left out of the index, its
+        // endstream proven its own, decodes to 4 MB, past a MaxDecodedStreamLength of 1 MB, which stops it read whole. Taken
+        // for a deflate body that ends in the data, its output would be whole: the guard unreported, and what it cut the
+        // file's.
+        var zlib = Zlib(new byte[4 << 20]);
+        zlib[^1] ^= checksumWrong ? (byte)0x55 : (byte)0;
+        var file = HiddenLengthFile(guard, "/Filter /FlateDecode", zlib, "\n");
+        var hidden = HiddenLengthOptions(guard);
+
+        using (var whole = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1 << 20 } }))
+        {
+            var read = whole.GetObject(new PdfObjectId(4)).AsStream().Required();
+            PdfFilterPipeline.Decode(read, null, out _, out var cut).Length.Should().Be(1 << 20);
+            cut.Should().BeTrue();
+        }
+
+        using var guarded = PdfDocument.Open(file, hidden with { Limits = hidden.Limits with { MaxDecodedStreamLength = 1 << 20 } });
+        var stream = guarded.GetObject(new PdfObjectId(4)).AsStream().Required();
+        var decoded = PdfFilterPipeline.Decode(stream, null, out _, out var cutByGuard);
+
+        stream.Data.EndHidden.Should().BeTrue();
+        decoded.Length.Should().Be(1 << 20);
+        cutByGuard.Should().BeTrue();
+        guarded.Diagnostics.Select(entry => entry.Code).Should().Equal(GuardCode(guard), PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Theory]
+    [InlineData("cut", "/LZWDecode", "\n\n")]
+    [InlineData("left out", "/FlateDecode", " \t\n")]
+    [InlineData("cut", "/RunLengthDecode", " % c\n\n")]
+    public void Data_that_is_all_the_run_a_hidden_length_may_leave_out_is_the_guard_s_to_lack_under_a_filter_with_an_end(
+        string guard, string filter, string tail)
+    {
+        // Content stream 4's data is nothing but white space, and a comment past it, before the endstream the next object
+        // proves its own, under a /Length a guard cut or left out of the index: the hidden length may leave it all out, and
+        // the LZW, Flate or RunLength data it gives, which a whole read ends where its format says, the guard's to lack. Under
+        // ASCIIHex, data of white space alone is whole (above).
+        var file = HiddenLengthFile(guard, "/Filter " + filter, [], tail);
+
+        using var guarded = PdfDocument.Open(file, HiddenLengthOptions(guard));
+        var stream = guarded.GetObject(new PdfObjectId(4)).AsStream().Required();
+        var decoded = PdfFilterPipeline.Decode(stream, null, out _, out var cutByGuard);
+
+        stream.Data.EndHidden.Should().BeTrue();
+        decoded.Length.Should().Be(0);
+        cutByGuard.Should().BeTrue();
+        guarded.Diagnostics.Select(entry => entry.Code).Should().Equal(GuardCode(guard));
+    }
+
     /// <summary>
     /// A file whose content stream 4 holds <paramref name="data"/> and <paramref name="tail"/> before its endstream, which
     /// object 5 after it proves its own, its <c>/Length</c> object 20, which a <c>MaxObjectLength</c> of 1,024 cuts, or, left
