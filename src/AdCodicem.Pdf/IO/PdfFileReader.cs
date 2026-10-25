@@ -4150,21 +4150,34 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             if (!retaken && !endHidden && deferred is { } unsettled && declared > held && decodedWhole)
             {
                 long[] ranges = index is null ? [0, declared] : subsections;
-                var whole = RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, ranges, out lengthCut, out var past);
+                var whole = RetakeDeferred(xrefStream, unsettled, data, fieldWidths, row, held, ranges, out lengthCut, out var numbered);
 
                 // The row for the /Length may lie in a predicted row the spelled endstream parts, which the data decoded as
-                // data whose end the file gives dropped: the data decoded knowing its end hidden undoes it as far as it goes,
-                // and holds the rows before the endstream whole. What that decoding reports is dropped with it.
-                if (whole is null && past && row > 0)
+                // data whose end the file gives dropped, left as decoded — the first predicted row parted — or left still
+                // differenced: the data decoded knowing its end hidden undoes it as far as it goes, and holds the rows before
+                // the endstream whole. What that decoding reports is dropped with it, but for a guard on decoding it reached,
+                // which the whole data, holding at least as much, reaches too: where it found no row for the /Length, where
+                // the rows end is the guard's, as where the decoding before reached it.
+                if (whole is null && numbered && row > 0)
                 {
                     var again = _diagnostics.GetMarkWithDecodingReports();
-                    var undone = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, endHidden: true, reachedBefore: false, out var leftAgain, out _);
-                    _diagnostics.RollBack(again);
+                    var undone = Filters.PdfFilterPipeline.Decode(xrefStream, _diagnostics, endHidden: true, reachedBefore: false, out var leftAgain, out var reached);
 
-                    if (!leftAgain && undone.Length / row > held)
+                    if (!leftAgain)
                     {
                         whole = RetakeDeferred(xrefStream, unsettled, undone.Span, fieldWidths, row, undone.Length / row, ranges, out lengthCut, out _);
                     }
+
+                    if (whole is null && reached)
+                    {
+                        _diagnostics.RollBackBesideLimits(decoding);
+                        reachedBefore = true;
+                        heldBefore = undone.Length / row;
+                        endHidden = true;
+                        continue;
+                    }
+
+                    _diagnostics.RollBack(again);
                 }
 
                 if (whole is not null)
@@ -4339,8 +4352,8 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// gives, which the chain could not read and took the data up to the first <c>endstream</c> for, when the rows
     /// <paramref name="data"/> holds show that <c>endstream</c> was in the rows (#220): the section's own row for the object
     /// the <c>/Length</c> names, among those held, places it, and the length it gives runs past the data taken, to an
-    /// <c>endstream</c> that confirms it. Null otherwise: the length is checked once the chain is read — and the row lies
-    /// past those held where <c>past</c> says so.
+    /// <c>endstream</c> that confirms it. Null otherwise: the length is checked once the chain is read — and a subsection
+    /// numbers the object, its row past those held or not standing, where <paramref name="numbered"/> says so.
     /// </summary>
     /// <remarks>
     /// The section's row for the object is the first that numbers it with a type the reading of its rows takes: one of a
@@ -4364,10 +4377,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         long held,
         long[] subsections,
         out bool lengthCut,
-        out bool past)
+        out bool numbered)
     {
         lengthCut = false;
-        past = false;
+        numbered = false;
         var number = deferred.Length.Number;
 
         if (_xref.TryGet(number, out _) || _refusedNumbers?.Contains(number) == true)
@@ -4384,17 +4397,17 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         ulong type = 0;
         ulong offset = 0;
         ulong generation = 0;
-        var numbered = false;
+        var taken = false;
 
-        for (var i = 0; i < subsections.Length && !numbered; i += 2)
+        for (var i = 0; i < subsections.Length && !taken; i += 2)
         {
             if (number >= subsections[i] && number - subsections[i] < subsections[i + 1])
             {
                 var at = ordinal + (number - subsections[i]);
+                numbered = true;
 
                 if (at >= held)
                 {
-                    past = true;
                     return null;
                 }
 
@@ -4404,13 +4417,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 type = widths[0] == 0 ? 1 : ReadField(fields, ref cursor, widths[0]);
                 offset = ReadField(fields, ref cursor, widths[1]);
                 generation = ReadField(fields, ref cursor, widths[2]);
-                numbered = type <= 2;
+                taken = type <= 2;
             }
 
             ordinal += subsections[i + 1];
         }
 
-        if (!numbered || type != 1 || offset > long.MaxValue || generation != (ulong)deferred.Length.Generation)
+        if (!taken || type != 1 || offset > long.MaxValue || generation != (ulong)deferred.Length.Generation)
         {
             return null;
         }

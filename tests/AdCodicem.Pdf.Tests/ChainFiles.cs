@@ -858,9 +858,10 @@ internal static class ChainFiles
     /// whose <c>/Length</c> names object 5, which only its own rows place: the free row 0's, the catalog's, the page tree's
     /// and the page's, then object 5's, two of reserved types that spell <c>endstream</c> after an end-of-line, and its own
     /// (<c>/Index [0 4 5 1 19 2 7 1]</c>). With 28 columns, the spelled <c>endstream</c> parts the second predicted row
-    /// right after object 5's row. The file is valid.
+    /// right after object 5's row; with 49 or 56, the first, which object 5's row lies in. With <paramref name="predictor"/> 2,
+    /// the TIFF predictor differences each row in place of the PNG one. The file is valid.
     /// </summary>
-    public static byte[] DeferredLengthRowPartedBySpelledEndStream(int columns)
+    public static byte[] DeferredLengthRowPartedBySpelledEndStream(int columns, int predictor = 12)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -883,6 +884,26 @@ internal static class ChainFiles
 
             var predicted = new List<byte>();
 
+            if (predictor == 2)
+            {
+                // Each byte but a row's first is written as its difference from the one before it: the two rows of reserved
+                // types hold the bytes whose differences spell the endstream, their types still past 2, which no reading
+                // takes.
+                var spelled = "\nendstream\0\0\0\0"u8;
+
+                for (var i = 35; i < 49; i++)
+                {
+                    rows[i] = (byte)((i % columns == 0 ? 0 : rows[i - 1]) + spelled[i - 35]);
+                }
+
+                for (var i = 0; i < rows.Count; i++)
+                {
+                    predicted.Add(i % columns == 0 ? rows[i] : (byte)(rows[i] - rows[i - 1]));
+                }
+
+                return Compress([.. predicted]);
+            }
+
             for (var i = 0; i < rows.Count; i += columns)
             {
                 predicted.Add(0);
@@ -898,7 +919,114 @@ internal static class ChainFiles
             7,
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"/Type /XRef /Size 21 /W [1 4 2] /Index [0 4 5 1 19 2 7 1] /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns {columns} >> /Root 1 0 R /Length 5 0 R"),
+                $"/Type /XRef /Size 21 /W [1 4 2] /Index [0 4 5 1 19 2 7 1] /Filter /FlateDecode /DecodeParms << /Predictor {predictor} /Columns {columns} >> /Root 1 0 R /Length 5 0 R"),
+            Data(file.OffsetOf(5), at));
+        file.StartXRef(at);
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A file of one revision: the catalog, the page tree, the page, object 5, which holds the length of cross-reference
+    /// stream 7's data, and stream 7, raw, whose <c>/Length</c> names object 5, which only its own rows place. Its data
+    /// starts with <paramref name="prefix"/> zero bytes, fewer than a row's seven, then spells <c>endstream</c> after an
+    /// end-of-line, before its rows: the free row 0's, the catalog's, the page tree's, the page's, object 5's and its own
+    /// (<c>/Index [19 2 0 4 5 1 7 1]</c>). The file is valid.
+    /// </summary>
+    public static byte[] DeferredLengthEndStreamSpelledBeforeRows(int prefix)
+    {
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long five, long stream)
+        {
+            var rows = new List<byte>(new byte[prefix]);
+            rows.AddRange("\nendstream\0"u8.ToArray());
+
+            while (rows.Count % 7 != 0)
+            {
+                rows.Add(0);
+            }
+
+            rows.AddRange(Encode(
+                [(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0), (1, five, 0), (1, stream, 0)],
+                Rows.Raw));
+            return [.. rows];
+        }
+
+        file.Object(5, Data(0, 0).Length.ToString(CultureInfo.InvariantCulture));
+        var at = file.Position;
+        file.Stream(7, "/Type /XRef /Size 21 /W [1 4 2] /Index [19 2 0 4 5 1 7 1] /Root 1 0 R /Length 5 0 R", Data(file.OffsetOf(5), at));
+        file.StartXRef(at);
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A file of one revision: the catalog, the page tree, the page, object 5 and cross-reference stream 7, whose
+    /// <c>/Length</c> names object 5 — or, with <paramref name="direct"/>, gives the length —, and whose data a RunLength
+    /// step decodes after a Flate one, in a stored block with a PNG predictor of 45 columns. The RunLength data: a literal run
+    /// of the rows of the free row 0, the catalog, the page tree and the page, 14 runs of 128 zeros — 256 free rows —, then
+    /// object 5's row and two of reserved types that spell <c>endstream</c> after an end-of-line — with
+    /// <paramref name="rowBefore"/>; past them otherwise —, the stream's own row, and the end byte. The spelled
+    /// <c>endstream</c> parts the second predicted row, past the 1,052 bytes the data up to it decodes to, and object 5's row
+    /// lies 1,820 bytes or more into the rows. The file is valid.
+    /// </summary>
+    public static byte[] DeferredLengthRowPastRunLengthRuns(bool rowBefore, bool direct = false)
+    {
+        const int Columns = 45;
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long five, long stream)
+        {
+            var runs = new List<byte> { 27 };
+            runs.AddRange(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0)], Rows.Raw));
+
+            for (var i = 0; i < 14; i++)
+            {
+                runs.AddRange([0x81, 0x00]);
+            }
+
+            if (rowBefore)
+            {
+                runs.Add(6);
+                runs.AddRange(Encode([(1, five, 0)], Rows.Raw));
+            }
+
+            runs.Add(13);
+            runs.AddRange("\nendstream\0\0\0\0"u8.ToArray());
+            runs.Add(rowBefore ? (byte)6 : (byte)13);
+            runs.AddRange(Encode(rowBefore ? [(1, stream, 0)] : [(1, five, 0), (1, stream, 0)], Rows.Raw));
+
+            while (runs.Count % Columns != 0)
+            {
+                runs.Add(128);
+            }
+
+            var predicted = new List<byte>();
+
+            for (var i = 0; i < runs.Count; i += Columns)
+            {
+                predicted.Add(0);
+                predicted.AddRange(runs.GetRange(i, Columns));
+            }
+
+            return Compress([.. predicted]);
+        }
+
+        var length = Data(0, 0).Length.ToString(CultureInfo.InvariantCulture);
+        file.Object(5, direct ? "0" : length);
+        var at = file.Position;
+        file.Stream(
+            7,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"/Type /XRef /Size 266 /W [1 4 2] /Index {(rowBefore ? "[0 4 8 256 5 1 264 2 7 1]" : "[0 4 8 256 264 2 5 1 7 1]")} /Filter [/FlateDecode /RunLengthDecode] /DecodeParms [<< /Predictor 12 /Columns {Columns} >> null] /Root 1 0 R /Length {(direct ? length : "5 0 R")}"),
             Data(file.OffsetOf(5), at));
         file.StartXRef(at);
         return file.ToArray();

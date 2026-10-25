@@ -3127,20 +3127,84 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData(28)]
-    [InlineData(21)]
-    public void Reads_a_cross_reference_stream_whose_length_row_a_spelled_endstream_parts_the_predicted_row_of(int columns)
+    [InlineData(28, 12)]
+    [InlineData(21, 12)]
+    [InlineData(49, 12)]
+    [InlineData(56, 12)]
+    [InlineData(21, 2)]
+    [InlineData(28, 2)]
+    public void Reads_a_cross_reference_stream_whose_length_row_a_spelled_endstream_parts_the_predicted_row_of(int columns, int predictor)
     {
         // Stream 7's /Length names object 5, which only its own row places, and its rows spell an endstream right after that
-        // row, which parts the second predicted row: the data up to it decodes, as data whose end the file gives, to the first
-        // row alone, the parted one dropped, and the row for the /Length was not found. The section was charged with the
-        // rows it lacked and the index rebuilt (#220).
-        var file = ChainFiles.DeferredLengthRowPartedBySpelledEndStream(columns);
+        // row, which parts the predicted row it lies in: the data up to it decodes, as data whose end the file gives, to the
+        // rows before that one, the parted one dropped — or, the first parted, to data the PNG predictor leaves as decoded,
+        // its tag bytes in the rows; or, under the TIFF predictor, to that row still differenced —, and the row for the
+        // /Length was not found, or found garbled. The section was charged with the rows it lacked and the index rebuilt
+        // (#220).
+        var file = ChainFiles.DeferredLengthRowPartedBySpelledEndStream(columns, predictor);
 
         using var document = PdfDocument.Open(file);
 
         document.Diagnostics.Should().BeEmpty();
         document.WasRepaired.Should().BeFalse();
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    [InlineData(6)]
+    public void Reads_a_cross_reference_stream_whose_rows_a_length_it_places_runs_past_spell_an_endstream_before_the_first(int prefix)
+    {
+        // Stream 7's /Length names object 5, which only its own row places, and its data spells an endstream before its first
+        // row: the data up to it holds no whole row, which the row for the /Length cannot lie in, nor a predicted row undone,
+        // and the section lacks every row, the file's. Asked to look for that row again, the reader would divide by the
+        // length of a row it took to be none.
+        var file = ChainFiles.DeferredLengthEndStreamSpelledBeforeRows(prefix);
+
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_decoding_guard_a_deferred_length_s_data_reaches_once_its_predicted_row_is_undone_is_reached_as_read_whole(bool rowBefore)
+    {
+        // Stream 7's /Length names object 5, which only its own row places, 1,820 bytes or more into the rows a RunLength step
+        // decodes after a predicted Flate one; its rows spell an endstream that parts a predicted row, past object 5's row or
+        // before it. MaxDecodedStreamLength, 1,100 bytes, stops the RunLength step read whole, the rows past it the guard's.
+        // The data up to the endstream, its end the file's, decodes within the bound; decoded again, its predicted row undone
+        // as far as it goes, to look for the /Length's row, it reached the bound, which the reader dropped with what that
+        // decoding reported: the section was charged with the rows it lacked and the index rebuilt, where ThrowOnLimit threw.
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1100 } };
+
+        using (var whole = PdfDocument.Open(ChainFiles.DeferredLengthRowPastRunLengthRuns(rowBefore, direct: true), options))
+        {
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+            whole.WasRepaired.Should().BeFalse();
+        }
+
+        var file = ChainFiles.DeferredLengthRowPastRunLengthRuns(rowBefore);
+
+        // Unbounded, the row before the endstream is found in the data decoded again, which is taken again to the length; one
+        // past it is not among the rows the data holds, which a length checked once the chain is read says (#220).
+        using (var unbounded = PdfDocument.Open(file))
+        {
+            unbounded.WasRepaired.Should().Be(!rowBefore);
+        }
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections[0].CutByLimit.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+
+        var throwing = () => PdfDocument.Open(file, options with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxDecodedStreamLength));
     }
 }
