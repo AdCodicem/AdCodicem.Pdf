@@ -3284,20 +3284,20 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData("<< /Type /Font /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "/Prev", "holds at most 3 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 /Info 8 0 R /ID [<01> <02>] >>\nstream\nabc\nendstream", "[1 4 2]", "/Prev", "holds at most 3 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "/Prev+2", "holds at most 3 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "/XRefStm", "holds at most 3 of the 8 rows")]
-    [InlineData("<< /Type /Xref /W [1 5 0 R 2] /Size 8 /Length 3 >>\nstream\nabc\nendstream", "4", "/Prev", "holds at most 1 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 8] /Length 3 >>\nstream\nabc\nendstream", "0", "/Prev", "its data, 3 bytes decoded, holds at most 0 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 1] /Length 1 >>\nstream\na\nendstream", "0", "/Prev", "its data, 1 byte decoded, holds at most 0 of the 1 row its")]
-    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 1 9 5 0 R] /Length 3 >>\nstream\nabc\nendstream", "0", "/Prev", "holds at most 0 of the 1 or more rows")]
-    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 2147483648] /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 8 of the 2,147,483,648 rows")]
-    [InlineData("<< /Type /XRef /W [1 9223372036854775807 5 0 R] /Size 8 /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 0 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W [4611686018427387904 4611686018427387904 5 0 R] /Size 8 /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 0 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Filter /FlateDecode /Length {length} >>\nstream\n{flate}\nendstream", "[1 4 2]", "/Prev", "its data, 5 bytes decoded, holds at most 5 of the 8 rows")]
+    [InlineData("<< /Type /Font /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "/Prev", "holds at most 3 of the 8 rows", true)]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 /Info 8 0 R /ID [<01> <02>] >>\nstream\nabc\nendstream", "[1 4 2]", "/Prev", "holds at most 3 of the 8 rows", true)]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "/Prev+2", "holds at most 3 of the 8 rows", true)]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "/XRefStm", "holds at most 3 of the 8 rows", true)]
+    [InlineData("<< /Type /Xref /W [1 5 0 R 2] /Size 8 /Length 3 >>\nstream\nabc\nendstream", "4", "/Prev", "holds at most 1 of the 8 rows", true)]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 8] /Length 3 >>\nstream\nabc\nendstream", "0", "/Prev", "its data, 3 bytes decoded, holds at most 0 of the 8 rows", false)]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 1] /Length 1 >>\nstream\na\nendstream", "0", "/Prev", "its data, 1 byte decoded, holds at most 0 of the 1 row its", false)]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 1 9 5 0 R] /Length 3 >>\nstream\nabc\nendstream", "0", "/Prev", "holds at most 0 of the 1 or more rows", false)]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 2147483648] /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 8 of the 2,147,483,648 rows", true)]
+    [InlineData("<< /Type /XRef /W [1 9223372036854775807 5 0 R] /Size 8 /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 0 of the 8 rows", false)]
+    [InlineData("<< /Type /XRef /W [4611686018427387904 4611686018427387904 5 0 R] /Size 8 /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 0 of the 8 rows", false)]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Filter /FlateDecode /Length {length} >>\nstream\n{flate}\nendstream", "[1 4 2]", "/Prev", "its data, 5 bytes decoded, holds at most 5 of the 8 rows", true)]
     public void A_section_whose_data_holds_fewer_rows_than_it_declares_whatever_a_value_a_guard_cut_holds_is_the_file_s_to_lack(
-        string six, string five, string naming, string fault)
+        string six, string five, string naming, string fault, bool hidesRows)
     {
         // As above, object 6's data, whose length it gives, holds fewer rows than its /Size or the /Index counts read declare,
         // however few bytes the widths read and the one cut give a row — a width past what data holds counted as such —:
@@ -3353,16 +3353,151 @@ public class GuardCutValueTests
         var section = document.Reader.Structure.Sections[^1];
         section.Offset.Should().Be(sixAt);
         section.State.Should().Be(naming == "/Prev+2" ? XRefSectionState.Relocated : XRefSectionState.Read);
-        section.CutByLimit.Should().BeFalse();
+        section.CutByLimit.Should().Be(hidesRows);
         section.Incomplete.Should().BeTrue();
         section.Fault.Should().Contain(fault);
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Trailer.Keys.Select(key => key.Value).Order().Should().Equal(wholeKeys);
 
-        // The rebuild reaches the object the guard cut, as it reaches every object.
+        // The guard is reached once the chain is read. Rows the data may hold, which the guard hid, are said unchecked, and
+        // the highest number the chain uses, which they may raise, is not judged.
+        document.Diagnostics.Select(entry => entry.Code).Should().Contain(PdfDiagnosticCodes.LimitObject);
         document.Diagnostics.Select(entry => entry.Code).Where(code => code != PdfDiagnosticCodes.LimitObject).Should().Equal(wholeCodes);
-        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Distinct().Order().Should().Equal(wholeRules);
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Distinct().Order().Should().Equal(
+            hidesRows
+                ? [.. wholeRules.Where(rule => rule != PdfValidationRuleIds.FileSizeWrong).Append(PdfValidationRuleIds.XRefCheckedInPart).Order()]
+                : wholeRules);
+    }
+
+    [Theory]
+    [InlineData("/Prev")]
+    [InlineData("/XRefStm")]
+    public void Rows_a_section_lacking_rows_holds_beside_a_value_a_guard_cut_are_the_guard_s_and_no_older_section_stands_for_them(
+        string naming)
+    {
+        // Stream 6, of the second revision, places the catalog's newer definition in the seven rows its data holds of the
+        // eight its /Index declares, whose first number names object 5, which MaxObjectLength cuts; the first revision's
+        // table places the older one. Read whole, its rows win. The rows the data holds are read with the value the guard
+        // cut: the guard's, as rows a guard cut are, the chain ending there, where an older section's rows would stand for
+        // them — the older catalog was served, and the guard neither reported nor thrown under ThrowOnLimit.
+        var file = LackingBesideCut(naming, "/Index [5 0 R 8] /Size 8", rows => string.Concat(rows[..7]), out var sixAt);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.WasRepaired.Should().BeFalse();
+            whole.Reader.Structure.Sections.Single(section => section.Offset == sixAt).Incomplete.Should().BeTrue();
+            Revision(whole).Should().Be("two");
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.ObjectRedefined);
+        document.Reader.Structure.Sections.Should().HaveCount(2);
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(sixAt);
+        section.State.Should().Be(XRefSectionState.Read);
+        section.CutByLimit.Should().BeTrue();
+        section.Incomplete.Should().BeTrue();
+        section.Fault.Should().Contain("holds at most 7 of the 8 rows");
+        Revision(document).Should().Be("two");
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Theory]
+    [InlineData("/Prev")]
+    [InlineData("/XRefStm")]
+    public void A_section_lacking_rows_beside_a_value_a_guard_cut_reaches_the_guard_once_the_chain_is_read(string naming)
+    {
+        // As above, but stream 6's data, three bytes, holds no row of seven bytes: the section lacks rows whatever the value
+        // holds, its trailer merged and the chain going on, the first revision's table indexing every object, so that
+        // nothing is rebuilt. The value the guard cut was never loaded: the guard was neither reported nor thrown.
+        var file = LackingBesideCut(naming, "/Index [5 0 R 8] /Size 8", _ => "abc", out var sixAt);
+        string[] wholeCodes;
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.Reader.Structure.Sections.Single(section => section.Offset == sixAt).Incomplete.Should().BeTrue();
+            wholeCodes = [.. whole.Diagnostics.Select(entry => entry.Code)];
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal([.. wholeCodes, PdfDiagnosticCodes.LimitObject]);
+        document.Reader.Structure.Sections.Should().HaveCount(3);
+        var section = document.Reader.Structure.Sections.Single(section => section.Offset == sixAt);
+        section.CutByLimit.Should().BeFalse();
+        section.Incomplete.Should().BeTrue();
+        Revision(document).Should().Be("one");
+
+        var throwing = () => PdfDocument.Open(file, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Fact]
+    public void The_validator_charges_the_file_with_no_size_rows_a_section_lacking_rows_holds_beside_a_value_a_guard_cut_hide()
+    {
+        // Stream 6 places object 9 in the three rows its data holds of the five its /Index declares, whose first number a guard
+        // cut: read whole, the highest number the chain uses is 9, and the /Size 10 the trailers give is right. The rows the
+        // guard hid were not counted: the file was charged with a /Size two too large, and nothing said they went unchecked.
+        var file = LackingBesideCut(
+            "/Prev", "/Index [5 0 R 2 9 3] /Size 10", rows => rows[0] + rows[1] + rows[9], out _, tableSize: 10);
+        string[] wholeRules;
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            wholeRules = [.. new PdfValidator().Validate(whole).Findings.Select(finding => finding.RuleId).Distinct().Order()];
+        }
+
+        wholeRules.Should().NotContain(PdfValidationRuleIds.FileSizeWrong);
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Distinct().Order().Should().Equal(
+            [.. wholeRules.Append(PdfValidationRuleIds.XRefCheckedInPart).Order()]);
+    }
+
+    /// <summary>Gives the <c>/Rev</c> of the catalog <paramref name="document"/> reads, which says which revision it is.</summary>
+    private static string? Revision(PdfDocument document) =>
+        (document.GetObject(new PdfObjectId(1)).AsDictionary().Required().GetRaw(PdfName.Get("Rev")) as PdfString)?.ToText();
+
+    /// <summary>
+    /// Builds three revisions: the first's catalog, <c>/Rev (one)</c>, pages and table; the second's catalog,
+    /// <c>/Rev (two)</c>, object 5 — 0, past MaxObjectLength —, object 9 and cross-reference stream 6, whose dictionary holds
+    /// <paramref name="numbering"/> and whose data <paramref name="data"/> gives from the rows that would place objects 0 to
+    /// 9; the third's table, placing object 5, which names stream 6 by <paramref name="naming"/>.
+    /// </summary>
+    private static byte[] LackingBesideCut(
+        string naming, string numbering, Func<string[], string> data, out long sixAt, int tableSize = 8)
+    {
+        static string Row(int type, long offset, int generation) => string.Concat(
+            (char)type, (char)((offset >> 24) & 0xFF), (char)((offset >> 16) & 0xFF), (char)((offset >> 8) & 0xFF),
+            (char)(offset & 0xFF), (char)(generation >> 8), (char)(generation & 0xFF));
+
+        var file = new HandWrittenFile("", "1.5");
+        var older = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Rev (one) >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var three = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>");
+        var first = file.Table(4, new Dictionary<int, long> { [1] = older, [2] = two, [3] = three }, "/Size 4 /Root 1 0 R");
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R /Rev (two) >>");
+        var five = file.Object(5, "0" + new string(' ', 1100));
+        var nine = file.Object(9, "(nine)");
+        sixAt = file.Position;
+        var rows = data(
+        [
+            Row(0, 0, 65535), Row(1, one, 0), Row(1, two, 0), Row(1, three, 0), Row(0, 0, 0), Row(1, five, 0), Row(1, sixAt, 0),
+            Row(0, 0, 0), Row(0, 0, 0), Row(1, nine, 0),
+        ]);
+        var prev = naming == "/Prev" ? Invariant($" /Prev {first}") : string.Empty;
+        file.Raw(Invariant($"6 0 obj\n<< /Type /XRef /W [1 4 2] {numbering} /Root 1 0 R{prev} /Length {rows.Length} >>\nstream\n{rows}\nendstream\nendobj\n"));
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var table = file.Position;
+        var link = naming == "/Prev" ? Invariant($"/Prev {sixAt}") : Invariant($"/Prev {first} /XRefStm {sixAt}");
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size {tableSize} /Root 1 0 R {link} >>\nstartxref\n{table}\n%%EOF\n"));
+        return file.Bytes;
     }
 
     [Fact]

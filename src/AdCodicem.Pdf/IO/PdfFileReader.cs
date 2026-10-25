@@ -3988,21 +3988,33 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return XRefSectionState.Malformed;
             }
 
-            if (FaultBesideCut(dictionary, deferred is null && !xrefStream.Data.CutByGuard && !xrefStream.Data.EndHidden ? xrefStream : null, out var lacking) is { } file)
+            if (FaultBesideCut(dictionary, deferred is null && !xrefStream.Data.CutByGuard && !xrefStream.Data.EndHidden ? xrefStream : null, out var holds) is { } file)
             {
                 section.Fault = file;
 
-                if (!lacking)
+                if (holds is not { } rows)
                 {
                     return XRefSectionState.Malformed;
                 }
 
                 // Data whose extent the file gives that cannot hold the rows the values read declare lacks rows whatever the
-                // cut value holds: the section is read as read whole, the file's to lack them — its trailer merged, the chain
-                // going on, the index rebuilt —, though the rows it holds, which the cut value is read with, are not read.
+                // cut value holds: the section is read as read whole, the file's to lack them — its trailer merged, the index
+                // rebuilt —, and the guard is reached once the chain is read. The rows the data may hold, at the fewest bytes
+                // a row may take, are read with the cut value: the guard's, which a whole read reads, the chain ending here, as
+                // where rows a guard cut, since an older section's rows would stand for them. Data that holds none leaves the
+                // chain going on.
                 _indexIncomplete = true;
                 section.Incomplete = true;
                 _xref.MergeTrailer(dictionary);
+                (_chainValuesCut ??= []).Add(cut);
+
+                if (rows > 0)
+                {
+                    _cutByGuard = true;
+                    section.CutByLimit = true;
+                    return XRefSectionState.Read;
+                }
+
                 string? hiddenPrevious = null;
                 previous = section.NamedBy == "/XRefStm" ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out hiddenPrevious);
                 section.ChainHiddenByGuard = hiddenPrevious;
@@ -4516,10 +4528,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </remarks>
     /// <param name="dictionary">The stream's dictionary.</param>
     /// <param name="stream">The stream, whose data's extent is the file's, or null when it is not.</param>
-    /// <param name="lacking">Whether the fault is that the data holds fewer rows than the section declares.</param>
-    private string? FaultBesideCut(PdfDictionary dictionary, PdfStream? stream, out bool lacking)
+    /// <param name="held">
+    /// The most rows the data holds, where the fault is that it holds fewer than the section declares; null otherwise.
+    /// </param>
+    private string? FaultBesideCut(PdfDictionary dictionary, PdfStream? stream, out long? held)
     {
-        lacking = false;
+        held = null;
 
         // The fewest bytes a row may hold, which the widths read give, and the fewest rows the counts read declare.
         long row = 0;
@@ -4622,7 +4636,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return null;
         }
 
-        lacking = true;
+        held = most.Rows;
         return string.Create(
             CultureInfo.InvariantCulture,
             $"its data, {most.Length:N0} {(most.Length == 1 ? "byte" : "bytes")} decoded, holds at most {most.Rows:N0} of the {declared:N0}{(exact ? string.Empty : " or more")} {(declared == 1 && exact ? "row" : "rows")} its /Index and /Size declare");
