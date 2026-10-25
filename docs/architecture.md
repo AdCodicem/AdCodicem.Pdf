@@ -142,8 +142,9 @@ separate types, separate severity scales, and vocabularies that never share a co
    through, as a load reads it; its chain of filters ends there, with the data
    left encoded; and the chain of cross-reference sections ends at that section, with nothing rebuilt and the
    older sections and their trailers the guard's to hide, wherever near its named offset the section is found —
-   unless what the values read, and data whose length the file gives, say makes it unreadable whatever the cut
-   hides, which is the file's fault. An
+   unless what the values read say makes it unreadable whatever the cut hides, or data whose length the file
+   gives, its filters written direct, lacks the rows they declare whatever it hides — the file's fault, such a section
+   read as read whole, lacking rows, its trailer merged and the chain going on. An
    object `MaxObjectLength` cut there is loaded once the chain is read, which reaches the guard — thrown at opening
    under `ThrowOnLimit` —, for a value the chain keeps: not for a place it dropped as no section. A cross-reference
    stream's `/Length` the chain could not read, which leads to such an object, ends the chain so wherever only it
@@ -153,9 +154,10 @@ separate types, separate severity scales, and vocabularies that never share a co
    proves it the stream's own, as in item 4, which leaves the rows the data lacks to the file. Such data, whose end
    a guard hides, is decoded again as data a guard cut, a group its end parts dropped and what a filter says of the
    end silenced; a decoding guard the first decoding reached stands, and no more rows are held than it read.
-   Data an `endstream` proven its own ends past white space or comments (item 4) decodes as read whole where its
-   first filter ends it as its format says; otherwise up to where that run starts, the filter's running out there
-   silenced, and where its output may lack what the run holds, its end the guard's, as cut.
+   Data an `endstream` proven its own ends past white space or comments (item 4) decodes up to where that run
+   starts — a comment past white space within the data, but in ASCII85 data, where a `%` is a digit —, the first
+   filter's running out there silenced, and where its output may lack what the run holds, its end the guard's, as cut;
+   Flate data whose deflate body ends in the data as taken is whole, its checksum alone reaching into the run.
 
 ### 3.2 The write path
 

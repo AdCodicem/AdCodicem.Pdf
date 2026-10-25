@@ -77,8 +77,8 @@ nothing is said of the file. Only what follows the object's end — its `endobj`
 can prove an `endstream` the stream's own: the next object the index places, or a cross-reference stream the chain
 read, or the end of the file, which data that goes on is never followed by, or the `xref` or `startxref` keyword, which the data may spell as well — data that spells
 `endstream`, then one of them, and goes on is taken to end there, which only the hidden length could tell. The end is
-then the file's, and so is an `endobj` the object lacks — but for white space before the keyword, an end-of-line
-above all, which only the hidden length says is the data's or not: its end is decoded as one the guard hides, and a
+then the file's, and so is an `endobj` the object lacks — but for white space or comments before the keyword, an
+end-of-line above all, which only the hidden length says are the data's or not: its end is decoded as one the guard hides, and a
 filter that runs out there, a Flate checksum short of a carriage return, says nothing of the file. A whole reference the cut left, `6 0 R` before the window's end, is no length
 it hid: it leads on to the object it names, as read whole.
 

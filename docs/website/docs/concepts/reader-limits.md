@@ -59,13 +59,14 @@ too. An `endstream` is taken for the stream's own only where what follows its ob
 index places, a cross-reference stream the chain read, or the end of the file, which data that goes on is never followed
 by, or a cross-reference section's keyword, `xref` or `startxref`, which the data may spell as well: data that spells
 `endstream`, then one of them, and goes on is taken to end there, which only the hidden length could tell. The end is
-then the file's, though white space before the keyword, which only the length says is the data's or not, leaves where it
-ends to the guard as the data decodes: a filter that runs out there says nothing of the file. Decoding stops at a filter so named, or one whose parameters are, and leaves
+then the file's, though white space or comments before the keyword, which only the length says are the data's or not,
+leave where it ends to the guard as the data decodes: a filter that runs out there says nothing of the file. Decoding stops at a filter so named, or one whose parameters are, and leaves
 the rest of the data encoded, as past the most filters the reader runs; and a `/Prev` or an `/XRefStm` the reader
 follows that is so named, or a cross-reference stream whose values lead to an object a guard cut, ends the chain as a
-section a guard cut does, wherever near its named offset the section is found — unless what the values read, and data
-whose length the file gives, say makes the section unreadable whatever the cut hides: a fault of the file, as read
-whole.
+section a guard cut does, wherever near its named offset the section is found — unless what the values read say makes
+the section unreadable whatever the cut hides, or data whose length the file gives, its filters written direct, lacks
+the rows they declare whatever it hides: a fault of the file, as read whole, such a section read as read whole, lacking
+rows.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
 table's bound, the objects past the most the index holds — is no damage either. Those objects read as null, unknown

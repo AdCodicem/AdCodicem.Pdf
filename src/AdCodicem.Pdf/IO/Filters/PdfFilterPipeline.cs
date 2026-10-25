@@ -40,10 +40,10 @@ internal static class PdfFilterPipeline
     /// the reader lets data pass through, or a value the filters read that a guard cut or left out of the index: what comes
     /// back is then the data still encoded by the filters past it, no part of what the stream decodes to —, and whether one
     /// cut the data, as a reader of its rows or its objects must know. Data a proven <c>endstream</c> ended past white space
-    /// and comments that only a hidden length says are the data's or not (<see cref="PdfStreamData.EndHidden"/>) decodes as
-    /// read whole where its first filter ends it as its format says; otherwise up to where that run starts, a filter that
-    /// runs out there saying nothing of the file, and the data cut by a guard where the first filter's output may lack what
-    /// the run holds.
+    /// and comments that only a hidden length says are the data's or not (<see cref="PdfStreamData.EndHidden"/>) decodes up
+    /// to where that run starts, the first filter's running out there saying nothing of the file, and the data cut by a
+    /// guard where its output may lack what the run holds; Flate data whose deflate body ends in the data as taken is
+    /// whole.
     /// </summary>
     /// <param name="stream">The stream to decode.</param>
     /// <param name="diagnostics">Receives what decoding met; when none are supplied, the stream's document does.</param>
