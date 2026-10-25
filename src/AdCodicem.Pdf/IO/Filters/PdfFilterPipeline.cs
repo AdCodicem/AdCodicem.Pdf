@@ -157,19 +157,20 @@ internal static class PdfFilterPipeline
 
         // Whether the data a filter is given ends where the file's may not: data the reader cut at one of its limits —
         // MaxStreamLength, or the window a guard stopped at, cut the stream's data, or a filter before it stopped at
-        // MaxDecodedStreamLength —, or data whose end the caller says a guard hides. Every filter after it is given such
-        // data, and a cut is reported once, by the guard that made it; data whose end is hidden is no cut. A filter drops a
-        // last group such data holds in part, and counts it against the bound all the same (Ascii85Filter, AsciiHexFilter),
-        // and against what the filters before the last share.
+        // MaxDecodedStreamLength —, or data whose end the caller says a guard hides, or what a first filter that ran out
+        // where a guard hides the data's end decoded. Every filter after it is given such data, and a cut is reported once,
+        // by the guard that made it. A filter drops a last group such data holds in part, and counts it against the bound
+        // all the same (Ascii85Filter, AsciiHexFilter), and against what the filters before the last share.
         var cut = stream.Data.CutByGuard || endHidden;
 
         // Data whose endstream is proven its own past white space and comments only a hidden length says are the data's or
-        // not (#224): the first filter decodes it as the search took it, and where it ends it there as its format says,
-        // with nothing to report, that is the data read whole. Otherwise it decodes it again up to where that run starts:
-        // what it meets before is the file's, its running out there says nothing of the file, and where its output may
-        // lack what the run holds — Flate that lost its tail, LZW or RunLength data without its end marker —, the output's
-        // end is the guard's, as of data a guard cut, for the filters after it and the reader of what the stream decodes
-        // to. White space and comments decode to nothing in ASCII85 or ASCIIHex data, whose output is whole.
+        // not (#224): the first filter decodes it up to where that run starts. What it meets before is the file's, its
+        // running out there says nothing of the file, and where its output may lack what the run holds — Flate that lost
+        // its tail, LZW or RunLength data without its end marker —, the output's end is the guard's, as of data a guard
+        // cut, for the filters after it and the reader of what the stream decodes to. Flate data whose deflate body ends
+        // in the data as the search took it is whole however the run reads, its checksum alone reaching into it. White
+        // space decodes to nothing in ASCII85 or ASCIIHex data, whose output is whole, and so does a comment in ASCIIHex,
+        // which no valid hexadecimal data holds; in ASCII85 a % is a digit, and no comment ends the data.
         var hidden = stream.Data.EndHidden && !cut;
         var endCut = false;
 
@@ -196,26 +197,37 @@ internal static class PdfFilterPipeline
             var maxLength = last ? bound : (int)Math.Clamp(shared, 0, bound);
             var given = data;
             var silenced = false;
+            var checksumHidden = false;
 
             if (hidden)
             {
                 hidden = false;
-
-                if (TryDecodeWhole(step, data, maxLength, out var whole))
-                {
-                    data = ApplyPredictor(whole, step, diagnostics, stream.Data.Position, cut: false);
-                    shared -= data.Length;
-                    continue;
-                }
-
                 silenced = true;
-                data = data[..HiddenRunStart(data.Span)];
+                var run = HiddenRunStart(data.Span, comments: step.Name != PdfName.ASCII85Decode);
 
-                // Data that is all white space and comments decodes to nothing, which may lack all the run holds.
-                if (data.IsEmpty)
+                if (step.Name == PdfName.FlateDecode && FlateBodyEnds(data, maxLength, out var whole, out var clean))
                 {
-                    endCut = true;
-                    break;
+                    if (clean)
+                    {
+                        data = ApplyPredictor(whole, step, diagnostics, stream.Data.Position, cut: false);
+                        shared -= data.Length;
+                        continue;
+                    }
+
+                    // A checksum that disagrees only where it reaches into the run says nothing of the file.
+                    checksumHidden = run < data.Length && !ChecksumDisagrees(data[..run], maxLength);
+                }
+                else
+                {
+                    data = data[..run];
+
+                    // Data that is all the run decodes to nothing, which may lack all the run holds, but in ASCII85 or
+                    // ASCIIHex data.
+                    if (data.IsEmpty)
+                    {
+                        endCut = step.Name != PdfName.ASCII85Decode && step.Name != PdfName.ASCIIHexDecode;
+                        break;
+                    }
                 }
             }
 
@@ -228,6 +240,7 @@ internal static class PdfFilterPipeline
                 guard,
                 ref cut,
                 silenced,
+                checksumHidden,
                 ref limitReported,
                 out var dropped,
                 out var failed,
@@ -262,12 +275,13 @@ internal static class PdfFilterPipeline
     }
 
     /// <summary>
-    /// Gives where the run of white space and comments that ends <paramref name="data"/> starts: the bytes only a hidden
-    /// length says are the data's or not, as the gap between a length and its <c>endstream</c> may hold them (#174), a
-    /// comment there starting past white space, at the first <c>%</c> its line holds so.
+    /// Gives where the run of white space, and with <paramref name="comments"/> of comments, that ends
+    /// <paramref name="data"/> starts: the bytes only a hidden length says are the data's or not, as the gap between a
+    /// length and its <c>endstream</c> may hold them (#174), a comment there starting past white space within the data, at
+    /// the first <c>%</c> its line holds so — one the data starts with is data.
     /// </summary>
     /// <remarks>Each line is read twice at most: the run is found in time linear in the data.</remarks>
-    private static int HiddenRunStart(ReadOnlySpan<byte> data)
+    private static int HiddenRunStart(ReadOnlySpan<byte> data, bool comments)
     {
         var start = data.Length;
 
@@ -278,8 +292,13 @@ internal static class PdfFilterPipeline
                 start--;
             }
 
+            if (!comments)
+            {
+                return start;
+            }
+
             // A comment runs to the end of its line, which the white space passed ends, or the data's end does: it starts at
-            // the first % its line holds past white space, or at the line's start, past the end-of-line before it.
+            // the first % its line holds past white space, the end-of-line before the line's start among it.
             var line = start;
 
             while (line > 0 && data[line - 1] is not ((byte)'\r' or (byte)'\n'))
@@ -291,7 +310,7 @@ internal static class PdfFilterPipeline
 
             for (var i = line; i < start && comment < 0; i++)
             {
-                if (data[i] == (byte)'%' && (i == line || PdfCharacters.IsWhitespace(data[i - 1])))
+                if (data[i] == (byte)'%' && i > 0 && PdfCharacters.IsWhitespace(data[i - 1]))
                 {
                     comment = i;
                 }
@@ -307,35 +326,21 @@ internal static class PdfFilterPipeline
     }
 
     /// <summary>
-    /// Decodes data whose end a guard hides as the search took it, and determines whether the filter ended it as its format
-    /// says, with nothing to report: its end marker or checksum met, no fault, the bound not reached.
+    /// Decodes Flate data whose end a guard hides as the search took it, and determines whether its deflate body ends in it
+    /// — its checksum whole, disagreeing or short —, the bound not reached: what it decoded to is then whole, and
+    /// <paramref name="clean"/> says whether it is zlib data whose checksum agrees, with nothing to report.
     /// </summary>
-    private static bool TryDecodeWhole(in FilterStep step, ReadOnlyMemory<byte> data, int maxLength, out byte[] decoded)
+    private static bool FlateBodyEnds(ReadOnlyMemory<byte> data, int maxLength, out byte[] decoded, out bool clean)
     {
-        var name = step.Name;
-        bool limited;
-
-        if (name == PdfName.FlateDecode)
-        {
-            return FlateFilter.TryDecode(data, out decoded, out var repaired, out var ending, out _, out limited, maxLength) &&
-                !repaired && ending == FlateEnding.Whole && !limited;
-        }
-
-        if (name == PdfName.LZWDecode)
-        {
-            decoded = LzwFilter.Decode(data.Span, step.Parameters.EarlyChange, out limited, out var undefinedCode, out var lzwEnding, maxLength);
-            return !limited && undefinedCode < 0 && lzwEnding == DataEnding.Marked;
-        }
-
-        DataFaults faults;
-        decoded = name == PdfName.ASCII85Decode
-            ? Ascii85Filter.Decode(data.Span, out limited, out faults, maxLength, cut: false)
-            : name == PdfName.ASCIIHexDecode
-                ? AsciiHexFilter.Decode(data.Span, out limited, out faults, maxLength, cut: false)
-                : RunLengthFilter.Decode(data.Span, out limited, out faults, maxLength);
-        return !limited && faults.Ending == DataEnding.Marked && faults.Passed == 0 && faults.Overflowing == 0 &&
-            faults.BrokenMarker == 0 && !faults.UnfinishedMarker && !faults.Introducer && !faults.LoneDigit;
+        var ended = FlateFilter.TryDecode(data, out decoded, out var repaired, out var ending, out _, out var limited, maxLength) &&
+            !limited && ending is FlateEnding.Whole or FlateEnding.ChecksumMismatch or FlateEnding.ChecksumMissing;
+        clean = ended && !repaired && ending == FlateEnding.Whole;
+        return ended;
     }
+
+    /// <summary>Determines whether the checksum of Flate data <paramref name="data"/> disagrees with what it decodes to.</summary>
+    private static bool ChecksumDisagrees(ReadOnlyMemory<byte> data, int maxLength) =>
+        FlateFilter.TryDecode(data, out _, out _, out var ending, out _, out _, maxLength) && ending == FlateEnding.ChecksumMismatch;
 
     /// <summary>
     /// Determines whether a filter produces an image format that should be left encoded.
@@ -359,13 +364,18 @@ internal static class PdfFilterPipeline
     /// white space and comments only the hidden length says are the data's or not —: a filter that runs out there reports
     /// nothing, drops no group the end parts, and undoes a predictor's last row as far as it goes only where it ran out.
     /// </param>
+    /// <param name="checksumHidden">
+    /// Whether a Flate checksum that disagrees does so only where it reaches into what a hidden length says is the data's
+    /// or not, which says nothing of the file.
+    /// </param>
     /// <param name="limitReported">Whether the stream reported a filter that stopped at the bound already.</param>
     /// <param name="dropped">How many bytes a last group the cut parted would decode to, which the filter did not write.</param>
     /// <param name="failed">Whether the filter could decode nothing, which ends the chain.</param>
     /// <param name="ranOut">
     /// Whether the filter ran out at the end of its data where its output may lack what more data would decode to: Flate
-    /// that lost its tail, LZW or RunLength data without its end marker. White space and comments, which decode to nothing in
-    /// ASCII85 and ASCIIHex data, are no more data for them.
+    /// that lost its tail, LZW or RunLength data without its end marker. White space, which decodes to nothing in ASCII85
+    /// and ASCIIHex data, is no more data for them, nor a comment, which no ASCIIHex data holds, and which ends no ASCII85
+    /// data.
     /// </param>
     private static ReadOnlyMemory<byte> ApplyOne(
         in FilterStep step,
@@ -376,6 +386,7 @@ internal static class PdfFilterPipeline
         PdfLimitGuard guard,
         ref bool cut,
         bool silenced,
+        bool checksumHidden,
         ref bool limitReported,
         out int dropped,
         out bool failed,
@@ -407,7 +418,8 @@ internal static class PdfFilterPipeline
             // this one stopped decoding it, which the guard reported, and data whose end a guard hides ends where the guard
             // may: that it ran out says nothing of the file. A fault, or a checksum that disagrees, lies in bytes the reader
             // did read, and the whole data would meet it at the same point: it is the file's.
-            var endHidden = quiet && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing;
+            var endHidden = (quiet && ending is FlateEnding.TailLost or FlateEnding.ChecksumMissing) ||
+                (checksumHidden && ending == FlateEnding.ChecksumMismatch);
             ReportEnding(endHidden ? FlateEnding.Whole : ending, decoded.Length, faultAt, data.Length, diagnostics, position);
             Reached(limited, name, bounds.Shared, diagnostics, position, guard, ref cut, ref limitReported);
 

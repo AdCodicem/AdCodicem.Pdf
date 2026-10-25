@@ -4,6 +4,7 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
@@ -1339,6 +1340,103 @@ public class GuardCutValueTests
 
         document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Diagnostics.Select(entry => entry.Code).Should().Equal(GuardCode(guard));
+    }
+
+    [Theory]
+    [InlineData("cut", "/ASCII85Decode", "%74#:-qIocCi:aF<,*OE;u", "\n", false)]
+    [InlineData("left out", "/ASCII85Decode", "%74#:\n%-qIocCi:aF<,*OE;u", "\n", false)]
+    [InlineData("cut", "/ASCII85Decode", "6<#'\\7PQ#?1*BP.+?)\n%u2_d'1<+I+\"87cURD]g__+B3(u78s", "\n", false)]
+    [InlineData("left out", "/ASCII85Decode", "<~6<#'\\7PQ#?1*BP.+?)\n%u2_d'1<+I+\"87cURD]g__+B3(u78s~>", "\n", false)]
+    [InlineData("cut", "/RunLengthDecode", "%xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "\n", true)]
+    [InlineData("cut", "/LZWDecode", "\u0080\u001C\u0040", "            \n", true)]
+    [InlineData("left out", "/FlateDecode", "hello world \t", "\n", false)]
+    [InlineData("cut", "[/ASCIIHexDecode /FlateDecode] /DecodeParms << /Predictor 12 /Columns 4 >>", "{predicted}>", "\n", false)]
+    [InlineData("cut", "[/LZWDecode /ASCIIHexDecode]", "{lzw-hex}", "\n", true)]
+    [InlineData("left out", "[/RunLengthDecode /ASCIIHexDecode]", "\u0006717171\n", "", true)]
+    [InlineData("cut", "/ASCIIHexDecode", "  ", "\n", false)]
+    public void Data_a_hidden_length_ends_decodes_as_read_whole_but_for_what_the_run_after_it_may_hold(
+        string guard, string filter, string data, string tail, bool cut)
+    {
+        // Content stream 4's data, then white space before an endstream the next object proves its own, under a /Length a
+        // guard cut or left out of the index (#224). Only the run of white space, and of comments past white space where no
+        // data holds a %, is what the hidden length may leave out. A % the data starts with was taken for a comment and the
+        // whole data dropped; a % at a line's start, a digit in ASCII85, the rest of the line; spaces after LZW codes read
+        // as their end code; the chain's Flate predictor run on an ASCIIHex step; data that is only white space under
+        // ASCIIHex taken for cut. What the first filter decodes is the whole read's, and only where it may lack what the run
+        // holds — LZW or RunLength data without its end marker — is its end the guard's, for the filters after it too.
+        var bytes = data switch
+        {
+            "{predicted}>" => Encoding.ASCII.GetBytes(Convert.ToHexString(Zlib([2, 1, 2, 3, 4, 2, 0, 0, 0, 0])) + ">"),
+            "{lzw-hex}" => FilterDamageTests.NineBitCodes([256, '7', '1', '7', '1', '7', '1', '7', '1', '7', '1', '7', '1', '7', '1', 13]),
+            _ => Encoding.Latin1.GetBytes(data),
+        };
+        var file = HiddenLengthFile(guard, "/Filter " + filter, bytes, tail);
+        byte[] whole;
+
+        using (var document = PdfDocument.Open(file))
+        {
+            whole = document.GetObject(new PdfObjectId(4)).AsStream().Required().Decode().ToArray();
+        }
+
+        using var guarded = PdfDocument.Open(file, HiddenLengthOptions(guard));
+        var stream = guarded.GetObject(new PdfObjectId(4)).AsStream().Required();
+        var decoded = PdfFilterPipeline.Decode(stream, null, out _, out var cutByGuard).ToArray();
+
+        stream.Data.EndHidden.Should().BeTrue();
+        decoded.Should().Equal(whole);
+        cutByGuard.Should().Be(cut);
+        guarded.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.FilterFailed && entry.Message.Contains("end", StringComparison.Ordinal))
+            .Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("cut", 12)]
+    [InlineData("left out", 2)]
+    public void Flate_data_a_hidden_length_ends_where_its_deflate_body_does_decodes_as_read_whole(string guard, int predictor)
+    {
+        // Content stream 4's Flate data, under a /Length a guard cut or left out of the index, its endstream proven its own:
+        // raw deflate whose last byte is a NUL, zlib whose checksum is wrong past bytes that look like a comment after white
+        // space, zlib whose predicted rows end it whole. The deflate body ends in the data as the search took it: what it
+        // decodes to is whole, the repair raw deflate asks for reported as read whole. It was decoded again up to the NUL, or
+        // to the % the checksum's bytes hold, its last bytes lost and its end taken for the guard's (#224).
+        var raw = new MemoryStream();
+
+        using (var deflate = new DeflateStream(raw, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            deflate.Write("BT /F1 12 Tf 72 712 Td (Hello, world) Tj ET"u8);
+        }
+
+        byte[] stored = [0x78, 0x01, 0x01, 15, 0, unchecked((byte)~15), 0xFF, .. "BT (a %b) Tj ET"u8, 0, 0, 0, 0];
+        byte[] rows = predictor == 2 ? [1, 2, 3, 4, 1, 1, 1, 1] : [2, 1, 2, 3, 4, 2, 0, 0, 0, 0];
+        (string Entries, byte[] Data)[] cases =
+        [
+            ("/Filter /FlateDecode", raw.ToArray()),
+            ("/Filter /FlateDecode", stored),
+            (Invariant($"/Filter /FlateDecode /DecodeParms << /Predictor {predictor} /Columns 4 >>"), Zlib(rows)),
+        ];
+
+        raw.ToArray()[^1].Should().Be(0);
+
+        foreach (var (entries, data) in cases)
+        {
+            var file = HiddenLengthFile(guard, entries, data, "\n");
+            byte[] whole;
+            string[] faults;
+
+            using (var document = PdfDocument.Open(file))
+            {
+                whole = document.GetObject(new PdfObjectId(4)).AsStream().Required().Decode().ToArray();
+                faults = [.. document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.FilterFailed).Select(entry => entry.Message)];
+            }
+
+            using var guarded = PdfDocument.Open(file, HiddenLengthOptions(guard));
+            var stream = guarded.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+            PdfFilterPipeline.Decode(stream, null, out _, out var cutByGuard).ToArray().Should().Equal(whole);
+            cutByGuard.Should().BeFalse();
+            guarded.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.FilterFailed).Select(entry => entry.Message)
+                .Should().Equal(faults);
+        }
     }
 
     /// <summary>
