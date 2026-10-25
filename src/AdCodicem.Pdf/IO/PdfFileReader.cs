@@ -2913,8 +2913,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
 
                 // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
-                // stand for it. So is one that lacks rows whatever a value a guard cut holds, as read whole.
-                if (section.CutByLimit || section.Incomplete || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
+                if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
                 {
                     ReportLostSection(section, naming, offset, namedFrom);
                     break;
@@ -2968,7 +2967,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 _structure.Add(stream);
 
                 if (TryReadXRefSection(stream.Offset, stream, out _, out _) != XRefSectionState.Read &&
-                    (stream.CutByLimit || stream.Incomplete || !TryRelocateXRefSection(hybrid, stream, out _, out _)))
+                    (stream.CutByLimit || !TryRelocateXRefSection(hybrid, stream, out _, out _)))
                 {
                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
                 }
@@ -3989,13 +3988,25 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 return XRefSectionState.Malformed;
             }
 
-            // Data whose extent the file gives that cannot hold the rows the values read declare lacks rows whatever the cut
-            // value holds, as read whole: the section is there, the file's to lack them, and not looked for nearby.
             if (FaultBesideCut(dictionary, deferred is null && !xrefStream.Data.CutByGuard && !xrefStream.Data.EndHidden ? xrefStream : null, out var lacking) is { } file)
             {
                 section.Fault = file;
-                section.Incomplete = lacking;
-                return XRefSectionState.Malformed;
+
+                if (!lacking)
+                {
+                    return XRefSectionState.Malformed;
+                }
+
+                // Data whose extent the file gives that cannot hold the rows the values read declare lacks rows whatever the
+                // cut value holds: the section is read as read whole, the file's to lack them — its trailer merged, the chain
+                // going on, the index rebuilt —, though the rows it holds, which the cut value is read with, are not read.
+                _indexIncomplete = true;
+                section.Incomplete = true;
+                _xref.MergeTrailer(dictionary);
+                string? hiddenPrevious = null;
+                previous = section.NamedBy == "/XRefStm" ? -1 : SectionOffset(dictionary, PdfName.Prev, absolute, out hiddenPrevious);
+                section.ChainHiddenByGuard = hiddenPrevious;
+                return XRefSectionState.Read;
             }
 
             return CutByValue(section, cut);
@@ -4520,8 +4531,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
                 anyWidth |= width > 0;
 
-                // A width is within an int (WidthFault), and three within a long.
-                row += width.GetValueOrDefault();
+                // A width past what an int counts makes a row longer than any data decodes to: three so narrowed are within
+                // a long.
+                row += Math.Min(width.GetValueOrDefault(), int.MaxValue + 1L);
             }
 
             if (known && !anyWidth)
@@ -4591,7 +4603,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         lacking = true;
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"its data, {most.Length:N0} bytes decoded, holds at most {most.Rows:N0} of the {declared:N0}{(exact ? string.Empty : " or more")} rows its /Index and /Size declare");
+            $"its data, {most.Length:N0} {(most.Length == 1 ? "byte" : "bytes")} decoded, holds at most {most.Rows:N0} of the {declared:N0}{(exact ? string.Empty : " or more")} {(declared == 1 && exact ? "row" : "rows")} its /Index and /Size declare");
     }
 
     /// <summary>

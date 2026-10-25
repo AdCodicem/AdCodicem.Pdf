@@ -3028,7 +3028,6 @@ public class GuardCutValueTests
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [/x 5 0 R]", "Index element", null)]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 3000000000]", "Index element", null, false, "its /Index gives a subsection of 3,000,000,000 rows, more than object numbers 0 to 2147483647 hold")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 2147483649]", "Index element", null, false, "its /Index gives a subsection of 2,147,483,649 rows, more than object numbers 0 to 2147483647 hold")]
-    [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [5 0 R 2147483648]", "Index element", null, false, "its data, 56 bytes decoded, holds at most 8 of the 2,147,483,648 rows its /Index and /Size declare")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [-1 5 0 R]", "Index element", null, false, "its /Index gives a subsection from object -1, outside object numbers 0 to 2147483647")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [2147483648 5 0 R]", "Index element", null, false, "its /Index gives a subsection from object 2147483648, outside object numbers 0 to 2147483647")]
     [InlineData("/Type /XRef /Size 8 /W [1 4 2] /Index [9 0 R -1] /Length 5 0 R", "Length", "cut:0")]
@@ -3187,19 +3186,27 @@ public class GuardCutValueTests
     }
 
     [Theory]
-    [InlineData("<< /Type /Font /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "holds at most 3 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "holds at most 3 of the 8 rows")]
-    [InlineData("<< /Type /Xref /W [1 5 0 R 2] /Size 8 /Length 3 >>\nstream\nabc\nendstream", "4", "holds at most 1 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 8] /Length 3 >>\nstream\nabc\nendstream", "0", "holds at most 0 of the 8 rows")]
-    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 1 9 5 0 R] /Length 3 >>\nstream\nabc\nendstream", "0", "holds at most 0 of the 1 or more rows")]
-    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Filter /FlateDecode /Length {length} >>\nstream\n{flate}\nendstream", "[1 4 2]", "its data, 5 bytes decoded, holds at most 5 of the 8 rows")]
+    [InlineData("<< /Type /Font /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "/Prev", "holds at most 3 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 /Info 8 0 R /ID [<01> <02>] >>\nstream\nabc\nendstream", "[1 4 2]", "/Prev", "holds at most 3 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "/Prev+2", "holds at most 3 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Length 3 >>\nstream\nabc\nendstream", "[1 4 2]", "/XRefStm", "holds at most 3 of the 8 rows")]
+    [InlineData("<< /Type /Xref /W [1 5 0 R 2] /Size 8 /Length 3 >>\nstream\nabc\nendstream", "4", "/Prev", "holds at most 1 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 8] /Length 3 >>\nstream\nabc\nendstream", "0", "/Prev", "its data, 3 bytes decoded, holds at most 0 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 1] /Length 1 >>\nstream\na\nendstream", "0", "/Prev", "its data, 1 byte decoded, holds at most 0 of the 1 row its")]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 1 9 5 0 R] /Length 3 >>\nstream\nabc\nendstream", "0", "/Prev", "holds at most 0 of the 1 or more rows")]
+    [InlineData("<< /Type /XRef /W [1 4 2] /Index [5 0 R 2147483648] /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 8 of the 2,147,483,648 rows")]
+    [InlineData("<< /Type /XRef /W [1 9223372036854775807 5 0 R] /Size 8 /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 0 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W [4611686018427387904 4611686018427387904 5 0 R] /Size 8 /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 0 of the 8 rows")]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Filter /FlateDecode /Length {length} >>\nstream\n{flate}\nendstream", "[1 4 2]", "/Prev", "its data, 5 bytes decoded, holds at most 5 of the 8 rows")]
     public void A_section_whose_data_holds_fewer_rows_than_it_declares_whatever_a_value_a_guard_cut_holds_is_the_file_s_to_lack(
-        string six, string five, string fault)
+        string six, string five, string naming, string fault)
     {
         // As above, object 6's data, whose length it gives, holds fewer rows than its /Size or the /Index counts read declare,
-        // however few bytes the widths read and the one cut give a row: read whole, it lacks rows, the file's, and the index
-        // is rebuilt. It was taken for the guard's: the chain ended, nothing was rebuilt and the catalog was lost (#263). It
-        // is not looked for nearby either, where an older revision's stream would stand for it.
+        // however few bytes the widths read and the one cut give a row — a width past what data holds counted as such —:
+        // read whole, it lacks rows, the file's, its trailer merged, the chain going on, and the index rebuilt. It was taken
+        // for the guard's: the chain ended, nothing was rebuilt and the catalog was lost (#263); then for a section that
+        // cannot be read, whose trailer was lost, and which, where the chain names a place a few bytes off, was passed over
+        // for an older revision's stream nearby. Named by /XRefStm it is read as named.
         using var output = new MemoryStream();
 
         using (var zlib = new ZLibStream(output, CompressionLevel.NoCompression, leaveOpen: true))
@@ -3210,7 +3217,8 @@ public class GuardCutValueTests
         var flate = output.ToArray();
         six = six
             .Replace("{flate}", Encoding.Latin1.GetString(flate), StringComparison.Ordinal)
-            .Replace("{length}", Invariant($"{flate.Length}"), StringComparison.Ordinal);
+            .Replace("{length}", Invariant($"{flate.Length}"), StringComparison.Ordinal)
+            .Replace("{56}", new string('0', 56), StringComparison.Ordinal);
         var built = ChainFiles.UnderAnUpdate(
             "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
             five + new string(' ', 1100),
@@ -3222,28 +3230,83 @@ public class GuardCutValueTests
         var text = Encoding.Latin1.GetString(built);
         var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
         var sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
-        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal));
+        var named = naming switch
+        {
+            "/Prev+2" => Invariant($"/Prev {sixAt + 2} "),
+            "/XRefStm" => Invariant($"/XRefStm {sixAt} "),
+            _ => Invariant($"/Prev {sixAt} "),
+        };
+        var file = Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), named, StringComparison.Ordinal));
+        string[] wholeCodes;
+        string[] wholeRules;
+        string[] wholeKeys;
 
         using (var whole = PdfDocument.Open(file))
         {
             whole.WasRepaired.Should().BeTrue();
             whole.Reader.Structure.Sections[^1].Incomplete.Should().BeTrue();
+            wholeCodes = [.. whole.Diagnostics.Select(entry => entry.Code)];
+            wholeRules = [.. new PdfValidator().Validate(whole).Findings.Select(finding => finding.RuleId).Distinct().Order()];
+            wholeKeys = [.. whole.Trailer.Keys.Select(key => key.Value).Order()];
         }
 
         using var document = PdfDocument.Open(file, ObjectGuard);
 
         var section = document.Reader.Structure.Sections[^1];
         section.Offset.Should().Be(sixAt);
-        section.State.Should().Be(XRefSectionState.Malformed);
+        section.State.Should().Be(naming == "/Prev+2" ? XRefSectionState.Relocated : XRefSectionState.Read);
         section.CutByLimit.Should().BeFalse();
         section.Incomplete.Should().BeTrue();
         section.Fault.Should().Contain(fault);
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(1)).AsDictionary().Required().IsOfType(PdfName.Catalog).Should().BeTrue();
+        document.Trailer.Keys.Select(key => key.Value).Order().Should().Equal(wholeKeys);
 
         // The rebuild reaches the object the guard cut, as it reaches every object.
-        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
-            PdfDiagnosticCodes.XRefSectionUnreadable, PdfDiagnosticCodes.XRefRebuilt, PdfDiagnosticCodes.LimitObject);
+        document.Diagnostics.Select(entry => entry.Code).Where(code => code != PdfDiagnosticCodes.LimitObject).Should().Equal(wholeCodes);
+        new PdfValidator().Validate(document).Findings.Select(finding => finding.RuleId).Distinct().Order().Should().Equal(wholeRules);
+    }
+
+    [Fact]
+    public void Data_a_length_the_chain_cannot_read_yet_leaves_to_a_spelled_endstream_says_nothing_of_the_rows_it_holds()
+    {
+        // Stream 7's /W names object 5, which a newer table places and MaxObjectLength cuts, and its /Length object 8, which
+        // only its own rows place: its data runs to the first endstream, which its rows spell after six of eight. That data
+        // says nothing of how many rows the section holds, which the length, once read, may take further — read whole, it
+        // is taken again to its 56 bytes and every row is read —: the section is the guard's, not the file's to lack rows
+        // the data taken so far cannot hold at six bytes a row (#220, #263).
+        var file = new HandWrittenFile("", "1.5");
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        var three = file.Object(3, Page);
+        var five = file.Object(5, "1" + new string(' ', 1100));
+        var eight = file.Object(8, "56");
+        var at = file.Position;
+
+        static string Row(int type, long offset, int generation) => string.Concat(
+            (char)type, (char)((offset >> 24) & 0xFF), (char)((offset >> 16) & 0xFF), (char)((offset >> 8) & 0xFF),
+            (char)(offset & 0xFF), (char)(generation >> 8), (char)(generation & 0xFF));
+
+        var rows = Row(0, 0, 65535) + Row(1, one, 0) + Row(1, two, 0) + Row(1, three, 0) + Row(1, eight, 0) + Row(1, at, 0) +
+            "\nendstream\0\0\0\0";
+        file.Raw(Invariant($"7 0 obj\n<< /Type /XRef /W [5 0 R 4 2] /Index [0 4 8 1 7 1 20 2] /Root 1 0 R /Length 8 0 R >>\nstream\n{rows}\nendstream\nendobj\n"));
+        file.Raw("%" + new string('-', 1200) + "\n");
+        var table = file.Position;
+        file.Raw(Invariant($"xref\n0 1\n0000000000 65535 f \n5 1\n{five:D10} 00000 n \ntrailer\n<< /Size 22 /Root 1 0 R /Prev {at} >>\nstartxref\n{table}\n%%EOF\n"));
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            whole.WasRepaired.Should().BeFalse();
+            whole.Reader.Structure.Sections[^1].Incomplete.Should().BeFalse();
+            whole.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+        var section = document.Reader.Structure.Sections[^1];
+
+        section.CutByLimit.Should().BeTrue();
+        section.Incomplete.Should().BeFalse();
+        document.WasRepaired.Should().BeFalse();
     }
 
     [Fact]
