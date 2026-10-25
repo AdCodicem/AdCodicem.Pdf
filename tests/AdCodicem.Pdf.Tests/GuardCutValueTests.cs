@@ -1493,6 +1493,40 @@ public class GuardCutValueTests
         guarded.Diagnostics.Select(entry => entry.Code).Should().Equal(GuardCode(guard));
     }
 
+    [Theory]
+    [InlineData("cut", "/ASCII85Decode", " \t\n")]
+    [InlineData("left out", "/ASCII85Decode", "\r\n\f\n")]
+    [InlineData("left out", "[/ASCII85Decode /FlateDecode]", " \n")]
+    [InlineData("cut", "/ASCIIHexDecode", " %c\n")]
+    public void Data_that_is_all_the_run_a_hidden_length_may_leave_out_decodes_whole_to_nothing_under_ascii85_or_asciihex(
+        string guard, string filter, string tail)
+    {
+        // Content stream 4's /Length is 0, then nothing but white space, or under ASCIIHex a comment past it, before the
+        // endstream the next object proves its own, under a /Length a guard cut or left out of the index: the search took
+        // the run the hidden length may leave out for the data (#224). White space decodes to nothing in ASCII85 or ASCIIHex
+        // data, and so does a comment in ASCIIHex, whatever the hidden length holds of them: what the stream decodes to,
+        // nothing, is whole, as read whole, for a Flate filter after ASCII85 too, and no end marker the run lacks is
+        // reported. Under a filter with an end, the run is the guard's to lack (above).
+        var file = HiddenLengthFile(guard, "/Filter " + filter, [], tail);
+
+        using (var document = PdfDocument.Open(file))
+        {
+            document.GetObject(new PdfObjectId(4)).AsStream().Required().Decode().Length.Should().Be(0);
+            document.Diagnostics.Should().BeEmpty();
+        }
+
+        using var guarded = PdfDocument.Open(file, HiddenLengthOptions(guard));
+        var stream = guarded.GetObject(new PdfObjectId(4)).AsStream().Required();
+        var decoded = PdfFilterPipeline.Decode(stream, null, out var leftEncoded, out var cutByGuard);
+
+        stream.Data.EndHidden.Should().BeTrue();
+        stream.GetRawBytes().ToArray().Should().Equal(Encoding.Latin1.GetBytes(tail[..^1]));
+        decoded.Length.Should().Be(0);
+        leftEncoded.Should().BeFalse();
+        cutByGuard.Should().BeFalse();
+        guarded.Diagnostics.Select(entry => entry.Code).Should().Equal(GuardCode(guard));
+    }
+
     /// <summary>
     /// A file whose content stream 4 holds <paramref name="data"/> and <paramref name="tail"/> before its endstream, which
     /// object 5 after it proves its own, its <c>/Length</c> object 20, which a <c>MaxObjectLength</c> of 1,024 cuts, or, left
@@ -1583,6 +1617,31 @@ public class GuardCutValueTests
             document.Diagnostics.Select(entry => entry.Code).Should().Equal(
                 guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
         }
+    }
+
+    [Theory]
+    [InlineData("cut")]
+    [InlineData("left out")]
+    public void An_endstream_the_file_ends_with_ends_data_that_is_the_file_s_where_a_guard_hid_the_length(string guard)
+    {
+        // Object 4's /Length, object 20, is one MaxObjectLength cuts or MaxIndexEntries leaves out of the index, and the file
+        // ends on its endstream, with no end-of-line after it: the keyword, which no byte goes on, is whole, and the end of
+        // the file that follows proves it the stream's own. The data is the file's, and its object lacks its endobj, as where
+        // an end-of-line ends the file (#224).
+        var file = StreamFollowedBy(guard, "end of file", endObj: false)[..^1];
+        var limits = guard == "cut"
+            ? PdfReaderLimits.Default with { MaxObjectLength = 1024 }
+            : PdfReaderLimits.Default with { MaxIndexEntries = 20 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+
+        var stream = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        Encoding.Latin1.GetString(file).Should().EndWith("\nendstream");
+        stream.GetRawBytes().ToArray().Should().Equal("BT ET"u8.ToArray());
+        stream.Data.CutByGuard.Should().BeFalse();
+        document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            guard == "cut" ? PdfDiagnosticCodes.LimitObject : PdfDiagnosticCodes.LimitIndexEntries);
     }
 
     [Theory]
@@ -2039,6 +2098,101 @@ public class GuardCutValueTests
         provider.IsOwnEndStream(data.Position + data.Length, EndObjState.Present, six + 1).Should().BeFalse();
     }
 
+    [Fact]
+    public void The_proof_of_an_endstream_said_to_be_followed_by_an_endobj_proves_nothing_where_none_can_be_read()
+    {
+        // Object 4's endstream ends the file but for an end-of-line, or is followed by its endobj, which ends the file. Told
+        // that an endobj follows the keyword, the proof reads on past it to that endobj: none follows where the file ends,
+        // nor where its source, cut short after the document opened, gives no byte past that end-of-line, and nothing is
+        // proven — where the file holds one, the end of the file after it proves the endstream the stream's own (#224).
+        var bare = StreamFollowedBy("cut", "end of file", endObj: false);
+        var ended = StreamFollowedBy("cut", "end of file", endObj: true);
+        var dataEnd = (long)Encoding.Latin1.GetString(ended).LastIndexOf("\nendstream", StringComparison.Ordinal);
+        using var withoutEndObj = PdfDocument.Open(bare, ObjectGuard);
+        using var whole = PdfDocument.Open(ended, ObjectGuard);
+        using var source = new CutShortSource(ended);
+        using var cut = PdfDocument.Open(source, ObjectGuard, ownsSource: false);
+        source.CutAt((int)dataEnd + "\nendstream\n".Length);
+
+        ((IPdfStreamDataProvider)withoutEndObj.Reader).IsOwnEndStream(dataEnd, EndObjState.Present, null).Should().BeFalse();
+        ((IPdfStreamDataProvider)withoutEndObj.Reader).IsOwnEndStream(dataEnd, EndObjState.Absent, null).Should().BeTrue();
+        ((IPdfStreamDataProvider)cut.Reader).IsOwnEndStream(dataEnd, EndObjState.Present, null).Should().BeFalse();
+        ((IPdfStreamDataProvider)whole.Reader).IsOwnEndStream(dataEnd, EndObjState.Present, null).Should().BeTrue();
+    }
+
+    [Fact]
+    public void No_place_outside_the_file_is_said_to_end_data_beside_white_space()
+    {
+        // Content stream 4, whose /Length MaxObjectLength cut, ends its data in a space right before an endstream object 5
+        // proves its own: only the hidden length says whether the space is the data's, so the end may lie beside it. No search
+        // ends data before the file's first byte or past its last, and there no byte says white space lies beside it (#224).
+        var file = HexDataEndingInASpaceBeforeAProvenEndStream();
+        using var document = PdfDocument.Open(file, ObjectGuard);
+        var data = document.GetObject(new PdfObjectId(4)).AsStream().Required().Data;
+        var provider = (IPdfStreamDataProvider)document.Reader;
+
+        data.EndHidden.Should().BeTrue();
+        provider.EndsBesideWhiteSpace(data.Position + data.Length).Should().BeTrue();
+        provider.EndsBesideWhiteSpace(-1).Should().BeFalse();
+        provider.EndsBesideWhiteSpace(0).Should().BeFalse();
+        provider.EndsBesideWhiteSpace(file.Length + 1L).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Data_whose_last_byte_the_file_lost_under_the_document_is_no_longer_said_to_end_where_the_guard_hides()
+    {
+        // Content stream 4, whose /Length MaxObjectLength cut, ends its data in a space right before an endstream object 5
+        // proves its own: its end is the guard's to hide. The file then loses that space under the document, and the stream,
+        // which the cache let go for 64 other objects, is parsed again: the search and its proof are not read again, but no
+        // byte says white space ends the data any longer, and its end is not hidden; its data is what the file still holds
+        // (#224).
+        var file = HexDataEndingInASpaceBeforeAProvenEndStream(others: 64);
+        var source = new CutShortSource(file);
+        using var document = PdfDocument.Open(source, ObjectGuard with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        var first = document.GetObject(new PdfObjectId(4)).AsStream().Required().Data;
+        first.EndHidden.Should().BeTrue();
+
+        for (var number = 30; number < 30 + 64; number++)
+        {
+            _ = document.GetObject(new PdfObjectId(number));
+        }
+
+        source.CutAt((int)(first.Position + first.Length - 1));
+        var again = document.GetObject(new PdfObjectId(4)).AsStream().Required();
+
+        again.Data.Position.Should().Be(first.Position);
+        again.Data.EndHidden.Should().BeFalse();
+        Encoding.ASCII.GetString(again.GetRawBytes().Span).Should().Be("48656C6C6F");
+    }
+
+    /// <summary>
+    /// A page whose content stream, object 4, holds <c>48656C6C6F </c> under <c>/ASCIIHexDecode</c>, the space right before
+    /// its <c>endstream</c>, which object 5, after it, proves its own; its <c>/Length</c>, object 20, holds 11 after 2,000
+    /// spaces, which <see cref="ObjectGuard"/> cuts; then <paramref name="others"/> strings, objects 30 and up.
+    /// </summary>
+    private static byte[] HexDataEndingInASpaceBeforeAProvenEndStream(int others = 0)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, Page),
+            [20] = file.Object(20, new string(' ', 2000) + "11"),
+            [4] = file.Object(4, "<< /Length 20 0 R /Filter /ASCIIHexDecode >>\nstream\n48656C6C6F endstream"),
+            [5] = file.Object(5, "(five)"),
+        };
+
+        for (var number = 30; number < 30 + others; number++)
+        {
+            rows[number] = file.Object(number, Invariant($"({number})"));
+        }
+
+        var size = 30 + others;
+        file.Table(size, rows, Invariant($"/Size {size} /Root 1 0 R"));
+        return file.Bytes;
+    }
+
     [Theory]
     [InlineData("xref")]
     [InlineData("startxref")]
@@ -2079,6 +2233,67 @@ public class GuardCutValueTests
         document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
         document.WasRepaired.Should().BeTrue();
         document.GetObject(new PdfObjectId(5)).AsStream().Required().Data.CutByGuard.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_nearest_object_a_cross_reference_stream_s_rows_place_past_its_data_proves_its_endstream_whatever_their_order(bool typeField)
+    {
+        // As above, but for objects 8, 9 and 10, which follow stream 5 in that order and which only its rows place, 9 first,
+        // then 8, then 10 — with a type field, or without, every row then of type 1. The object that follows the stream's
+        // endobj is the nearest of them, 8, which proves the endstream its own whichever of the rows places it: the row the
+        // data lacks is the file's to lack, as read whole, the index rebuilt, the page read (#224).
+        var file = ChainFiles.AloneWithACutLengthBeforeObjectsItsRowsPlace(typeField);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        whole.Reader.Structure.Sections[0].Incomplete.Should().BeTrue();
+        document.Reader.Structure.Sections[0].Incomplete.Should().BeTrue();
+        document.Reader.Structure.Sections[0].CutByLimit.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeTrue();
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("eight");
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(5, false)]
+    [InlineData(1, true)]
+    [InlineData(5, true)]
+    public void Rows_a_cross_reference_stream_whose_length_a_guard_cut_lacks_are_the_guard_s_where_nothing_read_proves_its_endstream(int updates, bool glued)
+    {
+        // Stream 5's /Length, object 4, which only its own row places, is one MaxObjectLength cuts before its value, and its
+        // data lacks the page's row; 100 spaces part its endstream from its endobj, which the update's first object follows.
+        // Read on to, that proves the endstream its own: the row is the file's to lack, as read whole, the index rebuilt, the
+        // page read. Five updates whose data runs over 500,000 spaces to an endstream they share read the file about once
+        // each, as much as the document's searches may (EndStreamSearchPasses): nothing is read past stream 5's endstream,
+        // which nothing then proves its own, and where its data ends is the guard's — the page's row with it, which reads as
+        // null until the guard is lifted. So it is where 60 characters glued to the endstream make it no keyword, which
+        // proves nothing, whether the searches can still read past it or not (#224).
+        var exhausted = updates == 5;
+        var guards = exhausted || glued;
+        var file = ChainFiles.UpdatesSpendingTheSearches(updates, padding: 500_000, cutTarget: true, glued);
+        using var document = PdfDocument.Open(file, ObjectGuard);
+        var section = document.Reader.Structure.Sections[^1];
+
+        (document.Reader.EndStreamSearchBytes >= PdfFileReader.EndStreamSearchPasses * file.Length).Should().Be(exhausted);
+        document.Reader.Structure.Sections.Should().HaveCount(updates + 1).And.OnlyContain(entry => entry.State == XRefSectionState.Read);
+        section.CutByLimit.Should().Be(guards);
+        section.Incomplete.Should().Be(!guards);
+
+        if (guards)
+        {
+            document.GetObject(new PdfObjectId(3)).Should().BeOfType<PdfNull>();
+            document.WasRepaired.Should().BeFalse();
+            document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+            return;
+        }
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject, PdfDiagnosticCodes.XRefRebuilt);
     }
 
     [Theory]
@@ -2725,6 +2940,54 @@ public class GuardCutValueTests
     }
 
     [Fact]
+    public void A_prev_naming_an_object_whose_header_a_guard_cut_ends_the_chain_as_the_guard_s()
+    {
+        // The newer table's /Prev is object 9, which holds the older table's offset; 3,000 blanks part its generation from
+        // its obj, white space a header may hold, and MaxObjectLength cuts the header itself before its keyword: the chain
+        // reads nothing of the object, its value no more than its header. The chain ends there for the guard, as where the
+        // guard cuts the value, and the guard is reached once the chain is read, where loading object 9 reaches it — thrown at
+        // opening when the caller asks for it (#263). The validation says the older sections, and the header of object 9,
+        // were not checked. That load then rebuilds the index, as a read of a header past the guard does, which this test
+        // leaves aside (#292).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>"),
+        };
+        var older = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var four = file.Object(4, "(an update)");
+        var nine = file.Position;
+        file.Raw(Invariant($"9 0{new string(' ', 3000)}obj\n{older}\nendobj\n"));
+        var newer = file.Position;
+        file.Raw(Invariant(
+            $"xref\n4 1\n{four:D10} 00000 n \n9 1\n{nine:D10} 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R /Prev 9 0 R >>\nstartxref\n{newer}\n%%EOF\n"));
+
+        using (var whole = PdfDocument.Open(file.Bytes))
+        {
+            whole.WasRepaired.Should().BeFalse();
+            whole.Reader.Structure.Sections.Should().HaveCount(2);
+        }
+
+        using var document = PdfDocument.Open(file.Bytes, ObjectGuard);
+
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.Offset.Should().Be(newer);
+        section.ChainHiddenByGuard.Should().Be("its /Prev is the reference 9 0 R, which one of the reader's limits cut");
+        document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.LimitObject).Select(entry => entry.ToString()).Should().Equal(
+            Invariant($"Warning limit.object at {nine}: Object 9 runs past 1 KB, its stream data aside; only what lies within it was read. Raise PdfReaderLimits.MaxObjectLength to read past it."));
+        var report = new PdfValidator().Validate(document);
+        report.Contains(PdfValidationRuleIds.XRefSectionNotFound).Should().BeFalse();
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart).Select(finding => finding.Message).Should().Equal(
+            Invariant($"The cross-reference section at offset {newer} names older sections, but its /Prev is the reference 9 0 R, which one of the reader's limits cut: they were not checked."),
+            Invariant($"Reading the header of object 9 where its entry places it, at offset {nine}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be."));
+
+        var throwing = () => PdfDocument.Open(file.Bytes, ObjectGuard with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxObjectLength));
+    }
+
+    [Fact]
     public void A_cross_reference_stream_s_prev_a_guard_cut_ends_the_chain_as_the_guard_s()
     {
         // Cross-reference stream 10's /Prev, object 9, is one its own rows place, and MaxObjectLength cuts before its value:
@@ -3350,6 +3613,8 @@ public class GuardCutValueTests
     [InlineData("<< /Type /XRef /W [1 9223372036854775807 5 0 R] /Size 8 /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 0 of the 8 rows", false)]
     [InlineData("<< /Type /XRef /W [4611686018427387904 4611686018427387904 5 0 R] /Size 8 /Length 56 >>\nstream\n{56}\nendstream", "0", "/Prev", "holds at most 0 of the 8 rows", false)]
     [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Filter /FlateDecode /Length {length} >>\nstream\n{flate}\nendstream", "[1 4 2]", "/Prev", "its data, 5 bytes decoded, holds at most 5 of the 8 rows", true)]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Filter [/FlateDecode] /DecodeParms [<< /Predictor 1 >>] /Length {length} >>\nstream\n{flate}\nendstream", "[1 4 2]", "/Prev", "its data, 5 bytes decoded, holds at most 5 of the 8 rows", true)]
+    [InlineData("<< /Type /XRef /W 5 0 R /Size 8 /Filter /FlateDecode /DecodeParms << /Predictor 1 >> /Length {length} >>\nstream\n{flate}\nendstream", "[1 4 2]", "/Prev", "its data, 5 bytes decoded, holds at most 5 of the 8 rows", true)]
     public void A_section_whose_data_holds_fewer_rows_than_it_declares_whatever_a_value_a_guard_cut_holds_is_the_file_s_to_lack(
         string six, string five, string naming, string fault, bool hidesRows)
     {
@@ -3358,7 +3623,8 @@ public class GuardCutValueTests
         // read whole, it lacks rows, the file's, its trailer merged, the chain going on, and the index rebuilt. It was taken
         // for the guard's: the chain ended, nothing was rebuilt and the catalog was lost (#263); then for a section that
         // cannot be read, whose trailer was lost, and which, where the chain names a place a few bytes off, was passed over
-        // for an older revision's stream nearby. Named by /XRefStm it is read as named.
+        // for an older revision's stream nearby. Named by /XRefStm it is read as named. Filters written direct are a name or
+        // an array of names, beside parameters written as a dictionary, or an array of them, that holds no reference.
         using var output = new MemoryStream();
 
         using (var zlib = new ZLibStream(output, CompressionLevel.NoCompression, leaveOpen: true))
@@ -3422,6 +3688,123 @@ public class GuardCutValueTests
             hidesRows
                 ? [.. wholeRules.Where(rule => rule != PdfValidationRuleIds.FileSizeWrong).Append(PdfValidationRuleIds.XRefCheckedInPart).Order()]
                 : wholeRules);
+    }
+
+    [Theory]
+    [InlineData("/Filter [8 0 R]", "/FlateDecode")]
+    [InlineData("/Filter [/FlateDecode] /DecodeParms [<< /Predictor 8 0 R >>]", "1")]
+    public void Data_whose_filters_a_reference_gives_says_nothing_of_the_rows_a_section_beside_a_value_a_guard_cut_lacks(
+        string filters, string eight)
+    {
+        // As above, object 6's /W names object 5, which MaxObjectLength cuts, and its data, whose length it gives, decodes to
+        // 5 bytes: fewer than the 8 rows its /Size declares, at a byte a row. Read whole, it lacks rows. But an element of its
+        // /Filter array, or a value of the parameters its /DecodeParms array gives its one step, is a reference to object 8,
+        // which the newer table places — as a PDF 1.x file may write it, only ISO 32000-2 making it direct (7.5.8.2,
+        // pdf-issues #246) —, and only data whose filters are written direct, no reference in them, is decoded to judge the
+        // rows beside a cut (ADR 34). The section is the guard's, the chain ending there and nothing rebuilt.
+        var file = NamedBesideCut(
+            "<< /Type /XRef /W 5 0 R /Size 8 " + filters + " /Length {length} >>\nstream\n{data}\nendstream", eight, flates: 1, out var sixAt);
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.WasRepaired.Should().BeTrue();
+            whole.Reader.Structure.Sections[^1].Incomplete.Should().BeTrue();
+        }
+
+        using var document = PdfDocument.Open(file, ObjectGuard);
+
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(sixAt);
+        section.State.Should().Be(XRefSectionState.Malformed);
+        section.CutByLimit.Should().BeTrue();
+        section.Incomplete.Should().BeFalse();
+        section.Fault.Should().Be("its /W is the reference 5 0 R, which one of the reader's limits cut");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+    }
+
+    [Theory]
+    [InlineData(nameof(PdfReaderLimits.MaxFilterChainLength), PdfDiagnosticCodes.LimitFilterChain)]
+    [InlineData(nameof(PdfReaderLimits.MaxDecodedStreamLength), PdfDiagnosticCodes.LimitDecodedStream)]
+    public void Data_a_guard_on_decoding_stops_says_nothing_of_the_rows_a_section_beside_a_value_a_guard_cut_lacks(
+        string limit, string code)
+    {
+        // As above, but object 6's /Size declares 40 rows, and its filters, written direct, are two Flate steps, the second of
+        // which a MaxFilterChainLength of 1 leaves undone, or one, whose 5 bytes a MaxDecodedStreamLength of 4 cuts: what the
+        // guard on decoding leaves is fewer bytes than the 40 rows, at the one byte a row the cut /W leaves at the fewest. Read
+        // whole, the section lacks rows; under the guard on decoding alone, the rows past what it decoded are the guard's.
+        // Beside the value MaxObjectLength cuts too, how many rows the data holds is the guard's to hide: the section is the
+        // guard's, the chain ending there, nothing rebuilt, and each guard reported.
+        var twoSteps = limit == nameof(PdfReaderLimits.MaxFilterChainLength);
+        var file = NamedBesideCut(
+            "<< /Type /XRef /W 5 0 R /Size 40 /Filter " + (twoSteps ? "[/FlateDecode /FlateDecode]" : "/FlateDecode") +
+            " /Length {length} >>\nstream\n{data}\nendstream",
+            "(eight)",
+            twoSteps ? 2 : 1,
+            out var sixAt);
+        var decoding = twoSteps ? PdfReaderLimits.Default with { MaxFilterChainLength = 1 } : PdfReaderLimits.Default with { MaxDecodedStreamLength = 4 };
+
+        using (var whole = PdfDocument.Open(file))
+        {
+            whole.WasRepaired.Should().BeTrue();
+            whole.Reader.Structure.Sections[^1].Incomplete.Should().BeTrue();
+        }
+
+        using (var decoded = PdfDocument.Open(file, new PdfReaderOptions { Limits = decoding }))
+        {
+            decoded.WasRepaired.Should().BeFalse();
+            decoded.Reader.Structure.Sections[^1].CutByLimit.Should().BeTrue();
+            decoded.Reader.Structure.Sections[^1].Incomplete.Should().BeFalse();
+        }
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = decoding with { MaxObjectLength = 1024 } });
+
+        var section = document.Reader.Structure.Sections[^1];
+        section.Offset.Should().Be(sixAt);
+        section.State.Should().Be(XRefSectionState.Malformed);
+        section.CutByLimit.Should().BeTrue();
+        section.Incomplete.Should().BeFalse();
+        section.Fault.Should().Be("its /W is the reference 5 0 R, which one of the reader's limits cut");
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(code, PdfDiagnosticCodes.LimitObject);
+    }
+
+    /// <summary>
+    /// Builds the file of the tests above: object 6, a stream whose dictionary and data <paramref name="six"/> gives —
+    /// <c>{length}</c> standing for the data's length, and <c>{data}</c> for 5 bytes of 0 under <paramref name="flates"/>
+    /// steps of Flate kept uncompressed —, which stream 7 indexes; object 5, <c>[1 4 2]</c> past MaxObjectLength; and a newer
+    /// table that places objects 5 and 8, which holds <paramref name="eight"/>, and names object 6 through its <c>/Prev</c>.
+    /// </summary>
+    private static byte[] NamedBesideCut(string six, string eight, int flates, out long sixAt)
+    {
+        var data = new byte[5];
+
+        for (var i = 0; i < flates; i++)
+        {
+            using var output = new MemoryStream();
+
+            using (var zlib = new ZLibStream(output, CompressionLevel.NoCompression, leaveOpen: true))
+            {
+                zlib.Write(data);
+            }
+
+            data = output.ToArray();
+        }
+
+        var built = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length {length}",
+            "[1 4 2]" + new string(' ', 1100),
+            compressed: false,
+            predicted: false,
+            placed: true,
+            six: six
+                .Replace("{data}", Encoding.Latin1.GetString(data), StringComparison.Ordinal)
+                .Replace("{length}", Invariant($"{data.Length}"), StringComparison.Ordinal),
+            placedToo: new Dictionary<int, string> { [8] = eight });
+        var text = Encoding.Latin1.GetString(built);
+        var stream = text.IndexOf("\n7 0 obj", StringComparison.Ordinal) + 1;
+        sixAt = text.IndexOf("\n6 0 obj", StringComparison.Ordinal) + 1;
+        return Encoding.Latin1.GetBytes(text.Replace(Invariant($"/Prev {stream} "), Invariant($"/Prev {sixAt} "), StringComparison.Ordinal));
     }
 
     [Theory]

@@ -260,6 +260,59 @@ public class WindowEdgeTests
     }
 
     [Fact]
+    public void An_endobj_the_window_s_edge_reaches_ends_the_object_where_a_source_cut_short_after_opening_gives_no_byte_more()
+    {
+        // Object 6's endobj ends right at the edge of the 8 KB window it is read through, and an "x" follows it: "endobjx" is
+        // no endobj, and the object lacks it. Once the document is open, the file is cut short right where the endobj ends,
+        // as another process truncates it: the source gives no byte past the edge, and the file says the token ends there,
+        // as where the file ends. The object reads whole, and nothing is reported (#174).
+        const string Head = "6 0 obj\n(";
+        const string Tail = ")\nendobj";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [6] = file.Position,
+        };
+        file.Raw(Head + new string('a', Window - Head.Length - Tail.Length) + Tail + "x\n");
+        rows[7] = file.Object(7, "(seven)");
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        var bytes = file.Bytes;
+
+        using var whole = PdfDocument.Open(bytes);
+        using var source = new CutShortSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.CutAt((int)rows[6] + Window);
+
+        whole.GetObject(new PdfObjectId(6));
+        whole.Reader.IsEndObjMissing(6, out _).Should().BeTrue();
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>().Which.Length.Should().Be(Window - Head.Length - Tail.Length);
+        document.Reader.IsEndObjMissing(6, out _).Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_file_answers_for_a_window_s_edge_outside_it_without_asking_its_source()
+    {
+        // The parser asks the file what follows a token, or a stream keyword, its window's edge reaches, which lies inside the
+        // file (#174, #224). Asked of an offset outside it, before its start or at its end, the file answers without asking
+        // a source that refuses any read outside its data: no byte there goes on a token, nor is an end-of-line there skipped
+        // before a stream's data, which starts where the keyword ends.
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(new StrictCountingSource(bytes), options: null, ownsSource: true);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+
+        provider.TokenEndsAt(-1).Should().BeTrue();
+        provider.TokenEndsAt(bytes.Length).Should().BeTrue();
+        provider.DataStart(-1).Should().Be(-1);
+        provider.DataStart(bytes.Length).Should().Be(bytes.Length);
+    }
+
+    [Fact]
     public void A_cross_reference_stream_reads_whole_when_its_guard_s_window_ends_on_its_keyword()
     {
         // MaxTrailerLength ends the window right after the stream's keyword: its dictionary is whole, and its rows are read

@@ -150,6 +150,76 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void Rolling_back_beside_the_guards_keeps_their_reports_and_counts_those_the_capacity_left_out()
+    {
+        // A reading met two guards beside faults it is to make again, past a capacity of three: the guards stand, the one
+        // the capacity left no room for counted as left out still, and the faults are dropped, the one the capacity left
+        // out no longer counted. A mark that records no decoding reports, which the reader never rolls back to beside its
+        // guards, leaves which reports decodings moved in as it stands: a fault a decoding moved in before the mark is not
+        // moved in again.
+        var target = new PdfDiagnostics { Capacity = 3 };
+        var decodings = target.Decodings;
+        var before = decodings.GetMark();
+        decodings.Warn(PdfDiagnosticCodes.FilterFailed, "Moved in before the mark.", 3);
+        decodings.MoveDecodingReportsTo(target, before);
+
+        var mark = target.GetMark();
+        target.Warn("dropped", "Met beside the guards.");
+        target.ReachLimit(PdfDiagnosticCodes.LimitDecodedStream, "Kept.", 7);
+        target.Warn("left.out", "Past the capacity.");
+        target.ReachLimit(PdfDiagnosticCodes.LimitObject, "Past the capacity.", 9);
+        target.RollBackBesideLimits(mark);
+
+        target.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.LimitDecodedStream);
+        target.LimitsReached.Should().Be(2);
+        target.SuppressedCount.Should().Be(1);
+
+        var again = decodings.GetMark();
+        decodings.Warn(PdfDiagnosticCodes.FilterFailed, "Moved in before the mark.", 3);
+        decodings.MoveDecodingReportsTo(target, again);
+
+        target.Select(d => d.Code).Should().Equal(PdfDiagnosticCodes.FilterFailed, PdfDiagnosticCodes.LimitDecodedStream);
+        target.SuppressedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void Rolling_back_beside_the_guards_holds_again_as_moved_in_only_the_guard_reports_a_decoding_moved_in()
+    {
+        // A guard reported outside any decoding before any decoding has reported — which the reader never rolls back beside
+        // to such a mark, a decoding having reported by then —, then a guard a decoding reached beside a fault, are each
+        // rolled back beside to a mark that records which reports decodings moved in. Every guard's report stands. The
+        // decoding's is held again as moved in, so that a decoding that meets it again does not report it twice; the fault
+        // dropped with the rollback is forgotten, so that a decoding that meets it again moves it in again (#144, #220).
+        var target = new PdfDiagnostics();
+        var decodings = target.Decodings;
+
+        var reading = target.GetMarkWithDecodingReports();
+        target.ReachLimit(PdfDiagnosticCodes.LimitObject, "The reader's guard.", 9);
+        target.Warn("dropped", "Met beside the reader's guard.");
+        target.RollBackBesideLimits(reading);
+
+        target.Select(d => d.Message).Should().Equal("The reader's guard.");
+
+        var decoded = target.GetMarkWithDecodingReports();
+        var first = decodings.GetMark();
+        decodings.ReachLimit(PdfDiagnosticCodes.LimitDecodedStream, "The decoding's guard.", 7);
+        decodings.Warn(PdfDiagnosticCodes.FilterFailed, "Met beside the decoding's guard.", 7);
+        decodings.MoveDecodingReportsTo(target, first);
+        target.RollBackBesideLimits(decoded);
+
+        target.Select(d => d.Message).Should().Equal("The reader's guard.", "The decoding's guard.");
+
+        var again = decodings.GetMark();
+        decodings.ReachLimit(PdfDiagnosticCodes.LimitDecodedStream, "The decoding's guard.", 7);
+        decodings.Warn(PdfDiagnosticCodes.FilterFailed, "Met beside the decoding's guard.", 7);
+        decodings.MoveDecodingReportsTo(target, again);
+
+        target.Select(d => d.Message).Should().Equal("The reader's guard.", "The decoding's guard.", "Met beside the decoding's guard.");
+        target.LimitsReached.Should().Be(3);
+        target.SuppressedCount.Should().Be(0);
+    }
+
+    [Fact]
     public void A_nested_mark_keeps_or_drops_only_what_came_after_it()
     {
         // A nested load parses while an outer parse holds entries of its own: it moves or drops its own,

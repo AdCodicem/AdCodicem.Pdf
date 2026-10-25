@@ -678,6 +678,26 @@ public class DocumentReaderTests
         window.Offset.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData(-1, 2, false)]
+    [InlineData(0, -1, false)]
+    [InlineData(3, 2, false)]
+    [InlineData(5, 0, false)]
+    [InlineData(1, 3, true)]
+    [InlineData(4, 0, true)]
+    public void A_source_in_memory_lends_only_a_range_it_holds_whole(long offset, int length, bool lent)
+    {
+        // A stream's data is lent where it lies in a file in memory (#170). The reader asks only for data that starts in the
+        // file and whose length it clamped to the file, which no file can make otherwise: a range before the source, of a
+        // negative length, or running past its end is lent nothing, rather than sliced out of bytes the source does not hold.
+        // An empty range at its end is lent as empty.
+        var data = "%PDF"u8.ToArray();
+        using var source = PdfFileSource.FromMemory(data);
+
+        source.TryLend(offset, length, out var memory).Should().Be(lent);
+        memory.ToArray().Should().Equal(lent ? data.AsSpan((int)offset, length).ToArray() : []);
+    }
+
     [Fact]
     public void A_stream_s_data_is_read_from_the_file_each_time_it_is_asked_for_and_kept_by_nothing()
     {
@@ -1881,6 +1901,37 @@ public class DocumentReaderTests
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid);
     }
 
+    [Theory]
+    [InlineData(32)]
+    [InlineData(33)]
+    public void A_deferred_length_is_taken_again_through_as_many_references_as_the_parse_resolves_a_length_through_and_no_more(int objects)
+    {
+        // Stream 7's /Length names object 4, which only its own row places, before rows that spell an endstream; object 4
+        // names object 100, which names the next, and so on, the newer table placing them, to the last, which holds the
+        // length. Through 32 objects, as far as the parse resolves a /Length, the data is taken again to that length, and
+        // every row is read. Through one more, the chain reaches no length, as a whole read of the stream reaches none: the
+        // data is left as the chain took it, up to the spelled endstream, and the rows past it are the file's to lack — the
+        // section incomplete, the length reported once the chain is read, the index rebuilt to find the page (#220).
+        var file = ChainFiles.UpdatePlacingAPaddedLengthChain(objects, ownRow: true);
+        using var document = PdfDocument.Open(file);
+        var section = document.Reader.Structure.Sections[1];
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+
+        if (objects == 32)
+        {
+            section.Incomplete.Should().BeFalse();
+            document.Diagnostics.Should().BeEmpty();
+            return;
+        }
+
+        section.Incomplete.Should().BeTrue();
+        section.Fault.Should().Be("it holds 5 rows where its /Index and /Size declare 8");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
+            "The /Length of cross-reference stream 7 names object 4 0, which holds null, not a length; the chain took its data up to its endstream, after 35 bytes.");
+    }
+
     [Fact]
     public void A_deferred_length_a_newer_section_refused_takes_no_data_again()
     {
@@ -2253,6 +2304,31 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    public void Reports_the_data_a_deferred_length_gives_past_the_chain_s_endstream_once_the_searches_have_read_all_they_may(int sections)
+    {
+        // Cross-reference streams written one after the other, with no endstream of their own, share 512 KB of data and the
+        // endstream after it, which four zero bytes and a second endstream follow; each one's /Length names an object only
+        // the oldest section, a classic table, places. Each is searched past its window up to the first endstream, and five
+        // such searches read more than the four times the file the document's searches may (EndStreamSearchPasses). The
+        // newest one's length, read once the chain is, gives the data up to the second endstream: what the chain did not read
+        // is reported, as for one such stream alone, though the file may no longer be read to find where the first starts.
+        var file = SectionsSharingTheirData(sections, 512 * 1024, newestExtra: 14);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections.Should().HaveCount(sections + 1).And.OnlyContain(section => section.State == XRefSectionState.Read);
+        (document.Reader.EndStreamSearchBytes >= PdfFileReader.EndStreamSearchPasses * file.Length).Should().Be(sections == 5);
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+        report.Position.Should().Be(PdfTemplate.OffsetOf(file, ">>\nstream\n", sections) + ">>\nstream\n".Length);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The /Length of cross-reference stream {40 + sections} gives 524305 bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream 524291 bytes in, and read no row past it."));
+    }
+
+    [Theory]
     [InlineData(false, false, "\n")]
     [InlineData(true, false, "\n")]
     [InlineData(false, true, "\r\n")]
@@ -2340,6 +2416,33 @@ public class DocumentReaderTests
         document.Reader.Structure.Sections[1].Fault.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
             $"its /Length is the reference 9 0 R, which no section read before it places where it can be read, and no endstream follows its data before the next object, at {next}"));
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_the_searches_could_no_longer_read_makes_its_section_malformed_and_says_why()
+    {
+        // Six revisions, newest first in the file, each a cross-reference stream whose /Length only its own rows place, and
+        // whose data runs over the streams after it and 500,000 spaces to the endstream they share at the end of the file:
+        // the first five are each searched for it past their first window, and read the file about once each, more than
+        // four times in all — as much as the document's searches may (EndStreamSearchPasses). The sixth's data is searched
+        // in the bytes read with its object alone, which hold no endstream: it ends nowhere the section says, and the fault
+        // says the search was not made, not that no endstream follows the data (#220).
+        var file = ChainFiles.UpdatesSpendingTheSearches(spenders: 6, padding: 500_000, cutTarget: false);
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Should().HaveCount(6);
+        sections.Take(5).Should().OnlyContain(section => section.State == XRefSectionState.Read && !section.Incomplete);
+        sections[5].State.Should().Be(XRefSectionState.Malformed);
+        sections[5].CutByLimit.Should().BeFalse();
+        const string Fault =
+            "its /Length is the reference 30 0 R, which no section read before it places where it can be read, and its data was not searched for its endstream, the document's searches for endstream having read as much of the file as they may";
+        sections[5].Fault.Should().Be(Fault);
+        document.Reader.EndStreamSearchBytes.Should().BeGreaterThanOrEqualTo(PdfFileReader.EndStreamSearchPasses * file.Length);
+        document.Diagnostics.Should().ContainSingle().Which.Should().Match<PdfDiagnostic>(diagnostic =>
+            diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable && diagnostic.Position == sections[5].Offset &&
+            diagnostic.Message.Contains(Fault, StringComparison.Ordinal));
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
     [Fact]
@@ -3013,6 +3116,63 @@ public class DocumentReaderTests
 
         file.Append(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n");
         return Encoding.ASCII.GetBytes(file.ToString());
+    }
+
+    /// <summary>
+    /// A classic table placing the catalog, an empty page tree and objects 31 onward, then <paramref name="count"/>
+    /// cross-reference streams, 41 onward, each naming the one before it, the oldest the table, written one after the other
+    /// with no <c>endstream</c> of its own: the data of each, its one free row first, runs through the streams after it and
+    /// <paramref name="padding"/> bytes of <c>x</c> to the <c>endstream</c> they share, which four zero bytes and a second
+    /// <c>endstream</c> follow. Each stream's <c>/Length</c> is the object the table places for it, 31 onward, which gives
+    /// its data up to the first <c>endstream</c>; the newest one's gives <paramref name="newestExtra"/> bytes more.
+    /// </summary>
+    private static byte[] SectionsSharingTheirData(int count, int padding, int newestExtra)
+    {
+        // Each length is written in ten digits: the offsets the first pass finds hold for the second, which writes them.
+        var lengths = new long[count];
+        var bytes = Array.Empty<byte>();
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+
+            for (var i = 0; i < count; i++)
+            {
+                rows[31 + i] = file.Object(31 + i, lengths[i].ToString("D10", CultureInfo.InvariantCulture));
+            }
+
+            var previous = file.Table(31 + count, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {31 + count} /Root 1 0 R"));
+            var dataStarts = new long[count];
+
+            for (var i = 0; i < count; i++)
+            {
+                var at = file.Position;
+                file.Raw(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{41 + i} 0 obj\n<< /Type /XRef /Size 60 /W [1 1 1] /Index [{51 + i} 1] /Root 1 0 R /Prev {previous} /Length {31 + i} 0 R >>\nstream\n"));
+                dataStarts[i] = file.Position;
+                file.Raw("\0\0\0");
+                previous = at;
+            }
+
+            file.Raw(new string('x', padding));
+            var dataEnd = file.Position;
+            file.Raw("\nendstream\0\0\0\0\nendstream\nendobj\n");
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n"));
+            bytes = file.Bytes;
+
+            for (var i = 0; i < count; i++)
+            {
+                lengths[i] = dataEnd - dataStarts[i] + (i == count - 1 ? newestExtra : 0);
+            }
+        }
+
+        return bytes;
     }
 
     /// <summary>Where the data of the file's object stream starts.</summary>

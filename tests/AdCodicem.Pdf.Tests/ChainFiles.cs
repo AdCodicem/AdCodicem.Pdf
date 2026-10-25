@@ -744,6 +744,60 @@ internal static class ChainFiles
     }
 
     /// <summary>
+    /// A file as <see cref="AloneWithACutLengthLackingItsLastRow"/> writes it, object 4 cut before its value and the page's
+    /// row lacking, but for objects 8, 9 and 10, which follow the stream in that order and which only its rows place, in the
+    /// order its <c>/Index</c> gives — 9, 8, 10 —: the nearest has the second of those rows. Without
+    /// <paramref name="typeField"/>, the rows have none — <c>/W [0 4 2]</c>, every row of type 1 — and object 0 has no row.
+    /// </summary>
+    public static byte[] AloneWithACutLengthBeforeObjectsItsRowsPlace(bool typeField)
+    {
+        // Every row and offset is as wide whatever it holds: where objects 8 to 10 lie is read once, then written.
+        _ = Build([0, 0, 0], out var after);
+        return Build(after, out _);
+
+        byte[] Build(long[] placed, out long[] written)
+        {
+            using var file = new Writer("1.5");
+            file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+            file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+            var four = file.Position;
+            var at = four + ("4 0 obj\n" + new string(' ', 1100) + "00\nendobj\n").Length;
+            (int Type, long Second, int Third)[] rows =
+            [
+                (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, four, 0), (1, at, 0), (1, placed[1], 0), (1, placed[0], 0),
+                (1, placed[2], 0), (1, file.OffsetOf(3), 0),
+            ];
+            var data = (typeField ? Encode([(0, 0, 65535), .. rows], Rows.Raw) : Untyped(rows))[..^3];
+            file.Object(4, new string(' ', 1100) + data.Length.ToString("D2", CultureInfo.InvariantCulture));
+            file.Stream(
+                5,
+                $"/Type /XRef /Size 11 /W [{(typeField ? "1" : "0")} 4 2] /Index [{(typeField ? "0 3" : "1 2")} 4 2 9 1 8 1 10 1 3 1] /Root 1 0 R /Length 4 0 R",
+                data);
+            written = [file.Position, 0, 0];
+            file.Object(8, "(eight)");
+            written[1] = file.Position;
+            file.Object(9, "(nine)");
+            written[2] = file.Position;
+            file.Object(10, "(ten)");
+            file.StartXRef(at);
+            return file.ToArray();
+        }
+
+        static byte[] Untyped((int Type, long Second, int Third)[] rows)
+        {
+            var bytes = new List<byte>();
+
+            foreach (var (_, second, third) in rows)
+            {
+                bytes.AddRange([(byte)(second >> 24), (byte)(second >> 16), (byte)(second >> 8), (byte)second, (byte)(third >> 8), (byte)third]);
+            }
+
+            return [.. bytes];
+        }
+    }
+
+    /// <summary>
     /// A file of one cross-reference stream, object 7, in ASCII85, whose <c>/Length</c> names object 5, which only the
     /// stream's own row places, holding the length after 1,015 spaces: a <c>MaxObjectLength</c> of 1,024 parts it after its
     /// first digit. Its rows are those of objects 0, 5, 1 to 3, 20 and 21, of reserved types, and 7 (<c>/Index</c>). The text
@@ -1645,6 +1699,101 @@ internal static class ChainFiles
         return file.ToArray();
 
         static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// A file of <paramref name="spenders"/> revisions, newest first in the file, each a cross-reference stream whose
+    /// <c>/Length</c> names an object only its own rows place, and each naming the next through <c>/Prev</c>, 1,024 spaces
+    /// past the rows of the one before — more than a search for a misplaced section spans —: the data of each runs over
+    /// the streams after it and <paramref name="padding"/> spaces to the one <c>endstream</c> they share, at the end of the
+    /// file, as its length gives. Searched for it one after the other, past their first window, the streams read the file
+    /// about once each. With <paramref name="cutTarget"/>, the oldest revision comes first in the file, before them: stream
+    /// 5, whose <c>/Length</c>, object 4, which only its own rows place, holds the length after 1,100 spaces — a
+    /// <c>MaxObjectLength</c> of 1,024 cuts it before its value —, whose rows of objects 4, 5 and 3 lose their last 3 bytes,
+    /// the page's row lacking, and whose <c>endstream</c> 100 spaces part from its <c>endobj</c>, which object 20 follows —
+    /// or, with <paramref name="glued"/>, 60 regular characters glued to it, which make it no keyword, then an end-of-line.
+    /// The newest stream indexes the catalog and the page tree, and the page where no such revision does.
+    /// </summary>
+    public static byte[] UpdatesSpendingTheSearches(int spenders, int padding, bool cutTarget, bool glued = false)
+    {
+        // Every offset and length is written ten digits wide: where each stream and its data lie is read once, then written.
+        var previous = new long[spenders];
+        var lengths = new long[spenders];
+        _ = Build(out var at, out var data, out var target, out var end);
+
+        for (var i = 0; i < spenders; i++)
+        {
+            previous[i] = i + 1 < spenders ? at[i + 1] : target;
+            lengths[i] = end - data[i];
+        }
+
+        return Build(out _, out _, out _, out _);
+
+        byte[] Build(out long[] streams, out long[] starts, out long oldest, out long shared)
+        {
+            using var file = new Writer("1.5");
+            file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+            file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+            oldest = -1;
+
+            if (cutTarget)
+            {
+                file.Object(4, new string(' ', 1100) + "18");
+                oldest = file.Position;
+                file.Text("5 0 obj\n<< /Type /XRef /Size 6 /W [1 4 2] /Index [4 2 3 1] /Root 1 0 R /Length 4 0 R >>\nstream\n");
+                file.Bytes(Encode([(1, file.OffsetOf(4), 0), (1, oldest, 0), (1, file.OffsetOf(3), 0)], Rows.Raw)[..^3]);
+                file.Text("\nendstream" + (glued ? new string('x', 60) + "\n" : new string(' ', 100)) + "endobj\n");
+            }
+
+            for (var i = 0; i < spenders; i++)
+            {
+                file.Object(20 + (2 * i), lengths[i].ToString("D10", CultureInfo.InvariantCulture));
+            }
+
+            streams = new long[spenders];
+            starts = new long[spenders];
+
+            for (var i = 0; i < spenders; i++)
+            {
+                // The data of the stream before takes in 1,024 spaces, more than a search for a misplaced section spans.
+                if (i > 0)
+                {
+                    file.Text(new string(' ', 1024));
+                }
+
+                var length = 20 + (2 * i);
+                streams[i] = file.Position;
+                var rows = new List<(int Type, long Second, int Third)>();
+
+                if (i == 0)
+                {
+                    rows.AddRange([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0)]);
+
+                    if (!cutTarget)
+                    {
+                        rows.Add((1, file.OffsetOf(3), 0));
+                    }
+                }
+
+                var index = string.Create(CultureInfo.InvariantCulture, $"{(i == 0 ? $"0 {rows.Count} " : string.Empty)}{length} 2");
+                var prev = i + 1 < spenders || cutTarget
+                    ? string.Create(CultureInfo.InvariantCulture, $" /Prev {previous[i]:D10}")
+                    : string.Empty;
+                rows.AddRange([(1, file.OffsetOf(length), 0), (1, streams[i], 0)]);
+                file.Text(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{length + 1} 0 obj\n<< /Type /XRef /Size 40 /W [1 4 2] /Index [{index}] /Root 1 0 R{prev} /Length {length} 0 R >>\nstream\n"));
+                starts[i] = file.Position;
+                file.Bytes(Encode([.. rows], Rows.Raw));
+            }
+
+            file.Text(new string(' ', padding));
+            shared = file.Position;
+            file.Text("\nendstream\nendobj\n");
+            file.StartXRef(spenders > 0 ? streams[0] : oldest);
+            return file.ToArray();
+        }
     }
 
     private enum Rows
