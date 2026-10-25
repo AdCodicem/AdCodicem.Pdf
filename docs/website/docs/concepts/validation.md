@@ -159,7 +159,7 @@ limit lets it check the rest. The same holds of a value that leads to such an ob
 malformed — so is one whose `/Length`, which the chain could not read, leads to one where only that length could say
 where its data ends —, unless what the values read say makes it unreadable whatever the guard hid, or data whose length the file gives, its
 filters written direct, lacks the rows they declare whatever it hid — the file's, such a section read as read whole,
-lacking rows;
+lacking rows, the rows it may still hold said not checked, nor the `/Size` they bear on;
 a `/Prev` or an `/XRefStm` the reader follows that leads to one ends the chain there rather than naming a section not found; and an
 object stream whose `/Filter` or `/DecodeParms` leads to one, or to an object a limit left out of the index, is left
 encoded, the objects it holds said not checked rather than lost

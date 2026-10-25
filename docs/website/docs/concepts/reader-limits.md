@@ -66,7 +66,8 @@ follows that is so named, or a cross-reference stream whose values lead to an ob
 section a guard cut does, wherever near its named offset the section is found — unless what the values read say makes
 the section unreadable whatever the cut hides, or data whose length the file gives, its filters written direct, lacks
 the rows they declare whatever it hides: a fault of the file, as read whole, such a section read as read whole, lacking
-rows.
+rows. The rows such data may still hold are read with the value the guard cut, and are the guard's: the chain ends at
+that section, as where a guard cut its rows, since an older section's rows would stand for them.
 
 What a guard leaves out of the cross-reference index — the oldest sections of a long chain, the rows past a long
 table's bound, the objects past the most the index holds — is no damage either. Those objects read as null, unknown

@@ -2913,6 +2913,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
 
                 // A section a guard cut is where it was named, and is not looked for elsewhere: what lies near it would
+                // stand for it.
                 if (section.CutByLimit || !TryRelocateXRefSection(offset, section, out previous, out hybrid))
                 {
                     ReportLostSection(section, naming, offset, namedFrom);

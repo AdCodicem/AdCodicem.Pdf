@@ -144,7 +144,8 @@ separate types, separate severity scales, and vocabularies that never share a co
    older sections and their trailers the guard's to hide, wherever near its named offset the section is found —
    unless what the values read say makes it unreadable whatever the cut hides, or data whose length the file
    gives, its filters written direct, lacks the rows they declare whatever it hides — the file's fault, such a section
-   read as read whole, lacking rows, its trailer merged and the chain going on. An
+   read as read whole, lacking rows, its trailer merged and the chain going on where the data holds no row at the
+   fewest bytes a row may take: rows it may hold, read with the cut value, are the guard's, the chain ending there. An
    object `MaxObjectLength` cut there is loaded once the chain is read, which reaches the guard — thrown at opening
    under `ThrowOnLimit` —, for a value the chain keeps: not for a place it dropped as no section. A cross-reference
    stream's `/Length` the chain could not read, which leads to such an object, ends the chain so wherever only it

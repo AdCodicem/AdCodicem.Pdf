@@ -145,12 +145,16 @@ there. Raise PdfReaderLimits.MaxDecodedStreamLength to read past it.
   section the guard cut, whatever type it gives, as read whole it is the section. What makes a section unreadable whatever
   a value a guard cut holds is the file's fault, as read whole: a value past the cut that no section read so far places, a
   `/W` that gives no three widths or none past 0, rows numbered wrongly — an `/Index` that holds no pairs, a
-  subsection whose elements are no integers, whose count is below 0, or that numbers past the object numbers, by both
-  its elements or by the one read whatever the cut one holds, a `/Size` with no `/Index` that gives no count —, as far as
+  subsection whose elements are no integers, whose first number or count is below 0, or that numbers past the object
+  numbers, by both its elements or by the one read whatever the cut one holds, a `/Size` with no `/Index` that gives no
+  count —, as far as
   the values read, written direct or through references, say. Data whose length the file gives, its filters written
   direct, decoded whole, that holds fewer rows than the counts read declare however few bytes the widths read leave a
-  row lacks them whatever the cut hides: the section is read as read whole, lacking rows, its trailer merged, the chain
-  going on and the index rebuilt. The rows a cross-reference stream's data lacks,
+  row lacks them whatever the cut hides: the section is read as read whole, lacking rows, its trailer merged and the
+  index rebuilt, and the object the guard cut is loaded once the chain is read, which reaches the guard. The rows the
+  data may hold at the fewest bytes a row may take, read with the cut value, are the guard's: the chain ends at the
+  section, as where rows a guard cut, and the validator says it unchecked; the chain goes on only past data that holds
+  none. The rows a cross-reference stream's data lacks,
   where its `/Length` so leads and its data was taken to the first `endstream`, are the guard's too, unless what follows
   that `endstream` proves it the stream's own, as above: they are then the file's to lack, and the index is rebuilt. An
   object the chain read through a reference the cut left whole is loaded once the chain is read only for a value it
