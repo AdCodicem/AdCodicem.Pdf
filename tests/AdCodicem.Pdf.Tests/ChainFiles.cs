@@ -1002,21 +1002,7 @@ internal static class ChainFiles
             runs.AddRange("\nendstream\0\0\0\0"u8.ToArray());
             runs.Add(rowBefore ? (byte)6 : (byte)13);
             runs.AddRange(Encode(rowBefore ? [(1, stream, 0)] : [(1, five, 0), (1, stream, 0)], Rows.Raw));
-
-            while (runs.Count % Columns != 0)
-            {
-                runs.Add(128);
-            }
-
-            var predicted = new List<byte>();
-
-            for (var i = 0; i < runs.Count; i += Columns)
-            {
-                predicted.Add(0);
-                predicted.AddRange(runs.GetRange(i, Columns));
-            }
-
-            return Compress([.. predicted]);
+            return PredictedRunLength(runs, Columns);
         }
 
         var length = Data(0, 0).Length.ToString(CultureInfo.InvariantCulture);
@@ -1030,6 +1016,129 @@ internal static class ChainFiles
             Data(file.OffsetOf(5), at));
         file.StartXRef(at);
         return file.ToArray();
+    }
+
+    /// <summary>
+    /// As <see cref="DeferredLengthRowPastRunLengthRuns"/>, the rows past the endstream they spell, but stream 7 numbers no
+    /// row for object 5, which no section places (<c>/Index [0 4 8 256 264 2 7 1]</c>): its <c>/Length</c> can be read once
+    /// the chain is, and the rows past the endstream are the file's to lack, the data up to it decoding to 1,052 bytes.
+    /// </summary>
+    public static byte[] DeferredLengthNoRowNumbersPastRunLengthRuns()
+    {
+        const int Columns = 45;
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+        file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long stream)
+        {
+            var runs = new List<byte> { 27 };
+            runs.AddRange(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (1, file.OffsetOf(3), 0)], Rows.Raw));
+
+            for (var i = 0; i < 14; i++)
+            {
+                runs.AddRange([0x81, 0x00]);
+            }
+
+            runs.Add(13);
+            runs.AddRange("\nendstream\0\0\0\0"u8.ToArray());
+            runs.Add(6);
+            runs.AddRange(Encode([(1, stream, 0)], Rows.Raw));
+            return PredictedRunLength(runs, Columns);
+        }
+
+        file.Object(5, Data(0).Length.ToString(CultureInfo.InvariantCulture));
+        var at = file.Position;
+        file.Stream(
+            7,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"/Type /XRef /Size 266 /W [1 4 2] /Index [0 4 8 256 264 2 7 1] /Filter [/FlateDecode /RunLengthDecode] /DecodeParms [<< /Predictor 12 /Columns {Columns} >> null] /Root 1 0 R /Length 5 0 R"),
+            Data(at));
+        file.StartXRef(at);
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A file of one revision: the catalog, the page tree, object 5, the page — object 155 — and cross-reference stream 7,
+    /// whose <c>/Length</c> names object 5 — or, with <paramref name="direct"/>, gives the length —, and whose data a
+    /// RunLength step decodes after a Flate one, in a stored block with a PNG predictor of 45 columns. The first predicted
+    /// row decodes to the rows of objects 0 to 3 — 3 free — and 1,024 zeros; the second, which the endstream its rows spell
+    /// parts, to 5 zeros, the page's row, the 152nd, 1,057 bytes in, 630 zeros, then object 5's row, two of reserved types
+    /// that spell <c>endstream</c> after an end-of-line, and the stream's own row
+    /// (<c>/Index [0 4 8 238 5 1 246 2 7 1]</c>). The file is valid.
+    /// </summary>
+    public static byte[] DeferredLengthPageRowInPartedRunLengthRow(bool direct = false)
+    {
+        const int Columns = 45;
+        using var file = new Writer("1.5");
+        file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        file.Object(2, "<< /Type /Pages /Kids [155 0 R] /Count 1 >>");
+
+        // The data's length does not depend on the offsets its rows hold.
+        byte[] Data(long five, long page, long stream)
+        {
+            var runs = new List<byte> { 27 };
+            runs.AddRange(Encode([(0, 0, 65535), (1, file.OffsetOf(1), 0), (1, file.OffsetOf(2), 0), (0, 0, 0)], Rows.Raw));
+
+            for (var i = 0; i < 8; i++)
+            {
+                runs.AddRange([0x81, 0x00]);
+            }
+
+            runs.AddRange([0xFC, 0x00, 6]);
+            runs.AddRange(Encode([(1, page, 0)], Rows.Raw));
+
+            for (var i = 0; i < 5; i++)
+            {
+                runs.AddRange([0x83, 0x00]);
+            }
+
+            runs.Add(6);
+            runs.AddRange(Encode([(1, five, 0)], Rows.Raw));
+            runs.Add(13);
+            runs.AddRange("\nendstream\0\0\0\0"u8.ToArray());
+            runs.Add(6);
+            runs.AddRange(Encode([(1, stream, 0)], Rows.Raw));
+            return PredictedRunLength(runs, Columns);
+        }
+
+        var length = Data(0, 0, 0).Length.ToString(CultureInfo.InvariantCulture);
+        file.Object(5, direct ? "0" : length);
+        file.Object(155, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>");
+        var at = file.Position;
+        file.Stream(
+            7,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"/Type /XRef /Size 248 /W [1 4 2] /Index [0 4 8 238 5 1 246 2 7 1] /Filter [/FlateDecode /RunLengthDecode] /DecodeParms [<< /Predictor 12 /Columns {Columns} >> null] /Root 1 0 R /Length {(direct ? length : "5 0 R")}"),
+            Data(file.OffsetOf(5), file.OffsetOf(155), at));
+        file.StartXRef(at);
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// Pads RunLength data with no-op bytes to whole rows of <paramref name="columns"/> bytes, gives each row the PNG
+    /// predictor's None tag, and stores the rows in a zlib stream.
+    /// </summary>
+    private static byte[] PredictedRunLength(List<byte> runs, int columns)
+    {
+        while (runs.Count % columns != 0)
+        {
+            runs.Add(128);
+        }
+
+        var predicted = new List<byte>();
+
+        for (var i = 0; i < runs.Count; i += columns)
+        {
+            predicted.Add(0);
+            predicted.AddRange(runs.GetRange(i, columns));
+        }
+
+        return Compress([.. predicted]);
     }
 
     /// <summary>

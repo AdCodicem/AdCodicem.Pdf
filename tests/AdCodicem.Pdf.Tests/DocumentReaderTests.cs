@@ -3207,4 +3207,54 @@ public class DocumentReaderTests
         var throwing = () => PdfDocument.Open(file, options with { ThrowOnLimit = true });
         throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxDecodedStreamLength));
     }
+
+    [Fact]
+    public void Rows_a_decoding_guard_stops_once_a_parted_predicted_row_is_undone_are_read_as_far_as_the_guard_lets_them()
+    {
+        // As above, but the page, object 155, has its row in the predicted row the spelled endstream parts, the 152nd, 1,057
+        // bytes into the rows, within the 1,100 bytes MaxDecodedStreamLength lets the RunLength step decode, and object 5's
+        // row past them. Read whole, the rows past the bound are the guard's, the page's row read. The data decoded again,
+        // its predicted row undone as far as it goes, stops at the bound short of the /Length's row: where the rows end is
+        // the guard's, the rows it holds read — not only those the decoding before, which dropped the parted row, held.
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1100 } };
+
+        using (var whole = PdfDocument.Open(ChainFiles.DeferredLengthPageRowInPartedRunLengthRow(direct: true), options))
+        {
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+            whole.GetObject(new PdfObjectId(155)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+
+        var file = ChainFiles.DeferredLengthPageRowInPartedRunLengthRow();
+
+        using (var unbounded = PdfDocument.Open(file))
+        {
+            unbounded.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(155)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_deferred_length_no_row_numbers_is_not_looked_for_in_data_decoded_again()
+    {
+        // Stream 7's /Length names object 5, which no section places and no subsection of its own numbers, and its rows spell
+        // an endstream that parts a predicted row. The data up to it, its end the file's, decodes within the 1,100 bytes
+        // MaxDecodedStreamLength lets the RunLength step decode; decoded again, its predicted row undone, it would pass them,
+        // but no row could give the length there: what is read is what an unbounded reading reads, no guard reached.
+        var file = ChainFiles.DeferredLengthNoRowNumbersPastRunLengthRuns();
+        string[] unboundedCodes;
+
+        using (var unbounded = PdfDocument.Open(file))
+        {
+            unboundedCodes = [.. unbounded.Diagnostics.Select(entry => entry.Code)];
+        }
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1100 } });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(unboundedCodes).And.NotContain(PdfDiagnosticCodes.LimitDecodedStream);
+    }
 }
