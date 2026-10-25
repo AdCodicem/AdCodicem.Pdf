@@ -641,12 +641,14 @@ internal static class ChainFiles
 
     /// <summary>
     /// A file of two revisions, as <see cref="UpdateOverAStrayHexByte"/> writes it, but stream 5 is
-    /// <c>/Filter [/RunLengthDecode /FlateDecode]</c>: a first literal run of RunLength holds the Flate data, which decodes to
-    /// its rows and 1,000 zero bytes, and a second the bytes of an end-of-line, <c>endstream</c>, another end-of-line and
-    /// <c>XYZ</c>, where a deferred search stops. Its <c>/Length</c> names object 4, which only the stream's own row places,
-    /// unless <paramref name="deferred"/> is false: written direct. The file is valid.
+    /// <c>/Filter [/RunLengthDecode /FlateDecode]</c>: literal runs of RunLength, of 128 bytes but the last, hold the Flate
+    /// data, which decodes to its rows and 1,000 zero bytes, and a last one the bytes of an end-of-line, <c>endstream</c>,
+    /// another end-of-line and <c>XYZ</c>, where a deferred search stops. With <paramref name="stored"/>, the Flate data
+    /// holds them in a stored block — 7 bytes of header, then the rows —, so that what a cut of it leaves does not depend on
+    /// how a platform's zlib compresses. Its <c>/Length</c> names object 4, which only the stream's own row places, unless
+    /// <paramref name="deferred"/> is false: written direct. The file is valid.
     /// </summary>
-    public static byte[] UpdateOverRunsSpellingAnEndStream(bool deferred)
+    public static byte[] UpdateOverRunsSpellingAnEndStream(bool deferred, bool stored = false)
     {
         using var file = new Writer("1.5");
         file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
@@ -661,7 +663,7 @@ internal static class ChainFiles
                 Rows.Raw);
             using var output = new MemoryStream();
 
-            using (var zlib = new ZLibStream(output, CompressionLevel.Optimal, leaveOpen: true))
+            using (var zlib = new ZLibStream(output, stored ? CompressionLevel.NoCompression : CompressionLevel.Optimal, leaveOpen: true))
             {
                 zlib.Write([.. rows, .. new byte[1000]]);
             }
