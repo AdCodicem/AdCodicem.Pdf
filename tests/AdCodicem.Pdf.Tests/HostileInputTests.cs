@@ -1762,8 +1762,10 @@ public class HostileInputTests
     [Fact]
     public void Does_not_take_a_keyword_the_probe_saw_cut_for_a_cross_reference_table()
     {
-        // The section is probed through a few bytes, which spaces and "xref" fill: the probe sees "xref", but the
-        // token is "xrefs". The table's own window reads it whole and refuses it, and the index is rebuilt.
+        // The section is probed through a few bytes, which spaces and "xref" fill, but the token is "xrefs". The probe reads
+        // on past a token its edge reaches, finds no keyword there, nor an object, and the index is rebuilt (#174). Where
+        // MaxTrailerLength stops the probe right after "xref", the table's own window reads the token whole and refuses it
+        // under another rule (#295).
         var written = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -1774,6 +1776,8 @@ public class HostileInputTests
         using var document = PdfDocument.Open(bytes);
 
         document.WasRepaired.Should().BeTrue();
+        document.Reader.Structure.Sections[0].State.Should().Be(XRefSectionState.NotFound);
+        document.Reader.Structure.Sections[0].Fault.Should().Be("holds neither the xref keyword nor an object");
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
