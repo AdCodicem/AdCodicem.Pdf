@@ -94,27 +94,71 @@ separate types, separate severity scales, and vocabularies that never share a co
    gave is copied before a relocation or a rebuild changes it, so that validation still sees the file's own.
 3. **Lazy resolution** — `PdfReference.Resolve()` reads and parses the object on demand. A bounded cache
    avoids reparsing hot objects (the page tree, shared resources) without ever retaining the whole document.
-4. **Streams** — stream data is neither read nor decoded until the caller asks, and then decodes under the
-   limits of the document it came from; a stream built in memory decodes under the defaults. A stream copied
-   from one document to another travels **encoded**, with no decompress/recompress cycle. Its declared
-   length is checked when it is parsed, against the `endstream` that must follow it: in the window the object
-   is parsed through, or by asking the file for the few bytes after it when the data runs past the window.
-   A length nothing confirms gives way to the first `endstream` after the data's start: found in the window,
-   grown up to the object's limit, when the declared length ends inside it or the `/Length` gives none;
-   searched in the file when a declared length runs past the window — once per stream, no further than the
-   nearer of the next object the file's index places, as the file wrote it (as the reader rebuilt it when the
-   document opened, when the file wrote none), and the first object header the file's bytes hold, or the end
-   of the file, the declared length kept when none lies before them, and the searches of a document reading
-   a few times the file at most. Neither bound changes as objects are read: what a search keeps depends on
-   the file's bytes and its index as written, and in the 401 corpus documents measured each stream — each
-   copy of an object at its offset — takes the same length whatever was read before it. A crafted file can
-   still make it depend on the number a stream is first read under, on the rebuild's scan for trailers, or,
-   once the searches of a document have read four times the file, on which streams were searched first
-   ([#138], M23). A stream the file ends inside runs to the end of the file. Each is a diagnostic.
-5. **Guards** — every read sized by the file is bounded. A bound a valid file can exceed — a stream's
-   decoded length, an object's length, a cross-reference section's length and their number, a trailer's
-   length — is a `PdfReaderLimits` option, on by default and reported under its own `limit.*` code when
-   reached; a bound only an invalid file reaches is an internal constant (ADR 34).
+4. **Streams** — stream data is neither read nor decoded until the caller asks, nor kept once read
+   (section 5), and decodes under the limits of the document it came from; a stream built in memory decodes
+   under the defaults. A stream copied from one document to another travels **encoded**, with no
+   decompress/recompress cycle. Its declared length is checked when it is parsed, against the `endstream` that
+   must follow it after white space and comments, however many — in the window the object is parsed through, or
+   in the file past it, read on as far as they run —, a comment counting only once white space comes before it: a
+   `%` right where the length ends is the data's, and leaves the length unconfirmed. A length nothing confirms, or
+   a `/Length` that gives none, goes to one search for the first `endstream` after the data's start ([#174]): in
+   the bytes the parser holds, then forward in the file — once per stream, no further than the nearer of the next
+   object the file's index places, as the file wrote it (as the reader rebuilt it when the document opened, when
+   the file wrote none), and the first object header the file's bytes hold, or the end of the file, and the
+   searches of a document reading a few times the file at most. A stream's data never counts toward its
+   object's length: no window grows to find its `endstream`. Neither bound changes as objects are read: what a
+   search keeps depends on the file's bytes and its index as written, and in the 401 corpus documents measured
+   each stream — each copy of an object at its offset — takes the same length whatever was read before it. A
+   crafted file can still make it depend on the number a stream is first read under, on the rebuild's scan for
+   trailers, or, once the searches of a document have read four times the file, on which streams were searched
+   first ([#138], M23). A stream whose `/Length` a guard cut or left out of the index may be valid, its length only
+   hidden: when a header its data spells — an embedded file's does — stops its search, no `endobj` of its own before
+   it, or an `endstream` it spells ends it, the data up to there is the guard's, cut by it, and nothing is said of the
+   file. An `endstream` is the stream's own, and its end the file's, only where what follows the object's end — its
+   `endobj`, or the `endstream` where none follows — is the next object the index places, a cross-reference stream
+   the chain read, the end of the file, or `xref` or `startxref`, read once for each place ([#224]); white space
+   before the keyword, which only the hidden length says is the data's or not, leaves the data's end to the guard as it
+   decodes (`PdfStreamData.EndHidden`). With no
+   `endstream` before the stop, the object's `endobj` ends the data where it
+   follows the declared length as an `endstream` would, or where it is the last one, a whole keyword — no regular
+   character, solidus or percent sign right before it, which would make it part of a token, a name or a comment that
+   starts there: the data before it, which no lexing reads, says nothing of one further back —, and only
+   white space and comments run from it to the stop. That last `endobj` is followed forward through the search's
+   own reads, which read every byte up to the stop already: no byte before the stop is read a second time,
+   backward, and a comment, which can be told only from the start of its line, is read as one. Without either,
+   a declared length that ends before the stop is kept, and the data otherwise runs to the stop — to the end of
+   the file, for a stream the file ends inside. Each is a diagnostic. What the search found is kept for the
+   stream; whether `endobj` follows the declared length is read again only when a rebuild changes that length.
+5. **Guards** — every read sized by the file is bounded. A bound a valid file can exceed — a stream's data
+   read at once and its decoded length, the filters it passes through, an object's length, a cross-reference
+   section's length and their number, a trailer's length, the entries of the index — is a `PdfReaderLimits`
+   option, on by default and reported under its own `limit.*` code when reached; a bound only an invalid file
+   reaches is an internal constant (ADR 34). What a guard cut is the guard's, never the file's fault: a value
+   that leads to an object a guard cut or left out of the index — a stream's `/Length`, `/Filter` or
+   `/DecodeParms`, a cross-reference stream's `/W`, a trailer's `/Prev` or `/XRefStm` the reader follows — is not
+   judged as one the file gave. The stream's data is found by its `endstream`, an integer the cut left only a place to look for
+   one at, and a missing `endstream` is still the file's fault but where the search stops at a header the data
+   spells or an `endstream` nothing after it proves the stream's own (item 4); a reference the cut left whole is read
+   through, as a load reads it; its chain of filters ends there, with the data
+   left encoded; and the chain of cross-reference sections ends at that section, with nothing rebuilt and the
+   older sections and their trailers the guard's to hide, wherever near its named offset the section is found —
+   unless what the values read say makes it unreadable whatever the cut hides, or data whose length the file
+   gives, its filters written direct, lacks the rows they declare whatever it hides — the file's fault, such a section
+   read as read whole, lacking rows, its trailer merged and the chain going on where the data holds no row at the
+   fewest bytes a row may take: rows it may hold, read with the cut value, are the guard's, the chain ending there. An
+   object `MaxObjectLength` cut there is loaded once the chain is read, which reaches the guard — thrown at opening
+   under `ThrowOnLimit` —, for a value the chain keeps: not for a place it dropped as no section. A cross-reference
+   stream's `/Length` the chain could not read, which leads to such an object, ends the chain so wherever only it
+   could say how far the data runs: with no `endstream` before the next object or the end of the file, the
+   section is the guard's, not malformed; where the rows spell one and no `endstream` confirms what the cut left
+   of the length, the rows past it are the guard's — unless what follows the `endstream` the data was taken to
+   proves it the stream's own, as in item 4, which leaves the rows the data lacks to the file. Such data, whose end
+   a guard hides, is decoded again as data a guard cut, a group its end parts dropped and what a filter says of the
+   end silenced; a decoding guard the first decoding reached stands, and no more rows are held than it read.
+   Data an `endstream` proven its own ends past white space or comments (item 4) decodes up to where that run
+   starts — a comment past white space within the data, but in ASCII85 data, where a `%` is a digit —, the first
+   filter's running out there silenced, and where its output may lack what the run holds, its end the guard's, as cut;
+   Flate data whose deflate body ends in the data as taken is whole, its checksum alone reaching into the run.
 
 ### 3.2 The write path
 
@@ -163,7 +207,10 @@ goes wrong. No intermediate layer may drop it.
 ## 5. Memory and CPU strategy
 
 - **Memory budget**: consumption follows the complexity of the **page** being processed, never the size of
-  the document. A ten-thousand-page report must generate in the footprint of a ten-page one. One decoded
+  the document. A ten-thousand-page report must generate in the footprint of a ten-page one. A stream's
+  encoded data is kept by nothing: it is read each time it is asked for — lent where it lies by a source held
+  in memory, read into an array of its length from any other —, at most `PdfReaderLimits.MaxStreamLength` of it
+  at once, so that streams whose data share a stretch of the file hold no copy of it each ([#170]). One decoded
   stream is still held whole, up to `PdfReaderLimits.MaxDecodedStreamLength` and at most `Array.MaxLength`,
   until M23 decodes a piece at a time ([#48]), in native memory if a measurement asks for it (ADR 35). Of a chain
   of filters, the filters before the last share that bound for what they pass along together, so that decoding a
@@ -240,3 +287,6 @@ publication.
 [#34]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/34
 [#48]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/48
 [#138]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/138
+[#170]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/170
+[#174]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/174
+[#224]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/224

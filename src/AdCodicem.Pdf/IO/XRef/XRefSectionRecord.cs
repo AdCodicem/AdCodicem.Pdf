@@ -43,6 +43,12 @@ internal sealed class XRefSectionRecord
     /// <summary>Gets where the section was read, which is where it was named unless it was relocated.</summary>
     public long Offset { get; private set; }
 
+    /// <summary>
+    /// Gets a value indicating whether the section was found away from where it was named, whatever became of it there:
+    /// read, or kept from being read by a guard, which leaves its state <see cref="XRefSectionState.Malformed"/>.
+    /// </summary>
+    public bool WasRelocated => Offset != NamedOffset;
+
     /// <summary>Gets what became of the section.</summary>
     public XRefSectionState State { get; set; }
 
@@ -58,7 +64,11 @@ internal sealed class XRefSectionRecord
     /// </summary>
     public string? RefusedRow { get; set; }
 
-    /// <summary>Gets a value indicating whether a cross-reference stream holds fewer rows than it declares.</summary>
+    /// <summary>
+    /// Gets a value indicating whether a cross-reference stream holds fewer rows than it declares: the rows it holds place
+    /// objects, but where a value they are read with is one a guard cut, beside which the data holds too few whatever the
+    /// value holds.
+    /// </summary>
     public bool Incomplete { get; set; }
 
     /// <summary>
@@ -68,10 +78,37 @@ internal sealed class XRefSectionRecord
     public bool CutByLimit { get; set; }
 
     /// <summary>
+    /// Gets a value indicating whether what cut the section is a value it is read with — one its rows are read with, or its
+    /// <c>/Length</c> — that leads to an object one of the reader's guards cut: the section was found whole, and is the
+    /// guard's to keep from being read (#263). A guard that cut the section's own dictionary leaves it unknown, but for
+    /// what declared itself a section before the cut (<see cref="TypedXRef"/>, or a table's <c>xref</c> keyword).
+    /// </summary>
+    public bool CutByValue { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the cross-reference stream's dictionary, as far as it was read, gives
+    /// <c>/Type /XRef</c>: what is there declared itself a section before any guard's cut.
+    /// </summary>
+    public bool TypedXRef { get; set; }
+
+    /// <summary>
     /// Gets a value indicating whether <see cref="Documents.PdfReaderLimits.MaxTrailerLength"/> cut the section's
     /// trailer: what lay past the cut — an older section's <c>/Prev</c>, a key a newer trailer gives — is unknown.
     /// </summary>
     public bool TrailerCutByLimit { get; set; }
+
+    /// <summary>
+    /// Gets what the section's <c>/Prev</c> or <c>/XRefStm</c> is, when it leads to an object one of the reader's guards cut
+    /// — "its /Prev is the reference 9 0 R, which one of the reader's limits cut" —, which ends the chain here: the sections
+    /// it names are the guard's to hide (#263). Null when nothing did.
+    /// </summary>
+    public string? ChainHiddenByGuard { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether what <see cref="ChainHiddenByGuard"/> says is the section's <c>/XRefStm</c>: what
+    /// the guard hides is then the cross-reference stream of the section's revision, and any section older than it.
+    /// </summary>
+    public bool ChainHiddenAtStream { get; set; }
 
     /// <summary>Gets the section's own trailer — a cross-reference stream's dictionary —, or null when none was read.</summary>
     public PdfDictionary? Trailer { get; set; }
@@ -117,7 +154,11 @@ internal sealed class XRefSectionRecord
         RefusedRow = attempt.RefusedRow;
         Incomplete = attempt.Incomplete;
         CutByLimit = attempt.CutByLimit;
+        CutByValue = attempt.CutByValue;
+        TypedXRef = attempt.TypedXRef;
         TrailerCutByLimit = attempt.TrailerCutByLimit;
+        ChainHiddenByGuard = attempt.ChainHiddenByGuard;
+        ChainHiddenAtStream = attempt.ChainHiddenAtStream;
         Trailer = attempt.Trailer;
         TrailerFault = attempt.TrailerFault;
         TrailerPosition = attempt.TrailerPosition;

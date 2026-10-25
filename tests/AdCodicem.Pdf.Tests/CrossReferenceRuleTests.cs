@@ -1307,6 +1307,102 @@ public class CrossReferenceRuleTests
         findings.Should().Contain(finding => finding.RuleId == PdfValidationRuleIds.XRefCheckedInPart);
     }
 
+    [Theory]
+    [InlineData(29)]
+    [InlineData(32)]
+    [InlineData(600)]
+    public void A_startxref_naming_white_space_far_before_a_classic_table_is_imprecise_and_the_table_read(int padding)
+    {
+        // Startxref names the start of white space before the xref keyword. The keyword lay past the first 32 bytes the
+        // reader looks at, or across them: the table was not read, the index was rebuilt, and startxref said to name neither
+        // the keyword nor an object, where a cross-reference stream is read past however much white space comes first.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        file.Raw(new string(' ', padding));
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
+            .Replace(
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"),
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table - padding}\n"),
+                StringComparison.Ordinal));
+        using var document = PdfDocument.Open(bytes);
+
+        document.Diagnostics.Should().BeEmpty();
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.XRefOffsetImprecise).Message.Should().EndWith(
+            string.Create(CultureInfo.InvariantCulture, $"startxref gives offset {table - padding}, {padding} bytes before the xref keyword."));
+    }
+
+    [Theory(Timeout = 60_000)]
+    [InlineData(300, false)]
+    [InlineData(70_000, false)]
+    [InlineData(300, true)]
+    public async Task A_startxref_naming_more_white_space_than_a_trailer_s_window_before_a_classic_table_reaches_the_guard(
+        int padding, bool throwOnLimit)
+    {
+        // The reader reads on past white space for the xref keyword as far as MaxTrailerLength reaches, past which it would
+        // read the same window again and again: the guard is reached, the index rebuilt, or the guard thrown.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        file.Raw(new string(' ', padding));
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var bytes = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(file.Bytes)
+            .Replace(
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"),
+                string.Create(CultureInfo.InvariantCulture, $"startxref\n{table - padding}\n"),
+                StringComparison.Ordinal));
+        var limits = padding > PdfReaderLimits.Default.MaxTrailerLength
+            ? PdfReaderLimits.Default
+            : PdfReaderLimits.Default with { MaxTrailerLength = 256 };
+        var options = new PdfReaderOptions { Limits = limits, ThrowOnLimit = throwOnLimit };
+
+        if (throwOnLimit)
+        {
+            await Task.Run(() => FluentActions.Invoking(() => PdfDocument.Open(bytes, options)).Should().Throw<PdfLimitExceededException>(), TestContext.Current.CancellationToken);
+            return;
+        }
+
+        using var document = await Task.Run(() => PdfDocument.Open(bytes, options), TestContext.Current.CancellationToken);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefRebuilt);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_startxref_naming_white_space_that_runs_to_the_end_of_the_file_names_no_table()
+    {
+        // The white space runs out before the reader's window does: there is nothing more to read on to.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+            [3] = file.Object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>"),
+        };
+        var table = file.Table(4, rows, "/Size 4 /Root 1 0 R");
+        var text = Encoding.Latin1.GetString(file.Bytes).Replace(
+            string.Create(CultureInfo.InvariantCulture, $"startxref\n{table}\n"),
+            "startxref\n##########\n",
+            StringComparison.Ordinal);
+        var bytes = Encoding.Latin1.GetBytes(
+            text.Replace("##########", text.Length.ToString("D10", CultureInfo.InvariantCulture), StringComparison.Ordinal) +
+            new string(' ', 100));
+        using var document = PdfDocument.Open(bytes);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileStartXRefWrong).Message.Should().EndWith(
+            "which holds neither the xref keyword nor an object.");
+    }
+
     [Fact]
     public void A_startxref_naming_the_line_feed_before_a_cross_reference_stream_is_imprecise()
     {
@@ -1609,6 +1705,21 @@ public class CrossReferenceRuleTests
         document.WasRepaired.Should().BeFalse();
         Single(new PdfValidator().Validate(document), PdfValidationRuleIds.FileTrailerValueWrong).Message.Should().EndWith(
             "gives /Predictor of element 0 of its /DecodeParms as a real number, where Table 8 of ISO 32000-1 asks for an integer.");
+    }
+
+    [Theory]
+    [InlineData("/Filter 5 0 R", "<< /Predictor 12.0 /Columns 7.0 >>")]
+    [InlineData("/Filter [5 0 R]", "<< /Predictor 12.0 /Columns 7.0 >>")]
+    [InlineData("/Filter << /Predictor 12.0 /Columns 7.0 >>", "0")]
+    [InlineData("/Filter [<< /Predictor 12.0 /Columns 7.0 >>]", "0")]
+    public void Parameters_a_filter_gives_as_a_dictionary_are_not_judged_by_what_decode_parameters_ask(string filter, string five)
+    {
+        // A /Filter, or an element of one, that is a dictionary ends decoding, the data left as it is: decoding reads nothing
+        // it holds, which Table 8, a /DecodeParms', does not govern. Its reals were reported as Table 8 asks (#263).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] " + filter + " /Length {length}", five, compressed: false, predicted: false, placed: true);
+
+        Validate(file).Findings.Select(finding => finding.Message).Should().NotContain(message => message.Contains("Table 8", StringComparison.Ordinal));
     }
 
     [Fact]

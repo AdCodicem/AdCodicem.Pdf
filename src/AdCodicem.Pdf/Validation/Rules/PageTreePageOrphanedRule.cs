@@ -92,7 +92,8 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
 
         foreach (var section in structure.Sections)
         {
-            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Incomplete || section.CutByLimit)
+            if (section.State is not (XRefSectionState.Read or XRefSectionState.Relocated) || section.Incomplete || section.CutByLimit ||
+                section.ChainHiddenByGuard is not null)
             {
                 return false;
             }

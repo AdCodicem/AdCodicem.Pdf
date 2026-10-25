@@ -93,6 +93,10 @@ if (document.GetObject(new PdfObjectId(12)) is PdfStream stream)
 }
 ```
 
+The list also receives, each time you decode the stream, `limit.stream-length` when its data runs past what the reader
+reads of one stream; the document's `Diagnostics` hold that report too, once, since the reader makes it as it reads the
+data.
+
 ## Decide whether to accept the file
 
 Diagnostics say what the reader did, not whether the file is sound. To decide whether to accept it, validate it too:

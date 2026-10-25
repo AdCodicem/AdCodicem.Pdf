@@ -273,6 +273,7 @@
               "filter.checksum-mismatch",
               "filter.unsupported",
               "limit.decoded-stream",
+              "limit.stream-length",
               "limit.object",
               "limit.xref-section-length",
               "limit.xref-section-count",
@@ -437,6 +438,12 @@
         "maxDecodedStreamLength": {
           "type": "integer",
           "description": "What one stream may decode to, in bytes.",
+          "exclusiveMinimum": 268435456,
+          "maximum": 2147483647
+        },
+        "maxStreamLength": {
+          "type": "integer",
+          "description": "The most of one stream's encoded data read at once, in bytes.",
           "exclusiveMinimum": 268435456,
           "maximum": 2147483647
         },

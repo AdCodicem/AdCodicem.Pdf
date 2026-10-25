@@ -164,6 +164,150 @@ public class ParserTests
     }
 
     [Fact]
+    public void Ends_the_containers_an_object_left_open_at_the_next_object_s_header_and_leaves_it_to_be_read()
+    {
+        // The object lost its ] and its endobj: the next object's header ends the array, and is where the parser stands to
+        // read that object (#230).
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("[1 2\n6 0 obj\n(six)\nendobj\n"), diagnostics: diagnostics);
+
+        parser.ParseObject().AsArray().Required().Should().HaveCount(2);
+        parser.TryReadIndirectObject(out var id, out var value).Should().BeTrue();
+
+        id.Should().Be(new PdfObjectId(6));
+        value.Should().BeOfType<PdfString>();
+        diagnostics.Should().ContainSingle().Which.Message.Should().Be("An object header came inside an array, which was never closed.");
+    }
+
+    [Theory]
+    [InlineData("hello\nendobj\n% a note\n6 0 obj\n", 5)]
+    [InlineData("hello\nendobj % note endobj\n6 0 obj\n", 5)]
+    [InlineData("hello\nendobj\n% a note\nx\n6 0 obj\n", -1)]
+    [InlineData("hello endobjx\n6 0 obj\n", -1)]
+    [InlineData("helloendobj\n6 0 obj\n", -1)]
+    [InlineData("endobj\n6 0 obj\n", 0)]
+    [InlineData("hello\n/endobj\n6 0 obj\n", -1)]
+    [InlineData("hello\n%endobj\n6 0 obj\n", -1)]
+    [InlineData("hello\n)endobj\n6 0 obj\n", 7)]
+    [InlineData("hello\n[endobj\n6 0 obj\n", 7)]
+    public void Ends_a_stream_s_data_at_its_object_s_endobj_that_only_white_space_and_comments_follow(string data, int length)
+    {
+        // Parsed alone, a stream with no endstream ends where its object's endobj ends it, a comment after which is white
+        // space; a token after it leaves the data running to the next object's header (#174). A solidus or a percent sign
+        // right before the keyword makes it part of a name or of a comment that starts there: "/endobj" is a name.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("4 0 obj\n<< /Length 200 >>\nstream\n" + data));
+
+        parser.TryReadIndirectObject(out _, out var value).Should().BeTrue();
+
+        value.AsStream().Required().RawLength.Should().Be(length < 0 ? data.IndexOf("6 0 obj", StringComparison.Ordinal) : length);
+    }
+
+    [Theory]
+    [InlineData("4 0 obj\n<< /Length 3 >>\nstream")]
+    [InlineData("4 0 obj\n<< /Length 3 >>\nstream\r")]
+    public void Leaves_a_stream_whose_window_ends_on_its_keyword_to_a_larger_one(string text)
+    {
+        // Parsed alone, which no file backs, a buffer that ends on the stream keyword, or on its carriage return, cannot say
+        // where the data starts: a larger one says.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false);
+
+        parser.TryReadIndirectObject(out _, out _);
+
+        parser.IsTruncated.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Leaves_a_stream_with_no_endstream_in_a_window_to_a_larger_one()
+    {
+        // Parsed alone in a window that is not the end of the data, a stream with no length to confirm, whose endstream and
+        // next header lie past the window, asks for a larger one, which may show them.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("4 0 obj\n<< >>\nstream\nabc"), endsData: false);
+
+        parser.TryReadIndirectObject(out _, out _);
+
+        parser.IsTruncated.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("[", "an array")]
+    [InlineData("<< /A ", "a dictionary")]
+    public void Ends_a_container_skipped_for_its_depth_at_the_next_object_s_header(string opening, string what)
+    {
+        // Past the depth the parser follows, the container is skipped by counting brackets: the next object's header ends it,
+        // as it ends one the parser follows (#230).
+        var text = string.Concat(Enumerable.Repeat(opening, 130)) + "1\n6 0 obj\n";
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        _ = parser.ParseObject();
+
+        diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.SyntaxDepthExceeded, PdfDiagnosticCodes.SyntaxTruncatedObject);
+        diagnostics[1].Message.Should().Be(
+            $"An object header came inside {what}, which was never closed; the 128 arrays or dictionaries around it were never closed either.");
+    }
+
+    [Theory]
+    [InlineData("<< /A 1\n6")]
+    [InlineData("<< /A 1\n6 0")]
+    [InlineData("<< /A 1\n6 0 ")]
+    [InlineData("<< /A 1\n6 0 o")]
+    [InlineData("<< /A 1\n6 0 ob")]
+    [InlineData("<< /A 1\n6 0 obj")]
+    [InlineData("<< /A 1 /B\n6 0 obj")]
+    [InlineData("<< /A [1\n6 0 obj")]
+    public void Tokens_a_window_s_edge_leaves_undecided_as_a_header_are_no_stray_keys(string text)
+    {
+        // Inside a dictionary, the next object's header the window's edge cuts short: its number and generation were reported
+        // as keys that are not names, and kept so wherever no larger window follows, where a larger one reads a header (#230).
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics, endsData: false);
+
+        parser.ParseObject().Should().BeOfType<PdfDictionary>();
+
+        parser.IsTruncated.Should().BeTrue();
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("[1 2\n6 0 obj", true, 2)]
+    [InlineData("[1 2\n6 0 obj ", false, 2)]
+    [InlineData("[1 2\n6 0 obj\n", false, 2)]
+    public void Takes_an_object_header_a_window_s_edge_reaches_for_none_until_a_larger_window_shows_obj_whole(
+        string text, bool more, int count)
+    {
+        // "obj" the edge reaches may be the start of "objx", no keyword at all: what the window reads is dropped for a larger
+        // window, which says (#230). The window ends the array where the header may start, its number no element.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), endsData: false);
+
+        parser.ParseObject().AsArray().Required().Should().HaveCount(count);
+        parser.IsTruncated.Should().Be(more);
+    }
+
+    [Theory]
+    [InlineData("<< /A [1 << /B 2\n6 0 obj\n", 2)]
+    [InlineData("<< /A 1\n6 0 obj\n", 1)]
+    [InlineData("<< /A\n6 0 obj\n", 1)]
+    public void A_header_where_a_key_or_a_value_is_expected_ends_the_dictionary(string text, int depthOfCut)
+    {
+        var diagnostics = new PdfDiagnostics();
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes(text), diagnostics: diagnostics);
+
+        parser.ParseObject().Should().BeOfType<PdfDictionary>();
+
+        diagnostics.Should().ContainSingle().Which.Position.Should().Be(depthOfCut == 1 ? 0 : text.IndexOf("<< /B", StringComparison.Ordinal));
+        parser.IsTruncated.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_value_alone_that_is_a_header_s_number_is_an_integer()
+    {
+        // Outside a container a header ends nothing: "4 0 obj 5 0 obj" holds the integer 5, and its endobj is missing (#230).
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("5 0 obj\n"));
+
+        parser.ParseObject().Should().BeOfType<PdfInteger>().Which.Value.Should().Be(5);
+    }
+
+    [Fact]
     public void Reads_a_stream_whose_declared_length_is_correct()
     {
         var stream = ParseStream("<< /Length 11 >>\nstream\nHello World\nendstream");
@@ -182,12 +326,26 @@ public class ParserTests
     }
 
     [Theory]
-    [InlineData(0, true)]
-    [InlineData(-1, false)]
-    [InlineData(11, false)]
-    public void Looks_for_endstream_only_inside_the_bytes_it_is_given(long position, bool expected)
+    [InlineData("\nendstream\n", "EndStream")]
+    [InlineData("     \n %a comment\r\n\t \fendstream endobj", "EndStream")]
+    [InlineData("\nendstream", "Undecided")]
+    [InlineData("x\nendstream", "None")]
+    [InlineData("\nendstrean", "None")]
+    [InlineData("      ", "Undecided")]
+    [InlineData("\nendst", "Undecided")]
+    [InlineData("\n%a comment the bytes end inside", "Undecided")]
+    public void Reads_endstream_after_any_white_space_and_comments_or_says_the_bytes_cannot_tell(string bytes, string expected)
     {
-        PdfObjectParser.IsEndStreamAt("\nendstream"u8, position).Should().Be(expected);
+        StreamEnds.ReadEnd(Encoding.ASCII.GetBytes(bytes), reachesEndOfFile: false).Kind.ToString().Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("      ")]
+    [InlineData("\nendst")]
+    [InlineData("\n%a comment the file ends inside")]
+    public void Bytes_that_end_the_file_before_endstream_hold_none(string bytes)
+    {
+        StreamEnds.ReadEnd(Encoding.ASCII.GetBytes(bytes), reachesEndOfFile: true).Kind.Should().Be(StreamEndKind.None);
     }
 
     [Fact]
@@ -198,6 +356,38 @@ public class ParserTests
 
         Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("truncated");
         diagnostics.Contains(PdfDiagnosticCodes.StreamTruncated).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_stream_that_lost_its_endstream_ends_at_its_own_endobj_before_the_next_object()
+    {
+        // The parser alone stops the search where the reader does, at the first header its bytes hold, and the object's
+        // endobj before it ends the data (#174).
+        var diagnostics = new PdfDiagnostics();
+        var stream = ParseStream("<< /Length 3 >>\nstream\nhello\nendobj\n6 0 obj\n<< /Length 5 >>\nstream\nworld\nendstream\nendobj", diagnostics);
+
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("hello");
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamTruncated);
+    }
+
+    [Fact]
+    public void A_stream_that_lost_its_endstream_runs_to_the_header_its_bytes_hold_when_no_endobj_precedes_it()
+    {
+        var diagnostics = new PdfDiagnostics();
+        var stream = ParseStream("<< /Length 99 >>\nstream\nhello\n6 0 obj\n<< /Length 5 >>\nstream\nworld\nendstream\nendobj", diagnostics);
+
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("hello\n");
+        diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Fact]
+    public void A_window_given_to_the_parser_alone_that_cannot_say_where_a_stream_ends_asks_for_more()
+    {
+        // No endstream, no header, no endobj in the window: a larger one may hold them.
+        var parser = new PdfObjectParser(Encoding.ASCII.GetBytes("<< /Length 300 >>\nstream\n" + new string('d', 100)), endsData: false);
+
+        parser.ParseObject().Should().BeOfType<PdfStream>();
+        parser.IsTruncated.Should().BeTrue();
     }
 
     [Fact]
@@ -583,6 +773,23 @@ public class ParserTests
         dictionary.GetArray(PdfName.Get("B")).Required().Should().ContainSingle();
         literal.ToText().Should().Be("abc");
         hexadecimal.Bytes.ToArray().Should().Equal((byte)0x41, 0x42, 0x40);
+    }
+
+    [Theory]
+    [InlineData("5 0 << /A 6 0 o")]
+    [InlineData("5 0 << /A 6 0 ob")]
+    public void Reports_the_keys_of_a_member_a_window_s_edge_leaves_as_a_header_none_can_be(string text)
+    {
+        // An object stream's member has no header after it: its window's edge leaves none undecided, and the key 0 that is no
+        // name is the file's, as in the whole member (#230).
+        var diagnostics = new PdfDiagnostics();
+        var parser = PdfObjectParser.ForObjectStreamMember(
+            Encoding.ASCII.GetBytes(text), 9, 1000, 5, ObjectSourceReturning(new PdfObjectId(1), PdfNull.Instance), diagnostics, endsData: false);
+        parser.Position = 4;
+
+        _ = parser.ParseObject();
+
+        diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.SyntaxUnexpectedToken);
     }
 
     [Fact]

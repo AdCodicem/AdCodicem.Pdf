@@ -19,6 +19,7 @@ public class HostileInputTests
 {
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(10);
 
+
     [Theory]
     [InlineData("/A 1 ")]
     [InlineData("/A null ")]
@@ -167,6 +168,204 @@ public class HostileInputTests
         read.Count.Should().Be(1);
         read.Fault.Should().Be(ObjectStreamHeaderFault.Ended);
         allocated.Should().BeLessThanOrEqualTo(2 * (sizeof(int) + 32), "two tables of one pair each");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(100_000)]
+    [InlineData(1_000_000)]
+    public void A_length_the_file_cannot_hold_is_settled_by_the_endstream_found_without_reaching_a_guard(int dataLength)
+    {
+        // "/Length 2147483647", the data, its endstream, then an object of 17 MB: the window grew to MaxObjectLength to
+        // settle a length the file cannot hold, read 21.5 MB, reported limit.object and marked the object cut, though its
+        // data was found whole, and threw under ThrowOnLimit (#174). The endstream found settles it, the data read once.
+        var data = dataLength == 0 ? "short" : new string('d', dataLength);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Length 2147483647 >>\nstream\n" + data + "\nendstream")
+            .WithObject(6, "(" + new string('p', 17 * 1024 * 1024) + ")")
+            .BuildClassic(rootNumber: 1);
+
+        foreach (var throwOnLimit in new[] { false, true })
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ThrowOnLimit = throwOnLimit }, ownsSource: false);
+            var opened = source.BytesRead;
+            var stream = document.GetObject(new PdfObjectId(5)).AsStream().Required();
+
+            stream.Data.Length.Should().Be(data.Length);
+            document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+                string.Create(CultureInfo.InvariantCulture, $"The stream declared 2147483647 bytes but ended after {data.Length}."));
+            document.Reader.IsCutAtLimit(5).Should().BeFalse();
+            (source.BytesRead - opened).Should().BeLessThan(data.Length + (4L * PdfFileReader.InitialObjectWindow), "the data, read once");
+        }
+    }
+
+    [Fact]
+    public void Many_lengths_the_file_cannot_hold_read_the_file_once_not_once_each()
+    {
+        // Fifty such streams before an object of 17 MB: each grew its window to MaxObjectLength, and the reader read the
+        // file sixty times over (#174).
+        const int Streams = 50;
+        var builder = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var k = 0; k < Streams; k++)
+        {
+            builder.WithObject(10 + k, "<< /Length 2147483647 >>\nstream\nshort\nendstream");
+        }
+
+        var file = builder.WithObject(100, "(" + new string('p', 17 * 1024 * 1024) + ")").BuildClassic(rootNumber: 1);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
+
+        for (var k = 0; k < Streams; k++)
+        {
+            document.GetObject(new PdfObjectId(10 + k)).AsStream().Required().Data.Length.Should().Be(5);
+        }
+
+        (source.BytesRead - opened).Should().BeLessThan(Streams * 2L * PdfFileReader.InitialObjectWindow, "a window and a few bytes for each");
+        document.Diagnostics.Should().HaveCount(Streams).And.OnlyContain(diagnostic => diagnostic.Code == PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Fact]
+    public void A_stream_whose_endobj_follows_its_length_without_endstream_reads_no_further_than_its_window_whatever_follows()
+    {
+        // iPRES's t02-05-01-014 before an object of 20 MB: no endstream after the data, which the window held, so it grew to
+        // MaxObjectLength looking for one, took 16 MB as the data of a 68-byte stream, reported limit.object and marked the
+        // object cut (#174). Its endobj plays the endstream's part.
+        var data = new string('d', 68);
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .WithObject(5, "<< /Length 68 >>\nstream\n" + data + "\r\n\n")
+            .WithObject(6, "(" + new string('p', 20 * 1024 * 1024) + ")")
+            .BuildClassic(rootNumber: 1);
+
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = source.BytesRead;
+
+        document.GetObject(new PdfObjectId(5)).AsStream().Required().Data.Length.Should().Be(68);
+
+        (source.BytesRead - opened).Should().BeLessThanOrEqualTo(PdfFileReader.InitialObjectWindow, "the window holds the object and what follows it");
+        document.Diagnostics.Should().ContainSingle().Which.Code.Should().Be(PdfDiagnosticCodes.StreamTruncated);
+        document.Reader.IsCutAtLimit(5).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_length_the_file_cannot_hold_with_no_endstream_takes_the_rest_of_the_file_without_reaching_a_guard()
+    {
+        // "/Length 2147483647" and 20 MB of data to the end of the file, with no endstream and no endobj: the window grew to
+        // MaxObjectLength and the guard was reported (#174). The data runs to the end of the file, the object without its
+        // endobj, as for any stream the end of the file cuts.
+        var text = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "5 0 obj\n<< /Length 2147483647 >>\nstream\n";
+        var file = Encoding.ASCII.GetBytes(text + new string('d', 20 * 1024 * 1024));
+
+        using var document = PdfDocument.Open(file);
+        var stream = document.GetObject(new PdfObjectId(5)).AsStream().Required();
+
+        stream.Data.Length.Should().Be(20 * 1024 * 1024);
+        document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamTruncated).Which.Message.Should().Be(
+            "The stream declared 2147483647 bytes, and no endstream follows its data before the end of the file; the 20971520 bytes to the end of the file are taken as its data.");
+        document.Diagnostics.Should().NotContain(d => d.Code.StartsWith("limit.", StringComparison.Ordinal));
+        document.Reader.IsCutAtLimit(5).Should().BeFalse();
+        document.Reader.IsEndObjMissing(5, out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Sections_whose_lengths_name_one_object_a_guard_cut_read_it_once()
+    {
+        // A hundred cross-reference streams, chained by /Prev, each with /Length 5 0 R and rows that spell an endstream
+        // first; the newest table places object 5, which holds 28 then 2,000,000 spaces, past MaxObjectLength. Each section
+        // takes its data again to the 28 the cut left, which an endstream confirms, and the chain goes on: the cut object
+        // was read again for each section, and opening read the file several times over (#224).
+        const int Sections = 100;
+        var file = new HandWrittenFile(version: "1.5");
+        var one = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        var two = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+        var five = file.Object(5, "28" + new string(' ', 2_000_000));
+        var rows = Row(1, one) + Row(1, two);
+        long previous = -1;
+
+        for (var k = 0; k < Sections; k++)
+        {
+            var at = file.Position;
+            var prev = previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}");
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"{100 + k} 0 obj\n<< /Type /XRef /Size 200 /W [1 4 2] /Index [8 2 1 2] /Root 1 0 R /Length 5 0 R{prev} >>\nstream\n"));
+            file.Raw("\nendstream\0\0\0\0" + rows + "\nendstream\nendobj\n");
+            previous = at;
+        }
+
+        var table = file.Position;
+        file.Raw(string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n0 1\n0000000000 65535 f\r\n5 1\n{five:D10} 00000 n\r\ntrailer\n<< /Size 200 /Root 1 0 R /Prev {previous} >>\nstartxref\n{table}\n%%EOF\n"));
+        var bytes = file.Bytes;
+        using var source = new StrictCountingSource(bytes);
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxObjectLength = 64 * 1024 } };
+
+        using var document = PdfDocument.Open(source, options, ownsSource: false);
+
+        document.Reader.Structure.Sections.Should().HaveCount(Sections + 1).And.OnlyContain(section => !section.CutByLimit);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitObject);
+        source.BytesRead.Should().BeLessThan(bytes.Length);
+
+        static string Row(int type, long offset) => string.Concat(
+            (char)type, (char)((offset >> 24) & 0xFF), (char)((offset >> 16) & 0xFF), (char)((offset >> 8) & 0xFF), (char)(offset & 0xFF), '\0', '\0');
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_with_no_endstream_makes_its_section_malformed_reading_the_file_a_few_times()
+    {
+        // A cross-reference stream whose /Length only it indexes, 3 MB of rows, and its endstream misspelled: its search
+        // reads the data to the end of the file, and its section is malformed — the file's fault, no guard's (#220). The
+        // rebuild scans the file, and its stream, its length read then, is searched again: the file is read about four
+        // times, as its sound twin is twice — the search and the decoding.
+        var file = ChainFiles.AloneWithIndirectLength(padding: 450_000);
+        file[(int)PdfTemplate.OffsetOf(file, "endstream")] = (byte)'x';
+        using var source = new StrictCountingSource(file);
+
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.State.Should().Be(XRefSectionState.Malformed);
+        document.Diagnostics.Should().NotContain(d => d.Code.StartsWith("limit.", StringComparison.Ordinal));
+        source.BytesRead.Should().BeLessThan(5L * file.Length);
+    }
+
+    [Fact]
+    public void Reading_streams_whose_data_share_a_stretch_of_a_file_held_in_memory_allocates_none_of_their_data()
+    {
+        // Two hundred streams, each header inside the data of the one before, every /Length confirmed by the one endstream
+        // a megabyte on: each stream's data is the whole stretch, and reading each one's copied it, 200 MB from a file of
+        // 1 MB (#170). A source in memory lends each stream's data where it lies.
+        const int Streams = 200;
+        var file = Overlapping(Streams, filler: 1024 * 1024);
+
+        var allocated = Allocations.Least(() => PdfDocument.Open(file), ReadEvery, out var document, out var read);
+
+        using (document)
+        {
+            read.Should().BeGreaterThan(Streams * 1024L * 1024, "each stream's data is the whole stretch");
+            allocated.Should().BeLessThan(2L * 1024 * 1024, "the streams' objects, and none of their data");
+            document.Diagnostics.Should().BeEmpty();
+        }
+
+        static long ReadEvery(PdfDocument document)
+        {
+            long read = 0;
+
+            for (var k = 0; k < Streams; k++)
+            {
+                read += document.GetObject(new PdfObjectId(3 + k)).AsStream().Required().GetRawBytes().Length;
+            }
+
+            return read;
+        }
     }
 
     [Fact]
@@ -1563,8 +1762,10 @@ public class HostileInputTests
     [Fact]
     public void Does_not_take_a_keyword_the_probe_saw_cut_for_a_cross_reference_table()
     {
-        // The section is probed through a few bytes, which spaces and "xref" fill: the probe sees "xref", but the
-        // token is "xrefs". The table's own window reads it whole and refuses it, and the index is rebuilt.
+        // The section is probed through a few bytes, which spaces and "xref" fill, but the token is "xrefs". The probe reads
+        // on past a token its edge reaches, finds no keyword there, nor an object, and the index is rebuilt (#174). Where
+        // MaxTrailerLength stops the probe right after "xref", the table's own window reads the token whole and refuses it
+        // under another rule (#295).
         var written = new TestPdfBuilder()
             .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
             .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
@@ -1575,6 +1776,8 @@ public class HostileInputTests
         using var document = PdfDocument.Open(bytes);
 
         document.WasRepaired.Should().BeTrue();
+        document.Reader.Structure.Sections[0].State.Should().Be(XRefSectionState.NotFound);
+        document.Reader.Structure.Sections[0].Fault.Should().Be("holds neither the xref keyword nor an object");
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
     }
 
@@ -3461,6 +3664,70 @@ public class HostileInputTests
             [6] = (2, 5, 0),
         };
         file.CrossReferenceStream(7, 8, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a file of <paramref name="streams"/> streams, objects 3 and on, each one's header inside the data of the one
+    /// before, every <c>/Length</c> ending at the one <c>endstream</c> after <paramref name="filler"/> bytes: each length
+    /// confirmed, each stream's data the whole stretch from its start to that <c>endstream</c> (#170). With
+    /// <paramref name="objectStreams"/>, objects 10 and on, each an object stream of one member, objects 3000 and on, that a
+    /// cross-reference stream places.
+    /// </summary>
+    internal static byte[] Overlapping(int streams, int filler, bool objectStreams = false)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+        var start = file.Position;
+        var body = new StringBuilder();
+        var lengthAt = new int[streams];
+        var dataStart = new int[streams];
+
+        for (var k = 0; k < streams; k++)
+        {
+            var number = (objectStreams ? 10 : 3) + k;
+            var member = string.Create(CultureInfo.InvariantCulture, $"{3000 + k} 0 ");
+            rows[number] = (1, start + body.Length, 0);
+            body.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< ");
+
+            if (objectStreams)
+            {
+                body.Append(CultureInfo.InvariantCulture, $"/Type /ObjStm /N 1 /First {member.Length} ");
+            }
+
+            body.Append("/Length ");
+            lengthAt[k] = body.Length;
+            body.Append("0000000000 >>\nstream\n");
+            dataStart[k] = body.Length;
+
+            if (objectStreams)
+            {
+                body.Append(member);
+                rows[3000 + k] = (2, number, 0);
+            }
+        }
+
+        body.Append('x', filler);
+        var end = body.Length;
+        body.Append("\nendstream\nendobj\n");
+
+        for (var k = 0; k < streams; k++)
+        {
+            var digits = (end - dataStart[k]).ToString("D10", CultureInfo.InvariantCulture);
+
+            for (var d = 0; d < digits.Length; d++)
+            {
+                body[lengthAt[k] + d] = digits[d];
+            }
+        }
+
+        file.Raw(body.ToString());
+        var index = objectStreams ? 6000 : 1000;
+        file.CrossReferenceStream(index, index + 1, rows, "/Root 1 0 R");
         return file.Bytes;
     }
 

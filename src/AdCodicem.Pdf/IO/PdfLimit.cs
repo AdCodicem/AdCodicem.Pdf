@@ -9,6 +9,9 @@ internal enum PdfLimit
     /// <summary>What one stream may decode to.</summary>
     DecodedStream,
 
+    /// <summary>How much of one stream's encoded data may be read at once.</summary>
+    StreamLength,
+
     /// <summary>How long an object may be, the data of a stream aside.</summary>
     Object,
 

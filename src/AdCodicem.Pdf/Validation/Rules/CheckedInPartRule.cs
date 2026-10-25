@@ -71,6 +71,23 @@ internal sealed class CheckedInPartRule : IValidationRule
                         $"One of the reader's limits stopped it reading the cross-reference section at offset {section.Offset} whole: what lies past the limit was not checked."),
                     remedy: null);
             }
+
+            // A hybrid file's /XRefStm names the cross-reference stream of the section's own revision, which a /Prev may
+            // not follow: what the guard hides is that stream, and whatever is older.
+            if (section.ChainHiddenByGuard is { } hidden)
+            {
+                context.Report(
+                    this,
+                    PdfValidationLocation.AtPosition(section.Offset),
+                    section.ChainHiddenAtStream
+                        ? string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"The cross-reference section at offset {section.Offset} names the cross-reference stream of its revision, but {hidden}: that stream, and any section older than it, were not checked.")
+                        : string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"The cross-reference section at offset {section.Offset} names older sections, but {hidden}: they were not checked."),
+                    remedy: null);
+            }
         }
 
         foreach (var finding in context.Probe.NotChecked)

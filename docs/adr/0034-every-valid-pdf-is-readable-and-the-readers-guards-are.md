@@ -13,7 +13,7 @@ saying which bounds a sound file could reach, and follows [8](0008-facade-immuta
 in making them options on an immutable record.
 
 Implemented by `PdfReaderLimits`, `PdfReaderOptions.Limits` and `PdfReaderOptions.ThrowOnLimit`,
-`PdfLimitExceededException`, the seven `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
+`PdfLimitExceededException`, the eight `limit.*` codes of `PdfDiagnosticCodes`, the `readerLimits` field of
 `tests/corpus/manifest.json`, and `ReaderLimitsTests`.
 
 Amended on 2026-09-27, by the maintainer, while M08 was specified: one record bounds every hostile read, the
@@ -25,7 +25,8 @@ can make it read, and is an internal constant even where a valid file reaches it
 of a name (`FileQuote.MaxBytes`), though PDF 2.0 allows a longer one, and at most the first and last four steps of a
 key path (`RuleText.PathEnds`); the whole value stays in the document. Such a constant's declaration says so, as
 `No guard (ADR 34): it bounds what a message repeats, not what is read`, in place of the reason no valid file
-reaches it. `PdfObjectParser.EndObjLookahead`, which bounds what the reader sees of an object's end, was the first.
+reaches it. `PdfObjectParser.EndObjLookahead`, which bounded what the reader saw of an object's end, was the first; the
+2026-10-23 amendment made it the size of a first read, and no bound.
 
 Amended on 2026-10-14, by the maintainer, while [#164](https://github.com/AdCodicem/AdCodicem.Pdf/issues/164) and
 [#183](https://github.com/AdCodicem/AdCodicem.Pdf/issues/183) were fixed: a sixth guard, `MaxIndexEntries`
@@ -80,6 +81,61 @@ member would start past the data, ends the header as a stray token does. And a h
 the pairs read. The consequence that raising `MaxDecodedStreamLength` multiplies what the cache of decoded object streams
 holds until M23 bounds it (T33) was stale: `ObjectStreamBudget` bounds it since 2026-09-28.
 
+Amended on 2026-10-23, by the maintainer, while [#170](https://github.com/AdCodicem/AdCodicem.Pdf/issues/170),
+[#174](https://github.com/AdCodicem/AdCodicem.Pdf/issues/174), [#220](https://github.com/AdCodicem/AdCodicem.Pdf/issues/220),
+[#224](https://github.com/AdCodicem/AdCodicem.Pdf/issues/224), [#230](https://github.com/AdCodicem/AdCodicem.Pdf/issues/230)
+and [#263](https://github.com/AdCodicem/AdCodicem.Pdf/issues/263) were fixed: an eighth guard, `MaxStreamLength` (256 MB,
+`limit.stream-length`), bounds what is read of one stream's encoded data at once. The file alone bounded it: decoding
+handed back data no filter decodes — none named, an image filter, one the library does not know, Flate over data that is
+none — whole, past `MaxDecodedStreamLength` and unreported, and a `/Length` past what an array holds threw an
+`OutOfMemoryException` each time the data was read. The data is now kept by nothing and read each time it is asked for,
+so the guard bounds each read: past it the data is cut, what the filters lose past the cut is no damage, the stream is
+reported once in its document's diagnostics and, as `limit.decoded-stream` is, with each decoding into diagnostics a
+caller passes to `Decode`, and its length stays the one the file holds. `MaxDecodedStreamLength` keeps bounding what the
+filters produce, so an uncompressed image past the default needs the new guard raised alone. Nor does a stream's data
+count toward `MaxObjectLength`: a `/Length` the file cannot hold grew the window an object is parsed through up to that
+bound, reading 21.5 MB to find five bytes and reporting `limit.object`; no window grows to find an `endstream` now, and
+one search past the window does. What that search reads, with the white space read on after a declared length, is
+bounded by `EndStreamSearchPasses`, four times the file for a document's searches together, which stays an internal
+constant with its reason rewritten: a valid file is read past the parser's window only by the search for the data of a
+cross-reference stream whose `/Length` the chain cannot read, by the search for the data of a stream whose `/Length` a
+guard cut or left out of the index, and by white space and comments after a declared length that run past a first
+read — about twice the file, three times over the white space a cross-reference stream's search takes as data that its
+length, once read, is read on through; the proof that an `endstream` found under a hidden `/Length` is the stream's
+own reads 48 or 64 bytes past each, once, and the white space it crosses once more at most — the run before an
+`endobj` taken from the read-on that read it, a run a row names before the next header read once from the row —, about
+three times the file in all (amended on 2026-10-24).
+`MaxEndStreamGap`, the four bytes of white space accepted
+between a stream's data and its `endstream`, is removed: more, or a comment, made a right `/Length` a wrong one, and
+white space and comments are read on as far as they run, counted with the searches — a comment only once white space
+comes before it, since a `%` right where the length ends is the data's. Comments after the `endobj` that ends a stream
+with no `endstream` are white space too, read through the search's own reads: neither rule adds a bound.
+`EndObjLookahead` is the size of that first read, no longer a bound. `MaxTrailerLength` bounds a cross-reference
+stream's dictionary alone: the data of one whose `/Length` the chain cannot read is searched for its `endstream` in the
+file rather than through a window the guard bounded — a stream of 70,000 bytes of rows reads as its twin with a direct
+`/Length`, with no `limit.trailer`, and `ThrowOnLimit` no longer throws for it —, and data no `endstream` follows before
+the next object the sections read so far place, or the end of the file, makes its section malformed: the file's fault,
+and no guard's, unless that `/Length` leads to an object `MaxObjectLength` cut (below). A value read through a reference
+to an object a guard cut or left out of the index — a stream's `/Length`, `/Filter` or `/DecodeParms`, a value of a
+filter's parameters, a cross-reference stream's `/W`, `/Index` or `/Size`, a trailer's `/Prev` or `/XRefStm` — is the
+guard's, not the file's: an integer the cut parted, `1` of `15`, is only a place to look for `endstream` at, never a
+declared length, though a stream that lacks its `endstream` is still the file's fault, unless a header its data spells,
+or an `endstream` nothing after it proves the stream's own — the next object the index places, a cross-reference
+stream the chain read, the end of the file, `xref` or `startxref`, after the object's `endobj` or in its place (amended
+on 2026-10-24) —, stops the search, the
+data up to it then the guard's; a whole
+reference the cut left leads on, as read whole; a chain of filters ends there,
+its data left encoded; and a cross-reference section whose values lead to an object `MaxObjectLength` cut ends the
+chain, nothing rebuilt — unless what the values read say makes it unreadable whatever the cut hides, or data whose length the file gives, its filters written direct, lacks the rows they declare whatever it hides — the file's fault, such a section read as read whole, lacking rows
+(amended on 2026-10-24), the chain going on where the data holds no row: rows it may hold, read with the cut value, are
+the guard's (amended on 2026-10-25) —, the older sections and their trailers the guard's to hide, and the guard reached once the chain
+is read. So does a cross-reference stream's `/Length` the chain could not read that leads to such an object, wherever
+only that length could say how far the data runs: no `endstream` comes before the next object or the end of the file, or
+the rows spell one and none confirms what the cut left of the length, the rows past it then the guard's. A guard that
+loading a value of a stream's filters reaches is that value's, not a cut of the stream's own data, whose faults it hid.
+No bound is added for those values, nor for the next object's header that ends an object's open containers: no valid
+object holds `obj` where a value is expected.
+
 ## Context
 
 Invariant 4 treats everything read from a file as hostile: no allocation, loop or recursion is sized by a
@@ -100,6 +156,7 @@ claims; neither bounded what it was said to, and the 2026-10-14 amendment made t
 | Bound | Value | What a valid file can do |
 |---|---|---|
 | A stream's decoded length, its filters before the last sharing one bound for what they pass along together, a `/Crypt` filter neither charged nor the last | 256 MB | The USGS topographic map in the remote corpus holds one image, 9,600 × 11,410 RGB, that decodes to 313 MB; qpdf reads it whole. A chain of filters whose outputs together pass the bound is valid too, and qpdf reads three thousand of them |
+| A stream's encoded data, read at once | 256 MB | ISO 32000 sets no limit on a stream's length, and decoding hands back data no filter decodes as it is: the USGS map's image, stored without a filter, would be 313 MB of data |
 | An object's length, streams' data aside | 16 MB | A direct array or dictionary of that size: a page-tree node with a million kids |
 | A classic cross-reference section | 64 MB | About 3.3 million entries; the informative annex C of ISO 32000-1 gives Acrobat's own limit as 8,388,607 objects |
 | The number of cross-reference sections | 1,024 | A document saved incrementally more than a thousand times |
@@ -123,8 +180,8 @@ hands its output out a piece at a time can read the stream (T28).
 We will read every PDF that is valid under ISO 32000, and treat each bound a valid file can exceed as a
 guard: active by default, reported when it is reached, and lifted by an option.
 
-- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the seven bounds
-  of the table: `MaxDecodedStreamLength`, `MaxObjectLength`, `MaxXRefSectionLength`, `MaxXRefSectionCount`,
+- **The options.** `PdfReaderOptions.Limits` is a `PdfReaderLimits`, an immutable record with the eight bounds
+  of the table: `MaxDecodedStreamLength`, `MaxStreamLength`, `MaxObjectLength`, `MaxXRefSectionLength`, `MaxXRefSectionCount`,
   `MaxTrailerLength`, `MaxIndexEntries` and `MaxFilterChainLength`. `PdfReaderLimits.Default` keeps the values above;
   `PdfReaderLimits.Unbounded` takes the implementation's maximums — `Array.MaxLength` for a length,
   `int.MaxValue` for a count. A value of zero or less is refused; a value above the implementation's maximum is
@@ -133,26 +190,34 @@ guard: active by default, reported when it is reached, and lifted by an option.
   configuring anything; one that reads a sound but exceptional file asks for it, by raising one bound or by
   choosing `Unbounded`.
 - **Reaching a guard** keeps what fits within it, as the reader does today, and reports it as a warning
-  under a code of its own — `limit.decoded-stream`, `limit.object`, `limit.xref-section-length`,
+  under a code of its own — `limit.decoded-stream`, `limit.stream-length`, `limit.object`, `limit.xref-section-length`,
   `limit.xref-section-count`, `limit.trailer`, `limit.index-entries`, `limit.filter-chain` — whose message names the property that
-  lifts it. What the parser met at the cut is the reader's, not the file's, and is dropped in favor of the guard. An
-  object, a section or a trailer is reported once, however often it is read again; a stream, by the first of its filters
-  that stopped there, each time it is decoded past the bound into diagnostics a caller supplies, and once in its
-  document's own, however often it is decoded (amended on 2026-10-15); a full index, once a document. The filters after one a guard stopped are given data the reader
-  cut: that it runs out — a lost tail, a missing checksum, a digit without its pair, a row the predictor cannot finish —
-  is not reported, and a fault in what was read is. The code `filter.limit-exceeded`, added by T31 and never released, becomes `limit.decoded-stream`.
+  lifts it. What the parser met at the cut is the reader's, not the file's, and is dropped in favor of the guard; so is a
+  value that leads to an object a guard cut or left out of the index (amended on 2026-10-23). An object, a section or a
+  trailer is reported once, however often it is read again; a stream, by the first of its filters that stopped there,
+  each time it is decoded past the bound into diagnostics a caller supplies, and once in its document's own, however
+  often it is decoded (amended on 2026-10-15); a stream's data `MaxStreamLength` cut, with each decoding into
+  diagnostics a caller supplies, and once in its document's own, as the reader reads it (amended on 2026-10-23); a full
+  index, once a document. The filters after one a guard stopped, and those of data `MaxStreamLength` cut, are given data
+  the reader cut: that it runs out — a lost tail, a missing checksum, a digit without its pair, a row the predictor
+  cannot finish — is not reported, and a fault in what was read is. The code `filter.limit-exceeded`, added by T31 and
+  never released, becomes `limit.decoded-stream`.
 - **What a guard leaves out of the index is not damage** (amended on 2026-10-14). The objects only a section past
-  `MaxXRefSectionCount`, rows past `MaxXRefSectionLength` or `MaxDecodedStreamLength`, or numbers past
+  `MaxXRefSectionCount`, rows past `MaxXRefSectionLength`, `MaxStreamLength` or `MaxDecodedStreamLength`, or numbers past
   `MaxIndexEntries` index read as null, and the validator treats them as unknown rather than missing, until the
   property is raised: the index is not rebuilt for them, which turned a sound file into an `xref.rebuilt` error
   (ADR 45) and could lose what the chain had read. A classic table cut by its length keeps its trailer. The chain ends
-  at a cut — a table's, a stream's rows, a section or a trailer cut wherever the cut falls —, since an older section,
-  or its trailer, would stand for what the cut left out; and a section a guard cut is where it was named, not looked for
-  near there. A rebuild that damage forces on such a chain keeps the entries the chain read; one the chain cannot do
-  without — a guard that leaves it no section — runs as before.
+  at a cut — a table's, a stream's rows, a section or a trailer cut wherever the cut falls, a cross-reference stream
+  whose `/W`, `/Index`, `/Filter` or `/DecodeParms`, or `/Size` with no `/Index`, leads to an object `MaxObjectLength`
+  cut, or whose `/Length` does where only it could say how far the data runs, a `/Prev` or an `/XRefStm` the reader
+  follows that does (amended on 2026-10-23 and 2026-10-24) —, since an older section, or its trailer, would stand for what the cut left out; and a section a guard
+  cut is where it was named, not looked for near there. One found near where it is named, whose values a guard keeps
+  from being read, or that declared itself a section — the `xref` keyword, `/Type /XRef` — before a guard cut it, is the
+  guard's there too (amended on 2026-10-24). A rebuild that damage forces on such a chain keeps the entries
+  the chain read; one the chain cannot do without — a guard that leaves it no section — runs as before.
 - **Or it throws.** `PdfReaderOptions.ThrowOnLimit`, false by default, turns every guard reached into a
   `PdfLimitExceededException`, a `PdfException` carrying the code and the name of the property: from
-  `PdfDocument.Open` when it is reached while opening, from `GetObject` or `Decode` when it is reached later.
+  `PdfDocument.Open` when it is reached while opening, from `GetObject`, `GetRawBytes` or `Decode` when it is reached later.
   A rebuild of the index that reaches a guard finishes first and throws after, since a rebuild is never run
   twice; each later lookup of an object a full index left out throws again. `Open` releases a source it was given
   to own when it throws.
@@ -173,7 +238,8 @@ guard: active by default, reported when it is reached, and lifted by an option.
   with the defaults.
 - **Past the implementation's ceiling the rule is not yet met.** A stream that decodes past about 2 GB needs
   a decode that yields its output a piece at a time; that is T28, for M23, and until then
-  `limit.decoded-stream` reports it even under `Unbounded`.
+  `limit.decoded-stream` reports it even under `Unbounded`. A stream's encoded data, read in one piece, has the
+  same ceiling: `limit.stream-length` reports data past it even under `Unbounded` (amended on 2026-10-23).
 
 ## Consequences
 
@@ -184,7 +250,7 @@ guard: active by default, reported when it is reached, and lifted by an option.
 - The defaults are judgments about what is exceptional, and one is already known to be crossed by a real
   document: a large-format scan decodes past 256 MB. They can be revised without breaking a caller, who may
   always set them.
-- With `ThrowOnLimit`, any lazy operation — resolving an object, decoding a stream — may throw after `Open`
+- With `ThrowOnLimit`, any lazy operation — resolving an object, reading or decoding a stream — may throw after `Open`
   returned; a caller who sets it must be ready for that wherever the document is used.
 - `Unbounded` is for documents the application trusts. Raised guards let a file make the reader hold what
   it asks for, up to the new bounds; the cache of decoded object streams keeps within `ObjectStreamBudget` but always

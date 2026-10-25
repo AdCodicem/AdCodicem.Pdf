@@ -33,6 +33,7 @@ public sealed record PdfReaderLimits
     public static PdfReaderLimits Unbounded { get; } = new()
     {
         MaxDecodedStreamLength = int.MaxValue,
+        MaxStreamLength = int.MaxValue,
         MaxObjectLength = int.MaxValue,
         MaxXRefSectionLength = int.MaxValue,
         MaxXRefSectionCount = int.MaxValue,
@@ -62,11 +63,37 @@ public sealed record PdfReaderLimits
     public int MaxDecodedStreamLength { get; init => field = Length(value); } = 256 * 1024 * 1024;
 
     /// <summary>
+    /// Gets the most of one stream's encoded data the reader reads at once, in bytes. Defaults to 256 MB: a <c>/Length</c>
+    /// of a few digits can claim gigabytes, and a scanned map can hold an uncompressed image of 300 MB.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The encoded data is read in one piece each time it is asked for — <see cref="Objects.PdfStream.GetRawBytes"/>, or
+    /// decoding it —, so a value above <see cref="Array.MaxLength"/> is taken as that length, and a <c>/Length</c> past it
+    /// is cut there. Data past the bound is cut at it: what lies within it is read, and decoded as data the reader cut,
+    /// whose lost tail is no damage. Reaching it reports <see cref="Diagnostics.PdfDiagnosticCodes.LimitStreamLength"/>,
+    /// once for each stream in the document's diagnostics, and in diagnostics of your own each time you decode the stream
+    /// (<see cref="Objects.PdfStreamDecodingExtensions.Decode"/>). <see cref="Objects.PdfStreamData.Length"/> stays the
+    /// length the file holds.
+    /// </para>
+    /// <para>
+    /// Data that decoding hands back as it is — no filter, an image filter, a filter the library does not know, one that
+    /// could not decode it — is bounded by this guard, not by <see cref="MaxDecodedStreamLength"/>, which bounds what the
+    /// filters produce: a large uncompressed image needs this bound raised alone (#170).
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero or less.</exception>
+    public int MaxStreamLength { get; init => field = Length(value); } = 256 * 1024 * 1024;
+
+    /// <summary>
     /// Gets the longest object the reader parses, in bytes, the data of a stream aside, whether the file writes it
     /// directly or an object stream holds it. Defaults to 16 MB, which a direct array of a million references would need.
     /// </summary>
     /// <remarks>
-    /// A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
+    /// A stream's data never counts toward it, however its end is found, nor the end-of-line after its <c>stream</c>
+    /// keyword: a <c>/Length</c> that is wrong, missing or past the file has the data searched for its <c>endstream</c> past
+    /// the bytes the object was parsed through, not read through a larger window (#174); what the reader reads of the data at once is
+    /// <see cref="MaxStreamLength"/>'s. A value above <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitObject"/>, once for each object, and for each object an object
     /// stream holds, once for each definition of that stream.
     /// </remarks>
@@ -109,7 +136,9 @@ public sealed record PdfReaderLimits
     /// </summary>
     /// <remarks>
     /// A classic trailer that ends within the window its cross-reference table was read through is read whole,
-    /// whatever its length: the guard bounds how far the reader follows one past that window. A value above
+    /// whatever its length: the guard bounds how far the reader follows one past that window. A cross-reference stream's
+    /// data is not a trailer: one whose <c>/Length</c> the reader cannot read while it reads the chain is searched for its
+    /// <c>endstream</c> in the file, up to the next object or the end of the file. A value above
     /// <see cref="Array.MaxLength"/> is taken as that length. Reaching it reports
     /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitTrailer"/>, and ends the cross-reference chain at the section cut: an
     /// older section, or a key, past the cut is unknown, and what only older sections index reads as null until the

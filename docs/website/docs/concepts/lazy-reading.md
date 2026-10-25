@@ -16,8 +16,14 @@ Opening a document builds an index, finds the catalog, and stops there.
 3. Builds a map from object number to a location: either a byte offset, or a position inside an object
    stream. Nothing is loaded meanwhile: a value a section refers to — a cross-reference stream's `/W` or
    `/Length` written as a reference, a `/Prev` — is read only where a section already read places it, so that
-   the map the chain gives is the file's own. A `/Length` no section read before places is read once the chain
-   is, and checked against the data the chain took up to its `endstream`.
+   the map the chain gives is the file's own. A `/Length` no section read before places, or that leads through
+   references to such an object, is read once the chain is, and checked against the data the chain took up to the
+   first `endstream` after the data's start, searched for in the file up to the next object the sections read so far
+   place, or its end — unless `MaxStreamLength` cut that data, which is the guard's; one that leads to an object `MaxObjectLength` cuts waits for the chain the same way, and is the
+   guard's: the guard is reached once the chain is read, and the length is not checked. Either way, when the section's
+   own row for that `/Length` — the row the reading of its rows keeps — lies among the rows the data holds, those
+   rows spelled `endstream`: the object is read where the row places it, without being kept, and the data is taken
+   again to the length it gives, or to the integer the guard's cut left of it, when an `endstream` confirms it.
 4. Resolves the trailer's `/Root`, which reads the document catalog, and decodes the object stream that holds
    it when one does. When `/Root` leads to no catalog, it loads the objects the map holds, one after the
    other, until one is a catalog (`trailer.root-recovered`), and rebuilds the map when none is.
@@ -51,16 +57,26 @@ can take 436 MB.
 
 An object the map does not hold is one the file does not define, and a reference to it reads as null, as the
 specification says — or one a limit left out of the map, which reads as null too, until the limit is raised: the
-sections past `MaxXRefSectionCount`, the rows past `MaxXRefSectionLength` or past what `MaxDecodedStreamLength`
-decodes of a cross-reference stream, the numbers past `MaxIndexEntries`. That is no damage, and the map is not rebuilt
-for it. The map is rebuilt by scanning the whole file, once at most, and never while the chain is read:
+sections past `MaxXRefSectionCount`, the rows past `MaxXRefSectionLength` or past what `MaxStreamLength` reads or
+`MaxDecodedStreamLength` decodes of a cross-reference stream, a cross-reference stream whose `/W`, `/Index`, `/Filter`
+or `/DecodeParms`, or `/Size` with no `/Index`, leads to an object `MaxObjectLength` cuts and the sections older than it — so too one whose
+`/Length` leads to such an object, when no `endstream` ends its data before the next object or the end of the file, or
+the rows past an `endstream` its rows spell, which only that length could tell from the end of its data —, the sections
+a `/Prev` or an `/XRefStm` the reader follows that leads to such an object names — the older ones, or the cross-reference stream of a hybrid
+file's revision, with the sections older than it, the chain ending with it —, the numbers past `MaxIndexEntries`. An
+object the guard cut after a whole reference it holds hides none of them: the chain reads through it. That is no
+damage, and the map is not rebuilt for it. The map is rebuilt by scanning the whole file, once at most, and never while
+the chain is read:
 
 - at opening, when `startxref` cannot be found or read, when the section it names cannot be read, when the
   chain indexes nothing, or when `/Root` leads to no catalog and no object of the map is one;
 - when an object the map lacks is asked for, by opening or after it, while the map may have lost entries: a
   cross-reference section the chain names cannot be found, or a `/Prev` or `/XRefStm` is not an offset — one
   written as a reference no section read before it places included — (`xref.section-missing`); one is found and
-  cannot be read (`xref.section-unreadable`), a value its rows need written as such a reference among the causes; the chain loops back on itself (`xref.chain-cycle`); a row of a classic table cannot be read, which ends its subsection; a row gives an object
+  cannot be read (`xref.section-unreadable`), a value its rows need written as such a reference, or a `/Length` so
+  written, or that leads through references to an object no section read before places, whose data no `endstream` ends
+  before the next object or the end of the file, among the causes; the chain loops back on itself (`xref.chain-cycle`);
+  a row of a classic table cannot be read, which ends its subsection; a row gives an object
   in use what no entry can hold — a generation past 65,535, an offset of 2⁶³ or more, an object stream that is no
   object number, an index past 2,147,483,647, a field wider than 8 bytes whose leading bytes are not all zero —,
   which refuses that row alone, no older section's row standing for
@@ -101,16 +117,44 @@ chain read for the numbers the scan did not find, rather than losing them.
 ## What it deliberately does not do
 
 Past the index and the catalog, nothing is parsed until something asks for it, and — short of a rebuild, which
-scans the whole file — stream data is not even read from disk. A `PdfStream` holds the offset and length of its
-bytes; the bytes arrive when you call `Decode()`, and not before. A test holds this on a document of about
-500 KB, nearly all of it one page's content: opening it reads less than 200,000 bytes of the file, and reading
-that content's bytes afterwards reads at least its 500,000 more.
+scans the whole file, and of the search for where a damaged stream's data ends, below — stream data is not even read
+from disk. A `PdfStream` holds the offset and length of its bytes; the bytes arrive when you call `GetRawBytes()` or
+`Decode()`, and not before. A test holds this on a document of about 500 KB, nearly all of it one page's content:
+opening it reads less than 200,000 bytes of the file, and reading that content's bytes afterwards reads at least its
+500,000 more.
 
-When it is decoded, a stream decodes under the [limits](reader-limits.md) of the document it came from,
-however long after opening — so with `ThrowOnLimit` set, `Decode()` can throw long after `Open` returned.
-What decoding meets — a stream that lost its tail, a limit reached — is reported when it is met, in the
-diagnostics you pass to `Decode`, or in the document's own when you pass none: a damaged stream nobody
-decodes is never reported, since nothing reads it.
+Nor are the bytes kept once they have arrived: neither the stream nor the object cache holds them, and each call reads
+them again. A document held in memory — opened from bytes or from a stream — lends them where they lie, without a copy:
+what a call hands back is a view of that memory, which keeps it alive for as long as it is held, after the document is
+disposed too, and changes as it does. One opened from a path reads them from the file into an array of their length.
+Either is the caller's to keep or let go, so that memory follows the streams being read or decoded, not those read
+before, and streams whose data share a stretch of the file — objects that overlap — do not each hold a copy of it. What
+one call reads is bounded by `PdfReaderLimits.MaxStreamLength`, 256 MB by default: past it the data is cut, its filters
+decode what was read as data the reader cut, and `limit.stream-length` is reported; `RawLength` stays the length the
+file holds.
+
+Finding where a stream's data ends reads little of it. The reader parses an object through a window of the file, and
+confirms the declared `/Length` by the `endstream` that must follow it, after white space and comments, however many —
+a comment only once white space comes before it, since a `%` right where the declared length ends is the data's —:
+past the window, it asks the file for the bytes after the declared length rather than reading the data, and reads on
+as far as white space and comments run. A length nothing confirms, or a `/Length` that gives none, sends the reader on
+one search for the first `endstream` after the data's start: in the bytes the parser holds, then in the file, up to the
+nearer of the first object header the bytes hold and the next object the index as the file wrote it places, or the end
+of the file. With no `endstream` before that stop, the object's `endobj` plays its part: the search follows the last one
+through its own reads, the comments after it taken for white space, rather than read the bytes before the stop again
+backward. The search is made once for each stream, however often the stream is parsed again, and whether the object's
+`endobj` follows the declared length is read again only when a rebuild changes that length; no window grows to find an
+`endstream`, so that a stream's data never counts toward `MaxObjectLength`; and the searches of a document read four
+times the file at most — a valid file's, about three times, for the white space after a declared length, the
+cross-reference streams whose `/Length` the chain cannot read yet, and the streams whose `/Length` a guard hid, with the
+proof that their `endstream` is their own. What each case keeps, and reports, is in [Diagnostics](diagnostics.md#where-a-stream-ends).
+
+When it is read or decoded, a stream works under the [limits](reader-limits.md) of the document it came from,
+however long after opening — so with `ThrowOnLimit` set, `GetRawBytes()` and `Decode()` can throw long after `Open`
+returned. What decoding meets — a stream that lost its tail, a limit its filters reached — is reported when it is met,
+in the diagnostics you pass to `Decode`, or in the document's own when you pass none; data cut at `MaxStreamLength` is
+reported in the document's own once for each stream, as the reader reads it, and in those you pass to `Decode` each time
+it decodes the cut data. A damaged stream nobody decodes is never reported, since nothing reads it.
 
 Holding a stream as an offset and a length is what will let a copy between documents — merging, assembling,
 stamping — move its **encoded** bytes as they are, with no decompress/recompress cycle in between, since nothing
@@ -123,6 +167,10 @@ Objects are cached once parsed, in a bounded cache, so hot objects such as the p
 Beyond that bound, an object read again is read from the file again. That is the deliberate trade: memory
 stays predictable, and the pathological case is slower rather than fatal. The bound is an option, and
 [Tune the reader's memory](../guides/tune-reader-memory.md) says when to move it.
+
+A stream's data makes the same trade without a cache: no stream keeps it, cached or not, so that data asked for twice
+is read twice, and, through `Decode()`, decoded twice. A caller that needs it more than once keeps what one call gave,
+as [the same guide](../guides/tune-reader-memory.md#read-a-streams-data-once) shows.
 
 The same options carry the [reader limits](reader-limits.md), which bound what one file may make the reader
 hold.

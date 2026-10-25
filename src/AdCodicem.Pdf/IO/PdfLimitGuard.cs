@@ -36,6 +36,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     public int Bound(PdfLimit limit) => limit switch
     {
         PdfLimit.DecodedStream => limits.MaxDecodedStreamLength,
+        PdfLimit.StreamLength => limits.MaxStreamLength,
         PdfLimit.Object => limits.MaxObjectLength,
         PdfLimit.XRefSectionLength => limits.MaxXRefSectionLength,
         PdfLimit.XRefSectionCount => limits.MaxXRefSectionCount,
@@ -67,6 +68,13 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
         (diagnostics ?? documentDiagnostics)?.ReachLimit(Code(limit), message, position);
     }
 
+    /// <summary>
+    /// Says what <see cref="PdfReaderLimits.MaxStreamLength"/> did to a stream's data it cut, as its report starts: the
+    /// reader's report, once for the stream, and decoding's, in diagnostics a caller passes of its own.
+    /// </summary>
+    public string DescribeStreamLengthCut() =>
+        $"A stream's data runs past {FormatLength(Bound(PdfLimit.StreamLength))}; only what lies within it was read.";
+
     /// <summary>Writes a length the way a message states a bound: <c>256 MB</c>, <c>64 KB</c>, <c>1,000 bytes</c>.</summary>
     public static string FormatLength(int length) => length switch
     {
@@ -78,6 +86,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     private static string Code(PdfLimit limit) => limit switch
     {
         PdfLimit.DecodedStream => PdfDiagnosticCodes.LimitDecodedStream,
+        PdfLimit.StreamLength => PdfDiagnosticCodes.LimitStreamLength,
         PdfLimit.Object => PdfDiagnosticCodes.LimitObject,
         PdfLimit.XRefSectionLength => PdfDiagnosticCodes.LimitXRefSectionLength,
         PdfLimit.XRefSectionCount => PdfDiagnosticCodes.LimitXRefSectionCount,
@@ -89,6 +98,7 @@ internal sealed class PdfLimitGuard(PdfReaderLimits limits, bool throwOnLimit, P
     private static string Name(PdfLimit limit) => limit switch
     {
         PdfLimit.DecodedStream => nameof(PdfReaderLimits.MaxDecodedStreamLength),
+        PdfLimit.StreamLength => nameof(PdfReaderLimits.MaxStreamLength),
         PdfLimit.Object => nameof(PdfReaderLimits.MaxObjectLength),
         PdfLimit.XRefSectionLength => nameof(PdfReaderLimits.MaxXRefSectionLength),
         PdfLimit.XRefSectionCount => nameof(PdfReaderLimits.MaxXRefSectionCount),

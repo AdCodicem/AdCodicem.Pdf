@@ -35,7 +35,9 @@ public static class PdfDiagnosticCodes
     /// A cross-reference section the chain names, through <c>/Prev</c> or <c>/XRefStm</c>, is where it is named but
     /// cannot be read — a stray token among a table's rows or in place of its trailer, a subsection numbering objects
     /// past 2,147,483,647, a cross-reference stream whose <c>/W</c>, <c>/Index</c>, <c>/Size</c> or data cannot give
-    /// rows —, and nothing near it can be read in its place. The rows read before the
+    /// rows, or whose <c>/Length</c> no section read before it places and whose data no <c>endstream</c> ends before the
+    /// next object or the end of the file —, and nothing near it can be read in its place. A value that leads to an object
+    /// one of the reader's limits cut is the limit's: the chain ends there, and nothing is reported of the section. The rows read before the
     /// fault, if any, were kept; the objects only the rest indexes are missing from the index, which is rebuilt by
     /// scanning the file when one of them is asked for. The report is placed at the section, the fault in its message.
     /// </summary>
@@ -59,13 +61,17 @@ public static class PdfDiagnosticCodes
     /// A stream's <c>/Length</c> is not where its data ends: its <c>endstream</c> lies elsewhere and ends the data, the
     /// <c>/Length</c> gives no length the reader can take and the <c>endstream</c> ends the data, or no <c>endstream</c>
     /// follows the declared length — none before the next object or the end of the file, or none looked for once the
-    /// document's searches read as much of the file as they may — and that length is kept.
+    /// document's searches read as much of the file as they may — and that length is kept, or the data runs to the next
+    /// object, or, taken without a search, to the end of the file. A <c>/Length</c> that leads to an object one of the reader's limits cut, or left out of the index, is not
+    /// judged: the limit's report says why.
     /// </summary>
     public const string StreamLengthInvalid = "stream.length-invalid";
 
     /// <summary>
-    /// A stream has no <c>endstream</c> before the end of the file, or before the <c>endobj</c> that follows its data:
-    /// its data runs to the end of the file.
+    /// A stream has no <c>endstream</c> before the next object or the end of the file: its object's <c>endobj</c> ends its
+    /// data — after its declared length, or where the object ends —, or its data runs to the end of the file. Data taken
+    /// without a search, the document's searches having read as much of the file as they may, is
+    /// <see cref="StreamLengthInvalid"/>'s, whose <c>endstream</c> no search said is missing.
     /// </summary>
     public const string StreamTruncated = "stream.truncated";
 
@@ -217,6 +223,15 @@ public static class PdfDiagnosticCodes
     /// reader's, not damage in the file.
     /// </summary>
     public const string LimitDecodedStream = "limit.decoded-stream";
+
+    /// <summary>
+    /// A stream's encoded data runs past <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, and was read up to it:
+    /// what lies within it is decoded as data the reader cut, and handed back as it is where decoding hands its data back
+    /// undecoded. Reported once for each stream in the document's diagnostics, when its data is first read, and in
+    /// diagnostics of your own each time you decode it. Like every <c>limit.*</c> code, the guard is the reader's, not
+    /// damage in the file.
+    /// </summary>
+    public const string LimitStreamLength = "limit.stream-length";
 
     /// <summary>
     /// An object is longer than <see cref="Documents.PdfReaderLimits.MaxObjectLength"/>, and only the part

@@ -16,7 +16,10 @@ internal readonly record struct StreamLengthFault
     /// <summary>Gets how the <c>/Length</c> was written, or what the object it names holds.</summary>
     public required StreamLengthForm Form { get; init; }
 
-    /// <summary>Gets the object the <c>/Length</c> names, or null when it is written in the stream's dictionary.</summary>
+    /// <summary>
+    /// Gets the object the <c>/Length</c> names — for a length a guard cut or left out of the index, the one a chain of
+    /// references from it leads to, which the guard cut or left out —, or null when it is written in the stream's dictionary.
+    /// </summary>
     public PdfObjectId? Reference { get; init; }
 
     /// <summary>
@@ -50,8 +53,9 @@ internal readonly record struct StreamLengthFault
 
     /// <summary>
     /// Gets the offset of the object the search for the <c>endstream</c> stopped at — where an index places it, or where
-    /// its header starts in the file's bytes —, when <see cref="EndStream"/> is
-    /// <see cref="EndStreamState.MissingBeforeNextObject"/>; null otherwise.
+    /// its header starts in the file's bytes —, when it stopped at one: <see cref="EndStream"/> is then
+    /// <see cref="EndStreamState.MissingBeforeNextObject"/>, or <see cref="EndStreamState.MissingBeforeEndObj"/> when
+    /// the object's own <c>endobj</c> ended the data before it; null otherwise.
     /// </summary>
     public long? NextObject { get; init; }
 

@@ -4,6 +4,7 @@ using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -110,7 +111,7 @@ public class WindowEdgeTests
     {
         // T21's shape: the data ends 0 to 10 bytes short of the window's edge — the hospital-bed guidance's
         // objects 604 and 2053 end 2 bytes short and right on it, before a CR LF — and its "endstream" lies
-        // across or past the edge. The reader asks the file for the 13 bytes after the data instead of
+        // across or past the edge. The reader asks the file for a few bytes after the data instead of
         // parsing the object again through a window eight times larger, which the file, padded past that
         // size, would otherwise serve.
         var failures = new List<string>();
@@ -132,7 +133,7 @@ public class WindowEdgeTests
             var read = source.BytesRead - beforeLoading;
             var length = stream.GetRawBytes().Length;
 
-            if (read > Window + 13 || length != Window - shortOfEdge - DataStart(Window - shortOfEdge) ||
+            if (read > Window + PdfObjectParser.EndObjLookahead || length != Window - shortOfEdge - DataStart(Window - shortOfEdge) ||
                 document.Diagnostics.Count > 0)
             {
                 failures.Add($"{shortOfEdge} bytes short: read {read} bytes, data of {length}, {document.Diagnostics.Count} diagnostics");
@@ -140,6 +141,198 @@ public class WindowEdgeTests
         }
 
         failures.Should().BeEmpty($"{Describe(endOfLine)} must not cost a larger window");
+    }
+
+    [Theory]
+    [InlineData("\n", true)]
+    [InlineData("\r\n", true)]
+    [InlineData("\r", true)]
+    [InlineData("\n", false)]
+    [InlineData("\r\n", false)]
+    public void A_stream_reads_the_same_when_a_guard_s_window_ends_on_its_keyword(string endOfLine, bool ended)
+    {
+        // MaxObjectLength ends the window right after "stream", or after its carriage return: the dictionary is whole, and
+        // the end-of-line, as the data, counts toward no window. The data starts past it, as under a window one byte
+        // larger — never on it, a byte early, nor at the declared length past the cut with no search (#174).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [4] = file.Object(
+                4,
+                $"<< /Pad ({new string('x', 60)}) /Length {(ended ? 40 : 5000)} >>\nstream{endOfLine}" + new string('a', 40) +
+                (ended ? "\nendstream" : string.Empty)),
+            [6] = file.Object(6, "(six)"),
+        };
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        var bytes = file.Bytes;
+        var header = PdfTemplate.OffsetOf(bytes, "4 0 obj");
+        var keywordEnd = PdfTemplate.OffsetOf(bytes, "stream" + endOfLine) + "stream".Length;
+        var window = (int)(keywordEnd - header) + (endOfLine == "\r\n" ? 1 : 0);
+
+        using var whole = PdfDocument.Open(bytes);
+        using var guarded = PdfDocument.Open(
+            bytes,
+            PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxObjectLength = window } });
+
+        var expected = whole.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray();
+        guarded.GetObject(new PdfObjectId(4)).AsStream().Required().GetRawBytes().ToArray().Should().Equal(expected);
+        expected.Should().Equal(Encoding.ASCII.GetBytes(new string('a', 40)));
+        guarded.Diagnostics.Select(entry => entry.Message).Should().Equal(whole.Diagnostics.Select(entry => entry.Message));
+    }
+
+    [Theory]
+    [InlineData("X\nhello\nendstream")]
+    [InlineData("endstream")]
+    public void A_keyword_longer_than_stream_reads_the_same_wherever_the_window_edge_cuts_it(string tail)
+    {
+        // "streamX" is no stream keyword: the dictionary before it stands alone, its object lacking its endobj. A window that
+        // ends right after "stream" cannot say so, and the file is not asked where the data starts past a keyword a regular
+        // byte may go on: a larger window says (#174).
+        var failures = new List<string>();
+
+        for (var shift = -2; shift <= 2; shift++)
+        {
+            var head = "4 0 obj\n<< /Length 5 /Pad () >>\nstream";
+            var pad = Window + shift - head.Length;
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+                [4] = file.Object(4, $"<< /Length 5 /Pad ({new string('x', pad)}) >>\nstream" + tail),
+                [6] = file.Object(6, "(six)"),
+            };
+            file.Table(7, rows, "/Size 7 /Root 1 0 R");
+            using var document = PdfDocument.Open(file.Bytes);
+
+            var value = document.GetObject(new PdfObjectId(4));
+
+            if (value is not PdfDictionary || !document.Reader.IsEndObjMissing(4, out _))
+            {
+                failures.Add($"shift {shift}: {value.GetType().Name}, endobj missing {document.Reader.IsEndObjMissing(4, out _)}");
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_endobj_a_regular_byte_goes_on_is_missing_wherever_the_window_edge_cuts_it(bool stream)
+    {
+        // "endobjx" is no endobj: the object lacks it. One the window's edge reaches may be the start of a longer keyword,
+        // and is not taken whole: a stream's, as the file read on after its endstream says, and any other value's, as a larger
+        // window says (#174).
+        var failures = new List<string>();
+
+        for (var shift = -2; shift <= 2; shift++)
+        {
+            // The data's length that ends the keyword "4 0 obj\n" and the body leave at the edge, shifted.
+            var body = Enumerable.Range(0, Window)
+                .Select(data => stream
+                    ? string.Create(CultureInfo.InvariantCulture, $"<< /Length {data} >>\nstream\n") + new string('a', data) + "\nendstream\nendobj"
+                    : "(" + new string('a', data) + ")\nendobj")
+                .First(text => "4 0 obj\n".Length + text.Length == Window + shift);
+
+            var file = new HandWrittenFile();
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+                [4] = file.Object(4, body + "x"),
+                [6] = file.Object(6, "(six)"),
+            };
+            file.Table(7, rows, "/Size 7 /Root 1 0 R");
+            using var document = PdfDocument.Open(file.Bytes);
+
+            document.GetObject(new PdfObjectId(4));
+
+            if (!document.Reader.IsEndObjMissing(4, out _))
+            {
+                failures.Add(string.Create(CultureInfo.InvariantCulture, $"shift {shift}: endobj taken whole"));
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void An_endobj_the_window_s_edge_reaches_ends_the_object_where_a_source_cut_short_after_opening_gives_no_byte_more()
+    {
+        // Object 6's endobj ends right at the edge of the 8 KB window it is read through, and an "x" follows it: "endobjx" is
+        // no endobj, and the object lacks it. Once the document is open, the file is cut short right where the endobj ends,
+        // as another process truncates it: the source gives no byte past the edge, and the file says the token ends there,
+        // as where the file ends. The object reads whole, and nothing is reported (#174).
+        const string Head = "6 0 obj\n(";
+        const string Tail = ")\nendobj";
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            [6] = file.Position,
+        };
+        file.Raw(Head + new string('a', Window - Head.Length - Tail.Length) + Tail + "x\n");
+        rows[7] = file.Object(7, "(seven)");
+        file.Table(8, rows, "/Size 8 /Root 1 0 R");
+        var bytes = file.Bytes;
+
+        using var whole = PdfDocument.Open(bytes);
+        using var source = new CutShortSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        source.CutAt((int)rows[6] + Window);
+
+        whole.GetObject(new PdfObjectId(6));
+        whole.Reader.IsEndObjMissing(6, out _).Should().BeTrue();
+        document.GetObject(new PdfObjectId(6)).Should().BeOfType<PdfString>().Which.Length.Should().Be(Window - Head.Length - Tail.Length);
+        document.Reader.IsEndObjMissing(6, out _).Should().BeFalse();
+        document.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_file_answers_for_a_window_s_edge_outside_it_without_asking_its_source()
+    {
+        // The parser asks the file what follows a token, or a stream keyword, its window's edge reaches, which lies inside the
+        // file (#174, #224). Asked of an offset outside it, before its start or at its end, the file answers without asking
+        // a source that refuses any read outside its data: no byte there goes on a token, nor is an end-of-line there skipped
+        // before a stream's data, which starts where the keyword ends.
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildClassic(rootNumber: 1);
+        using var document = PdfDocument.Open(new StrictCountingSource(bytes), options: null, ownsSource: true);
+        var provider = (IPdfStreamDataProvider)document.Reader;
+
+        provider.TokenEndsAt(-1).Should().BeTrue();
+        provider.TokenEndsAt(bytes.Length).Should().BeTrue();
+        provider.DataStart(-1).Should().Be(-1);
+        provider.DataStart(bytes.Length).Should().Be(bytes.Length);
+    }
+
+    [Fact]
+    public void A_cross_reference_stream_reads_whole_when_its_guard_s_window_ends_on_its_keyword()
+    {
+        // MaxTrailerLength ends the window right after the stream's keyword: its dictionary is whole, and its rows are read
+        // past it, as under a window one byte larger — not a byte early, misaligned, which rebuilt the index and judged the
+        // catalog missing (#174).
+        var bytes = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .BuildWithXRefStream(rootNumber: 1);
+        var dictionary = PdfTemplate.OffsetOf(bytes, "/Type /XRef");
+        var header = Encoding.Latin1.GetString(bytes).LastIndexOf(" 0 obj", (int)dictionary, StringComparison.Ordinal) - 1;
+        var keywordEnd = Encoding.Latin1.GetString(bytes).IndexOf("stream", (int)dictionary, StringComparison.Ordinal) + "stream".Length;
+
+        using var document = PdfDocument.Open(
+            bytes,
+            PdfReaderOptions.Default with { Limits = PdfReaderLimits.Default with { MaxTrailerLength = keywordEnd - header } });
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
     }
 
     [Fact]
@@ -313,6 +506,136 @@ public class WindowEdgeTests
     }
 
     [Fact]
+    public void An_object_that_lost_its_end_ends_at_the_next_header_wherever_the_window_edge_cuts_it()
+    {
+        // The header that ends an array which lost its ] and its endobj meets the edge at every byte, and a byte or two
+        // before and after: the edge never makes the header an integer and a stray keyword, nor hides it (#230).
+        var failures = new List<string>();
+        const string Before = "[(";
+        const string After = ") 1 2 3\n6 0 obj\n(six)";
+        var header = Header(ObjectNumber);
+
+        for (var shortOfEdge = -2; shortOfEdge <= 10; shortOfEdge++)
+        {
+            var filler = Window - header.Length - Before.Length - ") 1 2 3\n".Length - shortOfEdge;
+            using var document = PdfDocument.Open(Document(Before + new string('x', filler) + After));
+
+            var read = document.GetObject(new PdfObjectId(ObjectNumber));
+            var reports = string.Join(" | ", document.Diagnostics.Select(entry => entry.Message));
+
+            if (read is not PdfArray { Count: 4 } ||
+                reports != "An object header ended the object inside an array, which was never closed." ||
+                !document.Reader.IsEndObjMissing(ObjectNumber, out _))
+            {
+                failures.Add($"the header {shortOfEdge} bytes before the edge: {read}, {reports}");
+            }
+        }
+
+        failures.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(-40)]
+    [InlineData(-20)]
+    [InlineData(-3)]
+    [InlineData(0)]
+    [InlineData(5)]
+    public void What_follows_an_endstream_the_window_holds_is_read_wherever_the_window_edge_falls(int shift)
+    {
+        // An integer follows object 4's endstream in place of its endobj, starting shift bytes past the window's edge: where
+        // the edge cut that integer, or the white space before it, the object's endobj was judged unseen, and its loss went
+        // unreported. What follows the keyword is read on in the file, as past the buffer (#174).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        var start = file.Position;
+        rows[4] = start;
+        const string Before = "4 0 obj\n<< /Length 0000 >>\nstream\n";
+        const string After = "\nendstream ";
+        var length = Window + shift - Before.Length - After.Length;
+        file.Raw(Before.Replace("0000", length.ToString("D4", CultureInfo.InvariantCulture), StringComparison.Ordinal) +
+            new string('a', length) + After + "7777777777\n");
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
+        document.Reader.IsEndObjMissing(4, out _).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(-30)]
+    [InlineData(-21)]
+    [InlineData(-18)]
+    [InlineData(-15)]
+    [InlineData(-13)]
+    [InlineData(-11)]
+    [InlineData(-9)]
+    [InlineData(-7)]
+    [InlineData(-5)]
+    [InlineData(-3)]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(8)]
+    [InlineData(12)]
+    public void An_object_s_endobj_ends_data_with_no_endstream_wherever_the_reads_part_what_follows_it(int shift)
+    {
+        // Object 4 lost its endstream. Its endobj, a comment, and a header no index places, which stops the search, fall
+        // across the edge of the window and of the first read of the file past it: the keyword parted between two reads, the
+        // header started in the read before the one that shows it whole. The data ends at the endobj wherever they fall (#174).
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[4] = file.Position;
+        const string Before = "4 0 obj\n<< /Length 3 >>\nstream\n";
+        var length = Window + shift - Before.Length;
+        file.Raw(Before + new string('a', length) + "\nendobj\n% c\n7 0 obj\n(stray)\nendobj\n");
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(length);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamTruncated)
+            .Which.Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"its object's endobj ends it, after {length} bytes."));
+    }
+
+    [Theory]
+    [InlineData(-7)]
+    [InlineData(-5)]
+    [InlineData(-3)]
+    [InlineData(-1)]
+    public void An_endobj_that_ends_a_longer_token_ends_no_data_wherever_the_reads_part_it(int shift)
+    {
+        // As above, but the keyword ends the token "aendobj", parted between the window and the first read past it: no endobj
+        // ends the data, and the declared length, which ends before the next object, is kept.
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>
+        {
+            [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        };
+        rows[4] = file.Position;
+        const string Before = "4 0 obj\n<< /Length 3 >>\nstream\n";
+        var length = Window + shift - Before.Length;
+        file.Raw(Before + new string('a', length) + "endobj\n% c\n7 0 obj\n(stray)\nendobj\n");
+        rows[6] = file.Object(6, "(six)");
+        file.Table(7, rows, "/Size 7 /Root 1 0 R");
+        using var document = PdfDocument.Open(file.Bytes);
+
+        document.GetObject(new PdfObjectId(4)).AsStream().Required().RawLength.Should().Be(3);
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid)
+            .Which.Message.Should().EndWith("the declared length is kept.");
+    }
+
+    [Fact]
     public void An_object_whose_header_lies_past_the_window_is_read_where_the_index_says()
     {
         // The index points at white space that runs past the 8 KB window before the object's header: the
@@ -376,10 +699,11 @@ public class WindowEdgeTests
     }
 
     [Fact]
-    public void A_stream_the_file_cuts_short_is_reported_without_asking_the_source_past_its_end()
+    public void A_stream_the_file_cuts_short_keeps_its_declared_length_without_asking_the_source_past_its_end()
     {
         // The file ends inside "endstream". The reader asks the file for the bytes after the data, and a
-        // source may refuse a read that runs past its end: it must be asked only for the six there are.
+        // source may refuse a read that runs past its end: it must be asked only for the six there are. No endstream
+        // nor endobj follows the declared length, which ends before the end of the file: it is kept, and reported (#174).
         var bytes = Encoding.ASCII.GetBytes(
             "%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n" +
             "2 0 obj << /Type /Pages /Kids [] /Count 0 >> endobj\n" +
@@ -388,8 +712,9 @@ public class WindowEdgeTests
         using var document = PdfDocument.Open(new StrictCountingSource(bytes), options: null, ownsSource: true);
         var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
 
-        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().StartWith("hello");
-        document.Diagnostics.Contains(PdfDiagnosticCodes.StreamTruncated).Should().BeTrue();
+        Encoding.ASCII.GetString(stream.GetRawBytes().Span).Should().Be("hello");
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
+            "The stream declared 5 bytes, and no endstream follows them before the end of the file; the declared length is kept.");
     }
 
     /// <summary>

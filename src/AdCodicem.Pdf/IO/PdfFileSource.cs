@@ -95,6 +95,21 @@ public abstract class PdfFileSource : IDisposable
     }
 
     /// <summary>
+    /// Lends the <paramref name="length"/> bytes at <paramref name="offset"/> where the source holds them, without a copy;
+    /// false for a source that reads them from a file, or bytes it does not hold.
+    /// </summary>
+    internal bool TryLend(long offset, int length, out ReadOnlyMemory<byte> memory)
+    {
+        if (offset < 0 || length < 0 || offset > Length - length)
+        {
+            memory = default;
+            return false;
+        }
+
+        return TryGetMemory(offset, length, out memory);
+    }
+
+    /// <summary>
     /// Returns a view of <paramref name="length"/> bytes at <paramref name="offset"/>, clamped to the file.
     /// The window must be disposed; for a file-backed source it holds a pooled buffer.
     /// </summary>

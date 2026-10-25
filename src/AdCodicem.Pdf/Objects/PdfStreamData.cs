@@ -31,7 +31,27 @@ public abstract class PdfStreamData
     /// </summary>
     internal virtual bool CutByGuard => false;
 
-    /// <summary>Returns the encoded bytes, exactly as they appear in the file.</summary>
+    /// <summary>
+    /// Gets a value indicating whether where the data ends is the guard's to hide, though the data is the file's: an
+    /// <c>endstream</c> proven the stream's own ended it under a <c>/Length</c> a guard hid, with white space, or comments,
+    /// before the keyword that only the length could say are the data's or not (#224). Its first filter decodes it up to
+    /// where that run starts, what lies before it the file's, its running out there saying nothing of the file, and the
+    /// end of what it may lack the guard's; Flate data whose deflate body ends in the data as taken is whole.
+    /// </summary>
+    internal virtual bool EndHidden => false;
+
+    /// <summary>Returns the encoded bytes, as they appear in the file, up to the reader's bound.</summary>
+    /// <remarks>
+    /// Data read from a document held in memory is a view of that memory, which keeps it alive and changes as it does. Data
+    /// read from a document gives no more than <see cref="Documents.PdfReaderLimits.MaxStreamLength"/> bytes: past it,
+    /// what lies within it comes back, fewer bytes than <see cref="Length"/> says, and
+    /// <see cref="Diagnostics.PdfDiagnosticCodes.LimitStreamLength"/> is reported once in the document's diagnostics.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The data was read from a document that is disposed.</exception>
+    /// <exception cref="Diagnostics.PdfLimitExceededException">
+    /// The data runs past <see cref="Documents.PdfReaderLimits.MaxStreamLength"/>, and its document was opened with
+    /// <see cref="Documents.PdfReaderOptions.ThrowOnLimit"/>.
+    /// </exception>
     public abstract ReadOnlyMemory<byte> GetBytes();
 
     /// <summary>Creates stream data over bytes already in memory.</summary>

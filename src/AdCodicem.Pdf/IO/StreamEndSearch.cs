@@ -15,7 +15,34 @@ namespace AdCodicem.Pdf.IO;
 /// is unknown.
 /// </param>
 /// <param name="Searched">
-/// Whether the file was searched at all: it is not once the document's searches have read as much of it as they may,
-/// and then nothing was found.
+/// Whether the file was searched as far as the search stops: past the bytes the parser holds, it is not once the
+/// document's searches have read as much of it as they may, and then nothing past them was found.
 /// </param>
-internal readonly record struct StreamEndSearch(int? Length, long? NextObject, EndObjState EndObj, bool Searched = true);
+internal readonly record struct StreamEndSearch(int? Length, long? NextObject, EndObjState EndObj, bool Searched = true)
+{
+    /// <summary>
+    /// Gets where the data ends, in the file, when no <c>endstream</c> was found and the object's own <c>endobj</c>, which
+    /// only white space separates from where the search stopped, ends it, the end-of-line before it left out; -1 when none
+    /// does.
+    /// </summary>
+    public long ObjectEnd { get; init; } = -1;
+
+    /// <summary>
+    /// Gets a value indicating whether, no <c>endstream</c> found, an <c>endobj</c> follows the declared length, white
+    /// space and comments between, before where the search stopped.
+    /// </summary>
+    public bool EndObjAfterDeclared { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether, no <c>endstream</c> found, the bytes searched hold an <c>endobj</c> keyword
+    /// anywhere: the object may then end inside what is taken as its data, and whether it ends with <c>endobj</c> is
+    /// unknown.
+    /// </summary>
+    public bool EndObjSeen { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether, no <c>endstream</c> found, an object header the bytes hold stopped the search, which
+    /// <see cref="NextObject"/> then gives, rather than the next object the index places or the end of the file.
+    /// </summary>
+    public bool HeaderStopped { get; init; }
+}

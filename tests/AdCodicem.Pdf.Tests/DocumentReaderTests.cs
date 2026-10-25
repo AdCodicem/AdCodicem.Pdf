@@ -5,7 +5,9 @@ using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
+using AdCodicem.Pdf.IO.XRef;
 using AdCodicem.Pdf.Objects;
+using AdCodicem.Pdf.Validation;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -674,6 +676,55 @@ public class DocumentReaderTests
 
         window.Length.Should().Be(0);
         window.Offset.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(-1, 2, false)]
+    [InlineData(0, -1, false)]
+    [InlineData(3, 2, false)]
+    [InlineData(5, 0, false)]
+    [InlineData(1, 3, true)]
+    [InlineData(4, 0, true)]
+    public void A_source_in_memory_lends_only_a_range_it_holds_whole(long offset, int length, bool lent)
+    {
+        // A stream's data is lent where it lies in a file in memory (#170). The reader asks only for data that starts in the
+        // file and whose length it clamped to the file, which no file can make otherwise: a range before the source, of a
+        // negative length, or running past its end is lent nothing, rather than sliced out of bytes the source does not hold.
+        // An empty range at its end is lent as empty.
+        var data = "%PDF"u8.ToArray();
+        using var source = PdfFileSource.FromMemory(data);
+
+        source.TryLend(offset, length, out var memory).Should().Be(lent);
+        memory.ToArray().Should().Equal(lent ? data.AsSpan((int)offset, length).ToArray() : []);
+    }
+
+    [Fact]
+    public void A_stream_s_data_is_read_from_the_file_each_time_it_is_asked_for_and_kept_by_nothing()
+    {
+        // A stream's data was read once and kept with the stream for as long as the stream was held, by the object cache or
+        // by the caller (#170). It is read each time it is asked for: a file in memory lends it where it lies, and any other
+        // source is read again.
+        var file = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 >>")
+            .Stream(3, string.Empty, new string('A', 20_000))
+            .BuildClassic(rootNumber: 1);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var stream = document.GetObject(new PdfObjectId(3)).AsStream().Required();
+        var before = source.BytesRead;
+
+        var first = stream.GetRawBytes().ToArray();
+        var second = stream.GetRawBytes().ToArray();
+
+        first.Should().Equal(second);
+        first.Should().HaveCount(20_000).And.OnlyContain(value => value == (byte)'A');
+        (source.BytesRead - before).Should().Be(40_000, "the data is read each time it is asked for");
+
+        using var inMemory = PdfDocument.Open(file);
+        var lent = inMemory.GetObject(new PdfObjectId(3)).AsStream().Required().GetRawBytes();
+        System.Runtime.InteropServices.MemoryMarshal.TryGetArray(lent, out var segment).Should().BeTrue();
+        segment.Array.Should().BeSameAs(file, "a file in memory lends the data where it lies");
     }
 
     [Fact]
@@ -1789,21 +1840,671 @@ public class DocumentReaderTests
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(9_500)]
+    public void Rows_that_spell_endstream_after_the_length_s_own_row_are_read_as_the_length_gives(int padding)
+    {
+        // Two rows of reserved types spell an endstream after an end-of-line, a few bytes in or past the first 64 KB: the
+        // chain, which could not read the /Length, took the data up to it, and read the rows before it alone — once with a
+        // report, the section said to lack rows. The stream's own row for object 4 lies among them: the object it places
+        // gives the length, which the endstream after it confirms, and the data is taken again to it (#220).
+        var file = ChainFiles.AloneWithIndirectLength(spellingEndStream: true, padding: padding);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Index.Count.Should().Be(6 + padding);
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Rows_that_spell_endstream_in_an_update_leave_none_of_its_objects_to_the_revision_it_supersedes()
+    {
+        // The update's stream indexes its /Length, object 4, and object 8 after rows that spell an endstream: read up to it,
+        // the stream held object 4's row alone, and object 8 read as the first revision wrote it, a valid file said to have
+        // a malformed section. The update's rows are read whole, and object 8 reads as it does in its direct twin (#220).
+        using var document = PdfDocument.Open(ChainFiles.UpdateWithIndirectLength(spellingEndStream: true));
+        using var twin = PdfDocument.Open(ChainFiles.UpdateWithIndirectLength(spellingEndStream: false));
+
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
+        twin.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Index.Count.Should().Be(twin.Reader.Index.Count);
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_deferred_length_is_taken_again_by_the_row_the_section_keeps_for_it()
+    {
+        // The stream's /Index numbers its /Length, object 4, first in a row of a reserved type, which reading the rows ignores,
+        // then in the row that places it, before rows that spell an endstream: the data was not taken again by the first, and
+        // the section was said to lack the rows past them, the page's among them (#220).
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: true));
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        new PdfValidator().Validate(document).Contains(PdfValidationRuleIds.XRefSectionMalformed).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_deferred_length_is_taken_again_by_a_row_with_no_type_field()
+    {
+        // With no type field, every row is of type 1: the section's row for its /Length, before rows that spell an endstream,
+        // places it, and the data is taken again to the length it gives (#220).
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLengthAndNoTypeField());
+
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+        document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid);
+    }
+
+    [Theory]
+    [InlineData(32)]
+    [InlineData(33)]
+    public void A_deferred_length_is_taken_again_through_as_many_references_as_the_parse_resolves_a_length_through_and_no_more(int objects)
+    {
+        // Stream 7's /Length names object 4, which only its own row places, before rows that spell an endstream; object 4
+        // names object 100, which names the next, and so on, the newer table placing them, to the last, which holds the
+        // length. Through 32 objects, as far as the parse resolves a /Length, the data is taken again to that length, and
+        // every row is read. Through one more, the chain reaches no length, as a whole read of the stream reaches none: the
+        // data is left as the chain took it, up to the spelled endstream, and the rows past it are the file's to lack — the
+        // section incomplete, the length reported once the chain is read, the index rebuilt to find the page (#220).
+        var file = ChainFiles.UpdatePlacingAPaddedLengthChain(objects, ownRow: true);
+        using var document = PdfDocument.Open(file);
+        var section = document.Reader.Structure.Sections[1];
+
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+
+        if (objects == 32)
+        {
+            section.Incomplete.Should().BeFalse();
+            document.Diagnostics.Should().BeEmpty();
+            return;
+        }
+
+        section.Incomplete.Should().BeTrue();
+        section.Fault.Should().Be("it holds 5 rows where its /Index and /Size declare 8");
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which.Message.Should().Be(
+            "The /Length of cross-reference stream 7 names object 4 0, which holds null, not a length; the chain took its data up to its endstream, after 35 bytes.");
+    }
+
+    [Fact]
+    public void A_deferred_length_a_newer_section_refused_takes_no_data_again()
+    {
+        // A third revision's table refuses the row it gives object 4, the update's /Length: no row of the update's stream
+        // stands for it then, and the data is left as the chain took it, up to the endstream its rows spell (#220).
+        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: true);
+        var text = Encoding.Latin1.GetString(file);
+        var startxref = text.LastIndexOf("startxref\n", StringComparison.Ordinal) + "startxref\n".Length;
+        var second = text[startxref..text.IndexOf('\n', startxref)];
+        var update = string.Create(
+            CultureInfo.InvariantCulture,
+            $"xref\n4 1\n0000000010 99999 n\r\ntrailer\n<< /Size 11 /Root 1 0 R /Prev {second} >>\nstartxref\n{file.Length}\n%%EOF\n");
+        using var document = PdfDocument.Open(file.Concat(Encoding.ASCII.GetBytes(update)).ToArray());
+
+        var sections = document.Reader.Structure.Sections;
+        sections[0].RefusedRow.Should().NotBeNull();
+        sections[1].Incomplete.Should().BeTrue();
+        sections[1].Fault.Should().Be("it holds 1 row where its /Index and /Size declare 5");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_deferred_length_is_not_checked_against_data_a_guard_cut(bool decoding)
+    {
+        // The stream's data, taken up to the endstream its rows spell, runs past MaxStreamLength: decoding cut it, and the
+        // length, read once the chain is, was checked against it, the guard's cut reported as the file's (ADR 34). Or the
+        // data, compressed in stored blocks that show the rows as written, decodes past MaxDecodedStreamLength, which kept
+        // it from being taken again to its length.
+        var file = ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: false, stored: decoding);
+        var limits = decoding
+            ? PdfReaderLimits.Default with { MaxDecodedStreamLength = 30 }
+            : PdfReaderLimits.Default with { MaxStreamLength = 30 };
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        using var whole = PdfDocument.Open(file);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(
+            decoding ? PdfDiagnosticCodes.LimitDecodedStream : PdfDiagnosticCodes.LimitStreamLength);
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeTrue();
+        whole.Diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_filter_guard_that_keeps_a_deferred_length_s_data_from_being_taken_again_leaves_no_filter_fault()
+    {
+        // The stream's data, taken up to the endstream its rows spell, is compressed twice in stored blocks, and
+        // MaxFilterChainLength lets the first Flate alone run: over data cut short at the spelled endstream, it failed, and
+        // the guard, which kept the data from being taken again to its length, left that failure to the file (#220).
+        var file = ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: false, stored: true, layers: 2);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = 1 } });
+
+        whole.Diagnostics.Should().BeEmpty();
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitFilterChain);
+        document.Diagnostics.Should().NotContain(entry => entry.Code.StartsWith("filter.", StringComparison.Ordinal));
+
+        // The guard's report stands once, however often the stream is decoded again.
+        document.GetObject(new PdfObjectId(5)).AsStream().Required().Decode();
+        new PdfValidator().Validate(document);
+        document.Diagnostics.Count(entry => entry.Code == PdfDiagnosticCodes.LimitFilterChain).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0)]
+    public void A_guard_s_report_the_capacity_drops_beside_a_deferred_length_s_decoding_is_counted(int capacity)
+    {
+        // As above, under a capacity with room for one report, or none: the guard's report, which the capacity dropped, went
+        // with the decoding's other reports, neither kept nor counted (#220).
+        var file = ChainFiles.AloneWithIndirectLengthBeforeSpelledRows(reservedRowFirst: false, stored: true, layers: 2);
+        var limits = PdfReaderLimits.Default with { MaxFilterChainLength = 1 };
+        using var full = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits });
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = limits, DiagnosticCapacity = capacity });
+
+        document.Diagnostics.Should().Equal(full.Diagnostics.Take(capacity));
+        (document.Diagnostics.Count + document.Diagnostics.SuppressedCount).Should().Be(full.Diagnostics.Count);
+    }
+
+    [Theory]
+    [InlineData(nameof(PdfReaderLimits.MaxFilterChainLength))]
+    [InlineData(nameof(PdfReaderLimits.MaxDecodedStreamLength))]
+    [InlineData(nameof(PdfReaderLimits.MaxStreamLength))]
+    public void A_fault_a_deferred_length_s_data_holds_before_a_guard_stops_it_is_the_file_s_as_for_a_direct_one(string limit)
+    {
+        // Stream 5's hexadecimal data starts with a stray x, which encodes nothing, and its rows spell no endstream. Read
+        // whole, the fault is the file's, whether the /Length names object 4, which only the stream places, or is written
+        // direct. Under a guard on decoding, or MaxStreamLength, only the guard's report stood when the /Length waited for
+        // the chain: but the fault lies before the guard stops, where the whole data meets it, and only how the data ends is
+        // the guard's to hide (#220).
+        var limits = limit switch
+        {
+            nameof(PdfReaderLimits.MaxFilterChainLength) => PdfReaderLimits.Default with { MaxFilterChainLength = 1 },
+            nameof(PdfReaderLimits.MaxDecodedStreamLength) => PdfReaderLimits.Default with { MaxDecodedStreamLength = 20 },
+            _ => PdfReaderLimits.Default with { MaxStreamLength = 40 },
+        };
+        using var direct = PdfDocument.Open(ChainFiles.UpdateOverAStrayHexByte(deferred: false), new PdfReaderOptions { Limits = limits });
+        using var deferred = PdfDocument.Open(ChainFiles.UpdateOverAStrayHexByte(deferred: true), new PdfReaderOptions { Limits = limits });
+
+        Faults(direct).Should().ContainSingle().Which.Should().StartWith("An ASCIIHex stream holds a byte that encodes nothing");
+        Faults(deferred).Should().Equal(Faults(direct));
+
+        static string[] Faults(PdfDocument document) =>
+            [.. document.Diagnostics.Where(entry => entry.Code == PdfDiagnosticCodes.FilterFailed).Select(entry => entry.Message)];
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_whose_last_digit_alone_crosses_MaxDecodedStreamLength_is_cut_as_its_direct_twin_s()
+    {
+        // Stream 5's hexadecimal rows spell an endstream after the digits of 14 bytes and one more, where the deferred search
+        // stops: the lone digit makes a fifteenth byte, past MaxDecodedStreamLength. Decoded once more as data a guard cut,
+        // the digit was dropped and the data fit: the rows past the spelled endstream were charged to the file, the
+        // section rebuilt, where the direct twin's are the guard's. A hidden end silences what decoding says of the end,
+        // and changes nothing it decodes (#220, #224).
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 14 } };
+        using var direct = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: false, compressed: false), options);
+        using var deferred = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: true, compressed: false), options);
+
+        direct.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        deferred.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        deferred.WasRepaired.Should().BeFalse();
+        deferred.Reader.Structure.Sections[^1].CutByLimit.Should().BeTrue();
+        deferred.Reader.Structure.Sections[^1].Incomplete.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void Deferred_lengths_followed_by_long_white_space_have_it_read_on_once_however_their_data_ends(string endOfLine)
+    {
+        // Thirty revisions, each a cross-reference stream whose /Length only its own rows place, its endstream followed by
+        // 65,472 spaces before endobj. With a carriage return before the line feed, which a deferred length's data keeps, the
+        // search's end and the length's lie apart before one keyword, and each read on through the spaces: the file's
+        // searches read close to four times its length, the most they may, where twice is said (#174, #220).
+        var file = ChainFiles.UpdatesWithDeferredLengthsBeforeWhiteSpace(30, 65_472, endOfLine);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.EndStreamSearchBytes.Should().BeLessThan(2L * file.Length + 1024);
+    }
+
+    [Theory]
+    [InlineData("A85 RL RL RL")]
+    [InlineData("A85 RL RL Fl")]
+    [InlineData("A85 RL Fl RL")]
+    public void Data_whose_end_a_guard_hides_holds_no_more_rows_than_its_direct_twin_through_four_filters(string chain)
+    {
+        // As below, through four filters: the second, given less, wrote less, and left the third more room than the direct
+        // twin's decoding did, which read on, and the last read rows past where the direct twin stopped at the bound — the
+        // page indexed beside a guard, or rows and no rebuild where the direct twin rebuilds (#220).
+        var direct = ChainFiles.RowsThroughFilters(deferred: false, chain.Split(' '));
+        var deferred = ChainFiles.RowsThroughFilters(deferred: true, chain.Split(' '));
+
+        for (var bound = 1; bound <= 1500; bound++)
+        {
+            var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = bound } };
+            using var directDocument = PdfDocument.Open(direct, options);
+            using var deferredDocument = PdfDocument.Open(deferred, options);
+
+            Read(deferredDocument).Should().Be(Read(directDocument), $"MaxDecodedStreamLength is {bound}");
+        }
+
+        static string Read(PdfDocument document) => string.Join(
+            ' ',
+            document.WasRepaired,
+            document.Reader.Structure.Sections[^1].CutByLimit,
+            document.GetObject(new PdfObjectId(1)) is PdfDictionary,
+            document.GetObject(new PdfObjectId(39)) is PdfDictionary,
+            document.Reader.ChainIndex?.Count);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Data_whose_end_a_guard_hides_leaves_the_filters_after_a_dropped_group_the_room_its_direct_twin_s_have(bool hex)
+    {
+        // Stream 5's rows pass through three filters, the first lacking its end marker and ending inside a unit. Decoded once
+        // more knowing its end hidden, the first filter drops the unit, whose bytes counted against MaxDecodedStreamLength
+        // but not against what the filters before the last share: the filter after it was given more room than the direct
+        // twin's, and read a row past where it stopped — the page indexed beside a guard where the direct twin leaves it out,
+        // or a row and no rebuild where the direct twin rebuilds (#220).
+        var direct = ChainFiles.RowsThroughThreeFilters(deferred: false, hex);
+        var deferred = ChainFiles.RowsThroughThreeFilters(deferred: true, hex);
+
+        for (var bound = 1; bound <= 400; bound++)
+        {
+            var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = bound } };
+            using var directDocument = PdfDocument.Open(direct, options);
+            using var deferredDocument = PdfDocument.Open(deferred, options);
+
+            Read(deferredDocument).Should().Be(Read(directDocument), $"MaxDecodedStreamLength is {bound}");
+        }
+
+        static string Read(PdfDocument document) => string.Join(
+            ' ',
+            document.WasRepaired,
+            document.Reader.Structure.Sections[^1].CutByLimit,
+            document.GetObject(new PdfObjectId(1)) is PdfDictionary,
+            document.GetObject(new PdfObjectId(39)) is PdfDictionary,
+            document.Reader.ChainIndex?.Count);
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_that_holds_every_row_under_a_guard_on_decoding_is_checked_against_its_length()
+    {
+        // Stream 5's RunLength runs hold its Flate rows and zero bytes, then the bytes of a spelled endstream, where the
+        // deferred search stops; MaxDecodedStreamLength stops the Flate output past every row. Nothing would take the data
+        // again, and the RunLength run the spelled endstream parts is reported as read whole, but the length, which says the
+        // chain took the data short, was not checked under the guard: the run-out stood as the file's fault alone (#220).
+        var file = ChainFiles.UpdateOverRunsSpellingAnEndStream(deferred: true);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 100 } });
+
+        whole.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid);
+        document.Diagnostics.Select(entry => entry.Code).Where(code => code != PdfDiagnosticCodes.LimitDecodedStream)
+            .Should().Equal(whole.Diagnostics.Select(entry => entry.Code));
+        document.Diagnostics.Should().Contain(entry => entry.Code == PdfDiagnosticCodes.LimitDecodedStream);
+    }
+
+    [Theory]
+    [InlineData(60, true)]
+    [InlineData(50, true)]
+    [InlineData(49, false)]
+    public void A_deferred_length_s_data_MaxStreamLength_cuts_past_every_row_is_checked_against_its_length(int bound, bool everyRow)
+    {
+        // As above, MaxStreamLength cutting the data past every row, from 50 bytes on — a RunLength byte, 7 of the stored
+        // block's header and 42 of rows —: the run the cut parts is the guard's, but the length, checked against where the
+        // search found the endstream, which no cut moves, says the chain took the data short, as read whole. It was left
+        // unchecked, as data a guard cut that lacks rows is, which the cut keeps from being taken again (#220). The Flate data
+        // is stored: compressed, where a cut parts it depended on the platform's zlib, which zlib-ng writes otherwise.
+        var file = ChainFiles.UpdateOverRunsSpellingAnEndStream(deferred: true, stored: true);
+        using var whole = PdfDocument.Open(file);
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxStreamLength = bound } });
+        var invalid = whole.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which;
+
+        document.Diagnostics.Should().Equal(everyRow ? [document.Diagnostics[0], invalid] : [document.Diagnostics[0]]);
+        document.Diagnostics[0].Code.Should().Be(PdfDiagnosticCodes.LimitStreamLength);
+        document.Reader.Structure.Sections[^1].CutByLimit.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_whose_rows_a_guard_on_decoding_holds_all_of_reports_its_filters_ends()
+    {
+        // Stream 5's rows and 30 zero bytes, compressed, are written in hexadecimal with no ">", and MaxDecodedStreamLength
+        // stops the Flate output past every row the section declares: no row is missing, so nothing would take the data
+        // again, and the endstream it was taken to ends it whatever the guard does. Its missing ">" is the file's, as for
+        // the direct twin (#220).
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 50 } };
+        using var direct = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: false, compressed: true, padding: 30), options);
+        using var deferred = PdfDocument.Open(ChainFiles.UpdateOverHexRows(deferred: true, compressed: true, padding: 30), options);
+
+        direct.Diagnostics.Should().Contain(entry => entry.Message.StartsWith("An ASCIIHex stream ends without its > end marker", StringComparison.Ordinal));
+        deferred.Diagnostics.Select(entry => entry.Message).Should().Equal(direct.Diagnostics.Select(entry => entry.Message));
+    }
+
+    [Fact]
+    public void A_deferred_length_whose_reference_leads_to_an_object_only_its_own_section_places_is_read_once_the_chain_is()
+    {
+        // The cross-reference stream's /Length, object 5, which the newer table places, holds a reference to object 6, which
+        // only the stream indexes: the chain read object 5 alone, and judged the length as holding null (#182).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "6 0 R", compressed: false, predicted: false, placed: true, six: "56");
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().OnlyContain(section => section.State == IO.XRef.XRefSectionState.Read);
+    }
+
     [Fact]
     public void Reports_the_rows_a_deferred_length_shows_the_chain_did_not_read()
     {
-        // The rows of objects 6 and 7, of reserved types, spell an endstream after an end-of-line: the chain, which could
-        // not read the /Length, took the data up to it. The length, read once the chain is, gives 14 bytes more, which the
-        // endstream after them confirms: what the chain left unread is reported. The rows are not read again.
-        var file = ChainFiles.AloneWithIndirectLength(spellingEndStream: true);
+        // The rows spell an endstream before the stream's own row for its /Length, the last: what the chain read holds no
+        // row to place it by. The length, read once the chain is, gives 21 bytes more, which the endstream after them
+        // confirms: what the chain left unread is reported, and the section's missing rows set off a rebuild.
+        var file = ChainFiles.AloneWithIndirectLength(spellingEndStream: true, lengthLast: true);
         using var document = PdfDocument.Open(file);
 
-        var report = document.Diagnostics.Should().ContainSingle().Which;
-        report.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+        var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.StreamLengthInvalid).Which;
         report.Position.Should().Be(PdfTemplate.OffsetOf(file, "stream\n", 1) + "stream\n".Length);
         report.Message.Should().Be(
-            "The /Length of cross-reference stream 5 gives 56 bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream 42 bytes in, and read no row past it.");
+            "The /Length of cross-reference stream 5 gives 63 bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream 42 bytes in, and read no row past it.");
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.Incomplete.Should().BeTrue();
         document.GetObject(new PdfObjectId(3)).AsDictionary().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("generation")]
+    [InlineData("object stream")]
+    [InlineData("name")]
+    [InlineData("short")]
+    [InlineData("unconfirmed")]
+    [InlineData("unreadable")]
+    [InlineData("superseded")]
+    public void A_length_row_that_does_not_stand_leaves_the_data_up_to_the_endstream_the_rows_spell(string fault)
+    {
+        // The stream's row for object 4 places it under another generation, or in an object stream; object 4 holds a name;
+        // it gives no more than the data taken, or more that no endstream confirms; its header is misspelled; an update
+        // gives object 4 a place that holds nothing. None says where the data ends: the rows before the endstream they
+        // spell are all the section holds, as the chain took them (#220).
+        var file = ChainFiles.AloneWithIndirectLength(
+            spellingEndStream: true, lengthOff: fault switch { "short" => -14, "unconfirmed" => 3, _ => 0 });
+        var row = (int)PdfTemplate.OffsetOf(file, "stream\n", 1) + "stream\n".Length + (4 * 7);
+
+        switch (fault)
+        {
+            case "generation":
+                file[row + 6] = 1;
+                break;
+            case "object stream":
+                file[row] = 2;
+                break;
+            case "name":
+            case "unreadable":
+                var replaced = Encoding.Latin1.GetString(file).Replace(
+                    "4 0 obj\n56\n", fault == "name" ? "4 0 obj\n/F\n" : "4 0 xbj\n56\n", StringComparison.Ordinal);
+                file = Encoding.Latin1.GetBytes(replaced);
+                break;
+            case "superseded":
+                file = WithUpdatePlacingFourOutside(file);
+                break;
+        }
+
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[^1].Incomplete.Should().BeTrue();
+        document.Reader.Structure.Sections[^1].Fault.Should().Be("it holds 6 rows where its /Index and /Size declare 8");
+
+        static byte[] WithUpdatePlacingFourOutside(byte[] file)
+        {
+            var stream = PdfTemplate.OffsetOf(file, "5 0 obj");
+            var update = new StringBuilder("%").Append('x', 2 * PdfFileReader.NearbySearchRadius).Append('\n');
+            var xref = file.Length + update.Length;
+            update.Append(CultureInfo.InvariantCulture, $"xref\n4 1\n0000099999 00000 n\r\ntrailer\n<< /Size 8 /Root 1 0 R /Prev {stream} >>\nstartxref\n{xref}\n%%EOF\n");
+            return [.. file, .. Encoding.Latin1.GetBytes(update.ToString())];
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Rows_that_spell_endstream_in_an_older_section_are_read_as_its_length_gives(bool twin)
+    {
+        // The older section's /Length names object 4, which only it indexes, and two of its rows spell an endstream: the
+        // search for it stops at the update's first object, past them. Its data is taken again to the length object 4
+        // gives, as the newest section's is (#220).
+        var file = ChainFiles.OlderWithIndirectLength(spellingEndStream: !twin);
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections.Should().HaveCount(2).And.OnlyContain(section => !section.Incomplete);
+        document.GetObject(new PdfObjectId(8)).Should().BeOfType<PdfString>().Which.ToText().Should().Be("new");
+        new PdfValidator().Validate(document).Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Updates_each_with_a_long_deferred_length_are_all_searched()
+    {
+        // Five revisions, each a cross-reference stream of 70,000 bytes of rows whose /Length only it indexes: each is
+        // searched for its endstream past the first window, up to the next object the newer sections place or the end of
+        // the file. Together they read about the file once, and one read past each: no search is left undone for want of
+        // what the document's searches may read (EndStreamSearchPasses).
+        var file = ChainFiles.UpdatesWithIndirectLengths(count: 5, padding: 10_000);
+        using var source = new StrictCountingSource(file);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Structure.Sections.Should().HaveCount(5).And.OnlyContain(section => section.State == XRefSectionState.Read && !section.Incomplete);
+        document.Reader.Index.Count.Should().Be(4 + (5 * 10_002));
+        source.BytesRead.Should().BeLessThan(3L * file.Length);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    public void Reports_the_data_a_deferred_length_gives_past_the_chain_s_endstream_once_the_searches_have_read_all_they_may(int sections)
+    {
+        // Cross-reference streams written one after the other, with no endstream of their own, share 512 KB of data and the
+        // endstream after it, which four zero bytes and a second endstream follow; each one's /Length names an object only
+        // the oldest section, a classic table, places. Each is searched past its window up to the first endstream, and five
+        // such searches read more than the four times the file the document's searches may (EndStreamSearchPasses). The
+        // newest one's length, read once the chain is, gives the data up to the second endstream: what the chain did not read
+        // is reported, as for one such stream alone, though the file may no longer be read to find where the first starts.
+        var file = SectionsSharingTheirData(sections, 512 * 1024, newestExtra: 14);
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections.Should().HaveCount(sections + 1).And.OnlyContain(section => section.State == XRefSectionState.Read);
+        (document.Reader.EndStreamSearchBytes >= PdfFileReader.EndStreamSearchPasses * file.Length).Should().Be(sections == 5);
+        var report = document.Diagnostics.Should().ContainSingle().Which;
+        report.Code.Should().Be(PdfDiagnosticCodes.StreamLengthInvalid);
+        report.Position.Should().Be(PdfTemplate.OffsetOf(file, ">>\nstream\n", sections) + ">>\nstream\n".Length);
+        report.Message.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The /Length of cross-reference stream {40 + sections} gives 524305 bytes, which an endstream confirms; the chain, which could not read it, took the data up to an endstream 524291 bytes in, and read no row past it."));
+    }
+
+    [Theory]
+    [InlineData(false, false, "\n")]
+    [InlineData(true, false, "\n")]
+    [InlineData(false, true, "\r\n")]
+    public void A_cross_reference_stream_whose_length_only_it_indexes_is_read_past_the_first_window_as_its_direct_twin(
+        bool compressed, bool endingInCarriageReturn, string endOfLine)
+    {
+        // 70,000 bytes of rows, past the 64 KB the chain's window first holds: the data, whose /Length object 4 gives and
+        // only the stream indexes, was searched for its endstream within the window alone, which grew to MaxTrailerLength,
+        // reported reached, and 9,350 of 10,000 rows were read. It is searched in the file, as any stream's whose length is
+        // not confirmed, and read whole — its last byte a carriage return too (#220).
+        var file = ChainFiles.AloneWithIndirectLength(padding: 10_000, compressed: compressed, endingInCarriageReturn: endingInCarriageReturn, endOfLine: endOfLine);
+        var options = new PdfReaderOptions { ThrowOnLimit = true };
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Index.Count.Should().Be(10_006 + (endingInCarriageReturn ? 1 : 0));
+        document.Reader.Structure.Sections.Should().ContainSingle().Which.CutByLimit.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_is_read_once_more_than_its_direct_twin_s()
+    {
+        // The search reads the data to its endstream, and the decoding reads it again: the file is read once more than its
+        // direct twin, whose /Length, written in place of "4 0 R", takes as many bytes, and not a byte past the next read.
+        var file = ChainFiles.AloneWithIndirectLength(padding: 10_000);
+        var text = Encoding.Latin1.GetString(file);
+        var twin = Encoding.Latin1.GetBytes(text.Replace("/Length 4 0 R", "/Length 70042", StringComparison.Ordinal));
+        twin.Length.Should().Be(file.Length);
+
+        var read = BytesReadOpening(file);
+        var twinRead = BytesReadOpening(twin);
+
+        read.Should().BeInRange(twinRead, twinRead + 70_042 + PdfFileReader.EndStreamSearchChunk);
+
+        static long BytesReadOpening(byte[] file)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+            document.Diagnostics.Should().BeEmpty();
+            return source.BytesRead;
+        }
+    }
+
+    [Fact]
+    public void Rows_that_spell_an_object_header_do_not_end_a_deferred_length_s_data()
+    {
+        // Rows of reserved types spell "1 0 obj" past the first 64 KB: a header the bytes hold ends a search for a stream's
+        // endstream, but not one whose /Length the chain could not read, whose rows may spell anything (#220).
+        using var document = PdfDocument.Open(ChainFiles.AloneWithIndirectLength(padding: 10_000, spellingHeader: true));
+
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Index.Count.Should().Be(10_006);
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_with_no_endstream_before_the_end_of_the_file_makes_its_section_malformed()
+    {
+        // The stream's endstream is misspelled: its data, which no length the chain could read ends, ends nowhere, and the
+        // section is not read — once, the rest of the file was taken for its data (#220). The index is rebuilt.
+        var file = ChainFiles.AloneWithIndirectLength(padding: 10_000);
+        var at = (int)PdfTemplate.OffsetOf(file, "endstream");
+        file[at] = (byte)'x';
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        var section = document.Reader.Structure.Sections.Should().ContainSingle().Which;
+        section.State.Should().Be(XRefSectionState.Malformed);
+        section.Fault.Should().Be(
+            "its /Length is the reference 4 0 R, which no section read before it places where it can be read, and no endstream follows its data before the end of the file");
+        document.Diagnostics.Select(entry => entry.Code).Should().NotContain(code => code.StartsWith("limit.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_with_no_endstream_before_the_next_object_makes_its_section_malformed()
+    {
+        // The older stream's /Length names object 9, which only it indexes, and its endstream is misspelled: the search for
+        // it stops at the update's first object the newer section places (#220).
+        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, olderIndirect: true);
+        var at = (int)PdfTemplate.OffsetOf(file, "endstream");
+        file[at] = (byte)'x';
+        var next = PdfTemplate.OffsetOf(file, "8 0 obj\n(new)");
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[1].Fault.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"its /Length is the reference 9 0 R, which no section read before it places where it can be read, and no endstream follows its data before the next object, at {next}"));
+    }
+
+    [Fact]
+    public void A_deferred_length_s_data_the_searches_could_no_longer_read_makes_its_section_malformed_and_says_why()
+    {
+        // Six revisions, newest first in the file, each a cross-reference stream whose /Length only its own rows place, and
+        // whose data runs over the streams after it and 500,000 spaces to the endstream they share at the end of the file:
+        // the first five are each searched for it past their first window, and read the file about once each, more than
+        // four times in all — as much as the document's searches may (EndStreamSearchPasses). The sixth's data is searched
+        // in the bytes read with its object alone, which hold no endstream: it ends nowhere the section says, and the fault
+        // says the search was not made, not that no endstream follows the data (#220).
+        var file = ChainFiles.UpdatesSpendingTheSearches(spenders: 6, padding: 500_000, cutTarget: false);
+        using var document = PdfDocument.Open(file);
+
+        var sections = document.Reader.Structure.Sections;
+        sections.Should().HaveCount(6);
+        sections.Take(5).Should().OnlyContain(section => section.State == XRefSectionState.Read && !section.Incomplete);
+        sections[5].State.Should().Be(XRefSectionState.Malformed);
+        sections[5].CutByLimit.Should().BeFalse();
+        const string Fault =
+            "its /Length is the reference 30 0 R, which no section read before it places where it can be read, and its data was not searched for its endstream, the document's searches for endstream having read as much of the file as they may";
+        sections[5].Fault.Should().Be(Fault);
+        document.Reader.EndStreamSearchBytes.Should().BeGreaterThanOrEqualTo(PdfFileReader.EndStreamSearchPasses * file.Length);
+        document.Diagnostics.Should().ContainSingle().Which.Should().Match<PdfDiagnostic>(diagnostic =>
+            diagnostic.Code == PdfDiagnosticCodes.XRefSectionUnreadable && diagnostic.Position == sections[5].Offset &&
+            diagnostic.Message.Contains(Fault, StringComparison.Ordinal));
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_deferred_length_read_once_the_chain_is_says_what_its_chain_leads_to()
+    {
+        // Stream 7's /Length names object 5, which the newer table places, and which holds 6 0 R, which only stream 7 places:
+        // the length waits for the chain, then resolves to a name, which is said, as the parse says what it resolves to — not
+        // the reference object 5 holds (#220).
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "6 0 R", compressed: false, predicted: false, placed: true, six: "/Foo");
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().ContainSingle().Which.Message.Should().Be(
+            "The /Length of cross-reference stream 7 names object 5 0, which holds the name /Foo, not a length; the chain took its data up to its endstream, after 56 bytes.");
+    }
+
+    [Theory]
+    [InlineData(31, false)]
+    [InlineData(32, false)]
+    [InlineData(33, true)]
+    [InlineData(34, true)]
+    public void A_deferred_length_whose_chain_is_too_long_to_follow_is_reported_at_opening_as_a_later_load_reads_it(int objects, bool tooLong)
+    {
+        // Stream 7's /Length names object 5, which the newer table places, and which names object 100, the next, and so on;
+        // the last holds 56, and none is cut. The chain read follows as many objects as the parse resolves a /Length through,
+        // and reads a longer chain as null, as a later load of stream 7 does: the length is reported at opening, and the load
+        // adds nothing. Once, the parse resolved the reference the chain read gave back, took 56, and the report waited for
+        // the load (#220, #224).
+        var placed = new Dictionary<int, string>();
+        var last = 100 + objects - 2;
+
+        for (var number = 100; number <= last; number++)
+        {
+            placed[number] = number < last ? string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 R") : "56";
+        }
+
+        var file = ChainFiles.UnderAnUpdate(
+            "/Type /XRef /Size 8 /W [1 4 2] /Length 5 0 R", "100 0 R", compressed: false, predicted: false, placed: true, placedToo: placed);
+        string[] expected = tooLong ? [PdfDiagnosticCodes.StreamLengthInvalid] : [];
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(expected);
+
+        document.GetObject(new PdfObjectId(7)).AsStream().Required().GetRawBytes().Length.Should().Be(56);
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(expected);
+    }
+
+    [Fact]
+    public void A_deferred_length_s_fault_names_the_reference_at_the_end_of_its_chain()
+    {
+        // As above, the update placing object 9, which holds the reference 11 0 R, which no section places: the fault names
+        // the link the chain could not read, not the first, which it read (#220).
+        var file = ChainFiles.UpdateWithIndirectLength(spellingEndStream: false, olderIndirect: true, nine: "11 0 R");
+        var at = (int)PdfTemplate.OffsetOf(file, "endstream");
+        file[at] = (byte)'x';
+        var next = PdfTemplate.OffsetOf(file, "8 0 obj\n(new)");
+        using var document = PdfDocument.Open(file);
+
+        document.Reader.Structure.Sections[1].Fault.Should().Be(string.Create(
+            CultureInfo.InvariantCulture,
+            $"its /Length holds the reference 11 0 R, which no section read before it places where it can be read, and no endstream follows its data before the next object, at {next}"));
     }
 
     [Theory]
@@ -1884,11 +2585,13 @@ public class DocumentReaderTests
     [Theory]
     [InlineData("<< /A 1 /B >>", 64 * 1024)]
     [InlineData("<< /Producer (an object longer than the trailer guard allows, which a place the section was moved to is only a guess at; it is read as itself when it is asked for, under the guard that bounds objects) >>", 128)]
+    [InlineData("<< /Type /Font /Subtype /CIDFontType2 /BaseFont /Foo /DW 1000 /W [0 [500] 1 [500] 2 [500] 3 [500] 4 [500] 5 [500] 6 [500] 7 [500] 8 [500] 9 [500] 10 [500] 11 [500] 12 [500] 13 [500] 14 [500] 15 [500] 16 [500] 17 [500] 18 [500] 19 [500] 20 [500] 21 [500] 22 [500] 23 [500] 24 [500] 25 [500] 26 [500] 27 [500] 28 [500] 29 [500]] >>", 128)]
     public void A_place_a_section_may_have_moved_to_that_holds_another_object_leaves_nothing_of_its_reading(string six, int maxTrailerLength)
     {
         // /Prev names a place 2 bytes into object 6, just before the older stream: object 6, nearer, is tried first, and is
-        // no section — a dictionary with a key short of a value, or one the trailer guard cuts. Neither its syntax fault
-        // nor the guard is reported: it was read as a section, and is read as itself when asked for.
+        // no section — a dictionary with a key short of a value, or one the trailer guard cuts, a CIDFont's whose /W gives
+        // its glyphs' widths among them. Neither its syntax fault nor the guard is reported: it was read as a section, and
+        // is read as itself when asked for. The font, once taken for the moved section, ended the chain as the guard's.
         var built = ChainFiles.UnderAnUpdate("/Type /XRef /Size 8 /W [1 4 2] /Length {length}", "0", compressed: false, predicted: false, placed: true, six: six);
         var stream = PdfTemplate.OffsetOf(built, "\n7 0 obj") + 1;
         var named = PdfTemplate.OffsetOf(built, "\n6 0 obj") + 3;
@@ -1903,6 +2606,29 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.XRefOffsetAdjusted);
         document.GetObject(new PdfObjectId(6)).Should().NotBeSameAs(PdfNull.Instance);
+    }
+
+    [Fact]
+    public void A_place_a_section_may_have_moved_to_whose_dictionary_a_guard_cuts_is_no_section_the_chain_ends_at()
+    {
+        // Object 6 is a CIDFont that writes its /Type past a /W the trailer guard cuts: cut before it says what it is, the
+        // dictionary may be a section's, and the guard that hid it is reported. It is not the section all the same — only a
+        // value a section is read with that leads to an object a guard cut is (#263) —: the older stream, farther, is found.
+        var built = ChainFiles.UnderAnUpdate("/Type /XRef /Size 8 /W [1 4 2] /Length {length}", "0", compressed: false, predicted: false, placed: true, six: "<< /Subtype /CIDFontType2 /W [0 [500] 1 [500] 2 [500] 3 [500] 4 [500] 5 [500] 6 [500] 7 [500] 8 [500] 9 [500] 10 [500] 11 [500] 12 [500] 13 [500] 14 [500] 15 [500] 16 [500] 17 [500] 18 [500] 19 [500] 20 [500] 21 [500] 22 [500] 23 [500] 24 [500] 25 [500] 26 [500] 27 [500] 28 [500] 29 [500]] /Type /Font >>");
+        var stream = PdfTemplate.OffsetOf(built, "\n7 0 obj") + 1;
+        var named = PdfTemplate.OffsetOf(built, "\n6 0 obj") + 3;
+        var file = Encoding.Latin1.GetBytes(Encoding.Latin1.GetString(built).Replace(
+            string.Create(CultureInfo.InvariantCulture, $"/Prev {stream}"),
+            string.Create(CultureInfo.InvariantCulture, $"/Prev {named}"),
+            StringComparison.Ordinal));
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxTrailerLength = 128 } };
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.WasRepaired.Should().BeFalse();
+        document.Diagnostics.Select(diagnostic => diagnostic.Code).Should().Equal(PdfDiagnosticCodes.LimitTrailer, PdfDiagnosticCodes.XRefOffsetAdjusted);
+        document.Diagnostics[1].Message.Should().EndWith(string.Create(CultureInfo.InvariantCulture, $"was found {stream - named} bytes from there."));
+        document.GetObject(new PdfObjectId(6)).AsDictionary().IsOfType(PdfName.Font).Should().BeTrue();
     }
 
     [Fact]
@@ -2180,15 +2906,21 @@ public class DocumentReaderTests
         document.Reader.Index.Capacity.Should().BeLessThan(4000, "the map doubles from the newest section's 1,103 slots");
     }
 
-    [Fact]
-    public void An_update_s_rows_and_the_original_s_make_room_for_the_objects_the_newest_size_numbers()
+    [Theory]
+    [InlineData("3000")]
+    [InlineData("3000.0")]
+    public void An_update_s_rows_and_the_original_s_make_room_for_the_objects_the_newest_size_numbers(string size)
     {
         // The update rewrites a thousand of the original's 3,000 objects: the original's rows for them supersede nothing,
-        // and room made for all its rows on top of the update's doubled the map. The newest /Size numbers every object.
-        var file = TestPdfBuilder.AppendIncrementalUpdate(
+        // and room made for all its rows on top of the update's doubled the map. The newest /Size numbers every object,
+        // written direct, as an integer or as a real with no fractional part, which the reader reads as the integer it is.
+        var built = TestPdfBuilder.AppendIncrementalUpdate(
             ChainOfSections(sections: 1, rows: 3000),
             rootNumber: 1,
             [.. Enumerable.Range(3, 1000).Select(number => (number, "(updated)"))]);
+        var text = Encoding.Latin1.GetString(built);
+        var newest = text.LastIndexOf("/Size 3000", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, newest), "/Size " + size, text.AsSpan(newest + "/Size 3000".Length)));
 
         using var document = PdfDocument.Open(file);
 
@@ -2386,6 +3118,63 @@ public class DocumentReaderTests
         return Encoding.ASCII.GetBytes(file.ToString());
     }
 
+    /// <summary>
+    /// A classic table placing the catalog, an empty page tree and objects 31 onward, then <paramref name="count"/>
+    /// cross-reference streams, 41 onward, each naming the one before it, the oldest the table, written one after the other
+    /// with no <c>endstream</c> of its own: the data of each, its one free row first, runs through the streams after it and
+    /// <paramref name="padding"/> bytes of <c>x</c> to the <c>endstream</c> they share, which four zero bytes and a second
+    /// <c>endstream</c> follow. Each stream's <c>/Length</c> is the object the table places for it, 31 onward, which gives
+    /// its data up to the first <c>endstream</c>; the newest one's gives <paramref name="newestExtra"/> bytes more.
+    /// </summary>
+    private static byte[] SectionsSharingTheirData(int count, int padding, int newestExtra)
+    {
+        // Each length is written in ten digits: the offsets the first pass finds hold for the second, which writes them.
+        var lengths = new long[count];
+        var bytes = Array.Empty<byte>();
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            var file = new HandWrittenFile(version: "1.5");
+            var rows = new Dictionary<int, long>
+            {
+                [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
+                [2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+            };
+
+            for (var i = 0; i < count; i++)
+            {
+                rows[31 + i] = file.Object(31 + i, lengths[i].ToString("D10", CultureInfo.InvariantCulture));
+            }
+
+            var previous = file.Table(31 + count, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {31 + count} /Root 1 0 R"));
+            var dataStarts = new long[count];
+
+            for (var i = 0; i < count; i++)
+            {
+                var at = file.Position;
+                file.Raw(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{41 + i} 0 obj\n<< /Type /XRef /Size 60 /W [1 1 1] /Index [{51 + i} 1] /Root 1 0 R /Prev {previous} /Length {31 + i} 0 R >>\nstream\n"));
+                dataStarts[i] = file.Position;
+                file.Raw("\0\0\0");
+                previous = at;
+            }
+
+            file.Raw(new string('x', padding));
+            var dataEnd = file.Position;
+            file.Raw("\nendstream\0\0\0\0\nendstream\nendobj\n");
+            file.Raw(string.Create(CultureInfo.InvariantCulture, $"startxref\n{previous}\n%%EOF\n"));
+            bytes = file.Bytes;
+
+            for (var i = 0; i < count; i++)
+            {
+                lengths[i] = dataEnd - dataStarts[i] + (i == count - 1 ? newestExtra : 0);
+            }
+        }
+
+        return bytes;
+    }
+
     /// <summary>Where the data of the file's object stream starts.</summary>
     private static long ObjectStreamDataStart(byte[] file)
     {
@@ -2496,5 +3285,137 @@ public class DocumentReaderTests
 
             base.Dispose(disposing);
         }
+    }
+
+    [Theory]
+    [InlineData(28, 12)]
+    [InlineData(21, 12)]
+    [InlineData(49, 12)]
+    [InlineData(56, 12)]
+    [InlineData(21, 2)]
+    [InlineData(28, 2)]
+    public void Reads_a_cross_reference_stream_whose_length_row_a_spelled_endstream_parts_the_predicted_row_of(int columns, int predictor)
+    {
+        // Stream 7's /Length names object 5, which only its own row places, and its rows spell an endstream right after that
+        // row, which parts the predicted row it lies in: the data up to it decodes, as data whose end the file gives, to the
+        // rows before that one, the parted one dropped — or, the first parted, to data the PNG predictor leaves as decoded,
+        // its tag bytes in the rows; or, under the TIFF predictor, to that row still differenced —, and the row for the
+        // /Length was not found, or found garbled. The section was charged with the rows it lacked and the index rebuilt
+        // (#220).
+        var file = ChainFiles.DeferredLengthRowPartedBySpelledEndStream(columns, predictor);
+
+        using var document = PdfDocument.Open(file);
+
+        document.Diagnostics.Should().BeEmpty();
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    [InlineData(6)]
+    public void Reads_a_cross_reference_stream_whose_rows_a_length_it_places_runs_past_spell_an_endstream_before_the_first(int prefix)
+    {
+        // Stream 7's /Length names object 5, which only its own row places, and its data spells an endstream before its first
+        // row: the data up to it holds no whole row, which the row for the /Length cannot lie in, nor a predicted row undone,
+        // and the section lacks every row, the file's. Asked to look for that row again, the reader would divide by the
+        // length of a row it took to be none.
+        var file = ChainFiles.DeferredLengthEndStreamSpelledBeforeRows(prefix);
+
+        using var document = PdfDocument.Open(file);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.XRefRebuilt);
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_decoding_guard_a_deferred_length_s_data_reaches_once_its_predicted_row_is_undone_is_reached_as_read_whole(bool rowBefore)
+    {
+        // Stream 7's /Length names object 5, which only its own row places, 1,820 bytes or more into the rows a RunLength step
+        // decodes after a predicted Flate one; its rows spell an endstream that parts a predicted row, past object 5's row or
+        // before it. MaxDecodedStreamLength, 1,100 bytes, stops the RunLength step read whole, the rows past it the guard's.
+        // The data up to the endstream, its end the file's, decodes within the bound; decoded again, its predicted row undone
+        // as far as it goes, to look for the /Length's row, it reached the bound, which the reader dropped with what that
+        // decoding reported: the section was charged with the rows it lacked and the index rebuilt, where ThrowOnLimit threw.
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1100 } };
+
+        using (var whole = PdfDocument.Open(ChainFiles.DeferredLengthRowPastRunLengthRuns(rowBefore, direct: true), options))
+        {
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+            whole.WasRepaired.Should().BeFalse();
+        }
+
+        var file = ChainFiles.DeferredLengthRowPastRunLengthRuns(rowBefore);
+
+        // Unbounded, the row before the endstream is found in the data decoded again, which is taken again to the length; one
+        // past it is not among the rows the data holds, which a length checked once the chain is read says (#220).
+        using (var unbounded = PdfDocument.Open(file))
+        {
+            unbounded.WasRepaired.Should().Be(!rowBefore);
+        }
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        document.WasRepaired.Should().BeFalse();
+        document.Reader.Structure.Sections[0].CutByLimit.Should().BeTrue();
+        document.GetObject(new PdfObjectId(3)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+
+        var throwing = () => PdfDocument.Open(file, options with { ThrowOnLimit = true });
+        throwing.Should().Throw<PdfLimitExceededException>().Which.LimitName.Should().Be(nameof(PdfReaderLimits.MaxDecodedStreamLength));
+    }
+
+    [Fact]
+    public void Rows_a_decoding_guard_stops_once_a_parted_predicted_row_is_undone_are_read_as_far_as_the_guard_lets_them()
+    {
+        // As above, but the page, object 155, has its row in the predicted row the spelled endstream parts, the 152nd, 1,057
+        // bytes into the rows, within the 1,100 bytes MaxDecodedStreamLength lets the RunLength step decode, and object 5's
+        // row past them. Read whole, the rows past the bound are the guard's, the page's row read. The data decoded again,
+        // its predicted row undone as far as it goes, stops at the bound short of the /Length's row: where the rows end is
+        // the guard's, the rows it holds read — not only those the decoding before, which dropped the parted row, held.
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1100 } };
+
+        using (var whole = PdfDocument.Open(ChainFiles.DeferredLengthPageRowInPartedRunLengthRow(direct: true), options))
+        {
+            whole.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+            whole.GetObject(new PdfObjectId(155)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+        }
+
+        var file = ChainFiles.DeferredLengthPageRowInPartedRunLengthRow();
+
+        using (var unbounded = PdfDocument.Open(file))
+        {
+            unbounded.Diagnostics.Should().BeEmpty();
+        }
+
+        using var document = PdfDocument.Open(file, options);
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(PdfDiagnosticCodes.LimitDecodedStream);
+        document.WasRepaired.Should().BeFalse();
+        document.GetObject(new PdfObjectId(155)).AsDictionary().Required().IsOfType(PdfName.Page).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_deferred_length_no_row_numbers_is_not_looked_for_in_data_decoded_again()
+    {
+        // Stream 7's /Length names object 5, which no section places and no subsection of its own numbers, and its rows spell
+        // an endstream that parts a predicted row. The data up to it, its end the file's, decodes within the 1,100 bytes
+        // MaxDecodedStreamLength lets the RunLength step decode; decoded again, its predicted row undone, it would pass them,
+        // but no row could give the length there: what is read is what an unbounded reading reads, no guard reached.
+        var file = ChainFiles.DeferredLengthNoRowNumbersPastRunLengthRuns();
+        string[] unboundedCodes;
+
+        using (var unbounded = PdfDocument.Open(file))
+        {
+            unboundedCodes = [.. unbounded.Diagnostics.Select(entry => entry.Code)];
+        }
+
+        using var document = PdfDocument.Open(file, new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxDecodedStreamLength = 1100 } });
+
+        document.Diagnostics.Select(entry => entry.Code).Should().Equal(unboundedCodes).And.NotContain(PdfDiagnosticCodes.LimitDecodedStream);
     }
 }
