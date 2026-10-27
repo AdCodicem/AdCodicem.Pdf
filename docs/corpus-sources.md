@@ -444,7 +444,16 @@ license could not be shown to reach all of the file:
   private individual; the VHA coding handbook, which reproduces the AMA's CPT modifier definitions; and the USGS
   Honshu summary map, which carries two news photographs credited to Associated Press and Reuters.
 
-The other 133 remote documents stay at their publisher because nothing lets the project copy them.
+Two more followed the same day, when the maintainer let terms that allow a verbatim copy for non-commercial purposes
+only count, since the copy repository sells nothing: IRCC's IMM 1344 and the CFIA's form 5704, LiveCycle XFA forms
+fetched until then from their Internet Archive captures. Canada.ca's terms and the CFIA's Crown copyright page let
+their material be reproduced verbatim, free of charge, with its title, author and source named and no affiliation or
+endorsement implied; neither form carries a notice of its own beyond IRCC's "not to be sold to applicants". The copy
+repository's README and `LICENSES/` state those conditions. That makes 104 documents from the copy, in 17 files.
+
+The other 131 remote documents stay at their publisher because nothing lets the project copy them — among them
+Massachusetts's dashboard, whose terms allow nothing beyond fair use, and the USDA's Hebrew fact sheet, whose
+translation's authorship is unknown.
 Their expectations were established like everyone else's — pages and verdicts by qpdf 11.9.1 in the
 integration tests' container, text by poppler's pdftotext 24.02, conformance by veraPDF 1.30.2 — on
 2026-09-24: ten during the day, 76 in the evening's third pass. For those 76, whether a file opens clean

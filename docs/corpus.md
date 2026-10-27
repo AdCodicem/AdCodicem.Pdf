@@ -41,7 +41,8 @@ them; a download failure is reported as such, never as a test failure. The manif
 titles and `textContains` strings carry no personal data, and it lists only files anyone can download.
 
 **Where a remote document is fetched from.** A document whose license allows verbatim redistribution — CC BY-SA,
-CC0, a US federal work — is remote only because ShareAlike would reach what the corpus derives from it, or for its
+CC0, a US federal work, or terms that allow it for non-commercial purposes, such as the Government of Canada's — is
+remote only because ShareAlike would reach what the corpus derives from it, or for its
 size. The project keeps a byte-identical copy of it in
 [AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus), under its own license and
 with its attribution (ADR 51): `source.url` names that copy at a commit, or as an asset of an immutable release

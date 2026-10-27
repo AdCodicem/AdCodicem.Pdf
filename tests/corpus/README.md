@@ -156,7 +156,8 @@ failing test. A failing host is retried four times, 15 s, 1 min and 2 min apart,
 asks for in `Retry-After`, capped at 2 min; every failed attempt is printed as it happens. The job keeps what it
 fetched in the Actions cache, encrypted, so a night meets the network only for what changed (`docs/corpus.md`).
 
-A document whose license allows verbatim redistribution — CC BY-SA, CC0, a US federal work — is fetched from the
+A document whose license allows verbatim redistribution — CC BY-SA, CC0, a US federal work, or non-commercial terms
+whose conditions the copy repository meets — is fetched from the
 project's copy in [AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus) (ADR 51):
 `source.url` names it at a commit of that repository, or as a release asset over 100 MB; `source.publisher` keeps
 the publisher's URL, tried when the copy cannot be had; `source.copy` gives the date the license was read again for

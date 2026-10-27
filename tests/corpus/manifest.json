@@ -6989,12 +6989,17 @@
       "useCase": "form",
       "producer": "Adobe LiveCycle Designer ES 10.0; certified with Adobe Acrobat Standard DC 2015.006.30172; Reader-extended (UR3) by Acrobat Reader DC extensions",
       "origin": "remote",
-      "license": "Government of Canada terms: non-commercial reproduction only, under conditions, and no commercial redistribution without written permission; the bytes are the Internet Archive capture that pdf.js links to. Used, not redistributed (ADR 32)",
+      "license": "Government of Canada terms: non-commercial reproduction only, under conditions, and no commercial redistribution without written permission; the bytes are the Internet Archive capture that pdf.js links to; the project keeps a verbatim copy of it, for public non-commercial purposes under those terms, with its title, author and source (ADR 51)",
       "source": {
-        "url": "https://web.archive.org/web/20201111224144id_/https://www.canada.ca/content/dam/ircc/migration/ircc/english/pdf/kits/forms/imm1344e.pdf",
+        "url": "https://raw.githubusercontent.com/AdCodicem/AdCodicem.Pdf.Corpus/6cb4764aba3971bb203636e3b7dc763db9f09b92/canada/livecycle-es10-ircc-imm1344-certified-dynamic-xfa.pdf",
         "sha256": "aa502cb2ed7cf57d7084f543215626148cc37d70c70034c7086dfee420aae559",
         "bytes": 579243,
-        "retrieved": "2026-09-24"
+        "retrieved": "2026-09-24",
+        "publisher": "https://web.archive.org/web/20201111224144id_/https://www.canada.ca/content/dam/ircc/migration/ircc/english/pdf/kits/forms/imm1344e.pdf",
+        "copy": {
+          "reviewed": "2026-10-27",
+          "terms": "Canada.ca's terms (https://www.canada.ca/en/transparency/terms.html) let the materials on the site be reproduced in whole for non-commercial purposes, with their title, their author and the address of the version they copy; commercial redistribution needs written permission. The form names IRCC as its author, carries no copyright notice of its own, and says only that it 'is not to be sold to applicants'; the copy repository charges nothing, sells nothing, and names its title, author and source."
+        }
       },
       "features": [
         "third-party",
@@ -7048,12 +7053,17 @@
       "useCase": "form",
       "producer": "Adobe LiveCycle Designer ES 9.0; usage rights (UR, UR3) signed with Adobe's Reader Extensions certificate",
       "origin": "remote",
-      "license": "Government of Canada terms: non-commercial reproduction only, under conditions, and no commercial redistribution without written permission; the bytes are the Internet Archive capture that pdf.js links to. Used, not redistributed (ADR 32)",
+      "license": "Government of Canada terms: non-commercial reproduction only, under conditions, and no commercial redistribution without written permission; the bytes are the Internet Archive capture that pdf.js links to; the project keeps a verbatim copy of it, for public non-commercial purposes under those terms, with its title, author and source (ADR 51)",
       "source": {
-        "url": "https://web.archive.org/web/20210609130056id_/https://inspection.canada.ca/DAM/DAM-food-aliments/STAGING/text-texte/c5704_re_1357758804123_eng.pdf",
+        "url": "https://raw.githubusercontent.com/AdCodicem/AdCodicem.Pdf.Corpus/6cb4764aba3971bb203636e3b7dc763db9f09b92/canada/livecycle-es9-cfia-fish-export-license-dynamic-xfa.pdf",
         "sha256": "d89216e804a56129e149b4b71f7047a897228455474a2ccc6949eda4c9baae7b",
         "bytes": 112999,
-        "retrieved": "2026-09-24"
+        "retrieved": "2026-09-24",
+        "publisher": "https://web.archive.org/web/20210609130056id_/https://inspection.canada.ca/DAM/DAM-food-aliments/STAGING/text-texte/c5704_re_1357758804123_eng.pdf",
+        "copy": {
+          "reviewed": "2026-10-27",
+          "terms": "The CFIA's Crown copyright page (https://inspection.canada.ca/en/about-cfia/applying-crown-copyright) lets its material be reproduced without clearance, as originally published, for public non-commercial purposes - distributed to the public free of charge -, with its title, its author, its availability on the CFIA website and no implied affiliation or endorsement; revision, translation and commercial distribution need clearance. The form carries no copyright or reuse notice of its own; the copy repository charges nothing and names its title, author and source."
+        }
       },
       "features": [
         "third-party",

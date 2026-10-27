@@ -12,7 +12,9 @@ not an answer" it narrows to the documents no license lets the project copy, and
 [33](0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md), whose archive it copies whole. Implemented by the
 repository [AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus), `source.copy` and
 `source.publisher` in `tests/corpus/manifest.json` and its schema, `download_with_fallback` in
-`tests/corpus/build/fetch_remote.py`, and the tests beside it.
+`tests/corpus/build/fetch_remote.py`, and the tests beside it. Amended the same day, by the maintainer: terms that
+allow a verbatim copy for non-commercial purposes only count too, since the repository sells nothing — the two
+Government of Canada forms were copied under them.
 
 ## Context
 
@@ -55,6 +57,11 @@ redistribution, and fetch it from there, its publisher kept as the fallback.
 - **The archive of ADR 33 is copied whole**, so its pins and its members' stay as they are.
 - **The fetcher tries the copy, then the publisher.** Only a copy that cannot be had falls back. A copy that no longer
   matches its pins is refused and reported, not hidden behind the publisher's file: it is the project's own mistake.
+- **Terms that allow a verbatim copy for non-commercial purposes only count**, amended on 2026-10-27: the repository
+  charges nothing and sells nothing, so it distributes for public non-commercial purposes. Such a document is copied
+  only when its terms' conditions can be met in the repository — its title, author and source named, no affiliation
+  or endorsement implied —, and those conditions are written in its README and `LICENSES/`. Terms that forbid any
+  copy beyond fair use, or that leave the file's authorship unknown, do not count.
 - **ADR 32's "a mirror hosted by the project is not an answer" still applies to every other document.** Those stay at
   their publisher, and the Actions cache (#204) is their remedy.
 
@@ -64,7 +71,9 @@ redistribution, and fetch it from there, its publisher kept as the fallback.
   ten ShareAlike or CC0 documents and four US federal works, Professional Paper 1 as a release asset. Of the 109 a
   license was announced to cover, seven stayed at their publisher after the review: a page reproducing an
   advertisement's text, Adobe's portfolio under a curator's waiver, and five federal captures carrying third-party
-  photographs, drawings, letters or text (`docs/corpus-sources.md`).
+  photographs, drawings, letters or text (`docs/corpus-sources.md`). The same day, two Government of Canada forms,
+  IRCC's IMM 1344 and the CFIA's form 5704, followed under their non-commercial terms, at a later commit of the
+  repository: 104 documents in 17 files.
 - **A host's outage no longer loses what the project may copy.** The iPRES archive leaves RADAR; the copied documents
   come from GitHub, which already serves most of the remote corpus.
 - **The copies are a redistribution, with its duties.** Each attribution must stay accurate, and a document whose
