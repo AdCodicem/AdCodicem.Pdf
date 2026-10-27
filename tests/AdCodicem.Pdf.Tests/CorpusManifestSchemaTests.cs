@@ -185,6 +185,11 @@ public class CorpusManifestSchemaTests
         ["a remote document"] = Remote,
         ["a remote document taken out of an archive"] = () => Remote().With(entry =>
             entry["source"]!["archive"] = Archive("10.22000-53/data/dataset/Test_Corpus/T04_002_eof-missing.pdf")),
+        ["a remote document fetched from the project's copy at a commit"] = Copied,
+        ["a remote document fetched from a release of the project's copy"] = () => Copied().With(entry =>
+            entry["source"]!["url"] = "https://github.com/AdCodicem/AdCodicem.Pdf.Corpus/releases/download/usgs-pp1/report.pdf"),
+        ["an archive fetched from the project's copy"] = () => Copied().With(entry =>
+            entry["source"]!["archive"] = Archive("10.22000-53/data/dataset/Test_Corpus/T04_002_eof-missing.pdf")),
         ["a committed document taken out of an archive, its member named after the URL"] = () => Committed().With(entry =>
             entry["source"] = Source("https://pdfa.org/files/reference.zip (member PDFUA-Ref-2-02_Invoice.pdf)", bytes: null)),
         ["a private document, named as its owner likes"] = () => Committed().With(entry =>
@@ -317,6 +322,17 @@ public class CorpusManifestSchemaTests
         ["a remote URL with a member named after it"] = (() => Remote().With(entry =>
             entry["source"]!["url"] = "https://example.org/archive.zip (member document.pdf)"), "pattern"),
 
+        // The project's copies.
+        ["a copy without its publisher"] = (() => Copied().With(entry => entry["source"]!.AsObject().Remove("publisher")), "dependentRequired"),
+        ["a publisher without a copy"] = (() => Copied().With(entry => entry["source"]!.AsObject().Remove("copy")), "dependentRequired"),
+        ["a copy served from elsewhere"] = (() => Copied().With(entry => entry["source"]!["url"] = "https://example.org/a-document.pdf"), "pattern"),
+        ["a copy served from a branch rather than a commit"] = (() => Copied().With(entry =>
+            entry["source"]!["url"] = "https://raw.githubusercontent.com/AdCodicem/AdCodicem.Pdf.Corpus/main/somewhere/a-document.pdf"), "pattern"),
+        ["a copy without its review date"] = (() => Copied().With(entry => entry["source"]!["copy"]!.AsObject().Remove("reviewed")), "required"),
+        ["a copy review dated in another format"] = (() => Copied().With(entry => entry["source"]!["copy"]!["reviewed"] = "27/10/2026"), "pattern"),
+        ["a copy without its terms"] = (() => Copied().With(entry => entry["source"]!["copy"]!["terms"] = ""), "minLength"),
+        ["a copy review with an unknown key"] = (() => Copied().With(entry => entry["source"]!["copy"]!["by"] = "someone"), "additionalProperties"),
+
         // Sources.
         ["a source without its retrieval date"] = (() => Committed().With(entry =>
             entry["source"] = Source("https://example.org/a.pdf", bytes: null).With(source => source.Remove("retrieved"))), "required"),
@@ -386,6 +402,15 @@ public class CorpusManifestSchemaTests
         entry["origin"] = "remote";
         entry["license"] = "Usable, not redistributable";
         entry["source"] = Source("https://example.org/a-document.pdf", bytes: 1024);
+    });
+
+    private static JsonObject Copied() => Remote().With(entry =>
+    {
+        entry["license"] = "CC BY-SA 4.0: ShareAlike would reach every derivative the corpus makes";
+        entry["source"]!["publisher"] = entry["source"]!["url"]!.GetValue<string>();
+        entry["source"]!["url"] =
+            "https://raw.githubusercontent.com/AdCodicem/AdCodicem.Pdf.Corpus/0123456789abcdef0123456789abcdef01234567/somewhere/a-document.pdf";
+        entry["source"]!["copy"] = new JsonObject { ["reviewed"] = "2026-10-27", ["terms"] = "Stated for this file in the set's REUSE.toml." };
     });
 
     private static JsonObject Source(string url, int? bytes)
