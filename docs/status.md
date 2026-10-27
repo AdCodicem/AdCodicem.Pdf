@@ -138,9 +138,9 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
-  88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in the nightly run 83 on 2026-10-27. Since [#204] and [#291], 102 of them — the iPRES archive
-  among them — come from the project's own copy in
+  88 of them out of their authors' archive (ADR 33), 5 out of web.archive.org, and tested every night by `Remote
+  corpus`, last green in run 85 on `main` on 2026-10-27. Since [#204] and [#291], 104 of them — the iPRES archive and
+  two Government of Canada forms among them — come from the project's own copy in
   [AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus) (ADR 51), and the job keeps
   what it fetched in an encrypted Actions cache. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
@@ -439,6 +439,16 @@ not a fault of the file: the rules on it report at most, as information, that it
 - **Note for this machine**: Python's TLS refused www.radar-service.eu's chain here (`self-signed certificate in
   certificate chain`), which curl accepted, most likely an interception on the workstation; CI never met it, and the
   archive no longer comes from RADAR.
+- **Merged** with [#300]. `Remote corpus` run 84, on its branch, passed all 242 documents and showed the new logging
+  at work: web.archive.org refused ECan's scan twice, and the third attempt fetched it. Run 85, on `main`, filled the
+  cache `main` restores from, since a branch's cache is not visible to `main`.
+- **Two Government of Canada forms copied too**, the maintainer letting non-commercial terms count since the copy
+  repository sells nothing (ADR 51, amended): IRCC's IMM 1344 and the CFIA's form 5704, until then fetched from
+  web.archive.org. Both forms were read whole, XFA templates included: no copyright notice, only IRCC's "not to be
+  sold to applicants". Canada.ca's terms and the CFIA's Crown copyright page allow a verbatim copy, free of charge,
+  with title, author and source named and no endorsement implied; the copy repository's README, `REUSE.toml` and
+  `LICENSES/LicenseRef-canada-crown-copyright-non-commercial.txt` say so, at commit `6cb4764`. Massachusetts's
+  dashboard stays (no copy beyond fair use), and so does the USDA's Hebrew fact sheet, its translator unknown.
 
 ### 2026-10-25 — Batch 16: where a stream's data ends, and what a guard's cut leaves ([#170], [#174], [#220], [#224], [#230], [#263])
 - **The question.** Measured on `a76c9da` by seven agents and a completeness critic. [#174]: a `/Length` no `endstream`
@@ -2596,3 +2606,4 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#295]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/295
 [#296]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/296
 [#297]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/297
+[#300]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/300
