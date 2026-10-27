@@ -522,6 +522,52 @@
         },
         "archive": {
           "$ref": "#/$defs/archive"
+        },
+        "publisher": {
+          "type": "string",
+          "pattern": "^https?://[!-~]+$(?!\\n)",
+          "description": "For a document the project copies (ADR 51): the URL its publisher serves it at, from which the copy was taken, and which fetch_remote.py tries when the copy cannot be had."
+        },
+        "copy": {
+          "type": "object",
+          "description": "The review that let the project host a verbatim copy of the document (ADR 51); url then names that copy.",
+          "additionalProperties": false,
+          "required": [
+            "reviewed",
+            "terms"
+          ],
+          "properties": {
+            "reviewed": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$(?!\\n)",
+              "description": "When the license was read again for this very file, as YYYY-MM-DD."
+            },
+            "terms": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Where the license that allows a verbatim copy is stated, and what in the file confirms it covers this file."
+            }
+          }
+        }
+      },
+      "dependentRequired": {
+        "copy": [
+          "publisher"
+        ],
+        "publisher": [
+          "copy"
+        ]
+      },
+      "if": {
+        "required": [
+          "copy"
+        ]
+      },
+      "then": {
+        "properties": {
+          "url": {
+            "pattern": "^https://(raw\\.githubusercontent\\.com/AdCodicem/AdCodicem\\.Pdf\\.Corpus/[0-9a-f]{40}/|github\\.com/AdCodicem/AdCodicem\\.Pdf\\.Corpus/releases/download/[A-Za-z0-9._-]+/)[!-~]+$(?!\\n)"
+          }
         }
       }
     },
