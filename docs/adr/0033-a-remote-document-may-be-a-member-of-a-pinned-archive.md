@@ -14,6 +14,12 @@ Implemented by `source.archive` in `tests/corpus/manifest.json`, the `Archives` 
 against a local server —, `CorpusReadingTests.A_document_taken_from_an_archive_pins_the_archive_and_itself`,
 and the 88 entries under `remote/ipres2017/`. The first run fetched all 88 from one download of the tar.
 
+Amended on 2026-10-27 by [ADR 51](0051-the-project-keeps-a-copy-of-what-a-license-lets-it-copy.md): after RADAR's
+backend timed out on three runs, losing all 88 members each time, the archive is fetched from a byte-identical copy in
+[AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus), copied whole under the
+dataset's CC BY-SA 4.0. Its pins and its members' are unchanged; RADAR's URL is kept as `source.publisher`, tried
+when the copy cannot be had.
+
 ## Context
 
 ADR 32 describes a remote document by the URL it is fetched from and the SHA-256 of what that URL serves,

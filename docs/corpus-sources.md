@@ -423,6 +423,28 @@ the manifest pins each one, with origin `remote`, to an immutable URL, a SHA-256
 them, to a member of a pinned archive ([ADR 33](adr/0033-a-remote-document-may-be-a-member-of-a-pinned-archive.md)) —,
 and the `Remote corpus` workflow fetches them — some 500 MB, nearly a third of it one scan — and runs both
 suites over them every night.
+
+**102 of them come from the project's own copy** ([ADR 51](adr/0051-the-project-keeps-a-copy-of-what-a-license-lets-it-copy.md)),
+[AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus), in 15 files, about 257 MB: the
+iPRES archive whole (88 documents), four py-pdf/sample-files documents, OCRmyPDF's four, the PDF Association's UTF-8
+example, the OPF's embedded-AVI file under its author's own CC0 waiver, and four US federal works — Title 42 of the US
+Code, the USGS Washington West map, the VA's Kernel guide, and USGS Professional Paper 1, which at 146.7 MB is an asset
+of an immutable release. Each license was read again on 2026-10-27 for that very file, and the review is in its
+entry's `source.copy`. Seven of the documents a license was announced to cover stayed at their publisher, since the
+license could not be shown to reach all of the file:
+
+- the Ghostscript PDF/A page from py-pdf/sample-files, which reproduces the whole text of Apple's 1997 "Think
+  Different" advertisement;
+- the OPF's signed 3D portfolio, Adobe's file, whose folder's CC0 was its curator's own waiver, and whose embedded
+  PDF reads "All rights reserved";
+- five GovDocs1 captures: the 1994 Transportation Statistics report, whose major contributors include a contractor-run
+  laboratory, two universities and a consultant; the Fish and Wildlife Service's recovery plan, whose figures carry
+  drawings and photographs © the Regents of the University of California and the California Academy of Sciences;
+  Reclamation's environmental assessment, which includes scanned comment letters from a tribal government and a
+  private individual; the VHA coding handbook, which reproduces the AMA's CPT modifier definitions; and the USGS
+  Honshu summary map, which carries two news photographs credited to Associated Press and Reuters.
+
+The other 133 remote documents stay at their publisher because nothing lets the project copy them.
 Their expectations were established like everyone else's — pages and verdicts by qpdf 11.9.1 in the
 integration tests' container, text by poppler's pdftotext 24.02, conformance by veraPDF 1.30.2 — on
 2026-09-24: ten during the day, 76 in the evening's third pass. For those 76, whether a file opens clean

@@ -190,7 +190,11 @@ ShareAlike document, any file over 2 MB whatever its license — is not committe
 `build/fetch_remote.py`, and tested every
 night by the `Remote corpus` workflow (ADR 32). Terms that restrict reuse do not keep a file out —
 conditions beyond attribution, non-commercial reproduction only, fair use only, no modification or
-commercial use — but "educational use only" does. Send the URL rather than the file; `tests/corpus/README.md` says how an entry is written. A
+commercial use — but "educational use only" does. Send the URL rather than the file; `tests/corpus/README.md` says how an entry is written.
+If its license allows verbatim redistribution — a ShareAlike document, or a public-domain or CC0 one too large to
+commit —, the project also keeps a byte-identical copy of it in its corpus repository, under that license and with
+its attribution, and fetches it from there, its publisher kept as the fallback (ADR 51); the copy is made by the
+maintainers, after the license is read again for that very file, so the URL is still all you send. A
 document of yours that is not public belongs in the private corpus, not here: the manifest is published,
 and it lists only files anyone can already download.
 

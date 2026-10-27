@@ -24,7 +24,7 @@ handing anything over, and where it goes.
 | Third-party documents found in public sources (`vendor/`) | Producers we will never run — Acrobat, InDesign, LiveCycle, copier firmware, a qualified-seal service — and damage from the wild | Attribution-only license (ADR 23), no real person's contact or identity data anywhere, byte-identical to the publisher's copy, at most 2 MB; source URL and SHA-256 recorded; see `docs/corpus-sources.md` |
 | Contributed real documents | Everything the generators never do: legacy tooling, scanners, foreign-language typography, damaged files from the wild | No confidential content; origin and license recorded; anonymized before committing |
 | Derived variants | Encryption, linearization, object-stream rewrites, and deliberate damage | Derived by a recorded, repeatable transformation from a document already in the corpus, named in the entry's `derivedFrom` from M04 on |
-| Remote documents we may use but not redistribute (origin `remote`, ADR 32) | What only a bug report, a vendor's sample, a ShareAlike set or a file over 2 MB can give | Never committed, nor anything derived from them; fetched at a pinned SHA-256 and size from an immutable URL, or copied out of a pinned archive (ADR 33); tested by a separate job |
+| Remote documents we may use but not redistribute (origin `remote`, ADR 32) | What only a bug report, a vendor's sample, a ShareAlike set or a file over 2 MB can give | Never committed, nor anything derived from them; fetched at a pinned SHA-256 and size from an immutable URL, or copied out of a pinned archive (ADR 33) — from the project's own copy when a license allows one (ADR 51); tested by a separate job |
 
 Documents are **committed**, not generated at test time: producer output changes with producer version, and
 a test suite that shifts under you is worse than no test suite. Regeneration is an explicit act, reviewed
@@ -39,6 +39,30 @@ archive is pinned too, downloaded at most once a run, and never extracted by its
 finds nothing, and tests exactly what is committed. The `Remote corpus` workflow fetches them every night and runs both suites over
 them; a download failure is reported as such, never as a test failure. The manifest itself is public, so its
 titles and `textContains` strings carry no personal data, and it lists only files anyone can download.
+
+**Where a remote document is fetched from.** A document whose license allows verbatim redistribution — CC BY-SA,
+CC0, a US federal work — is remote only because ShareAlike would reach what the corpus derives from it, or for its
+size. The project keeps a byte-identical copy of it in
+[AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus), under its own license and
+with its attribution (ADR 51): `source.url` names that copy at a commit, or as an asset of an immutable release
+for a file over 100 MB; `source.publisher` keeps the publisher's URL; `source.copy` records the review of the
+license, read again for that very file, that allowed the copy. Every other remote document is fetched from its
+publisher, as before. Nothing derived from a document enters either repository, and nothing enters the copy
+without an entry in the manifest. The fetcher tries the copy, then the publisher; a copy that no longer matches
+its pins is refused, never replaced by the publisher's file.
+
+**A host that fails, or asks to wait.** Each download gets four attempts, 15 s, 1 min and 2 min apart. A 429 or a
+503 carrying `Retry-After` is retried after the delay it asks for, in seconds or as an HTTP date, capped at 2 min,
+the longest back-off; a host that wore out every attempt on one document gets a single attempt for each later one,
+so an outage costs minutes, not the job's hour. Every failed attempt is logged as it happens — the document, the
+attempt, the HTTP status or the error —, a later success included, and the job summary counts them by host.
+
+**What the job keeps between runs.** The `Remote corpus` workflow keeps the fetched documents in the Actions cache,
+named by the SHA-256 of every remote document's pin, so a run meets the network only for a document added or
+changed since. The cache is encrypted with a secret of this repository, `REMOTE_CORPUS_CACHE_KEY`: GitHub lets a
+pull request's run restore what its base branch cached, a fork's included, so what such a run restores is
+ciphertext it cannot read. A cache is saved only when every document was fetched, under a key that did not exist.
+A fork, or a run without the secret, fetches everything, as before.
 
 The second exception is an input the test support **synthesizes** at test time because committing it would be
 pointless: M23's stream that decodes past 2 GB, about 2 MB of nested Flate over zeros, made the same way on every
