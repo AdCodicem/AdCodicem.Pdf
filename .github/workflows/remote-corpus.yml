@@ -2,7 +2,9 @@ name: Remote corpus
 
 # Documents we may use in tests but not redistribute - bug-report attachments, vendors' samples, ShareAlike
 # sets, files too large to commit - are the remote entries of tests/corpus/manifest.json, fetched here, never
-# committed (ADR 32). This is the only job that meets them, and the only one that depends on the network.
+# committed (ADR 32). Those a license lets the project copy are fetched from its own copy, their publisher
+# kept as a fallback (ADR 51). This is the only job that meets them, and the only one that depends on the
+# network - and it meets the network only for what its cache does not already hold.
 on:
   schedule:
     # Every night, after the fuzzing campaign.
@@ -22,6 +24,13 @@ jobs:
     name: Acceptance over the remote corpus
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # The remote corpus is kept between runs in the Actions cache, encrypted with this key (ADR 32, #204).
+      # GitHub lets a pull request's run restore what its base branch cached, a fork's included, and a fork's
+      # run uses the fork's workflow file: the cache is readable by any of them. The key is a secret of this
+      # repository, which no fork's run receives, so what they restore is ciphertext. Without it - a fork, or a
+      # repository that never set it - the job fetches everything, as it did before the cache.
+      CACHE_KEY: ${{ secrets.REMOTE_CORPUS_CACHE_KEY }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,13 +39,57 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # Named by the documents' pins, not by their URLs: a document moving to the project's copy keeps its
+      # cache, and a new or changed document makes a new one.
+      - name: Name the cache by the remote pins
+        id: pins
+        if: env.CACHE_KEY != ''
+        run: echo "digest=$(python3 tests/corpus/build/fetch_remote.py --pins)" >> "$GITHUB_OUTPUT"
+
+      # The nearest older cache is restored when this one does not exist yet: the fetcher verifies every file
+      # against its pin anyway, and fetches only what is missing or stale.
+      - name: Restore the remote corpus
+        id: cache
+        if: env.CACHE_KEY != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: remote-corpus.tar.enc
+          key: remote-corpus-${{ steps.pins.outputs.digest }}
+          restore-keys: remote-corpus-
+
+      # A cache that cannot be decrypted - the key was changed - costs a full fetch, not the run.
+      - name: Decrypt the remote corpus
+        if: steps.cache.outputs.cache-matched-key != ''
+        continue-on-error: true
+        run: |
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:CACHE_KEY -in remote-corpus.tar.enc \
+            | tar -x --no-same-owner -C tests/corpus remote
+          rm remote-corpus.tar.enc
+
       # Every file is checked against the SHA-256 the manifest pins, and one that changed at its source is
       # refused. A document that cannot be had must not look like a failing test, nor stop the others from
-      # being tested: the step carries on, and the last step reports it for what it is.
+      # being tested: the step carries on, and the last step reports it for what it is. Each failed attempt
+      # is logged as it happens, and the job summary counts them by host.
       - name: Fetch the remote corpus
         id: fetch
         continue-on-error: true
         run: python3 tests/corpus/build/fetch_remote.py
+
+      # Saved only whole, under a key that did not exist: a cache entry cannot be replaced, so one saved with a
+      # document missing would keep it missing from every run that found it.
+      - name: Encrypt the remote corpus for the cache
+        if: env.CACHE_KEY != '' && steps.fetch.outcome == 'success' && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          python3 tests/corpus/build/fetch_remote.py --files > "$RUNNER_TEMP/remote-files"
+          tar -c -C tests/corpus -T "$RUNNER_TEMP/remote-files" \
+            | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:CACHE_KEY -out remote-corpus.tar.enc
+
+      - name: Save the remote corpus
+        if: env.CACHE_KEY != '' && steps.fetch.outcome == 'success' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: remote-corpus.tar.enc
+          key: remote-corpus-${{ steps.pins.outputs.digest }}
 
       # The suite merges the remote entries whose file is present, so the acceptance conditions run over
       # every document fetched - and their derived variants, if any, are made here and discarded with the job.
