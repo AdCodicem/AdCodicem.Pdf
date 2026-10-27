@@ -13,11 +13,14 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
 import tarfile
 import tempfile
 import threading
+import time
 import unittest
+from email.utils import formatdate
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -26,6 +29,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fetch_remote  # noqa: E402
 
 PDF = b"%PDF-1.4\n%%EOF\n"
+# The pattern of the project's copies, kept before the tests point it at their local server.
+REAL_COPY = fetch_remote.COPY
 
 
 def sha(data: bytes) -> str:
@@ -56,18 +61,26 @@ def tar_of(members: dict[str, bytes], links: dict[str, str] | None = None, mode:
 
 
 class Server:
-    """Serves fixed responses by path and counts the requests each path received."""
+    """
+    Serves fixed responses by path and counts the requests each path received. A route is a status and a body,
+    with headers if it needs any, or a list of them answered in turn, the last one repeated.
+    """
 
     def __init__(self) -> None:
-        self.routes: dict[str, tuple[int, bytes]] = {}
+        self.routes: dict[str, tuple | list[tuple]] = {}
         self.requests: dict[str, int] = {}
         server = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802 - the name http.server calls
                 server.requests[self.path] = server.requests.get(self.path, 0) + 1
-                status, body = server.routes.get(self.path, (404, b""))
+                route = server.routes.get(self.path, (404, b""))
+                if isinstance(route, list):
+                    route = route[min(server.requests[self.path], len(route)) - 1]
+                status, body, *headers = route
                 self.send_response(status)
+                for name, value in (headers[0] if headers else {}).items():
+                    self.send_header(name, value)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -95,11 +108,14 @@ class FetchRemoteTests(unittest.TestCase):
         # The fetcher's own scratch space, to prove it is left empty.
         self.scratch = Path(directory.name) / "scratch"
         self.scratch.mkdir()
+        self.sleeps: list[float] = []
         patches = [
             mock.patch.object(fetch_remote, "ROOT", self.root),
             mock.patch.object(fetch_remote, "MANIFEST", self.root / "manifest.json"),
-            # A retried outage must cost attempts, not wall-clock time.
-            mock.patch.object(fetch_remote.time, "sleep", lambda seconds: None),
+            # A retried outage must cost attempts, not wall-clock time; the waits asked for are kept to be checked.
+            mock.patch.object(fetch_remote.time, "sleep", self.sleeps.append),
+            # The project's copy is served here too, under /copy/.
+            mock.patch.object(fetch_remote, "COPY", re.compile(re.escape(self.server.base) + r"/copy/[!-~]+")),
             mock.patch.dict(os.environ, {"no_proxy": "127.0.0.1", "NO_PROXY": "127.0.0.1"}),
             mock.patch.object(fetch_remote.tempfile, "tempdir", str(self.scratch)),
         ]
@@ -121,6 +137,13 @@ class FetchRemoteTests(unittest.TestCase):
         return [self.entry(name.lower().replace("_", "-"), self.server.base + path, PDF + name.encode(),
                            {**pin, "member": f"bag/data/{name}.pdf"}) for name in names]
 
+    def copied(self, entry: dict, path: str) -> dict:
+        """The entry fetched from the project's copy at path, its publisher kept as the fallback (ADR 51)."""
+        entry["source"]["publisher"] = entry["source"]["url"]
+        entry["source"]["url"] = self.server.base + path
+        entry["source"]["copy"] = {"reviewed": "2026-10-27", "terms": "test"}
+        return entry
+
     def run_fetch(self, entries: list[dict], *arguments: str) -> tuple[int, str]:
         (self.root / "manifest.json").write_text(json.dumps({"documents": entries}), encoding="utf-8")
         output = io.StringIO()
@@ -133,7 +156,7 @@ class FetchRemoteTests(unittest.TestCase):
         return path.read_bytes() if path.exists() else None
 
     def files_written(self) -> list[str]:
-        return sorted(str(path.relative_to(self.root)) for path in self.root.rglob("*") if path.is_file())
+        return sorted(path.relative_to(self.root).as_posix() for path in self.root.rglob("*") if path.is_file())
 
     # --- a document fetched on its own ---------------------------------------------------------------------
 
@@ -156,6 +179,205 @@ class FetchRemoteTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("refused", output)
         self.assertIsNone(self.fetched("one"))
+
+    # --- a host that fails, or asks to wait (#204) ---------------------------------------------------------
+
+    def test_a_429_is_retried_after_the_delay_its_retry_after_asks(self) -> None:
+        self.server.routes["/one.pdf"] = [(429, b"", {"Retry-After": "7"}), (200, PDF)]
+
+        code, output = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.sleeps, [7])
+        self.assertIn("retrying in 7 s, as Retry-After asks", output)
+
+    def test_a_retry_after_given_as_an_http_date_is_honored(self) -> None:
+        when = formatdate(time.time() + 30, usegmt=True)
+        self.server.routes["/one.pdf"] = [(503, b"", {"Retry-After": when}), (200, PDF)]
+
+        code, _ = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.sleeps), 1)
+        self.assertTrue(25 <= self.sleeps[0] <= 30, self.sleeps)
+
+    def test_a_retry_after_longer_than_the_cap_waits_the_cap(self) -> None:
+        for asked in ("86400", formatdate(time.time() + 86400, usegmt=True)):
+            with self.subTest(asked=asked):
+                self.sleeps.clear()
+                self.server.requests.clear()
+                self.server.routes["/one.pdf"] = [(429, b"", {"Retry-After": asked}), (200, PDF)]
+                (self.root / "remote" / "test" / "one.pdf").unlink(missing_ok=True)
+
+                code, _ = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+                self.assertEqual(code, 0)
+                self.assertEqual(self.sleeps, [fetch_remote.RETRY_AFTER_CAP])
+
+    def test_a_retry_after_in_the_past_retries_at_once(self) -> None:
+        self.server.routes["/one.pdf"] = [(503, b"", {"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"}), (200, PDF)]
+
+        code, _ = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.sleeps, [0])
+
+    def test_a_503_without_retry_after_keeps_the_back_off(self) -> None:
+        self.server.routes["/one.pdf"] = [(503, b""), (503, b""), (200, PDF)]
+
+        code, _ = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.sleeps, list(fetch_remote.BACKOFF[:2]))
+
+    def test_a_retry_after_that_cannot_be_read_keeps_the_back_off(self) -> None:
+        for asked in ("soon", "-5", "1.5", "99999999999"):
+            with self.subTest(asked=asked):
+                self.sleeps.clear()
+                self.server.requests.clear()
+                self.server.routes["/one.pdf"] = [(429, b"", {"Retry-After": asked}), (200, PDF)]
+                (self.root / "remote" / "test" / "one.pdf").unlink(missing_ok=True)
+
+                code, _ = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+                self.assertEqual(code, 0)
+                self.assertEqual(self.sleeps, [fetch_remote.BACKOFF[0]])
+
+    def test_retry_after_is_ignored_on_a_status_that_does_not_define_it(self) -> None:
+        self.server.routes["/one.pdf"] = [(500, b"", {"Retry-After": "7"}), (200, PDF)]
+
+        code, _ = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.sleeps, [fetch_remote.BACKOFF[0]])
+
+    def test_every_failed_attempt_is_logged_and_counted_a_later_success_included(self) -> None:
+        summary = self.root / "summary.md"
+        self.server.routes["/one.pdf"] = [(429, b""), (502, b""), (200, PDF)]
+
+        with mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}):
+            code, output = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+        self.assertEqual(code, 0)
+        self.assertIn("remote/test/one.pdf from 127.0.0.1, 1 of 4: HTTP 429", output)
+        self.assertIn("remote/test/one.pdf from 127.0.0.1, 2 of 4: HTTP 502", output)
+        self.assertIn("fetched", output)
+        self.assertIn("| 127.0.0.1 | 2 |", summary.read_text(encoding="utf-8"))
+
+    def test_a_run_without_a_failed_attempt_says_so(self) -> None:
+        summary = self.root / "summary.md"
+        self.server.routes["/one.pdf"] = (200, PDF)
+
+        with mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}):
+            self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+        self.assertIn("No attempt failed.", summary.read_text(encoding="utf-8"))
+
+    def test_a_network_error_is_logged_with_its_attempt(self) -> None:
+        # Nothing listens on port 9 of the loopback: every attempt is refused.
+        code, output = self.run_fetch([self.entry("one", "http://127.0.0.1:9/one.pdf", PDF)])
+
+        self.assertEqual(code, 1)
+        self.assertIn(f"from 127.0.0.1, {fetch_remote.ATTEMPTS} of {fetch_remote.ATTEMPTS}: URLError", output)
+        self.assertEqual(len(self.sleeps), fetch_remote.ATTEMPTS - 1)
+
+    def test_a_host_that_wore_out_every_attempt_gets_one_per_later_document(self) -> None:
+        self.server.routes["/one.pdf"] = (503, b"")
+        self.server.routes["/two.pdf"] = (503, b"")
+        entries = [self.entry("one", self.server.base + "/one.pdf", PDF),
+                   self.entry("two", self.server.base + "/two.pdf", PDF + b"2")]
+
+        code, output = self.run_fetch(entries)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(self.server.requests, {"/one.pdf": fetch_remote.ATTEMPTS, "/two.pdf": 1})
+        self.assertIn("remote/test/two.pdf from 127.0.0.1, 1 of 1: HTTP 503", output)
+
+    def test_a_document_that_is_not_found_is_not_retried(self) -> None:
+        code, _ = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)])
+
+        self.assertEqual(code, 1)
+        self.assertEqual(self.server.requests["/one.pdf"], 1)
+        self.assertEqual(self.sleeps, [])
+
+    # --- the project's own copy (ADR 51) -------------------------------------------------------------------
+
+    def test_a_copied_document_is_fetched_from_the_copy(self) -> None:
+        self.server.routes["/copy/one.pdf"] = (200, PDF)
+        entry = self.copied(self.entry("one", self.server.base + "/one.pdf", PDF), "/copy/one.pdf")
+
+        code, _ = self.run_fetch([entry])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.fetched("one"), PDF)
+        self.assertNotIn("/one.pdf", self.server.requests)
+
+    def test_an_unavailable_copy_falls_back_to_its_publisher(self) -> None:
+        self.server.routes["/copy/one.pdf"] = (503, b"")
+        self.server.routes["/one.pdf"] = (200, PDF)
+        entry = self.copied(self.entry("one", self.server.base + "/one.pdf", PDF), "/copy/one.pdf")
+
+        code, output = self.run_fetch([entry])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.fetched("one"), PDF)
+        self.assertIn("from its publisher, the copy being unavailable", output)
+
+    def test_a_copy_and_its_publisher_both_unavailable_name_both(self) -> None:
+        self.server.routes["/copy/one.pdf"] = (503, b"")
+        entry = self.copied(self.entry("one", self.server.base + "/one.pdf", PDF), "/copy/one.pdf")
+
+        code, output = self.run_fetch([entry])
+
+        self.assertEqual(code, 1)
+        self.assertIn("HTTP Error 404", output)
+        self.assertIn("the copy too", output)
+
+    def test_a_copy_that_changed_is_refused_and_its_publisher_is_not_asked(self) -> None:
+        self.server.routes["/copy/one.pdf"] = (200, PDF + b"changed")
+        self.server.routes["/one.pdf"] = (200, PDF)
+        entry = self.copied(self.entry("one", self.server.base + "/one.pdf", PDF), "/copy/one.pdf")
+
+        code, output = self.run_fetch([entry])
+
+        self.assertEqual(code, 1)
+        self.assertIn("refused", output)
+        self.assertIsNone(self.fetched("one"))
+        self.assertNotIn("/one.pdf", self.server.requests)
+
+    def test_an_archive_copy_falls_back_once_for_all_its_members(self) -> None:
+        names = ["T01_001", "T02_002"]
+        tar = tar_of({f"bag/data/{name}.pdf": PDF + name.encode() for name in names})
+        self.server.routes["/copy/bag.tar"] = (503, b"")
+        self.server.routes["/bag.tar"] = (200, tar)
+        entries = [self.copied(entry, "/copy/bag.tar") for entry in self.archived(names, tar)]
+
+        code, output = self.run_fetch(entries)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.server.requests, {"/copy/bag.tar": fetch_remote.ATTEMPTS, "/bag.tar": 1})
+        self.assertEqual(output.count("from its publisher"), 2)
+
+    def test_the_cache_key_follows_the_pins_not_the_urls(self) -> None:
+        before = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF)], "--pins")[1]
+        moved = self.run_fetch([self.copied(self.entry("one", self.server.base + "/one.pdf", PDF), "/copy/one.pdf")],
+                               "--pins")[1]
+        changed = self.run_fetch([self.entry("one", self.server.base + "/one.pdf", PDF + b"new")], "--pins")[1]
+
+        self.assertRegex(before, r"^[0-9a-f]{64}\n$")
+        self.assertEqual(moved, before)
+        self.assertNotEqual(changed, before)
+        self.assertEqual(self.server.requests, {})
+
+    def test_files_lists_every_remote_document_and_fetches_nothing(self) -> None:
+        entries = [self.entry("one", self.server.base + "/one.pdf", PDF),
+                   self.entry("two", self.server.base + "/two.pdf", PDF + b"2")]
+
+        code, output = self.run_fetch(entries, "--files")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(output.splitlines(), ["remote/test/one.pdf", "remote/test/two.pdf"])
+        self.assertEqual(self.server.requests, {})
 
     # --- documents taken out of an archive (ADR 33) --------------------------------------------------------
 
@@ -374,6 +596,45 @@ class FetchRemoteTests(unittest.TestCase):
         member = self.archived(["T01_001"], b"tar")[0]
         document = self.entry("document", member["source"]["url"], PDF)
         self.assert_invalid([member, document], "pinned differently")
+
+    def test_a_url_of_the_copy_needs_the_review_that_allowed_it(self) -> None:
+        entry = self.entry("one", self.server.base + "/copy/one.pdf", PDF)
+        self.assert_invalid([entry], "needs source.copy")
+
+    def test_a_copy_needs_its_publisher(self) -> None:
+        entry = self.copied(self.entry("one", self.server.base + "/one.pdf", PDF), "/copy/one.pdf")
+        del entry["source"]["publisher"]
+        self.assert_invalid([entry], "source.publisher")
+
+    def test_a_publisher_alone_is_not_a_copy(self) -> None:
+        entry = self.entry("one", self.server.base + "/one.pdf", PDF)
+        entry["source"]["publisher"] = self.server.base + "/elsewhere.pdf"
+        self.assert_invalid([entry], "source.copy needs")
+
+    def test_a_copy_review_needs_its_date_and_terms(self) -> None:
+        for copy in ({"terms": "test"}, {"reviewed": "27/10/2026", "terms": "test"}, {"reviewed": "2026-10-27"},
+                     {"reviewed": "2026-10-27", "terms": ""}, "reviewed"):
+            with self.subTest(copy=copy):
+                entry = self.copied(self.entry("one", self.server.base + "/one.pdf", PDF), "/copy/one.pdf")
+                entry["source"]["copy"] = copy
+                self.assert_invalid([entry], "source.copy needs")
+
+    def test_a_copy_is_fetched_only_from_the_copy_repository(self) -> None:
+        entry = self.copied(self.entry("one", self.server.base + "/one.pdf", PDF), "/elsewhere/one.pdf")
+        self.assert_invalid([entry], "names a commit or a release of the copy")
+
+    def test_the_copy_is_a_commit_or_a_release_of_the_corpus_repository(self) -> None:
+        commit = "0123456789abcdef0123456789abcdef01234567"
+        accepted = [f"https://raw.githubusercontent.com/AdCodicem/AdCodicem.Pdf.Corpus/{commit}/usgs/a.pdf",
+                    "https://github.com/AdCodicem/AdCodicem.Pdf.Corpus/releases/download/usgs-pp1/report.pdf"]
+        refused = ["https://raw.githubusercontent.com/AdCodicem/AdCodicem.Pdf.Corpus/main/usgs/a.pdf",
+                   f"https://raw.githubusercontent.com/someone/AdCodicem.Pdf.Corpus/{commit}/usgs/a.pdf",
+                   "http://github.com/AdCodicem/AdCodicem.Pdf.Corpus/releases/download/usgs-pp1/report.pdf",
+                   "https://github.com/AdCodicem/AdCodicem.Pdf.Corpus/raw/main/usgs/a.pdf"]
+        for url in accepted:
+            self.assertIsNotNone(REAL_COPY.fullmatch(url), url)
+        for url in refused:
+            self.assertIsNone(REAL_COPY.fullmatch(url), url)
 
     def test_a_member_is_taken_once(self) -> None:
         first, second = self.archived(["T01_001", "T02_002"], b"tar")
