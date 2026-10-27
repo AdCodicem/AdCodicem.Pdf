@@ -28,6 +28,17 @@ archive, pinned by `source.archive` (its SHA-256, its size, the member's path), 
 checksum its repository publishes, or a URL of one of the three kinds below. Every remote entry now pins its
 size (`source.bytes`) as well as its SHA-256.
 
+Amended on 2026-10-27 by [ADR 51](0051-the-project-keeps-a-copy-of-what-a-license-lets-it-copy.md): a remote
+document whose license allows verbatim redistribution — remote because ShareAlike would reach the corpus's
+derivatives, or for its size — is fetched from a byte-identical copy the project hosts in
+[AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus), under the document's own license
+and with its attribution, its publisher's URL kept as the fallback. "A mirror hosted by the project is not an answer",
+below, still holds for every document whose license does not allow a copy. The same day, for
+[#204](https://github.com/AdCodicem/AdCodicem.Pdf/issues/204): the fetcher honors `Retry-After`, capped, logs every
+failed attempt, and the `Remote corpus` job keeps what it fetched in the Actions cache, encrypted with a secret no
+fork's run receives. An Actions cache is not a commit, but GitHub stores it and lets a pull request's run restore its
+base branch's, so what it holds must be unreadable to those runs; "nothing fetched is committed" is unchanged.
+
 ## Context
 
 ADR 23 commits third-party documents only under attribution-only licenses, and says in one sentence that

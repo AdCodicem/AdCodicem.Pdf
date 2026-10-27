@@ -57,6 +57,7 @@ A settled decision is not reopened without new evidence — that is what writing
 | [48](0048-one-version-for-every-package-independent-of-dotnet.md) | One version for every package, independent of .NET | — |
 | [49](0049-previews-weekly-when-a-package-input-changed.md) | Previews weekly, when a package input changed | — |
 | [50](0050-validation-settles-the-reader-before-its-rules.md) | Validation settles the reader before its rules | — |
+| [51](0051-the-project-keeps-a-copy-of-what-a-license-lets-it-copy.md) | The project keeps a copy of the remote documents a license lets it copy | — |
 
 ## Decisions too small for a record of their own
 

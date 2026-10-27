@@ -22,7 +22,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#253], with [#258] on 2026-10-17; the fourteenth, [#129] and [#175], with [#256] and [#259], with [#265] on
   2026-10-21; the fifteenth, [#160] and [#161], object stream members, with [#200], [#202], [#255], [#257], [#273],
   [#274] and [#275], with [#278] on 2026-10-22; the sixteenth, [#174] and [#170], stream data, with [#220], [#224],
-  [#230] and [#263], is in [#297], under review. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the
+  [#230] and [#263], with [#297] on 2026-10-25. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the
   milestone's adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts
   come from the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after
   the fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
@@ -38,7 +38,7 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 - **Tests**: 5,332 unit on [#297]'s branch (20 skipped: 2 by design, the theory over the remote corpus's streams whose
   length is wrong, the fifteen remote documents of the theory over the corpus's filter chains, which have no document
   without them, the test held to PDFBox's remote report, and iPRES's stream that lost its `endstream`) + 1,495
-  integration (skipped without Docker) + 23 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub.
+  integration (skipped without Docker) + 48 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub.
   With the remote documents fetched, on [#297]'s branch: 7,704 unit with the 233 this container holds, 3 skipped — the
   laziness test on the two documents recorded as unsupported until [#47], which every other test holds to their
   expectations, and the private manifest this container lacks —, the same under the runtime Microsoft ships; 3,688
@@ -139,7 +139,10 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
   88 of them out of their authors' archive (ADR 33), 7 out of web.archive.org, and tested every night by `Remote
-  corpus`, last green in the nightly run 69 on 2026-10-22. All 410 are described in `tests/corpus/manifest.json`.
+  corpus`, last green in the nightly run 83 on 2026-10-27. Since [#204] and [#291], 102 of them — the iPRES archive
+  among them — come from the project's own copy in
+  [AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus) (ADR 51), and the job keeps
+  what it fetched in an encrypted Actions cache. All 410 are described in `tests/corpus/manifest.json`.
 - **Published**: [`AdCodicem.Pdf`](https://www.nuget.org/packages/AdCodicem.Pdf) `0.1.1-preview.10` to
   `0.1.1-preview.57`, one per push to `main` until [#227], through trusted publishing, 1,141 downloads on 2026-10-02.
   The `AdCodicem.*` prefix is reserved: nuget.org marks the package as verified. With [#227] merged, previews come
@@ -407,6 +410,35 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-27 — The remote corpus: a patient fetcher, an encrypted cache, and the project's own copies ([#204], [#291])
+- **The question.** RADAR timed out on the ipres2017 archive again in the nightly run 82 (2026-10-26, `main` at
+  `ce30948`), with web.archive.org on the USDA's fact sheet; run 83 passed whole. The maintainer's decision of
+  2026-10-25 had three parts, settled the same day as this pull request's questions: a cache readable by no pull
+  request's run, a fetcher that waits as hosts ask and says what failed, and a repository of the project's own for the
+  documents a license lets it copy.
+- **The fetcher** (`tests/corpus/build/fetch_remote.py`). Four attempts, 15 s, 1 min and 2 min apart; a 429 or a 503
+  carrying `Retry-After`, in seconds or as an HTTP date, retried after the delay it asks, capped at 2 min; a host that
+  wore out every attempt on a document gets one attempt for each later one, so an outage costs minutes, not the job's
+  hour. Every failed attempt is printed as it happens, a later success included, and the job summary counts them by
+  host. `--pins` gives the cache's key, `--files` what it packs. 25 new tests against the local server, 48 in all.
+- **The cache** (`.github/workflows/remote-corpus.yml`). Keyed by the SHA-256 of every remote document's pin, so a URL
+  moving to a copy keeps it; restored from the nearest older key when the exact one is missing; saved only when every
+  document was fetched. Encrypted with `REMOTE_CORPUS_CACHE_KEY`, a random secret of this repository set on 2026-10-27,
+  since GitHub lets a pull request's run, a fork's included, restore its base branch's cache: what such a run restores
+  is ciphertext. A run without the secret fetches everything.
+- **The copies** (ADR 51). [AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus),
+  public, created on 2026-10-27, with immutable releases: 15 files, 102 documents, about 257 MB, at commit `aeef617`,
+  and USGS Professional Paper 1 (146.7 MB) as the asset of the immutable release `usgs-professional-paper-1`. Each
+  license was read again for that very file, recorded in `source.copy`; the publisher's URL is kept in
+  `source.publisher`, and the fetcher falls back to it when the copy is unavailable, never when it is refused. Seven of
+  the 109 documents a license was announced to cover stayed at their publisher (`docs/corpus-sources.md`). The schema
+  holds `source.copy` and `source.publisher` together, and the copy's URL to a commit or a release of that repository.
+- **Checked**: the 102 copied documents fetched from the copy by the fetcher, every pin matching; the fetcher's 48
+  tests; the manifest's schema tests, 9 new cases.
+- **Note for this machine**: Python's TLS refused www.radar-service.eu's chain here (`self-signed certificate in
+  certificate chain`), which curl accepted, most likely an interception on the workstation; CI never met it, and the
+  archive no longer comes from RADAR.
 
 ### 2026-10-25 — Batch 16: where a stream's data ends, and what a guard's cut leaves ([#170], [#174], [#220], [#224], [#230], [#263])
 - **The question.** Measured on `a76c9da` by seven agents and a completeness critic. [#174]: a `/Length` no `endstream`

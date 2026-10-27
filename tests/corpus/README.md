@@ -144,13 +144,24 @@ inside the archive. The fetcher's own rules are tested on every change, against 
 python3 -m unittest discover -s tests/corpus/build -p "test_*.py"   # the fetcher's rules, no network
 python3 tests/corpus/build/fetch_remote.py          # fetch what is missing, verify what is present
 python3 tests/corpus/build/fetch_remote.py --list   # each document's state, nothing fetched
+python3 tests/corpus/build/fetch_remote.py --files  # each document's path, as the job's cache packs them
+python3 tests/corpus/build/fetch_remote.py --pins   # one SHA-256 of every pin: the job's cache key
 dotnet test --project tests/AdCodicem.Pdf.Tests/AdCodicem.Pdf.Tests.csproj -c Release
 ```
 
 A download whose SHA-256 or size differs from the pinned one is refused: the file changed at its source, so
 it is a new document, reviewed as one — never accepted by updating the hash. The `Remote corpus` workflow does the
 same every night and by manual dispatch, and reports an unavailable document as such rather than as a
-failing test.
+failing test. A failing host is retried four times, 15 s, 1 min and 2 min apart, or after the delay a 429 or a 503
+asks for in `Retry-After`, capped at 2 min; every failed attempt is printed as it happens. The job keeps what it
+fetched in the Actions cache, encrypted, so a night meets the network only for what changed (`docs/corpus.md`).
+
+A document whose license allows verbatim redistribution — CC BY-SA, CC0, a US federal work — is fetched from the
+project's copy in [AdCodicem/AdCodicem.Pdf.Corpus](https://github.com/AdCodicem/AdCodicem.Pdf.Corpus) (ADR 51):
+`source.url` names it at a commit of that repository, or as a release asset over 100 MB; `source.publisher` keeps
+the publisher's URL, tried when the copy cannot be had; `source.copy` gives the date the license was read again for
+that very file, and the terms that allow the copy. To copy one, commit it there first, unmodified, with its
+license and attribution in that repository's `REUSE.toml` and README, then point the entry at that commit.
 
 To add one, choose an immutable URL — a repository commit, an Internet Archive `id_` copy, a permanent
 publisher URI, or an archive deposit whose checksum its repository publishes — and write the entry as for any other document, with its file under `remote/<source>/`,
