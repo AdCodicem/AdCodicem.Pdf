@@ -200,4 +200,5 @@ reading â€” the journal's on 2026-10-02, the generated indexes' on 2026-10-28 â€
 an allocation regression past one fails the build: 4 MB for the journal, 12.6 MB, 23.6 MB and 25.5 MB for the generated
 indexes, 5 % over their figures. The map is sized before it is filled, the chain's doubling from section to section
 until it comes within a doubling of the newest `/Size`; the hash table the map was before 2026-10-28 allocated 16.9 MB,
-27.4 MB and 30.6 MB sized so, and 32.6 MB, 43.1 MB and 33.2 MB left to grow, measured on the same day. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.
+27.4 MB and 30.6 MB sized so, and 32.6 MB and 43.1 MB left to grow, measured on the same day, and 33.2 MB for the
+chain left to grow on 2026-10-14. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.

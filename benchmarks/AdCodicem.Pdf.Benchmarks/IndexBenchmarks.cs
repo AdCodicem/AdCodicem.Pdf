@@ -12,7 +12,7 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// it, a chain of a thousand like sections, and one table whose objects are numbered three apart (#155).
 /// </summary>
 /// <remarks>
-/// A section makes room in the index for the rows it holds before it reads them, rather than letting the map double as it
+/// A section makes room in the index for the rows it holds before it reads them, rather than letting the index double as it
 /// grows, and for no more than the newest section's <c>/Size</c> numbers once it is read: an older section's rows for
 /// numbers a newer one gave are superseded, and add nothing. What opening allocates is the index, sized once for the first
 /// four shapes. A chain of many like sections makes room section after section, never by less than the index holds, and

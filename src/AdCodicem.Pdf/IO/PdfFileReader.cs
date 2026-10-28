@@ -47,7 +47,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>
     /// The length of a classic table's row as producers write it short, its end of line a single byte where ISO 32000-1
     /// (7.5.4) asks for two: the index makes room for no more rows than a table's bytes hold at this length, nor than they
-    /// hold lines. A row written shorter still takes room as the map grows.
+    /// hold lines. A row written shorter still takes room as the index grows.
     /// </summary>
     private const int ShortRowLength = 19;
 
@@ -3365,7 +3365,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 // The rows are read in the window that holds their end, rather than read again in each larger one: until
                 // a window holds it, or more rows than the index has room for, the window grows. The index makes room for
                 // as many rows as their bytes hold before they are read, once: a subsection's count is the file's claim,
-                // and room made for each subsection in turn, or for rows read again, would double the map each time.
+                // and room made for each subsection in turn, or for rows read again, would double the index each time.
                 var rows = span[keyword.End..];
                 var rowsEnd = rows.IndexOfAnyExcept(TableBytes);
                 var held = RowsHeld(rowsEnd < 0 ? rows : rows[..rowsEnd]);

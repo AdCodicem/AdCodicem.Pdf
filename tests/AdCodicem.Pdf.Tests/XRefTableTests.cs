@@ -34,7 +34,7 @@ public class XRefTableTests
     [Fact]
     public void Room_for_a_few_rows_more_than_the_table_holds_doubles_it_rather_than_growing_it_by_them()
     {
-        // A chain of many sections each making room for its own rows would otherwise resize the map at each one.
+        // A chain of many sections each making room for its own rows would otherwise resize the index at each one.
         var table = Filled(1000);
         var capacity = Capacity(table);
 

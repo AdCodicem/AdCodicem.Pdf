@@ -2897,7 +2897,7 @@ public class DocumentReaderTests
     public void A_newest_size_far_past_the_room_made_so_far_is_not_made_room_for_at_once()
     {
         // The newest section's /Size claims 100,000 objects; its rows and the older section's hold 2,000. Room is made for
-        // the size at once only when a doubling would come within a doubling of it, four times what the map held.
+        // the size at once only when a doubling would come within a doubling of it, four times what the index held.
         var text = Encoding.Latin1.GetString(ChainOfSections(sections: 2, rows: 1000));
         var newest = text.LastIndexOf("/Size 2000 ", StringComparison.Ordinal);
         var file = Encoding.Latin1.GetBytes(string.Concat(text.AsSpan(0, newest), "/Size 100000 ", text.AsSpan(newest + "/Size 2000 ".Length)));
