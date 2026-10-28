@@ -34,9 +34,9 @@ objects, and a rebuild scans the whole file, but neither decodes a page's conten
 
 Indexing allocates 40 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
 costs the same to index as an empty one. The map holds 36 bytes an entry, and 4 a slot that finds an object number's
-entry while numbers run in order; a number further from the others than twice their count is found through a hash table
-instead, about 20 bytes more, its hashes seeded so that a file cannot choose numbers that make each lookup slow. The map
-is sized before it is filled: each cross-reference section makes room for the rows it holds before it reads them, and
+entry while numbers run in order; a number past twice the entries held or made room for, and 1,024 more, is found
+through a hash table instead, about twice the cost of a slot, its hashes seeded so that a file cannot choose numbers that
+make each lookup slow. The map is sized before it is filled: each cross-reference section makes room for the rows it holds before it reads them, and
 for no more objects than the newest section's `/Size` numbers, since an older section's rows for numbers a newer one
 gave add nothing. A count the file declares is its claim, so room is made for no more rows than a stream's data holds,
 or than a classic table's bytes hold at 20 bytes a row up to the first byte no row holds, which the table is read in a
@@ -44,12 +44,13 @@ window large enough to reach. A chain of many like sections makes room section a
 doubling the map at least each time it must grow, and for the whole `/Size` once a doubling comes within a doubling of
 it. A table's rows are counted by their lines, so that rows written 19 bytes long, their end of line a single byte,
 take no more room than rows of 20. A map left to grow — by a rebuild, or rows written shorter still — doubles as it
-grows, and allocates 80 to 140 bytes an object, by where the count falls against its steps.
+grows, and allocates 80 to 160 bytes an object, by where the count falls against its steps.
 A cross-reference stream adds the decoding of its rows: 7 bytes an object when they are written as they are, up to
 about 42 when Flate stores them without compressing, compressed rows in between. Opening also decodes the object
 stream that holds the catalog, when one does, and that costs what the stream holds: a producer that packs every object
 into one stream makes opening pay their decoded weight: 864 bytes an object on one such file, damaged, of 65,564. An open
-document keeps the map, 40 bytes an object, about 80 at most when it grew: on the corpus's thousand-page journal, 40.
+document keeps the map, 40 bytes an object, about 80 at most when it grew and about 96 when its numbers are spread far
+apart: on the corpus's thousand-page journal, 40.
 When the reader relocates an object or rebuilds the map once the chain is read, it keeps a copy of the map the chain
 gave as well, so that validation still judges the file's own.
 
@@ -184,13 +185,13 @@ hold.
 | Indexing | 1000 pages, ~4 MB | 229 µs | 393 KB |
 | Indexing, then reading every page | 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
 | Indexing and walking the page tree | real 1000-page file | — | 3.2 MB |
-| Indexing a classic table | generated, 300,000 objects | — | 16.9 MB |
-| Indexing a cross-reference stream whose rows Flate stores | generated, 300,000 objects | — | 29.5 MB |
-| Indexing a chain of a thousand classic sections | generated, 300,000 objects | — | 30.6 MB |
+| Indexing a classic table | generated, 300,000 objects | — | 12.0 MB |
+| Indexing a cross-reference stream whose rows Flate stores | generated, 300,000 objects | — | 22.5 MB |
+| Indexing a chain of a thousand classic sections | generated, 300,000 objects | — | 24.2 MB |
 
 The first two rows are BenchmarkDotNet's. The last four are measured in the test suite, in Release, after a first
-reading — the journal's on 2026-10-02, the generated indexes' on 2026-10-14 —, and enforced as budgets in CI, so that
-an allocation regression past one fails the build: 4 MB for the journal, 17.7 MB, 31.0 MB and 32.1 MB for the generated
-indexes, 5 % over their figures. Growing the map allocated 31.1 MB, 43.1 MB and 33.2 MB: sizing it before it is
-filled allocates about half that for the table, two thirds for the stream, and a tenth less for the chain, whose map
-still doubles from section to section until it comes within a doubling of the newest `/Size`. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.
+reading — the journal's on 2026-10-02, the generated indexes' on 2026-10-28 —, and enforced as budgets in CI, so that
+an allocation regression past one fails the build: 4 MB for the journal, 12.6 MB, 23.6 MB and 25.5 MB for the generated
+indexes, 5 % over their figures. The map is sized before it is filled, the chain's doubling from section to section
+until it comes within a doubling of the newest `/Size`; the hash table the map was before 2026-10-28 allocated 16.9 MB,
+29.5 MB and 30.6 MB sized so, and 31.1 MB, 43.1 MB and 33.2 MB left to grow. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.

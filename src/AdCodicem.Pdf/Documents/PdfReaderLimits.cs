@@ -150,7 +150,8 @@ public sealed record PdfReaderLimits
     /// <summary>
     /// Gets the most object numbers the reader indexes, free ones and those whose row it refused included. Defaults to
     /// 8,388,607, the most ISO 32000-1 advises a document to hold (annex C): a cross-reference stream of a few hundred
-    /// bytes can claim hundreds of millions of objects, and the index holds 52 to 108 bytes for each.
+    /// bytes can claim hundreds of millions of objects, and the index holds 40 bytes for each it is sized for, up to about
+    /// 80 when a rebuild grows it and about 96 for numbers spread far apart.
     /// </summary>
     /// <remarks>
     /// The index takes object numbers in the order the reader meets them — the newest section of the chain first, a

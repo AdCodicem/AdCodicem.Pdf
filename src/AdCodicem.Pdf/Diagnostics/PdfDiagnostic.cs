@@ -24,7 +24,7 @@ public readonly record struct PdfDiagnostic(
     /// <remarks>
     /// Hashed through the seed .NET draws once a process, as strings are, both halves of the position included: a table
     /// keyed by reports alike but for where they lie spreads them as it would random keys, where a record struct's own
-    /// hash, which adds the position last, lets a file put them in one bucket. A hash differs from one process to the
+    /// hash, a fixed linear combination of its fields that adds the position last, lets a file put them in one bucket. A hash differs from one process to the
     /// next, and is not to be stored.
     /// </remarks>
     public override int GetHashCode() =>
