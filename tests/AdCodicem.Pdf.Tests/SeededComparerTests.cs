@@ -270,6 +270,40 @@ public class SeededComparerTests
         Refused(typeof(Seeded)).Should().BeEmpty();
     }
 
+    [Fact]
+    public void The_reading_of_the_compiled_library_reads_through_the_probes_code_coverage_puts()
+    {
+        // Code coverage, as CI runs the tests, puts a probe at each sequence point, which may fall between the comparer's
+        // getter and the table's constructor: the probe is not code the source wrote, and the table stays seeded. Any other
+        // instruction there is read as it stands.
+        var module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Probed"), AssemblyBuilderAccess.Run).DefineDynamicModule("Probed");
+        var tracker = module.DefineType("StaticManagedTrackerTemplate_Sample", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
+        var begin = tracker.DefineField("Begin", typeof(nint), FieldAttributes.Public | FieldAttributes.Static);
+        tracker.CreateType();
+        var samples = module.DefineType("Samples", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
+        var seeded = typeof(SeededComparer).GetProperty(nameof(SeededComparer.Instance))!.GetMethod!;
+        var constructor = typeof(HashSet<int>).GetConstructor([typeof(IEqualityComparer<int>)])!;
+        Emit("Probed", il => il.Emit(OpCodes.Ldsfld, begin), il => il.Emit(OpCodes.Ldc_I4, 7), il => il.Emit(OpCodes.Add), il => il.Emit(OpCodes.Ldc_I4_1), il => il.Emit(OpCodes.Stind_I1));
+        Emit("Wedged", il => il.Emit(OpCodes.Ldc_I4, 7), il => il.Emit(OpCodes.Pop));
+        var type = samples.CreateType();
+
+        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().Equal("Wedged");
+
+        void Emit(string name, params Action<ILGenerator>[] between)
+        {
+            var il = samples.DefineMethod(name, MethodAttributes.Public | MethodAttributes.Static, typeof(HashSet<int>), Type.EmptyTypes).GetILGenerator();
+            il.Emit(OpCodes.Call, seeded);
+
+            foreach (var emit in between)
+            {
+                emit(il);
+            }
+
+            il.Emit(OpCodes.Newobj, constructor);
+            il.Emit(OpCodes.Ret);
+        }
+    }
+
     /// <summary>
     /// Gets the samples of <paramref name="samples"/> the compiled reading refuses: a method by its name, a type nested in
     /// it by the type's.
@@ -793,7 +827,45 @@ public class SeededComparerTests
                 instructions.Add((offset, code, member));
             }
 
-            return (instructions, targets);
+            return (WithoutProbes(instructions, targets), targets);
+        }
+
+        /// <summary>
+        /// Gets <paramref name="instructions"/> without the probes code coverage puts at sequence points, as CI runs the
+        /// tests under it — a load of its tracker's field, the probe's index added, and a byte of one stored —, which
+        /// nothing the source wrote does. A branch to a probe leads on to what follows it.
+        /// </summary>
+        private static List<(int Offset, OpCode Code, MemberInfo? Member)> WithoutProbes(
+            List<(int Offset, OpCode Code, MemberInfo? Member)> instructions, HashSet<int> targets)
+        {
+            var kept = new List<(int Offset, OpCode Code, MemberInfo? Member)>(instructions.Count);
+
+            for (var i = 0; i < instructions.Count; i++)
+            {
+                if (instructions[i].Member is not FieldInfo { DeclaringType.Name: var tracker }
+                    || !tracker.StartsWith("StaticManagedTrackerTemplate", StringComparison.Ordinal))
+                {
+                    kept.Add(instructions[i]);
+                    continue;
+                }
+
+                var end = i;
+                var reached = false;
+
+                while (end < instructions.Count && instructions[end].Code != OpCodes.Stind_I1)
+                {
+                    reached |= targets.Contains(instructions[end++].Offset);
+                }
+
+                if (end < instructions.Count && (reached || targets.Contains(instructions[end].Offset)) && end + 1 < instructions.Count)
+                {
+                    targets.Add(instructions[end + 1].Offset);
+                }
+
+                i = end;
+            }
+
+            return kept;
         }
     }
 
