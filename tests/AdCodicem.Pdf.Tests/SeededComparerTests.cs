@@ -87,8 +87,9 @@ public class SeededComparerTests
         // Every hash table keyed by a number or a tuple holding one, whose type the source writes, is built with
         // SeededComparer among its own arguments, or in its initializer where it has none, a copy included: built with [],
         // new() or no comparer, it would hash numbers a file chose as themselves (#155). A concurrent, frozen or immutable
-        // one, which enumerates by hash, is refused seeded or not. A name declared with such a type and no table, given []
-        // or new() later, is held too, so are the tables an array's initializer builds, and a LINQ operator that hashes
+        // one built with [] or new(), which enumerates by hash, is refused seeded or not; one an operator or a factory
+        // builds is the compiled reading's. A name declared with such a type and no table, given [] or new() later, is held
+        // too, so are the tables an array's initializer builds, and a LINQ operator that hashes
         // names a comparer among its own arguments, whatever its key. Comments and literals are not read. This reading
         // names the file and the line; what it cannot see — a table built where its type is not written, as an out var or
         // an expression body gives it, a key it cannot tell a number, the comparer an operator is given — the reading of
@@ -211,6 +212,7 @@ public class SeededComparerTests
     [InlineData("HashSet<int>[] tables = [new(SeededComparer.Instance)];")]
     [InlineData("public HashSet<int>[] Tables { get; } = [new(SeededComparer.Instance)];")]
     [InlineData("HashSet<int>[]? tables = [new(SeededComparer.Instance)];")]
+    [InlineData("class A { private HashSet<int> _t; }\nclass B { private ConcurrentDictionary<int, string> _t; }\nclass C { void M() { _t = new(SeededComparer.Instance); } }")]
     [InlineData("HashSet<int>[]? tables = [];")]
     [InlineData("HashSet<int>[][] tables = [[]];")]
     [InlineData("var tables = new HashSet<int>[][] { [] };")]
@@ -231,10 +233,13 @@ public class SeededComparerTests
         // on every path that reaches it. A key is steerable when it is a number — an integer wider than a byte, a
         // character, a floating point or decimal number —, nullable or not, a tuple or an anonymous type holding one, a
         // type of the library hashed as the compiler writes a record's hash, a fixed combination of its members a file
-        // inverts, or what a boxed number may be keyed as, any object or an interface numbers implement, which no comparer
-        // of a number seeds. A collection that enumerates by hash — concurrent, frozen or immutable, its factories and its
-        // builder included — is refused whatever its comparer, over a steerable key or a type of the library whose hash goes
-        // through the seed, as PdfObjectId's does: the seed would order what it gives (invariant 6). An enumeration's values
+        // inverts, or what a boxed number may be keyed as, any object, a value type or an interface numbers implement,
+        // which no comparer of a number seeds: an identity table is keyed by a reference type of the library with
+        // ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash — concurrent, frozen or
+        // immutable, its factories, its builder and an immutable one's Empty included, however built — is refused whatever
+        // its comparer, over a steerable key or a type of the library whose own hash calls anything, as PdfObjectId's
+        // calls HashCode: the seed would order what it gives (invariant 6). Only an enumeration, or a type hashed by its
+        // fields alone, as the Arlington model's are by their index, is let be there. An enumeration's values
         // are the library's own, and how the hash of a type the library hashes by hand spreads is held by its own tests, as
         // PdfObjectId's and PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its
         // comparer: its callers choose its key, and no reading follows them; nor does it give a table type where new(),
@@ -311,6 +316,13 @@ public class SeededComparerTests
             nameof(Unseeded.Hybrid),
             nameof(Unseeded.SpecializedOrdered),
             nameof(Unseeded.CaseInsensitive),
+            nameof(Unseeded.EmptyIdentifiers),
+            nameof(Unseeded.CreatedIdentifiers),
+            nameof(Unseeded.LazyNames),
+            nameof(Unseeded.AnonymousIdentifiers),
+            nameof(Unseeded.UnhashedKeys),
+            nameof(Unseeded.NamedKeys),
+            nameof(Unseeded.ObjectByReference),
             nameof(Unseeded.Given),
             nameof(Unseeded.ByReference),
             nameof(Unseeded.ActivatorOpen),
@@ -494,6 +506,24 @@ public class SeededComparerTests
 
         public static int CaseInsensitive() => System.Collections.Specialized.CollectionsUtil.CreateCaseInsensitiveHashtable().Count;
 
+        public static ImmutableHashSet<PdfObjectId> EmptyIdentifiers() => ImmutableHashSet<PdfObjectId>.Empty.Add(default);
+
+        public static int CreatedIdentifiers() => Activator.CreateInstance<ConcurrentDictionary<PdfObjectId, int>>().Count;
+
+        public static int LazyNames()
+        {
+            ConcurrentDictionary<PdfName, int>? names = null;
+            return LazyInitializer.EnsureInitialized(ref names).Count;
+        }
+
+        public static int AnonymousIdentifiers(PdfObjectId identifier) => ImmutableHashSet.Create(new { Identifier = identifier }).Count;
+
+        public static FrozenSet<Unhashed> UnhashedKeys(IEnumerable<Unhashed> keys) => keys.ToFrozenSet();
+
+        public static FrozenSet<NamedKey> NamedKeys(IEnumerable<NamedKey> keys) => keys.ToFrozenSet();
+
+        public static int ObjectByReference() => new HashSet<object>(ReferenceEqualityComparer.Instance).Count;
+
         public static HashSet<(T, string)> Given<T>(IEqualityComparer<(T, string)> comparer) => new(comparer);
 
         public static HashSet<List<T>> ByReference<T>() => new(ReferenceEqualityComparer.Instance);
@@ -581,6 +611,10 @@ public class SeededComparerTests
 
         public static FrozenSet<PdfLimit> FrozenLimits(IEnumerable<PdfLimit> limits) => limits.ToFrozenSet();
 
+        public static FrozenSet<IndexedKey> IndexedKeys(IEnumerable<IndexedKey> keys) => keys.ToFrozenSet();
+
+        public static int SortedByName() => System.Collections.Specialized.CollectionsUtil.CreateCaseInsensitiveSortedList().Count;
+
         public static int ByReference() =>
             new Dictionary<PdfObject, int>(ReferenceEqualityComparer.Instance).Count + new Dictionary<PdfObjectId, int>().Count
             + new HashSet<PdfName>().Count;
@@ -601,6 +635,38 @@ public class SeededComparerTests
     }
 
     private readonly record struct Pair(int First, int Second);
+
+    /// <summary>A key with no hash of its own: a struct's, which goes through the seed.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1815:Override equals and operator equals on value types",
+        Justification = "The sample is a key that keeps the hash a struct has by default.")]
+    private readonly struct Unhashed(int value)
+    {
+        public int Value { get; } = value;
+    }
+
+    /// <summary>A key hashing a string, whose hash goes through the seed, through object's GetHashCode.</summary>
+    private sealed class NamedKey(string name)
+    {
+        public override bool Equals(object? obj) => obj is NamedKey other && other.Name == Name;
+
+        public override int GetHashCode() => Name.GetHashCode();
+
+        private string Name { get; } = name;
+    }
+
+    /// <summary>A key hashed by its index alone, as the Arlington model's are, which calls nothing.</summary>
+    private readonly struct IndexedKey(int index) : IEquatable<IndexedKey>
+    {
+        private readonly int _index = index;
+
+        public bool Equals(IndexedKey other) => other._index == _index;
+
+        public override bool Equals(object? obj) => obj is IndexedKey other && Equals(other);
+
+        public override int GetHashCode() => _index;
+    }
 
     private sealed record Numbered(int First, int Second);
 
@@ -666,9 +732,9 @@ public class SeededComparerTests
         /// so is the comparer they hand it, which no reading follows. A table type given where <c>new()</c>, Lazy or
         /// LazyInitializer builds it, or Activator, takes no comparer either, nor does a table keyed by any object. A
         /// collection that enumerates in an order its keys' hashes set — a concurrent dictionary, a frozen or immutable hash
-        /// collection, or its builder — is refused whatever its comparer, over a steerable key or over a type of the library
-        /// whose hash goes through the seed, as PdfObjectId's does: the seed, which differs from one process to the next,
-        /// would order what it gives.
+        /// collection, its builder or an immutable one's <c>Empty</c> — is refused whatever its comparer, over a steerable
+        /// key or over a key the seed may order (<see cref="OrderedBySeed"/>), as PdfObjectId's: the seed, which differs
+        /// from one process to the next, would order what it gives.
         /// </summary>
         public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(IEnumerable<Type> types)
         {
@@ -716,7 +782,7 @@ public class SeededComparerTests
 
         /// <summary>
         /// Determines whether <paramref name="member"/> builds a hash collection over a key a file can steer or a type
-        /// parameter stands for, or one that enumerates by hash over a key the library seeds by hand, and gets that key:
+        /// parameter stands for, or one that enumerates by hash over a key the seed may order, and gets that key:
         /// null for what no comparer can seed — a table keyed by any object, built by its constructor or by
         /// <see cref="System.Collections.Specialized.CollectionsUtil"/>, or a table built for a type argument by
         /// <c>new()</c>, Activator, Lazy or LazyInitializer.
@@ -726,7 +792,8 @@ public class SeededComparerTests
             var type = member.DeclaringType!;
             key = null;
 
-            if ((member is ConstructorInfo && Untyped.Contains(type)) || type == typeof(System.Collections.Specialized.CollectionsUtil)
+            if ((member is ConstructorInfo && Untyped.Contains(type))
+                || (type == typeof(System.Collections.Specialized.CollectionsUtil) && member is MethodInfo { ReturnType: var built } && Untyped.Contains(built))
                 || BuildsTypeArgument(member))
             {
                 return true;
@@ -742,7 +809,7 @@ public class SeededComparerTests
                 _ => null,
             };
 
-            return key is not null && (key.ContainsGenericParameters || Steerable(key) || (EnumeratesByHash(member) && SeededByHand(key)));
+            return key is not null && (key.ContainsGenericParameters || Steerable(key) || (EnumeratesByHash(member) && OrderedBySeed(key)));
         }
 
         /// <summary>
@@ -796,24 +863,27 @@ public class SeededComparerTests
         }
 
         /// <summary>
-        /// Determines whether building <paramref name="type"/> builds a hash table over a steerable key or a type parameter:
-        /// it is one, or a type whose <c>new()</c> constraint builds one for it.
+        /// Determines whether building <paramref name="type"/> builds a hash table over a steerable key or a type parameter,
+        /// a table keyed by any object, or a concurrent dictionary over a key the seed would order: it is one, or a type
+        /// whose <c>new()</c> constraint builds one for it.
         /// </summary>
         private static bool CreatesTable(Type type) =>
             Untyped.Contains(type)
             || (type.IsGenericType && Tables.Contains(type.GetGenericTypeDefinition()) && type.GetGenericArguments()[0] is var key
-                && (key.ContainsGenericParameters || Steerable(key)))
+                && (key.ContainsGenericParameters || Steerable(key)
+                    || (type.GetGenericTypeDefinition() == typeof(ConcurrentDictionary<,>) && OrderedBySeed(key))))
             || (type.IsGenericType && Constructed(type.GetGenericTypeDefinition().GetGenericArguments(), type.GetGenericArguments()));
 
         /// <summary>
         /// Determines whether the hash collection <paramref name="member"/> builds enumerates in an order its keys' hashes
-        /// set: a concurrent dictionary, or a frozen or immutable hash collection or its builder, which a factory builds —
-        /// an <c>Empty</c> takes no comparer, and is refused anyway. A dictionary, a set and an ordered dictionary enumerate
-        /// in the order their adds and removes set.
+        /// set: a concurrent dictionary, or a frozen or immutable hash collection or its builder, which a factory or an
+        /// immutable one's <c>Empty</c> builds. A dictionary, a set and an ordered dictionary enumerate in the order their
+        /// adds and removes set.
         /// </summary>
         private static bool EnumeratesByHash(MemberInfo member) =>
             (member is MethodInfo && Factories.Contains(member.DeclaringType!))
-            || (member.DeclaringType is { IsGenericType: true } type && type.GetGenericTypeDefinition() == typeof(ConcurrentDictionary<,>));
+            || (member.DeclaringType is { IsGenericType: true } type
+                && (type.GetGenericTypeDefinition() == typeof(ConcurrentDictionary<,>) || (member is FieldInfo && HashCollections.Contains(type.GetGenericTypeDefinition()))));
 
         /// <summary>Determines whether <paramref name="type"/> is a frozen or immutable hash collection, or its builder.</summary>
         private static bool IsHashCollection(Type type) =>
@@ -844,9 +914,7 @@ public class SeededComparerTests
             }
 
             // A tuple, or an anonymous type, which the compiler hashes as a fixed combination of its members' hashes.
-            if (key.IsGenericType && ((key.GetGenericTypeDefinition() is { Namespace: "System" } tuple
-                    && (tuple.Name.StartsWith("ValueTuple`", StringComparison.Ordinal) || tuple.Name.StartsWith("Tuple`", StringComparison.Ordinal)))
-                || (key.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute)) && key.Name.Contains("AnonymousType", StringComparison.Ordinal))))
+            if (IsTupleOrAnonymous(key))
             {
                 return Array.Exists(key.GetGenericArguments(), Steerable);
             }
@@ -857,32 +925,42 @@ public class SeededComparerTests
         }
 
         /// <summary>
-        /// Determines whether <paramref name="key"/>, alone, nullable or in a tuple, is a type of the library that hashes
-        /// itself through the process's seed, by <see cref="HashCode"/> or a string's hash: what such keys give, a
-        /// collection that enumerates by hash would order by the seed, which differs from one process to the next.
+        /// Determines whether a collection that enumerates by hash would order <paramref name="key"/>, alone, nullable, in a
+        /// tuple or an anonymous type, otherwise from one process to the next: any type outside the framework but an
+        /// enumeration and a type whose own hash calls nothing — the Arlington model's, hashed by their index —, since a
+        /// hash that calls anything may reach the seed, as PdfObjectId's does through HashCode, PdfName's through a
+        /// string's hash and a struct's own through ValueType's. The framework's types other than numbers, strings among
+        /// them, are not read: no table the library enumerates is keyed by them.
         /// </summary>
-        private static bool SeededByHand(Type key)
+        private static bool OrderedBySeed(Type key)
         {
             if (Nullable.GetUnderlyingType(key) is { } value)
             {
-                return SeededByHand(value);
+                return OrderedBySeed(value);
             }
 
-            if (key.IsGenericType && key.GetGenericTypeDefinition() is { Namespace: "System" } tuple
-                && (tuple.Name.StartsWith("ValueTuple`", StringComparison.Ordinal) || tuple.Name.StartsWith("Tuple`", StringComparison.Ordinal)))
+            if (IsTupleOrAnonymous(key))
             {
-                return Array.Exists(key.GetGenericArguments(), SeededByHand);
+                return Array.Exists(key.GetGenericArguments(), OrderedBySeed);
             }
 
-            if (key.Assembly != typeof(SeededComparer).Assembly || key.GetMethod(nameof(GetHashCode), Type.EmptyTypes) is not { } hash
-                || hash.DeclaringType != key || hash.GetMethodBody()?.GetILAsByteArray() is not { } il)
+            if (key.IsEnum || key.IsGenericParameter
+                || (key.Assembly.GetName().Name is { } assembly
+                    && (assembly.StartsWith("System", StringComparison.Ordinal) || assembly.StartsWith("Microsoft", StringComparison.Ordinal))))
             {
                 return false;
             }
 
-            return Read(hash, il).Instructions.Exists(instruction => instruction.Member is MethodInfo called
-                && (called.DeclaringType == typeof(HashCode) || (called.DeclaringType == typeof(string) && called.Name == nameof(GetHashCode))));
+            return key.GetMethod(nameof(GetHashCode), Type.EmptyTypes) is not { } hash || hash.DeclaringType != key
+                || hash.GetMethodBody()?.GetILAsByteArray() is not { } il
+                || Read(hash, il).Instructions.Exists(instruction => instruction.Member is MethodBase);
         }
+
+        /// <summary>Determines whether <paramref name="key"/> is a tuple or an anonymous type, hashed as the hashes of its members.</summary>
+        private static bool IsTupleOrAnonymous(Type key) =>
+            key.IsGenericType && ((key.GetGenericTypeDefinition() is { Namespace: "System" } tuple
+                    && (tuple.Name.StartsWith("ValueTuple`", StringComparison.Ordinal) || tuple.Name.StartsWith("Tuple`", StringComparison.Ordinal)))
+                || (key.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute)) && key.Name.Contains("AnonymousType", StringComparison.Ordinal)));
 
         /// <summary>
         /// Determines whether <paramref name="method"/> takes the comparer of <paramref name="key"/> last: as a hashing
@@ -1075,7 +1153,7 @@ public class SeededComparerTests
                 }
                 else if (!built && name is not null)
                 {
-                    declared[name] = byHash;
+                    declared[name] = declared.TryGetValue(name, out var was) ? was && byHash : byHash;
                 }
             }
 
