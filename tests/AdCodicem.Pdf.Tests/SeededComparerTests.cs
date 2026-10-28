@@ -240,10 +240,10 @@ public class SeededComparerTests
         // StringDictionary, however built — is refused whatever its key and comparer: a hash that goes through a seed,
         // now or after a later change, would order what it gives (invariant 6), and no key is argued one by one. The
         // one named and let be is PdfName's interning table, keyed by strings, which its static constructor builds
-        // once, before any branch and straight into a static field, and the library reaches, through its type or a
-        // generic interface of it, only to find or add one name. An enumeration's values are the library's own, and how
-        // the hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's and
-        // PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
+        // once, ahead of every branch target and straight into a static field, and the library reaches, through its
+        // type or a generic interface of it, only to find or add one name. An enumeration's values are the library's
+        // own, and how the hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's
+        // and PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
         // callers choose its key, and no reading follows them; nor does it give a table type where new(), Activator,
         // Lazy or LazyInitializer builds it.
         var violations = new List<string>();
@@ -361,15 +361,16 @@ public class SeededComparerTests
     [Fact]
     public void The_reading_of_the_compiled_library_lets_be_one_interning_table_and_nothing_that_enumerates_it()
     {
-        // PdfName's interning table is the one collection that enumerates by hash let be. A stand-in holds each condition:
-        // the first table from strings to the type its static constructor builds and stores straight into a static field is
-        // let be; a second, one keyed to another type, one stored elsewhere, one another method or another type builds, a
-        // frozen or immutable one, and a member that enumerates it, views it, copies it, hands it out or names its pairs, as
-        // a method group, in an array, a reference or a type argument included, are refused, and finding or adding one
-        // entry, through its type or an interface of it, is not. One built at the head of a loop, which may run it more
-        // than once, is refused too. Its static constructor
-        // is read after its methods, and the other type before it, so that a condition left out lets be another table than
-        // the one it should, which the constructor's parameters tell apart.
+        // PdfName's interning table is the one collection that enumerates by hash let be. A stand-in holds each
+        // condition: the first table from strings to the type its static constructor builds and stores straight into a
+        // static field is let be; a second, one keyed to another type, one stored elsewhere, one another method or
+        // another type builds, a frozen or immutable one, and a call to, or a method group of, a member that enumerates
+        // it, views it, copies it, hands it out or names its pairs, in an array, a reference or a type argument
+        // included, are refused, and finding or adding one entry, through its type or an interface of it, is not. One
+        // built in a loop, which may run it more than once, is refused too, whether the loop's branch lands on the
+        // construction or ahead of it. Its static constructor is read after its methods, and the other type before it,
+        // so that a condition left out lets be another table than the one it should, which the constructor's parameters
+        // tell apart.
         var refused = CompiledRules.TablesBuilt([typeof(Interning), typeof(Interned)], typeof(Interned))
             .Select(found => $"{found.Method.DeclaringType!.Name}.{found.Method.Name}: {CompiledRules.Describe(found.Built)}({Parameters(found.Built)})");
 
@@ -396,6 +397,9 @@ public class SeededComparerTests
         CompiledRules.TablesBuilt([typeof(Looped)], typeof(Looped))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".cctor: ConcurrentDictionary`2<String, Looped>..ctor");
+        CompiledRules.TablesBuilt([typeof(LoopedCompared)], typeof(LoopedCompared))
+            .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
+            .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedCompared>..ctor");
 
         static string Parameters(MemberInfo built) =>
             built is MethodBase called ? string.Join(", ", called.GetParameters().Select(parameter => parameter.ParameterType.Name)) : "";
@@ -663,7 +667,6 @@ public class SeededComparerTests
         private sealed class ForwardingDictionary<T>(IEqualityComparer<T>? comparer) : Dictionary<T, string>(comparer)
             where T : notnull;
 
-        /// <summary>What its type argument is, built through <c>new()</c>.</summary>
         /// <summary>What a virtual generic method builds for its type argument, through <c>new()</c>.</summary>
         public interface IMaker
         {
@@ -673,6 +676,7 @@ public class SeededComparerTests
 
         private static int Count(in ImmutableHashSet<int> set) => set.Count;
 
+        /// <summary>What its type argument is, built through <c>new()</c>.</summary>
         public sealed class Wrapper<TInner>
             where TInner : new()
         {
@@ -877,6 +881,35 @@ public class SeededComparerTests
         }
 
         public static Looped Get(string value) => Table.GetOrAdd(value, static _ => new Looped());
+    }
+
+    /// <summary>
+    /// A stand-in whose static constructor builds its table in a loop, whose branch lands ahead of the construction, on
+    /// the comparer it is given.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1810:Initialize reference type static fields inline",
+        Justification = "The sample is a static constructor that builds its table in a loop.")]
+    private sealed class LoopedCompared
+    {
+        private static readonly ConcurrentDictionary<string, LoopedCompared>[] Shards = new ConcurrentDictionary<string, LoopedCompared>[2];
+
+        private static readonly ConcurrentDictionary<string, LoopedCompared> Table;
+
+        static LoopedCompared()
+        {
+            var i = 0;
+
+            do
+            {
+                Table = new(StringComparer.Ordinal);
+                Shards[i] = Table;
+            }
+            while (++i < Shards.Length);
+        }
+
+        public static LoopedCompared Get(string value) => Table.GetOrAdd(value, static _ => new LoopedCompared());
     }
 
     /// <summary>Another type, whose static constructor builds the stand-in's table.</summary>
