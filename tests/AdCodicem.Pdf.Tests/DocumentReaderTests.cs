@@ -3069,17 +3069,18 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData(false, 100_500, 13_250_000)]
-    [InlineData(true, 101_000, 15_000_000)]
-    public void Older_sections_that_once_numbered_past_a_stale_size_leave_it_bounding_nothing(bool hybrid, int objects, long budget)
+    [InlineData(StaleChain.Alternating, 100_500, 13_250_000)]
+    [InlineData(StaleChain.StreamsPast, 101_000, 15_000_000)]
+    [InlineData(StaleChain.TablesPast, 101_000, 14_770_000)]
+    public void Older_sections_that_once_numbered_past_a_stale_size_leave_it_bounding_nothing(StaleChain shape, int objects, long budget)
     {
-        // Under a /Size of 1, every other older section numbers one past the highest read and the rest number nothing, or
-        // each older section's /XRefStm stream numbers one past it while its table numbers below. Once one has, the stale
-        // size bounds the room no more for the rest of the chain: bounding it again after a section that numbers nothing,
-        // or never seeing a stream number past it, made room one entry at a time, copying the index whole each time —
-        // 1.8 GB and 3.6 GB. Measured twice on 2026-10-28, after a warm-up: 12,613,968 and 14,256,152 bytes. The budget is
-        // 5 % over.
-        var file = StaleSizeChainOf(newest: 100_000, older: 1000, hybrid);
+        // Under a /Size of 1, every other older section numbers one past the highest read and the rest number nothing; or
+        // each older section's /XRefStm stream numbers one past it while its table numbers below; or each table numbers
+        // past it while its stream numbers nothing. Once one has, the stale size bounds the room no more for the rest of
+        // the chain: bounding it again after a section or a stream that numbers nothing, or never seeing a stream number
+        // past it, made room one entry at a time, copying the index whole each time — 1.8 GB, 3.6 GB and 3.6 GB. Measured
+        // twice on 2026-10-28, after a warm-up: 12,613,968, 14,256,152 and 14,063,600 bytes. The budget is 5 % over.
+        var file = StaleSizeChainOf(newest: 100_000, older: 1000, shape);
         using (PdfDocument.Open(file))
         {
             // The first opening pays what any first call does once.
@@ -3094,8 +3095,9 @@ public class DocumentReaderTests
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
         allocated.Should().BeLessThan(budget, "a stale size bounds no room once an older section has numbered past the newer ones");
 
-        static byte[] StaleSizeChainOf(int newest, int older, bool hybrid)
+        static byte[] StaleSizeChainOf(int newest, int older, StaleChain shape)
         {
+            var hybrid = shape != StaleChain.Alternating;
             var file = new StringBuilder("%PDF-1.7\n");
             var catalog = file.Length;
             file.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
@@ -3108,16 +3110,24 @@ public class DocumentReaderTests
             {
                 var stream = file.Length;
 
-                if (hybrid)
+                if (shape == StaleChain.StreamsPast)
                 {
                     file.Append(CultureInfo.InvariantCulture, $"{newest + k} 0 obj\n<< /Type /XRef /Size {newest + k + 1} /Index [{newest + k} 1] /W [1 1 1] /Length 3 >>\nstream\n");
                     file.Append("\0\0\u0001\nendstream\nendobj\n");
                 }
+                else if (shape == StaleChain.TablesPast)
+                {
+                    file.Append(CultureInfo.InvariantCulture, $"{newest + older + k} 0 obj\n<< /Type /XRef /Size 0 /W [1 1 1] /Length 0 >>\nstream\n\nendstream\nendobj\n");
+                }
 
                 var at = file.Length;
-                file.Append(hybrid ? "xref\n3 1\n0000000000 00001 f\r\n"
-                    : k % 2 == 1 ? string.Create(CultureInfo.InvariantCulture, $"xref\n{newest + ((k + 1) / 2)} 1\n0000000000 00001 f\r\n")
-                    : "xref\n");
+                file.Append(shape switch
+                {
+                    StaleChain.StreamsPast => "xref\n3 1\n0000000000 00001 f\r\n",
+                    StaleChain.TablesPast => string.Create(CultureInfo.InvariantCulture, $"xref\n{newest + k} 1\n0000000000 00001 f\r\n"),
+                    _ when k % 2 == 1 => string.Create(CultureInfo.InvariantCulture, $"xref\n{newest + ((k + 1) / 2)} 1\n0000000000 00001 f\r\n"),
+                    _ => "xref\n",
+                });
                 file.Append("trailer\n<< /Size 1 /Root 1 0 R");
                 file.Append(hybrid ? string.Create(CultureInfo.InvariantCulture, $" /XRefStm {stream}") : string.Empty);
                 file.Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}")).Append(" >>\n");
@@ -3192,6 +3202,19 @@ public class DocumentReaderTests
 
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Reader.Index.Capacity.Should().BeLessThan(64, "the table holds four rows");
+    }
+
+    /// <summary>The chains of a stale <c>/Size</c> whose older sections number past the newer ones.</summary>
+    public enum StaleChain
+    {
+        /// <summary>Every other older section numbers one past the highest read, and the rest number nothing.</summary>
+        Alternating,
+
+        /// <summary>Each older section's table numbers below the highest read, and its /XRefStm stream one past it.</summary>
+        StreamsPast,
+
+        /// <summary>Each older section's table numbers one past the highest read, and its /XRefStm stream nothing.</summary>
+        TablesPast,
     }
 
     /// <summary>The ways <see cref="LargeIndexFile"/> indexes its objects.</summary>
