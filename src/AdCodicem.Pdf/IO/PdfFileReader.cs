@@ -556,6 +556,12 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     private int _highestRead = -1;
 
+    /// <summary>
+    /// Whether a section older than the newest gave a number past every one the sections before it gave: the newest
+    /// <c>/Size</c>, stale, then bounds the index's room no more (<see cref="ReserveIndex"/>).
+    /// </summary>
+    private bool _olderNumberedPast;
+
     public PdfFileReader(
         PdfFileSource source, PdfDiagnostics diagnostics, PdfLimitGuard guard, int cacheCapacity, bool ownsSource)
     {
@@ -2921,6 +2927,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                 }
             }
 
+            _olderNumberedPast |= sections > 1 && section.HighestNumber > _highestRead;
             _highestRead = Math.Max(_highestRead, section.HighestNumber);
 
             // A guard kept a trailer from being read whole: one it cut; or, where rows it cut or an index it filled end the
@@ -2973,6 +2980,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
                     ReportLostSection(stream, "/XRefStm", hybrid, section.Offset);
                 }
 
+                _olderNumberedPast |= sections > 1 && stream.HighestNumber > _highestRead;
                 _highestRead = Math.Max(_highestRead, stream.HighestNumber);
 
                 if (_indexFullAt >= 0 || _cutByGuard != cut)
@@ -5278,17 +5286,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         Math.Min(Math.Max(rows.Count((byte)'\n'), rows.Count((byte)'\r')), rows.Length / ShortRowLength);
 
     /// <summary>
-    /// Makes room in the index for the <paramref name="rows"/> a section is about to give, so that the map is sized once
+    /// Makes room in the index for the <paramref name="rows"/> a section is about to give, so that the index is sized once
     /// rather than grown by doubling, and for no more numbers than <see cref="PdfReaderLimits.MaxIndexEntries"/> lets it
     /// take from here on, nor than the newest section's <c>/Size</c> numbers, written direct, once it is read: one more than the document's
-    /// highest object number (ISO 32000-1, 7.5.5), which an older section's rows, superseded, add nothing to. The caller
-    /// bounds the rows by those the section holds: a count the file declares is a claim.
+    /// highest object number (ISO 32000-1, 7.5.5), which an older section's rows, superseded, add nothing to. A size the
+    /// sections read so far number past is stale: one past the highest number read stands for it, until an older section
+    /// numbers past the newer ones too, and from then on it bounds nothing. The caller bounds the rows by those the section
+    /// holds: a count the file declares is a claim.
     /// </summary>
     /// <remarks>
-    /// A chain of many like sections makes room section after section, the map doubling at least each time it must grow.
+    /// A chain of many like sections makes room section after section, the index doubling at least each time it must grow.
     /// Once a doubling would bring it within a doubling of what the <c>/Size</c> numbers, room is made for that at once:
-    /// the last step lands on the size, rather than past it, and makes room for no more than four times what the map held,
-    /// which the rows read paid for.
+    /// the last step lands on the size, rather than past it, and makes room for no more than four times what the index
+    /// held, which the rows read paid for.
     /// </remarks>
     private void ReserveIndex(long rows)
     {
@@ -5298,15 +5308,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // The /Size as written, which ISO 32000-1 makes direct (Table 15, 7.5.8.2), an integral real read as the integer it
         // is: a reference is not read through to make room by, as the newest cross-reference stream's beside an /Index, which
         // numbers no row, would be while the chain is.
-        // A size the sections read so far number past is stale, and bounds nothing: capped at one past the highest number
-        // read, the room would grow by one entry at each older section numbering one further, and the index be copied
-        // whole each time (#155).
+        // A size the sections read so far number past is stale, as when an update did not raise it, and one past the highest
+        // number read stands for it while the older sections number below the newer ones, as they do in such a chain. Once
+        // one has numbered past them, the size bounds nothing: capped at one past the highest number read, the room would
+        // grow by one entry at each older section numbering one further, and the index be copied whole each time (#155).
         if (_xref.Trailer.GetRaw(PdfName.Size) is { } written and not PdfReference && written.AsInteger() is { } size
-            && size > _highestRead)
+            && (size > _highestRead || !_olderNumberedPast))
         {
             // A size the index holds as many entries as already asks for no room, nor does one below zero, which is not
             // narrowed to an int that would.
-            most = (int)Math.Min(most, size);
+            most = (int)Math.Min(most, Math.Max(size, _highestRead + 1L));
 
             if ((long)_xref.Count + room > _xref.Capacity && 4L * _xref.Capacity >= most)
             {
