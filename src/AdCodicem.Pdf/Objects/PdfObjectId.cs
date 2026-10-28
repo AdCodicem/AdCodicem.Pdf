@@ -30,10 +30,10 @@ public readonly record struct PdfObjectId(int Number, int Generation = 0)
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Hashed through the seed .NET draws once a process, as strings are: a table keyed by identifiers a file chose spreads
-    /// them as it would random keys, where a record struct's own hash, <c>Number × −1521134295 + Generation</c> with no
-    /// seed, lets a file put them all in one bucket, or give two of them one hash. A hash differs from one process to the
-    /// next, and is not to be stored.
+    /// Hashed through <see cref="HashCode"/>, whose seed .NET draws once a process, as it draws another for strings: a
+    /// table keyed by identifiers a file chose spreads them as it would random keys, where a record struct's own hash,
+    /// <c>Number × −1521134295 + Generation</c> with no seed, lets a file put them all in one bucket, or give two of
+    /// them one hash. A hash differs from one process to the next, and is not to be stored.
     /// </remarks>
     public override int GetHashCode() => HashCode.Combine(Number, Generation);
 

@@ -227,11 +227,11 @@ public class SeededComparerTests
     [Fact]
     public void No_method_of_the_library_builds_a_table_keyed_by_numbers_without_the_seeded_comparer()
     {
-        // Read in the compiled library, whatever the source wrote — [], new(), an out var given a set, an expression body,
-        // an argument, a copy, a base constructor, a LINQ operator, a method group —: every hash collection built over
-        // a key a file can steer takes SeededComparer.Instance as the comparer of its key, taken last, handed to it
-        // straight and on every path that reaches it. A key is steerable when it is a number — an integer wider than a
-        // byte, a character, a floating point or decimal number —, nullable or not, a tuple or an anonymous type
+        // Read in the compiled library, whatever the source wrote — [], new(), an out var given a set, an expression
+        // body, an argument, a copy, a base constructor, a LINQ operator, a method group —: every hash collection built
+        // over a key a file can steer takes SeededComparer.Instance as the comparer of its key, taken last, handed to
+        // it straight and on every path that reaches it. A key is steerable when it is a number — an integer wider than
+        // a byte, a character, a floating point or decimal number —, nullable or not, a tuple or an anonymous type
         // holding one, a type of the library hashed as the compiler writes a record's hash, a fixed combination of its
         // members a file inverts, or what a boxed number may be keyed as, any object, a value type or an interface
         // numbers implement, which no comparer of a number seeds: an identity table is keyed by a reference type of the
@@ -239,12 +239,13 @@ public class SeededComparerTests
         // concurrent, frozen or immutable, its factories, its builder and an immutable one's Empty included, a
         // StringDictionary, however built — is refused whatever its key and comparer: a hash that goes through a seed,
         // now or after a later change, would order what it gives (invariant 6), and no key is argued one by one. The
-        // one named and let be is PdfName's interning table, keyed by strings, which its static constructor builds once
-        // and the library calls on only to find or add one name. An enumeration's values are the library's own, and how
-        // the hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's and
-        // PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
-        // callers choose its key, and no reading follows them; nor does it give a table type where new(), Activator,
-        // Lazy or LazyInitializer builds it.
+        // one named and let be is PdfName's interning table, keyed by strings, which its static constructor builds
+        // once, straight into a static field, and the library reaches, through its type or a generic interface of it,
+        // only to find or add one name. An enumeration's values are the library's own, and how the hash of a type the
+        // library hashes by hand spreads is held by its own tests, as PdfObjectId's and PdfDiagnostic's are. The
+        // library builds no collection over a type parameter, whatever its comparer: its callers choose its key, and no
+        // reading follows them; nor does it give a table type where new(), Activator, Lazy or LazyInitializer builds
+        // it.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes(), typeof(PdfName)))
@@ -359,22 +360,33 @@ public class SeededComparerTests
     public void The_reading_of_the_compiled_library_lets_be_one_interning_table_and_nothing_that_enumerates_it()
     {
         // PdfName's interning table is the one collection that enumerates by hash let be. A stand-in holds each condition:
-        // the first table from strings to the type its static constructor builds is let be; a second, one keyed to another
-        // type, one another method or another type builds, a frozen or immutable one, and a call that would enumerate it or
-        // names its pairs are refused, and finding or adding one entry is not. Its static constructor is read after its
-        // methods, and the other type before it, so that a condition left out lets be another table than the one it should.
+        // the first table from strings to the type its static constructor builds and stores straight into a static field is
+        // let be; a second, one keyed to another type, one stored elsewhere, one another method or another type builds, a
+        // frozen or immutable one, and a member that enumerates it, views it, copies it, hands it out or names its pairs are
+        // refused, and finding or adding one entry, through its type or an interface of it, is not. Its static constructor
+        // is read after its methods, and the other type before it, so that a condition left out lets be another table than
+        // the one it should, which the constructor's parameters tell apart.
         var refused = CompiledRules.TablesBuilt([typeof(Interning), typeof(Interned)], typeof(Interned))
-            .Select(found => $"{found.Method.DeclaringType!.Name}.{found.Method.Name}: {CompiledRules.Describe(found.Built)}");
+            .Select(found => $"{found.Method.DeclaringType!.Name}.{found.Method.Name}: {CompiledRules.Describe(found.Built)}({Parameters(found.Built)})");
 
         refused.Should().BeEquivalentTo(
-            "Interning..cctor: ConcurrentDictionary`2<String, Interned>..ctor",
-            "Interned.Built: ConcurrentDictionary`2<String, Interned>..ctor",
-            "Interned.Strings: ImmutableHashSet.ToImmutableHashSet",
-            "Interned.Keys: ConcurrentDictionary`2<String, Interned>.get_Keys",
-            "Interned.Listed: Enumerable.ToList",
-            "Interned.Enumerated: IEnumerable`1<KeyValuePair`2>.GetEnumerator",
-            "Interned..cctor: ConcurrentDictionary`2<String, Int32>..ctor",
-            "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor");
+            "Interning..cctor: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)",
+            "Interned.Built: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)",
+            "Interned.Replace: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)",
+            "Interned.Strings: ImmutableHashSet.ToImmutableHashSet(IEnumerable`1, IEqualityComparer`1)",
+            "Interned.Keys: ConcurrentDictionary`2<String, Interned>.get_Keys()",
+            "Interned.Listed: Enumerable.ToList(IEnumerable`1)",
+            "Interned.Enumerated: IEnumerable`1<KeyValuePair`2>.GetEnumerator()",
+            "Interned.Viewed: IReadOnlyDictionary`2<String, Interned>.get_Keys()",
+            "Interned.Copied: Dictionary`2<String, Interned>..ctor(IDictionary`2)",
+            "Interned.Handed: Interned.View()",
+            "Interned.Pairs: List`1<KeyValuePair`2>.get_Count()",
+            "Interned..cctor: ConcurrentDictionary`2<String, Int32>..ctor(IEqualityComparer`1)",
+            "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor()",
+            "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)");
+
+        static string Parameters(MemberInfo built) =>
+            built is MethodBase called ? string.Join(", ", called.GetParameters().Select(parameter => parameter.ParameterType.Name)) : "";
     }
 
     [Fact]
@@ -727,19 +739,49 @@ public class SeededComparerTests
     private sealed record Numbered(int First, int Second);
 
     /// <summary>A stand-in for PdfName: its interning table, the one let be, and what the reading refuses beside it.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1859:Use concrete types when possible for improved performance",
+        Justification = "The shapes are written as code might write them, to be read compiled.")]
     private sealed class Interned
     {
         private static readonly ConcurrentDictionary<string, int> Counted = new(StringComparer.Ordinal);
+
+        private static readonly ConcurrentDictionary<string, Interned>[] Shards = [new()];
 
         private static readonly ConcurrentDictionary<string, Interned> Table = new(StringComparer.Ordinal);
 
         private static readonly ConcurrentDictionary<string, Interned> Second = new(StringComparer.Ordinal);
 
+        private static ConcurrentDictionary<string, Interned>? replaced;
+
         public static Interned Get(string value) => Table.GetOrAdd(value, static _ => new Interned());
 
         public static bool Find(string value) =>
             Table.TryGetValue(value, out _) || Table.ContainsKey(value) || Table.TryAdd(value, Table[value])
-            || Second.ContainsKey(value) || Counted.ContainsKey(value);
+            || Second.ContainsKey(value) || Counted.ContainsKey(value) || Shards[0].ContainsKey(value) || replaced?.ContainsKey(value) is true;
+
+        public static bool Looked(string value)
+        {
+            IReadOnlyDictionary<string, Interned> view = Table;
+            return view.ContainsKey(value) && view.TryGetValue(value, out _) && view[value] is not null;
+        }
+
+        public static void Replace() => replaced = new(StringComparer.Ordinal);
+
+        public static int Viewed()
+        {
+            IReadOnlyDictionary<string, Interned> view = Table;
+            return view.Keys.Count();
+        }
+
+        public static Dictionary<string, Interned> Copied() => new(Table);
+
+        public static IReadOnlyDictionary<string, Interned> View() => Table;
+
+        public static bool Handed() => View() is not null;
+
+        public static int Pairs(List<KeyValuePair<string, Interned>> pairs) => pairs.Count;
 
         public static ConcurrentDictionary<string, Interned> Built() => new(StringComparer.Ordinal);
 
@@ -836,14 +878,17 @@ public class SeededComparerTests
         /// collection, its builder or an immutable one's <c>Empty</c> — is refused whatever its key and its comparer: no key,
         /// comparer or hash can be read to say that a seed, which differs from one process to the next, orders nothing it
         /// gives. One is let be, the interning table of <paramref name="interning"/>, PdfName for the library: a concurrent
-        /// dictionary from strings to it, built once, by its static constructor, and called on only to find or add one
-        /// entry; any call that would enumerate it, or names its pairs, is refused.
+        /// dictionary from strings to it, the first its static constructor builds and stores straight into a static field,
+        /// reached through its type or a generic interface of it only to find or add one entry; a member that takes it,
+        /// gives it, views it or names its pairs is refused. Through object or a non-generic interface, it is not followed.
         /// </summary>
         public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(IEnumerable<Type> types, Type? interning = null)
         {
             var seeded = typeof(SeededComparer).GetProperty(nameof(SeededComparer.Instance))!.GetMethod!;
             var table = interning is null ? null : typeof(ConcurrentDictionary<,>).MakeGenericType(typeof(string), interning);
-            var pair = interning is null ? null : typeof(KeyValuePair<,>).MakeGenericType(typeof(string), interning);
+            Type[] reaching = table is null
+                ? []
+                : [table, typeof(KeyValuePair<,>).MakeGenericType(typeof(string), interning!), .. table.GetInterfaces().Where(view => view.IsGenericType)];
             var interned = false;
 
             foreach (var type in types)
@@ -866,10 +911,12 @@ public class SeededComparerTests
                             continue;
                         }
 
-                        // The interning table is called on to find or add one entry, and nothing names its pairs, as what
-                        // enumerates it does, through the table, an interface or a LINQ operator.
-                        if (table is not null && ((member is MethodInfo && member.DeclaringType == table && !Lookups.Contains(member.Name))
-                            || Mentions(member, pair!)))
+                        // The interning table is reached, through its type or a generic interface of it, only to find or add
+                        // one entry: a member declared on, taking or giving the table, a generic interface of it or its pairs,
+                        // as what enumerates it, views it, copies it or hands it out is, is refused, but the table's
+                        // constructors, which the rule below reads.
+                        if (reaching.Length > 0 && Mentions(member, reaching) && !(member is ConstructorInfo && member.DeclaringType == table)
+                            && !(member is MethodInfo && reaching.Contains(member.DeclaringType!) && Lookups.Contains(member.Name)))
                         {
                             yield return (method, member);
                             continue;
@@ -886,9 +933,10 @@ public class SeededComparerTests
                             && !EnumeratesByHash(member) && TakesComparerLast(called, key) && i > 0 && !targets.Contains(offset)
                             && seeded.Equals(instructions[i - 1].Member);
 
-                        // The interning table, the first its type's static constructor builds, and no other.
+                        // The interning table: the first its type's static constructor builds and stores straight into a static
+                        // field, and no other.
                         if (!interned && member.DeclaringType == table && method is ConstructorInfo { IsStatic: true }
-                            && method.DeclaringType == interning)
+                            && method.DeclaringType == interning && i + 1 < instructions.Count && instructions[i + 1].Code == OpCodes.Stsfld)
                         {
                             interned = true;
                         }
@@ -1014,16 +1062,17 @@ public class SeededComparerTests
         private static bool IsNonGeneric(Type type) => NonGeneric.Any(table => table.IsAssignableFrom(type));
 
         /// <summary>
-        /// Determines whether <paramref name="member"/> is declared on, or instantiated over, a type that holds
-        /// <paramref name="pair"/>: an enumerator, an interface or a LINQ operator over the pairs of a table.
+        /// Determines whether <paramref name="member"/> is declared on, takes or gives one of <paramref name="types"/>, or a
+        /// generic type built over one: what reaches a table, its pairs or a view of it.
         /// </summary>
-        private static bool Mentions(MemberInfo member, Type pair) =>
-            Holds(member.DeclaringType!, pair)
-            || (member is MethodInfo { IsGenericMethod: true } generic && Array.Exists(generic.GetGenericArguments(), argument => Holds(argument, pair)));
+        private static bool Mentions(MemberInfo member, Type[] types) =>
+            Holds(member.DeclaringType!, types)
+            || (member is MethodBase called && Array.Exists(called.GetParameters(), parameter => Holds(parameter.ParameterType, types)))
+            || (member is MethodInfo { ReturnType: var given } && Holds(given, types));
 
-        /// <summary>Determines whether <paramref name="type"/> is <paramref name="pair"/>, or a generic type built over it.</summary>
-        private static bool Holds(Type type, Type pair) =>
-            type == pair || (type.IsGenericType && Array.Exists(type.GetGenericArguments(), argument => Holds(argument, pair)));
+        /// <summary>Determines whether <paramref name="type"/> is one of <paramref name="types"/>, or a generic type built over one.</summary>
+        private static bool Holds(Type type, Type[] types) =>
+            types.Contains(type) || (type.IsGenericType && Array.Exists(type.GetGenericArguments(), argument => Holds(argument, types)));
 
         /// <summary>Determines whether <paramref name="type"/> is a frozen or immutable hash collection, or its builder.</summary>
         private static bool IsHashCollection(Type type) =>

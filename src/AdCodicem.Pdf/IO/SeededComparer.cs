@@ -1,8 +1,8 @@
 namespace AdCodicem.Pdf.IO;
 
 /// <summary>
-/// Compares numbers as numbers, and hashes them through the seed .NET draws once a process, as it does strings: a table
-/// keyed by numbers a file chose spreads them as it would random keys.
+/// Compares numbers as numbers, and hashes them through <see cref="HashCode"/>, whose seed .NET draws once a process,
+/// as it draws another for strings: a table keyed by numbers a file chose spreads them as it would random keys.
 /// </summary>
 /// <remarks>
 /// An <see cref="int"/> is its own hash, and .NET picks a key's bucket as its hash modulo a prime from a table anyone can
