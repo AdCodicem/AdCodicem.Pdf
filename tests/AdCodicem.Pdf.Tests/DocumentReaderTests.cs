@@ -2840,8 +2840,9 @@ public class DocumentReaderTests
         // sizes before its rows are read to its 300,000 rows, 36 bytes each and a slot of 4 for each number, made once,
         // and a cross-reference stream's rows decoded besides. Measured twice on 2026-10-28, after a warm-up: 12,004,632
         // bytes for the table, 22,507,624 for the stream, whose rows Flate stores uncompressed so that no runtime's zlib
-        // moves the figure — 16,875,176 and 29,478,272 with the map of 324,449 slots of 52 bytes the index was before #155,
-        // and 32,571,368 and 45,174,464 when that map grew by doubling (#164). The budget is 5 % over each.
+        // moves the figure — 16,875,928 and 27,378,920 on main at e3e2034, the same day, with the map of 324,449 slots of
+        // 52 bytes the index was before #155, and 32,572,336 and 43,075,328 when that map grew by doubling (#164). The
+        // budget is 5 % over each.
         var file = LargeIndexFile(shape);
         using (PdfDocument.Open(file))
         {

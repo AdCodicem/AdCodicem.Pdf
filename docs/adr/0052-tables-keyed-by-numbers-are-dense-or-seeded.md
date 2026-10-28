@@ -39,40 +39,57 @@ opening a file records each of its rows. Most files number their objects from 0 
   order it first recorded them, and finds a number's entry through a slot by number while numbers run in order: the
   slots stretch to a number only while they stay no longer than twice the entries the index holds or has made room
   for, and 1,024 more, and to the room made at once. A number past them goes to a map hashed through the process's seed,
-  and moves into a slot once the slots reach it. The room made counts toward the slots so that a chain whose newest
-  sections number the highest objects, as updates do, does not fill the map first; room is made only for rows the file
-  holds, and no `/Size` the sections have read past bounds it, so the slots follow the file's bytes whatever its
-  `/Size` claims.
+  and moves into a slot once the slots reach it; the map gives back the room of the numbers that left it once they are
+  most of it. The room made counts toward the slots so that a chain whose newest sections number the highest objects, as
+  updates do, does not fill the map first. Room follows the rows the sections hold, but for the last step, which batch
+  11 takes to the newest `/Size` once a doubling comes within a doubling of it: the slots follow it there, four times
+  what the index held at most. A `/Size` the sections number past stands for one past the highest number they gave,
+  until an older section numbers past the newer ones; from then on it bounds nothing, so that the index doubles where it
+  would otherwise grow by one entry at each such section.
 - **Every other hash table keyed by numbers hashes them through the process's seed.** `SeededComparer` combines a
   number, or both halves of an offset apart, or the items of the four tuples the reader keys by, through
   `System.HashCode`, which .NET seeds once a process as it does strings. The reader's cache, its object streams, its
   sets and memos, the copies it marks and restores, and the validator's walks take it.
 - **The public `PdfObjectId` and `PdfDiagnostic` hash through the same seed**, overriding the record struct's hash;
   equality stays the record's. A caller's table keyed by them is spread alike.
-- **Tests read the code.** One reads the compiled library and refuses every `Dictionary`, `HashSet`,
-  `ConcurrentDictionary`, `OrderedDictionary` or `Hashtable` built over a key a file can steer — an integer wider than a
-  byte, a tuple holding one, a struct of the library hashed as a record struct's own hash is — without the comparer,
-  whatever the source wrote, and every LINQ, frozen or immutable operator that hashes. The rule covers every numeric
-  key, whatever it numbers and wherever it comes from, so that none needs arguing. The other reads the sources and names
-  the file and line of the shapes it recognizes: a declaration given `[]` or `new()`, a `new` without the comparer among
-  its own arguments, a name declared with no table and given one later.
+- **Tests read the code.** One reads the compiled library, whatever the source wrote, and refuses every hash collection
+  built over a key a file can steer — a number wider than a byte, nullable or not, a tuple holding one, a type of the
+  library hashed as the compiler writes a record's hash — unless the comparer it takes last is `SeededComparer.Instance`,
+  handed to it straight on every path that reaches it: a `Dictionary`, `HashSet`, `ConcurrentDictionary`,
+  `OrderedDictionary` or `KeyedCollection` built or derived from, a LINQ operator that hashes, a frozen or immutable
+  collection's factory or `Empty`, `Activator.CreateInstance<T>`; a `Hashtable` always. The rule covers every numeric
+  key, whatever it numbers and wherever it comes from, so that none needs arguing. A collection over a type parameter
+  takes a comparer, which its callers choose; a type the library hashes by hand, as `PdfObjectId` and `PdfDiagnostic`
+  are, is held by its own tests; an enumeration's values are the library's own. The other reads the sources, their
+  comments and literals blanked, and names the file and line of the shapes it recognizes: a declaration given `[]` or
+  `new()`, a `new` without the comparer among its own arguments or in its initializer, a name declared with no table
+  and given one later, a LINQ operator that hashes without naming a comparer.
 - **No bound is added**, and nothing is classified under ADR 34: the slots' slack is a property of the representation,
   not a limit on what a file may hold.
 
 ## Consequences
 
-- `ReaderTimingTests` holds the first and third shapes at the sizes above, the second shape's numbers aimed at the
-  index's own map as well, the object cache at 200,000 references to 20,000 objects numbered its size apart, and
-  validation at 100,000 references to 30,000 free numbers numbered a set's size apart: each takes about the time of the
-  same file numbered in order. The fourth and fifth shapes take that time too, measured on the batch's prototype.
+- `ReaderTimingTests` holds the first three shapes at the sizes above, the first shape's numbers aimed at the index's
+  own map as well, the object cache at 200,000 references to 20,000 objects numbered its size apart, and validation at
+  100,000 references to 30,000 free numbers numbered a set's size apart: each takes about the time of the same file
+  numbered in order. The fourth and fifth shapes take that time too, measured on the batch's prototype.
 - For numbers in order the index is lighter and no slower: 40 bytes an object, allocated and kept, against 52 to 63, so
-  that opening 300,000 objects allocates 12.0 MB against 16.9 for a classic table and 22.5 against 29.5 for a
-  cross-reference stream, and a chain of a thousand sections 24.2 MB against 30.6.
-- A number in the map costs more than it did: about twice a slot, 80 to 96 bytes an object for numbers all spread out,
-  and a hash and a lookup more; opening 500,000 subsections whose every other number lies far from the rest took about
-  1.2 times as long as before.
-- A `/Size` the sections have read past now bounds nothing, so that the room doubles where it once grew by one entry a
-  section: exact arrays, unlike the map's primes, would otherwise copy the index at each one.
+  that opening 300,000 objects allocates 12.0 MB against 16.9 for a classic table and 22.5 against 27.4 for a
+  cross-reference stream, and a chain of a thousand sections 24.2 MB against 30.6, measured on `e3e2034` the same day.
+- An object numbered apart from the rest costs more than it did: its number in the map takes 20 to 35 bytes more than a
+  slot, so that it keeps about twice what an object in order does — 80 to 96 bytes for numbers all spread out, up to
+  about 108 in a table of one-row subsections, whose headers make room as rows do —, and costs a hash and a lookup more;
+  opening 500,000 subsections whose every other number lies far from the rest took about 1.2 times as long as before,
+  and with every number far from the rest about 1.4 times.
+- Arrays sized exactly leave no slack: one row past the room made for the newest section sets off batch 11's last step
+  to the newest `/Size`, which the map's primes once absorbed, and room made for a `/Size` that numbers up to four times
+  the objects the sections give keeps up to 160 bytes an object they give, where the map kept about 60. The step saves
+  a copy of the index to every chain whose `/Size` is honest, and a valid file only reaches four times its objects by
+  numbering them sparsely.
+- A `/Size` the sections number past bounds nothing once an older section has numbered past the newer ones, so that the
+  room doubles where it would grow by one entry a section: exact arrays, unlike the map's primes, would otherwise copy
+  the index at each one. Until then one past the highest number read stands for it, so that an update chain that kept
+  its original `/Size` still lands on its count.
 - The seeded tables cost a hash and an interface call a lookup, and scatter keys a table numbered in order would keep
   together: measured on a prototype, validating 1,000 pages costs 5 to 8 % more.
 - A hash differs from one process to the next. Tables enumerate in an order their adds and removes set, never in an
