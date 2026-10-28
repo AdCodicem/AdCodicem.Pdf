@@ -35,22 +35,27 @@ objects, and a rebuild scans the whole file, but neither decodes a page's conten
 Indexing allocates 40 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
 costs the same to index as an empty one. The map holds 36 bytes an entry, and 4 a slot that finds an object number's
 entry while numbers run in order; a number past twice the entries held or made room for, and 1,024 more, is found
-through a hash table instead, about twice the cost of a slot, its hashes seeded so that a file cannot choose numbers that
-make each lookup slow. The map is sized before it is filled: each cross-reference section makes room for the rows it holds before it reads them, and
+through a hash table instead, 20 to 35 bytes more than a slot, its hashes seeded so that a file cannot choose numbers
+that make each lookup slow. The map is sized before it is filled: each cross-reference section makes room for the rows it holds before it reads them, and
 for no more objects than the newest section's `/Size` numbers, since an older section's rows for numbers a newer one
-gave add nothing. A count the file declares is its claim, so room is made for no more rows than a stream's data holds,
+gave add nothing; a `/Size` the sections number past stands for one past the highest number they gave, until an older
+section numbers past the newer ones, and bounds nothing from then on. A count the file declares is its claim, so room is made for no more rows than a stream's data holds,
 or than a classic table's bytes hold at 20 bytes a row up to the first byte no row holds, which the table is read in a
 window large enough to reach. A chain of many like sections makes room section after section,
 doubling the map at least each time it must grow, and for the whole `/Size` once a doubling comes within a doubling of
 it. A table's rows are counted by their lines, so that rows written 19 bytes long, their end of line a single byte,
 take no more room than rows of 20. A map left to grow — by a rebuild, or rows written shorter still — doubles as it
-grows, and allocates 80 to 160 bytes an object, by where the count falls against its steps.
+grows, and allocates 80 to 160 bytes an object numbered in order, by where the count falls against its steps, and up to
+about 190 for numbers spread far apart.
 A cross-reference stream adds the decoding of its rows: 7 bytes an object when they are written as they are, up to
-about 42 when Flate stores them without compressing, compressed rows in between. Opening also decodes the object
+about 35 when Flate stores them without compressing, compressed rows in between. Opening also decodes the object
 stream that holds the catalog, when one does, and that costs what the stream holds: a producer that packs every object
 into one stream makes opening pay their decoded weight: 864 bytes an object on one such file, damaged, of 65,564. An open
 document keeps the map, 40 bytes an object, about 80 at most when it grew and about 96 when its numbers are spread far
-apart: on the corpus's thousand-page journal, 40.
+apart: on the corpus's thousand-page journal, 40. Room made for the whole `/Size` holds 40 bytes for each object it
+numbers, so a `/Size` that numbers more objects than the sections give, up to four times as many, keeps up to 160 bytes
+an object they give; a table of one-row subsections, whose headers make room as rows do, keeps about 1.5 times these
+figures.
 When the reader relocates an object or rebuilds the map once the chain is read, it keeps a copy of the map the chain
 gave as well, so that validation still judges the file's own.
 
@@ -194,4 +199,4 @@ reading — the journal's on 2026-10-02, the generated indexes' on 2026-10-28 �
 an allocation regression past one fails the build: 4 MB for the journal, 12.6 MB, 23.6 MB and 25.5 MB for the generated
 indexes, 5 % over their figures. The map is sized before it is filled, the chain's doubling from section to section
 until it comes within a doubling of the newest `/Size`; the hash table the map was before 2026-10-28 allocated 16.9 MB,
-29.5 MB and 30.6 MB sized so, and 31.1 MB, 43.1 MB and 33.2 MB left to grow. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.
+27.4 MB and 30.6 MB sized so, and 32.6 MB, 43.1 MB and 33.2 MB left to grow, measured on the same day. The stream's rows are stored rather than compressed so that no runtime's zlib moves its figure.

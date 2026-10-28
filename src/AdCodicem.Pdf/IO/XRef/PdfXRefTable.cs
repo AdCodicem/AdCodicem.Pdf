@@ -18,16 +18,21 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// a map that hashes numbers through the process's seed (<see cref="SeededComparer"/>): no lookup walks a chain a file
 /// chose, whatever numbers it writes (#155). The slots stretch to a number only while they stay no longer than twice the
 /// entries the table holds or has made room for, and <see cref="DenseSlack"/> more: the numbers of a file that spreads
-/// them out go to the map, and cost what they hold.
+/// them out go to the map, which gives back the room of those the slots come to reach once most of it is idle.
 /// </para>
 /// <para>
 /// An entry holds 36 bytes, and its slot 4 more. A section makes room for the rows it holds before they are read, for no
 /// more objects than the newest section's <c>/Size</c> numbers (<see cref="Reserve"/>), and the slots are made once for
 /// that room: 40 bytes an object numbered in order, allocated and kept, so a hundred thousand objects hold 4 MB whatever
 /// the objects themselves weigh. Room left to grow — by a rebuild, or rows written shorter than 19 bytes — doubles,
-/// keeping 40 to 80 bytes an object and allocating 80 to 160 on the way, by where the count falls against its steps. A
-/// number in the map costs about twice what a slot does: 80 to 96 bytes an object for numbers all spread out, measured.
-/// The copy is sized to what it holds.
+/// keeping 40 to 80 bytes an object and allocating 80 to 160 on the way, by where the count falls against its steps.
+/// Room is made for rows that add no entry too, and the last step for every object the newest <c>/Size</c> numbers, four
+/// times what the index held at most: such room holds 40 bytes an entry, about 160 an object where the size numbers four
+/// times the objects the sections give. A table of one-row subsections, whose headers make room as rows do, keeps about
+/// 1.5 times these figures. A number in the map costs 20 to 35 bytes more than a slot, so that an object numbered apart
+/// from the rest keeps about twice what one in order does, measured: 80 to 96 bytes an object for numbers all spread
+/// out, up to about 108 in a table of one-row subsections, and 155 to 190 allocated where a rebuild grows the table. A
+/// copy holds its entries exactly, and slots up to the highest number the slots hold, no more than the table it copies.
 /// </para>
 /// </remarks>
 internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
@@ -242,8 +247,10 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// <remarks>
     /// The room counts as entries: a section that made room for its rows has its slots made once, for as many, rather than
     /// doubled up to them, and a chain whose newest sections number the highest objects, as updates do, makes room for the
-    /// rows it is about to read before their numbers come down to the slots. Room is made only for rows the file holds
-    /// (<see cref="Reserve"/>), so the slots follow the file's bytes whatever its <c>/Size</c> claims.
+    /// rows it is about to read before their numbers come down to the slots. Room follows the rows the sections hold
+    /// (<see cref="Reserve"/>), but for the last step, which the newest <c>/Size</c> takes to four times what the index
+    /// held at most: the slots follow it, 4 bytes for each entry of room, and reach up to twice it where a number lies
+    /// that far, within the 40 bytes an entry and 4 more a number the guard lets the index take.
     /// </remarks>
     private void Stretch(int number)
     {
