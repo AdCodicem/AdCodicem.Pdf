@@ -147,7 +147,9 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// A count is a section's claim, which the caller bounds by the rows the section holds and by the entries the index
     /// may take. Room is never added by less than the table holds already, but for the last step to the most asked: a
     /// chain of many sections, each making room for its own rows, would otherwise copy the entries at each one. The most
-    /// asked is a <c>/Size</c> the sections have not read past, which so bounds no chain whose sections number further.
+    /// asked is the newest <c>/Size</c>, or one past the highest number read where the sections number past it, until an
+    /// older section numbers past the newer ones: from then on it bounds nothing, so that a chain whose older sections each
+    /// number one further doubles the table rather than growing it by one entry at each.
     /// </remarks>
     public void Reserve(int count, int most)
     {

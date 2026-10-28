@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
@@ -3064,6 +3065,25 @@ public class DocumentReaderTests
             file.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 1 /Root 1 0 R /Prev {previous} >>\nstartxref\n{table}\n%%EOF\n");
             return Encoding.ASCII.GetBytes(file.ToString());
         }
+    }
+
+    [Theory]
+    [InlineData(3, 60_000)]
+    [InlineData(520, 300)]
+    public void A_stale_size_only_the_newest_section_numbers_past_makes_room_up_to_the_highest_number_read(int sections, int rows)
+    {
+        // Every trailer keeps the oldest section's /Size, as an updater that never raised it would, padded so that no
+        // offset moves, and the newest section numbers the highest objects, as updates do. One past the highest number the newest section gave stands for the
+        // size, which the older sections, numbering below it, never pass: room is made for every object and no more. Taken
+        // as bounding nothing, the room doubled past the count, to 240,008 entries for 180,000 and 309,248 for 156,000.
+        var text = Encoding.Latin1.GetString(ChainOfSections(sections, rows));
+        var file = Encoding.Latin1.GetBytes(Regex.Replace(text, @"/Size \d+", size => $"/Size {rows}".PadRight(size.Length)));
+
+        using var document = PdfDocument.Open(file);
+
+        document.ObjectCount.Should().Be(sections * rows);
+        document.Diagnostics.Should().BeEmpty();
+        document.Reader.Index.Capacity.Should().Be(sections * rows, "one past the highest number read numbers every object");
     }
 
     [Fact]
