@@ -32,28 +32,30 @@ On a file whose index and `/Root` are sound, that is all: no page is read, and n
 cross-reference streams and of the object stream holding the catalog. The search for a lost catalog parses
 objects, and a rebuild scans the whole file, but neither decodes a page's content, an image or a font.
 
-Indexing allocates 52 to 63 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
-costs the same to index as an empty one. The map holds 52 bytes a slot, and is sized before it is filled: each
-cross-reference section makes room for the rows it holds before it reads them, up to the next prime of the runtime's
-table past the count, and for no more objects than the newest section's `/Size` numbers, since an older section's rows
-for numbers a newer one gave add nothing. A count the file declares is its claim, so room is made for no more rows than
-a stream's data holds, or than a classic table's bytes hold at 20 bytes a row up to the first byte no row holds, which
-the table is read in a window large enough to reach. A chain of many like sections makes room section after section,
+Indexing allocates 40 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
+costs the same to index as an empty one. The map holds 36 bytes an entry, and 4 a slot that finds an object number's
+entry while numbers run in order; a number further from the others than twice their count is found through a hash table
+instead, about 20 bytes more, its hashes seeded so that a file cannot choose numbers that make each lookup slow. The map
+is sized before it is filled: each cross-reference section makes room for the rows it holds before it reads them, and
+for no more objects than the newest section's `/Size` numbers, since an older section's rows for numbers a newer one
+gave add nothing. A count the file declares is its claim, so room is made for no more rows than a stream's data holds,
+or than a classic table's bytes hold at 20 bytes a row up to the first byte no row holds, which the table is read in a
+window large enough to reach. A chain of many like sections makes room section after section,
 doubling the map at least each time it must grow, and for the whole `/Size` once a doubling comes within a doubling of
 it. A table's rows are counted by their lines, so that rows written 19 bytes long, their end of line a single byte,
 take no more room than rows of 20. A map left to grow — by a rebuild, or rows written shorter still — doubles as it
-grows, and allocates 100 to 210 bytes an object, by where the count falls against its steps.
+grows, and allocates 80 to 140 bytes an object, by where the count falls against its steps.
 A cross-reference stream adds the decoding of its rows: 7 bytes an object when they are written as they are, up to
 about 42 when Flate stores them without compressing, compressed rows in between. Opening also decodes the object
 stream that holds the catalog, when one does, and that costs what the stream holds: a producer that packs every object
 into one stream makes opening pay their decoded weight: 864 bytes an object on one such file, damaged, of 65,564. An open
-document keeps the map, 52 to 63 bytes an object, 108 at most when it grew: on the corpus's thousand-page journal, about
-61, where it kept 105 when the map grew by doubling. When the reader relocates an object or rebuilds the map once the
-chain is read, it keeps a copy of the map the chain gave as well, so that validation still judges the file's own.
+document keeps the map, 40 bytes an object, about 80 at most when it grew: on the corpus's thousand-page journal, 40.
+When the reader relocates an object or rebuilds the map once the chain is read, it keeps a copy of the map the chain
+gave as well, so that validation still judges the file's own.
 
 The map holds at most 8,388,607 object numbers by default, the most ISO 32000-1's Annex C advises a document to have,
 and `PdfReaderLimits.MaxIndexEntries` raises it ([Reader limits](reader-limits.md)): at the default, the map alone
-can take 436 MB.
+can take 335 MB.
 
 An object the map does not hold is one the file does not define, and a reference to it reads as null, as the
 specification says — or one a limit left out of the map, which reads as null too, until the limit is raised: the

@@ -58,6 +58,7 @@ A settled decision is not reopened without new evidence — that is what writing
 | [49](0049-previews-weekly-when-a-package-input-changed.md) | Previews weekly, when a package input changed | — |
 | [50](0050-validation-settles-the-reader-before-its-rules.md) | Validation settles the reader before its rules | — |
 | [51](0051-the-project-keeps-a-copy-of-what-a-license-lets-it-copy.md) | The project keeps a copy of the remote documents a license lets it copy | — |
+| [52](0052-tables-keyed-by-numbers-are-dense-or-seeded.md) | Tables keyed by numbers are dense or seeded | — |
 
 ## Decisions too small for a record of their own
 
