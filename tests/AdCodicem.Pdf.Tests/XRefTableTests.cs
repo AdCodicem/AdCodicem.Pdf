@@ -223,6 +223,7 @@ public class XRefTableTests
 
         table.SlotCount.Should().Be(1000);
         table.MapCount.Should().Be(0);
+        table.MapCapacity.Should().Be(0, "no number lies past the slots, so no map is made");
     }
 
     [Fact]
