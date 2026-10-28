@@ -159,29 +159,32 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
   spreads its numbers out fills the map, which gives back the room of the numbers the slots come to reach once most of
   it is idle.
 - **Every other table keyed by numbers hashes them through that seed** (`SeededComparer`), the one .NET draws once a
-  process for strings, both halves of an offset mixed in apart: the reader's cache, its object streams, its sets and
-  memos, the copies it marks and restores, and the validator's walks. `PdfObjectId` and `PdfDiagnostic` hash through it
-  too, so that a caller's table keyed by them is spread alike.
+  process for `System.HashCode`, as it draws another for strings, both halves of an offset mixed in apart: the reader's
+  cache, its object streams, its sets and memos, the copies it marks and restores, and the validator's walks.
+  `PdfObjectId` and `PdfDiagnostic` hash through it too, so that a caller's table keyed by them is spread alike.
 - **No order the hashes give reaches an output.** A table enumerates in an order set by what was added to it and removed
   from it, never by its keys' hashes, so that a seed that differs from one process to the next changes nothing the
   library reports or writes (invariant 6). The library builds no table that enumerates by hash — concurrent, frozen,
-  immutable —, whatever its key and comparer, which the reading of the compiled library below holds, but `PdfName`'s
-  interning table, keyed by strings, which .NET seeds alike, and which nothing enumerates.
+  immutable, a `StringDictionary` —, whatever its key and comparer, which the reading of the compiled library below
+  holds, but `PdfName`'s interning table, keyed by strings, which .NET hashes without a seed until a chain grows long,
+  and through the strings' seed after, and which nothing enumerates.
 - **Two tests read the code** (`SeededComparerTests`). One reads the compiled library and refuses every hash collection
   built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
   one, a type of the library hashed as the compiler writes a record's hash — unless the comparer of its key, taken last,
   is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a constructor, a base constructor
   or a LINQ operator, or any of them as a method group. It refuses always a table keyed by any object, a boxed number
-  hashing as itself — a `Hashtable` or its kin, a key typed `object` or `ValueType` or an interface numbers implement, a
-  reference comparer given or not: an identity table is keyed by a reference type of the library —; a collection that
-  enumerates by hash — a concurrent dictionary, a frozen or immutable one, its factories, its builder and an immutable
-  one's `Empty`, however built — whatever its key and comparer, but `PdfName`'s interning table; and a table built for a
-  type argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`. The library builds no hash collection over a type
-  parameter, whatever its comparer, since its callers choose the key; how the hash of a type the library hashes by hand
-  spreads is held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; a collection built through reflection
-  otherwise is not read. It reads through the probes code coverage puts, and only their shape: any other instruction
-  between the comparer and the table refuses it. The other reads the sources and names the file and line of the shapes
-  it recognizes.
+  hashing as itself — a `Hashtable`, a type derived from one, or its kin, a key typed `object` or `ValueType` or an
+  interface numbers implement, a reference comparer given or not: an identity table is keyed by a reference type of the
+  library —; a collection that enumerates by hash — a concurrent dictionary, a frozen or immutable one, its factories,
+  its builder and an immutable one's `Empty`, a `StringDictionary`, however built — whatever its key and comparer, but
+  `PdfName`'s interning table, which `PdfName`'s static constructor builds once, on which the library calls only what
+  finds or adds one name, and whose pairs nothing names; and a table built for a type argument by `new()`, `Activator`,
+  `Lazy` or `LazyInitializer`. The library builds no hash collection over a type parameter, whatever its comparer, since
+  its callers choose the key; how the hash of a type the library hashes by hand spreads is held by its own tests, as
+  `PdfObjectId`'s and `PdfDiagnostic`'s are; a collection built through reflection otherwise, or one a framework method
+  returns under another type, is not read. It reads through the probes code coverage puts, and only their shape: any
+  other instruction between the comparer and the table refuses it. The other reads the sources and names the file and
+  line of the shapes it recognizes.
 
 ### Everything read is bounded by the source
 
@@ -532,8 +535,9 @@ Known gaps:
   `FilterDamageTests`, `DiagnosticsTests`, and the validation rule tests. They hold the bounds a mutation of a small
   file cannot reach.
 - **A reading of the code** (`SeededComparerTests`), compiled and as written: every hash collection built over numbers
-  takes the seeded comparer, so that no table a later change adds hashes numbers a file chose as themselves, and none
-  is built over a type parameter, whose key its callers choose.
+  takes the seeded comparer, so that no table a later change adds hashes numbers a file chose as themselves; none is
+  built over a type parameter, whose key its callers choose; and none that enumerates by hash is built, whatever its
+  key, but `PdfName`'s interning table.
 - **Budgets on real documents, and on a generated index.** `CorpusReadingTests` holds what indexing a 1,000-page document and walking its
   page tree allocate, and each operation on every corpus document — opening it, reading every object, walking its
   pages, validating a damaged one — to 20 s. `CorpusValidationTests.Validating_the_largest_document_stays_within_its_budget`
