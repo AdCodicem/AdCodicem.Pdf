@@ -125,28 +125,62 @@ public class XRefTableTests
             entry.Offset.Should().Be(number);
         }
 
+        table.MapCount.Should().Be(0, "the slots reached every number the map held");
+        table.SlotCount.Should().BeGreaterThan(3_009);
         table.CopyNumbers()[..10].Should().Equal(Enumerable.Range(3_000, 10));
         table.TryAdd(3_005, XRefEntry.Free).Should().BeFalse("a number moved into its slot is still held");
     }
 
     [Fact]
-    public void Numbers_spread_further_apart_than_twice_their_count_stay_in_the_map()
+    public void Numbers_spread_further_apart_than_the_slots_stretch_stay_in_the_map()
     {
-        // Four thousand numbers 3 apart: the slots stop where they would hold more than twice the entries and the slack,
-        // and the numbers past them are found through the map.
+        // Four thousand numbers 6 apart: the slots stop where they would hold more than twice the entries held or made room
+        // for, and the slack, and the numbers past them are found through the map.
+        const int Apart = 6;
         var table = new PdfXRefTable();
 
         for (var k = 0; k < 4_000; k++)
         {
-            table.TryAdd(3 * k, XRefEntry.Regular(k, 0));
+            table.TryAdd(Apart * k, XRefEntry.Regular(k, 0));
         }
 
         for (var k = 0; k < 4_000; k++)
         {
-            table.TryGet(3 * k, out var entry).Should().BeTrue();
+            table.TryGet(Apart * k, out var entry).Should().BeTrue();
             entry.Offset.Should().Be(k);
-            table.TryGet((3 * k) + 1, out _).Should().BeFalse();
+            table.TryGet((Apart * k) + 1, out _).Should().BeFalse();
         }
+
+        var bound = (2 * Math.Max(table.Count, table.Capacity)) + PdfXRefTable.DenseSlack;
+        table.SlotCount.Should().BeLessThanOrEqualTo(bound);
+        table.MapCount.Should().Be(Enumerable.Range(0, 4_000).Count(k => Apart * k >= table.SlotCount), "the numbers past the slots are in the map");
+        table.MapCount.Should().BeGreaterThan(1_000);
+    }
+
+    [Fact]
+    public void Room_made_for_rows_makes_their_slots_once()
+    {
+        // Room for a thousand rows numbered from 0 gives them a thousand slots, made once, rather than slots doubled from
+        // one up to 1,024.
+        var table = Filled(1000);
+
+        table.SlotCount.Should().Be(1000);
+        table.MapCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void A_table_enumerates_through_every_interface_it_implements()
+    {
+        var table = Filled(3);
+        var enumerator = ((System.Collections.IEnumerable)table).GetEnumerator();
+
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.Current.Should().Be(new KeyValuePair<int, XRefEntry>(0, XRefEntry.Free));
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.Reset();
+        enumerator.MoveNext().Should().BeTrue();
+        enumerator.Current.Should().Be(new KeyValuePair<int, XRefEntry>(0, XRefEntry.Free));
+        ((IEnumerable<KeyValuePair<int, XRefEntry>>)table).Select(pair => pair.Key).Should().Equal(0, 1, 2);
     }
 
     [Fact]
@@ -197,6 +231,8 @@ public class XRefTableTests
             new KeyValuePair<int, XRefEntry>(2, XRefEntry.Free),
             new KeyValuePair<int, XRefEntry>(1_000_000, XRefEntry.Regular(7, 0)));
         copy.Capacity.Should().Be(4, "a copy is sized to what it holds");
+        copy.SlotCount.Should().Be(3, "its slots reach the highest number they hold, and no further");
+        copy.MapCount.Should().Be(1);
         copy.TryGet(2_000_000, out _).Should().BeFalse();
         copy.TryAdd(5, XRefEntry.Free).Should().BeTrue("a copy grows as the table does");
     }
