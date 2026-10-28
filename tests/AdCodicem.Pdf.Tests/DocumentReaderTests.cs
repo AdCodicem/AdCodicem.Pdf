@@ -3069,6 +3069,75 @@ public class DocumentReaderTests
     }
 
     [Theory]
+    [InlineData(false, 100_500, 13_250_000)]
+    [InlineData(true, 101_000, 15_000_000)]
+    public void Older_sections_that_once_numbered_past_a_stale_size_leave_it_bounding_nothing(bool hybrid, int objects, long budget)
+    {
+        // Under a /Size of 1, every other older section numbers one past the highest read and the rest number nothing, or
+        // each older section's /XRefStm stream numbers one past it while its table numbers below. Once one has, the stale
+        // size bounds the room no more for the rest of the chain: bounding it again after a section that numbers nothing,
+        // or never seeing a stream number past it, made room one entry at a time, copying the index whole each time —
+        // 1.8 GB and 3.6 GB. Measured twice on 2026-10-28, after a warm-up: 12,613,968 and 14,256,152 bytes. The budget is
+        // 5 % over.
+        var file = StaleSizeChainOf(newest: 100_000, older: 1000, hybrid);
+        using (PdfDocument.Open(file))
+        {
+            // The first opening pays what any first call does once.
+        }
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        using var document = PdfDocument.Open(file);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        document.ObjectCount.Should().Be(objects);
+        document.Diagnostics.Should().BeEmpty();
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        allocated.Should().BeLessThan(budget, "a stale size bounds no room once an older section has numbered past the newer ones");
+
+        static byte[] StaleSizeChainOf(int newest, int older, bool hybrid)
+        {
+            var file = new StringBuilder("%PDF-1.7\n");
+            var catalog = file.Length;
+            file.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+            var pages = file.Length;
+            file.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+            long previous = -1;
+
+            // Written oldest first, so that the chain reads section k = 1 right after the newest.
+            for (var k = older; k >= 1; k--)
+            {
+                var stream = file.Length;
+
+                if (hybrid)
+                {
+                    file.Append(CultureInfo.InvariantCulture, $"{newest + k} 0 obj\n<< /Type /XRef /Size {newest + k + 1} /Index [{newest + k} 1] /W [1 1 1] /Length 3 >>\nstream\n");
+                    file.Append("\0\0\u0001\nendstream\nendobj\n");
+                }
+
+                var at = file.Length;
+                file.Append(hybrid ? "xref\n3 1\n0000000000 00001 f\r\n"
+                    : k % 2 == 1 ? string.Create(CultureInfo.InvariantCulture, $"xref\n{newest + ((k + 1) / 2)} 1\n0000000000 00001 f\r\n")
+                    : "xref\n");
+                file.Append("trailer\n<< /Size 1 /Root 1 0 R");
+                file.Append(hybrid ? string.Create(CultureInfo.InvariantCulture, $" /XRefStm {stream}") : string.Empty);
+                file.Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}")).Append(" >>\n");
+                previous = at;
+            }
+
+            var table = file.Length;
+            file.Append(CultureInfo.InvariantCulture, $"xref\n1 {newest}\n{catalog:D10} 00000 n\r\n{pages:D10} 00000 n\r\n");
+
+            for (var number = 3; number <= newest; number++)
+            {
+                file.Append("0000000000 00001 f\r\n");
+            }
+
+            file.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 1 /Root 1 0 R /Prev {previous} >>\nstartxref\n{table}\n%%EOF\n");
+            return Encoding.Latin1.GetBytes(file.ToString());
+        }
+    }
+
+    [Theory]
     [InlineData(3, 60_000)]
     [InlineData(520, 300)]
     public void A_stale_size_only_the_newest_section_numbers_past_makes_room_up_to_the_highest_number_read(int sections, int rows)
