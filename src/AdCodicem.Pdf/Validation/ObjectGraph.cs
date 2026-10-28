@@ -33,8 +33,8 @@ internal sealed class ObjectGraph
     private readonly PdfFileReader _reader;
     private readonly PageTreeWalk _pages;
     private readonly Stack<Item> _work = new();
-    private readonly HashSet<int> _visited = [];
-    private readonly HashSet<int> _missing = [];
+    private readonly HashSet<int> _visited = new(SeededComparer.Instance);
+    private readonly HashSet<int> _missing = new(SeededComparer.Instance);
     private readonly SortedDictionary<int, int> _missingReferences = [];
     private readonly SortedDictionary<int, int> _nullCharacterNames = [];
 
