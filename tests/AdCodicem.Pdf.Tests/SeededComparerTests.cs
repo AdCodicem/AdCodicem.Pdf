@@ -226,15 +226,19 @@ public class SeededComparerTests
     public void No_method_of_the_library_builds_a_table_keyed_by_numbers_without_the_seeded_comparer()
     {
         // Read in the compiled library, whatever the source wrote — [], new(), an out var given a set, an expression body,
-        // an argument, a copy, a base constructor, a LINQ, frozen or immutable operator or factory, a method group —: every
-        // hash collection built over a key a file can steer takes SeededComparer.Instance as the comparer of its key, taken
-        // last, handed to it straight and on every path that reaches it. A key is steerable when it is a number — an
-        // integer wider than a byte, a character, a floating point or decimal number —, nullable or not, a tuple or an
-        // anonymous type holding one, or a type of the library hashed as the compiler writes a record's hash: a fixed
-        // combination of its members a file inverts. An enumeration's values are the library's own, and a type the library
-        // hashes by hand is held by its own tests, as PdfObjectId and PdfDiagnostic are. The library builds no collection
-        // over a type parameter, whatever its comparer: its callers choose its key, and no reading follows them; nor does it
-        // give a table type where new(), Activator, Lazy or LazyInitializer builds it.
+        // an argument, a copy, a base constructor, a LINQ operator, a method group —: every hash collection built over a key
+        // a file can steer takes SeededComparer.Instance as the comparer of its key, taken last, handed to it straight and
+        // on every path that reaches it. A key is steerable when it is a number — an integer wider than a byte, a
+        // character, a floating point or decimal number —, nullable or not, a tuple or an anonymous type holding one, a
+        // type of the library hashed as the compiler writes a record's hash, a fixed combination of its members a file
+        // inverts, or what a boxed number may be keyed as, any object or an interface numbers implement, which no comparer
+        // of a number seeds. A collection that enumerates by hash — concurrent, frozen or immutable, its factories and its
+        // builder included — is refused whatever its comparer, over a steerable key or a type of the library whose hash goes
+        // through the seed, as PdfObjectId's does: the seed would order what it gives (invariant 6). An enumeration's values
+        // are the library's own, and how the hash of a type the library hashes by hand spreads is held by its own tests, as
+        // PdfObjectId's and PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its
+        // comparer: its callers choose its key, and no reading follows them; nor does it give a table type where new(),
+        // Activator, Lazy or LazyInitializer builds it.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes()))
@@ -298,6 +302,15 @@ public class SeededComparerTests
             nameof(Unseeded.FactorySeeded),
             nameof(Unseeded.KeyComparerSeeded),
             nameof(Unseeded.BuilderSeeded),
+            nameof(Unseeded.FrozenIdentifiers),
+            nameof(Unseeded.ConcurrentIdentifiers),
+            nameof(Unseeded.ImmutablePairs),
+            nameof(Unseeded.FrozenNames),
+            nameof(Unseeded.ObjectKey),
+            nameof(Unseeded.InterfaceKey),
+            nameof(Unseeded.Hybrid),
+            nameof(Unseeded.SpecializedOrdered),
+            nameof(Unseeded.CaseInsensitive),
             nameof(Unseeded.Given),
             nameof(Unseeded.ByReference),
             nameof(Unseeded.ActivatorOpen),
@@ -323,19 +336,23 @@ public class SeededComparerTests
     {
         // Code coverage, as CI runs the tests, puts a probe at each sequence point, which may fall between the comparer's
         // getter and the table's constructor: the probe is not code the source wrote, and the table stays seeded. Any other
-        // instruction there is read as it stands.
+        // instruction there is read as it stands, a tracker's field stored otherwise than a probe stores it included, so
+        // that a probe another instrumenter writes otherwise refuses the table rather than hiding what follows it.
         var module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Probed"), AssemblyBuilderAccess.Run).DefineDynamicModule("Probed");
         var tracker = module.DefineType("StaticManagedTrackerTemplate_Sample", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
         var begin = tracker.DefineField("Begin", typeof(nint), FieldAttributes.Public | FieldAttributes.Static);
+        var hits = tracker.DefineField("Hits", typeof(byte[]), FieldAttributes.Public | FieldAttributes.Static);
         tracker.CreateType();
         var samples = module.DefineType("Samples", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
         var seeded = typeof(SeededComparer).GetProperty(nameof(SeededComparer.Instance))!.GetMethod!;
         var constructor = typeof(HashSet<int>).GetConstructor([typeof(IEqualityComparer<int>)])!;
         Emit("Probed", il => il.Emit(OpCodes.Ldsfld, begin), il => il.Emit(OpCodes.Ldc_I4, 7), il => il.Emit(OpCodes.Add), il => il.Emit(OpCodes.Ldc_I4_1), il => il.Emit(OpCodes.Stind_I1));
+        Emit("First", il => il.Emit(OpCodes.Ldsfld, begin), il => il.Emit(OpCodes.Ldc_I4_1), il => il.Emit(OpCodes.Stind_I1));
         Emit("Wedged", il => il.Emit(OpCodes.Ldc_I4, 7), il => il.Emit(OpCodes.Pop));
+        Emit("Misshapen", il => il.Emit(OpCodes.Ldsfld, hits), il => il.Emit(OpCodes.Ldc_I4, 7), il => il.Emit(OpCodes.Ldc_I4_1), il => il.Emit(OpCodes.Stelem_I1));
         var type = samples.CreateType();
 
-        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().Equal("Wedged");
+        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().BeEquivalentTo("Wedged", "Misshapen");
 
         void Emit(string name, params Action<ILGenerator>[] between)
         {
@@ -459,6 +476,24 @@ public class SeededComparerTests
 
         public static ImmutableHashSet<int>.Builder BuilderSeeded() => ImmutableHashSet.CreateBuilder<int>(SeededComparer.Instance);
 
+        public static FrozenSet<PdfObjectId> FrozenIdentifiers(IEnumerable<PdfObjectId> identifiers) => identifiers.ToFrozenSet();
+
+        public static ConcurrentDictionary<PdfObjectId, int> ConcurrentIdentifiers() => new();
+
+        public static ImmutableHashSet<(PdfObjectId, string)> ImmutablePairs(IEnumerable<(PdfObjectId, string)> pairs) => pairs.ToImmutableHashSet();
+
+        public static FrozenDictionary<PdfName, int> FrozenNames(Dictionary<PdfName, int> names) => names.ToFrozenDictionary();
+
+        public static HashSet<object> ObjectKey() => [];
+
+        public static Dictionary<IComparable, int> InterfaceKey() => [];
+
+        public static int Hybrid() => new System.Collections.Specialized.HybridDictionary().Count;
+
+        public static int SpecializedOrdered() => new System.Collections.Specialized.OrderedDictionary().Count;
+
+        public static int CaseInsensitive() => System.Collections.Specialized.CollectionsUtil.CreateCaseInsensitiveHashtable().Count;
+
         public static HashSet<(T, string)> Given<T>(IEqualityComparer<(T, string)> comparer) => new(comparer);
 
         public static HashSet<List<T>> ByReference<T>() => new(ReferenceEqualityComparer.Instance);
@@ -544,6 +579,12 @@ public class SeededComparerTests
 
         public static int EmptyFrozen() => FrozenSet<int>.Empty.Count;
 
+        public static FrozenSet<PdfLimit> FrozenLimits(IEnumerable<PdfLimit> limits) => limits.ToFrozenSet();
+
+        public static int ByReference() =>
+            new Dictionary<PdfObject, int>(ReferenceEqualityComparer.Instance).Count + new Dictionary<PdfObjectId, int>().Count
+            + new HashSet<PdfName>().Count;
+
         public static int Made() => Unseeded.Make<HashSet<string>>().Count + Unseeded.Make<Unseeded.Wrapper<List<int>>>().Inner.Count;
 
         public static int Wrapped() => new Lazy<HashSet<int>>(new HashSet<int>(SeededComparer.Instance)).Value.Count;
@@ -588,6 +629,13 @@ public class SeededComparerTests
             typeof(KeyedCollection<,>),
         ];
 
+        /// <summary>
+        /// The tables keyed by any object, a boxed number hashing as itself, which no comparer of a number can seed: their
+        /// constructors, a base constructor included, and the factories that build them.
+        /// </summary>
+        private static readonly HashSet<Type> Untyped =
+            [typeof(Hashtable), typeof(System.Collections.Specialized.HybridDictionary), typeof(System.Collections.Specialized.OrderedDictionary)];
+
         /// <summary>The frozen and immutable hash collections, which their factories, and their <c>Empty</c>, build.</summary>
         private static readonly HashSet<Type> HashCollections =
             [typeof(FrozenSet<>), typeof(FrozenDictionary<,>), typeof(ImmutableHashSet<>), typeof(ImmutableDictionary<,>)];
@@ -616,9 +664,11 @@ public class SeededComparerTests
         /// property's getter, and it no branch's target, so that no other path reaches it. A method group takes no comparer.
         /// A collection over a type parameter is refused whatever its comparer: its key is whatever its callers choose, and
         /// so is the comparer they hand it, which no reading follows. A table type given where <c>new()</c>, Lazy or
-        /// LazyInitializer builds it, or Activator, takes no comparer either. A collection that enumerates in an order its
-        /// keys' hashes set — a concurrent dictionary, a frozen or immutable hash collection, or its builder — is refused
-        /// whatever its comparer: the seed, which differs from one process to the next, would order what it gives.
+        /// LazyInitializer builds it, or Activator, takes no comparer either, nor does a table keyed by any object. A
+        /// collection that enumerates in an order its keys' hashes set — a concurrent dictionary, a frozen or immutable hash
+        /// collection, or its builder — is refused whatever its comparer, over a steerable key or over a type of the library
+        /// whose hash goes through the seed, as PdfObjectId's does: the seed, which differs from one process to the next,
+        /// would order what it gives.
         /// </summary>
         public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(IEnumerable<Type> types)
         {
@@ -666,16 +716,18 @@ public class SeededComparerTests
 
         /// <summary>
         /// Determines whether <paramref name="member"/> builds a hash collection over a key a file can steer or a type
-        /// parameter stands for, and gets that key: null for what no comparer can seed — a <see cref="Hashtable"/>, keyed
-        /// by any object, a boxed number hashing as itself, or a table built for a type argument by <c>new()</c>,
-        /// Activator, Lazy or LazyInitializer.
+        /// parameter stands for, or one that enumerates by hash over a key the library seeds by hand, and gets that key:
+        /// null for what no comparer can seed — a table keyed by any object, built by its constructor or by
+        /// <see cref="System.Collections.Specialized.CollectionsUtil"/>, or a table built for a type argument by
+        /// <c>new()</c>, Activator, Lazy or LazyInitializer.
         /// </summary>
         private static bool Builds(MemberInfo member, out Type? key)
         {
             var type = member.DeclaringType!;
             key = null;
 
-            if ((member is ConstructorInfo && type == typeof(Hashtable)) || BuildsTypeArgument(member))
+            if ((member is ConstructorInfo && Untyped.Contains(type)) || type == typeof(System.Collections.Specialized.CollectionsUtil)
+                || BuildsTypeArgument(member))
             {
                 return true;
             }
@@ -690,7 +742,7 @@ public class SeededComparerTests
                 _ => null,
             };
 
-            return key is not null && (key.ContainsGenericParameters || Steerable(key));
+            return key is not null && (key.ContainsGenericParameters || Steerable(key) || (EnumeratesByHash(member) && SeededByHand(key)));
         }
 
         /// <summary>
@@ -748,7 +800,7 @@ public class SeededComparerTests
         /// it is one, or a type whose <c>new()</c> constraint builds one for it.
         /// </summary>
         private static bool CreatesTable(Type type) =>
-            type == typeof(Hashtable)
+            Untyped.Contains(type)
             || (type.IsGenericType && Tables.Contains(type.GetGenericTypeDefinition()) && type.GetGenericArguments()[0] is var key
                 && (key.ContainsGenericParameters || Steerable(key)))
             || (type.IsGenericType && Constructed(type.GetGenericTypeDefinition().GetGenericArguments(), type.GetGenericArguments()));
@@ -783,7 +835,10 @@ public class SeededComparerTests
                 return Steerable(value);
             }
 
-            if (Numbers.Contains(key))
+            // A number, or what a boxed one may be keyed as — any object, a value type, an interface numbers implement —,
+            // which hashes as the number does.
+            if (Numbers.Contains(key) || key == typeof(object) || key == typeof(ValueType)
+                || (key.IsInterface && Numbers.Any(number => number.GetInterfaces().Contains(key))))
             {
                 return true;
             }
@@ -799,6 +854,34 @@ public class SeededComparerTests
             // A record's hash, as the compiler writes it: a fixed combination of its members a file inverts.
             return !key.IsEnum && key.GetMethod(nameof(GetHashCode), Type.EmptyTypes) is { } hash
                 && hash.DeclaringType == key && hash.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute));
+        }
+
+        /// <summary>
+        /// Determines whether <paramref name="key"/>, alone, nullable or in a tuple, is a type of the library that hashes
+        /// itself through the process's seed, by <see cref="HashCode"/> or a string's hash: what such keys give, a
+        /// collection that enumerates by hash would order by the seed, which differs from one process to the next.
+        /// </summary>
+        private static bool SeededByHand(Type key)
+        {
+            if (Nullable.GetUnderlyingType(key) is { } value)
+            {
+                return SeededByHand(value);
+            }
+
+            if (key.IsGenericType && key.GetGenericTypeDefinition() is { Namespace: "System" } tuple
+                && (tuple.Name.StartsWith("ValueTuple`", StringComparison.Ordinal) || tuple.Name.StartsWith("Tuple`", StringComparison.Ordinal)))
+            {
+                return Array.Exists(key.GetGenericArguments(), SeededByHand);
+            }
+
+            if (key.Assembly != typeof(SeededComparer).Assembly || key.GetMethod(nameof(GetHashCode), Type.EmptyTypes) is not { } hash
+                || hash.DeclaringType != key || hash.GetMethodBody()?.GetILAsByteArray() is not { } il)
+            {
+                return false;
+            }
+
+            return Read(hash, il).Instructions.Exists(instruction => instruction.Member is MethodInfo called
+                && (called.DeclaringType == typeof(HashCode) || (called.DeclaringType == typeof(string) && called.Name == nameof(GetHashCode))));
         }
 
         /// <summary>
@@ -896,8 +979,10 @@ public class SeededComparerTests
 
         /// <summary>
         /// Gets <paramref name="instructions"/> without the probes code coverage puts at sequence points, as CI runs the
-        /// tests under it — a load of its tracker's field, the probe's index added, and a byte of one stored —, which
-        /// nothing the source wrote does. A branch to a probe leads on to what follows it.
+        /// tests under it — a load of its tracker's field, the probe's index added unless it is the first, a byte of one
+        /// stored —, which nothing the source wrote does. A branch to a probe leads on to what follows it. Only that shape
+        /// is a probe: any other instruction is read as it stands, so that a probe written otherwise refuses the table it
+        /// stands before, rather than hiding what follows it.
         /// </summary>
         private static List<(int Offset, OpCode Code, MemberInfo? Member)> WithoutProbes(
             List<(int Offset, OpCode Code, MemberInfo? Member)> instructions, HashSet<int> targets)
@@ -906,30 +991,55 @@ public class SeededComparerTests
 
             for (var i = 0; i < instructions.Count; i++)
             {
-                if (instructions[i].Member is not FieldInfo { DeclaringType.Name: var tracker }
-                    || !tracker.StartsWith("StaticManagedTrackerTemplate", StringComparison.Ordinal))
+                var length = ProbeLength(instructions, i);
+
+                if (length == 0)
                 {
                     kept.Add(instructions[i]);
                     continue;
                 }
 
-                var end = i;
                 var reached = false;
 
-                while (end < instructions.Count && instructions[end].Code != OpCodes.Stind_I1)
+                for (var k = i; k < i + length; k++)
                 {
-                    reached |= targets.Contains(instructions[end++].Offset);
+                    reached |= targets.Contains(instructions[k].Offset);
                 }
 
-                if (end < instructions.Count && (reached || targets.Contains(instructions[end].Offset)) && end + 1 < instructions.Count)
+                if (reached && i + length < instructions.Count)
                 {
-                    targets.Add(instructions[end + 1].Offset);
+                    targets.Add(instructions[i + length].Offset);
                 }
 
-                i = end;
+                i += length - 1;
             }
 
             return kept;
+        }
+
+        /// <summary>
+        /// Gets how many instructions the probe starting at <paramref name="at"/> takes — a load of the tracker's field, an
+        /// index and its addition unless it is the first, a one and its store as a byte —, or nothing if none starts there.
+        /// </summary>
+        private static int ProbeLength(List<(int Offset, OpCode Code, MemberInfo? Member)> instructions, int at)
+        {
+            if (instructions[at] is not { Code: var load, Member: FieldInfo { DeclaringType.Name: var tracker } }
+                || load != OpCodes.Ldsfld || !tracker.StartsWith("StaticManagedTrackerTemplate", StringComparison.Ordinal))
+            {
+                return 0;
+            }
+
+            var next = at + 1;
+
+            if (next + 1 < instructions.Count && instructions[next].Code.Name!.StartsWith("ldc.i4", StringComparison.Ordinal)
+                && instructions[next + 1].Code == OpCodes.Add)
+            {
+                next += 2;
+            }
+
+            return next + 1 < instructions.Count && instructions[next].Code == OpCodes.Ldc_I4_1 && instructions[next + 1].Code == OpCodes.Stind_I1
+                ? next + 2 - at
+                : 0;
         }
     }
 
