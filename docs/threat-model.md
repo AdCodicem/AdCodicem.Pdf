@@ -177,16 +177,17 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
   interface numbers implement, a reference comparer given or not: an identity table is keyed by a reference type of the
   library —; a collection that enumerates by hash — a concurrent dictionary, a frozen or immutable one, its factories,
   its builder and an immutable one's `Empty`, a `StringDictionary`, however built — whatever its key and comparer, but
-  `PdfName`'s interning table, which `PdfName`'s static constructor builds once, before any branch and straight into a
-  static field, and which the library reaches, through its type or a generic interface of it, only to find or add one
-  name: a member that takes it, gives it, views it or names its pairs, as a method group or in an array, a reference or
-  a type argument, is refused, and through `object` or a non-generic interface it is not followed; and a table built for
-  a type argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`. The library builds no hash collection over a
-  type parameter, whatever its comparer, since its callers choose the key; how the hash of a type the library hashes by
-  hand spreads is held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; a collection built through
-  reflection otherwise, or one a framework method returns under another type, is not read. It reads through the probes
-  code coverage puts, and only their shape: any other instruction between the comparer and the table refuses it. The
-  other reads the sources and names the file and line of the shapes it recognizes.
+  `PdfName`'s interning table, which `PdfName`'s static constructor builds once, ahead of every branch target and
+  straight into a static field, and which the library reaches, through its type or a generic interface of it, only to
+  find or add one name: a call to, or a method group of, a member that takes it, gives it, views it or names its pairs,
+  in an array, a reference or a type argument included, is refused, and through `object`, a non-generic interface or an
+  expression tree, which names its members by token, it is not followed; and a table built for a type argument by
+  `new()`, `Activator`, `Lazy` or `LazyInitializer`. The library builds no hash collection over a type parameter,
+  whatever its comparer, since its callers choose the key; how the hash of a type the library hashes by hand spreads is
+  held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; a collection built through reflection otherwise,
+  or one a framework method returns under another type, is not read. It reads through the probes code coverage puts, and
+  only their shape: any other instruction between the comparer and the table refuses it. The other reads the sources and
+  names the file and line of the shapes it recognizes.
 
 ### Everything read is bounded by the source
 

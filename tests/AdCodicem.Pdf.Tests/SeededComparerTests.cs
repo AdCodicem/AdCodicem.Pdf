@@ -324,6 +324,8 @@ public class SeededComparerTests
             nameof(Unseeded.Properties),
             nameof(Unseeded.Derived),
             nameof(Unseeded.EmptyIdentifiers),
+            nameof(Unseeded.EmptyByAddress),
+            nameof(Unseeded.VirtualGroup),
             nameof(Unseeded.CreatedIdentifiers),
             nameof(Unseeded.LazyNames),
             nameof(Unseeded.AnonymousIdentifiers),
@@ -364,8 +366,8 @@ public class SeededComparerTests
         // let be; a second, one keyed to another type, one stored elsewhere, one another method or another type builds, a
         // frozen or immutable one, and a member that enumerates it, views it, copies it, hands it out or names its pairs, as
         // a method group, in an array, a reference or a type argument included, are refused, and finding or adding one
-        // entry, through its type or an interface of it, is not. One built in a loop, which may run more than once, is
-        // refused too. Its static constructor
+        // entry, through its type or an interface of it, is not. One built at the head of a loop, which may run it more
+        // than once, is refused too. Its static constructor
         // is read after its methods, and the other type before it, so that a condition left out lets be another table than
         // the one it should, which the constructor's parameters tell apart.
         var refused = CompiledRules.TablesBuilt([typeof(Interning), typeof(Interned)], typeof(Interned))
@@ -386,6 +388,7 @@ public class SeededComparerTests
             "Interned.Joined: Interned.JoinOf()",
             "Interned.Deferred: IEnumerable`1<KeyValuePair`2>.GetEnumerator()",
             "Interned.Given: Interned.Give(IReadOnlyDictionary`2&)",
+            "Interned.Arrayed: Interned.CountViews(IReadOnlyDictionary`2[])",
             "Interned..cctor: ConcurrentDictionary`2<String, Int32>..ctor(IEqualityComparer`1)",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor()",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)");
@@ -573,6 +576,14 @@ public class SeededComparerTests
 
         public static ImmutableHashSet<PdfObjectId> EmptyIdentifiers() => ImmutableHashSet<PdfObjectId>.Empty.Add(default);
 
+        public static int EmptyByAddress() => Count(in ImmutableHashSet<int>.Empty);
+
+        public static HashSet<int> VirtualGroup(IMaker maker)
+        {
+            Func<HashSet<int>> group = maker.Make<HashSet<int>>;
+            return group();
+        }
+
         public static int CreatedIdentifiers() => Activator.CreateInstance<ConcurrentDictionary<PdfObjectId, int>>().Count;
 
         public static int LazyNames()
@@ -653,6 +664,15 @@ public class SeededComparerTests
             where T : notnull;
 
         /// <summary>What its type argument is, built through <c>new()</c>.</summary>
+        /// <summary>What a virtual generic method builds for its type argument, through <c>new()</c>.</summary>
+        public interface IMaker
+        {
+            T Make<T>()
+                where T : new();
+        }
+
+        private static int Count(in ImmutableHashSet<int> set) => set.Count;
+
         public sealed class Wrapper<TInner>
             where TInner : new()
         {
@@ -809,6 +829,10 @@ public class SeededComparerTests
             return view is not null;
         }
 
+        public static int CountViews(IReadOnlyDictionary<string, Interned>[] views) => views.Length;
+
+        public static int Arrayed() => CountViews(new IReadOnlyDictionary<string, Interned>[1]);
+
         private static string JoinOf<T>() => string.Join(",", (IEnumerable<T>)Table);
 
         public static ConcurrentDictionary<string, Interned> Built() => new(StringComparer.Ordinal);
@@ -826,7 +850,10 @@ public class SeededComparerTests
         }
     }
 
-    /// <summary>A stand-in whose static constructor builds its table in a loop, which may run the construction again.</summary>
+    /// <summary>
+    /// A stand-in whose static constructor builds its table at the head of a loop, which may run the construction again: the
+    /// loop's branch lands on the construction itself.
+    /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
         "Performance",
         "CA1810:Initialize reference type static fields inline",
@@ -843,7 +870,7 @@ public class SeededComparerTests
 
             do
             {
-                Table = new(StringComparer.Ordinal);
+                Table = new();
                 Shards[i] = Table;
             }
             while (++i < Shards.Length);
@@ -872,12 +899,13 @@ public class SeededComparerTests
             .ToDictionary(code => code.Value);
 
         /// <summary>
-        /// The instructions that build or call what they name, take a method group of it, virtual or not, or load a field.
-        /// No hashing operator, factory or table constructor is virtual: a virtual method group is read for what reaches
-        /// the interning table.
+        /// The instructions that build or call what they name, take a method group of it, virtual or not, or load a field or
+        /// its address. A virtual method group is read for what reaches the interning table, and for a table a
+        /// <c>new()</c> constraint builds for its type argument, as an interface's or a virtual generic method may; no
+        /// hashing operator, factory or table constructor is virtual.
         /// </summary>
         private static readonly HashSet<OpCode> Considered =
-            [OpCodes.Newobj, OpCodes.Call, OpCodes.Callvirt, OpCodes.Ldftn, OpCodes.Ldvirtftn, OpCodes.Ldsfld];
+            [OpCodes.Newobj, OpCodes.Call, OpCodes.Callvirt, OpCodes.Ldftn, OpCodes.Ldvirtftn, OpCodes.Ldsfld, OpCodes.Ldsflda];
 
         /// <summary>The tables a constructor builds, a base constructor included.</summary>
         private static readonly HashSet<Type> Tables =
@@ -933,10 +961,11 @@ public class SeededComparerTests
         /// collection, its builder or an immutable one's <c>Empty</c> — is refused whatever its key and its comparer: no key,
         /// comparer or hash can be read to say that a seed, which differs from one process to the next, orders nothing it
         /// gives. One is let be, the interning table of <paramref name="interning"/>, PdfName for the library: a concurrent
-        /// dictionary from strings to it, the first its static constructor builds, before any branch, and stores straight
-        /// into a static field, reached through its type or a generic interface of it only to find or add one entry; a
-        /// member that takes it, gives it, views it or names its pairs, in an array, a reference or a type argument
-        /// included, is refused. Through object or a non-generic interface, it is not followed.
+        /// dictionary from strings to it, the first its static constructor builds ahead of every branch target and stores
+        /// straight into a static field, reached through its type or a generic interface of it only to find or add one
+        /// entry; a call to, or a method group of, a member that takes it, gives it, views it or names its pairs, in an
+        /// array, a reference or a type argument included, is refused. Through object, a non-generic interface or an
+        /// expression tree, which names its members by token, it is not followed.
         /// </summary>
         public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(IEnumerable<Type> types, Type? interning = null)
         {
@@ -968,9 +997,10 @@ public class SeededComparerTests
                         }
 
                         // The interning table is reached, through its type or a generic interface of it, only to find or add
-                        // one entry: a member declared on, taking or giving the table, a generic interface of it or its pairs,
-                        // as what enumerates it, views it, copies it or hands it out is, is refused, but the table's
-                        // constructors, which the rule below reads.
+                        // one entry: a member declared on, instantiated over, taking or giving the table, a generic interface
+                        // of it or its pairs, in an array, a reference or a type argument included, as what enumerates it,
+                        // views it, copies it or hands it out is, is refused, but the lookups declared on one of them and the
+                        // table's constructors, which the rule below reads.
                         if (reaching.Length > 0 && Mentions(member, reaching) && !(member is ConstructorInfo && member.DeclaringType == table)
                             && !(member is MethodInfo && reaching.Contains(member.DeclaringType!) && Lookups.Contains(member.Name)))
                         {
@@ -989,8 +1019,8 @@ public class SeededComparerTests
                             && !EnumeratesByHash(member) && TakesComparerLast(called, key) && i > 0 && !targets.Contains(offset)
                             && seeded.Equals(instructions[i - 1].Member);
 
-                        // The interning table: the first its type's static constructor builds, before any branch, which a
-                        // loop would run again, and stores straight into a static field; no other.
+                        // The interning table: the first its type's static constructor builds ahead of every branch target,
+                        // which a loop would bring it back to, and stores straight into a static field; no other.
                         if (!interned && member.DeclaringType == table && method is ConstructorInfo { IsStatic: true }
                             && method.DeclaringType == interning && !targets.Any(target => target <= offset)
                             && i + 1 < instructions.Count && instructions[i + 1].Code == OpCodes.Stsfld)
