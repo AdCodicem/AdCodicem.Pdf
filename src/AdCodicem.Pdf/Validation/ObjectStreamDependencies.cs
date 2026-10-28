@@ -77,7 +77,7 @@ internal sealed class ObjectStreamDependencies
         var reader = document.Reader;
         var streams = new SortedSet<int>();
 
-        foreach (var (_, entry) in IndexOf(reader).Entries)
+        foreach (var (_, entry) in IndexOf(reader))
         {
             if (entry.Kind == XRefEntryKind.Compressed)
             {

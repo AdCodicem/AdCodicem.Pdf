@@ -178,6 +178,79 @@ public class ReaderTimingTests
         }
     }
 
+    [Fact]
+    public void An_index_of_numbers_chosen_to_share_a_bucket_opens_as_fast_as_one_numbered_in_order()
+    {
+        // 34,167 numbers 62,851 apart, as many as an int holds, each in a subsection of its own: before #155 every one fell
+        // in a single bucket of the index's map, and indexing each walked those before it, 2 s against 40 ms. The index now
+        // finds a number in a slot while numbers run in order, and past them in a map hashed through the process's seed:
+        // the same rows numbered either way open in about the same time. The measure is the ratio, the best of five
+        // openings of each.
+        const int Count = 34_167;
+        var colliding = CollidingNumbers.Table(CollidingNumbers.Numbers(Count, CollidingNumbers.TableSize, colliding: true));
+        var ordered = CollidingNumbers.Table(CollidingNumbers.Numbers(Count, CollidingNumbers.TableSize, colliding: false));
+
+        var orderedTime = BestOfFive(() => Open(ordered));
+        var collidingTime = BestOfFive(() => Open(colliding));
+
+        collidingTime.Should().BeLessThan(
+            orderedTime * 4,
+            "rows numbered to collide must cost about what the same rows numbered in order do ({0} against {1})",
+            collidingTime,
+            orderedTime);
+
+        static void Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            document.ObjectCount.Should().Be(Count + 3);
+        }
+    }
+
+    [Fact]
+    public void A_rebuild_of_numbers_chosen_to_share_a_bucket_takes_the_time_of_one_numbered_in_order()
+    {
+        // No table: the reader indexes the 36,350 objects it finds, numbered as many buckets apart as a map grown to hold
+        // them has. Before #155 the rebuild put them all in one bucket, 8 s against 70 ms; it now takes about what the
+        // same objects numbered in order do. The measure is the ratio, the best of five openings of each.
+        const int Count = 36_350;
+        var size = CollidingNumbers.GrownSize(Count + 2);
+        var colliding = CollidingNumbers.Unindexed(CollidingNumbers.Numbers(Count, size, colliding: true));
+        var ordered = CollidingNumbers.Unindexed(CollidingNumbers.Numbers(Count, size, colliding: false));
+
+        var orderedTime = BestOfFive(() => Open(ordered));
+        var collidingTime = BestOfFive(() => Open(colliding));
+
+        collidingTime.Should().BeLessThan(
+            orderedTime * 4,
+            "objects numbered to collide must cost about what the same objects numbered in order do ({0} against {1})",
+            collidingTime,
+            orderedTime);
+
+        static void Open(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            document.WasRepaired.Should().BeTrue();
+            document.ObjectCount.Should().Be(Count + 2);
+        }
+    }
+
+    /// <summary>Gets the shortest of five runs of <paramref name="action"/>, after one to warm up.</summary>
+    private static TimeSpan BestOfFive(Action action)
+    {
+        action();
+        var best = TimeSpan.MaxValue;
+
+        for (var run = 0; run < 5; run++)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            action();
+            var elapsed = stopwatch.Elapsed;
+            best = elapsed < best ? elapsed : best;
+        }
+
+        return best;
+    }
+
     /// <summary>
     /// Writes a file whose object stream 3 holds <paramref name="members"/> objects, numbered from 4, each placed by a row
     /// of a cross-reference stream: <c>1</c> each, its header broken before the last by a pair whose offset is not past the

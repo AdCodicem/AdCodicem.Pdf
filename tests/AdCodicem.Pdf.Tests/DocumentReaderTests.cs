@@ -2830,17 +2830,17 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData(LargeIndex.ClassicTable, 300_000, 17_720_000)]
-    [InlineData(LargeIndex.CrossReferenceStream, 300_002, 30_960_000)]
+    [InlineData(LargeIndex.ClassicTable, 300_000, 15_750_000)]
+    [InlineData(LargeIndex.CrossReferenceStream, 300_002, 26_780_000)]
     public void Opening_an_index_of_three_hundred_thousand_objects_stays_within_its_memory_budget(
         string shape, int entries, long budget)
     {
-        // M01's file of several hundred thousand objects (#193). Opening allocates the reader's map of the index, which the
-        // section sizes before its rows are read to 324,449 slots of 52 bytes here, and a cross-reference stream's rows
-        // decoded besides. Measured on 2026-10-14, after a warm-up: 16,875,176 bytes for the table, 29,478,272 for the
-        // stream, whose rows Flate stores uncompressed so that no runtime's zlib moves the figure — 32,571,368 and
-        // 45,174,464 when the map grew by doubling (#164). The budget is 5 % over each. 324,449 is the first prime of
-        // .NET's table past 300,000, so a change of a few thousand objects does not move it either.
+        // M01's file of several hundred thousand objects (#193). Opening allocates the reader's index, which the section
+        // sizes before its rows are read to its 300,000 rows, 36 bytes each and a slot of 4 for each number, and a
+        // cross-reference stream's rows decoded besides. Measured three times on 2026-10-28, after a warm-up: 14,999,384
+        // bytes for the table, 25,502,376 for the stream, whose rows Flate stores uncompressed so that no runtime's zlib
+        // moves the figure — 16,875,176 and 29,478,272 with the map of 324,449 slots of 52 bytes the index was before #155,
+        // and 32,571,368 and 45,174,464 when that map grew by doubling (#164). The budget is 5 % over each.
         var file = LargeIndexFile(shape);
         using (PdfDocument.Open(file))
         {
@@ -2856,7 +2856,7 @@ public class DocumentReaderTests
         document.ObjectCount.Should().Be(entries, "the file holds what its index says, and the reader read it whole");
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Should().BeEmpty();
-        allocated.Should().BeLessThan(budget, $"opening {shape} of {entries:N0} entries holds the map of them and little else");
+        allocated.Should().BeLessThan(budget, $"opening {shape} of {entries:N0} entries holds the index of them and little else");
 
         // A bound, not a throughput: what a regression that allocates nothing, such as a quadratic search, would pass.
         elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
@@ -2865,12 +2865,12 @@ public class DocumentReaderTests
     [Fact]
     public void Opening_a_chain_of_a_thousand_sections_resizes_the_index_no_more_often_than_doubling_it()
     {
-        // Each section makes room for its rows, and never by less than the map holds already: room made for each in turn
-        // would resize the map at every section, and copy it whole each time past the largest prime .NET keeps in its
-        // table. Once a doubling comes within a doubling of what the newest /Size numbers, room is made for it at once.
-        // A thousand sections of 300 rows: 30,562,560 bytes allocated, measured twice on 2026-10-14 after a warm-up,
-        // where growth allocated 33,196,448, doubling alone 44,621,888, and, on sections of a thousand rows, room made for
-        // each in turn 2.6 times what growth did. The budget is 5 % over.
+        // Each section makes room for its rows, and never by less than the index holds already: room made for each in
+        // turn would copy the index at every section. Once a doubling comes within a doubling of what the newest /Size
+        // numbers, room is made for it at once. A thousand sections of 300 rows: 25,702,408 bytes allocated, measured
+        // three times on 2026-10-28 after a warm-up, where the map the index was before #155 allocated 30,571,304, growth
+        // 33,196,448 and doubling alone 44,621,888 (2026-10-14). The newest sections number the highest objects, and the
+        // room made counts toward the numbers the index keeps a slot for. The budget is 5 % over.
         var file = ChainOfSections(sections: 1000, rows: 300);
         using (PdfDocument.Open(file))
         {
@@ -2887,7 +2887,7 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Should().BeEmpty();
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
-        allocated.Should().BeLessThan(32_100_000, "the map doubles at most, section after section, and lands on the newest /Size");
+        allocated.Should().BeLessThan(27_000_000, "the room doubles at most, section after section, and lands on the newest /Size");
         elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
     }
 
@@ -2903,7 +2903,7 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(file);
 
         document.ObjectCount.Should().Be(2000);
-        document.Reader.Index.Capacity.Should().BeLessThan(4000, "the map doubles from the newest section's 1,103 slots");
+        document.Reader.Index.Capacity.Should().BeLessThan(4000, "the room doubles once from the newest section's rows, to 2,004 entries");
     }
 
     [Theory]
@@ -2925,7 +2925,7 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(file);
 
         document.ObjectCount.Should().Be(3000);
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(4000, "3,000 objects take 3,371 slots, and 7,013 doubled");
+        document.Reader.Index.Capacity.Should().BeLessThan(4000, "3,000 objects take room for 3,000 entries, and 6,000 doubled");
     }
 
     [Fact]
@@ -2954,7 +2954,7 @@ public class DocumentReaderTests
 
         document.ObjectCount.Should().Be(3000);
         document.Diagnostics.Should().BeEmpty();
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(4000, "3,000 rows take 3,371 slots");
+        document.Reader.Index.Capacity.Should().BeLessThan(4000, "room is made once, for the 3,278 rows the table's bytes hold");
     }
 
     [Fact]
@@ -2969,7 +2969,7 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(file);
 
         document.ObjectCount.Should().Be(3276);
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(4000, "3,276 rows take 3,371 slots");
+        document.Reader.Index.Capacity.Should().BeLessThan(4000, "room is made once, for the 3,278 rows the window holds");
     }
 
     [Theory]
@@ -2987,7 +2987,7 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(file);
 
         document.ObjectCount.Should().Be(76_000);
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(100_000, "76,000 rows take 90,523 slots");
+        document.Reader.Index.Capacity.Should().BeLessThan(100_000, "76,000 rows take room for 76,000 entries");
     }
 
     [Fact]
@@ -3009,7 +3009,7 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(file);
 
         document.ObjectCount.Should().Be(62_900);
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(80_000, "62,900 entries take 75,431 slots");
+        document.Reader.Index.Capacity.Should().BeLessThan(80_000, "62,900 entries take room for as many");
     }
 
     [Fact]
@@ -3047,7 +3047,7 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(Encoding.Latin1.GetBytes(text));
 
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(64, "the table holds four rows");
+        document.Reader.Index.Capacity.Should().BeLessThan(64, "the table holds four rows");
     }
 
     /// <summary>The ways <see cref="LargeIndexFile"/> indexes its objects.</summary>

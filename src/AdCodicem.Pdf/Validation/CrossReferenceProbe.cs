@@ -94,8 +94,7 @@ internal sealed class CrossReferenceProbe
             return probe;
         }
 
-        var numbers = new int[index.Count];
-        index.Entries.Keys.CopyTo(numbers, 0);
+        var numbers = index.CopyNumbers();
         Array.Sort(numbers);
 
         var size = reader.Structure.SizeAsWritten is PdfInteger { Value: >= 0 } written ? written.Value : -1;
@@ -404,7 +403,7 @@ internal sealed class CrossReferenceProbe
 
         SortedDictionary<int, List<(int Number, int Index)>>? packed = null;
 
-        foreach (var (number, entry) in reader.Index.Entries)
+        foreach (var (number, entry) in reader.Index)
         {
             if (entry.Kind == XRefEntryKind.Compressed &&
                 (reader.ChainIndex?.TryGet(number, out var placed) != true || placed.Kind == XRefEntryKind.Free))

@@ -851,9 +851,9 @@ public class HostileInputTests
         report.Position.Should().Be(section);
         report.Message.Should().Be(
             "The index reached 1,000,000 entries; the objects past them were not indexed. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
-        // Measured at 595,837,384 and 595,845,248 bytes, 5 % above: the map sized once for the guard's entries, where it
-        // grew to them by doubling at 675,532,296.
-        allocated.Should().BeLessThan(625_700_000, "the index holds the guard's entries, and the decoded rows are read once");
+        // Measured at 579,701,688 and 579,701,776 bytes on 2026-10-28, 5 % above: the index sized once for the guard's
+        // entries, where the map it was before #155 took 595,837,384 sized once and 675,532,296 grown by doubling.
+        allocated.Should().BeLessThan(608_690_000, "the index holds the guard's entries, and the decoded rows are read once");
     }
 
     [Fact]
@@ -871,7 +871,7 @@ public class HostileInputTests
         using var document = PdfDocument.Open(file);
 
         document.ObjectCount.Should().Be(4);
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(200_000);
+        document.Reader.Index.Capacity.Should().BeLessThan(200_000);
     }
 
     [Theory]
@@ -902,7 +902,7 @@ public class HostileInputTests
     {
         // A reserved row type indexes nothing, and the room its rows ask for is reserved all the same, as the rows the data
         // holds: the guard bounds it, as it bounds the rows of a type that index. Eight million rows of type 3 decode from 16
-        // KB; under a guard of a million entries, the map is sized for a million.
+        // KB; under a guard of a million entries, the index is sized for a million.
         var file = ReservedTypeRows(8_000_000);
         var limits = PdfReaderLimits.Default with { MaxIndexEntries = 1_000_000 };
         file.Length.Should().BeLessThan(32 * 1024);
@@ -914,9 +914,9 @@ public class HostileInputTests
         document.ObjectCount.Should().Be(4);
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
-        // Measured at 140,272,056 bytes twice, 5 % above: 16 MB of rows decoded, and the map sized for a million entries,
-        // where it would be for eight million past the guard.
-        allocated.Should().BeLessThan(147_290_000, "the room made for rows that index nothing is bounded by the guard");
+        // Measured at 115,843,064 bytes three times on 2026-10-28, 5 % above: 16 MB of rows decoded, and the index sized for
+        // a million entries, where it would be for eight million past the guard; 140,272,056 with the map it was before #155.
+        allocated.Should().BeLessThan(121_640_000, "the room made for rows that index nothing is bounded by the guard");
     }
 
     [Fact]

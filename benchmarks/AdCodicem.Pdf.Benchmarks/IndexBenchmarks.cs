@@ -9,15 +9,16 @@ namespace AdCodicem.Pdf.Benchmarks;
 /// <summary>
 /// Measures what indexing a document of 300,000 objects costs as it opens, by the shape of its index (#164): one classic
 /// table, one cross-reference stream, an original and an update that rewrites a tenth of it, a hybrid file as Word writes
-/// it, and a chain of a thousand like sections.
+/// it, a chain of a thousand like sections, and one table whose objects are numbered three apart (#155).
 /// </summary>
 /// <remarks>
 /// A section makes room in the index for the rows it holds before it reads them, rather than letting the map double as it
 /// grows, and for no more than the newest section's <c>/Size</c> numbers once it is read: an older section's rows for
-/// numbers a newer one gave are superseded, and add nothing. What opening allocates is the map, sized once for the first
-/// four shapes. A chain of many like sections makes room section after section, never by less than the map holds, and
-/// for the whole <c>/Size</c> once a doubling comes within a doubling of it. The objects are not read: opening reads the
-/// index and the catalog.
+/// numbers a newer one gave are superseded, and add nothing. What opening allocates is the index, sized once for the first
+/// four shapes. A chain of many like sections makes room section after section, never by less than the index holds, and
+/// for the whole <c>/Size</c> once a doubling comes within a doubling of it. The index finds a number in a slot while
+/// numbers run in order, and past them through a map hashed through the process's seed, which numbers three apart reach.
+/// The objects are not read: opening reads the index and the catalog.
 /// </remarks>
 [MemoryDiagnoser]
 public class IndexBenchmarks
@@ -46,9 +47,12 @@ public class IndexBenchmarks
 
         /// <summary>A thousand classic sections, each adding 300 objects to those the older ones define.</summary>
         Chain,
+
+        /// <summary>One classic table whose objects are numbered three apart, each row a subsection of its own.</summary>
+        Spread,
     }
 
-    [Params(IndexShape.Table, IndexShape.Stream, IndexShape.Update, IndexShape.Hybrid, IndexShape.Chain)]
+    [Params(IndexShape.Table, IndexShape.Stream, IndexShape.Update, IndexShape.Hybrid, IndexShape.Chain, IndexShape.Spread)]
     public IndexShape Shape { get; set; }
 
     [GlobalSetup]
@@ -58,6 +62,7 @@ public class IndexBenchmarks
         IndexShape.Update => Updated(),
         IndexShape.Hybrid => Hybrid(),
         IndexShape.Chain => Chained(1000),
+        IndexShape.Spread => Spread(),
         _ => Chained(1),
     };
 
@@ -153,6 +158,32 @@ public class IndexBenchmarks
         Write(buffer, string.Create(
             CultureInfo.InvariantCulture,
             $"trailer\n<< /Size {Objects} /Root 1 0 R /Prev {original} >>\nstartxref\n{update}\n%%EOF\n"));
+        return buffer.ToArray();
+    }
+
+    /// <summary>
+    /// A catalog, an empty page tree and nulls numbered three apart, from 3 to three times <see cref="Objects"/>, each
+    /// indexed by a subsection of one row.
+    /// </summary>
+    private static byte[] Spread()
+    {
+        using var buffer = new MemoryStream();
+        Write(buffer, "%PDF-1.7\n");
+        var offsets = WriteObjects(buffer, 0, 3);
+        var rows = new StringBuilder("xref\n0 3\n0000000000 65535 f\r\n");
+        rows.Append(CultureInfo.InvariantCulture, $"{offsets[1]:D10} 00000 n\r\n{offsets[2]:D10} 00000 n\r\n");
+
+        for (var k = 1; k < Objects - 2; k++)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"{3 * k} 1\n{buffer.Position:D10} 00000 n\r\n");
+            Write(buffer, string.Create(CultureInfo.InvariantCulture, $"{3 * k} 0 obj\nnull\nendobj\n"));
+        }
+
+        var at = buffer.Position;
+        Write(buffer, rows.ToString());
+        Write(buffer, string.Create(
+            CultureInfo.InvariantCulture,
+            $"trailer\n<< /Size {3 * Objects} /Root 1 0 R >>\nstartxref\n{at}\n%%EOF\n"));
         return buffer.ToArray();
     }
 

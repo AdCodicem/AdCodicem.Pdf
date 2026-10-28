@@ -41,8 +41,7 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
             return;
         }
 
-        var numbers = new int[index.Count];
-        index.Entries.Keys.CopyTo(numbers, 0);
+        var numbers = index.CopyNumbers();
         Array.Sort(numbers);
 
         foreach (var number in numbers)

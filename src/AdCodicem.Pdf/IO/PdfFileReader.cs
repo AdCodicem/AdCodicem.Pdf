@@ -587,7 +587,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     public int ObjectCount => _xref.Count;
 
     /// <summary>Gets the object numbers the index holds an entry for, free ones included.</summary>
-    public IEnumerable<int> ObjectNumbers => _xref.Entries.Keys;
+    public IEnumerable<int> ObjectNumbers => _xref.Numbers;
 
     /// <summary>Gets the bytes the file is read from.</summary>
     public PdfFileSource Source => _source;
@@ -981,7 +981,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>Determines whether loading some object the index holds in use, where it places it, would rebuild the index.</summary>
     private bool AnyLoadWouldRebuild()
     {
-        foreach (var (number, entry) in _xref.Entries)
+        foreach (var (number, entry) in _xref)
         {
             if (number > 0 && entry.Kind == XRefEntryKind.Regular && !LoadFindsWhereEntryPlaces(number, entry))
             {
@@ -6523,7 +6523,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         if (_loading.Count > 0 || _objectStreamsLoading.Count > 0)
         {
             _unfinishedRebuild = new UnfinishedRebuild(
-                new Dictionary<int, XRefEntry>(_xref.Entries), redefinitions, kept, _indexFull, _indexFullAt, MarkReports());
+                _xref.CopyEntries(), redefinitions, kept, _indexFull, _indexFullAt, MarkReports());
             reached?.Throw();
             return;
         }
@@ -6788,7 +6788,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // A chain a guard cut is kept only when it was read, its first section at least.
         var position = _structure.Sections[0].Offset;
 
-        foreach (var (number, entry) in chain.Entries)
+        foreach (var (number, entry) in chain)
         {
             if (entry.Kind == XRefEntryKind.Free || _xref.TryGet(number, out _))
             {
@@ -6819,7 +6819,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
             return reached;
         }
 
-        foreach (var (number, entry) in chain.Entries)
+        foreach (var (number, entry) in chain)
         {
             if (entry.Kind != XRefEntryKind.Compressed ||
                 !_objectStreamsHiddenByGuard.Contains(entry.ObjectStreamNumber) ||
@@ -6944,7 +6944,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
     private ExceptionDispatchInfo? ExpandEachObjectStream(Redefinitions redefinitions)
     {
-        var numbers = new List<int>(_xref.Entries.Keys);
+        var numbers = _xref.CopyNumbers();
         ExceptionDispatchInfo? reached = null;
 
         foreach (var number in numbers)
@@ -7035,7 +7035,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     {
         ExceptionDispatchInfo? reached = null;
         var rebuilt = _repaired;
-        var numbers = new List<int>(_xref.Entries.Keys);
+        var numbers = _xref.CopyNumbers();
 
         foreach (var number in numbers)
         {
@@ -7173,7 +7173,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// finish has.
     /// </param>
     private sealed record UnfinishedRebuild(
-        Dictionary<int, XRefEntry> Scanned,
+        PdfXRefTable Scanned,
         Redefinitions Redefinitions,
         PdfXRefTable? Kept,
         bool IndexFull,
