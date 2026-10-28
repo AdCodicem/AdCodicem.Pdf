@@ -86,12 +86,13 @@ public class SeededComparerTests
     {
         // Every hash table keyed by a number or a tuple holding one, whose type the source writes, is built with
         // SeededComparer among its own arguments, or in its initializer where it has none, a copy included: built with [],
-        // new() or no comparer, it would hash numbers a file chose as themselves (#155). A name declared with such a type
-        // and no table, given [] or new() later, is held too, and a LINQ operator that hashes names a comparer among its
-        // own arguments, whatever its key. Comments and literals are not read. This reading names the file and the line;
-        // what it cannot see — a table built where its type is not written, as an out var or an expression body gives it,
-        // a key it cannot tell a number, the comparer an operator is given — the reading of the compiled library below
-        // refuses.
+        // new() or no comparer, it would hash numbers a file chose as themselves (#155). A concurrent, frozen or immutable
+        // one, which enumerates by hash, is refused seeded or not. A name declared with such a type and no table, given []
+        // or new() later, is held too, so are the tables an array's initializer builds, and a LINQ operator that hashes
+        // names a comparer among its own arguments, whatever its key. Comments and literals are not read. This reading
+        // names the file and the line; what it cannot see — a table built where its type is not written, as an out var or
+        // an expression body gives it, a key it cannot tell a number, the comparer an operator is given — the reading of
+        // the compiled library below refuses.
         var violations = new List<string>();
 
         foreach (var path in Directory.EnumerateFiles(Path.Combine(FeatureTables.RepositoryRoot, "src"), "*.cs", SearchOption.AllDirectories))
@@ -156,6 +157,13 @@ public class SeededComparerTests
     [InlineData("HashSet<int>[] tables = [new(), new(SeededComparer.Instance)];")]
     [InlineData("private readonly HashSet<int>[] _tables = [[]];")]
     [InlineData("public HashSet<int>[] Tables { get; } = [new()];")]
+    [InlineData("HashSet<int>[]? tables = [new()];")]
+    [InlineData("public HashSet<int>[]? Tables { get; } = [new()];")]
+    [InlineData("HashSet<int>[]? tables = [new(SeededComparer.Instance), new()];")]
+    [InlineData("HashSet<int>[][] tables = [[new(SeededComparer.Instance), new()]];")]
+    [InlineData("var tables = new HashSet<int>[][] { [new(SeededComparer.Instance), new()] };")]
+    [InlineData("private ConcurrentDictionary<int, string> _byNumber;\nvoid M() { _byNumber = new(SeededComparer.Instance); }")]
+    [InlineData("private ConcurrentDictionary<int, string>? _byNumber;\nvoid M() => (_byNumber ??= new(SeededComparer.Instance)).Clear();")]
     [InlineData("var odd = Path.Distinct();")]
     [InlineData("var odd = @string.Join(Path, x => x, y => y, (x, y) => x);")]
     public void The_reading_of_the_sources_refuses_a_table_keyed_by_numbers_built_without_the_comparer(string source)
@@ -202,6 +210,11 @@ public class SeededComparerTests
     [InlineData("private readonly HashSet<int>[] _tables = [];")]
     [InlineData("HashSet<int>[] tables = [new(SeededComparer.Instance)];")]
     [InlineData("public HashSet<int>[] Tables { get; } = [new(SeededComparer.Instance)];")]
+    [InlineData("HashSet<int>[]? tables = [new(SeededComparer.Instance)];")]
+    [InlineData("HashSet<int>[]? tables = [];")]
+    [InlineData("HashSet<int>[][] tables = [[]];")]
+    [InlineData("var tables = new HashSet<int>[][] { [] };")]
+    [InlineData("HashSet<int>[][] tables = [[new(SeededComparer.Instance)]];")]
     [InlineData("void Use(HashSet<int>[] tables, int[] numbers) { numbers = [1, 2]; }")]
     [InlineData("var c = '\\''; var seen = new HashSet<int>(SeededComparer.Instance);")]
     public void The_reading_of_the_sources_lets_a_seeded_table_and_other_keys_be(string source)
@@ -934,7 +947,7 @@ public class SeededComparerTests
         public static IEnumerable<string> Violations(string path, string source)
         {
             var text = WithoutComments(source);
-            var declared = new HashSet<string>(StringComparer.Ordinal);
+            var declared = new Dictionary<string, bool>(StringComparer.Ordinal);
 
             foreach (var (at, isNew, key, name, statement, byHash) in Tables(text))
             {
@@ -952,11 +965,11 @@ public class SeededComparerTests
                 }
                 else if (!built && name is not null)
                 {
-                    declared.Add(name);
+                    declared[name] = byHash;
                 }
             }
 
-            foreach (var name in declared)
+            foreach (var (name, byHash) in declared)
             {
                 foreach (Match assigned in Regex.Matches(text, $@"(?<![\w.]){Regex.Escape(name)}\s*(?:\?\?)?=\s*(?:\[|new\s*\()"))
                 {
@@ -965,7 +978,7 @@ public class SeededComparerTests
                     var end = text[open] == '[' ? Matching(text, open, '[', ']') : Matching(text, open, '(', ')');
                     var statement = text[assigned.Index..(end < 0 ? text.Length : end + 1)];
 
-                    if (!statement.Contains("SeededComparer", StringComparison.Ordinal))
+                    if (byHash || !statement.Contains("SeededComparer", StringComparison.Ordinal))
                     {
                         yield return $"{path}:{Line(text, assigned.Index)}: {statement.Trim()}";
                     }
@@ -973,8 +986,9 @@ public class SeededComparerTests
             }
 
             // An operator's key is not written where it is called: one that hashes names its comparer among its own
-            // arguments, which the compiled reading holds to the seeded one where the key is a number. Text that string.Join
-            // or Path.Join joins is not hashed.
+            // arguments, which the compiled reading holds to the seeded one where the key is a number, and refuses whatever
+            // it is for a frozen or immutable operator, which enumerates by hash. Text that string.Join or Path.Join joins
+            // is not hashed.
             foreach (Match call in Hashing.Matches(text))
             {
                 if (call.Value == ".Join(" && Regex.IsMatch(
@@ -1030,10 +1044,17 @@ public class SeededComparerTests
                     // written. A new array's initializer follows its ranks; a declared one's is the collection expression
                     // its name, or its property's accessors, are given.
                     var rank = after;
+                    var ranks = 0;
 
                     while (rank < text.Length && text[rank] == '[' && Matching(text, rank, '[', ']') is var shut and >= 0)
                     {
+                        ranks++;
                         rank = Skip(text, shut + 1);
+
+                        if (rank < text.Length && text[rank] == '?')
+                        {
+                            rank = Skip(text, rank + 1);
+                        }
                     }
 
                     var given = Regex.Match(text[rank..], isNew ? @"^\{" : @"^@?\w+\s*(?:\{[^{}]*\}\s*)?=\s*\[");
@@ -1041,7 +1062,7 @@ public class SeededComparerTests
                     if (given.Success && rank + given.Length - 1 is var initializer
                         && Matching(text, initializer, text[initializer], text[initializer] == '{' ? '}' : ']') is var last and >= 0)
                     {
-                        foreach (var (table, at) in TargetTyped(text, initializer + 1, last))
+                        foreach (var (table, at) in TargetTyped(text, initializer + 1, last, ranks - 1))
                         {
                             yield return (at, true, key, null, table, byHash);
                         }
@@ -1107,17 +1128,22 @@ public class SeededComparerTests
         /// Gets the tables an array's initializer between <paramref name="from"/> and <paramref name="to"/> builds
         /// target-typed, with where each starts: an element that is a collection expression, and a new( an element starts
         /// with or a conditional or coalescing operator gives, to the parenthesis that closes it, not one another holds. A
-        /// row of a multidimensional array is read through.
+        /// row of a multidimensional array is read through, and so is a collection expression while
+        /// <paramref name="rows"/>, the ranks of a jagged array left past its elements', remain.
         /// </summary>
-        private static IEnumerable<(string Table, int At)> TargetTyped(string text, int from, int to)
+        private static IEnumerable<(string Table, int At)> TargetTyped(string text, int from, int to, int rows)
         {
             foreach (var (element, at) in Elements(text, from, to))
             {
-                if (element.StartsWith('{'))
+                if (element.StartsWith('{') || (rows > 0 && element.StartsWith('[')))
                 {
-                    foreach (var row in TargetTyped(text, at + 1, Matching(text, at, '{', '}')))
+                    var row = element.StartsWith('{')
+                        ? TargetTyped(text, at + 1, Matching(text, at, '{', '}'), rows)
+                        : TargetTyped(text, at + 1, Matching(text, at, '[', ']'), rows - 1);
+
+                    foreach (var table in row)
                     {
-                        yield return row;
+                        yield return table;
                     }
                 }
                 else if (element.StartsWith('['))
