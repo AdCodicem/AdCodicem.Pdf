@@ -31,9 +31,9 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// times the objects the sections give. A table of one-row subsections, whose headers make room as rows do, keeps about
 /// 1.5 times these figures. A number in the map keeps 20 to about 42 bytes beside its entry and the slot the room makes
 /// anyway, by where the map's count falls against .NET's prime steps, so that an object numbered apart from the rest
-/// keeps, measured, about 60 to 85 bytes in subsections of ten rows or more, up to about 96 in subsections of two, and 90
-/// to 115 in a table of one-row subsections; a rebuild that grows the table over such numbers allocates about 125 to 220
-/// an object. A
+/// keeps, measured, about 60 to 85 bytes in subsections of ten rows or more, up to about 96 in subsections of two, and 85
+/// to 115 in a table of one-row subsections, the more the wider the numbers; a rebuild that grows the table over such
+/// numbers allocates about 110 to 220 an object. A
 /// copy holds its entries exactly, and slots up to the highest number the slots hold, no more than the table it copies.
 /// </para>
 /// </remarks>

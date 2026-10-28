@@ -170,11 +170,11 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
   built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
   one, a type of the library hashed as the compiler writes a record's hash — unless the comparer of its key, taken
   last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a constructor, a base
-  constructor, a LINQ operator, a frozen or immutable factory and its `Empty` alike, or any of them as a method group.
-  A collection over a type parameter takes a comparer the method was given, and a comparer of a steerable key handed
-  to the library's own code is read where it is handed, as a table type given to its generic code is; a type the
-  library hashes by hand is held by its own tests, as `PdfObjectId` and `PdfDiagnostic` are; a collection built through
-  reflection, `Activator.CreateInstance<T>` of a table aside, is not read. The other reads the sources and
+  constructor, a LINQ operator, a frozen or immutable factory and an immutable collection's `Empty` alike, or any of
+  them as a method group; a table built for a type argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`
+  always. The library builds no hash collection over a type parameter, whatever its comparer, since its callers choose
+  the key; a type the library hashes by hand is held by its own tests, as `PdfObjectId` and `PdfDiagnostic` are; a
+  collection built through reflection otherwise is not read. The other reads the sources and
   names the file and line of the shapes it recognizes.
 
 ### Everything read is bounded by the source
@@ -526,8 +526,8 @@ Known gaps:
   `FilterDamageTests`, `DiagnosticsTests`, and the validation rule tests. They hold the bounds a mutation of a small
   file cannot reach.
 - **A reading of the code** (`SeededComparerTests`), compiled and as written: every hash collection built over numbers
-  takes the seeded comparer, so that no table a later change adds hashes numbers a file chose as themselves; one over a
-  type parameter takes a comparer, which its callers choose.
+  takes the seeded comparer, so that no table a later change adds hashes numbers a file chose as themselves, and none
+  is built over a type parameter, whose key its callers choose.
 - **Budgets on real documents, and on a generated index.** `CorpusReadingTests` holds what indexing a 1,000-page document and walking its
   page tree allocate, and each operation on every corpus document — opening it, reading every object, walking its
   pages, validating a damaged one — to 20 s. `CorpusValidationTests.Validating_the_largest_document_stays_within_its_budget`
