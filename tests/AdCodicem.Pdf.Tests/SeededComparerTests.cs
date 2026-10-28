@@ -118,6 +118,7 @@ public class SeededComparerTests
     [InlineData("public Dictionary<int, int> Indexes { get; } = [];")]
     [InlineData("private HashSet<int>? _lazy;\nvoid M() => (_lazy ??= []).Add(1);")]
     [InlineData("var numbers = list.ToHashSet();")]
+    [InlineData("var numbers = await pages.ToHashSetAsync();")]
     [InlineData("Mark(new HashSet<long>(_faults), new HashSet<int>(_needing, SeededComparer.Instance));")]
     [InlineData("private readonly ConcurrentDictionary<int, string> _byNumber = new();")]
     [InlineData("private readonly ConcurrentDictionary<int, string> _byNumber = new(SeededComparer.Instance);")]
@@ -318,6 +319,8 @@ public class SeededComparerTests
             nameof(Unseeded.Hybrid),
             nameof(Unseeded.SpecializedOrdered),
             nameof(Unseeded.CaseInsensitive),
+            nameof(Unseeded.OperatorAsync),
+            nameof(Unseeded.ValueTypeKey),
             nameof(Unseeded.Strings),
             nameof(Unseeded.CreatedStrings),
             nameof(Unseeded.LazyStrings),
@@ -390,6 +393,7 @@ public class SeededComparerTests
             "Interned.Deferred: IEnumerable`1<KeyValuePair`2>.GetEnumerator()",
             "Interned.Given: Interned.Give(IReadOnlyDictionary`2&)",
             "Interned.Arrayed: Interned.CountViews(IReadOnlyDictionary`2[])",
+            "Interned.Fetched: Interned.TryGetValue(ConcurrentDictionary`2&)",
             "Interned..cctor: ConcurrentDictionary`2<String, Int32>..ctor(IEqualityComparer`1)",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor()",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)");
@@ -400,6 +404,9 @@ public class SeededComparerTests
         CompiledRules.TablesBuilt([typeof(LoopedCompared)], typeof(LoopedCompared))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedCompared>..ctor");
+        CompiledRules.TablesBuilt([typeof(Instanced)], typeof(Instanced))
+            .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
+            .Should().Equal(".ctor: ConcurrentDictionary`2<String, Instanced>..ctor");
 
         static string Parameters(MemberInfo built) =>
             built is MethodBase called ? string.Join(", ", called.GetParameters().Select(parameter => parameter.ParameterType.Name)) : "";
@@ -411,7 +418,9 @@ public class SeededComparerTests
         // Code coverage, as CI runs the tests, puts a probe at each sequence point, which may fall between the comparer's
         // getter and the table's constructor: the probe is not code the source wrote, and the table stays seeded. Any other
         // instruction there is read as it stands, a tracker's field stored otherwise than a probe stores it included, so
-        // that a probe another instrumenter writes otherwise refuses the table rather than hiding what follows it.
+        // that a probe another instrumenter writes otherwise refuses the table rather than hiding what follows it. A branch
+        // that lands on a probe lands on what follows it, so that a comparer handed on one path only, the probe at the join,
+        // stays refused.
         var module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Probed"), AssemblyBuilderAccess.Run).DefineDynamicModule("Probed");
         var tracker = module.DefineType("StaticManagedTrackerTemplate_Sample", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
         var begin = tracker.DefineField("Begin", typeof(nint), FieldAttributes.Public | FieldAttributes.Static);
@@ -424,9 +433,24 @@ public class SeededComparerTests
         Emit("First", il => il.Emit(OpCodes.Ldsfld, begin), il => il.Emit(OpCodes.Ldc_I4_1), il => il.Emit(OpCodes.Stind_I1));
         Emit("Wedged", il => il.Emit(OpCodes.Ldc_I4, 7), il => il.Emit(OpCodes.Pop));
         Emit("Misshapen", il => il.Emit(OpCodes.Ldsfld, hits), il => il.Emit(OpCodes.Ldc_I4, 7), il => il.Emit(OpCodes.Ldc_I4_1), il => il.Emit(OpCodes.Stelem_I1));
+        var branched = samples.DefineMethod("OnePathProbed", MethodAttributes.Public | MethodAttributes.Static, typeof(HashSet<int>), [typeof(bool)]).GetILGenerator();
+        var handed = branched.DefineLabel();
+        var join = branched.DefineLabel();
+        branched.Emit(OpCodes.Ldarg_0);
+        branched.Emit(OpCodes.Brtrue, handed);
+        branched.Emit(OpCodes.Ldnull);
+        branched.Emit(OpCodes.Br, join);
+        branched.MarkLabel(handed);
+        branched.Emit(OpCodes.Call, seeded);
+        branched.MarkLabel(join);
+        branched.Emit(OpCodes.Ldsfld, begin);
+        branched.Emit(OpCodes.Ldc_I4_1);
+        branched.Emit(OpCodes.Stind_I1);
+        branched.Emit(OpCodes.Newobj, constructor);
+        branched.Emit(OpCodes.Ret);
         var type = samples.CreateType();
 
-        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().BeEquivalentTo("Wedged", "Misshapen");
+        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().BeEquivalentTo("Wedged", "Misshapen", "OnePathProbed");
 
         void Emit(string name, params Action<ILGenerator>[] between)
         {
@@ -567,6 +591,10 @@ public class SeededComparerTests
         public static int SpecializedOrdered() => new System.Collections.Specialized.OrderedDictionary().Count;
 
         public static int CaseInsensitive() => System.Collections.Specialized.CollectionsUtil.CreateCaseInsensitiveHashtable().Count;
+
+        public static ValueTask<HashSet<int>> OperatorAsync(IAsyncEnumerable<int> numbers) => numbers.ToHashSetAsync();
+
+        public static HashSet<ValueType> ValueTypeKey() => [];
 
         public static int Strings() => new System.Collections.Specialized.StringDictionary().Count;
 
@@ -833,6 +861,14 @@ public class SeededComparerTests
             return view is not null;
         }
 
+        public static bool TryGetValue(out ConcurrentDictionary<string, Interned> table)
+        {
+            table = Table;
+            return true;
+        }
+
+        public static bool Fetched() => TryGetValue(out _);
+
         public static int CountViews(IReadOnlyDictionary<string, Interned>[] views) => views.Length;
 
         public static int Arrayed() => CountViews(new IReadOnlyDictionary<string, Interned>[1]);
@@ -912,6 +948,18 @@ public class SeededComparerTests
         public static LoopedCompared Get(string value) => Table.GetOrAdd(value, static _ => new LoopedCompared());
     }
 
+    /// <summary>A stand-in whose instance constructor builds its table, again at each instance, into a static field.</summary>
+    private sealed class Instanced
+    {
+        private static ConcurrentDictionary<string, Instanced>? table;
+
+        private Instanced() => table = new(StringComparer.Ordinal);
+
+        public static Instanced Make() => new();
+
+        public static bool Has(string value) => table?.ContainsKey(value) is true;
+    }
+
     /// <summary>Another type, whose static constructor builds the stand-in's table.</summary>
     private static class Interning
     {
@@ -969,11 +1017,15 @@ public class SeededComparerTests
         private static readonly HashSet<Type> Factories =
             [typeof(FrozenSet), typeof(FrozenDictionary), typeof(ImmutableHashSet), typeof(ImmutableDictionary)];
 
-        /// <summary>The LINQ operators that hash what they are given, or the keys a selector gives.</summary>
+        /// <summary>
+        /// The LINQ operators that hash what they are given, or the keys a selector gives, asynchronous ones included, whose
+        /// cancellation token comes after the comparer: one is refused even seeded, a shape the library does not use.
+        /// </summary>
         private static readonly HashSet<string> HashingOperators =
         [
             "ToHashSet", "ToDictionary", "ToLookup", "Distinct", "DistinctBy", "GroupBy", "GroupJoin", "Join", "LeftJoin",
             "RightJoin", "Union", "UnionBy", "Intersect", "IntersectBy", "Except", "ExceptBy", "CountBy", "AggregateBy",
+            "ToHashSetAsync", "ToDictionaryAsync", "ToLookupAsync",
         ];
 
         private static readonly HashSet<Type> Numbers =
@@ -1030,10 +1082,11 @@ public class SeededComparerTests
                         }
 
                         // The interning table is reached, through its type or a generic interface of it, only to find or add
-                        // one entry: a member declared on, instantiated over, taking or giving the table, a generic interface
-                        // of it or its pairs, in an array, a reference or a type argument included, as what enumerates it,
-                        // views it, copies it or hands it out is, is refused, but the lookups declared on one of them and the
-                        // table's constructors, which the rule below reads.
+                        // one entry: a call to, or a method group of, a member declared on, instantiated over, taking or
+                        // giving the table, a generic interface of it or its pairs, in an array, a reference or a type
+                        // argument included, or a static field declared on one of them or on a type built over one, as what
+                        // enumerates it, views it, copies it or hands it out is, is refused, but the lookups declared on one
+                        // of them and the table's constructors, which the rule below reads.
                         if (reaching.Length > 0 && Mentions(member, reaching) && !(member is ConstructorInfo && member.DeclaringType == table)
                             && !(member is MethodInfo && reaching.Contains(member.DeclaringType!) && Lookups.Contains(member.Name)))
                         {
@@ -1228,7 +1281,9 @@ public class SeededComparerTests
                 return true;
             }
 
-            // A tuple, or an anonymous type, which the compiler hashes as a fixed combination of its members' hashes.
+            // A tuple, which hashes as its items do, so that items that hash alike, a long's folded halves, make two tuples
+            // hash alike, seed or not; or an anonymous type, whose hash the compiler writes as a fixed combination of its
+            // members' hashes.
             if (IsTupleOrAnonymous(key))
             {
                 return Array.Exists(key.GetGenericArguments(), Steerable);
@@ -1412,7 +1467,7 @@ public class SeededComparerTests
             @"\b(?:short|ushort|char|int|uint|long|ulong|nint|nuint|float|double|decimal|Half|Int16|UInt16|Char|Int32|UInt32|Int64|UInt64|IntPtr|UIntPtr|Int128|UInt128|Single|Double|Decimal|BigInteger)\b";
 
         private static readonly Regex Hashing = new(
-            @"\.(?:ToHashSet|ToDictionary|ToLookup|Distinct|DistinctBy|GroupBy|GroupJoin|Join|LeftJoin|RightJoin|Union|UnionBy|Intersect|IntersectBy|Except|ExceptBy|CountBy|AggregateBy|ToFrozenDictionary|ToFrozenSet|ToImmutableDictionary|ToImmutableHashSet)\(",
+            @"\.(?:ToHashSetAsync|ToDictionaryAsync|ToLookupAsync|ToHashSet|ToDictionary|ToLookup|Distinct|DistinctBy|GroupBy|GroupJoin|Join|LeftJoin|RightJoin|Union|UnionBy|Intersect|IntersectBy|Except|ExceptBy|CountBy|AggregateBy|ToFrozenDictionary|ToFrozenSet|ToImmutableDictionary|ToImmutableHashSet)\(",
             RegexOptions.CultureInvariant);
 
         public static IEnumerable<string> Violations(string path, string source)
