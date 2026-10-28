@@ -100,6 +100,9 @@ opening a file records each of its rows. Most files number their objects from 0 
   to 8 %; opening and validating them 7.0 to 7.3 ms against 6.7 to 6.8, about 5 % more, the lighter index paying back
   part of it; the Arlington walk alone 2 to 6 % more. Opening an index of 300,000 objects takes 8 to 13 % less, a chain
   of a thousand sections about as long, and indexing 1,000 pages 200 to 222 µs against 230 to 242 (ShortRun, twice).
+  What the validator's walks pay is filed under M23
+  ([#305](https://github.com/AdCodicem/AdCodicem.Pdf/issues/305)), a set indexed by the index's slots the way to measure
+  first.
 - A hash differs from one process to the next. Tables enumerate in an order their adds and removes set, never in an
   order their hashes give — the reading of the compiled library refuses one keyed by numbers that would —, so nothing
   the library reports or writes changes with it (invariant 6). A caller must not store a
