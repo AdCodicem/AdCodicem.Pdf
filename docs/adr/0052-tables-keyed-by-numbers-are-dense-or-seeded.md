@@ -96,7 +96,11 @@ opening a file records each of its rows. Most files number their objects from 0 
   the index at each one. Until then one past the highest number read stands for it, so that an update chain that kept
   its original `/Size` still lands on its count.
 - The seeded tables cost a hash and an interface call a lookup, and scatter keys a table numbered in order would keep
-  together: measured on a prototype, validating 1,000 pages costs 5 to 8 % more.
+  together. Measured on the batch's last code against `e3e2034`, a medium job of each twice, alternated: validating
+  1,000 pages already read takes 2.9 to 3.2 ms against 2.6 to 2.7, about 13 % more, where the prototype had measured 5
+  to 8 %; opening and validating them 7.0 to 7.3 ms against 6.7 to 6.8, about 5 % more, the lighter index paying back
+  part of it; the Arlington walk alone 2 to 6 % more. Opening an index of 300,000 objects takes 8 to 13 % less, a chain
+  of a thousand sections about as long, and indexing 1,000 pages 200 to 222 µs against 230 to 242 (ShortRun, twice).
 - A hash differs from one process to the next. Tables enumerate in an order their adds and removes set, never in an
   order their hashes give, so nothing the library reports or writes changes with it (invariant 6). A caller must not store a
   `PdfObjectId`'s or a `PdfDiagnostic`'s hash.
