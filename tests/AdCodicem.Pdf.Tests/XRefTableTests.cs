@@ -158,6 +158,63 @@ public class XRefTableTests
     }
 
     [Fact]
+    public void A_map_the_slots_come_to_reach_gives_back_the_room_of_the_numbers_that_leave_it()
+    {
+        // A newest section numbering far past the rest: 5,000 numbers go to the map, and one more lies past any slot. Room
+        // made for the older rows stretches the slots over the 5,000, which leave the map; removed in place, they left it
+        // room for 5,000 numbers to hold one.
+        var table = new PdfXRefTable();
+        table.TryAdd(2_000_000_000, XRefEntry.Free);
+
+        for (var number = 100_000; number < 105_000; number++)
+        {
+            table.TryAdd(number, XRefEntry.Regular(number, 0));
+        }
+
+        table.MapCount.Should().Be(5_001);
+        table.Reserve(110_000, int.MaxValue);
+        table.TryAdd(0, XRefEntry.Free);
+
+        table.MapCount.Should().Be(1, "the slots reach every number but the farthest");
+        table.MapCapacity.Should().BeLessThan(8, "the map keeps room for the number it holds");
+
+        for (var number = 100_000; number < 105_000; number++)
+        {
+            table.TryGet(number, out var entry).Should().BeTrue();
+            entry.Offset.Should().Be(number);
+        }
+
+        table.TryGet(2_000_000_000, out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_map_most_of_whose_numbers_stay_keeps_its_room()
+    {
+        // A hundred numbers leave a map of five thousand: copying those that stay at every stretch would cost more than it
+        // gives back.
+        var table = new PdfXRefTable();
+
+        for (var number = 17_000; number < 17_100; number++)
+        {
+            table.TryAdd(number, XRefEntry.Regular(number, 0));
+        }
+
+        for (var number = 100_000; number < 104_900; number++)
+        {
+            table.TryAdd(number, XRefEntry.Regular(number, 0));
+        }
+
+        table.MapCount.Should().Be(5_000);
+        var room = table.MapCapacity;
+        table.TryAdd(17_300, XRefEntry.Free);
+
+        table.MapCount.Should().Be(4_900, "the slots reach the hundred numbers below 17,301");
+        table.MapCapacity.Should().Be(room);
+        table.TryGet(17_050, out var moved).Should().BeTrue();
+        moved.Offset.Should().Be(17_050);
+    }
+
+    [Fact]
     public void Room_made_for_rows_makes_their_slots_once()
     {
         // Room for a thousand rows numbered from 0 gives them a thousand slots, made once, rather than slots doubled from

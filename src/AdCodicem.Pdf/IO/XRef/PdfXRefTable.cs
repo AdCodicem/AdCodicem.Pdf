@@ -76,6 +76,9 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// <summary>Gets how many numbers the table finds an entry for in its map, past the slots.</summary>
     internal int MapCount => _beyond?.Count ?? 0;
 
+    /// <summary>Gets how many numbers the map holds room for, past the slots.</summary>
+    internal int MapCapacity => _beyond?.EnsureCapacity(0) ?? 0;
+
     /// <summary>Gets the indexed object numbers, in the order the table first recorded them.</summary>
     public IEnumerable<int> Numbers
     {
@@ -275,6 +278,12 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
         if (_beyond.Count == 0)
         {
             _beyond = null;
+        }
+        else if (_beyond.Count < _beyond.EnsureCapacity(0) / 4)
+        {
+            // Removed in place, the numbers that moved leave their room in the map: once they are most of it, the map gives
+            // it back, copying those that stay once rather than at every stretch.
+            _beyond.TrimExcess();
         }
     }
 
