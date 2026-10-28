@@ -131,6 +131,14 @@ public class SeededComparerTests
     [InlineData("var m = $\"{(x ? \"it's\" : \"b\")}\"; var seen = new HashSet<int>();")]
     [InlineData("var m = $\"{(x ? \"a//b\" : \"b\")}\"; var seen = new HashSet<int>();")]
     [InlineData("var m = $$\"\"\"{{(x ? \"a\" : \"b\")}}\"\"\"; var seen = new HashSet<int>();")]
+    [InlineData("var seen = new HashSet<(int, string)?>();")]
+    [InlineData("var seen = new HashSet<Tuple<int, string>?>();")]
+    [InlineData("var seen = new Dictionary<((int, int)?, string), int>();")]
+    [InlineData("var c = '\\U00000041'; var d = '\"'; var seen = new HashSet<int>();")]
+    [InlineData("var m = $\"{x:0\\\"}\"; var seen = new HashSet<int>();")]
+    [InlineData("var tables = new HashSet<int>[] { new(), new() };")]
+    [InlineData("var odd = Path.Distinct();")]
+    [InlineData("var odd = @string.Join(Path, x => x, y => y, (x, y) => x);")]
     public void The_reading_of_the_sources_refuses_a_table_keyed_by_numbers_built_without_the_comparer(string source)
     {
         SourceRules.Violations("Sample.cs", source).Should().ContainSingle();
@@ -157,6 +165,10 @@ public class SeededComparerTests
     [InlineData("var m = $\"{{new HashSet<int>()}}\";")]
     [InlineData("var joined = string.Join(\", \", parts);")]
     [InlineData("var path = Path.Join(root, name);")]
+    [InlineData("var path = System.IO.Path.Join(root, name);")]
+    [InlineData("var joined = global::System.String.Join(\", \", parts);")]
+    [InlineData("var m = $\"{x:N0}\"; var seen = new HashSet<int>(SeededComparer.Instance);")]
+    [InlineData("var m = $\"{global::System.Math.Abs(x)}\"; var seen = new HashSet<int>(SeededComparer.Instance);")]
     [InlineData("var seen = new HashSet<(string Name, bool Double)>(StringComparer.Ordinal);")]
     [InlineData("var tables = new HashSet<int>[4];")]
     [InlineData("var c = '\\''; var seen = new HashSet<int>(SeededComparer.Instance);")]
@@ -175,8 +187,9 @@ public class SeededComparerTests
         // integer wider than a byte, a character, a floating point or decimal number —, nullable or not, a tuple or an
         // anonymous type holding one, or a type of the library hashed as the compiler writes a record's hash: a fixed
         // combination of its members a file inverts. An enumeration's values are the library's own, and a type the library
-        // hashes by hand is held by its own tests, as PdfObjectId and PdfDiagnostic are. A collection over a type parameter
-        // takes a comparer the method was given, and what its callers hand the library's own code is read where they do.
+        // hashes by hand is held by its own tests, as PdfObjectId and PdfDiagnostic are. The library builds no collection
+        // over a type parameter, whatever its comparer: its callers choose its key, and no reading follows them; nor does it
+        // give a table type where new(), Activator, Lazy or LazyInitializer builds it.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes()))
@@ -192,7 +205,8 @@ public class SeededComparerTests
     {
         // The check above sees what a source reading cannot: an out var given [], an expression body, a copy among others,
         // a comparer handed on one path only, a base constructor, a factory, a collection expression lowered to one, a
-        // method group, a value comparer where the key's belongs, a comparer handed to the library's own code.
+        // method group, a value comparer where the key's belongs, a table over a type parameter whatever its comparer, a
+        // table type a new() constraint, Lazy or LazyInitializer builds.
         var refused = Refused(typeof(Unseeded));
 
         refused.Should().BeEquivalentTo(
@@ -229,11 +243,21 @@ public class SeededComparerTests
             nameof(Unseeded.GenericDefault),
             nameof(Unseeded.ValueComparer),
             nameof(Unseeded.MethodGroup),
-            nameof(Unseeded.Forwarding),
             nameof(Unseeded.Constructed),
+            nameof(Unseeded.NullableTupleKey),
+            nameof(Unseeded.Builder),
+            nameof(Unseeded.Given),
+            nameof(Unseeded.ByReference),
+            nameof(Unseeded.ActivatorOpen),
+            nameof(Unseeded.CreatedHashtable),
+            nameof(Unseeded.LazyValue),
+            nameof(Unseeded.LazyInitialized),
+            nameof(Unseeded.NestedCreation),
+            nameof(Unseeded.WrappedCreation),
             "IntDictionary",
             "NumberCollection",
-            "Cache");
+            "Cache",
+            "ForwardingDictionary");
     }
 
     [Fact]
@@ -331,15 +355,37 @@ public class SeededComparerTests
 
         public static HashSet<T> GenericDefault<T>() => new(EqualityComparer<T>.Default);
 
-        public static ImmutableDictionary<int, long> ValueComparer() => ImmutableDictionary.Create<int, long>(null, SeededComparer.Instance);
+        public static ImmutableDictionary<int, int> ValueComparer() => ImmutableDictionary.Create<int, int>(null, SeededComparer.Instance);
+
+        public static HashSet<(long, int)?> NullableTupleKey() => [];
+
+        public static ImmutableHashSet<int>.Builder Builder() => ImmutableHashSet.CreateBuilder<int>();
+
+        public static HashSet<(T, string)> Given<T>(IEqualityComparer<(T, string)> comparer) => new(comparer);
+
+        public static HashSet<List<T>> ByReference<T>() => new(ReferenceEqualityComparer.Instance);
+
+        public static HashSet<T> ActivatorOpen<T>() => Activator.CreateInstance<HashSet<T>>();
+
+        public static int CreatedHashtable() => Activator.CreateInstance<Hashtable>().Count;
+
+        public static int LazyValue() => new Lazy<HashSet<int>>().Value.Count;
+
+        public static int LazyInitialized()
+        {
+            HashSet<int>? seen = null;
+            return LazyInitializer.EnsureInitialized(ref seen).Count;
+        }
+
+        public static int NestedCreation() => Make<Wrapper<HashSet<int>>>() is null ? 0 : 1;
+
+        public static int WrappedCreation() => new Wrapper<HashSet<int>>().Inner.Count;
 
         public static HashSet<int> MethodGroup(IEnumerable<int> numbers)
         {
             Func<IEnumerable<int>, HashSet<int>> build = Enumerable.ToHashSet;
             return build(numbers);
         }
-
-        public static int Forwarding() => new Seeded.ForwardingDictionary<int>(null).Count;
 
         public static int Constructed() => Make<HashSet<int>>().Count;
 
@@ -359,6 +405,17 @@ public class SeededComparerTests
             where TKey : notnull
         {
             public Dictionary<TKey, int> Seen { get; } = [];
+        }
+
+        /// <summary>A table over a type parameter, handed the comparer its callers choose, which no reading follows.</summary>
+        private sealed class ForwardingDictionary<T>(IEqualityComparer<T>? comparer) : Dictionary<T, string>(comparer)
+            where T : notnull;
+
+        /// <summary>What its type argument is, built through <c>new()</c>.</summary>
+        public sealed class Wrapper<TInner>
+            where TInner : new()
+        {
+            public TInner Inner { get; } = new();
         }
     }
 
@@ -397,15 +454,17 @@ public class SeededComparerTests
 
         public static int EmptyFrozen() => FrozenSet<int>.Empty.Count;
 
-        public static int Forwarded() => new ForwardingDictionary<int>(SeededComparer.Instance).Count;
+        public static int Made() => Unseeded.Make<HashSet<string>>().Count + Unseeded.Make<Unseeded.Wrapper<List<int>>>().Inner.Count;
 
-        public static HashSet<List<T>> ByReference<T>() => new(ReferenceEqualityComparer.Instance);
+        public static int TablesOfTables() =>
+            new Dictionary<int, HashSet<int>>(SeededComparer.Instance).Count + new List<HashSet<int>>().Count + new Lazy<List<int>>().Value.Count;
 
-        public static HashSet<(T, string)> Given<T>(IEqualityComparer<(T, string)> comparer) => new(comparer);
-
-        /// <summary>A table over a type parameter, handed the comparer its callers choose.</summary>
-        internal sealed class ForwardingDictionary<T>(IEqualityComparer<T>? comparer) : Dictionary<T, string>(comparer)
-            where T : notnull;
+        public static int Factories()
+        {
+            HashSet<int>? seen = null;
+            var lazy = new Lazy<HashSet<int>>(() => new HashSet<int>(SeededComparer.Instance));
+            return LazyInitializer.EnsureInitialized(ref seen, () => new HashSet<int>(SeededComparer.Instance)).Count + lazy.Value.Count;
+        }
     }
 
     private readonly record struct Pair(int First, int Second);
@@ -423,16 +482,12 @@ public class SeededComparerTests
             .Select(field => (OpCode)field.GetValue(null)!)
             .ToDictionary(code => code.Value);
 
-        /// <summary>The instructions that build, call or take a method group of what they name, or load a field.</summary>
+        /// <summary>
+        /// The instructions that build or call what they name, take a method group of it, or load a field. No hashing
+        /// operator, factory or table constructor is virtual, so that none is taken as a virtual method group.
+        /// </summary>
         private static readonly HashSet<OpCode> Considered =
-            [OpCodes.Newobj, OpCodes.Call, OpCodes.Callvirt, OpCodes.Ldftn, OpCodes.Ldvirtftn, OpCodes.Ldsfld];
-
-        /// <summary>What hands a comparer a method was given: one of its arguments, or a field.</summary>
-        private static readonly HashSet<OpCode> Given =
-        [
-            OpCodes.Ldarg_0, OpCodes.Ldarg_1, OpCodes.Ldarg_2, OpCodes.Ldarg_3, OpCodes.Ldarg_S, OpCodes.Ldarg, OpCodes.Ldfld,
-            OpCodes.Ldsfld,
-        ];
+            [OpCodes.Newobj, OpCodes.Call, OpCodes.Callvirt, OpCodes.Ldftn, OpCodes.Ldsfld];
 
         /// <summary>The tables a constructor builds, a base constructor included.</summary>
         private static readonly HashSet<Type> Tables =
@@ -467,15 +522,13 @@ public class SeededComparerTests
         /// Gets each hash collection over a steerable key a method of <paramref name="types"/> builds without the comparer of
         /// its key, taken last, being SeededComparer.Instance handed to it straight — the instruction before it the
         /// property's getter, and it no branch's target, so that no other path reaches it. A method group takes no comparer.
-        /// Over a type parameter the comparer is one the method was given, an argument or a field, which its callers choose,
-        /// or the comparer by reference, which hashes no value:
-        /// a comparer handed to the library's own code is read where it is handed, and a table type given to the library's
-        /// generic code as a type argument is refused there.
+        /// A collection over a type parameter is refused whatever its comparer: its key is whatever its callers choose, and
+        /// so is the comparer they hand it, which no reading follows. A table type given where <c>new()</c>, Lazy or
+        /// LazyInitializer builds it, or Activator, takes no comparer either.
         /// </summary>
         public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(IEnumerable<Type> types)
         {
             var seeded = typeof(SeededComparer).GetProperty(nameof(SeededComparer.Instance))!.GetMethod!;
-            var byReference = typeof(ReferenceEqualityComparer).GetProperty(nameof(ReferenceEqualityComparer.Instance))!.GetMethod!;
 
             foreach (var type in types)
             {
@@ -492,16 +545,15 @@ public class SeededComparerTests
                     {
                         var (offset, code, member) = instructions[i];
 
-                        if (member is null || !Considered.Contains(code) || !Builds(member, method.Module.Assembly, out var key))
+                        if (member is null || !Considered.Contains(code) || !Builds(member, out var key))
                         {
                             continue;
                         }
 
-                        var handed = key is not null && member is MethodBase called && code != OpCodes.Ldftn && code != OpCodes.Ldvirtftn
+                        // Over a type parameter, the comparer of the key cannot be the seeded one handed straight.
+                        var handed = key is not null && member is MethodBase called && code != OpCodes.Ldftn
                             && TakesComparerLast(called, key) && i > 0 && !targets.Contains(offset)
-                            && (key.ContainsGenericParameters
-                                ? Given.Contains(instructions[i - 1].Code) || byReference.Equals(instructions[i - 1].Member)
-                                : seeded.Equals(instructions[i - 1].Member));
+                            && seeded.Equals(instructions[i - 1].Member);
 
                         if (!handed)
                         {
@@ -519,32 +571,18 @@ public class SeededComparerTests
 
         /// <summary>
         /// Determines whether <paramref name="member"/> builds a hash collection over a key a file can steer or a type
-        /// parameter stands for, or hands a comparer of such a key to the code of <paramref name="library"/>, and gets that
-        /// key: null for what no comparer can seed — a <see cref="Hashtable"/>, keyed by any object, a boxed number hashing
-        /// as itself, or a table type given to the library's generic code, which may build it with <c>new T()</c>.
+        /// parameter stands for, and gets that key: null for what no comparer can seed — a <see cref="Hashtable"/>, keyed
+        /// by any object, a boxed number hashing as itself, or a table built for a type argument by <c>new()</c>,
+        /// Activator, Lazy or LazyInitializer.
         /// </summary>
-        private static bool Builds(MemberInfo member, Assembly library, out Type? key)
+        private static bool Builds(MemberInfo member, out Type? key)
         {
             var type = member.DeclaringType!;
             key = null;
 
-            if (member is ConstructorInfo && type == typeof(Hashtable))
+            if ((member is ConstructorInfo && type == typeof(Hashtable)) || BuildsTypeArgument(member))
             {
                 return true;
-            }
-
-            if (member is MethodBase code && code.Module.Assembly == library)
-            {
-                var arguments = code is MethodInfo { IsGenericMethod: true } generic ? generic.GetGenericArguments() : Type.EmptyTypes;
-
-                if (Array.Exists([.. arguments, .. type.IsGenericType ? type.GetGenericArguments() : Type.EmptyTypes], IsSteerableTable))
-                {
-                    return true;
-                }
-
-                key = Array.Find(code.GetParameters(), parameter => ComparedBy(parameter.ParameterType) is { } compared
-                    && (compared.ContainsGenericParameters || Steerable(compared)))?.ParameterType.GetGenericArguments()[0];
-                return key is not null;
             }
 
             key = member switch
@@ -554,24 +592,69 @@ public class SeededComparerTests
                 MethodInfo { IsGenericMethod: true } operation
                     when (Factories.Contains(type) && IsHashCollection(operation.ReturnType))
                         || (type.Namespace == "System.Linq" && HashingOperators.Contains(operation.Name)) => operation.GetGenericArguments()[KeyIndex(operation)],
-                MethodInfo { IsGenericMethod: true, Name: nameof(Activator.CreateInstance) } created when type == typeof(Activator)
-                    && IsSteerableTable(created.GetGenericArguments()[0]) => typeof(Hashtable),
                 _ => null,
             };
-
-            if (key == typeof(Hashtable))
-            {
-                key = null;
-                return true;
-            }
 
             return key is not null && (key.ContainsGenericParameters || Steerable(key));
         }
 
-        /// <summary>Determines whether <paramref name="type"/> is a hash table, or a frozen or immutable one, keyed by a steerable key.</summary>
-        private static bool IsSteerableTable(Type type) =>
+        /// <summary>
+        /// Determines whether <paramref name="member"/> builds a table for a type argument it is given: where a
+        /// <c>new()</c> constraint lets it, or as Activator, Lazy and LazyInitializer do without a factory.
+        /// </summary>
+        private static bool BuildsTypeArgument(MemberInfo member)
+        {
+            var type = member.DeclaringType!;
+
+            if (member is MethodInfo { IsGenericMethod: true } generic)
+            {
+                var factoryless = !Array.Exists(generic.GetParameters(), parameter => parameter.ParameterType.Name.StartsWith("Func`", StringComparison.Ordinal));
+
+                if ((type == typeof(Activator) || (type == typeof(LazyInitializer) && factoryless)) && CreatesTable(generic.GetGenericArguments()[0]))
+                {
+                    return true;
+                }
+
+                if (Constructed(generic.GetGenericMethodDefinition().GetGenericArguments(), generic.GetGenericArguments()))
+                {
+                    return true;
+                }
+            }
+
+            if (member is ConstructorInfo constructor && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Lazy<>)
+                && !Array.Exists(constructor.GetParameters(), parameter => parameter.ParameterType.Name.StartsWith("Func`", StringComparison.Ordinal))
+                && CreatesTable(type.GetGenericArguments()[0]))
+            {
+                return true;
+            }
+
+            return type.IsGenericType && Constructed(type.GetGenericTypeDefinition().GetGenericArguments(), type.GetGenericArguments());
+        }
+
+        /// <summary>Determines whether a type parameter that <c>new()</c> lets build its argument is given one that builds a table.</summary>
+        private static bool Constructed(Type[] parameters, Type[] arguments)
+        {
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                if (parameters[i].GenericParameterAttributes.HasFlag(GenericParameterAttributes.DefaultConstructorConstraint)
+                    && CreatesTable(arguments[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Determines whether building <paramref name="type"/> builds a hash table over a steerable key or a type parameter:
+        /// it is one, or a type whose <c>new()</c> constraint builds one for it.
+        /// </summary>
+        private static bool CreatesTable(Type type) =>
             type == typeof(Hashtable)
-            || (type.IsGenericType && (Tables.Contains(type.GetGenericTypeDefinition()) || IsHashCollection(type)) && Steerable(type.GetGenericArguments()[0]));
+            || (type.IsGenericType && Tables.Contains(type.GetGenericTypeDefinition()) && type.GetGenericArguments()[0] is var key
+                && (key.ContainsGenericParameters || Steerable(key)))
+            || (type.IsGenericType && !type.IsGenericTypeDefinition && Constructed(type.GetGenericTypeDefinition().GetGenericArguments(), type.GetGenericArguments()));
 
         /// <summary>Determines whether <paramref name="type"/> is a frozen or immutable hash collection, or its builder.</summary>
         private static bool IsHashCollection(Type type) =>
@@ -758,11 +841,13 @@ public class SeededComparerTests
             }
 
             // An operator's key is not written where it is called: one that hashes names its comparer among its own
-            // arguments, which the compiled reading holds to the seeded one where the key is a number. Text that string or
-            // Path joins is not hashed.
+            // arguments, which the compiled reading holds to the seeded one where the key is a number. Text that string.Join
+            // or Path.Join joins is not hashed.
             foreach (Match call in Hashing.Matches(text))
             {
-                if (Regex.IsMatch(text.AsSpan(Math.Max(0, call.Index - 7), Math.Min(7, call.Index)).ToString(), @"(?<![\w.])(?:string|String|Path)$"))
+                if (call.Value == ".Join(" && Regex.IsMatch(
+                    text.AsSpan(Math.Max(0, call.Index - 40), Math.Min(40, call.Index)).ToString(),
+                    @"(?<![\w@.])(?:(?:global::)?System\.(?:IO\.)?)?(?:string|String|Path)\s*$"))
                 {
                     continue;
                 }
@@ -804,16 +889,17 @@ public class SeededComparerTests
                     after++;
                 }
 
-                if (isNew && after < text.Length && text[after] == '[')
+                if (isNew && after < text.Length && text[after] == '['
+                    && Matching(text, after, '[', ']') is var bracket and >= 0 && !text.AsSpan(bracket + 1).TrimStart().StartsWith("{"))
                 {
-                    // An array of tables builds none.
+                    // An array of tables builds none, but for the tables its initializer builds.
                     continue;
                 }
 
                 var end = StatementEnd(text, close + 1);
 
-                // What a new hands the table is its own arguments, or its initializer where it has none: a comparer
-                // another argument of the same statement takes is not this table's.
+                // What a new hands the table is its own arguments, or its initializer where it has none, or an array's
+                // initializer: a comparer another argument of the same statement takes is not this table's.
                 var opening = isNew ? text.IndexOfAny(['(', '{'], close) : -1;
                 var built = opening >= 0 && string.IsNullOrWhiteSpace(text[(close + 1)..opening])
                     ? Matching(text, opening, text[opening], text[opening] == '(' ? ')' : '}')
@@ -851,7 +937,7 @@ public class SeededComparerTests
         /// </summary>
         private static bool IsNumeric(string key)
         {
-            key = key.Trim();
+            key = key.Trim().TrimEnd('?').TrimEnd();
 
             if (key.StartsWith('(') && key.EndsWith(')'))
             {
@@ -921,6 +1007,7 @@ public class SeededComparerTests
         private static int Code(string source, char[] text, int at, bool hole)
         {
             var depth = 0;
+            var nesting = 0;
 
             while (at < source.Length)
             {
@@ -928,6 +1015,18 @@ public class SeededComparerTests
 
                 switch (source[at])
                 {
+                    case '(' or '[':
+                        nesting++;
+                        at++;
+                        break;
+                    case ')' or ']':
+                        nesting--;
+                        at++;
+                        break;
+                    case ':' when hole && depth == 0 && nesting <= 0 && next != ':' && (at == 0 || source[at - 1] != ':'):
+                        // A hole's format clause is text, up to the brace that closes the hole.
+                        var format = source.IndexOf('}', at) is var brace and >= 0 ? brace : source.Length;
+                        return Blank(text, at + 1, format);
                     case '/' when next == '/':
                         at = Blank(text, at, source.IndexOf('\n', at) is var line and >= 0 ? line : source.Length);
                         break;
@@ -1037,13 +1136,13 @@ public class SeededComparerTests
 
         /// <summary>
         /// Blanks the character literal whose apostrophe is at <paramref name="at"/> and gets where it ends; an apostrophe
-        /// no other closes within the longest such literal, '\uFFFF', opens none.
+        /// no other closes within the longest such literal, '\U0000FFFF', opens none.
         /// </summary>
         private static int CharacterLiteral(string source, char[] text, int at)
         {
             var i = at + (at + 1 < source.Length && source[at + 1] == '\\' ? 3 : 2);
 
-            while (i < source.Length && i - at < 8 && source[i] is not '\'' and not '\n')
+            while (i < source.Length && i - at < 12 && source[i] is not '\'' and not '\n')
             {
                 i++;
             }
