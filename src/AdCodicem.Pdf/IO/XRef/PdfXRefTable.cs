@@ -13,19 +13,21 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// </para>
 /// <para>
 /// The entries lie in two arrays, in the order the table first recorded their numbers, which is the order it
-/// enumerates them in. A number finds its entry through a third array, one slot for each number below its length —
-/// where numbers run as most files write them, from 0 up with few gaps —, and past it through a map that hashes numbers
-/// through the process's seed (<see cref="SeededComparer"/>): no lookup walks a chain a file chose, whatever numbers it
-/// writes (#155). The slots stretch to a number only while they stay no longer than twice the entries the table holds or
-/// has made room for, and <see cref="DenseSlack"/> more: the numbers of a file that spreads them out go to the map, and
-/// cost what they hold.
+/// enumerates them in, as the map it replaced did. A number finds its entry through a third array, one slot for each
+/// number below its length — where numbers run as most files write them, from 0 up with few gaps —, and past it through
+/// a map that hashes numbers through the process's seed (<see cref="SeededComparer"/>): no lookup walks a chain a file
+/// chose, whatever numbers it writes (#155). The slots stretch to a number only while they stay no longer than twice the
+/// entries the table holds or has made room for, and <see cref="DenseSlack"/> more: the numbers of a file that spreads
+/// them out go to the map, and cost what they hold.
 /// </para>
 /// <para>
 /// An entry holds 36 bytes, and its slot 4 more. A section makes room for the rows it holds before they are read, for no
-/// more objects than the newest section's <c>/Size</c> numbers (<see cref="Reserve"/>): 40 bytes an object numbered in
-/// order, so a hundred thousand objects hold 4 MB whatever the objects themselves weigh. Room left to grow — by a
-/// rebuild, or rows written shorter than 19 bytes — doubles, holding up to twice that and allocating about as much again
-/// on the way. A number in the map holds about 20 bytes more than a slot would. The copy is sized to the count, not grown.
+/// more objects than the newest section's <c>/Size</c> numbers (<see cref="Reserve"/>), and the slots are made once for
+/// that room: 40 bytes an object numbered in order, allocated and kept, so a hundred thousand objects hold 4 MB whatever
+/// the objects themselves weigh. Room left to grow — by a rebuild, or rows written shorter than 19 bytes — doubles,
+/// keeping 40 to 80 bytes an object and allocating 80 to 160 on the way, by where the count falls against its steps. A
+/// number in the map costs about twice what a slot does: 80 to 96 bytes an object for numbers all spread out, measured.
+/// The copy is sized to what it holds.
 /// </para>
 /// </remarks>
 internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
@@ -67,6 +69,12 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
 
     /// <summary>Gets how many entries the table holds room for.</summary>
     public int Capacity => _entries.Length;
+
+    /// <summary>Gets how many numbers, from 0, the table finds an entry for in a slot.</summary>
+    internal int SlotCount => _slots.Length;
+
+    /// <summary>Gets how many numbers the table finds an entry for in its map, past the slots.</summary>
+    internal int MapCount => _beyond?.Count ?? 0;
 
     /// <summary>Gets the indexed object numbers, in the order the table first recorded them.</summary>
     public IEnumerable<int> Numbers
@@ -137,8 +145,9 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     /// </summary>
     /// <remarks>
     /// A count is a section's claim, which the caller bounds by the rows the section holds and by the entries the index
-    /// may take. Room is never added by less than the table holds already: a chain of many sections, each making room for
-    /// its own rows, would otherwise copy the entries at each one.
+    /// may take. Room is never added by less than the table holds already, but for the last step to the most asked: a
+    /// chain of many sections, each making room for its own rows, would otherwise copy the entries at each one. The most
+    /// asked is a <c>/Size</c> the sections have not read past, which so bounds no chain whose sections number further.
     /// </remarks>
     public void Reserve(int count, int most)
     {
@@ -222,13 +231,14 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
 
     /// <summary>
     /// Stretches the slots to <paramref name="number"/> while they stay within twice the entries the table holds or has
-    /// made room for, and <see cref="DenseSlack"/>, doubling at least, and moves into them the numbers of the map they
-    /// reach.
+    /// made room for, and <see cref="DenseSlack"/>: to the room made at once, doubling at least, and moves into them the
+    /// numbers of the map they reach.
     /// </summary>
     /// <remarks>
-    /// The room counts as entries: a chain whose newest sections number the highest objects, as updates do, makes room
-    /// for the rows it is about to read before their numbers come down to the slots. Room is made only for rows the file
-    /// holds (<see cref="Reserve"/>), so the slots follow the file's bytes whatever its <c>/Size</c> claims.
+    /// The room counts as entries: a section that made room for its rows has its slots made once, for as many, rather than
+    /// doubled up to them, and a chain whose newest sections number the highest objects, as updates do, makes room for the
+    /// rows it is about to read before their numbers come down to the slots. Room is made only for rows the file holds
+    /// (<see cref="Reserve"/>), so the slots follow the file's bytes whatever its <c>/Size</c> claims.
     /// </remarks>
     private void Stretch(int number)
     {
@@ -239,7 +249,7 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
             return;
         }
 
-        var length = (int)Math.Min(Math.Max(number + 1L, 2L * _slots.Length), most);
+        var length = (int)Math.Min(Math.Max(Math.Max(number + 1L, 2L * _slots.Length), _entries.Length), most);
         var slots = new int[length];
         _slots.CopyTo(slots, 0);
         _slots = slots;
@@ -250,31 +260,19 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
         }
 
         // A number the map holds that the slots now reach moves into them: below their length, a number is in its slot
-        // or not in the table. The map grows smaller by what it holds below the new length.
-        var moved = false;
-
+        // or not in the table. Removing it as the map is enumerated is allowed, and leaves the rest where they are.
         foreach (var (held, at) in _beyond)
         {
             if ((uint)held < (uint)length)
             {
                 slots[held] = at + 1;
-                moved = true;
+                _beyond.Remove(held);
             }
         }
 
-        if (moved)
+        if (_beyond.Count == 0)
         {
-            var beyond = new Dictionary<int, int>(SeededComparer.Instance);
-
-            foreach (var (held, at) in _beyond)
-            {
-                if ((uint)held >= (uint)length)
-                {
-                    beyond.Add(held, at);
-                }
-            }
-
-            _beyond = beyond.Count > 0 ? beyond : null;
+            _beyond = null;
         }
     }
 
@@ -349,15 +347,31 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     private static bool PlacesInFile(XRefEntry entry) =>
         entry.Kind == XRefEntryKind.Regular && (entry.Offset >= 0 || entry.FoundByReader);
 
-    /// <summary>Copies the entries, and not the trailer, into a table of their own, sized to hold them.</summary>
-    public PdfXRefTable CopyEntries() => new()
+    /// <summary>
+    /// Copies the entries, and not the trailer, into a table of their own, sized to hold them: slots up to the highest
+    /// number the slots hold, and the map's numbers in a map of their own.
+    /// </summary>
+    public PdfXRefTable CopyEntries()
     {
-        _numbers = _numbers.AsSpan(0, _count).ToArray(),
-        _entries = _entries.AsSpan(0, _count).ToArray(),
-        _count = _count,
-        _slots = (int[])_slots.Clone(),
-        _beyond = _beyond is null ? null : new Dictionary<int, int>(_beyond, SeededComparer.Instance),
-    };
+        var highest = -1;
+
+        foreach (var number in _numbers.AsSpan(0, _count))
+        {
+            if ((uint)number < (uint)_slots.Length && number > highest)
+            {
+                highest = number;
+            }
+        }
+
+        return new()
+        {
+            _numbers = _numbers.AsSpan(0, _count).ToArray(),
+            _entries = _entries.AsSpan(0, _count).ToArray(),
+            _count = _count,
+            _slots = _slots.AsSpan(0, highest + 1).ToArray(),
+            _beyond = _beyond is null ? null : new Dictionary<int, int>(_beyond, SeededComparer.Instance),
+        };
+    }
 
     /// <summary>Copies trailer keys that are not already known.</summary>
     public void MergeTrailer(PdfDictionary trailer)

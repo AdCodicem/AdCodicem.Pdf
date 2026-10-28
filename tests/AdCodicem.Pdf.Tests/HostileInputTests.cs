@@ -851,9 +851,9 @@ public class HostileInputTests
         report.Position.Should().Be(section);
         report.Message.Should().Be(
             "The index reached 1,000,000 entries; the objects past them were not indexed. Raise PdfReaderLimits.MaxIndexEntries to read past it.");
-        // Measured at 579,701,688 and 579,701,776 bytes on 2026-10-28, 5 % above: the index sized once for the guard's
-        // entries, where the map it was before #155 took 595,837,384 sized once and 675,532,296 grown by doubling.
-        allocated.Should().BeLessThan(608_690_000, "the index holds the guard's entries, and the decoded rows are read once");
+        // Measured at 575,312,600 bytes twice on 2026-10-28, 5 % above: the index sized once for the guard's entries,
+        // where the map it was before #155 took 595,837,384 sized once and 675,532,296 grown by doubling.
+        allocated.Should().BeLessThan(604_080_000, "the index holds the guard's entries, and the decoded rows are read once");
     }
 
     [Fact]
@@ -914,9 +914,10 @@ public class HostileInputTests
         document.ObjectCount.Should().Be(4);
         document.Catalog.Required().IsOfType(PdfName.Catalog).Should().BeTrue();
         document.Diagnostics.Should().NotContain(entry => entry.Code == PdfDiagnosticCodes.LimitIndexEntries);
-        // Measured at 115,843,064 bytes three times on 2026-10-28, 5 % above: 16 MB of rows decoded, and the index sized for
-        // a million entries, where it would be for eight million past the guard; 140,272,056 with the map it was before #155.
-        allocated.Should().BeLessThan(121_640_000, "the room made for rows that index nothing is bounded by the guard");
+        // Measured at 119,843,360 and 119,851,472 bytes on 2026-10-28, 5 % above: 16 MB of rows decoded, and the index
+        // sized for a million entries, its slots with them, where it would be for eight million past the guard;
+        // 140,272,056 with the map it was before #155.
+        allocated.Should().BeLessThan(125_850_000, "the room made for rows that index nothing is bounded by the guard");
     }
 
     [Fact]

@@ -2830,15 +2830,15 @@ public class DocumentReaderTests
     }
 
     [Theory]
-    [InlineData(LargeIndex.ClassicTable, 300_000, 15_750_000)]
-    [InlineData(LargeIndex.CrossReferenceStream, 300_002, 26_780_000)]
+    [InlineData(LargeIndex.ClassicTable, 300_000, 12_610_000)]
+    [InlineData(LargeIndex.CrossReferenceStream, 300_002, 23_640_000)]
     public void Opening_an_index_of_three_hundred_thousand_objects_stays_within_its_memory_budget(
         string shape, int entries, long budget)
     {
         // M01's file of several hundred thousand objects (#193). Opening allocates the reader's index, which the section
-        // sizes before its rows are read to its 300,000 rows, 36 bytes each and a slot of 4 for each number, and a
-        // cross-reference stream's rows decoded besides. Measured three times on 2026-10-28, after a warm-up: 14,999,384
-        // bytes for the table, 25,502,376 for the stream, whose rows Flate stores uncompressed so that no runtime's zlib
+        // sizes before its rows are read to its 300,000 rows, 36 bytes each and a slot of 4 for each number, made once,
+        // and a cross-reference stream's rows decoded besides. Measured twice on 2026-10-28, after a warm-up: 12,004,632
+        // bytes for the table, 22,507,624 for the stream, whose rows Flate stores uncompressed so that no runtime's zlib
         // moves the figure — 16,875,176 and 29,478,272 with the map of 324,449 slots of 52 bytes the index was before #155,
         // and 32,571,368 and 45,174,464 when that map grew by doubling (#164). The budget is 5 % over each.
         var file = LargeIndexFile(shape);
@@ -2867,8 +2867,8 @@ public class DocumentReaderTests
     {
         // Each section makes room for its rows, and never by less than the index holds already: room made for each in
         // turn would copy the index at every section. Once a doubling comes within a doubling of what the newest /Size
-        // numbers, room is made for it at once. A thousand sections of 300 rows: 25,702,408 bytes allocated, measured
-        // three times on 2026-10-28 after a warm-up, where the map the index was before #155 allocated 30,571,304, growth
+        // numbers, room is made for it at once. A thousand sections of 300 rows: 24,231,088 bytes allocated, measured
+        // twice on 2026-10-28 after a warm-up, where the map the index was before #155 allocated 30,571,304, growth
         // 33,196,448 and doubling alone 44,621,888 (2026-10-14). The newest sections number the highest objects, and the
         // room made counts toward the numbers the index keeps a slot for. The budget is 5 % over.
         var file = ChainOfSections(sections: 1000, rows: 300);
@@ -2887,7 +2887,7 @@ public class DocumentReaderTests
         document.WasRepaired.Should().BeFalse();
         document.Diagnostics.Should().BeEmpty();
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
-        allocated.Should().BeLessThan(27_000_000, "the room doubles at most, section after section, and lands on the newest /Size");
+        allocated.Should().BeLessThan(25_450_000, "the room doubles at most, section after section, and lands on the newest /Size");
         elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
     }
 
@@ -3018,7 +3018,7 @@ public class DocumentReaderTests
         // The newest section indexes objects 1 to 100,000 under a /Size of 1, and each of a thousand older sections one
         // number past the highest read so far. The stale size capped the room at one past that number: each older section made
         // room for one entry more, and copied the index whole, 3,616,173,432 bytes in all. A size the sections read past
-        // caps nothing, and the room doubles: 12,462,944 bytes, measured twice on 2026-10-28, where the map the index was
+        // caps nothing, and the room doubles: 12,614,040 bytes, measured twice on 2026-10-28, where the map the index was
         // before #155 grew by .NET's primes, about 1.2 times a step, to 6,166,336. The budget is 5 % over.
         const int Newest = 100_000;
         const int Older = 1000;
@@ -3034,7 +3034,7 @@ public class DocumentReaderTests
 
         document.ObjectCount.Should().Be(Newest + Older);
         document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
-        allocated.Should().BeLessThan(13_090_000, "a size the sections read past caps no room");
+        allocated.Should().BeLessThan(13_250_000, "a size the sections read past caps no room");
 
         static byte[] StaleSizeChain(int newest, int older)
         {
