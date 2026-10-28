@@ -3128,7 +3128,7 @@ public class ReaderLimitsTests
 
         document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.LimitXRefSectionLength);
         document.ObjectCount.Should().BeLessThan(103);
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(128, "room is made for about the 102 rows 2 KB hold");
+        document.Reader.Index.Capacity.Should().BeLessThan(128, "room is made for about the 102 rows 2 KB hold");
     }
 
     [Fact]
@@ -3150,7 +3150,7 @@ public class ReaderLimitsTests
 
         document.ObjectCount.Should().Be(4);
         document.Diagnostics.Should().BeEmpty();
-        document.Reader.Index.Entries.EnsureCapacity(0).Should().BeLessThan(64, "the sections hold four rows");
+        document.Reader.Index.Capacity.Should().BeLessThan(64, "the sections hold four rows");
     }
 
     /// <summary>

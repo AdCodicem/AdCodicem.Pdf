@@ -6,18 +6,52 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// The index of a document: where every object is, and the trailer that names the roots.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The reader keeps one for the whole document. Once it has changed the one the chain gave — an object found away
 /// from its entry, or a rebuild —, it also keeps a copy of that one as it was, which
-/// <see cref="PdfFileReader.ChainIndex"/> serves. An index holds 52 bytes a slot of its map. A section makes room for the
-/// rows it holds before they are read, for no more objects than the newest section's <c>/Size</c> numbers, to the next
-/// prime in .NET's table (<see cref="Reserve"/>): 52 to 63 bytes an object, so a hundred thousand objects hold 5 to 6 MB
-/// whatever the objects themselves weigh. A map left to grow — by a rebuild, or rows written shorter than 19 bytes —
-/// doubles, holding 52 to 108 bytes an object and allocating about as much again on the way. The copy is sized
-/// to the count, not grown: about 60 bytes an object more.
+/// <see cref="PdfFileReader.ChainIndex"/> serves.
+/// </para>
+/// <para>
+/// The entries lie in two arrays, in the order the table first recorded their numbers, which is the order it
+/// enumerates them in. A number finds its entry through a third array, one slot for each number below its length —
+/// where numbers run as most files write them, from 0 up with few gaps —, and past it through a map that hashes numbers
+/// through the process's seed (<see cref="SeededComparer"/>): no lookup walks a chain a file chose, whatever numbers it
+/// writes (#155). The slots stretch to a number only while they stay no longer than twice the entries the table holds or
+/// has made room for, and <see cref="DenseSlack"/> more: the numbers of a file that spreads them out go to the map, and
+/// cost what they hold.
+/// </para>
+/// <para>
+/// An entry holds 36 bytes, and its slot 4 more. A section makes room for the rows it holds before they are read, for no
+/// more objects than the newest section's <c>/Size</c> numbers (<see cref="Reserve"/>): 40 bytes an object numbered in
+/// order, so a hundred thousand objects hold 4 MB whatever the objects themselves weigh. Room left to grow — by a
+/// rebuild, or rows written shorter than 19 bytes — doubles, holding up to twice that and allocating about as much again
+/// on the way. A number in the map holds about 20 bytes more than a slot would. The copy is sized to the count, not grown.
+/// </para>
 /// </remarks>
-internal sealed class PdfXRefTable
+internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
 {
-    private readonly Dictionary<int, XRefEntry> _entries;
+    /// <summary>
+    /// How many slots past twice the entries the table keeps for numbers it lacks: enough for a small file's free numbers
+    /// and gaps, and no more than 4 KB whatever a file numbers.
+    /// </summary>
+    internal const int DenseSlack = 1024;
+
+    /// <summary>The numbers, in the order the table first recorded them.</summary>
+    private int[] _numbers = [];
+
+    /// <summary>The entries, where their numbers lie in <see cref="_numbers"/>.</summary>
+    private XRefEntry[] _entries = [];
+
+    private int _count;
+
+    /// <summary>For each number below its length, one more than where its entry lies; 0 for a number the table lacks.</summary>
+    private int[] _slots = [];
+
+    /// <summary>Where the entry of each number past <see cref="_slots"/> lies; null until one is.</summary>
+    private Dictionary<int, int>? _beyond;
+
+    /// <summary>Changes as a number is added or the table cleared, ending an enumeration begun before.</summary>
+    private int _version;
 
     /// <summary>
     /// The offsets of the entries in use written directly, sorted the first time <see cref="FirstOffsetAfter"/> is asked
@@ -25,24 +59,41 @@ internal sealed class PdfXRefTable
     /// </summary>
     private SortedOffsets? _offsets;
 
-    public PdfXRefTable() => _entries = [];
-
-    private PdfXRefTable(Dictionary<int, XRefEntry> entries) => _entries = entries;
-
     /// <summary>Gets the trailer, merged across every section of the chain.</summary>
     public PdfDictionary Trailer { get; } = new();
 
     /// <summary>Gets the number of indexed objects.</summary>
-    public int Count => _entries.Count;
+    public int Count => _count;
 
     /// <summary>Gets how many entries the table holds room for.</summary>
-    public int Capacity => _entries.EnsureCapacity(0);
+    public int Capacity => _entries.Length;
 
-    /// <summary>Gets the indexed object numbers with their entries.</summary>
-    public Dictionary<int, XRefEntry> Entries => _entries;
+    /// <summary>Gets the indexed object numbers, in the order the table first recorded them.</summary>
+    public IEnumerable<int> Numbers
+    {
+        get
+        {
+            foreach (var (number, _) in this)
+            {
+                yield return number;
+            }
+        }
+    }
 
     /// <summary>Looks up an object number.</summary>
-    public bool TryGet(int number, out XRefEntry entry) => _entries.TryGetValue(number, out entry);
+    public bool TryGet(int number, out XRefEntry entry)
+    {
+        var at = Find(number);
+
+        if (at < 0)
+        {
+            entry = default;
+            return false;
+        }
+
+        entry = _entries[at];
+        return true;
+    }
 
     /// <summary>
     /// Records an entry unless the object number is already known.
@@ -53,19 +104,30 @@ internal sealed class PdfXRefTable
     /// </remarks>
     public bool TryAdd(int number, XRefEntry entry)
     {
-        if (!_entries.TryAdd(number, entry))
+        if (Find(number) >= 0)
         {
             return false;
         }
 
+        Add(number, entry);
         Track(entry);
         return true;
     }
 
-    /// <summary>Records an entry, replacing any existing one.</summary>
+    /// <summary>Records an entry, replacing any existing one, which keeps its place in the order.</summary>
     public void Set(int number, XRefEntry entry)
     {
-        _entries[number] = entry;
+        var at = Find(number);
+
+        if (at < 0)
+        {
+            Add(number, entry);
+        }
+        else
+        {
+            _entries[at] = entry;
+        }
+
         Track(entry);
     }
 
@@ -75,25 +137,27 @@ internal sealed class PdfXRefTable
     /// </summary>
     /// <remarks>
     /// A count is a section's claim, which the caller bounds by the rows the section holds and by the entries the index
-    /// may take. Room is never added by less than the map holds already: a chain of many sections, each making room for
-    /// its own rows, would otherwise resize the map at each one, and past the largest prime .NET keeps in its table, at
-    /// 7,199,369, every resize copies the whole map.
+    /// may take. Room is never added by less than the table holds already: a chain of many sections, each making room for
+    /// its own rows, would otherwise copy the entries at each one.
     /// </remarks>
     public void Reserve(int count, int most)
     {
         var capacity = Capacity;
-        var needed = (int)Math.Min((long)_entries.Count + count, most);
+        var needed = (int)Math.Min((long)_count + count, most);
 
         if (needed > capacity)
         {
-            _entries.EnsureCapacity((int)Math.Min(Math.Max(needed, 2L * capacity), most));
+            Resize((int)Math.Min(Math.Max(needed, 2L * capacity), most));
         }
     }
 
     /// <summary>Removes every entry.</summary>
     public void Clear()
     {
-        _entries.Clear();
+        Array.Clear(_slots);
+        _beyond = null;
+        _count = 0;
+        _version++;
         _offsets = null;
     }
 
@@ -101,7 +165,124 @@ internal sealed class PdfXRefTable
     public void Release()
     {
         Clear();
-        _entries.TrimExcess();
+        _numbers = [];
+        _entries = [];
+        _slots = [];
+    }
+
+    /// <summary>Copies the indexed object numbers, in the order the table first recorded them.</summary>
+    public int[] CopyNumbers() => _numbers.AsSpan(0, _count).ToArray();
+
+    /// <summary>Enumerates the numbers and their entries in the order the table first recorded the numbers.</summary>
+    /// <remarks>A number added, or the table cleared, ends the enumeration at its next step.</remarks>
+    public Enumerator GetEnumerator() => new(this);
+
+    IEnumerator<KeyValuePair<int, XRefEntry>> IEnumerable<KeyValuePair<int, XRefEntry>>.GetEnumerator() => GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    /// <summary>Gets where the entry of <paramref name="number"/> lies, or -1.</summary>
+    private int Find(int number)
+    {
+        if ((uint)number < (uint)_slots.Length)
+        {
+            return _slots[number] - 1;
+        }
+
+        return _beyond is not null && _beyond.TryGetValue(number, out var at) ? at : -1;
+    }
+
+    /// <summary>Records a number the table lacks, last in the order.</summary>
+    private void Add(int number, XRefEntry entry)
+    {
+        if (_count == _entries.Length)
+        {
+            Resize(Math.Max(4, (int)Math.Min(2L * _count, Array.MaxLength)));
+        }
+
+        var at = _count++;
+        _numbers[at] = number;
+        _entries[at] = entry;
+        _version++;
+
+        if ((uint)number >= (uint)_slots.Length)
+        {
+            Stretch(number);
+        }
+
+        if ((uint)number < (uint)_slots.Length)
+        {
+            _slots[number] = at + 1;
+        }
+        else
+        {
+            (_beyond ??= new Dictionary<int, int>(SeededComparer.Instance)).Add(number, at);
+        }
+    }
+
+    /// <summary>
+    /// Stretches the slots to <paramref name="number"/> while they stay within twice the entries the table holds or has
+    /// made room for, and <see cref="DenseSlack"/>, doubling at least, and moves into them the numbers of the map they
+    /// reach.
+    /// </summary>
+    /// <remarks>
+    /// The room counts as entries: a chain whose newest sections number the highest objects, as updates do, makes room
+    /// for the rows it is about to read before their numbers come down to the slots. Room is made only for rows the file
+    /// holds (<see cref="Reserve"/>), so the slots follow the file's bytes whatever its <c>/Size</c> claims.
+    /// </remarks>
+    private void Stretch(int number)
+    {
+        var most = (2L * Math.Max(_count, _entries.Length)) + DenseSlack;
+
+        if (number < 0 || number >= most)
+        {
+            return;
+        }
+
+        var length = (int)Math.Min(Math.Max(number + 1L, 2L * _slots.Length), most);
+        var slots = new int[length];
+        _slots.CopyTo(slots, 0);
+        _slots = slots;
+
+        if (_beyond is null)
+        {
+            return;
+        }
+
+        // A number the map holds that the slots now reach moves into them: below their length, a number is in its slot
+        // or not in the table. The map grows smaller by what it holds below the new length.
+        var moved = false;
+
+        foreach (var (held, at) in _beyond)
+        {
+            if ((uint)held < (uint)length)
+            {
+                slots[held] = at + 1;
+                moved = true;
+            }
+        }
+
+        if (moved)
+        {
+            var beyond = new Dictionary<int, int>(SeededComparer.Instance);
+
+            foreach (var (held, at) in _beyond)
+            {
+                if ((uint)held >= (uint)length)
+                {
+                    beyond.Add(held, at);
+                }
+            }
+
+            _beyond = beyond.Count > 0 ? beyond : null;
+        }
+    }
+
+    /// <summary>Makes room for <paramref name="capacity"/> entries, keeping those held.</summary>
+    private void Resize(int capacity)
+    {
+        Array.Resize(ref _numbers, capacity);
+        Array.Resize(ref _entries, capacity);
     }
 
     /// <summary>
@@ -121,7 +302,9 @@ internal sealed class PdfXRefTable
             // One array the size of the offsets, sorted in place: sorting a large index costs what it keeps.
             var count = 0;
 
-            foreach (var entry in _entries.Values)
+            var entries = _entries.AsSpan(0, _count);
+
+            foreach (var entry in entries)
             {
                 count += PlacesInFile(entry) ? 1 : 0;
             }
@@ -129,7 +312,7 @@ internal sealed class PdfXRefTable
             var offsets = new long[count];
             var index = 0;
 
-            foreach (var entry in _entries.Values)
+            foreach (var entry in entries)
             {
                 if (PlacesInFile(entry))
                 {
@@ -166,8 +349,15 @@ internal sealed class PdfXRefTable
     private static bool PlacesInFile(XRefEntry entry) =>
         entry.Kind == XRefEntryKind.Regular && (entry.Offset >= 0 || entry.FoundByReader);
 
-    /// <summary>Copies the entries, and not the trailer, into a table of their own.</summary>
-    public PdfXRefTable CopyEntries() => new(new Dictionary<int, XRefEntry>(_entries));
+    /// <summary>Copies the entries, and not the trailer, into a table of their own, sized to hold them.</summary>
+    public PdfXRefTable CopyEntries() => new()
+    {
+        _numbers = _numbers.AsSpan(0, _count).ToArray(),
+        _entries = _entries.AsSpan(0, _count).ToArray(),
+        _count = _count,
+        _slots = (int[])_slots.Clone(),
+        _beyond = _beyond is null ? null : new Dictionary<int, int>(_beyond, SeededComparer.Instance),
+    };
 
     /// <summary>Copies trailer keys that are not already known.</summary>
     public void MergeTrailer(PdfDictionary trailer)
@@ -178,6 +368,46 @@ internal sealed class PdfXRefTable
             {
                 Trailer.Set(key, value);
             }
+        }
+    }
+
+    /// <summary>Enumerates a table's numbers and entries in the order it first recorded the numbers.</summary>
+    internal struct Enumerator : IEnumerator<KeyValuePair<int, XRefEntry>>
+    {
+        private readonly PdfXRefTable _table;
+        private readonly int _version;
+        private int _at;
+
+        internal Enumerator(PdfXRefTable table)
+        {
+            _table = table;
+            _version = table._version;
+            _at = -1;
+        }
+
+        /// <inheritdoc/>
+        public readonly KeyValuePair<int, XRefEntry> Current => new(_table._numbers[_at], _table._entries[_at]);
+
+        readonly object System.Collections.IEnumerator.Current => Current;
+
+        /// <inheritdoc/>
+        /// <exception cref="InvalidOperationException">A number was added, or the table cleared, since it began.</exception>
+        public bool MoveNext()
+        {
+            if (_version != _table._version)
+            {
+                throw new InvalidOperationException("The index changed while it was enumerated.");
+            }
+
+            return ++_at < _table._count;
+        }
+
+        /// <inheritdoc/>
+        public void Reset() => _at = -1;
+
+        /// <inheritdoc/>
+        public readonly void Dispose()
+        {
         }
     }
 }

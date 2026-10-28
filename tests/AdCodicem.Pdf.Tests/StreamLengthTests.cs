@@ -1461,7 +1461,7 @@ public class StreamLengthTests
         document.Diagnostics.Contains(PdfDiagnosticCodes.XRefOffsetAdjusted).Should().BeTrue("object 7 was found near its entry as the document opened");
         document.Reader.Index.TryGet(7, out var seven).Should().BeTrue();
         seven.Offset.Should().Be(HeaderOf(file, 7));
-        var opened = new Dictionary<int, XRefEntry>(document.Reader.Index.Entries);
+        var opened = document.Reader.Index.ToList();
 
         var numbers = document.ObjectNumbers.Order().ToList();
         foreach (var number in reverse ? Enumerable.Reverse(numbers) : numbers)
@@ -1474,7 +1474,7 @@ public class StreamLengthTests
         document.Diagnostics.Should().ContainSingle(d => d.Code == PdfDiagnosticCodes.StreamTruncated).Which.Message.Should().Be(
             Invariant($"The stream declared {data.Length + 100} bytes, and no endstream follows its data before the next object, at {HeaderOf(file, 6)}: its object's endobj ends it, after {data.Length + 1} bytes."));
         source.Searches(dataStart, data.Length).Should().Be(0, "the stream was searched as the document opened");
-        document.Reader.Index.Entries.Should().Equal(opened, "nothing read after the document opened changes an index rebuilt as it opened");
+        document.Reader.Index.Should().Equal(opened, "nothing read after the document opened changes an index rebuilt as it opened");
     }
 
     [Theory]
