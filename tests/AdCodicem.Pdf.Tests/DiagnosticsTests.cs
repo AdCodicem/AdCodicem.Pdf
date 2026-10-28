@@ -317,6 +317,19 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void Reports_whose_positions_fold_alike_do_not_share_a_hash()
+    {
+        // A long hashes as its halves exclusive-ored: a record struct's own hash would give reports at 0 and at 2^32 + 1 one
+        // hash. Their positions' halves are mixed in apart.
+        var near = new PdfDiagnostic(PdfDiagnosticSeverity.Warning, "syntax.unexpected", "Alike.", 0);
+        var far = near with { Position = (1L << 32) + 1 };
+
+        far.Should().NotBe(near);
+        far.GetHashCode().Should().NotBe(near.GetHashCode());
+        (far with { }).GetHashCode().Should().Be(far.GetHashCode());
+    }
+
+    [Fact]
     public void Rolling_back_to_the_current_position_changes_nothing()
     {
         var diagnostics = new PdfDiagnostics();
