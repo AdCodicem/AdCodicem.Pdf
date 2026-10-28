@@ -21,6 +21,16 @@ public readonly record struct PdfDiagnostic(
     long Position = -1)
 {
     /// <inheritdoc/>
+    /// <remarks>
+    /// Hashed through the seed .NET draws once a process, as strings are, both halves of the position included: a table
+    /// keyed by reports alike but for where they lie spreads them as it would random keys, where a record struct's own
+    /// hash, which adds the position last, lets a file put them in one bucket. A hash differs from one process to the
+    /// next, and is not to be stored.
+    /// </remarks>
+    public override int GetHashCode() =>
+        HashCode.Combine(Severity, Code, Message, (int)Position, (int)(Position >> 32));
+
+    /// <inheritdoc/>
     public override string ToString() =>
         Position >= 0
             ? string.Create(CultureInfo.InvariantCulture, $"{Severity} {Code} at {Position}: {Message}")
