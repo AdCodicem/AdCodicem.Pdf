@@ -136,7 +136,10 @@ public class SeededComparerTests
     [InlineData("var seen = new Dictionary<((int, int)?, string), int>();")]
     [InlineData("var c = '\\U00000041'; var d = '\"'; var seen = new HashSet<int>();")]
     [InlineData("var m = $\"{x:0\\\"}\"; var seen = new HashSet<int>();")]
-    [InlineData("var tables = new HashSet<int>[] { new(), new() };")]
+    [InlineData("var tables = new HashSet<int>[] { new() };")]
+    [InlineData("var tables = new HashSet<int>[] { new(SeededComparer.Instance), new() };")]
+    [InlineData("var tables = new Dictionary<int, int>[] { new(SeededComparer.Instance), [] };")]
+    [InlineData("Use(new HashSet<int>[] { new() }, SeededComparer.Instance);")]
     [InlineData("var odd = Path.Distinct();")]
     [InlineData("var odd = @string.Join(Path, x => x, y => y, (x, y) => x);")]
     public void The_reading_of_the_sources_refuses_a_table_keyed_by_numbers_built_without_the_comparer(string source)
@@ -171,6 +174,7 @@ public class SeededComparerTests
     [InlineData("var m = $\"{global::System.Math.Abs(x)}\"; var seen = new HashSet<int>(SeededComparer.Instance);")]
     [InlineData("var seen = new HashSet<(string Name, bool Double)>(StringComparer.Ordinal);")]
     [InlineData("var tables = new HashSet<int>[4];")]
+    [InlineData("var tables = new HashSet<int>[] { new(SeededComparer.Instance), seen, new(source, SeededComparer.Instance) };")]
     [InlineData("var c = '\\''; var seen = new HashSet<int>(SeededComparer.Instance);")]
     public void The_reading_of_the_sources_lets_a_seeded_table_and_other_keys_be(string source)
     {
@@ -456,6 +460,8 @@ public class SeededComparerTests
 
         public static int Made() => Unseeded.Make<HashSet<string>>().Count + Unseeded.Make<Unseeded.Wrapper<List<int>>>().Inner.Count;
 
+        public static int Wrapped() => new Lazy<HashSet<int>>(new HashSet<int>(SeededComparer.Instance)).Value.Count;
+
         public static int TablesOfTables() =>
             new Dictionary<int, HashSet<int>>(SeededComparer.Instance).Count + new List<HashSet<int>>().Count + new Lazy<List<int>>().Value.Count;
 
@@ -621,8 +627,10 @@ public class SeededComparerTests
                 }
             }
 
+            // Lazy builds its value without a factory, but for the value it is handed, built where it is.
             if (member is ConstructorInfo constructor && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Lazy<>)
-                && !Array.Exists(constructor.GetParameters(), parameter => parameter.ParameterType.Name.StartsWith("Func`", StringComparison.Ordinal))
+                && !Array.Exists(constructor.GetParameters(), parameter => parameter.ParameterType.Name.StartsWith("Func`", StringComparison.Ordinal)
+                    || parameter.ParameterType == type.GetGenericArguments()[0])
                 && CreatesTable(type.GetGenericArguments()[0]))
             {
                 return true;
@@ -654,7 +662,7 @@ public class SeededComparerTests
             type == typeof(Hashtable)
             || (type.IsGenericType && Tables.Contains(type.GetGenericTypeDefinition()) && type.GetGenericArguments()[0] is var key
                 && (key.ContainsGenericParameters || Steerable(key)))
-            || (type.IsGenericType && !type.IsGenericTypeDefinition && Constructed(type.GetGenericTypeDefinition().GetGenericArguments(), type.GetGenericArguments()));
+            || (type.IsGenericType && Constructed(type.GetGenericTypeDefinition().GetGenericArguments(), type.GetGenericArguments()));
 
         /// <summary>Determines whether <paramref name="type"/> is a frozen or immutable hash collection, or its builder.</summary>
         private static bool IsHashCollection(Type type) =>
@@ -889,10 +897,25 @@ public class SeededComparerTests
                     after++;
                 }
 
-                if (isNew && after < text.Length && text[after] == '['
-                    && Matching(text, after, '[', ']') is var bracket and >= 0 && !text.AsSpan(bracket + 1).TrimStart().StartsWith("{"))
+                if (isNew && after < text.Length && text[after] == '[')
                 {
-                    // An array of tables builds none, but for the tables its initializer builds.
+                    // An array of tables builds none, but for the tables its initializer builds, each with its own
+                    // arguments: those its elements build target-typed are read one by one, those they name their type
+                    // where the type is written.
+                    var bracket = Matching(text, after, '[', ']');
+                    var brace = bracket < 0 ? -1 : text.IndexOf('{', bracket);
+
+                    if (brace >= 0 && string.IsNullOrWhiteSpace(text[(bracket + 1)..brace]) && Matching(text, brace, '{', '}') is var last and >= 0)
+                    {
+                        foreach (var (element, at) in Elements(text, brace + 1, last))
+                        {
+                            if (Regex.IsMatch(element, @"^(?:new\s*\(|\[)"))
+                            {
+                                yield return (at, true, key, null, element);
+                            }
+                        }
+                    }
+
                     continue;
                 }
 
@@ -947,6 +970,34 @@ public class SeededComparerTests
             return Regex.Match(key, @"^(?:System\.)?Tuple<(?<items>.*)>$") is { Success: true } tuple
                 ? Array.Exists(TopLevel(tuple.Groups["items"].Value), IsNumeric)
                 : Regex.IsMatch(key, $@"^(?:System\.)?{Number}\??$");
+        }
+
+        /// <summary>
+        /// Gets the elements of an initializer between <paramref name="from"/> and <paramref name="to"/>, split at the commas
+        /// no bracket, parenthesis or brace holds, trimmed, with where each starts.
+        /// </summary>
+        private static List<(string Element, int At)> Elements(string text, int from, int to)
+        {
+            var elements = new List<(string, int)>();
+            var depth = 0;
+            var start = from;
+
+            for (var i = from; i <= to; i++)
+            {
+                if (i == to || (depth == 0 && text[i] == ','))
+                {
+                    var element = text[start..i];
+                    var trimmed = element.TrimStart();
+                    elements.Add((trimmed.TrimEnd(), start + (element.Length - trimmed.Length)));
+                    start = i + 1;
+                }
+                else
+                {
+                    depth += text[i] is '<' or '(' or '[' or '{' ? 1 : text[i] is '>' or ')' or ']' or '}' ? -1 : 0;
+                }
+            }
+
+            return elements;
         }
 
         /// <summary>Splits <paramref name="arguments"/> at the commas no bracket or parenthesis holds.</summary>
