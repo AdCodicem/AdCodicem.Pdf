@@ -28,7 +28,7 @@ document instead, in [Read or refuse a document that reaches a limit](../guides/
 | `PdfReaderLimits.Unbounded` | Every length at `Array.MaxLength`, about 2 GB, and `MaxXRefSectionCount`, `MaxIndexEntries` and `MaxFilterChainLength` at `int.MaxValue` |
 
 `MaxIndexEntries` bounds what a document costs after opening too. The index holds 40 bytes an object, up to about 80
-when a rebuild grew it, so 335 MB or more at the default bound; and validating a document costs about 3 µs and 350
+when a rebuild grew it and about 96 for numbers spread far apart, so 335 MB or more at the default bound; and validating a document costs about 3 µs and 350
 bytes allocated an object, so a document near the bound takes about 24 s and 3 GB to validate. An application that
 validates uploads can lower it to the documents it accepts.
 
