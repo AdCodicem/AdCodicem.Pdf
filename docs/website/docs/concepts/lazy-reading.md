@@ -188,14 +188,14 @@ hold.
 
 | Operation | Document | Time | Allocated |
 |---|---|---|---|
-| Indexing | 1000 pages, ~4 MB | 229 µs | 393 KB |
-| Indexing, then reading every page | 1000 pages, ~4 MB | 6.2 ms | 5.9 MB |
+| Indexing | 1000 pages, ~4 MB | 200 to 222 µs | 83 KB |
+| Indexing, then reading every page | 1000 pages, ~4 MB | 3.7 ms | 1.7 MB |
 | Indexing and walking the page tree | real 1000-page file | — | 3.2 MB |
 | Indexing a classic table | generated, 300,000 objects | — | 12.0 MB |
 | Indexing a cross-reference stream whose rows Flate stores | generated, 300,000 objects | — | 22.5 MB |
 | Indexing a chain of a thousand classic sections | generated, 300,000 objects | — | 24.2 MB |
 
-The first two rows are BenchmarkDotNet's. The last four are measured in the test suite, in Release, after a first
+The first two rows are BenchmarkDotNet's, measured on 2026-10-28 (ShortRun, twice). The last four are measured in the test suite, in Release, after a first
 reading — the journal's on 2026-10-02, the generated indexes' on 2026-10-28 —, and enforced as budgets in CI, so that
 an allocation regression past one fails the build: 4 MB for the journal, 12.6 MB, 23.6 MB and 25.5 MB for the generated
 indexes, 5 % over their figures. The map is sized before it is filled, the chain's doubling from section to section
