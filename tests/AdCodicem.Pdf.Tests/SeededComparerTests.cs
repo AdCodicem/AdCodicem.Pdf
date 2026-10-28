@@ -118,6 +118,8 @@ public class SeededComparerTests
     [InlineData("var numbers = list.ToHashSet();")]
     [InlineData("Mark(new HashSet<long>(_faults), new HashSet<int>(_needing, SeededComparer.Instance));")]
     [InlineData("private readonly ConcurrentDictionary<int, string> _byNumber = new();")]
+    [InlineData("private readonly ConcurrentDictionary<int, string> _byNumber = new(SeededComparer.Instance);")]
+    [InlineData("var tables = new ConcurrentDictionary<long, int>[] { new(SeededComparer.Instance) };")]
     [InlineData("var pairs = left.Join(right, l => l, r => r, (l, r) => l);")]
     [InlineData("Use(new HashSet<int> { 1 }, new HashSet<int>(SeededComparer.Instance));")]
     [InlineData("private HashSet<int>? _x;\nvoid M(int a, int b) { _x = new(Math.Max(a, b)); }")]
@@ -188,6 +190,8 @@ public class SeededComparerTests
     [InlineData("var m = $\"{global::System.Math.Abs(x)}\"; var seen = new HashSet<int>(SeededComparer.Instance);")]
     [InlineData("var seen = new HashSet<(string Name, bool Double)>(StringComparer.Ordinal);")]
     [InlineData("var tables = new HashSet<int>[4];")]
+    [InlineData("private static readonly ConcurrentDictionary<string, PdfName> Interned = new(StringComparer.Ordinal);")]
+    [InlineData("private readonly OrderedDictionary<int, string> _ordered = new(SeededComparer.Instance);")]
     [InlineData("var tables = new HashSet<int>[] { new(SeededComparer.Instance), seen, new(source, SeededComparer.Instance) };")]
     [InlineData("var tables = new HashSet<int>[] { new(n > 0 ? n : 1, SeededComparer.Instance) };")]
     [InlineData("var tables = new HashSet<int>[] { flag ? new(SeededComparer.Instance) : null };")]
@@ -233,8 +237,9 @@ public class SeededComparerTests
     {
         // The check above sees what a source reading cannot: an out var given [], an expression body, a copy among others,
         // a comparer handed on one path only, a base constructor, a factory, a collection expression lowered to one, a
-        // method group, a value comparer where the key's belongs, a table over a type parameter whatever its comparer, a
-        // table type a new() constraint, Lazy or LazyInitializer builds.
+        // method group, a table over a type parameter whatever its comparer, a
+        // table type a new() constraint, Lazy or LazyInitializer builds, and a collection that enumerates by hash, seeded or
+        // not: the order the process's seed gives it would reach what the library reports or writes (invariant 6).
         var refused = Refused(typeof(Unseeded));
 
         refused.Should().BeEquivalentTo(
@@ -274,6 +279,12 @@ public class SeededComparerTests
             nameof(Unseeded.Constructed),
             nameof(Unseeded.NullableTupleKey),
             nameof(Unseeded.Builder),
+            nameof(Unseeded.ConcurrentSeeded),
+            nameof(Unseeded.FrozenSeeded),
+            nameof(Unseeded.ImmutableSeeded),
+            nameof(Unseeded.FactorySeeded),
+            nameof(Unseeded.KeyComparerSeeded),
+            nameof(Unseeded.BuilderSeeded),
             nameof(Unseeded.Given),
             nameof(Unseeded.ByReference),
             nameof(Unseeded.ActivatorOpen),
@@ -423,6 +434,18 @@ public class SeededComparerTests
 
         public static ImmutableHashSet<int>.Builder Builder() => ImmutableHashSet.CreateBuilder<int>();
 
+        public static ConcurrentDictionary<int, string> ConcurrentSeeded() => new(SeededComparer.Instance);
+
+        public static FrozenSet<int> FrozenSeeded(IEnumerable<int> numbers) => numbers.ToFrozenSet(SeededComparer.Instance);
+
+        public static ImmutableHashSet<long> ImmutableSeeded(IEnumerable<long> numbers) => numbers.ToImmutableHashSet(SeededComparer.Instance);
+
+        public static ImmutableHashSet<int> FactorySeeded() => ImmutableHashSet.Create<int>(SeededComparer.Instance);
+
+        public static ImmutableDictionary<int, string> KeyComparerSeeded() => ImmutableDictionary.Create<int, string>(SeededComparer.Instance);
+
+        public static ImmutableHashSet<int>.Builder BuilderSeeded() => ImmutableHashSet.CreateBuilder<int>(SeededComparer.Instance);
+
         public static HashSet<(T, string)> Given<T>(IEqualityComparer<(T, string)> comparer) => new(comparer);
 
         public static HashSet<List<T>> ByReference<T>() => new(ReferenceEqualityComparer.Instance);
@@ -498,19 +521,11 @@ public class SeededComparerTests
 
         public static HashSet<int> Operator(IEnumerable<int> numbers) => numbers.ToHashSet(SeededComparer.Instance);
 
-        public static FrozenSet<int> Frozen(IEnumerable<int> numbers) => numbers.ToFrozenSet(SeededComparer.Instance);
-
-        public static ImmutableHashSet<long> Immutable(IEnumerable<long> numbers) => numbers.ToImmutableHashSet(SeededComparer.Instance);
-
         public static List<string> Names(IEnumerable<string> names) => [.. names.Distinct()];
 
         public static int OtherKeys() =>
             new HashSet<string>(StringComparer.Ordinal).Count + new HashSet<byte>().Count + new HashSet<bool>().Count
             + new HashSet<PdfLimit>().Count + new HashSet<PdfObjectId>().Count + new HashSet<(string, bool)>().Count;
-
-        public static ImmutableHashSet<int> Factory() => ImmutableHashSet.Create<int>(SeededComparer.Instance);
-
-        public static ImmutableDictionary<int, string> KeyComparer() => ImmutableDictionary.Create<int, string>(SeededComparer.Instance);
 
         public static int Lookup(ImmutableDictionary<int, int> map) => map.GetValueOrDefault(1);
 
@@ -588,7 +603,9 @@ public class SeededComparerTests
         /// property's getter, and it no branch's target, so that no other path reaches it. A method group takes no comparer.
         /// A collection over a type parameter is refused whatever its comparer: its key is whatever its callers choose, and
         /// so is the comparer they hand it, which no reading follows. A table type given where <c>new()</c>, Lazy or
-        /// LazyInitializer builds it, or Activator, takes no comparer either.
+        /// LazyInitializer builds it, or Activator, takes no comparer either. A collection that enumerates in an order its
+        /// keys' hashes set — a concurrent dictionary, a frozen or immutable hash collection, or its builder — is refused
+        /// whatever its comparer: the seed, which differs from one process to the next, would order what it gives.
         /// </summary>
         public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(IEnumerable<Type> types)
         {
@@ -614,9 +631,10 @@ public class SeededComparerTests
                             continue;
                         }
 
-                        // Over a type parameter, the comparer of the key cannot be the seeded one handed straight.
+                        // Over a type parameter, the comparer of the key cannot be the seeded one handed straight; in a
+                        // collection that enumerates by hash, no comparer is enough.
                         var handed = key is not null && member is MethodBase called && code != OpCodes.Ldftn
-                            && TakesComparerLast(called, key) && i > 0 && !targets.Contains(offset)
+                            && !EnumeratesByHash(member) && TakesComparerLast(called, key) && i > 0 && !targets.Contains(offset)
                             && seeded.Equals(instructions[i - 1].Member);
 
                         if (!handed)
@@ -722,6 +740,16 @@ public class SeededComparerTests
                 && (key.ContainsGenericParameters || Steerable(key)))
             || (type.IsGenericType && Constructed(type.GetGenericTypeDefinition().GetGenericArguments(), type.GetGenericArguments()));
 
+        /// <summary>
+        /// Determines whether the hash collection <paramref name="member"/> builds enumerates in an order its keys' hashes
+        /// set: a concurrent dictionary, or a frozen or immutable hash collection or its builder, which a factory builds —
+        /// an <c>Empty</c> takes no comparer, and is refused anyway. A dictionary, a set and an ordered dictionary enumerate
+        /// in the order their adds and removes set.
+        /// </summary>
+        private static bool EnumeratesByHash(MemberInfo member) =>
+            (member is MethodInfo && Factories.Contains(member.DeclaringType!))
+            || (member.DeclaringType is { IsGenericType: true } type && type.GetGenericTypeDefinition() == typeof(ConcurrentDictionary<,>));
+
         /// <summary>Determines whether <paramref name="type"/> is a frozen or immutable hash collection, or its builder.</summary>
         private static bool IsHashCollection(Type type) =>
             type.IsGenericType && type.GetGenericTypeDefinition() is var definition
@@ -762,13 +790,12 @@ public class SeededComparerTests
 
         /// <summary>
         /// Determines whether <paramref name="method"/> takes the comparer of <paramref name="key"/> last: as a hashing
-        /// operator or a factory declares it, the comparer of its key's type parameter, so that a value comparer an overload
-        /// takes last is not taken for it.
+        /// operator declares it, the comparer of its key's type parameter, so that one of another type parameter given the
+        /// same type is not taken for it.
         /// </summary>
         private static bool TakesComparerLast(MethodBase method, Type key)
         {
-            if (method is MethodInfo { IsGenericMethod: true } operation
-                && (Factories.Contains(operation.DeclaringType!) || operation.DeclaringType!.Namespace == "System.Linq"))
+            if (method is MethodInfo { IsGenericMethod: true } operation && operation.DeclaringType!.Namespace == "System.Linq")
             {
                 var definition = operation.GetGenericMethodDefinition();
                 return definition.GetParameters() is [.., var declared]
@@ -909,7 +936,7 @@ public class SeededComparerTests
             var text = WithoutComments(source);
             var declared = new HashSet<string>(StringComparer.Ordinal);
 
-            foreach (var (at, isNew, key, name, statement) in Tables(text))
+            foreach (var (at, isNew, key, name, statement, byHash) in Tables(text))
             {
                 if (!IsNumeric(key))
                 {
@@ -918,7 +945,8 @@ public class SeededComparerTests
 
                 var built = isNew || statement.Contains("= [", StringComparison.Ordinal) || Regex.IsMatch(statement, @"=\s*new\s*\(");
 
-                if (built && !statement.Contains("SeededComparer", StringComparison.Ordinal))
+                // A table that enumerates by hash is refused seeded or not, as the compiled reading refuses it.
+                if (built && (byHash || !statement.Contains("SeededComparer", StringComparison.Ordinal)))
                 {
                     yield return $"{path}:{Line(text, at)}: {statement.Trim()}";
                 }
@@ -968,9 +996,9 @@ public class SeededComparerTests
 
         /// <summary>
         /// Finds each Dictionary or HashSet type written out: where, whether a new builds it, its key, the name it declares,
-        /// and its statement to the semicolon.
+        /// its statement to the semicolon, and whether it enumerates by hash, concurrent, frozen or immutable.
         /// </summary>
-        private static IEnumerable<(int At, bool IsNew, string Key, string? Name, string Statement)> Tables(string text)
+        private static IEnumerable<(int At, bool IsNew, string Key, string? Name, string Statement, bool ByHash)> Tables(string text)
         {
             foreach (Match type in Regex.Matches(text, @"(?<![\w.])(?:Dictionary|HashSet|ConcurrentDictionary|OrderedDictionary|FrozenDictionary|FrozenSet|ImmutableDictionary|ImmutableHashSet)<"))
             {
@@ -984,6 +1012,8 @@ public class SeededComparerTests
 
                 var arguments = text[open..close];
                 var key = TopLevel(arguments)[0].Trim();
+                var byHash = !type.Value.StartsWith("Dictionary", StringComparison.Ordinal) && !type.Value.StartsWith("HashSet", StringComparison.Ordinal)
+                    && !type.Value.StartsWith("OrderedDictionary", StringComparison.Ordinal);
                 var before = text[..type.Index].TrimEnd();
                 var isNew = before.EndsWith("new", StringComparison.Ordinal);
                 var after = Skip(text, close + 1);
@@ -1013,7 +1043,7 @@ public class SeededComparerTests
                     {
                         foreach (var (table, at) in TargetTyped(text, initializer + 1, last))
                         {
-                            yield return (at, true, key, null, table);
+                            yield return (at, true, key, null, table, byHash);
                         }
                     }
 
@@ -1032,7 +1062,7 @@ public class SeededComparerTests
                     ? text[(before.Length - 3)..(built >= 0 ? built + 1 : end)]
                     : text[type.Index..end];
                 var name = Regex.Match(text[(close + 1)..], @"^\??\s+(?<name>@?\w+)").Groups["name"];
-                yield return (type.Index, isNew, key, name.Success ? name.Value : null, statement);
+                yield return (type.Index, isNew, key, name.Success ? name.Value : null, statement, byHash);
             }
         }
 

@@ -56,11 +56,10 @@ opening a file records each of its rows. Most files number their objects from 0 
   built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
   one, a type of the library hashed as the compiler writes a record's hash — unless the comparer of its key, taken
   last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a `Dictionary`, `HashSet`,
-  `ConcurrentDictionary`, `OrderedDictionary` or `KeyedCollection` built or derived from, a LINQ operator that hashes,
-  a frozen or immutable collection's factory or an immutable one's `Empty`, any of them as a method group; a
-  `Hashtable`, or a table built for a type argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`, always. A
-  factory that takes the comparer first or a value comparer last is refused, its seeded form being the one that takes
-  the key's last. The rule covers every numeric key, whatever it numbers and wherever it comes from, so that none needs
+  `OrderedDictionary` or `KeyedCollection` built or derived from, or a LINQ operator that hashes, any of them as a method
+  group; a `Hashtable`, a collection that enumerates by hash — a `ConcurrentDictionary`, a frozen or immutable one, its
+  factories, its builder and an immutable one's `Empty` —, whose order the seed would set, or a table built for a type
+  argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`, always. The rule covers every numeric key, whatever it numbers and wherever it comes from, so that none needs
   arguing. The library builds no hash collection over a type parameter, whatever its comparer: its callers choose its
   key and the comparer they hand it, and no reading follows them. A type the library hashes by hand, as `PdfObjectId`
   and `PdfDiagnostic` are, is held by its own tests; an enumeration's values are the library's own; a collection built
@@ -102,7 +101,8 @@ opening a file records each of its rows. Most files number their objects from 0 
   part of it; the Arlington walk alone 2 to 6 % more. Opening an index of 300,000 objects takes 8 to 13 % less, a chain
   of a thousand sections about as long, and indexing 1,000 pages 200 to 222 µs against 230 to 242 (ShortRun, twice).
 - A hash differs from one process to the next. Tables enumerate in an order their adds and removes set, never in an
-  order their hashes give, so nothing the library reports or writes changes with it (invariant 6). A caller must not store a
+  order their hashes give — the reading of the compiled library refuses one keyed by numbers that would —, so nothing
+  the library reports or writes changes with it (invariant 6). A caller must not store a
   `PdfObjectId`'s or a `PdfDiagnostic`'s hash.
 - One seed serves the whole process, as for strings: an attacker who could learn it, by timing a long-running server's
   lookups, could aim at it for the life of that process.
