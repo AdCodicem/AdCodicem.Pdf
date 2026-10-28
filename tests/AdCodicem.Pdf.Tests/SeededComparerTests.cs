@@ -140,6 +140,20 @@ public class SeededComparerTests
     [InlineData("var tables = new HashSet<int>[] { new(SeededComparer.Instance), new() };")]
     [InlineData("var tables = new Dictionary<int, int>[] { new(SeededComparer.Instance), [] };")]
     [InlineData("Use(new HashSet<int>[] { new() }, SeededComparer.Instance);")]
+    [InlineData("var tables = new HashSet<int>[] { new(n > 0 ? n : 1, SeededComparer.Instance), new() };")]
+    [InlineData("var tables = new HashSet<int>[] { new(items.Where(x => x > 0), SeededComparer.Instance), new() };")]
+    [InlineData("var tables = new HashSet<int>[] { new(a >> 1, SeededComparer.Instance), new() };")]
+    [InlineData("var tables = new HashSet<int>[] { new(a < b ? 1 : 2), new(SeededComparer.Instance) };")]
+    [InlineData("var tables = new HashSet<int>[,] { { new(SeededComparer.Instance), new() } };")]
+    [InlineData("var tables = new HashSet<int>[] { flag ? new() : null };")]
+    [InlineData("var tables = new HashSet<int>[] { flag ? new(SeededComparer.Instance) : new() };")]
+    [InlineData("var tables = new HashSet<int>[] { other ?? new() };")]
+    [InlineData("var tables = new HashSet<int>[] { (new()) };")]
+    [InlineData("var tables = new HashSet<int>?[] { new(SeededComparer.Instance), new() };")]
+    [InlineData("var tables = new HashSet<int>? [] { new(SeededComparer.Instance), new() };")]
+    [InlineData("HashSet<int>[] tables = [new(), new(SeededComparer.Instance)];")]
+    [InlineData("private readonly HashSet<int>[] _tables = [[]];")]
+    [InlineData("public HashSet<int>[] Tables { get; } = [new()];")]
     [InlineData("var odd = Path.Distinct();")]
     [InlineData("var odd = @string.Join(Path, x => x, y => y, (x, y) => x);")]
     public void The_reading_of_the_sources_refuses_a_table_keyed_by_numbers_built_without_the_comparer(string source)
@@ -175,6 +189,16 @@ public class SeededComparerTests
     [InlineData("var seen = new HashSet<(string Name, bool Double)>(StringComparer.Ordinal);")]
     [InlineData("var tables = new HashSet<int>[4];")]
     [InlineData("var tables = new HashSet<int>[] { new(SeededComparer.Instance), seen, new(source, SeededComparer.Instance) };")]
+    [InlineData("var tables = new HashSet<int>[] { new(n > 0 ? n : 1, SeededComparer.Instance) };")]
+    [InlineData("var tables = new HashSet<int>[] { flag ? new(SeededComparer.Instance) : null };")]
+    [InlineData("var tables = new HashSet<int>[] { new(Make(new(1, 2)), SeededComparer.Instance) };")]
+    [InlineData("var tables = new HashSet<int>[][] { new HashSet<int>[] { new(SeededComparer.Instance) } };")]
+    [InlineData("var tables = new HashSet<int>?[4];")]
+    [InlineData("HashSet<int>[] tables = [];")]
+    [InlineData("private readonly HashSet<int>[] _tables = [];")]
+    [InlineData("HashSet<int>[] tables = [new(SeededComparer.Instance)];")]
+    [InlineData("public HashSet<int>[] Tables { get; } = [new(SeededComparer.Instance)];")]
+    [InlineData("void Use(HashSet<int>[] tables, int[] numbers) { numbers = [1, 2]; }")]
     [InlineData("var c = '\\''; var seen = new HashSet<int>(SeededComparer.Instance);")]
     public void The_reading_of_the_sources_lets_a_seeded_table_and_other_keys_be(string source)
     {
@@ -962,29 +986,34 @@ public class SeededComparerTests
                 var key = TopLevel(arguments)[0].Trim();
                 var before = text[..type.Index].TrimEnd();
                 var isNew = before.EndsWith("new", StringComparison.Ordinal);
-                var after = close + 1;
+                var after = Skip(text, close + 1);
 
-                while (after < text.Length && char.IsWhiteSpace(text[after]))
+                if (after < text.Length && text[after] == '?' && Skip(text, after + 1) is var nullable && nullable < text.Length && text[nullable] == '[')
                 {
-                    after++;
+                    after = nullable;
                 }
 
-                if (isNew && after < text.Length && text[after] == '[')
+                if (after < text.Length && text[after] == '[')
                 {
                     // An array of tables builds none, but for the tables its initializer builds, each with its own
-                    // arguments: those its elements build target-typed are read one by one, those they name their type
-                    // where the type is written.
-                    var bracket = Matching(text, after, '[', ']');
-                    var brace = bracket < 0 ? -1 : text.IndexOf('{', bracket);
+                    // arguments: those it builds target-typed are read here, those it names the type of where the type is
+                    // written. A new array's initializer follows its ranks; a declared one's is the collection expression
+                    // its name, or its property's accessors, are given.
+                    var rank = after;
 
-                    if (brace >= 0 && string.IsNullOrWhiteSpace(text[(bracket + 1)..brace]) && Matching(text, brace, '{', '}') is var last and >= 0)
+                    while (rank < text.Length && text[rank] == '[' && Matching(text, rank, '[', ']') is var shut and >= 0)
                     {
-                        foreach (var (element, at) in Elements(text, brace + 1, last))
+                        rank = Skip(text, shut + 1);
+                    }
+
+                    var given = Regex.Match(text[rank..], isNew ? @"^\{" : @"^@?\w+\s*(?:\{[^{}]*\}\s*)?=\s*\[");
+
+                    if (given.Success && rank + given.Length - 1 is var initializer
+                        && Matching(text, initializer, text[initializer], text[initializer] == '{' ? '}' : ']') is var last and >= 0)
+                    {
+                        foreach (var (table, at) in TargetTyped(text, initializer + 1, last))
                         {
-                            if (Regex.IsMatch(element, @"^(?:new\s*\(|\[)"))
-                            {
-                                yield return (at, true, key, null, element);
-                            }
+                            yield return (at, true, key, null, table);
                         }
                     }
 
@@ -993,8 +1022,8 @@ public class SeededComparerTests
 
                 var end = StatementEnd(text, close + 1);
 
-                // What a new hands the table is its own arguments, or its initializer where it has none, or an array's
-                // initializer: a comparer another argument of the same statement takes is not this table's.
+                // What a new hands the table is its own arguments, or its initializer where it has none: a comparer another
+                // argument of the same statement takes is not this table's.
                 var opening = isNew ? text.IndexOfAny(['(', '{'], close) : -1;
                 var built = opening >= 0 && string.IsNullOrWhiteSpace(text[(close + 1)..opening])
                     ? Matching(text, opening, text[opening], text[opening] == '(' ? ')' : '}')
@@ -1045,8 +1074,50 @@ public class SeededComparerTests
         }
 
         /// <summary>
+        /// Gets the tables an array's initializer between <paramref name="from"/> and <paramref name="to"/> builds
+        /// target-typed, with where each starts: an element that is a collection expression, and a new( an element starts
+        /// with or a conditional or coalescing operator gives, to the parenthesis that closes it, not one another holds. A
+        /// row of a multidimensional array is read through.
+        /// </summary>
+        private static IEnumerable<(string Table, int At)> TargetTyped(string text, int from, int to)
+        {
+            foreach (var (element, at) in Elements(text, from, to))
+            {
+                if (element.StartsWith('{'))
+                {
+                    foreach (var row in TargetTyped(text, at + 1, Matching(text, at, '{', '}')))
+                    {
+                        yield return row;
+                    }
+                }
+                else if (element.StartsWith('['))
+                {
+                    yield return (element, at);
+                }
+                else
+                {
+                    var past = at;
+
+                    foreach (Match created in Regex.Matches(element, @"(?:^|\?\??|:)\s*\(*\s*(?<new>new\s*\()"))
+                    {
+                        var start = at + created.Groups["new"].Index;
+
+                        if (start >= past)
+                        {
+                            var shut = Matching(text, start + created.Groups["new"].Length - 1, '(', ')');
+                            past = shut < 0 ? to : shut + 1;
+                            yield return (text[start..past], start);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// Gets the elements of an initializer between <paramref name="from"/> and <paramref name="to"/>, split at the commas
-        /// no bracket, parenthesis or brace holds, trimmed, with where each starts.
+        /// no parenthesis, bracket or brace holds, trimmed, with where each starts. Angle brackets are not counted: in an
+        /// initializer they are more often a comparison, a shift or a lambda's arrow than a type's arguments, and an element
+        /// that names a type cut at its arguments' comma starts with no target-typed new.
         /// </summary>
         private static List<(string Element, int At)> Elements(string text, int from, int to)
         {
@@ -1065,11 +1136,22 @@ public class SeededComparerTests
                 }
                 else
                 {
-                    depth += text[i] is '<' or '(' or '[' or '{' ? 1 : text[i] is '>' or ')' or ']' or '}' ? -1 : 0;
+                    depth += text[i] is '(' or '[' or '{' ? 1 : text[i] is ')' or ']' or '}' ? -1 : 0;
                 }
             }
 
             return elements;
+        }
+
+        /// <summary>Gets where the first character at or past <paramref name="at"/> that is not white space is.</summary>
+        private static int Skip(string text, int at)
+        {
+            while (at < text.Length && char.IsWhiteSpace(text[at]))
+            {
+                at++;
+            }
+
+            return at;
         }
 
         /// <summary>Splits <paramref name="arguments"/> at the commas no bracket or parenthesis holds.</summary>
