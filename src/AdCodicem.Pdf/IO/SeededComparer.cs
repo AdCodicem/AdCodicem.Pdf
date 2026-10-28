@@ -10,7 +10,8 @@ namespace AdCodicem.Pdf.IO;
 /// <see cref="long"/> hashes as its two halves exclusive-ored, which lets a file give distinct offsets one hash outright,
 /// and a tuple hashes as its items do: each is hashed here with both halves of a <see cref="long"/> mixed in apart.
 /// Every hash table keyed by a number, or by a tuple of numbers — whatever they number, wherever they come from —
-/// takes this comparer, which a test holds over the sources.
+/// takes this comparer, handed to it last and straight, which two tests hold, one reading the compiled library and the
+/// other its sources.
 /// </remarks>
 internal sealed class SeededComparer :
     IEqualityComparer<int>,
