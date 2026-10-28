@@ -3013,6 +3013,60 @@ public class DocumentReaderTests
     }
 
     [Fact]
+    public void Older_sections_numbering_past_a_stale_size_make_room_by_doubling_not_one_entry_at_a_time()
+    {
+        // The newest section indexes objects 1 to 100,000 under a /Size of 1, and each of a thousand older sections one
+        // number past the highest read so far. The stale size capped the room at one past that number: each older section made
+        // room for one entry more, and copied the index whole, 3,616,173,432 bytes in all. A size the sections read past
+        // caps nothing, and the room doubles: 12,462,944 bytes, measured twice on 2026-10-28, where the map the index was
+        // before #155 grew by .NET's primes, about 1.2 times a step, to 6,166,336. The budget is 5 % over.
+        const int Newest = 100_000;
+        const int Older = 1000;
+        var file = StaleSizeChain(Newest, Older);
+        using (PdfDocument.Open(file))
+        {
+            // The first opening pays what any first call does once.
+        }
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        using var document = PdfDocument.Open(file);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        document.ObjectCount.Should().Be(Newest + Older);
+        document.Catalog.IsOfType(PdfName.Catalog).Should().BeTrue();
+        allocated.Should().BeLessThan(13_090_000, "a size the sections read past caps no room");
+
+        static byte[] StaleSizeChain(int newest, int older)
+        {
+            var file = new StringBuilder("%PDF-1.7\n");
+            var catalog = file.Length;
+            file.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+            var pages = file.Length;
+            file.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+            long previous = -1;
+
+            for (var k = older; k >= 1; k--)
+            {
+                var at = file.Length;
+                file.Append(CultureInfo.InvariantCulture, $"xref\n{newest + k} 1\n0000000000 00001 f\r\ntrailer\n<< /Size 1 /Root 1 0 R");
+                file.Append(previous < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" /Prev {previous}")).Append(" >>\n");
+                previous = at;
+            }
+
+            var table = file.Length;
+            file.Append(CultureInfo.InvariantCulture, $"xref\n1 {newest}\n{catalog:D10} 00000 n\r\n{pages:D10} 00000 n\r\n");
+
+            for (var number = 3; number <= newest; number++)
+            {
+                file.Append("0000000000 00001 f\r\n");
+            }
+
+            file.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size 1 /Root 1 0 R /Prev {previous} >>\nstartxref\n{table}\n%%EOF\n");
+            return Encoding.ASCII.GetBytes(file.ToString());
+        }
+    }
+
+    [Fact]
     public void A_lowered_entry_guard_reads_a_table_in_no_larger_window_than_its_room_needs()
     {
         // The window grew until it held the rows' end before any row was read: for a guard of a thousand entries, a window
