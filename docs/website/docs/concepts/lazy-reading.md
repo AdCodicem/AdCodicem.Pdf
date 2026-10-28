@@ -55,8 +55,8 @@ document keeps the map, 40 bytes an object, about 80 at most when it grew: on th
 Room made for the whole `/Size` holds 40 bytes for each object it numbers, so a `/Size` that numbers more objects than
 the sections give, up to four times as many, keeps up to 160 bytes an object they give; a table of one-row subsections,
 whose headers make room as rows do, keeps about 1.5 times these figures. Numbers spread far apart keep about 60 to 85
-bytes an object in subsections of ten rows or more, up to about 96 in subsections of two, and about 85 to 115 in a table
-of one-row subsections, the more the wider the numbers.
+bytes an object in subsections of ten rows or more, up to about 96 in subsections of two, and about 80 to 110 in a table
+of one-row subsections, the more the wider the numbers, and up to 4 bytes more where the slots stretch to twice the room.
 When the reader relocates an object or rebuilds the map once the chain is read, it keeps a copy of the map the chain
 gave as well, so that validation still judges the file's own.
 

@@ -67,8 +67,8 @@ entire document into the heap, so a 500 MB file needs 500 MB of RAM before you h
 This library takes the middle ground business documents actually need: a fully managed engine whose memory
 use follows the complexity of a page rather than the size of a file.
 
-Indexing a thousand-page document costs **229 µs and 393 KB**. Reading every page of it afterwards costs
-6.2 ms and 5.9 MB. The gap between those two numbers is the whole design: opening a document does not read
+Indexing a thousand-page document costs **about 210 µs and 83 KB**. Reading every page of it afterwards costs
+3.7 ms and 1.7 MB. The gap between those two numbers is the whole design: opening a document does not read
 its content.
 
 ## Design commitments

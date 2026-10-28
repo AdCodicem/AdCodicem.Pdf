@@ -27,9 +27,9 @@ the next preview.
   and patch. It will use SkiaSharp and HarfBuzzSharp for images and text shaping; everything that needs a
   dependency lives in a satellite package you add knowingly.
 - **Memory follows what you read, not the size of the file.** Opening a document reads its index and its
-  catalog, and decodes no page content: indexing a thousand-page document costs 229 µs and 393 KB, and reading
-  every page of it afterwards 6.2 ms and 5.9 MB (BenchmarkDotNet, `docs/status.md`). The writer only moves
-  forward.
+  catalog, and decodes no page content: indexing a thousand-page document costs about 210 µs and 83 KB, and
+  reading every page of it afterwards 3.7 ms and 1.7 MB (BenchmarkDotNet,
+  [Lazy reading](concepts/lazy-reading.md#measured)). The writer only moves forward.
 - **Honest about damaged input.** Real files are often malformed. The reader rebuilds what it can and
   reports every repair as a structured diagnostic; the validator gives a verdict with stable, public rule
   identifiers you can filter on.
