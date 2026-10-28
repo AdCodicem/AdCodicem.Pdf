@@ -299,6 +299,24 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void Reports_of_one_text_placed_a_table_s_size_apart_spread_over_its_buckets()
+    {
+        // A record struct's hash adds the position last: reports alike but for where they lie, a multiple of the table's
+        // size apart, would fall in one bucket, or two where the sum wraps. Hashed through the process's seed, they spread
+        // as random keys do: about 650 of the 1,103 buckets.
+        var size = new HashSet<PdfDiagnostic>(1_000).EnsureCapacity(0);
+        var buckets = new HashSet<uint>();
+
+        for (var k = 1; k <= 1_000; k++)
+        {
+            var diagnostic = new PdfDiagnostic(PdfDiagnosticSeverity.Warning, "syntax.unexpected", "Alike.", (long)k * size);
+            buckets.Add((uint)diagnostic.GetHashCode() % (uint)size);
+        }
+
+        buckets.Count.Should().BeGreaterThan(500, "{0} reports in {1} buckets spread as random keys do", 1_000, size);
+    }
+
+    [Fact]
     public void Rolling_back_to_the_current_position_changes_nothing()
     {
         var diagnostics = new PdfDiagnostics();

@@ -29,5 +29,13 @@ public readonly record struct PdfObjectId(int Number, int Generation = 0)
     public bool IsEmpty => Number <= 0;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Hashed through the seed .NET draws once a process, as strings are: a table keyed by identifiers a file chose spreads
+    /// them as it would random keys, where a record struct's own hash, a fixed sum of the two numbers, lets a file put them
+    /// all in one bucket. A hash differs from one process to the next, and is not to be stored.
+    /// </remarks>
+    public override int GetHashCode() => HashCode.Combine(Number, Generation);
+
+    /// <inheritdoc/>
     public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Number} {Generation} R");
 }

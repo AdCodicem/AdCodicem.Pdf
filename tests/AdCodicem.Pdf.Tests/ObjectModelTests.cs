@@ -405,6 +405,83 @@ public class ObjectModelTests
         new PdfObjectId(1).IsEmpty.Should().BeFalse();
     }
 
+    [Fact]
+    public void Object_identifiers_chosen_to_share_a_bucket_spread_over_the_table()
+    {
+        // A record struct's own hash is Number * -1521134295 + Generation, which a file inverts: these thousand
+        // identifiers would all hash to 3 more than a multiple of the table's size, and fall in one bucket. Hashed through
+        // the process's seed, they spread over the buckets as random keys do: about 650 of the 1,103.
+        var size = new HashSet<PdfObjectId>(1_000).EnsureCapacity(0);
+        var buckets = new HashSet<uint>();
+
+        foreach (var id in IdentifiersHashedTo(3, size, 1_000))
+        {
+            buckets.Add((uint)id.GetHashCode() % (uint)size);
+        }
+
+        buckets.Count.Should().BeGreaterThan(500, "{0} keys in {1} buckets spread as random keys do", 1_000, size);
+    }
+
+    [Fact]
+    public void Two_object_identifiers_a_file_chooses_do_not_share_a_hash()
+    {
+        // The generation is added last to a record struct's hash, so a number some multiple of the inverse further on
+        // makes up for it: (1 + d, 0) and (1, g) hash alike for d = g / -1521134295 modulo 2^32.
+        var inverse = Inverse(unchecked((uint)-1521134295));
+        var generation = 1;
+        var distance = 0u;
+
+        for (; generation <= PdfObjectId.MaxGeneration; generation++)
+        {
+            distance = unchecked((uint)generation * inverse);
+
+            if (distance < int.MaxValue)
+            {
+                break;
+            }
+        }
+
+        var far = new PdfObjectId(1 + (int)distance);
+        var near = new PdfObjectId(1, generation);
+
+        far.Should().NotBe(near);
+        far.GetHashCode().Should().NotBe(near.GetHashCode());
+    }
+
+    /// <summary>
+    /// Gets <paramref name="count"/> identifiers of generation 0 whose hash, as a record struct computes it, is
+    /// <paramref name="remainder"/> more than a multiple of <paramref name="size"/>.
+    /// </summary>
+    internal static IEnumerable<PdfObjectId> IdentifiersHashedTo(int remainder, int size, int count)
+    {
+        var inverse = Inverse(unchecked((uint)-1521134295));
+        var found = 0;
+
+        for (var k = 1L; found < count; k++)
+        {
+            var number = unchecked((uint)(remainder + (k * size)) * inverse);
+
+            if (number is > 0 and <= int.MaxValue)
+            {
+                found++;
+                yield return new PdfObjectId((int)number);
+            }
+        }
+    }
+
+    /// <summary>Gets the inverse of an odd number modulo 2^32, by Newton's iteration.</summary>
+    private static uint Inverse(uint odd)
+    {
+        var inverse = odd;
+
+        for (var i = 0; i < 5; i++)
+        {
+            inverse = unchecked(inverse * (2 - (odd * inverse)));
+        }
+
+        return inverse;
+    }
+
     [Theory]
     [InlineData("/Subtype /Image /Type /XObject", "<</Image stream of 4 bytes>>")]
     [InlineData("/Type /XRef", "<</XRef stream of 4 bytes>>")]
