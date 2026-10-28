@@ -64,20 +64,22 @@ opening a file records each of its rows. Most files number their objects from 0 
   hash — a `ConcurrentDictionary`, a frozen or immutable one, its factories, its builder and an immutable one's `Empty`,
   a `StringDictionary`, however built — whatever its key and comparer, since a hash that goes through a seed, now or
   after a later change, would order what it gives, and no key is argued one by one: the one named and let be is
-  `PdfName`'s interning table, keyed by strings, which its static constructor builds once, on which the library calls
-  only what finds or adds one name, and whose pairs nothing names; and a table built for a type argument by `new()`,
-  `Activator`, `Lazy` or `LazyInitializer`. The rule covers every numeric key, whatever it numbers and wherever it comes
-  from, so that none needs arguing. The library builds no hash collection over a type parameter, whatever its comparer:
-  its callers choose its key and the comparer they hand it, and no reading follows them. How the hash of a type the
-  library hashes by hand spreads is held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; an
-  enumeration's values are the library's own; a collection built through reflection otherwise, or one a framework method
-  returns under another type, is not read. The reading takes out the probes code coverage puts, by their shape alone, so
-  that a probe written otherwise refuses the table it stands before. The other reads the sources, their comments and
-  literals blanked, and names the file and line of the shapes it recognizes over a numeric key: a declaration given `[]`
-  or `new()`, a `new` without the comparer among its own arguments or in its initializer, a name declared with no table
-  and given one later, a LINQ operator that hashes without naming a comparer, the tables an array's initializer builds,
-  and a concurrent, frozen or immutable one whose type it writes and that it sees built with `[]` or `new`, there or
-  later, seeded or not; one an operator or a factory builds is the compiled reading's.
+  `PdfName`'s interning table, keyed by strings, which its static constructor builds once, straight into a static field,
+  and which the library reaches, through its type or a generic interface of it, only to find or add one name, a member
+  that takes it, gives it, views it or names its pairs refused, the table not followed through `object` or a non-generic
+  interface; and a table built for a type argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`. The rule covers
+  every numeric key, whatever it numbers and wherever it comes from, so that none needs arguing. The library builds no
+  hash collection over a type parameter, whatever its comparer: its callers choose its key and the comparer they hand
+  it, and no reading follows them. How the hash of a type the library hashes by hand spreads is held by its own tests,
+  as `PdfObjectId`'s and `PdfDiagnostic`'s are; an enumeration's values are the library's own; a collection built
+  through reflection otherwise, or one a framework method returns under another type, is not read. The reading takes out
+  the probes code coverage puts, by their shape alone, so that a probe written otherwise refuses the table it stands
+  before. The other reads the sources, their comments and literals blanked, and names the file and line of the shapes it
+  recognizes over a numeric key: a declaration given `[]` or `new()`, a `new` without the comparer among its own
+  arguments or in its initializer, a name declared with no table and given one later, a LINQ operator that hashes
+  without naming a comparer, the tables an array's initializer builds, and a concurrent, frozen or immutable one whose
+  type it writes and that it sees built with `[]` or `new`, there or later, seeded or not; one an operator or a factory
+  builds is the compiled reading's.
 - **No bound is added**, and nothing is classified under ADR 34: the slots' slack is a property of the representation,
   not a limit on what a file may hold.
 
