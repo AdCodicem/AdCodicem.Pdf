@@ -82,7 +82,7 @@ opening a file records each of its rows. Most files number their objects from 0 
   cross-reference stream, and a chain of a thousand sections 24.2 MB against 30.6, measured on `e3e2034` the same day.
 - An object numbered apart from the rest costs more than it did: its number in the map keeps 20 to about 42 bytes beside
   its entry and slot, by where the map's count falls against .NET's prime steps, so that it keeps about 60 to 85 bytes
-  in subsections of ten rows or more, up to about 96 in subsections of two and 85 to 115 in a table of one-row
+  in subsections of ten rows or more, up to about 96 in subsections of two and 80 to 110 in a table of one-row
   subsections, whose headers make room as rows do, and a rebuild over such numbers allocates about 110 to 220; it costs
   a hash and a lookup more; opening 500,000 subsections whose every other number lies far from the rest took about 1.2
   times as long as before, and with every number far from the rest about 1.4 times.
@@ -97,7 +97,7 @@ opening a file records each of its rows. Most files number their objects from 0 
   its original `/Size` still lands on its count.
 - The seeded tables cost a hash and an interface call a lookup, and scatter keys a table numbered in order would keep
   together. Measured on the batch's last code against `e3e2034`, a medium job of each twice, alternated: validating
-  1,000 pages already read takes 2.9 to 3.2 ms against 2.6 to 2.7, about 13 % more, where the prototype had measured 5
+  1,000 pages already read takes 2.9 to 3.2 ms against 2.6 to 2.7, about 15 % more, where the prototype had measured 5
   to 8 %; opening and validating them 7.0 to 7.3 ms against 6.7 to 6.8, about 5 % more, the lighter index paying back
   part of it; the Arlington walk alone 2 to 6 % more. Opening an index of 300,000 objects takes 8 to 13 % less, a chain
   of a thousand sections about as long, and indexing 1,000 pages 200 to 222 µs against 230 to 242 (ShortRun, twice).
