@@ -35,8 +35,8 @@ objects, and a rebuild scans the whole file, but neither decodes a page's conten
 Indexing allocates 40 bytes per object, whatever the objects weigh — a scanned page holding a 3 MB image
 costs the same to index as an empty one. The map holds 36 bytes an entry, and 4 a slot that finds an object number's
 entry while numbers run in order; a number past twice the entries held or made room for, and 1,024 more, is found
-through a hash table instead, 20 to 35 bytes more than a slot, its hashes seeded so that a file cannot choose numbers
-that make each lookup slow. The map is sized before it is filled: each cross-reference section makes room for the rows it holds before it reads them, and
+through a hash table instead, 20 to about 42 bytes more, by where its count falls against the table's growth steps, its
+hashes seeded so that a file cannot choose numbers that make each lookup slow. The map is sized before it is filled: each cross-reference section makes room for the rows it holds before it reads them, and
 for no more objects than the newest section's `/Size` numbers, since an older section's rows for numbers a newer one
 gave add nothing; a `/Size` the sections number past stands for one past the highest number they gave, until an older
 section numbers past the newer ones, and bounds nothing from then on. A count the file declares is its claim, so room is made for no more rows than a stream's data holds,
@@ -45,8 +45,8 @@ window large enough to reach. A chain of many like sections makes room section a
 doubling the map at least each time it must grow, and for the whole `/Size` once a doubling comes within a doubling of
 it. A table's rows are counted by their lines, so that rows written 19 bytes long, their end of line a single byte,
 take no more room than rows of 20. A map left to grow — by a rebuild, or rows written shorter still — doubles as it
-grows, and allocates 80 to 160 bytes an object numbered in order, by where the count falls against its steps, and up to
-about 190 for numbers spread far apart.
+grows, and allocates 80 to 160 bytes an object numbered in order, by where the count falls against its steps, and about
+125 to 220 for numbers spread far apart.
 A cross-reference stream adds the decoding of its rows: 7 bytes an object when they are written as they are, up to
 about 35 when Flate stores them without compressing, compressed rows in between. Opening also decodes the object
 stream that holds the catalog, when one does, and that costs what the stream holds: a producer that packs every object

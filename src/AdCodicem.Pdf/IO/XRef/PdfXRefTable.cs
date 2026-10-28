@@ -29,9 +29,11 @@ namespace AdCodicem.Pdf.IO.XRef;
 /// Room is made for rows that add no entry too, and the last step for every object the newest <c>/Size</c> numbers, four
 /// times what the index held at most: such room holds 40 bytes an entry, about 160 an object where the size numbers four
 /// times the objects the sections give. A table of one-row subsections, whose headers make room as rows do, keeps about
-/// 1.5 times these figures. A number in the map costs 20 to 35 bytes more than a slot, so that an object numbered apart
-/// from the rest keeps about twice what one in order does, measured: 80 to 96 bytes an object for numbers all spread
-/// out, up to about 108 in a table of one-row subsections, and 155 to 190 allocated where a rebuild grows the table. A
+/// 1.5 times these figures. A number in the map keeps 20 to about 42 bytes beside its entry and the slot the room makes
+/// anyway, by where the map's count falls against .NET's prime steps, so that an object numbered apart from the rest
+/// keeps, measured, about 60 to 85 bytes in subsections of ten rows or more, up to about 96 in subsections of two, and 90
+/// to 115 in a table of one-row subsections; a rebuild that grows the table over such numbers allocates about 125 to 220
+/// an object. A
 /// copy holds its entries exactly, and slots up to the highest number the slots hold, no more than the table it copies.
 /// </para>
 /// </remarks>
