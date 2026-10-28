@@ -16,8 +16,8 @@ its rows and `/Prev` give, where its streams lie. .NET hashes an `int` as itself
 exclusive-ored, and puts a key in the bucket its hash leaves modulo a prime from a list anyone can read. A record
 struct's own hash is a fixed linear combination of its fields — `Number × −1521134295 + Generation` for `PdfObjectId` —,
 which a file inverts. So a file can choose numbers a multiple of that prime apart and put them all in one bucket, or give
-two offsets or two identifiers one hash outright, and every lookup walks them all. Measured on `main` at
-`e3e2034`, each against the same file numbered in order:
+two offsets or two identifiers one hash outright, and every lookup walks them all. Measured on `main` at `e3e2034`, each
+a single run in a process of its own, its compilation included, against the same file numbered in order:
 
 | Shape | In order | Chosen to collide |
 |---|---|---|
@@ -53,13 +53,16 @@ opening a file records each of its rows. Most files number their objects from 0 
 - **The public `PdfObjectId` and `PdfDiagnostic` hash through the same seed**, overriding the record struct's hash;
   equality stays the record's. A caller's table keyed by them is spread alike.
 - **Tests read the code.** One reads the compiled library, whatever the source wrote, and refuses every hash collection
-  built over a key a file can steer — a number wider than a byte, nullable or not, a tuple holding one, a type of the
-  library hashed as the compiler writes a record's hash — unless the comparer it takes last is `SeededComparer.Instance`,
-  handed to it straight on every path that reaches it: a `Dictionary`, `HashSet`, `ConcurrentDictionary`,
-  `OrderedDictionary` or `KeyedCollection` built or derived from, a LINQ operator that hashes, a frozen or immutable
-  collection's factory or `Empty`, `Activator.CreateInstance<T>`; a `Hashtable` always. The rule covers every numeric
-  key, whatever it numbers and wherever it comes from, so that none needs arguing. A collection over a type parameter
-  takes a comparer, which its callers choose; a type the library hashes by hand, as `PdfObjectId` and `PdfDiagnostic`
+  built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
+  one, a type of the library hashed as the compiler writes a record's hash — unless the comparer of its key, taken
+  last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a `Dictionary`, `HashSet`,
+  `ConcurrentDictionary`, `OrderedDictionary` or `KeyedCollection` built or derived from, a LINQ operator that hashes,
+  a frozen or immutable collection's factory or `Empty`, `Activator.CreateInstance<T>`, any of them as a method group;
+  a `Hashtable` always. A factory that takes the comparer first or a value comparer last is refused, its seeded form
+  being the one that takes the key's last. The rule covers every numeric key, whatever it numbers and wherever it comes
+  from, so that none needs arguing. A collection over a type parameter takes a comparer the method was given, an
+  argument or a field, and a comparer of such a key handed to the library's own code is read where it is handed, as a
+  table type given to its generic code is; a type the library hashes by hand, as `PdfObjectId` and `PdfDiagnostic`
   are, is held by its own tests; an enumeration's values are the library's own. The other reads the sources, their
   comments and literals blanked, and names the file and line of the shapes it recognizes: a declaration given `[]` or
   `new()`, a `new` without the comparer among its own arguments or in its initializer, a name declared with no table
@@ -76,9 +79,11 @@ opening a file records each of its rows. Most files number their objects from 0 
 - For numbers in order the index is lighter and no slower: 40 bytes an object, allocated and kept, against 52 to 63, so
   that opening 300,000 objects allocates 12.0 MB against 16.9 for a classic table and 22.5 against 27.4 for a
   cross-reference stream, and a chain of a thousand sections 24.2 MB against 30.6, measured on `e3e2034` the same day.
-- An object numbered apart from the rest costs more than it did: its number in the map takes 20 to 35 bytes more than a
-  slot, so that it keeps about twice what an object in order does — 80 to 96 bytes for numbers all spread out, up to
-  about 108 in a table of one-row subsections, whose headers make room as rows do —, and costs a hash and a lookup more;
+- An object numbered apart from the rest costs more than it did: its number in the map keeps 20 to about 42 bytes beside
+  its entry and slot, by where the map's count falls against .NET's prime steps, so that it keeps about 60 to 85 bytes
+  in subsections of ten rows or more, up to about 96 in subsections of two and 90 to 115 in a table of one-row
+  subsections, whose headers make room as rows do, and a rebuild over such numbers allocates about 125 to 220; it costs
+  a hash and a lookup more;
   opening 500,000 subsections whose every other number lies far from the rest took about 1.2 times as long as before,
   and with every number far from the rest about 1.4 times.
 - Arrays sized exactly leave no slack: one row past the room made for the newest section sets off batch 11's last step

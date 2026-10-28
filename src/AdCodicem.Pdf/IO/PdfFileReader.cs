@@ -5312,11 +5312,15 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // number read stands for it while the older sections number below the newer ones, as they do in such a chain. Once
         // one has numbered past them, the size bounds nothing: capped at one past the highest number read, the room would
         // grow by one entry at each older section numbering one further, and the index be copied whole each time (#155).
+        // A hybrid file's newest table is merged before its /XRefStm stream is read, so that the stream's room is bounded by
+        // the table's size, or one past the table's highest number where that size is stale, and its rows grow by doubling
+        // past it.
         if (_xref.Trailer.GetRaw(PdfName.Size) is { } written and not PdfReference && written.AsInteger() is { } size
             && (size > _highestRead || !_olderNumberedPast))
         {
-            // A size the index holds as many entries as already asks for no room, nor does one below zero, which is not
-            // narrowed to an int that would.
+            // Worked out as a long, the bound lies between zero and the guard, so that narrowing it wraps nothing: a size
+            // below zero, stale like any the sections number past, gives way to one past the highest number read. A bound
+            // the index holds as many entries as already asks for no room.
             most = (int)Math.Min(most, Math.Max(size, _highestRead + 1L));
 
             if ((long)_xref.Count + room > _xref.Capacity && 4L * _xref.Capacity >= most)
