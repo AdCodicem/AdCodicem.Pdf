@@ -209,6 +209,26 @@ public class ReaderTimingTests
     }
 
     [Fact]
+    public void An_index_of_numbers_chosen_to_share_a_bucket_validates_as_fast_as_one_numbered_in_order()
+    {
+        // The same 34,167 numbers, validated once open: the probe of the index's entries and the search for pages the tree
+        // leaves out go through every number the index holds, and before #155 looked each up in the map's one bucket, 4.2 s
+        // against 2.3 ms. The measure is the ratio, the best validation of each, run in turn.
+        const int Count = 34_167;
+        using var colliding = PdfDocument.Open(CollidingNumbers.Table(CollidingNumbers.Numbers(Count, CollidingNumbers.TableSize, colliding: true)));
+        using var ordered = PdfDocument.Open(CollidingNumbers.Table(CollidingNumbers.Numbers(Count, CollidingNumbers.TableSize, colliding: false)));
+        var validator = new PdfValidator();
+
+        var (orderedTime, collidingTime) = BestOfEach(() => validator.Validate(ordered), () => validator.Validate(colliding));
+
+        collidingTime.Should().BeLessThan(
+            orderedTime * 4,
+            "rows numbered to collide must validate in about the time the same rows numbered in order do ({0} against {1})",
+            collidingTime,
+            orderedTime);
+    }
+
+    [Fact]
     public void A_rebuild_of_numbers_chosen_to_share_a_bucket_takes_the_time_of_one_numbered_in_order()
     {
         // No table: the reader indexes the 36,350 objects it finds, numbered as many buckets apart as a map grown to hold
