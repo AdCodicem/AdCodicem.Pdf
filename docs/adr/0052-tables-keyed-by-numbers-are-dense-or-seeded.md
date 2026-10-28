@@ -57,13 +57,14 @@ opening a file records each of its rows. Most files number their objects from 0 
   one, a type of the library hashed as the compiler writes a record's hash — unless the comparer of its key, taken
   last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a `Dictionary`, `HashSet`,
   `ConcurrentDictionary`, `OrderedDictionary` or `KeyedCollection` built or derived from, a LINQ operator that hashes,
-  a frozen or immutable collection's factory or `Empty`, `Activator.CreateInstance<T>`, any of them as a method group;
-  a `Hashtable` always. A factory that takes the comparer first or a value comparer last is refused, its seeded form
-  being the one that takes the key's last. The rule covers every numeric key, whatever it numbers and wherever it comes
-  from, so that none needs arguing. A collection over a type parameter takes a comparer the method was given, an
-  argument or a field, and a comparer of such a key handed to the library's own code is read where it is handed, as a
-  table type given to its generic code is; a type the library hashes by hand, as `PdfObjectId` and `PdfDiagnostic`
-  are, is held by its own tests; an enumeration's values are the library's own. The other reads the sources, their
+  a frozen or immutable collection's factory or an immutable one's `Empty`, any of them as a method group; a
+  `Hashtable`, or a table built for a type argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`, always. A
+  factory that takes the comparer first or a value comparer last is refused, its seeded form being the one that takes
+  the key's last. The rule covers every numeric key, whatever it numbers and wherever it comes from, so that none needs
+  arguing. The library builds no hash collection over a type parameter, whatever its comparer: its callers choose its
+  key and the comparer they hand it, and no reading follows them. A type the library hashes by hand, as `PdfObjectId`
+  and `PdfDiagnostic` are, is held by its own tests; an enumeration's values are the library's own; a collection built
+  through reflection otherwise is not read. The other reads the sources, their
   comments and literals blanked, and names the file and line of the shapes it recognizes: a declaration given `[]` or
   `new()`, a `new` without the comparer among its own arguments or in its initializer, a name declared with no table
   and given one later, a LINQ operator that hashes without naming a comparer.
@@ -81,11 +82,10 @@ opening a file records each of its rows. Most files number their objects from 0 
   cross-reference stream, and a chain of a thousand sections 24.2 MB against 30.6, measured on `e3e2034` the same day.
 - An object numbered apart from the rest costs more than it did: its number in the map keeps 20 to about 42 bytes beside
   its entry and slot, by where the map's count falls against .NET's prime steps, so that it keeps about 60 to 85 bytes
-  in subsections of ten rows or more, up to about 96 in subsections of two and 90 to 115 in a table of one-row
-  subsections, whose headers make room as rows do, and a rebuild over such numbers allocates about 125 to 220; it costs
-  a hash and a lookup more;
-  opening 500,000 subsections whose every other number lies far from the rest took about 1.2 times as long as before,
-  and with every number far from the rest about 1.4 times.
+  in subsections of ten rows or more, up to about 96 in subsections of two and 85 to 115 in a table of one-row
+  subsections, whose headers make room as rows do, and a rebuild over such numbers allocates about 110 to 220; it costs
+  a hash and a lookup more; opening 500,000 subsections whose every other number lies far from the rest took about 1.2
+  times as long as before, and with every number far from the rest about 1.4 times.
 - Arrays sized exactly leave no slack: one row past the room made for the newest section sets off batch 11's last step
   to the newest `/Size`, which the map's primes once absorbed, and room made for a `/Size` that numbers up to four times
   the objects the sections give keeps up to 160 bytes an object they give, where the map kept about 60. The step saves

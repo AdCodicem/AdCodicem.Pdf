@@ -46,16 +46,17 @@ doubling the map at least each time it must grow, and for the whole `/Size` once
 it. A table's rows are counted by their lines, so that rows written 19 bytes long, their end of line a single byte,
 take no more room than rows of 20. A map left to grow — by a rebuild, or rows written shorter still — doubles as it
 grows, and allocates 80 to 160 bytes an object numbered in order, by where the count falls against its steps, and about
-125 to 220 for numbers spread far apart.
+110 to 220 for numbers spread far apart.
 A cross-reference stream adds the decoding of its rows: 7 bytes an object when they are written as they are, up to
 about 35 when Flate stores them without compressing, compressed rows in between. Opening also decodes the object
 stream that holds the catalog, when one does, and that costs what the stream holds: a producer that packs every object
 into one stream makes opening pay their decoded weight: 864 bytes an object on one such file, damaged, of 65,564. An open
-document keeps the map, 40 bytes an object, about 80 at most when it grew and about 96 when its numbers are spread far
-apart: on the corpus's thousand-page journal, 40. Room made for the whole `/Size` holds 40 bytes for each object it
-numbers, so a `/Size` that numbers more objects than the sections give, up to four times as many, keeps up to 160 bytes
-an object they give; a table of one-row subsections, whose headers make room as rows do, keeps about 1.5 times these
-figures.
+document keeps the map, 40 bytes an object, about 80 at most when it grew: on the corpus's thousand-page journal, 40.
+Room made for the whole `/Size` holds 40 bytes for each object it numbers, so a `/Size` that numbers more objects than
+the sections give, up to four times as many, keeps up to 160 bytes an object they give; a table of one-row subsections,
+whose headers make room as rows do, keeps about 1.5 times these figures. Numbers spread far apart keep about 60 to 85
+bytes an object in subsections of ten rows or more, up to about 96 in subsections of two, and about 85 to 115 in a table
+of one-row subsections, the more the wider the numbers.
 When the reader relocates an object or rebuilds the map once the chain is read, it keeps a copy of the map the chain
 gave as well, so that validation still judges the file's own.
 
