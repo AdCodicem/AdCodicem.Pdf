@@ -165,16 +165,22 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
 - **No order the hashes give reaches an output.** A table enumerates in an order set by what was added to it and
   removed from it, never by its keys' hashes, so that a seed that differs from one process to the next changes nothing
   the library reports or writes (invariant 6). No table that enumerates by hash — concurrent, frozen, immutable — is
-  keyed by numbers, which the reading of the compiled library below holds.
+  keyed by numbers, nor by a type of the library hashed through the seed, `PdfObjectId` among them, which the reading
+  of the compiled library below holds. `PdfName`'s interning table is keyed by strings, which .NET seeds alike; nothing
+  enumerates it.
 - **Two tests read the code** (`SeededComparerTests`). One reads the compiled library and refuses every hash collection
   built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
   one, a type of the library hashed as the compiler writes a record's hash — unless the comparer of its key, taken
   last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a constructor, a base
-  constructor or a LINQ operator, or any of them as a method group; a collection that enumerates by hash — a concurrent
-  dictionary, a frozen or immutable one, its factories, its builder and an immutable one's `Empty` —, and a table built
-  for a type argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`, always. The library builds no hash collection over a type parameter, whatever its comparer, since its callers choose
-  the key; a type the library hashes by hand is held by its own tests, as `PdfObjectId` and `PdfDiagnostic` are; a
-  collection built through reflection otherwise is not read. The other reads the sources and
+  constructor or a LINQ operator, or any of them as a method group. It refuses always a table keyed by any object, a
+  boxed number hashing as itself — a `Hashtable` or its kin, a key typed `object` or an interface numbers implement —;
+  a collection that enumerates by hash — a concurrent dictionary, a frozen or immutable one, its factories, its builder
+  and an immutable one's `Empty` —, over a steerable key or a type of the library whose hash goes through the seed;
+  and a table built for a type argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`. The library builds no
+  hash collection over a type parameter, whatever its comparer, since its callers choose the key; how the hash of a type
+  the library hashes by hand spreads is held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; a
+  collection built through reflection otherwise is not read. It reads through the probes code coverage puts, and only
+  their shape: any other instruction between the comparer and the table refuses it. The other reads the sources and
   names the file and line of the shapes it recognizes.
 
 ### Everything read is bounded by the source
