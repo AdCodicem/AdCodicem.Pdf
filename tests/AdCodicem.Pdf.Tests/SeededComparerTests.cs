@@ -1,5 +1,5 @@
-using System.Collections;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Text.RegularExpressions;
 using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO;
@@ -64,21 +64,26 @@ public class SeededComparerTests
 
         comparer.Equals((far, 5), (far, 5)).Should().BeTrue();
         comparer.Equals((far, 5), (far, 6)).Should().BeFalse();
+        comparer.Equals((near, 5), (far, 5)).Should().BeFalse();
         comparer.Equals((far, true), (far, true)).Should().BeTrue();
         comparer.Equals((far, true), (far, false)).Should().BeFalse();
+        comparer.Equals((near, true), (far, true)).Should().BeFalse();
         comparer.Equals((far, EndObjState.Present), (far, EndObjState.Present)).Should().BeTrue();
         comparer.Equals((far, EndObjState.Present), (near, EndObjState.Present)).Should().BeFalse();
         comparer.Equals((PdfLimit.Object, far), (PdfLimit.Object, far)).Should().BeTrue();
         comparer.Equals((PdfLimit.Object, far), (PdfLimit.Object, near)).Should().BeFalse();
+        comparer.Equals((PdfLimit.Object, far), (PdfLimit.StreamLength, far)).Should().BeFalse();
     }
 
     [Fact]
     public void No_hash_table_in_the_sources_is_keyed_by_numbers_without_the_seeded_comparer()
     {
-        // Every Dictionary or HashSet keyed by an int, a long or a tuple holding one is built with SeededComparer, a copy
-        // included: built with [], new() or no comparer, it would hash numbers a file chose as themselves (#155). A name
-        // declared with such a type and given [] or new() later is held too, and so is any LINQ operator that hashes.
-        // What escapes this reading — a table built where its type is not written — the next test meets at run time.
+        // Every hash table keyed by an int, a long or a tuple holding one, whose type the source writes, is built with
+        // SeededComparer among its own arguments, a copy included: built with [], new() or no comparer, it would hash
+        // numbers a file chose as themselves (#155). A name declared with such a type and no table, given [] or new()
+        // later, is held too, and so are the LINQ operators that hash. This reading names the file and the line; what it
+        // cannot see — a table built where its type is not written, as an out var or an expression body gives it — the
+        // reading of the compiled library below refuses.
         var violations = new List<string>();
 
         foreach (var path in Directory.EnumerateFiles(Path.Combine(FeatureTables.RepositoryRoot, "src"), "*.cs", SearchOption.AllDirectories))
@@ -103,6 +108,9 @@ public class SeededComparerTests
     [InlineData("public Dictionary<int, int> Indexes { get; } = [];")]
     [InlineData("private HashSet<int>? _lazy;\nvoid M() => (_lazy ??= []).Add(1);")]
     [InlineData("var numbers = list.ToHashSet();")]
+    [InlineData("Mark(new HashSet<long>(_faults), new HashSet<int>(_needing, SeededComparer.Instance));")]
+    [InlineData("private readonly ConcurrentDictionary<int, string> _byNumber = new();")]
+    [InlineData("var pairs = left.Join(right, l => l, r => r, (l, r) => l);")]
     public void The_reading_of_the_sources_refuses_a_table_keyed_by_numbers_built_without_the_comparer(string source)
     {
         SourceRules.Violations("Sample.cs", source).Should().ContainSingle();
@@ -122,60 +130,222 @@ public class SeededComparerTests
     }
 
     [Fact]
-    public void Every_hash_table_the_reader_holds_keyed_by_numbers_takes_the_seeded_comparer()
+    public void No_method_of_the_library_builds_a_table_keyed_by_numbers_without_the_seeded_comparer()
     {
-        // A document that opens through a rebuild, decodes object streams and is validated fills the reader's tables; each
-        // one keyed by numbers, and each one such a table holds, compares through SeededComparer.
-        var file = new TestPdfBuilder()
-            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
-            .WithObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
-            .WithObject(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Resources << >> >>")
-            .BuildClassic(rootNumber: 1);
-        using var document = PdfDocument.Open(file);
-        _ = new PdfValidator().Validate(document);
-        var tables = 0;
+        // Read in the compiled library, whatever the source wrote — [], new(), an out var given a set, an expression body,
+        // an argument, a copy —: every hash table built over a key a file can steer takes SeededComparer.Instance as its
+        // comparer, and no LINQ or frozen operator hashes such keys. A key is steerable when it is an integer wider than a
+        // byte, a tuple holding one, or a struct of the library hashed as the compiler writes a record struct's hash.
+        var violations = new List<string>();
 
-        foreach (var field in typeof(PdfFileReader).GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
+        foreach (var (method, constructor) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly))
         {
-            tables += Check(field.Name, field.GetValue(document.Reader));
+            violations.Add($"{method.DeclaringType!.FullName}.{method.Name}: {CompiledRules.Describe(constructor)}");
         }
 
-        tables.Should().BeGreaterThanOrEqualTo(20, "the reader keeps twenty tables keyed by numbers");
+        violations.Should().BeEmpty("a hash table keyed by numbers takes SeededComparer.Instance");
+    }
 
-        static int Check(string name, object? value)
+    [Fact]
+    public void The_reading_of_the_compiled_library_refuses_a_table_built_without_the_comparer()
+    {
+        // The check above sees what a source reading cannot: an out var given [], an expression body, a copy among others.
+        var refused = CompiledRules.TablesBuilt(typeof(SeededComparerTests).Assembly)
+            .Where(found => found.Method.DeclaringType == typeof(Unseeded))
+            .Select(found => found.Method.Name)
+            .Distinct()
+            .ToList();
+
+        refused.Should().BeEquivalentTo(nameof(Unseeded.OutVar), nameof(Unseeded.ExpressionBody), nameof(Unseeded.Copies), nameof(Unseeded.Struct));
+    }
+
+    /// <summary>Tables the compiled reading refuses, and one it lets be.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1859:Use concrete types when possible for improved performance",
+        Justification = "The shapes are written as code might write them, to be read compiled.")]
+    private static class Unseeded
+    {
+        public static HashSet<int> OutVar(Dictionary<int, HashSet<int>> tables)
         {
-            if (value is null || !value.GetType().IsGenericType)
+            if (!tables.TryGetValue(1, out var numbers))
             {
-                return 0;
+                numbers = [];
+                tables[1] = numbers;
             }
 
-            var definition = value.GetType().GetGenericTypeDefinition();
+            return numbers;
+        }
 
-            if (definition != typeof(Dictionary<,>) && definition != typeof(HashSet<>))
+        public static HashSet<long> ExpressionBody() => [];
+
+        public static (HashSet<int> Seeded, HashSet<int> Copied) Copies(HashSet<int> source) =>
+            (new HashSet<int>(source, SeededComparer.Instance), new HashSet<int>(source));
+
+        public static HashSet<Pair> Struct() => [];
+
+        public static HashSet<int> Seeded() => new(SeededComparer.Instance);
+    }
+
+    private readonly record struct Pair(int First, int Second);
+
+    /// <summary>What the reading of the compiled library refuses.</summary>
+    private static class CompiledRules
+    {
+        private const BindingFlags Declared =
+            BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+
+        private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Select(field => (OpCode)field.GetValue(null)!)
+            .ToDictionary(code => code.Value);
+
+        private static readonly HashSet<string> HashingOperators =
+        [
+            "ToHashSet", "ToDictionary", "ToLookup", "Distinct", "DistinctBy", "GroupBy", "GroupJoin", "Join", "LeftJoin",
+            "RightJoin", "Union", "UnionBy", "Intersect", "IntersectBy", "Except", "ExceptBy", "CountBy", "AggregateBy",
+            "ToFrozenDictionary", "ToFrozenSet", "ToImmutableDictionary", "ToImmutableHashSet",
+        ];
+
+        /// <summary>
+        /// Gets each table over a steerable key a method of <paramref name="assembly"/> builds without SeededComparer.Instance
+        /// handed to it last, and each hashing operator it calls with no comparer.
+        /// </summary>
+        public static IEnumerable<(MethodBase Method, MethodBase Constructor)> TablesBuilt(Assembly assembly)
+        {
+            var seeded = typeof(SeededComparer).GetProperty(nameof(SeededComparer.Instance))!.GetMethod!;
+
+            foreach (var type in assembly.GetTypes())
             {
-                return 0;
-            }
-
-            var key = value.GetType().GetGenericArguments()[0];
-
-            if (!SourceRules.IsNumeric(key))
-            {
-                return 0;
-            }
-
-            var comparer = value.GetType().GetProperty("Comparer")!.GetValue(value);
-            comparer.Should().BeSameAs(SeededComparer.Instance, "{0} is keyed by {1}", name, key);
-            var held = 1;
-
-            if (definition == typeof(Dictionary<,>))
-            {
-                foreach (var inner in ((IDictionary)value).Values)
+                foreach (var method in type.GetMethods(Declared).Cast<MethodBase>().Concat(type.GetConstructors(Declared)))
                 {
-                    held += Check(name + "[]", inner);
+                    if (method.GetMethodBody()?.GetILAsByteArray() is not { } il)
+                    {
+                        continue;
+                    }
+
+                    MethodBase? previous = null;
+
+                    foreach (var (code, called) in Instructions(method, il))
+                    {
+                        if (code == OpCodes.Newobj && called is ConstructorInfo constructor && Builds(constructor.DeclaringType!)
+                            && !(TakesComparer(constructor) && seeded.Equals(previous)))
+                        {
+                            yield return (method, constructor);
+                        }
+                        else if ((code == OpCodes.Call || code == OpCodes.Callvirt) && called is MethodInfo operation
+                            && HashingOperators.Contains(operation.Name) && !TakesComparer(operation)
+                            && operation.DeclaringType!.Namespace is "System.Linq" or "System.Collections.Frozen" or "System.Collections.Immutable")
+                        {
+                            yield return (method, operation);
+                        }
+
+                        previous = called;
+                    }
                 }
             }
+        }
 
-            return held;
+        public static string Describe(MethodBase constructor) =>
+            constructor.DeclaringType is { IsGenericType: true } type
+                ? $"{type.Name}<{string.Join(", ", type.GetGenericArguments().Select(argument => argument.Name))}>.{constructor.Name}"
+                : $"{constructor.DeclaringType?.Name}.{constructor.Name}";
+
+        /// <summary>Determines whether <paramref name="type"/> is a hash table whose key a file can steer.</summary>
+        private static bool Builds(Type type)
+        {
+            if (type == typeof(System.Collections.Hashtable))
+            {
+                return true;
+            }
+
+            if (!type.IsGenericType)
+            {
+                return false;
+            }
+
+            var definition = type.GetGenericTypeDefinition();
+            var table = definition == typeof(Dictionary<,>) || definition == typeof(HashSet<>)
+                || definition == typeof(System.Collections.Concurrent.ConcurrentDictionary<,>) || definition == typeof(OrderedDictionary<,>);
+            return table && Steerable(type.GetGenericArguments()[0]);
+        }
+
+        private static bool Steerable(Type key)
+        {
+            if (key.IsGenericParameter || key.IsEnum)
+            {
+                return false;
+            }
+
+            if (key == typeof(int) || key == typeof(long) || key == typeof(uint) || key == typeof(ulong) || key == typeof(short)
+                || key == typeof(ushort) || key == typeof(nint) || key == typeof(nuint))
+            {
+                return true;
+            }
+
+            if (key.IsGenericType && key.FullName!.StartsWith("System.ValueTuple`", StringComparison.Ordinal))
+            {
+                return Array.Exists(key.GetGenericArguments(), Steerable);
+            }
+
+            // A struct of ours hashed as the compiler writes a record struct's hash: a fixed combination a file inverts.
+            return key.IsValueType && key.Assembly != typeof(int).Assembly
+                && key.GetMethod(nameof(GetHashCode), Type.EmptyTypes) is { } hash
+                && hash.DeclaringType == key && hash.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute));
+        }
+
+        private static bool TakesComparer(MethodBase method) =>
+            Array.Exists(
+                method.GetParameters(),
+                parameter => parameter.ParameterType.IsGenericType
+                    && parameter.ParameterType.GetGenericTypeDefinition() == typeof(IEqualityComparer<>));
+
+        /// <summary>Reads <paramref name="il"/>'s instructions, with the method each one calls or builds, if any.</summary>
+        private static IEnumerable<(OpCode Code, MethodBase? Called)> Instructions(MethodBase method, byte[] il)
+        {
+            var typeArguments = method.DeclaringType!.IsGenericType ? method.DeclaringType.GetGenericArguments() : null;
+            var methodArguments = method.IsGenericMethod ? method.GetGenericArguments() : null;
+            var at = 0;
+
+            while (at < il.Length)
+            {
+                var value = (short)il[at++];
+
+                if (value == 0xFE)
+                {
+                    value = unchecked((short)(0xFE00 | il[at++]));
+                }
+
+                var code = OpCodesByValue[value];
+                MethodBase? called = null;
+
+                switch (code.OperandType)
+                {
+                    case OperandType.InlineMethod:
+                        called = method.Module.ResolveMethod(BitConverter.ToInt32(il, at), typeArguments, methodArguments);
+                        at += 4;
+                        break;
+                    case OperandType.InlineSwitch:
+                        at += 4 + (4 * BitConverter.ToInt32(il, at));
+                        break;
+                    case OperandType.InlineI8 or OperandType.InlineR:
+                        at += 8;
+                        break;
+                    case OperandType.InlineVar:
+                        at += 2;
+                        break;
+                    case OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar:
+                        at += 1;
+                        break;
+                    case OperandType.InlineNone:
+                        break;
+                    default:
+                        at += 4;
+                        break;
+                }
+
+                yield return (code, called);
+            }
         }
     }
 
@@ -183,7 +353,7 @@ public class SeededComparerTests
     private static class SourceRules
     {
         private static readonly Regex Hashing = new(
-            @"\.(?:ToHashSet|ToDictionary|ToLookup|Distinct|DistinctBy|GroupBy|Union|UnionBy|Intersect|IntersectBy|Except|ExceptBy|CountBy|AggregateBy)\(",
+            @"\.(?:ToHashSet|ToDictionary|ToLookup|Distinct|DistinctBy|GroupBy|GroupJoin|Join|LeftJoin|RightJoin|Union|UnionBy|Intersect|IntersectBy|Except|ExceptBy|CountBy|AggregateBy|ToFrozenDictionary|ToFrozenSet|ToImmutableDictionary|ToImmutableHashSet)\(",
             RegexOptions.CultureInvariant);
 
         public static bool IsNumeric(Type key) =>
@@ -241,7 +411,7 @@ public class SeededComparerTests
         /// </summary>
         private static IEnumerable<(int At, bool IsNew, string Key, string? Name, string Statement)> Tables(string text)
         {
-            foreach (Match type in Regex.Matches(text, @"(?<![\w.])(?:Dictionary|HashSet)<"))
+            foreach (Match type in Regex.Matches(text, @"(?<![\w.])(?:Dictionary|HashSet|ConcurrentDictionary|OrderedDictionary|FrozenDictionary|FrozenSet|ImmutableDictionary|ImmutableHashSet)<"))
             {
                 var open = type.Index + type.Length;
                 var close = Matching(text, open - 1, '<', '>');
@@ -256,7 +426,16 @@ public class SeededComparerTests
                 var before = text[..type.Index].TrimEnd();
                 var isNew = before.EndsWith("new", StringComparison.Ordinal);
                 var end = StatementEnd(text, close + 1);
-                var statement = text[(isNew ? before.Length - 3 : type.Index)..end];
+
+                // What a new hands the table is its own arguments: a comparer another argument of the same statement takes
+                // is not this table's.
+                var parenthesis = isNew ? text.IndexOf('(', close) : -1;
+                var built = parenthesis >= 0 && string.IsNullOrWhiteSpace(text[(close + 1)..parenthesis])
+                    ? Matching(text, parenthesis, '(', ')')
+                    : -1;
+                var statement = isNew
+                    ? text[(before.Length - 3)..(built >= 0 ? built + 1 : end)]
+                    : text[type.Index..end];
                 var name = Regex.Match(text[(close + 1)..], @"^\??\s+(?<name>@?\w+)").Groups["name"];
                 yield return (type.Index, isNew, key, name.Success ? name.Value : null, statement);
             }

@@ -178,20 +178,22 @@ public class ReaderTimingTests
         }
     }
 
-    [Fact]
-    public void An_index_of_numbers_chosen_to_share_a_bucket_opens_as_fast_as_one_numbered_in_order()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_index_of_numbers_chosen_to_share_a_bucket_opens_as_fast_as_one_numbered_in_order(bool aimedAtTheMap)
     {
         // 34,167 numbers 62,851 apart, as many as an int holds, each in a subsection of its own: before #155 every one fell
         // in a single bucket of the index's map, and indexing each walked those before it, 2 s against 40 ms. The index now
         // finds a number in a slot while numbers run in order, and past them in a map hashed through the process's seed:
-        // the same rows numbered either way open in about the same time. The measure is the ratio, the best of five
-        // openings of each.
+        // the same rows numbered either way open in about the same time. Numbers as many apart as that map has buckets once
+        // it holds them all aim at the map itself. The measure is the ratio, the best opening of each, run in turn.
         const int Count = 34_167;
-        var colliding = CollidingNumbers.Table(CollidingNumbers.Numbers(Count, CollidingNumbers.TableSize, colliding: true));
-        var ordered = CollidingNumbers.Table(CollidingNumbers.Numbers(Count, CollidingNumbers.TableSize, colliding: false));
+        var apart = aimedAtTheMap ? CollidingNumbers.GrownSize(Count) : CollidingNumbers.TableSize;
+        var colliding = CollidingNumbers.Table(CollidingNumbers.Numbers(Count, apart, colliding: true));
+        var ordered = CollidingNumbers.Table(CollidingNumbers.Numbers(Count, apart, colliding: false));
 
-        var orderedTime = BestOfFive(() => Open(ordered));
-        var collidingTime = BestOfFive(() => Open(colliding));
+        var (orderedTime, collidingTime) = BestOfEach(() => Open(ordered), () => Open(colliding));
 
         collidingTime.Should().BeLessThan(
             orderedTime * 4,
@@ -211,14 +213,13 @@ public class ReaderTimingTests
     {
         // No table: the reader indexes the 36,350 objects it finds, numbered as many buckets apart as a map grown to hold
         // them has. Before #155 the rebuild put them all in one bucket, 8 s against 70 ms; it now takes about what the
-        // same objects numbered in order do. The measure is the ratio, the best of five openings of each.
+        // same objects numbered in order do. The measure is the ratio, the best opening of each, run in turn.
         const int Count = 36_350;
         var size = CollidingNumbers.GrownSize(Count + 2);
         var colliding = CollidingNumbers.Unindexed(CollidingNumbers.Numbers(Count, size, colliding: true));
         var ordered = CollidingNumbers.Unindexed(CollidingNumbers.Numbers(Count, size, colliding: false));
 
-        var orderedTime = BestOfFive(() => Open(ordered));
-        var collidingTime = BestOfFive(() => Open(colliding));
+        var (orderedTime, collidingTime) = BestOfEach(() => Open(ordered), () => Open(colliding));
 
         collidingTime.Should().BeLessThan(
             orderedTime * 4,
@@ -240,15 +241,14 @@ public class ReaderTimingTests
         // 20,000 objects as many buckets apart as the reader's cache has once it holds its 8,192, and 200,000 references to
         // them in turn: each misses the cache, which was keyed by the number itself, and walked the cache's one bucket to
         // look it up, to add it, and to let the oldest go. Hashed through the process's seed, the same references cost
-        // about what they do to objects numbered in order. The measure is the ratio, the best of five resolutions of each.
+        // about what they do to objects numbered in order. The measure is the ratio, the best resolution of each, run in turn.
         const int Count = 20_000;
         const int References = 200_000;
         var size = CollidingNumbers.GrownSize(new PdfReaderOptions().ObjectCacheCapacity);
         var colliding = CollidingNumbers.Referenced(CollidingNumbers.Numbers(Count, size, colliding: true), References);
         var ordered = CollidingNumbers.Referenced(CollidingNumbers.Numbers(Count, size, colliding: false), References);
 
-        var orderedTime = BestOfFive(() => ResolveAll(ordered));
-        var collidingTime = BestOfFive(() => ResolveAll(colliding));
+        var (orderedTime, collidingTime) = BestOfEach(() => ResolveAll(ordered), () => ResolveAll(colliding));
 
         collidingTime.Should().BeLessThan(
             orderedTime * 4,
@@ -277,7 +277,7 @@ public class ReaderTimingTests
         // The catalog reaches 100,000 references to 30,000 free numbers, as many buckets apart as a set grown to hold them
         // has: the walk of the reachable objects kept them in sets keyed by the number itself, all in one bucket. Hashed
         // through the process's seed, they validate in about the time the same references to numbers in order do. The
-        // measure is the ratio, the best of five validations of each.
+        // measure is the ratio, the best validation of each, run in turn.
         const int Count = 30_000;
         const int References = 100_000;
         var size = CollidingNumbers.GrownSize(Count);
@@ -285,8 +285,7 @@ public class ReaderTimingTests
         using var ordered = PdfDocument.Open(CollidingNumbers.ReachedFree(CollidingNumbers.Numbers(Count, size, colliding: false), References));
         var validator = new PdfValidator();
 
-        var orderedTime = BestOfFive(() => validator.Validate(ordered));
-        var collidingTime = BestOfFive(() => validator.Validate(colliding));
+        var (orderedTime, collidingTime) = BestOfEach(() => validator.Validate(ordered), () => validator.Validate(colliding));
 
         collidingTime.Should().BeLessThan(
             orderedTime * 4,
@@ -295,21 +294,34 @@ public class ReaderTimingTests
             orderedTime);
     }
 
-    /// <summary>Gets the shortest of five runs of <paramref name="action"/>, after one to warm up.</summary>
-    private static TimeSpan BestOfFive(Action action)
+    /// <summary>
+    /// Gets the shortest run of each action, the two run in turn: five times each at least, and on until neither has run
+    /// faster for three turns — at most forty turns, or twenty seconds —, so that both are timed warm whatever ran before.
+    /// </summary>
+    private static (TimeSpan First, TimeSpan Second) BestOfEach(Action first, Action second)
     {
-        action();
-        var best = TimeSpan.MaxValue;
+        var bestFirst = TimeSpan.MaxValue;
+        var bestSecond = TimeSpan.MaxValue;
+        var steady = 0;
+        var spent = Stopwatch.StartNew();
 
-        for (var run = 0; run < 5; run++)
+        for (var turn = 0; turn < 5 || (steady < 3 && turn < 40 && spent.Elapsed < TimeSpan.FromSeconds(20)); turn++)
+        {
+            var timeFirst = Time(first);
+            var timeSecond = Time(second);
+            steady = timeFirst < bestFirst || timeSecond < bestSecond ? 0 : steady + 1;
+            bestFirst = timeFirst < bestFirst ? timeFirst : bestFirst;
+            bestSecond = timeSecond < bestSecond ? timeSecond : bestSecond;
+        }
+
+        return (bestFirst, bestSecond);
+
+        static TimeSpan Time(Action action)
         {
             var stopwatch = Stopwatch.StartNew();
             action();
-            var elapsed = stopwatch.Elapsed;
-            best = elapsed < best ? elapsed : best;
+            return stopwatch.Elapsed;
         }
-
-        return best;
     }
 
     /// <summary>
