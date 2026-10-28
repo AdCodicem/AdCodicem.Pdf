@@ -50,33 +50,33 @@ internal sealed class PageTreeWalk
 {
     private readonly PdfFileReader _reader;
     private readonly List<Frame> _stack = [];
-    private readonly HashSet<int> _visited = [];
-    private readonly HashSet<int> _onPath = [];
-    private readonly Dictionary<int, long> _pagesBelow = [];
+    private readonly HashSet<int> _visited = new(SeededComparer.Instance);
+    private readonly HashSet<int> _onPath = new(SeededComparer.Instance);
+    private readonly Dictionary<int, long> _pagesBelow = new(SeededComparer.Instance);
 
     /// <summary>The nodes and pages, by number, below which the pages could not be counted with confidence.</summary>
-    private readonly HashSet<int> _uncountable = [];
+    private readonly HashSet<int> _uncountable = new(SeededComparer.Instance);
 
     /// <summary>
     /// The arrays of kids that are objects of their own the walk has walked, by number: kept apart from the nodes and
     /// pages, which a kid names, so that a kid naming an array is no node walked, and an array a kid named is still walked.
     /// </summary>
-    private readonly HashSet<int> _arraysWalked = [];
+    private readonly HashSet<int> _arraysWalked = new(SeededComparer.Instance);
 
     /// <summary>The arrays of kids of their own being walked on the current path.</summary>
-    private readonly HashSet<int> _arraysOnPath = [];
+    private readonly HashSet<int> _arraysOnPath = new(SeededComparer.Instance);
 
     /// <summary>How many pages lie below each array of kids of its own walked, by number.</summary>
-    private readonly Dictionary<int, long> _pagesBelowArray = [];
+    private readonly Dictionary<int, long> _pagesBelowArray = new(SeededComparer.Instance);
 
     /// <summary>The arrays of kids of their own below which the pages could not be counted with confidence.</summary>
-    private readonly HashSet<int> _uncountableArrays = [];
+    private readonly HashSet<int> _uncountableArrays = new(SeededComparer.Instance);
 
     /// <summary>
     /// The pages first listed past the greatest page index, as a tree listing nodes again may list them: kept apart, being
     /// at no index.
     /// </summary>
-    private readonly HashSet<int> _pagesPastIndexes = [];
+    private readonly HashSet<int> _pagesPastIndexes = new(SeededComparer.Instance);
     private long _pages;
 
     /// <summary>
@@ -128,16 +128,16 @@ internal sealed class PageTreeWalk
     public bool Partial { get; private set; }
 
     /// <summary>Gets the object numbers of the tree's nodes.</summary>
-    public HashSet<int> Nodes { get; } = [];
+    public HashSet<int> Nodes { get; } = new(SeededComparer.Instance);
 
     /// <summary>Gets the object numbers of the arrays of kids the walk read that are objects of their own.</summary>
-    public HashSet<int> KidsArrays { get; } = [];
+    public HashSet<int> KidsArrays { get; } = new(SeededComparer.Instance);
 
     /// <summary>
     /// Gets the object numbers of the nodes one of the reader's limits cut: the walk judged nothing of what they hold, the
     /// kids written in them included.
     /// </summary>
-    public HashSet<int> CutNodes { get; } = [];
+    public HashSet<int> CutNodes { get; } = new(SeededComparer.Instance);
 
     /// <summary>
     /// Determines whether the walk judged the kids written in object <paramref name="number"/>'s <c>/Kids</c>: a node it
@@ -156,7 +156,7 @@ internal sealed class PageTreeWalk
     /// Gets the object numbers of the arrays of kids of their own whose kids the walk judged: walked under a node, and read
     /// whole. Another rule judges the references to nothing written in an array a limit cut.
     /// </summary>
-    public HashSet<int> JudgedKidsArrays { get; } = [];
+    public HashSet<int> JudgedKidsArrays { get; } = new(SeededComparer.Instance);
 
     /// <summary>
     /// Gets the object numbers of the nodes and pages whose <c>/Parent</c> the walk could not judge: the node listing them
@@ -164,7 +164,7 @@ internal sealed class PageTreeWalk
     /// or one of the reader's limits cut them. The walk judges the <c>/Parent</c> of every other node and page it entered,
     /// the root's included; the exceptions are kept rather than the rule, so that memory does not grow with the pages.
     /// </summary>
-    public HashSet<int> ParentsUnjudged { get; } = [];
+    public HashSet<int> ParentsUnjudged { get; } = new(SeededComparer.Instance);
 
     /// <summary>Determines whether the walk judged the <c>/Parent</c> of object <paramref name="number"/>.</summary>
     public bool JudgedParent(int number) => (Nodes.Contains(number) || IsPage(number)) && !ParentsUnjudged.Contains(number);
@@ -173,7 +173,7 @@ internal sealed class PageTreeWalk
     /// Gets the object number of each page of the tree, with the index it is first listed at — every page but those first
     /// listed past the greatest index, which <see cref="IsPage"/> knows.
     /// </summary>
-    public Dictionary<int, int> PageIndexes { get; } = [];
+    public Dictionary<int, int> PageIndexes { get; } = new(SeededComparer.Instance);
 
     /// <summary>Determines whether object <paramref name="number"/> is a page of the tree.</summary>
     public bool IsPage(int number) => PageIndexes.ContainsKey(number) || _pagesPastIndexes.Contains(number);

@@ -246,13 +246,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private readonly PdfLimitGuard _guard;
 
     /// <summary>The guards already reported, and where: an object read again is not reported again.</summary>
-    private readonly HashSet<(PdfLimit Limit, long Position)> _limitsReached = [];
+    private readonly HashSet<(PdfLimit Limit, long Position)> _limitsReached = new(SeededComparer.Instance);
 
     /// <summary>
     /// The object stream members <see cref="PdfReaderLimits.MaxObjectLength"/> cut, by where their stream's data starts and
     /// their number, each reported once: a stream defined again, which a rebuild may serve, is another place.
     /// </summary>
-    private readonly HashSet<(long DataStart, int Number)> _memberLimitsReached = [];
+    private readonly HashSet<(long DataStart, int Number)> _memberLimitsReached = new(SeededComparer.Instance);
 
     /// <summary>
     /// The faults of the syntax the document's diagnostics keep: an object parsed again — after the cache let it go, the
@@ -337,13 +337,13 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// entry per number, so every generation of a number loads the same object, and keying by both would parse and
     /// keep it once per generation a file cares to reference.
     /// </summary>
-    private readonly Dictionary<int, PdfObject> _cache = [];
+    private readonly Dictionary<int, PdfObject> _cache = new(SeededComparer.Instance);
     private readonly Queue<int> _cacheOrder = new();
     /// <summary>
     /// The object streams decoded, by number, null for one that cannot be read; with the order they were decoded in
     /// and what they weigh — their data, their headers' tables and lookups —, which <see cref="ObjectStreamBudget"/> bounds.
     /// </summary>
-    private readonly Dictionary<int, ObjectStreamContents?> _objectStreams = [];
+    private readonly Dictionary<int, ObjectStreamContents?> _objectStreams = new(SeededComparer.Instance);
 
     /// <summary>
     /// The object streams, by number, that a guard left unable to serve their objects — cut short of their stream, their
@@ -352,18 +352,18 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// as one a guard cut is (#259). A rebuild's expansion records any object a guard cut short of a stream, which the
     /// chain's index may place members in.
     /// </summary>
-    private readonly HashSet<int> _objectStreamsHiddenByGuard = [];
+    private readonly HashSet<int> _objectStreamsHiddenByGuard = new(SeededComparer.Instance);
     private readonly Queue<int> _objectStreamOrder = new();
     private long _objectStreamBytes;
 
     /// <summary>The numbers of the objects being loaded, by number for the reason <see cref="_cache"/> gives.</summary>
-    private readonly HashSet<int> _loading = [];
+    private readonly HashSet<int> _loading = new(SeededComparer.Instance);
 
     /// <summary>The object streams being decoded: an object one of them holds cannot be read meanwhile (#51).</summary>
-    private readonly HashSet<int> _objectStreamsLoading = [];
+    private readonly HashSet<int> _objectStreamsLoading = new(SeededComparer.Instance);
 
     /// <summary>The object streams already reported as needing an object they hold to be read.</summary>
-    private readonly HashSet<int> _objectStreamsNeedingThemselves = [];
+    private readonly HashSet<int> _objectStreamsNeedingThemselves = new(SeededComparer.Instance);
 
     /// <summary>
     /// The objects each object stream read as null while it was decoded because of how the file is made — an object
@@ -372,52 +372,52 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <see cref="ObjectStreamBudget"/>. A load too deep to follow depends on where it was asked from, not on the
     /// file, and is not recorded.
     /// </summary>
-    private readonly Dictionary<int, HashSet<int>> _nullWhileDecoding = [];
+    private readonly Dictionary<int, HashSet<int>> _nullWhileDecoding = new(SeededComparer.Instance);
 
     /// <summary>
     /// The objects the index holds in use that the reader gave up on the last time they were asked for — nothing
     /// where the entry places them nor near it, an object stream that cannot serve them —, for the validation rules
     /// to tell an object the file lacks from one it holds and the reader could not produce.
     /// </summary>
-    private readonly HashSet<int> _unproduced = [];
+    private readonly HashSet<int> _unproduced = new(SeededComparer.Instance);
 
     /// <summary>
     /// The objects a guard cut, read only as far as the limit let the reader go: what they hold past it is unknown,
     /// so the validation rules judge nothing of their shape.
     /// </summary>
-    private readonly HashSet<int> _cutAtLimit = [];
+    private readonly HashSet<int> _cutAtLimit = new(SeededComparer.Instance);
 
     /// <summary>
     /// The objects read whose value <c>endobj</c> does not follow, and where each was read. An object stream's
     /// members have none to follow them, and are never in it.
     /// </summary>
-    private readonly Dictionary<int, long> _endObjMissing = [];
+    private readonly Dictionary<int, long> _endObjMissing = new(SeededComparer.Instance);
 
     /// <summary>
     /// What was found of each stream read whose length the file did not confirm, by object number, as the reading kept
     /// last found it: a sound file records nothing.
     /// </summary>
-    private readonly Dictionary<int, StreamLengthFault> _streamLengthFaults = [];
+    private readonly Dictionary<int, StreamLengthFault> _streamLengthFaults = new(SeededComparer.Instance);
 
     /// <summary>
     /// What each search of the file for a stream's <c>endstream</c> found, by where the stream's data starts and whether
     /// its <c>/Length</c> was one the chain could not read: the file is searched once for each stream, however many times
     /// it is parsed. With it, the declared end it last said what follows of, read again only when that end changes.
     /// </summary>
-    private readonly Dictionary<(long DataStart, bool Deferred), (StreamEndSearch Search, long DeclaredEnd)> _endStreamSearches = [];
+    private readonly Dictionary<(long DataStart, bool Deferred), (StreamEndSearch Search, long DeclaredEnd)> _endStreamSearches = new(SeededComparer.Instance);
 
     /// <summary>
     /// What follows each place the reader read on past white space and comments to find an <c>endstream</c> (#174): read
     /// once, however many times its stream is parsed.
     /// </summary>
-    private readonly Dictionary<long, EndObjState?> _endStreamChecks = [];
+    private readonly Dictionary<long, EndObjState?> _endStreamChecks = new(SeededComparer.Instance);
 
     /// <summary>
     /// Where the first significant byte lies past each <c>endstream</c> keyword the reader read on past (#174), an
     /// <c>endobj</c> there or not: another place that leads to the keyword, and the proof that the keyword ends the stream's
     /// own data (#224), take it rather than read the white space again.
     /// </summary>
-    private readonly Dictionary<long, long> _endObjStarts = [];
+    private readonly Dictionary<long, long> _endObjStarts = new(SeededComparer.Instance);
 
     /// <summary>
     /// What follows the object's end after each place a search ended data at, with what was said follows the
@@ -425,26 +425,26 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// byte lies, -1 where nothing could be read, and whether the end of the file or a cross-reference section's keyword
     /// stands there. Read once, however many times its stream is parsed; each caller's next object is weighed against it.
     /// </summary>
-    private readonly Dictionary<(long DataEnd, EndObjState EndObj), (long Position, bool Boundary)> _endStreamFollowers = [];
+    private readonly Dictionary<(long DataEnd, EndObjState EndObj), (long Position, bool Boundary)> _endStreamFollowers = new(SeededComparer.Instance);
 
     /// <summary>
     /// Where the first significant byte lies past each offset a row names before the place it is weighed against, as
     /// <see cref="IsPlacedAt"/> reads it: -1 where nothing could be read. Read once, however many times its stream is
     /// parsed.
     /// </summary>
-    private readonly Dictionary<long, long> _placedStarts = [];
+    private readonly Dictionary<long, long> _placedStarts = new(SeededComparer.Instance);
 
     /// <summary>
     /// Where the first significant byte lies past each place a search ended data at, the <c>endstream</c> keyword it found:
     /// -1 where nothing could be read. Read once, however many times its stream is parsed.
     /// </summary>
-    private readonly Dictionary<long, long> _endStreamKeywords = [];
+    private readonly Dictionary<long, long> _endStreamKeywords = new(SeededComparer.Instance);
 
     /// <summary>
     /// Where the data starts of each stream whose length fault a reading the reader kept reported: the stream is not
     /// reported again when it is parsed again.
     /// </summary>
-    private readonly HashSet<long> _lengthFaultsReported = [];
+    private readonly HashSet<long> _lengthFaultsReported = new(SeededComparer.Instance);
 
     /// <summary>What the object streams' reports said already: each fault is reported once, however often its stream is decoded.</summary>
     private readonly ObjectStreamReports _objectStreamReports = new();
@@ -1526,7 +1526,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         {
             if (!_nullWhileDecoding.TryGetValue(objectStream, out var numbers))
             {
-                numbers = [];
+                numbers = new HashSet<int>(SeededComparer.Instance);
                 _nullWhileDecoding[objectStream] = numbers;
             }
 
@@ -2835,7 +2835,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <param name="startOffset">The offset <c>startxref</c> gives.</param>
     private bool TryReadXRefChain(long startOffset)
     {
-        var visited = new HashSet<long>();
+        var visited = new HashSet<long>(SeededComparer.Instance);
         var offset = startOffset;
         var sections = 0;
         var naming = "startxref";
@@ -4286,7 +4286,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         // length a guard cut, which is no length the file gave.
         if (deferred is { } check && (decodedWhole || (!lengthCut && declared <= held)))
         {
-            (_deferredLengths ??= [])[xrefStream.Data.Position] = check;
+            (_deferredLengths ??= new(SeededComparer.Instance))[xrefStream.Data.Position] = check;
         }
 
         // The rows a guard left unread are the only ones that may yet place an object the dictionary names, before any older
@@ -5251,7 +5251,7 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
 
         if (IndexHasRoom)
         {
-            (_refusedNumbers ??= []).Add(number);
+            (_refusedNumbers ??= new(SeededComparer.Instance)).Add(number);
         }
         else
         {
@@ -6676,11 +6676,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// </summary>
     private ReportsMark MarkReports() => new(
         _diagnostics.GetMarkWithDecodingReports(),
-        new HashSet<long>(_lengthFaultsReported),
+        new HashSet<long>(_lengthFaultsReported, SeededComparer.Instance),
         new HashSet<PdfDiagnostic>(_syntaxReported),
-        new HashSet<(PdfLimit Limit, long Position)>(_limitsReached),
-        new HashSet<(long DataStart, int Number)>(_memberLimitsReached),
-        new HashSet<int>(_objectStreamsNeedingThemselves),
+        new HashSet<(PdfLimit Limit, long Position)>(_limitsReached, SeededComparer.Instance),
+        new HashSet<(long DataStart, int Number)>(_memberLimitsReached, SeededComparer.Instance),
+        new HashSet<int>(_objectStreamsNeedingThemselves, SeededComparer.Instance),
         _nestingReported,
         _objectStreamReports.Copy());
 
@@ -7276,16 +7276,16 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     private sealed class ObjectStreamReports
     {
         /// <summary>Where the data starts of each object stream whose own fault was reported.</summary>
-        private readonly HashSet<long> _faults = [];
+        private readonly HashSet<long> _faults = new(SeededComparer.Instance);
 
         /// <summary>
         /// Each object reported at another index of an object stream than its entry gives, with where that stream's data
         /// starts: a stream defined again, which a rebuild may serve, is another place.
         /// </summary>
-        private readonly HashSet<(long DataStart, int Number)> _moves = [];
+        private readonly HashSet<(long DataStart, int Number)> _moves = new(SeededComparer.Instance);
 
         /// <summary>Each object reported written as a stream in an object stream, with where that stream's data starts.</summary>
-        private readonly HashSet<(long DataStart, int Number)> _streamMembers = [];
+        private readonly HashSet<(long DataStart, int Number)> _streamMembers = new(SeededComparer.Instance);
 
         /// <summary>Records the fault of the object stream whose data starts at <paramref name="dataStart"/>, and tells whether it is the first.</summary>
         public bool IsFirstFault(long dataStart) => _faults.Add(dataStart);

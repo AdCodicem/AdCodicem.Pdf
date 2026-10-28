@@ -234,6 +234,67 @@ public class ReaderTimingTests
         }
     }
 
+    [Fact]
+    public void Objects_numbered_to_share_a_bucket_of_the_cache_resolve_as_fast_as_objects_numbered_in_order()
+    {
+        // 20,000 objects as many buckets apart as the reader's cache has once it holds its 8,192, and 200,000 references to
+        // them in turn: each misses the cache, which was keyed by the number itself, and walked the cache's one bucket to
+        // look it up, to add it, and to let the oldest go. Hashed through the process's seed, the same references cost
+        // about what they do to objects numbered in order. The measure is the ratio, the best of five resolutions of each.
+        const int Count = 20_000;
+        const int References = 200_000;
+        var size = CollidingNumbers.GrownSize(new PdfReaderOptions().ObjectCacheCapacity);
+        var colliding = CollidingNumbers.Referenced(CollidingNumbers.Numbers(Count, size, colliding: true), References);
+        var ordered = CollidingNumbers.Referenced(CollidingNumbers.Numbers(Count, size, colliding: false), References);
+
+        var orderedTime = BestOfFive(() => ResolveAll(ordered));
+        var collidingTime = BestOfFive(() => ResolveAll(colliding));
+
+        collidingTime.Should().BeLessThan(
+            orderedTime * 4,
+            "objects numbered to collide must resolve in about the time the same objects numbered in order do ({0} against {1})",
+            collidingTime,
+            orderedTime);
+
+        static void ResolveAll(byte[] file)
+        {
+            using var document = PdfDocument.Open(file);
+            var array = document.GetObject(new PdfObjectId(3)).AsArray().Required();
+            var integers = 0;
+
+            for (var i = 0; i < array.Count; i++)
+            {
+                integers += array.Resolved(i) is PdfInteger ? 1 : 0;
+            }
+
+            integers.Should().Be(References);
+        }
+    }
+
+    [Fact]
+    public void A_validation_of_numbers_chosen_to_share_a_bucket_takes_the_time_of_one_numbered_in_order()
+    {
+        // The catalog reaches 100,000 references to 30,000 free numbers, as many buckets apart as a set grown to hold them
+        // has: the walk of the reachable objects kept them in sets keyed by the number itself, all in one bucket. Hashed
+        // through the process's seed, they validate in about the time the same references to numbers in order do. The
+        // measure is the ratio, the best of five validations of each.
+        const int Count = 30_000;
+        const int References = 100_000;
+        var size = CollidingNumbers.GrownSize(Count);
+        using var colliding = PdfDocument.Open(CollidingNumbers.ReachedFree(CollidingNumbers.Numbers(Count, size, colliding: true), References));
+        using var ordered = PdfDocument.Open(CollidingNumbers.ReachedFree(CollidingNumbers.Numbers(Count, size, colliding: false), References));
+        var validator = new PdfValidator();
+
+        var orderedTime = BestOfFive(() => validator.Validate(ordered));
+        var collidingTime = BestOfFive(() => validator.Validate(colliding));
+
+        collidingTime.Should().BeLessThan(
+            orderedTime * 4,
+            "references numbered to collide must validate in about the time the same references numbered in order do ({0} against {1})",
+            collidingTime,
+            orderedTime);
+    }
+
     /// <summary>Gets the shortest of five runs of <paramref name="action"/>, after one to warm up.</summary>
     private static TimeSpan BestOfFive(Action action)
     {

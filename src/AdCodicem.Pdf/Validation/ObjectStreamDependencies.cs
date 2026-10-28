@@ -61,7 +61,7 @@ internal sealed class ObjectStreamDependencies
     public List<ProbeFinding> Circular { get; } = [];
 
     /// <summary>Gets the numbers of the circular object streams.</summary>
-    public HashSet<int> CircularStreams { get; } = [];
+    public HashSet<int> CircularStreams { get; } = new(SeededComparer.Instance);
 
     /// <summary>
     /// Gets the object streams whose <c>/N</c>, <c>/First</c> or <c>/Length</c> is a real number with no fractional part,
@@ -92,8 +92,8 @@ internal sealed class ObjectStreamDependencies
 
         // What each stream needs: the first object of another stream, or of itself, found under each decoding key; and where
         // the chain's row places each stream read.
-        var needs = new Dictionary<int, List<Need>>();
-        var locations = new Dictionary<int, PdfValidationLocation>();
+        var needs = new Dictionary<int, List<Need>>(SeededComparer.Instance);
+        var locations = new Dictionary<int, PdfValidationLocation>(SeededComparer.Instance);
 
         // The references each object written in the file holds, which the decoding keys lead through: read once for every
         // stream they lead from, as many objects kept as the reader keeps in its cache, and nothing else of them.
@@ -157,7 +157,7 @@ internal sealed class ObjectStreamDependencies
     private static List<Need> Needs(PdfDocument document, PdfDictionary dictionary, PdfName[] keys, ReferenceMemo references)
     {
         var found = new List<Need>();
-        var seen = new HashSet<int>();
+        var seen = new HashSet<int>(SeededComparer.Instance);
         var work = new Stack<PdfObjectId>();
 
         foreach (var key in keys)
@@ -311,7 +311,7 @@ internal sealed class ObjectStreamDependencies
 
     private static bool Reaches(int from, int target, Dictionary<int, List<Need>> needs)
     {
-        var seen = new HashSet<int> { from };
+        var seen = new HashSet<int>(SeededComparer.Instance) { from };
         var work = new Stack<int>();
         work.Push(from);
 
@@ -384,7 +384,7 @@ internal sealed class ObjectStreamDependencies
     /// </summary>
     private sealed class ReferenceMemo(int capacity)
     {
-        private readonly Dictionary<int, HeldReferences> _held = [];
+        private readonly Dictionary<int, HeldReferences> _held = new(SeededComparer.Instance);
         private readonly Queue<int> _order = new();
 
         /// <summary>Gives the references object <paramref name="number"/> holds, if they are kept.</summary>

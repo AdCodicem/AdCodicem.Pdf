@@ -99,4 +99,69 @@ internal static class CollidingNumbers
         file.Append("trailer\n<< /Root 1 0 R >>\n%%EOF\n");
         return Encoding.ASCII.GetBytes(file.ToString());
     }
+
+    /// <summary>
+    /// Writes a catalog, an empty page tree, an integer under each of <paramref name="numbers"/>, and object 3, an array of
+    /// <paramref name="references"/> references to them in turn; a classic table indexes each in a subsection of its own.
+    /// </summary>
+    public static byte[] Referenced(int[] numbers, int references)
+    {
+        var file = new StringBuilder("%PDF-1.7\n");
+        var rows = new StringBuilder();
+        var catalog = file.Length;
+        file.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        var pages = file.Length;
+        file.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var array = file.Length;
+        AppendArray(file, numbers, references);
+
+        foreach (var number in numbers)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"{number} 1\n{file.Length:D10} 00000 n \n");
+            file.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n1\nendobj\n");
+        }
+
+        var xref = file.Length;
+        file.Append(CultureInfo.InvariantCulture, $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{array:D10} 00000 n \n");
+        file.Append(rows);
+        file.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {numbers.Max() + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        return Encoding.ASCII.GetBytes(file.ToString());
+    }
+
+    /// <summary>
+    /// Writes a catalog whose <c>/Extra</c> reaches object 3, an array of <paramref name="references"/> references to each
+    /// of <paramref name="numbers"/> in turn, and a classic table that marks each number free in a subsection of its own.
+    /// </summary>
+    public static byte[] ReachedFree(int[] numbers, int references)
+    {
+        var file = new StringBuilder("%PDF-1.7\n");
+        var catalog = file.Length;
+        file.Append("1 0 obj\n<< /Type /Catalog /Pages 2 0 R /Extra 3 0 R >>\nendobj\n");
+        var pages = file.Length;
+        file.Append("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+        var array = file.Length;
+        AppendArray(file, numbers, references);
+        var xref = file.Length;
+        file.Append(CultureInfo.InvariantCulture, $"xref\n0 4\n0000000000 65535 f \n{catalog:D10} 00000 n \n{pages:D10} 00000 n \n{array:D10} 00000 n \n");
+
+        foreach (var number in numbers)
+        {
+            file.Append(CultureInfo.InvariantCulture, $"{number} 1\n0000000000 00001 f \n");
+        }
+
+        file.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {numbers.Max() + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        return Encoding.ASCII.GetBytes(file.ToString());
+    }
+
+    private static void AppendArray(StringBuilder file, int[] numbers, int references)
+    {
+        file.Append("3 0 obj\n[");
+
+        for (var i = 0; i < references; i++)
+        {
+            file.Append(numbers[i % numbers.Length]).Append(" 0 R ");
+        }
+
+        file.Append("]\nendobj\n");
+    }
 }
