@@ -1123,7 +1123,7 @@ public class SeededComparerTests
         {
             var i = 0;
 
-            for (;;)
+            for (; ; )
             {
                 Table = new(StringComparer.Ordinal);
                 Shards[i] = Table;
