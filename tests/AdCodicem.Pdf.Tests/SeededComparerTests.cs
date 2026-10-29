@@ -347,12 +347,12 @@ public class SeededComparerTests
         // type or a generic interface of it, only to find or add one name. An enumeration's values are the library's
         // own, and how the hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's
         // and PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
-        // callers choose its key, and no reading follows them; nor does it give such a table type, or a type parameter
-        // with no new() constraint, whose callers no reading follows, where new(), Activator, Lazy, LazyInitializer, a
-        // ConditionalWeakTable's GetOrCreateValue, a BindingList or Marshal.PtrToStructure builds it, a Lazy or a
-        // BindingList one of them builds counting as the table it builds in turn, nor deserialize JSON into a type
-        // argument, which builds every table that type holds with .NET's default comparer unless options the reading
-        // cannot see say otherwise.
+        // callers choose its key, and no reading follows them; nor does it give such a table type, or any type
+        // parameter, whatever its constraints, whose callers' types no reading wholly follows, where new(), Activator,
+        // Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue, a BindingList or Marshal.PtrToStructure
+        // builds it, a Lazy or a BindingList one of them builds counting as the table it builds in turn, nor
+        // deserialize JSON into a type argument, which builds every table that type holds with .NET's default comparer
+        // unless its options or the type say otherwise, out of the reading's sight: the library reads no JSON.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes(), typeof(PdfName)))
@@ -368,14 +368,14 @@ public class SeededComparerTests
     {
         // The check above sees what a source reading cannot: an out var given [], an expression body, a comparer handed
         // on one path only, a base constructor, a factory, a collection expression lowered to one, a method group, a
-        // table over a type parameter whatever its comparer, a table type, or a type parameter with no new()
-        // constraint, that a new() constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable, a BindingList
-        // or Marshal.PtrToStructure builds, or a Lazy or a BindingList one of them builds, a JSON deserializer whatever
-        // its type argument, a table keyed by any object, a value type or any interface, a type deriving from a tuple,
-        // read through the tuple it hashes as, a record that is not sealed, a non-generic hash table, and a collection
-        // that enumerates by hash, seeded or not: the order the process's seed gives it would reach what the library
-        // reports or writes (invariant 6). The samples hold, one per condition, shapes the source reading sees as well:
-        // every number type and every hashing operator among them.
+        // table over a type parameter whatever its comparer, a table type, or any type parameter, that a new()
+        // constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable, a BindingList or Marshal.PtrToStructure
+        // builds, or a Lazy or a BindingList one of them builds, a JSON deserializer whatever its type argument, a
+        // table keyed by any object, a value type or any interface, a type deriving from a tuple, read through the
+        // tuple it hashes as, a record that is not sealed, a non-generic hash table, and a collection that enumerates
+        // by hash, seeded or not: the order the process's seed gives it would reach what the library reports or writes
+        // (invariant 6). The samples hold, one per condition, shapes the source reading sees as well: every number type
+        // and every hashing operator among them.
         var refused = Refused(typeof(Unseeded));
 
         refused.Should().BeEquivalentTo(
@@ -523,6 +523,12 @@ public class SeededComparerTests
             nameof(Unseeded.LazyOfLazy),
             nameof(Unseeded.ActivatorLazy),
             nameof(Unseeded.MadeBound),
+            nameof(Unseeded.LazyConstrained),
+            nameof(Unseeded.ActivatorLazyOpen),
+            nameof(Unseeded.Make),
+            nameof(Unseeded.MakeHinted),
+            "Wrapper",
+            "Holder",
             nameof(Unseeded.NestedCreation),
             nameof(Unseeded.WrappedCreation),
             "IntDictionary",
@@ -989,6 +995,11 @@ public class SeededComparerTests
 
         public static T ActivatorBare<T>() => Activator.CreateInstance<T>();
 
+        public static T LazyConstrained<T>()
+            where T : new() => new Lazy<T>().Value;
+
+        public static T ActivatorLazyOpen<T>() => Activator.CreateInstance<Lazy<T>>().Value;
+
         public static T LazyInitializedBare<T>()
             where T : class
         {
@@ -1135,9 +1146,6 @@ public class SeededComparerTests
         public static int ActivatorLazyList() => Activator.CreateInstance<Lazy<List<int>>>().Value.Count;
 
         public static int LazyMetadataFactory() => new Lazy<HashSet<int>, int>(() => new HashSet<int>(SeededComparer.Instance), 0).Value.Count;
-
-        public static T LazyConstrained<T>()
-            where T : new() => new Lazy<T>().Value;
 
         public static int WeakGiven(System.Runtime.CompilerServices.ConditionalWeakTable<object, HashSet<int>> table, object key) =>
             table.GetValue(key, static _ => new HashSet<int>(SeededComparer.Instance)).Count;
@@ -1606,10 +1614,11 @@ public class SeededComparerTests
 
         /// <summary>
         /// The instructions that build or call what they name, take a method group of it, virtual or not, or load or
-        /// store a static field, or take its address: any of them on a generic type runs its static initializer for the
-        /// type arguments it names. A virtual method group is read for what reaches the interning table, and for a
-        /// table a <c>new()</c> constraint builds for its type argument, as an interface's or a virtual generic method
-        /// may; no hashing operator, factory or table constructor is virtual.
+        /// store a static field, or take its address. A use of a static field of a generic type runs its static
+        /// initializer for the type arguments it names; a call, a construction or a method group of a member of one is
+        /// read for what that member builds for them. A virtual method group is read for what reaches the interning
+        /// table, and for a table a <c>new()</c> constraint builds for its type argument, as an interface's or a
+        /// virtual generic method may; no hashing operator, factory or table constructor is virtual.
         /// </summary>
         private static readonly HashSet<OpCode> Considered =
             [OpCodes.Newobj, OpCodes.Call, OpCodes.Callvirt, OpCodes.Ldftn, OpCodes.Ldvirtftn, OpCodes.Ldsfld, OpCodes.Ldsflda, OpCodes.Stsfld];
@@ -1671,19 +1680,20 @@ public class SeededComparerTests
         /// takes no comparer. A collection over a type parameter is refused whatever its comparer: its key is whatever
         /// its callers choose, and so is the comparer they hand it, which no reading follows. A table type given where
         /// <c>new()</c>, Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue, a BindingList or
-        /// Marshal.PtrToStructure builds it, or Activator, takes no comparer either, nor does one a type parameter with
-        /// no <c>new()</c> constraint stands for, whose callers no reading follows, nor what a JSON deserializer
-        /// builds, nor a table keyed by any object. A collection that enumerates in an order its keys' hashes set — a
-        /// concurrent dictionary, a frozen or immutable hash collection, its builder or an immutable one's <c>Empty</c>
-        /// — is refused whatever its key and its comparer: no key, comparer or hash can be read to say that a seed,
-        /// which differs from one process to the next, orders nothing it gives. One is let be, the interning table of
-        /// <paramref name="interning"/>, PdfName for the library: a concurrent dictionary from strings to it, the first
-        /// its static constructor builds ahead of every branch target and stores straight into a static field, reached
-        /// through its type or a generic interface of it only to find or add one entry; a call to, or a method group
-        /// of, a member that takes it, gives it, views it or names its pairs, in an array, a reference or a type
-        /// argument included, at any depth, or a static field declared on a type built over its pairs or a view of it,
-        /// is refused. Through object, a non-generic interface or an expression tree, which names its members by token,
-        /// it is not followed.
+        /// Marshal.PtrToStructure builds it, or Activator, takes no comparer either, nor does a Lazy or a BindingList
+        /// one of them builds, nor any type parameter, whatever its constraints, which the library never builds since
+        /// what its callers give it is not all read, nor what a JSON deserializer builds, whatever its type argument,
+        /// since its options or the type may choose a comparer out of the reading's sight, nor a table keyed by any
+        /// object. A collection that enumerates in an order its keys' hashes set — a concurrent dictionary, a frozen or
+        /// immutable hash collection, its builder or an immutable one's <c>Empty</c> — is refused whatever its key and
+        /// its comparer: no key, comparer or hash can be read to say that a seed, which differs from one process to the
+        /// next, orders nothing it gives. One is let be, the interning table of <paramref name="interning"/>, PdfName
+        /// for the library: a concurrent dictionary from strings to it, the first its static constructor builds ahead
+        /// of every branch target and stores straight into a static field, reached through its type or a generic
+        /// interface of it only to find or add one entry; a call to, or a method group of, a member that takes it,
+        /// gives it, views it or names its pairs, in an array, a reference or a type argument included, at any depth,
+        /// or a static field declared on a type built over its pairs or a view of it, is refused. Through object, a
+        /// non-generic interface or an expression tree, which names its members by token, it is not followed.
         /// </summary>
         public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(IEnumerable<Type> types, Type? interning = null)
         {
@@ -1795,14 +1805,13 @@ public class SeededComparerTests
         }
 
         /// <summary>
-        /// Determines whether <paramref name="member"/> builds a table for a type argument it is given, or one a type
-        /// parameter whose callers no reading follows may stand for: where a <c>new()</c> constraint lets it, or as the
-        /// framework's builders do without a factory or a value — Activator, Lazy, LazyInitializer, a
-        /// ConditionalWeakTable's GetOrCreateValue, a BindingList for AddNew and Marshal.PtrToStructure, those a sweep
-        /// of .NET 10's shared framework found that may build a table, none handing it a comparer —; or whether it
-        /// deserializes JSON into a type argument, which builds every table that type holds with .NET's default
-        /// comparer unless its options or the type say otherwise, out of the reading's sight: the library reads no
-        /// JSON.
+        /// Determines whether <paramref name="member"/> builds a table for a type argument it is given, or one any type
+        /// parameter may stand for: where a <c>new()</c> constraint lets it, or as the framework's builders do without
+        /// a factory or a value — Activator, Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue, a
+        /// BindingList for AddNew and Marshal.PtrToStructure, those a sweep of .NET 10's shared framework found that
+        /// may build a table, none handing it a comparer —; or whether it deserializes JSON into a type argument, which
+        /// builds every table that type holds with .NET's default comparer unless its options or the type say
+        /// otherwise, out of the reading's sight: the library reads no JSON.
         /// </summary>
         private static bool BuildsTypeArgument(MemberInfo member)
         {
@@ -1870,13 +1879,12 @@ public class SeededComparerTests
         }
 
         /// <summary>
-        /// Determines whether what a framework builder builds for <paramref name="type"/> may be a table: it builds
-        /// one, or it is a type parameter with no <c>new()</c> constraint, whose callers no reading follows; one with
-        /// that constraint has its callers read where they give it a type.
+        /// Determines whether what a builder builds for <paramref name="type"/> may be a table: it builds one, or it is
+        /// a type parameter, whatever its constraints. The library builds no type it is given in generic code, which
+        /// takes a factory instead: what its callers give a type parameter, through a dispatch, a constrained call or a
+        /// default implementation as well as a call, is not all read.
         /// </summary>
-        private static bool BuildsTable(Type type) =>
-            CreatesTable(type)
-            || (type.IsGenericParameter && !type.GenericParameterAttributes.HasFlag(GenericParameterAttributes.DefaultConstructorConstraint));
+        private static bool BuildsTable(Type type) => CreatesTable(type) || type.IsGenericParameter;
 
         /// <summary>
         /// Gets the constructor of its type's generic definition that <paramref name="constructor"/> instantiates.

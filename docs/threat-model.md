@@ -186,19 +186,20 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
   a member that takes it, gives it, views it or names its pairs, in an array, a reference or a type argument included,
   at any depth, or a static field declared on a type built over its pairs or a view of it, is refused, and through
   `object`, a non-generic interface or an expression tree, which names its members by token, it is not followed; and a
-  table over such a key, a type parameter, or one that enumerates by hash, built for a type argument, or for a type
-  parameter with no `new()` constraint, whose callers no reading follows, by `new()`, `Activator`, `Lazy`,
-  `LazyInitializer`, a `ConditionalWeakTable`'s `GetOrCreateValue`, a `BindingList`, which builds one for `AddNew`, or
-  `Marshal.PtrToStructure` — the builders a sweep of .NET 10's shared framework found that may build a table, none
-  handing it a comparer, a `Lazy` or a `BindingList` one of them builds counting as the table it builds in turn —; and a
-  generic JSON deserializer of `System.Text.Json` or `System.Net.Http.Json`, whatever its type argument, which builds
-  every table that type holds with .NET's default comparer unless its options or the type say otherwise, out of the
-  reading's sight: the library reads no JSON. The library builds no hash collection over a type parameter, whatever its
-  comparer, since its callers choose the key; how the hash of a type the library hashes by hand spreads is held by its
-  own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; a collection built through reflection otherwise, or one a
-  framework method returns under another type, is not read. It reads through the probes code coverage puts, and only
-  their shape: any other instruction between the comparer and the table refuses it. The other reads the sources and
-  names the file and line of the shapes it recognizes.
+  table over such a key, a type parameter, or one that enumerates by hash, built for a type argument, or for any type
+  parameter, whatever its constraints, by `new()`, `Activator`, `Lazy`, `LazyInitializer`, a `ConditionalWeakTable`'s
+  `GetOrCreateValue`, a `BindingList`, which builds one for `AddNew`, or `Marshal.PtrToStructure` — the builders a sweep
+  of .NET 10's shared framework found that may build a table, none handing it a comparer, a `Lazy` or a `BindingList`
+  one of them builds counting as the table it builds in turn —; and a generic JSON deserializer of `System.Text.Json` or
+  `System.Net.Http.Json`, whatever its type argument, which builds every table that type holds with .NET's default
+  comparer unless its options or the type say otherwise, out of the reading's sight: the library reads no JSON. The
+  library builds no type parameter it is given, generic code taking a factory instead: what its callers give it, through
+  a dispatch, a constrained call or a default implementation as well as a call, is not all read. The library builds no
+  hash collection over a type parameter, whatever its comparer, since its callers choose the key; how the hash of a type
+  the library hashes by hand spreads is held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; a
+  collection built through reflection otherwise, or one a framework method returns under another type, is not read. It
+  reads through the probes code coverage puts, and only their shape: any other instruction between the comparer and the
+  table refuses it. The other reads the sources and names the file and line of the shapes it recognizes.
 
 ### Everything read is bounded by the source
 
