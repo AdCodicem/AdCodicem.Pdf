@@ -165,9 +165,9 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
 - **No order the hashes give reaches an output.** A table enumerates in an order set by what was added to it and removed
   from it, never by its keys' hashes, so that a seed that differs from one process to the next changes nothing the
   library reports or writes (invariant 6). The library builds no table that enumerates by hash — concurrent, frozen,
-  immutable, a `StringDictionary` —, whatever its key and comparer, which the reading of the compiled library below
-  holds, but `PdfName`'s interning table, keyed by strings, which .NET hashes without a seed until a chain grows long,
-  and through the strings' seed after, and which nothing enumerates.
+  immutable, a `StringDictionary` or an obsolete `XmlSchemaCollection` —, whatever its key and comparer, which the
+  reading of the compiled library below holds, but `PdfName`'s interning table, keyed by strings, which .NET hashes
+  without a seed until a chain grows long, and through the strings' seed after, and which nothing enumerates.
 - **Two tests read the code** (`SeededComparerTests`). One reads the compiled library and refuses every hash collection
   built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
   one, a type of the library hashed as the compiler writes a record's hash or a record that is not sealed, which one so

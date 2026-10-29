@@ -340,21 +340,22 @@ public class SeededComparerTests
         // or struct may stand too, which no comparer of a number seeds: an identity table is keyed by a reference type
         // of the library with ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash
         // — concurrent, frozen or immutable, its factories, its builder and an immutable one's Empty included, a
-        // StringDictionary, however built — is refused whatever its key and comparer: a hash that goes through a seed,
-        // now or after a later change, would order what it gives (invariant 6), and no key is argued one by one. The
-        // one named and let be is PdfName's interning table, keyed by strings, which its static constructor builds
-        // once, ahead of every branch target and straight into a static field, and the library reaches, through its
-        // type or a generic interface of it, only to find or add one name. An enumeration's values are the library's
-        // own, and how the hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's
-        // and PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
-        // callers choose its key, and no reading follows them; nor does it give such a table type where a new()
-        // constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue, a BindingList or
-        // Marshal.PtrToStructure builds it, a Lazy or a BindingList one of them builds counting as the table it builds
-        // in turn, nor build a type parameter it is given, whatever its constraints, its own new() compiling to
-        // Activator, since what its callers give it is not all read — no new() constraint of .NET 10's shared framework
-        // can stand for a table, and one of the library's is read in its own body —, nor deserialize JSON into a type
-        // argument, which builds every table that type holds with .NET's default comparer unless its options or the
-        // type say otherwise, out of the reading's sight: the library reads no JSON.
+        // StringDictionary or an obsolete XmlSchemaCollection, however built — is refused whatever its key and
+        // comparer: a hash that goes through a seed, now or after a later change, would order what it gives (invariant
+        // 6), and no key is argued one by one. The one named and let be is PdfName's interning table, keyed by strings,
+        // which its static constructor builds once, ahead of every branch target and straight into a static field, and
+        // the library reaches, through its type or a generic interface of it, only to find or add one name. An
+        // enumeration's values are the library's own, and how the hash of a type the library hashes by hand spreads is
+        // held by its own tests, as PdfObjectId's and PdfDiagnostic's are. The library builds no collection over a type
+        // parameter, whatever its comparer: its callers choose its key, and no reading follows them; nor does it give
+        // such a table type where a new() constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable's
+        // GetOrCreateValue, a BindingList or Marshal.PtrToStructure builds it, a Lazy or a BindingList one of them
+        // builds counting as the table it builds in turn, nor build a type parameter it is given, whatever its
+        // constraints, its own new() compiling to Activator, since what its callers give it is not all read — no new()
+        // constraint of .NET 10's shared framework can stand for a table, and one of the library's is read in its own
+        // body —, nor deserialize JSON into a type argument, which builds every table that type holds with .NET's
+        // default comparer unless its options or the type say otherwise, out of the reading's sight: the library reads
+        // no JSON.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes(), typeof(PdfName)))
@@ -529,6 +530,21 @@ public class SeededComparerTests
             nameof(Unseeded.Entries),
             nameof(Unseeded.Extended),
             nameof(Unseeded.Schemas),
+            nameof(Unseeded.BoundTables),
+            nameof(Unseeded.CreatedDictionary),
+            nameof(Unseeded.LimitOffsetKey),
+            nameof(Unseeded.LongFirstKey),
+            nameof(Unseeded.TripleKey),
+            nameof(Unseeded.EquatableKey),
+            nameof(Unseeded.DeserializedAsync),
+            nameof(Unseeded.ReadAsJsonStream),
+            nameof(Unseeded.LazyInitializedGuarded),
+            nameof(Unseeded.LazyThreadSafe),
+            nameof(Unseeded.PairedSecond),
+            nameof(Unseeded.PairedFirst),
+            nameof(Unseeded.MakeSecond),
+            nameof(Unseeded.MakeFirst),
+            nameof(Unseeded.Implemented),
             "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
@@ -1062,6 +1078,46 @@ public class SeededComparerTests
         public static int Schemas() => new System.Xml.Schema.XmlSchemaCollection().Count;
 #pragma warning restore CS0618
 
+        public static int BoundTables() => new System.ComponentModel.BindingList<Hashtable>().Count;
+
+        public static int CreatedDictionary() => Activator.CreateInstance<Dictionary<long, string>>().Count;
+
+        public static HashSet<(PdfLimit, long)> LimitOffsetKey() => [];
+
+        public static HashSet<LongFirst> LongFirstKey() => [];
+
+        public static HashSet<(long, int, int)> TripleKey() => [];
+
+        public static HashSet<IEquatable<long>> EquatableKey() => [];
+
+        public static ValueTask<int> DeserializedAsync(Stream stream) => System.Text.Json.JsonSerializer.DeserializeAsync<int>(stream);
+
+        public static IAsyncEnumerable<int> ReadAsJsonStream(HttpContent content) =>
+            System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsAsyncEnumerable<int>(content);
+
+        public static int LazyInitializedGuarded()
+        {
+            HashSet<int>? seen = null;
+            var initialized = false;
+            object? gate = null;
+            return LazyInitializer.EnsureInitialized(ref seen, ref initialized, ref gate)!.Count;
+        }
+
+        public static int LazyThreadSafe() => new Lazy<HashSet<int>>(isThreadSafe: true).Value.Count;
+
+        public static int PairedSecond() => MakeSecond<int, HashSet<int>>().Count;
+
+        public static int PairedFirst() => MakeFirst<HashSet<int>, int>().Count;
+
+        public static TSecond MakeSecond<TFirst, TSecond>()
+            where TSecond : new() => new();
+
+        public static TFirst MakeFirst<TFirst, TSecond>()
+            where TFirst : new() => new();
+
+        public static int Implemented(System.Xml.Serialization.XmlSerializerImplementation implementation) =>
+            implementation.ReadMethods?.Count ?? 0;
+
         private sealed class IntDictionary : Dictionary<int, string>;
 
         /// <summary>A table derived from a non-generic one, which its base constructor builds.</summary>
@@ -1220,6 +1276,9 @@ public class SeededComparerTests
 
     /// <summary>A key deriving from a tuple of numbers, which hashes as the tuple does.</summary>
     private sealed class TupleChild(long first, int second) : Tuple<long, int>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only number is its first item, which hashes as the tuple does.</summary>
+    private sealed class LongFirst(long first, string second) : Tuple<long, string>(first, second);
 
     /// <summary>A key deriving from a tuple of its type argument, which hashes as the tuple does.</summary>
     private sealed class GenericTupleChild<T>(T first, T second) : Tuple<T, T>(first, second);
