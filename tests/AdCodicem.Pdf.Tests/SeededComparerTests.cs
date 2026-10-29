@@ -321,6 +321,36 @@ public class SeededComparerTests
             nameof(Unseeded.CaseInsensitive),
             nameof(Unseeded.OperatorAsync),
             nameof(Unseeded.ValueTypeKey),
+            nameof(Unseeded.LookedUp),
+            nameof(Unseeded.DistinctByKey),
+            nameof(Unseeded.Grouped),
+            nameof(Unseeded.GroupJoined),
+            nameof(Unseeded.Joined),
+            nameof(Unseeded.LeftJoined),
+            nameof(Unseeded.RightJoined),
+            nameof(Unseeded.United),
+            nameof(Unseeded.UnitedBy),
+            nameof(Unseeded.Intersected),
+            nameof(Unseeded.IntersectedBy),
+            nameof(Unseeded.Excepted),
+            nameof(Unseeded.ExceptedBy),
+            nameof(Unseeded.CountedBy),
+            nameof(Unseeded.AggregatedBy),
+            nameof(Unseeded.ShortKey),
+            nameof(Unseeded.UShortKey),
+            nameof(Unseeded.UIntKey),
+            nameof(Unseeded.ULongKey),
+            nameof(Unseeded.NIntKey),
+            nameof(Unseeded.NUIntKey),
+            nameof(Unseeded.Int128Key),
+            nameof(Unseeded.UInt128Key),
+            nameof(Unseeded.BigIntegerKey),
+            nameof(Unseeded.HalfKey),
+            nameof(Unseeded.FloatKey),
+            nameof(Unseeded.DecimalKey),
+            nameof(Unseeded.AnonymousSet),
+            nameof(Unseeded.MixedTupleKey),
+            nameof(Unseeded.Hinted),
             nameof(Unseeded.Strings),
             nameof(Unseeded.CreatedStrings),
             nameof(Unseeded.LazyStrings),
@@ -404,6 +434,12 @@ public class SeededComparerTests
         CompiledRules.TablesBuilt([typeof(LoopedCompared)], typeof(LoopedCompared))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedCompared>..ctor");
+        CompiledRules.TablesBuilt([typeof(LoopedLong)], typeof(LoopedLong))
+            .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
+            .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedLong>..ctor");
+        CompiledRules.TablesBuilt([typeof(LoopedSwitch)], typeof(LoopedSwitch))
+            .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
+            .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedSwitch>..ctor");
         CompiledRules.TablesBuilt([typeof(Instanced)], typeof(Instanced))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".ctor: ConcurrentDictionary`2<String, Instanced>..ctor");
@@ -420,7 +456,8 @@ public class SeededComparerTests
         // instruction there is read as it stands, a tracker's field stored otherwise than a probe stores it included, so
         // that a probe another instrumenter writes otherwise refuses the table rather than hiding what follows it. A branch
         // that lands on a probe lands on what follows it, so that a comparer handed on one path only, the probe at the join,
-        // stays refused.
+        // stays refused; and a probe takes out itself alone, so that a table built with no comparer right after one stays
+        // refused.
         var module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Probed"), AssemblyBuilderAccess.Run).DefineDynamicModule("Probed");
         var tracker = module.DefineType("StaticManagedTrackerTemplate_Sample", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
         var begin = tracker.DefineField("Begin", typeof(nint), FieldAttributes.Public | FieldAttributes.Static);
@@ -448,9 +485,17 @@ public class SeededComparerTests
         branched.Emit(OpCodes.Stind_I1);
         branched.Emit(OpCodes.Newobj, constructor);
         branched.Emit(OpCodes.Ret);
+        var bare = samples.DefineMethod("ProbeThenBare", MethodAttributes.Public | MethodAttributes.Static, typeof(HashSet<int>), Type.EmptyTypes).GetILGenerator();
+        bare.Emit(OpCodes.Ldsfld, begin);
+        bare.Emit(OpCodes.Ldc_I4, 3);
+        bare.Emit(OpCodes.Add);
+        bare.Emit(OpCodes.Ldc_I4_1);
+        bare.Emit(OpCodes.Stind_I1);
+        bare.Emit(OpCodes.Newobj, typeof(HashSet<int>).GetConstructor(Type.EmptyTypes)!);
+        bare.Emit(OpCodes.Ret);
         var type = samples.CreateType();
 
-        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().BeEquivalentTo("Wedged", "Misshapen", "OnePathProbed");
+        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().BeEquivalentTo("Wedged", "Misshapen", "OnePathProbed", "ProbeThenBare");
 
         void Emit(string name, params Action<ILGenerator>[] between)
         {
@@ -595,6 +640,73 @@ public class SeededComparerTests
         public static ValueTask<HashSet<int>> OperatorAsync(IAsyncEnumerable<int> numbers) => numbers.ToHashSetAsync();
 
         public static HashSet<ValueType> ValueTypeKey() => [];
+
+        public static int LookedUp(int[] numbers, int[] others) => numbers.ToLookup(n => n).Count;
+
+        public static int DistinctByKey(int[] numbers, int[] others) => numbers.DistinctBy(n => n).Count();
+
+        public static int Grouped(int[] numbers, int[] others) => numbers.GroupBy(n => n).Count();
+
+        public static int GroupJoined(int[] numbers, int[] others) => numbers.GroupJoin(others, n => n, o => o, (n, _) => n).Count();
+
+        public static int Joined(int[] numbers, int[] others) => numbers.Join(others, n => n, o => o, (n, _) => n).Count();
+
+        public static int LeftJoined(int[] numbers, int[] others) => numbers.LeftJoin(others, n => n, o => o, (n, _) => n).Count();
+
+        public static int RightJoined(int[] numbers, int[] others) => numbers.RightJoin(others, n => n, o => o, (_, o) => o).Count();
+
+        public static int United(int[] numbers, int[] others) => numbers.Union(others).Count();
+
+        public static int UnitedBy(int[] numbers, int[] others) => numbers.UnionBy(others, n => n).Count();
+
+        public static int Intersected(int[] numbers, int[] others) => numbers.Intersect(others).Count();
+
+        public static int IntersectedBy(int[] numbers, int[] others) => numbers.IntersectBy(others, n => n).Count();
+
+        public static int Excepted(int[] numbers, int[] others) => numbers.Except(others).Count();
+
+        public static int ExceptedBy(int[] numbers, int[] others) => numbers.ExceptBy(others, n => n).Count();
+
+        public static int CountedBy(int[] numbers, int[] others) => numbers.CountBy(n => n).Count();
+
+        public static int AggregatedBy(int[] numbers, int[] others) => numbers.AggregateBy(n => n, 0, (sum, n) => sum + n).Count();
+
+        public static HashSet<short> ShortKey() => [];
+
+        public static HashSet<ushort> UShortKey() => [];
+
+        public static HashSet<uint> UIntKey() => [];
+
+        public static HashSet<ulong> ULongKey() => [];
+
+        public static HashSet<nint> NIntKey() => [];
+
+        public static HashSet<nuint> NUIntKey() => [];
+
+        public static HashSet<Int128> Int128Key() => [];
+
+        public static HashSet<UInt128> UInt128Key() => [];
+
+        public static HashSet<System.Numerics.BigInteger> BigIntegerKey() => [];
+
+        public static HashSet<Half> HalfKey() => [];
+
+        public static HashSet<float> FloatKey() => [];
+
+        public static HashSet<decimal> DecimalKey() => [];
+
+        public static int AnonymousSet(IEnumerable<int> numbers) => numbers.Select(n => new { N = n }).ToHashSet().Count;
+
+        public static HashSet<(long, string)> MixedTupleKey() => [];
+
+        public static int Hinted() => MakeHinted<HashSet<int>>(SeededComparer.Instance).Count;
+
+        public static T MakeHinted<T>(object hint)
+            where T : new()
+        {
+            GC.KeepAlive(hint);
+            return new();
+        }
 
         public static int Strings() => new System.Collections.Specialized.StringDictionary().Count;
 
@@ -946,6 +1058,93 @@ public class SeededComparerTests
         }
 
         public static LoopedCompared Get(string value) => Table.GetOrAdd(value, static _ => new LoopedCompared());
+    }
+
+    /// <summary>
+    /// A stand-in whose static constructor builds its table in a loop long enough that its branch back takes the long form.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1810:Initialize reference type static fields inline",
+        Justification = "The sample is a static constructor that builds its table in a loop.")]
+    private sealed class LoopedLong
+    {
+        private static readonly ConcurrentDictionary<string, LoopedLong>[] Shards = new ConcurrentDictionary<string, LoopedLong>[2];
+
+        private static readonly ConcurrentDictionary<string, LoopedLong> Table;
+
+        private static readonly int Sum;
+
+        static LoopedLong()
+        {
+            var i = 0;
+
+            do
+            {
+                Table = new(StringComparer.Ordinal);
+                Shards[i] = Table;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+                Sum += i;
+            }
+            while (++i < Shards.Length);
+        }
+
+        public static int Total => Sum;
+
+        public static LoopedLong Get(string value) => Table.GetOrAdd(value, static _ => new LoopedLong());
+    }
+
+    /// <summary>A stand-in whose static constructor builds its table in a loop that a switch closes.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1810:Initialize reference type static fields inline",
+        Justification = "The sample is a static constructor that builds its table in a loop.")]
+    private sealed class LoopedSwitch
+    {
+        private static readonly ConcurrentDictionary<string, LoopedSwitch>[] Shards = new ConcurrentDictionary<string, LoopedSwitch>[5];
+
+        private static readonly ConcurrentDictionary<string, LoopedSwitch> Table;
+
+        static LoopedSwitch()
+        {
+            var i = 0;
+
+            for (;;)
+            {
+                Table = new(StringComparer.Ordinal);
+                Shards[i] = Table;
+
+                switch (i++)
+                {
+                    case 0:
+                        continue;
+                    case 1:
+                        continue;
+                    case 2:
+                        continue;
+                    case 3:
+                        continue;
+                    default:
+                        return;
+                }
+            }
+        }
+
+        public static LoopedSwitch Get(string value) => Table.GetOrAdd(value, static _ => new LoopedSwitch());
     }
 
     /// <summary>A stand-in whose instance constructor builds its table, again at each instance, into a static field.</summary>
