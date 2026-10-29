@@ -168,6 +168,86 @@ public class SeededComparerTests
     [InlineData("private ConcurrentDictionary<int, string>? _byNumber;\nvoid M() => (_byNumber ??= new(SeededComparer.Instance)).Clear();")]
     [InlineData("var odd = Path.Distinct();")]
     [InlineData("var odd = @string.Join(Path, x => x, y => y, (x, y) => x);")]
+    [InlineData("var seen = new HashSet<short>();")]
+    [InlineData("var seen = new HashSet<ushort>();")]
+    [InlineData("var seen = new HashSet<char>();")]
+    [InlineData("var seen = new HashSet<uint>();")]
+    [InlineData("var seen = new HashSet<long>();")]
+    [InlineData("var seen = new HashSet<ulong>();")]
+    [InlineData("var seen = new HashSet<nint>();")]
+    [InlineData("var seen = new HashSet<nuint>();")]
+    [InlineData("var seen = new HashSet<float>();")]
+    [InlineData("var seen = new HashSet<double>();")]
+    [InlineData("var seen = new HashSet<decimal>();")]
+    [InlineData("var seen = new HashSet<Half>();")]
+    [InlineData("var seen = new HashSet<Int16>();")]
+    [InlineData("var seen = new HashSet<UInt16>();")]
+    [InlineData("var seen = new HashSet<Char>();")]
+    [InlineData("var seen = new HashSet<Int32>();")]
+    [InlineData("var seen = new HashSet<UInt32>();")]
+    [InlineData("var seen = new HashSet<Int64>();")]
+    [InlineData("var seen = new HashSet<UInt64>();")]
+    [InlineData("var seen = new HashSet<IntPtr>();")]
+    [InlineData("var seen = new HashSet<UIntPtr>();")]
+    [InlineData("var seen = new HashSet<Int128>();")]
+    [InlineData("var seen = new HashSet<UInt128>();")]
+    [InlineData("var seen = new HashSet<Single>();")]
+    [InlineData("var seen = new HashSet<Double>();")]
+    [InlineData("var seen = new HashSet<Decimal>();")]
+    [InlineData("var seen = new HashSet<BigInteger>();")]
+    [InlineData("var seen = new HashSet<Rune>();")]
+    [InlineData("var seen = new HashSet<NFloat>();")]
+    [InlineData("var seen = new HashSet<Complex>();")]
+    [InlineData("var seen = pages.ToHashSetAsync();")]
+    [InlineData("var seen = pages.ToDictionaryAsync(p => p);")]
+    [InlineData("var seen = pages.ToLookupAsync(p => p);")]
+    [InlineData("var seen = list.ToHashSet();")]
+    [InlineData("var seen = list.ToDictionary(n => n);")]
+    [InlineData("var seen = list.ToLookup(n => n);")]
+    [InlineData("var seen = list.Distinct();")]
+    [InlineData("var seen = list.DistinctBy(n => n);")]
+    [InlineData("var seen = list.GroupBy(n => n);")]
+    [InlineData("var seen = list.GroupJoin(other, n => n, o => o, (n, _) => n);")]
+    [InlineData("var seen = list.Join(other, n => n, o => o, (n, _) => n);")]
+    [InlineData("var seen = list.LeftJoin(other, n => n, o => o, (n, _) => n);")]
+    [InlineData("var seen = list.RightJoin(other, n => n, o => o, (_, o) => o);")]
+    [InlineData("var seen = list.Union(other);")]
+    [InlineData("var seen = list.UnionBy(other, n => n);")]
+    [InlineData("var seen = list.Intersect(other);")]
+    [InlineData("var seen = list.IntersectBy(other, n => n);")]
+    [InlineData("var seen = list.Except(other);")]
+    [InlineData("var seen = list.ExceptBy(other, n => n);")]
+    [InlineData("var seen = list.CountBy(n => n);")]
+    [InlineData("var seen = list.AggregateBy(n => n, 0, (sum, n) => sum + n);")]
+    [InlineData("var seen = list.ToFrozenDictionary(n => n);")]
+    [InlineData("var seen = list.ToFrozenSet();")]
+    [InlineData("var seen = list.ToImmutableDictionary(n => n);")]
+    [InlineData("var seen = list.ToImmutableHashSet();")]
+    [InlineData("var seen = new HashSet<int>(EqualityComparer<int>.Default);")]
+    [InlineData("private HashSet<int>? _x;\nvoid M() { _x = new(EqualityComparer<int>.Default); }")]
+    [InlineData("private HashSet<int>? _x;\nvoid M() { _x = new(Seeded.Default); }")]
+    [InlineData("var groups = list.GroupBy(x => x.CompareTo(0));")]
+    [InlineData("var byNumber = new OrderedDictionary<int, string>();")]
+    [InlineData("FrozenSet<int> f = [1, 2];")]
+    [InlineData("ImmutableHashSet<int> s = [1, 2];")]
+    [InlineData("ImmutableDictionary<int, string> d = [];")]
+    [InlineData("public Dictionary<int, int> Indexes { get; } = new();")]
+    [InlineData("private HashSet<int>? @lock;\nvoid M() { @lock = new(); }")]
+    [InlineData("public HashSet<int> P { init; get; } = [];")]
+    [InlineData("var seen = new HashSet<Tuple<string, int>>();")]
+    [InlineData("var seen = new HashSet<System.Int32>();")]
+    [InlineData("var seen = new HashSet<System.Tuple<int, string>>();")]
+    [InlineData("var seen = new HashSet<(int @in, string @out)>();")]
+    [InlineData("var byPair = new Dictionary<Tuple<int, string>, int>();")]
+    [InlineData("HashSet<int>[] tables = [[], new(SeededComparer.Instance)];")]
+    [InlineData("var seen = new HashSet<int>( // not SeededComparer.Instance\n);")]
+    [InlineData("var seen = new HashSet<int>(/* SeededComparer.Instance */);")]
+    [InlineData("var a = \"\"; var seen = new HashSet<int>();")]
+    [InlineData("var p = @\"a\"\"b\"; var seen = new HashSet<int>();")]
+    [InlineData("var s = \"{\"; var seen = new HashSet<int>();")]
+    [InlineData("var m = $\"{x switch { 1 => \"a\", _ => \"b\" }}\"; var seen = new HashSet<int>();")]
+    [InlineData("var odd = sortedPath.Join(right, l => l, r => r, (l, r) => l);")]
+    [InlineData("var a = list.Distinct(); var b = names.Distinct(StringComparer.Ordinal);")]
     public void The_reading_of_the_sources_refuses_a_table_keyed_by_numbers_built_without_the_comparer(string source)
     {
         SourceRules.Violations("Sample.cs", source).Should().ContainSingle();
@@ -226,27 +306,36 @@ public class SeededComparerTests
     }
 
     [Fact]
+    public void The_reading_of_the_sources_names_the_line_a_table_is_built_on()
+    {
+        // Past comments and literals that span lines, the line named is the one the table is built on.
+        var source = "// one\n/* two\n three */\nvar text = @\"four\nfive\";\nvar seen = new HashSet<int>();";
+
+        SourceRules.Violations("Sample.cs", source).Should().ContainSingle().Which.Should().StartWith("Sample.cs:6: ");
+    }
+
+    [Fact]
     public void No_method_of_the_library_builds_a_table_keyed_by_numbers_without_the_seeded_comparer()
     {
         // Read in the compiled library, whatever the source wrote — [], new(), an out var given a set, an expression
         // body, an argument, a copy, a base constructor, a LINQ operator, a method group —: every hash collection built
         // over a key a file can steer takes SeededComparer.Instance as the comparer of its key, taken last, handed to
         // it straight and on every path that reaches it. A key is steerable when it is a number — an integer wider than
-        // a byte, a character, a floating point or decimal number —, nullable or not, a tuple or an anonymous type
-        // holding one, a type of the library hashed as the compiler writes a record's hash, a fixed combination of its
-        // members a file inverts, or what a boxed number may be keyed as, any object, a value type or an interface
-        // numbers implement, which no comparer of a number seeds: an identity table is keyed by a reference type of the
-        // library with ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash —
-        // concurrent, frozen or immutable, its factories, its builder and an immutable one's Empty included, a
-        // StringDictionary, however built — is refused whatever its key and comparer: a hash that goes through a seed,
-        // now or after a later change, would order what it gives (invariant 6), and no key is argued one by one. The
-        // one named and let be is PdfName's interning table, keyed by strings, which its static constructor builds
-        // once, ahead of every branch target and straight into a static field, and the library reaches, through its
-        // type or a generic interface of it, only to find or add one name. An enumeration's values are the library's
-        // own, and how the hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's
-        // and PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
-        // callers choose its key, and no reading follows them; nor does it give a table type where new(), Activator,
-        // Lazy or LazyInitializer builds it.
+        // a byte, a character or a Rune, a floating point, decimal or complex number —, nullable or not, a tuple or an
+        // anonymous type holding one, a type of the library hashed as the compiler writes a record's hash, a fixed
+        // combination of its members a file inverts, or what a boxed number may be keyed as, any object, a value type
+        // or an interface numbers implement, which no comparer of a number seeds: an identity table is keyed by a
+        // reference type of the library with ReferenceEqualityComparer.Instance, never by object. A collection that
+        // enumerates by hash — concurrent, frozen or immutable, its factories, its builder and an immutable one's Empty
+        // included, a StringDictionary, however built — is refused whatever its key and comparer: a hash that goes
+        // through a seed, now or after a later change, would order what it gives (invariant 6), and no key is argued
+        // one by one. The one named and let be is PdfName's interning table, keyed by strings, which its static
+        // constructor builds once, ahead of every branch target and straight into a static field, and the library
+        // reaches, through its type or a generic interface of it, only to find or add one name. An enumeration's values
+        // are the library's own, and how the hash of a type the library hashes by hand spreads is held by its own
+        // tests, as PdfObjectId's and PdfDiagnostic's are. The library builds no collection over a type parameter,
+        // whatever its comparer: its callers choose its key, and no reading follows them; nor does it give a table type
+        // where new(), Activator, Lazy or LazyInitializer builds it.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes(), typeof(PdfName)))
@@ -260,11 +349,13 @@ public class SeededComparerTests
     [Fact]
     public void The_reading_of_the_compiled_library_refuses_a_table_built_without_the_comparer()
     {
-        // The check above sees what a source reading cannot: an out var given [], an expression body, a copy among others,
-        // a comparer handed on one path only, a base constructor, a factory, a collection expression lowered to one, a
-        // method group, a table over a type parameter whatever its comparer, a
-        // table type a new() constraint, Lazy or LazyInitializer builds, and a collection that enumerates by hash, seeded or
-        // not: the order the process's seed gives it would reach what the library reports or writes (invariant 6).
+        // The check above sees what a source reading cannot: an out var given [], an expression body, a comparer handed
+        // on one path only, a base constructor, a factory, a collection expression lowered to one, a method group, a
+        // table over a type parameter whatever its comparer, a table type a new() constraint, Activator, Lazy or
+        // LazyInitializer builds, a table keyed by any object, a value type or an interface numbers implement, a
+        // non-generic hash table, and a collection that enumerates by hash, seeded or not: the order the process's seed
+        // gives it would reach what the library reports or writes (invariant 6). The samples hold, one per condition,
+        // shapes the source reading sees as well: every number type and every hashing operator among them.
         var refused = Refused(typeof(Unseeded));
 
         refused.Should().BeEquivalentTo(
@@ -321,6 +412,13 @@ public class SeededComparerTests
             nameof(Unseeded.CaseInsensitive),
             nameof(Unseeded.OperatorAsync),
             nameof(Unseeded.ValueTypeKey),
+            nameof(Unseeded.OperatorDictionaryAsync),
+            nameof(Unseeded.OperatorLookupAsync),
+            nameof(Unseeded.VirtualMade),
+            nameof(Unseeded.RuneKey),
+            nameof(Unseeded.NFloatKey),
+            nameof(Unseeded.ComplexKey),
+            nameof(Unseeded.RunesCounted),
             nameof(Unseeded.LookedUp),
             nameof(Unseeded.DistinctByKey),
             nameof(Unseeded.Grouped),
@@ -424,6 +522,18 @@ public class SeededComparerTests
             "Interned.Given: Interned.Give(IReadOnlyDictionary`2&)",
             "Interned.Arrayed: Interned.CountViews(IReadOnlyDictionary`2[])",
             "Interned.Fetched: Interned.TryGetValue(ConcurrentDictionary`2&)",
+            "Interned.NoPairs: ImmutableList`1<KeyValuePair`2>.Empty()",
+            "Interned.NoPairs: ImmutableList`1<KeyValuePair`2>.get_Count()",
+            "Interned.NoPairsAt: ImmutableList`1<KeyValuePair`2>.Empty()",
+            "Interned.NoPairsAt: Interned.CountPairs(ImmutableList`1&)",
+            "Interned.CountPairs: ImmutableList`1<KeyValuePair`2>.get_Count()",
+            "Interned.ViewGroup: Interned.View()",
+            "Interned.Nested: List`1<List`1>.get_Count()",
+            "Interned.Jaggeds: Interned.Jagged(IReadOnlyDictionary`2[][])",
+            "Interned.Typed: Interned.CountOf()",
+            "Interned.Postponed: Interned.Later()",
+            "Interned.Paired: KeyValuePair`2<String, Interned>..ctor(String, Interned)",
+            "Interned.FromArray: IList`1<ConcurrentDictionary`2>.get_Item(Int32)",
             "Interned..cctor: ConcurrentDictionary`2<String, Int32>..ctor(IEqualityComparer`1)",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor()",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)");
@@ -440,6 +550,9 @@ public class SeededComparerTests
         CompiledRules.TablesBuilt([typeof(LoopedSwitch)], typeof(LoopedSwitch))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedSwitch>..ctor");
+        CompiledRules.TablesBuilt([typeof(LoopedSwitchBare)], typeof(LoopedSwitchBare))
+            .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
+            .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedSwitchBare>..ctor");
         CompiledRules.TablesBuilt([typeof(Instanced)], typeof(Instanced))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".ctor: ConcurrentDictionary`2<String, Instanced>..ctor");
@@ -640,6 +753,20 @@ public class SeededComparerTests
         public static ValueTask<HashSet<int>> OperatorAsync(IAsyncEnumerable<int> numbers) => numbers.ToHashSetAsync();
 
         public static HashSet<ValueType> ValueTypeKey() => [];
+
+        public static ValueTask<Dictionary<int, int>> OperatorDictionaryAsync(IAsyncEnumerable<int> numbers) => numbers.ToDictionaryAsync(n => n);
+
+        public static ValueTask<ILookup<int, int>> OperatorLookupAsync(IAsyncEnumerable<int> numbers) => numbers.ToLookupAsync(n => n);
+
+        public static int VirtualMade(IMaker maker) => maker.Make<HashSet<int>>().Count;
+
+        public static HashSet<System.Text.Rune> RuneKey() => [];
+
+        public static HashSet<System.Runtime.InteropServices.NFloat> NFloatKey() => [];
+
+        public static HashSet<System.Numerics.Complex> ComplexKey() => [];
+
+        public static int RunesCounted(IEnumerable<System.Text.Rune> runes) => runes.CountBy(rune => rune).Count();
 
         public static int LookedUp(int[] numbers, int[] others) => numbers.ToLookup(n => n).Count;
 
@@ -983,9 +1110,39 @@ public class SeededComparerTests
 
         public static int CountViews(IReadOnlyDictionary<string, Interned>[] views) => views.Length;
 
+        public static int NoPairs() => ImmutableList<KeyValuePair<string, Interned>>.Empty.Count;
+
+        public static int NoPairsAt() => CountPairs(in ImmutableList<KeyValuePair<string, Interned>>.Empty);
+
+        public static Func<object> ViewGroup() => View;
+
+        public static int Nested(List<List<KeyValuePair<string, Interned>>> pairs) => pairs.Count;
+
+        public static int Jagged(IReadOnlyDictionary<string, Interned>[][] views) => views.Length;
+
+        public static int Jaggeds() => Jagged(new IReadOnlyDictionary<string, Interned>[1][]);
+
+        public static int Typed() => CountOf<List<KeyValuePair<string, Interned>>>();
+
+        public static bool Postponed() => Later() is not null;
+
+        public static KeyValuePair<string, Interned> Paired(string name) => new(name, Get(name));
+
+        public static ConcurrentDictionary<string, Interned> FromArray()
+        {
+            IList<ConcurrentDictionary<string, Interned>> list = Shards;
+            return list[0];
+        }
+
         public static int Arrayed() => CountViews(new IReadOnlyDictionary<string, Interned>[1]);
 
         private static string JoinOf<T>() => string.Join(",", (IEnumerable<T>)Table);
+
+        private static int CountPairs(in ImmutableList<KeyValuePair<string, Interned>> pairs) => pairs.Count;
+
+        private static int CountOf<T>() => typeof(T).Name.Length;
+
+        private static Lazy<IReadOnlyDictionary<string, Interned>>? Later() => null;
 
         public static ConcurrentDictionary<string, Interned> Built() => new(StringComparer.Ordinal);
 
@@ -1147,6 +1304,48 @@ public class SeededComparerTests
         public static LoopedSwitch Get(string value) => Table.GetOrAdd(value, static _ => new LoopedSwitch());
     }
 
+    /// <summary>
+    /// A stand-in whose static constructor builds its table at the head of a loop a switch closes, its first case leaving the
+    /// loop: each of the switch's targets is read, and where it lands.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1810:Initialize reference type static fields inline",
+        Justification = "The sample is a static constructor that builds its table in a loop.")]
+    private sealed class LoopedSwitchBare
+    {
+        private static readonly ConcurrentDictionary<string, LoopedSwitchBare>[] Shards = new ConcurrentDictionary<string, LoopedSwitchBare>[5];
+
+        private static readonly ConcurrentDictionary<string, LoopedSwitchBare> Table;
+
+        static LoopedSwitchBare()
+        {
+            var i = 0;
+
+            for (; ; )
+            {
+                Table = new();
+                Shards[i] = Table;
+
+                switch (i++)
+                {
+                    case 0:
+                        return;
+                    case 1:
+                        continue;
+                    case 2:
+                        continue;
+                    case 3:
+                        continue;
+                    default:
+                        return;
+                }
+            }
+        }
+
+        public static LoopedSwitchBare Get(string value) => Table.GetOrAdd(value, static _ => new LoopedSwitchBare());
+    }
+
     /// <summary>A stand-in whose instance constructor builds its table, again at each instance, into a static field.</summary>
     private sealed class Instanced
     {
@@ -1217,8 +1416,10 @@ public class SeededComparerTests
             [typeof(FrozenSet), typeof(FrozenDictionary), typeof(ImmutableHashSet), typeof(ImmutableDictionary)];
 
         /// <summary>
-        /// The LINQ operators that hash what they are given, or the keys a selector gives, asynchronous ones included, whose
-        /// cancellation token comes after the comparer: one is refused even seeded, a shape the library does not use.
+        /// The LINQ operators that hash what they are given, or the keys a selector gives, synchronous or asynchronous. The
+        /// deferred asynchronous ones take the comparer last, as the synchronous ones do; ToHashSetAsync, ToDictionaryAsync
+        /// and ToLookupAsync take their cancellation token after it, so that one is refused even seeded, a shape the
+        /// library does not use.
         /// </summary>
         private static readonly HashSet<string> HashingOperators =
         [
@@ -1231,7 +1432,8 @@ public class SeededComparerTests
         [
             typeof(short), typeof(ushort), typeof(char), typeof(int), typeof(uint), typeof(long), typeof(ulong), typeof(nint),
             typeof(nuint), typeof(Int128), typeof(UInt128), typeof(System.Numerics.BigInteger), typeof(Half), typeof(float),
-            typeof(double), typeof(decimal),
+            typeof(double), typeof(decimal), typeof(System.Text.Rune), typeof(System.Runtime.InteropServices.NFloat),
+            typeof(System.Numerics.Complex),
         ];
 
         /// <summary>
@@ -1663,7 +1865,7 @@ public class SeededComparerTests
     {
         /// <summary>A number a key may be, by the name the source gives its type.</summary>
         private const string Number =
-            @"\b(?:short|ushort|char|int|uint|long|ulong|nint|nuint|float|double|decimal|Half|Int16|UInt16|Char|Int32|UInt32|Int64|UInt64|IntPtr|UIntPtr|Int128|UInt128|Single|Double|Decimal|BigInteger)\b";
+            @"\b(?:short|ushort|char|int|uint|long|ulong|nint|nuint|float|double|decimal|Half|Int16|UInt16|Char|Int32|UInt32|Int64|UInt64|IntPtr|UIntPtr|Int128|UInt128|Single|Double|Decimal|BigInteger|Rune|NFloat|Complex)\b";
 
         private static readonly Regex Hashing = new(
             @"\.(?:ToHashSetAsync|ToDictionaryAsync|ToLookupAsync|ToHashSet|ToDictionary|ToLookup|Distinct|DistinctBy|GroupBy|GroupJoin|Join|LeftJoin|RightJoin|Union|UnionBy|Intersect|IntersectBy|Except|ExceptBy|CountBy|AggregateBy|ToFrozenDictionary|ToFrozenSet|ToImmutableDictionary|ToImmutableHashSet)\(",
@@ -1735,7 +1937,9 @@ public class SeededComparerTests
 
         /// <summary>
         /// Finds each Dictionary or HashSet type written out: where, whether a new builds it, its key, the name it declares,
-        /// its statement to the semicolon, and whether it enumerates by hash, concurrent, frozen or immutable.
+        /// what it is given — a new's own arguments, or its initializer where it has none; a declaration's statement to the
+        /// semicolon, or past a property's accessors to its initializer —, and whether it enumerates by hash, concurrent,
+        /// frozen or immutable. An array type yields each table its initializer builds instead.
         /// </summary>
         private static IEnumerable<(int At, bool IsNew, string Key, string? Name, string Statement, bool ByHash)> Tables(string text)
         {
