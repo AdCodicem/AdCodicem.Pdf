@@ -55,35 +55,37 @@ opening a file records each of its rows. Most files number their objects from 0 
 - **Tests read the code.** One reads the compiled library, whatever the source wrote, and refuses every hash collection
   built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
   one, a type of the library hashed as the compiler writes a record's hash, a pair or another struct that keeps .NET's
-  default hash, which hashes one holding a reference, a floating point number or padding by its first field alone —
-  unless the comparer of its key, taken last, is `SeededComparer.Instance`, handed to it straight on every path that
-  reaches it: a `Dictionary`, `HashSet`, `OrderedDictionary` or `KeyedCollection` built or derived from, or a LINQ
-  operator that hashes, asynchronous ones included, any of them as a method group. It refuses always a table keyed by
-  any object, a boxed number hashing as itself — a `Hashtable` or a type derived from one, a `HybridDictionary`, the
-  non-generic `OrderedDictionary`, the hash tables `CollectionsUtil` builds, a key typed `object` or `ValueType` or an
-  interface numbers implement, a reference comparer given or not: an identity table is keyed by a reference type of the
-  library, as the validator's is —; a collection that enumerates by hash — a `ConcurrentDictionary`, a frozen or
-  immutable one, its factories, its builder and an immutable one's `Empty`, a `StringDictionary`, however built —
-  whatever its key and comparer, since a hash that goes through a seed, now or after a later change, would order what it
-  gives, and no key is argued one by one: the one named and let be is `PdfName`'s interning table, keyed by strings,
-  which its static constructor builds once, ahead of every branch target and straight into a static field, and which the
-  library reaches, through its type or a generic interface of it, only to find or add one name, a call to, or a method
-  group of, a member that takes it, gives it, views it or names its pairs, in an array, a reference or a type argument
-  included, at any depth, or a static field declared on a type built over its pairs or a view of it, refused, the table
-  not followed through `object`, a non-generic interface or an expression tree, which names its members by token; and a
-  table built for a type argument by `new()`, `Activator`, `Lazy` or `LazyInitializer`. The rule covers every such key,
-  whatever it numbers and wherever it comes from, so that none needs arguing. The library builds no hash collection over
-  a type parameter, whatever its comparer: its callers choose its key and the comparer they hand it, and no reading
-  follows them. How the hash of a type the library hashes by hand spreads is held by its own tests, as `PdfObjectId`'s
-  and `PdfDiagnostic`'s are; an enumeration's values are the library's own; a collection built through reflection
-  otherwise, or one a framework method returns under another type, is not read. The reading takes out the probes code
-  coverage puts, by their shape alone, so that a probe written otherwise refuses the table it stands before. The other
-  reads the sources, their comments and literals blanked, and names the file and line of the shapes it recognizes over a
-  numeric key: a declaration given `[]` or `new()`, a `new` without the comparer among its own arguments or in its
-  initializer, a name declared with no table and given one later, the tables an array's initializer builds, and a
-  concurrent, frozen or immutable one whose type it writes and that it sees built with `[]` or `new`, there or later,
-  seeded or not; and, whatever the key, which it cannot see where an operator is called, a LINQ operator that hashes
-  without naming a comparer, asynchronous ones included; one an operator or a factory builds is the compiled reading's.
+  default hash, or hides it with `new`, which a table does not call, and which hashes one holding a reference, a
+  floating point number, padding or a field with an equality of its own by its first non-null field alone — unless the
+  comparer of its key, taken last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a
+  `Dictionary`, `HashSet`, `OrderedDictionary` or `KeyedCollection` built or derived from, or a LINQ operator that
+  hashes, asynchronous ones included, any of them as a method group. It refuses always a table keyed by any object, a
+  boxed number hashing as itself — a `Hashtable` or a type derived from one, a `HybridDictionary`, the non-generic
+  `OrderedDictionary`, the hash tables `CollectionsUtil` builds, a key typed `object`, `ValueType` or any interface,
+  behind which a boxed number, tuple, record or struct may stand, a reference comparer given or not: an identity table
+  is keyed by a reference type of the library, as the validator's is —; a collection that enumerates by hash — a
+  `ConcurrentDictionary`, a frozen or immutable one, its factories, its builder and an immutable one's `Empty`, a
+  `StringDictionary`, however built — whatever its key and comparer, since a hash that goes through a seed, now or after
+  a later change, would order what it gives, and no key is argued one by one: the one named and let be is `PdfName`'s
+  interning table, keyed by strings, which its static constructor builds once, ahead of every branch target and straight
+  into a static field, and which the library reaches, through its type or a generic interface of it, only to find or add
+  one name, a call to, or a method group of, a member that takes it, gives it, views it or names its pairs, in an array,
+  a reference or a type argument included, at any depth, or a static field declared on a type built over its pairs or a
+  view of it, refused, the table not followed through `object`, a non-generic interface or an expression tree, which
+  names its members by token; and a table built for a type argument by `new()`, `Activator`, `Lazy` or
+  `LazyInitializer`. The rule covers every such key, whatever it numbers and wherever it comes from, so that none needs
+  arguing. The library builds no hash collection over a type parameter, whatever its comparer: its callers choose its
+  key and the comparer they hand it, and no reading follows them. How the hash of a type the library hashes by hand
+  spreads is held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; an enumeration's values are the
+  library's own; a collection built through reflection otherwise, or one a framework method returns under another type,
+  is not read. The reading takes out the probes code coverage puts, by their shape alone, so that a probe written
+  otherwise refuses the table it stands before. The other reads the sources, their comments and literals blanked, and
+  names the file and line of the shapes it recognizes over a numeric key: a declaration given `[]` or `new()`, a `new`
+  without the comparer among its own arguments or in its initializer, a name declared with no table and given one later,
+  the tables an array's initializer builds, and a concurrent, frozen or immutable one whose type it writes and that it
+  sees built with `[]` or `new`, there or later, seeded or not; and, whatever the key, which it cannot see where an
+  operator is called, a LINQ operator that hashes without naming a comparer, asynchronous ones included; one an operator
+  or a factory builds is the compiled reading's.
 - **No bound is added**, and nothing is classified under ADR 34: the slots' slack is a property of the representation,
   not a limit on what a file may hold.
 
