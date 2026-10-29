@@ -224,6 +224,8 @@ public class SeededComparerTests
     [InlineData("var seen = list.ToImmutableDictionary(n => n);")]
     [InlineData("var seen = list.ToImmutableHashSet();")]
     [InlineData("var seen = new HashSet<int>(EqualityComparer<int>.Default);")]
+    [InlineData("var seen = new HashSet<int>(Seeded.Default);")]
+    [InlineData("var seen = new HashSet<KeyValuePair<long, int>>();")]
     [InlineData("private HashSet<int>? _x;\nvoid M() { _x = new(EqualityComparer<int>.Default); }")]
     [InlineData("private HashSet<int>? _x;\nvoid M() { _x = new(Seeded.Default); }")]
     [InlineData("var groups = list.GroupBy(x => x.CompareTo(0));")]
@@ -323,19 +325,21 @@ public class SeededComparerTests
         // it straight and on every path that reaches it. A key is steerable when it is a number — an integer wider than
         // a byte, a character or a Rune, a floating point, decimal or complex number —, nullable or not, a tuple or an
         // anonymous type holding one, a type of the library hashed as the compiler writes a record's hash, a fixed
-        // combination of its members a file inverts, or what a boxed number may be keyed as, any object, a value type
-        // or an interface numbers implement, which no comparer of a number seeds: an identity table is keyed by a
-        // reference type of the library with ReferenceEqualityComparer.Instance, never by object. A collection that
-        // enumerates by hash — concurrent, frozen or immutable, its factories, its builder and an immutable one's Empty
-        // included, a StringDictionary, however built — is refused whatever its key and comparer: a hash that goes
-        // through a seed, now or after a later change, would order what it gives (invariant 6), and no key is argued
-        // one by one. The one named and let be is PdfName's interning table, keyed by strings, which its static
-        // constructor builds once, ahead of every branch target and straight into a static field, and the library
-        // reaches, through its type or a generic interface of it, only to find or add one name. An enumeration's values
-        // are the library's own, and how the hash of a type the library hashes by hand spreads is held by its own
-        // tests, as PdfObjectId's and PdfDiagnostic's are. The library builds no collection over a type parameter,
-        // whatever its comparer: its callers choose its key, and no reading follows them; nor does it give a table type
-        // where new(), Activator, Lazy or LazyInitializer builds it.
+        // combination of its members a file inverts, a pair or another struct that keeps .NET's default hash, which
+        // hashes one holding a reference, a floating point number or padding by its first field alone, or what a boxed
+        // number may be keyed as, any object, a value type or an interface numbers implement, which no comparer of a
+        // number seeds: an identity table is keyed by a reference type of the library with
+        // ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash — concurrent,
+        // frozen or immutable, its factories, its builder and an immutable one's Empty included, a StringDictionary,
+        // however built — is refused whatever its key and comparer: a hash that goes through a seed, now or after a
+        // later change, would order what it gives (invariant 6), and no key is argued one by one. The one named and let
+        // be is PdfName's interning table, keyed by strings, which its static constructor builds once, ahead of every
+        // branch target and straight into a static field, and the library reaches, through its type or a generic
+        // interface of it, only to find or add one name. An enumeration's values are the library's own, and how the
+        // hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's and
+        // PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
+        // callers choose its key, and no reading follows them; nor does it give a table type where new(), Activator,
+        // Lazy or LazyInitializer builds it.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes(), typeof(PdfName)))
@@ -412,6 +416,10 @@ public class SeededComparerTests
             nameof(Unseeded.CaseInsensitive),
             nameof(Unseeded.OperatorAsync),
             nameof(Unseeded.ValueTypeKey),
+            nameof(Unseeded.PairKey),
+            nameof(Unseeded.NamedPairKey),
+            nameof(Unseeded.PairsDistinct),
+            nameof(Unseeded.PaddedKey),
             nameof(Unseeded.OperatorDictionaryAsync),
             nameof(Unseeded.OperatorLookupAsync),
             nameof(Unseeded.VirtualMade),
@@ -497,11 +505,12 @@ public class SeededComparerTests
         // static field is let be; a second, one keyed to another type, one stored elsewhere, one another method or
         // another type builds, a frozen or immutable one, and a call to, or a method group of, a member that enumerates
         // it, views it, copies it, hands it out or names its pairs, in an array, a reference or a type argument
-        // included, are refused, and finding or adding one entry, through its type or an interface of it, is not. One
-        // built in a loop, which may run it more than once, is refused too, whether the loop's branch lands on the
-        // construction or ahead of it. Its static constructor is read after its methods, and the other type before it,
-        // so that a condition left out lets be another table than the one it should, which the constructor's parameters
-        // tell apart.
+        // included, at any depth, and a static field declared on a type built over its pairs or a view of it, are
+        // refused, and finding or adding one entry, through its type or an interface of it, is not. One built in a
+        // loop, which may run it more than once, is refused too, whether the loop's branch lands on the construction or
+        // ahead of it. Its static constructor is read after its methods, and the other type before it, so that a
+        // condition left out lets be another table than the one it should, which the constructor's parameters tell
+        // apart.
         var refused = CompiledRules.TablesBuilt([typeof(Interning), typeof(Interned)], typeof(Interned))
             .Select(found => $"{found.Method.DeclaringType!.Name}.{found.Method.Name}: {CompiledRules.Describe(found.Built)}({Parameters(found.Built)})");
 
@@ -754,6 +763,14 @@ public class SeededComparerTests
 
         public static HashSet<ValueType> ValueTypeKey() => [];
 
+        public static HashSet<KeyValuePair<long, int>> PairKey() => [];
+
+        public static HashSet<KeyValuePair<string, long>> NamedPairKey() => [];
+
+        public static int PairsDistinct(IEnumerable<KeyValuePair<long, int>> pairs) => pairs.Distinct().Count();
+
+        public static HashSet<Padded> PaddedKey() => [];
+
         public static ValueTask<Dictionary<int, int>> OperatorDictionaryAsync(IAsyncEnumerable<int> numbers) => numbers.ToDictionaryAsync(n => n);
 
         public static ValueTask<ILookup<int, int>> OperatorLookupAsync(IAsyncEnumerable<int> numbers) => numbers.ToLookupAsync(n => n);
@@ -1001,7 +1018,10 @@ public class SeededComparerTests
 
     private readonly record struct Pair(int First, int Second);
 
-    /// <summary>A key with no hash of its own: a struct's, which goes through the seed.</summary>
+    /// <summary>
+    /// A key with no hash of its own, keeping .NET's default: packed tight with no reference, it hashes its bytes through the
+    /// seed; holding a reference, a floating point number or padding, it would hash its first field alone.
+    /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
         "Performance",
         "CA1815:Override equals and operator equals on value types",
@@ -1009,6 +1029,18 @@ public class SeededComparerTests
     private readonly struct Unhashed(int value)
     {
         public int Value { get; } = value;
+    }
+
+    /// <summary>A key keeping .NET's default hash with padding after its first field, which alone it is hashed by.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1815:Override equals and operator equals on value types",
+        Justification = "The sample is a key that keeps the hash a struct has by default.")]
+    private readonly struct Padded(int first, long second)
+    {
+        public int First { get; } = first;
+
+        public long Second { get; } = second;
     }
 
     /// <summary>A key hashing a string, whose hash goes through the seed, through object's GetHashCode.</summary>
@@ -1378,8 +1410,8 @@ public class SeededComparerTests
             .ToDictionary(code => code.Value);
 
         /// <summary>
-        /// The instructions that build or call what they name, take a method group of it, virtual or not, or load a field or
-        /// its address. A virtual method group is read for what reaches the interning table, and for a table a
+        /// The instructions that build or call what they name, take a method group of it, virtual or not, or load a static
+        /// field or its address. A virtual method group is read for what reaches the interning table, and for a table a
         /// <c>new()</c> constraint builds for its type argument, as an interface's or a virtual generic method may; no
         /// hashing operator, factory or table constructor is virtual.
         /// </summary>
@@ -1407,7 +1439,7 @@ public class SeededComparerTests
         /// <summary>The calls on the interning table that find or add one entry, and enumerate nothing.</summary>
         private static readonly HashSet<string> Lookups = ["GetOrAdd", "TryAdd", "TryGetValue", "ContainsKey", "get_Item"];
 
-        /// <summary>The frozen and immutable hash collections, which their factories, and their <c>Empty</c>, build.</summary>
+        /// <summary>The frozen and immutable hash collections, which their factories, and an immutable one's <c>Empty</c>, build.</summary>
         private static readonly HashSet<Type> HashCollections =
             [typeof(FrozenSet<>), typeof(FrozenDictionary<,>), typeof(ImmutableHashSet<>), typeof(ImmutableDictionary<,>)];
 
@@ -1437,21 +1469,23 @@ public class SeededComparerTests
         ];
 
         /// <summary>
-        /// Gets each hash collection over a steerable key a method of <paramref name="types"/> builds without the comparer of
-        /// its key, taken last, being SeededComparer.Instance handed to it straight — the instruction before it the
-        /// property's getter, and it no branch's target, so that no other path reaches it. A method group takes no comparer.
-        /// A collection over a type parameter is refused whatever its comparer: its key is whatever its callers choose, and
-        /// so is the comparer they hand it, which no reading follows. A table type given where <c>new()</c>, Lazy or
-        /// LazyInitializer builds it, or Activator, takes no comparer either, nor does a table keyed by any object. A
-        /// collection that enumerates in an order its keys' hashes set — a concurrent dictionary, a frozen or immutable hash
-        /// collection, its builder or an immutable one's <c>Empty</c> — is refused whatever its key and its comparer: no key,
-        /// comparer or hash can be read to say that a seed, which differs from one process to the next, orders nothing it
-        /// gives. One is let be, the interning table of <paramref name="interning"/>, PdfName for the library: a concurrent
-        /// dictionary from strings to it, the first its static constructor builds ahead of every branch target and stores
-        /// straight into a static field, reached through its type or a generic interface of it only to find or add one
-        /// entry; a call to, or a method group of, a member that takes it, gives it, views it or names its pairs, in an
-        /// array, a reference or a type argument included, is refused. Through object, a non-generic interface or an
-        /// expression tree, which names its members by token, it is not followed.
+        /// Gets each hash collection over a steerable key a method of <paramref name="types"/> builds without the
+        /// comparer of its key, taken last, being SeededComparer.Instance handed to it straight — the instruction
+        /// before it the property's getter, and it no branch's target, so that no other path reaches it. A method group
+        /// takes no comparer. A collection over a type parameter is refused whatever its comparer: its key is whatever
+        /// its callers choose, and so is the comparer they hand it, which no reading follows. A table type given where
+        /// <c>new()</c>, Lazy or LazyInitializer builds it, or Activator, takes no comparer either, nor does a table
+        /// keyed by any object. A collection that enumerates in an order its keys' hashes set — a concurrent
+        /// dictionary, a frozen or immutable hash collection, its builder or an immutable one's <c>Empty</c> — is
+        /// refused whatever its key and its comparer: no key, comparer or hash can be read to say that a seed, which
+        /// differs from one process to the next, orders nothing it gives. One is let be, the interning table of
+        /// <paramref name="interning"/>, PdfName for the library: a concurrent dictionary from strings to it, the first
+        /// its static constructor builds ahead of every branch target and stores straight into a static field, reached
+        /// through its type or a generic interface of it only to find or add one entry; a call to, or a method group
+        /// of, a member that takes it, gives it, views it or names its pairs, in an array, a reference or a type
+        /// argument included, at any depth, or a static field declared on a type built over its pairs or a view of it,
+        /// is refused. Through object, a non-generic interface or an expression tree, which names its members by token,
+        /// it is not followed.
         /// </summary>
         public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(IEnumerable<Type> types, Type? interning = null)
         {
@@ -1688,6 +1722,13 @@ public class SeededComparerTests
             if (IsTupleOrAnonymous(key))
             {
                 return Array.Exists(key.GetGenericArguments(), Steerable);
+            }
+
+            // A struct that keeps .NET's default hash, a pair among them: one holding a reference, a floating point number
+            // or padding is hashed by its first field alone, so that keys alike there share a hash whatever the seed.
+            if (key.IsValueType && !key.IsEnum && key.GetMethod(nameof(GetHashCode), Type.EmptyTypes)?.DeclaringType == typeof(ValueType))
+            {
+                return true;
             }
 
             // A record's hash, as the compiler writes it: a fixed combination of its members a file inverts.
@@ -2048,7 +2089,7 @@ public class SeededComparerTests
                 return Array.Exists(TopLevel(key[1..^1]), element => IsNumeric(Regex.Replace(element.Trim(), @"\s+@?\w+$", string.Empty)));
             }
 
-            return Regex.Match(key, @"^(?:System\.)?Tuple<(?<items>.*)>$") is { Success: true } tuple
+            return Regex.Match(key, @"^(?:System\.)?(?:Collections\.Generic\.)?(?:Tuple|KeyValuePair)<(?<items>.*)>$") is { Success: true } tuple
                 ? Array.Exists(TopLevel(tuple.Groups["items"].Value), IsNumeric)
                 : Regex.IsMatch(key, $@"^(?:System\.)?{Number}\??$");
         }
