@@ -527,6 +527,8 @@ public class SeededComparerTests
             nameof(Unseeded.MadeBound),
             nameof(Unseeded.Gotten),
             nameof(Unseeded.Entries),
+            nameof(Unseeded.Extended),
+            nameof(Unseeded.Schemas),
             "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
@@ -1049,6 +1051,16 @@ public class SeededComparerTests
         public static int Entries() => new EntryDictionary().Count;
 
         public static int Gotten() => new System.Diagnostics.TraceSource("probe").Attributes.Count;
+
+        public static int Extended()
+        {
+            using var table = new System.Data.DataTable();
+            return table.ExtendedProperties.Count;
+        }
+
+#pragma warning disable CS0618 // Obsolete: a sample of what the reading refuses, a Hashtable it enumerates.
+        public static int Schemas() => new System.Xml.Schema.XmlSchemaCollection().Count;
+#pragma warning restore CS0618
 
         private sealed class IntDictionary : Dictionary<int, string>;
 
@@ -1632,7 +1644,8 @@ public class SeededComparerTests
         /// initializer for the type arguments it names; a call, a construction or a method group of a member of one is
         /// read for what that member builds for them. A virtual method group is read for what reaches the interning
         /// table, and for a table a <c>new()</c> constraint builds for its type argument, as an interface's or a
-        /// virtual generic method may; no hashing operator, factory or table constructor is virtual.
+        /// virtual generic method may, and for a non-generic hash table a method returns under its own type, as a
+        /// virtual getter may; no hashing operator, generic factory or table constructor is virtual.
         /// </summary>
         private static readonly HashSet<OpCode> Considered =
             [OpCodes.Newobj, OpCodes.Call, OpCodes.Callvirt, OpCodes.Ldftn, OpCodes.Ldvirtftn, OpCodes.Ldsfld, OpCodes.Ldsflda, OpCodes.Stsfld];
@@ -1647,15 +1660,18 @@ public class SeededComparerTests
         /// <summary>
         /// The non-generic hash tables, and any type derived from one: keyed by any object, a boxed number hashing as
         /// itself, which no comparer of a number can seed, or, as a StringDictionary is, by strings in a Hashtable,
-        /// which enumerates by hash; a DictionaryBase keeps such a Hashtable. Their constructors, a base constructor
-        /// included, and any method that returns one under its own type, as CollectionsUtil's factories and framework
-        /// getters such as a TraceSource's Attributes do.
+        /// which enumerates by hash; a DictionaryBase keeps such a Hashtable, and an XmlSchemaCollection, obsolete, one
+        /// keyed by strings. Their constructors, a base constructor included, and any method that returns one under its
+        /// own type, as CollectionsUtil's factories and framework getters such as a TraceSource's Attributes do.
         /// </summary>
         private static readonly HashSet<Type> NonGeneric =
         [
             typeof(Hashtable), typeof(System.Collections.Specialized.HybridDictionary),
             typeof(System.Collections.Specialized.OrderedDictionary), typeof(System.Collections.Specialized.StringDictionary),
             typeof(System.Collections.DictionaryBase),
+#pragma warning disable CS0618 // Obsolete: named to refuse it, since it keeps its schemas in a Hashtable it enumerates.
+            typeof(System.Xml.Schema.XmlSchemaCollection),
+#pragma warning restore CS0618
         ];
 
         /// <summary>The calls on the interning table that find or add one entry, and enumerate nothing.</summary>
