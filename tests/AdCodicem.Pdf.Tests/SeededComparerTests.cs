@@ -84,16 +84,16 @@ public class SeededComparerTests
     [Fact]
     public void No_hash_table_in_the_sources_is_keyed_by_numbers_without_the_seeded_comparer()
     {
-        // Every hash table keyed by a number or a tuple holding one, whose type the source writes, is built with
-        // SeededComparer among its own arguments, or in its initializer where it has none, a copy included: built with [],
-        // new() or no comparer, it would hash numbers a file chose as themselves (#155). A concurrent, frozen or immutable
-        // one built with [] or new(), which enumerates by hash, is refused seeded or not; one an operator or a factory
-        // builds is the compiled reading's. A name declared with such a type and no table, given [] or new() later, is held
-        // too, so are the tables an array's initializer builds, and a LINQ operator that hashes
+        // Every hash table keyed by a number, a tuple holding one or a pair, whose type the source writes, is built
+        // with SeededComparer among its own arguments, or in its initializer where it has none, a copy included: built
+        // with [], new() or no comparer, it would hash numbers a file chose as themselves (#155). A concurrent, frozen
+        // or immutable one built with [] or new(), which enumerates by hash, is refused seeded or not; one an operator
+        // or a factory builds is the compiled reading's. A name declared with such a type and no table, given [] or
+        // new() later, is held too, so are the tables an array's initializer builds, and a LINQ operator that hashes
         // names a comparer among its own arguments, whatever its key. Comments and literals are not read. This reading
-        // names the file and the line; what it cannot see — a table built where its type is not written, as an out var or
-        // an expression body gives it, a key it cannot tell a number, the comparer an operator is given — the reading of
-        // the compiled library below refuses.
+        // names the file and the line; what it cannot see — a table built where its type is not written, as an out var
+        // or an expression body gives it, a key it cannot tell a number, the comparer an operator is given — the
+        // reading of the compiled library below refuses.
         var violations = new List<string>();
 
         foreach (var path in Directory.EnumerateFiles(Path.Combine(FeatureTables.RepositoryRoot, "src"), "*.cs", SearchOption.AllDirectories))
@@ -226,6 +226,9 @@ public class SeededComparerTests
     [InlineData("var seen = new HashSet<int>(EqualityComparer<int>.Default);")]
     [InlineData("var seen = new HashSet<int>(Seeded.Default);")]
     [InlineData("var seen = new HashSet<KeyValuePair<long, int>>();")]
+    [InlineData("var seen = new HashSet<KeyValuePair<string, string>>();")]
+    [InlineData("var seen = new HashSet<global::System.Collections.Generic.KeyValuePair<long, int>>();")]
+    [InlineData("var seen = new HashSet<ValueTuple<long, int>>();")]
     [InlineData("private HashSet<int>? _x;\nvoid M() { _x = new(EqualityComparer<int>.Default); }")]
     [InlineData("private HashSet<int>? _x;\nvoid M() { _x = new(Seeded.Default); }")]
     [InlineData("var groups = list.GroupBy(x => x.CompareTo(0));")]
@@ -325,11 +328,12 @@ public class SeededComparerTests
         // it straight and on every path that reaches it. A key is steerable when it is a number — an integer wider than
         // a byte, a character or a Rune, a floating point, decimal or complex number —, nullable or not, a tuple or an
         // anonymous type holding one, a type of the library hashed as the compiler writes a record's hash, a fixed
-        // combination of its members a file inverts, a pair or another struct that keeps .NET's default hash, which
-        // hashes one holding a reference, a floating point number or padding by its first field alone, or what a boxed
-        // number may be keyed as, any object, a value type or an interface numbers implement, which no comparer of a
-        // number seeds: an identity table is keyed by a reference type of the library with
-        // ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash — concurrent,
+        // combination of its members a file inverts, a pair or another struct that keeps .NET's default hash, or hides
+        // it with new, which a table does not call, and which hashes one holding a reference, a floating point number,
+        // padding or a field with an equality of its own by its first non-null field alone, or what a boxed number may
+        // be keyed as, any object, a value type or any interface, behind which a boxed tuple, record or struct may
+        // stand too, which no comparer of a number seeds: an identity table is keyed by a reference type of the library
+        // with ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash — concurrent,
         // frozen or immutable, its factories, its builder and an immutable one's Empty included, a StringDictionary,
         // however built — is refused whatever its key and comparer: a hash that goes through a seed, now or after a
         // later change, would order what it gives (invariant 6), and no key is argued one by one. The one named and let
@@ -420,6 +424,8 @@ public class SeededComparerTests
             nameof(Unseeded.NamedPairKey),
             nameof(Unseeded.PairsDistinct),
             nameof(Unseeded.PaddedKey),
+            nameof(Unseeded.DisposableKey),
+            nameof(Unseeded.HidingKey),
             nameof(Unseeded.OperatorDictionaryAsync),
             nameof(Unseeded.OperatorLookupAsync),
             nameof(Unseeded.VirtualMade),
@@ -765,7 +771,11 @@ public class SeededComparerTests
 
         public static HashSet<KeyValuePair<long, int>> PairKey() => [];
 
-        public static HashSet<KeyValuePair<string, long>> NamedPairKey() => [];
+        public static HashSet<KeyValuePair<string, string>> NamedPairKey() => [];
+
+        public static HashSet<IDisposable> DisposableKey() => [];
+
+        public static HashSet<Hiding> HidingKey() => [];
 
         public static int PairsDistinct(IEnumerable<KeyValuePair<long, int>> pairs) => pairs.Distinct().Count();
 
@@ -1029,6 +1039,23 @@ public class SeededComparerTests
     private readonly struct Unhashed(int value)
     {
         public int Value { get; } = value;
+    }
+
+    /// <summary>
+    /// A key hiding .NET's default hash with a method of its own, which a table does not call: it is hashed by its first
+    /// field alone, a reference.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1815:Override equals and operator equals on value types",
+        Justification = "The sample is a key that keeps the hash a struct has by default.")]
+    private readonly struct Hiding(string name, long offset)
+    {
+        public string Name { get; } = name;
+
+        public long Offset { get; } = offset;
+
+        public new int GetHashCode() => HashCode.Combine(Name, Offset);
     }
 
     /// <summary>A key keeping .NET's default hash with padding after its first field, which alone it is hashed by.</summary>
@@ -1708,10 +1735,9 @@ public class SeededComparerTests
                 return Steerable(value);
             }
 
-            // A number, or what a boxed one may be keyed as — any object, a value type, an interface numbers implement —,
-            // which hashes as the number does.
-            if (Numbers.Contains(key) || key == typeof(object) || key == typeof(ValueType)
-                || (key.IsInterface && Numbers.Any(number => number.GetInterfaces().Contains(key))))
+            // A number, or what a boxed one may be keyed as — any object, a value type, an interface —, which hashes as the
+            // number does; any interface, since a boxed tuple, record or struct keeping the default hash may stand behind it.
+            if (Numbers.Contains(key) || key == typeof(object) || key == typeof(ValueType) || key.IsInterface)
             {
                 return true;
             }
@@ -1724,16 +1750,36 @@ public class SeededComparerTests
                 return Array.Exists(key.GetGenericArguments(), Steerable);
             }
 
-            // A struct that keeps .NET's default hash, a pair among them: one holding a reference, a floating point number
-            // or padding is hashed by its first field alone, so that keys alike there share a hash whatever the seed.
-            if (key.IsValueType && !key.IsEnum && key.GetMethod(nameof(GetHashCode), Type.EmptyTypes)?.DeclaringType == typeof(ValueType))
+            // A struct that keeps .NET's default hash, a pair among them, or hides it with new, which a table does not
+            // call: one holding a reference, a floating point number, padding or a field with an equality of its own is
+            // hashed by its first non-null field alone, so that keys alike there share a hash whatever the seed.
+            var hash = HashOf(key);
+
+            if (key.IsValueType && !key.IsEnum && hash.DeclaringType == typeof(ValueType))
             {
                 return true;
             }
 
             // A record's hash, as the compiler writes it: a fixed combination of its members a file inverts.
-            return !key.IsEnum && key.GetMethod(nameof(GetHashCode), Type.EmptyTypes) is { } hash
-                && hash.DeclaringType == key && hash.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute));
+            return !key.IsEnum && hash.DeclaringType == key && hash.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute));
+        }
+
+        /// <summary>
+        /// Gets the hash a table calls for <paramref name="key"/>: the most derived override of object's GetHashCode, which a
+        /// method hiding it with <c>new</c> is not.
+        /// </summary>
+        private static MethodInfo HashOf(Type key)
+        {
+            for (var type = key; type is not null; type = type.BaseType)
+            {
+                if (type.GetMethod(nameof(GetHashCode), BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, Type.EmptyTypes) is { } method
+                    && method.GetBaseDefinition().DeclaringType == typeof(object))
+                {
+                    return method;
+                }
+            }
+
+            return typeof(object).GetMethod(nameof(GetHashCode))!;
         }
 
         /// <summary>Determines whether <paramref name="key"/> is a tuple or an anonymous type, hashed as the hashes of its members.</summary>
@@ -2077,8 +2123,9 @@ public class SeededComparerTests
         }
 
         /// <summary>
-        /// Determines whether <paramref name="key"/> is a number, nullable or not, or a tuple one of whose elements is,
-        /// by the type each element gives rather than the name it may follow it with.
+        /// Determines whether <paramref name="key"/> is a number, nullable or not, a tuple one of whose elements is, by the
+        /// type each element gives rather than the name it may follow it with, or a pair whatever it holds, which keeps
+        /// .NET's default hash and is hashed by its first field alone.
         /// </summary>
         private static bool IsNumeric(string key)
         {
@@ -2089,9 +2136,14 @@ public class SeededComparerTests
                 return Array.Exists(TopLevel(key[1..^1]), element => IsNumeric(Regex.Replace(element.Trim(), @"\s+@?\w+$", string.Empty)));
             }
 
-            return Regex.Match(key, @"^(?:System\.)?(?:Collections\.Generic\.)?(?:Tuple|KeyValuePair)<(?<items>.*)>$") is { Success: true } tuple
+            if (Regex.IsMatch(key, @"^(?:global::)?(?:System\.)?(?:Collections\.Generic\.)?KeyValuePair<.*>$"))
+            {
+                return true;
+            }
+
+            return Regex.Match(key, @"^(?:global::)?(?:System\.)?(?:Value)?Tuple<(?<items>.*)>$") is { Success: true } tuple
                 ? Array.Exists(TopLevel(tuple.Groups["items"].Value), IsNumeric)
-                : Regex.IsMatch(key, $@"^(?:System\.)?{Number}\??$");
+                : Regex.IsMatch(key, $@"^(?:global::)?(?:System\.)?{Number}\??$");
         }
 
         /// <summary>
