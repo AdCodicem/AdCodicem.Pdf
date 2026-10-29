@@ -77,21 +77,22 @@ opening a file records each of its rows. Most files number their objects from 0 
   type argument, or for a type parameter with no `new()` constraint, whose callers no reading follows, by `new()`,
   `Activator`, `Lazy`, `LazyInitializer`, a `ConditionalWeakTable`'s `GetOrCreateValue`, a `BindingList`, which builds
   one for `AddNew`, or `Marshal.PtrToStructure` — the builders a sweep of .NET 10's shared framework found that may
-  build a table, none handing it a comparer —; and a generic JSON deserializer of `System.Text.Json` or
-  `System.Net.Http.Json`, whatever its type argument, which builds every table that type holds with .NET's default
-  comparer, no option giving another. The rule covers every such key, whatever it numbers and wherever it comes from, so
-  that none needs arguing. The library builds no hash collection over a type parameter, whatever its comparer: its
-  callers choose its key and the comparer they hand it, and no reading follows them. How the hash of a type the library
-  hashes by hand spreads is held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; an enumeration's values
-  are the library's own; a collection built through reflection otherwise, or one a framework method returns under
-  another type, is not read. The reading takes out the probes code coverage puts, by their shape alone, so that a probe
-  written otherwise refuses the table it stands before. The other reads the sources, their comments and literals
-  blanked, and names the file and line of the shapes it recognizes over a numeric key or a pair: a declaration given
-  `[]` or `new()`, a `new` without the comparer among its own arguments or in its initializer, a name declared with no
-  table and given one later, the tables an array's initializer builds, and a concurrent, frozen or immutable one whose
-  type it writes and that it sees built with `[]` or `new`, there or later, seeded or not; and, whatever the key, which
-  it cannot see where an operator is called, a LINQ operator that hashes without naming a comparer, asynchronous ones
-  included; one an operator or a factory builds is the compiled reading's.
+  build a table, none handing it a comparer, a `Lazy` or a `BindingList` one of them builds counting as the table it
+  builds in turn —; and a generic JSON deserializer of `System.Text.Json` or `System.Net.Http.Json`, whatever its type
+  argument, which builds every table that type holds with .NET's default comparer unless its options or the type say
+  otherwise, out of the reading's sight: the library reads no JSON. The rule covers every such key, whatever it numbers
+  and wherever it comes from, so that none needs arguing. The library builds no hash collection over a type parameter,
+  whatever its comparer: its callers choose its key and the comparer they hand it, and no reading follows them. How the
+  hash of a type the library hashes by hand spreads is held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s
+  are; an enumeration's values are the library's own; a collection built through reflection otherwise, or one a
+  framework method returns under another type, is not read. The reading takes out the probes code coverage puts, by
+  their shape alone, so that a probe written otherwise refuses the table it stands before. The other reads the sources,
+  their comments and literals blanked, and names the file and line of the shapes it recognizes over a numeric key or a
+  pair: a declaration given `[]` or `new()`, a `new` without the comparer among its own arguments or in its initializer,
+  a name declared with no table and given one later, the tables an array's initializer builds, and a concurrent, frozen
+  or immutable one whose type it writes and that it sees built with `[]` or `new`, there or later, seeded or not; and,
+  whatever the key, which it cannot see where an operator is called, a LINQ operator that hashes without naming a
+  comparer, asynchronous ones included; one an operator or a factory builds is the compiled reading's.
 - **No bound is added**, and nothing is classified under ADR 34: the slots' slack is a property of the representation,
   not a limit on what a file may hold.
 
