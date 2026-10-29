@@ -55,10 +55,10 @@ opening a file records each of its rows. Most files number their objects from 0 
 - **Tests read the code.** One reads the compiled library, whatever the source wrote, and refuses every hash collection
   built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
   one, a type of the library hashed as the compiler writes a record's hash or a record that is not sealed, which one so
-  hashed may derive from, a type deriving from a tuple, a pair or another struct that keeps .NET's default hash, or
-  hides it with `new`, which a table does not call, and which hashes one holding a reference, a floating point number,
-  padding or a field with an equality of its own by its first non-null field alone — unless the comparer of its key,
-  taken last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a `Dictionary`,
+  hashed may derive from, a type deriving from a tuple holding one, a pair or another struct that keeps .NET's default
+  hash, or hides it with `new`, which a table does not call, and which hashes one holding a reference, a floating point
+  number, padding or a field with an equality of its own by its first non-null field alone — unless the comparer of its
+  key, taken last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a `Dictionary`,
   `HashSet`, `OrderedDictionary` or `KeyedCollection` built or derived from, or a LINQ operator that hashes,
   asynchronous ones included, any of them as a method group. It refuses always a table keyed by any object, a boxed
   number hashing as itself — a `Hashtable` or a type derived from one, a `HybridDictionary`, the non-generic

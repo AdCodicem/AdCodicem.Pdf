@@ -171,15 +171,15 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
 - **Two tests read the code** (`SeededComparerTests`). One reads the compiled library and refuses every hash collection
   built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
   one, a type of the library hashed as the compiler writes a record's hash or a record that is not sealed, which one so
-  hashed may derive from, a type deriving from a tuple, a pair or another struct that keeps .NET's default hash, or
-  hides it with `new`, which a table does not call, and which hashes one holding a reference, a floating point number,
-  padding or a field with an equality of its own by its first non-null field alone — unless the comparer of its key,
-  taken last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a constructor, a base
-  constructor or a LINQ operator, or any of them as a method group. It refuses always a table keyed by any object, a
-  boxed number hashing as itself — a `Hashtable`, a type derived from one, or its kin, a key typed `object`, `ValueType`
-  or any interface, behind which a boxed number, tuple, record or struct may stand, a reference comparer given or not:
-  an identity table is keyed by a reference type of the library —; a collection that enumerates by hash — a concurrent
-  dictionary, a frozen or immutable one, its factories, its builder and an immutable one's `Empty`, a
+  hashed may derive from, a type deriving from a tuple holding one, a pair or another struct that keeps .NET's default
+  hash, or hides it with `new`, which a table does not call, and which hashes one holding a reference, a floating point
+  number, padding or a field with an equality of its own by its first non-null field alone — unless the comparer of its
+  key, taken last, is `SeededComparer.Instance`, handed to it straight on every path that reaches it: a constructor, a
+  base constructor or a LINQ operator, or any of them as a method group. It refuses always a table keyed by any object,
+  a boxed number hashing as itself — a `Hashtable`, a type derived from one, or its kin, a key typed `object`,
+  `ValueType` or any interface, behind which a boxed number, tuple, record or struct may stand, a reference comparer
+  given or not: an identity table is keyed by a reference type of the library —; a collection that enumerates by hash —
+  a concurrent dictionary, a frozen or immutable one, its factories, its builder and an immutable one's `Empty`, a
   `StringDictionary`, however built — whatever its key and comparer, but `PdfName`'s interning table, which `PdfName`'s
   static constructor builds once, ahead of every branch target and straight into a static field, and which the library
   reaches, through its type or a generic interface of it, only to find or add one name: a call to, or a method group of,

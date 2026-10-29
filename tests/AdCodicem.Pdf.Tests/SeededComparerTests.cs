@@ -231,6 +231,8 @@ public class SeededComparerTests
     [InlineData("var seen = new HashSet<ValueTuple<long, int>>();")]
     [InlineData("var seen = new HashSet<global::System.Int64>();")]
     [InlineData("var seen = new HashSet<global::System.Tuple<long, string>>();")]
+    [InlineData("var seen = new HashSet<System.Numerics.BigInteger>();")]
+    [InlineData("var seen = new HashSet<global::System.Nullable<long>>();")]
     [InlineData("private HashSet<int>? _x;\nvoid M() { _x = new(EqualityComparer<int>.Default); }")]
     [InlineData("private HashSet<int>? _x;\nvoid M() { _x = new(Seeded.Default); }")]
     [InlineData("var groups = list.GroupBy(x => x.CompareTo(0));")]
@@ -331,20 +333,20 @@ public class SeededComparerTests
         // a byte, a character or a Rune, a floating point, decimal or complex number —, nullable or not, a tuple or an
         // anonymous type holding one, a type of the library hashed as the compiler writes a record's hash, a fixed
         // combination of its members a file inverts, or a record that is not sealed, which a record so hashed may
-        // derive from, a type deriving from a tuple, a pair or another struct that keeps .NET's default hash, or hides
-        // it with new, which a table does not call, and which hashes one holding a reference, a floating point number,
-        // padding or a field with an equality of its own by its first non-null field alone, or what a boxed number may
-        // be keyed as, any object, a value type or any interface, behind which a boxed tuple, record or struct may
-        // stand too, which no comparer of a number seeds: an identity table is keyed by a reference type of the library
-        // with ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash — concurrent,
-        // frozen or immutable, its factories, its builder and an immutable one's Empty included, a StringDictionary,
-        // however built — is refused whatever its key and comparer: a hash that goes through a seed, now or after a
-        // later change, would order what it gives (invariant 6), and no key is argued one by one. The one named and let
-        // be is PdfName's interning table, keyed by strings, which its static constructor builds once, ahead of every
-        // branch target and straight into a static field, and the library reaches, through its type or a generic
-        // interface of it, only to find or add one name. An enumeration's values are the library's own, and how the
-        // hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's and
-        // PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
+        // derive from, a type deriving from a tuple holding one, a pair or another struct that keeps .NET's default
+        // hash, or hides it with new, which a table does not call, and which hashes one holding a reference, a floating
+        // point number, padding or a field with an equality of its own by its first non-null field alone, or what a
+        // boxed number may be keyed as, any object, a value type or any interface, behind which a boxed tuple, record
+        // or struct may stand too, which no comparer of a number seeds: an identity table is keyed by a reference type
+        // of the library with ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash
+        // — concurrent, frozen or immutable, its factories, its builder and an immutable one's Empty included, a
+        // StringDictionary, however built — is refused whatever its key and comparer: a hash that goes through a seed,
+        // now or after a later change, would order what it gives (invariant 6), and no key is argued one by one. The
+        // one named and let be is PdfName's interning table, keyed by strings, which its static constructor builds
+        // once, ahead of every branch target and straight into a static field, and the library reaches, through its
+        // type or a generic interface of it, only to find or add one name. An enumeration's values are the library's
+        // own, and how the hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's
+        // and PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
         // callers choose its key, and no reading follows them; nor does it give such a table type where new(),
         // Activator, Lazy or LazyInitializer builds it.
         var violations = new List<string>();
@@ -364,10 +366,10 @@ public class SeededComparerTests
         // on one path only, a base constructor, a factory, a collection expression lowered to one, a method group, a
         // table over a type parameter whatever its comparer, a table type a new() constraint, Activator, Lazy or
         // LazyInitializer builds, a table keyed by any object, a value type or any interface, a type deriving from a
-        // tuple, a record that is not sealed, a non-generic hash table, and a collection that enumerates by hash,
-        // seeded or not: the order the process's seed gives it would reach what the library reports or writes
-        // (invariant 6). The samples hold, one per condition, shapes the source reading sees as well: every number type
-        // and every hashing operator among them.
+        // tuple, read through the tuple it hashes as, a record that is not sealed, a non-generic hash table, and a
+        // collection that enumerates by hash, seeded or not: the order the process's seed gives it would reach what the
+        // library reports or writes (invariant 6). The samples hold, one per condition, shapes the source reading sees
+        // as well: every number type and every hashing operator among them.
         var refused = Refused(typeof(Unseeded));
 
         refused.Should().BeEquivalentTo(
@@ -432,6 +434,7 @@ public class SeededComparerTests
             nameof(Unseeded.HidingKey),
             nameof(Unseeded.TupleChildKey),
             nameof(Unseeded.GenericTupleChildKey),
+            nameof(Unseeded.TupleGrandchildKey),
             nameof(Unseeded.HandHashedBaseKey),
             nameof(Unseeded.OperatorDictionaryAsync),
             nameof(Unseeded.OperatorLookupAsync),
@@ -788,6 +791,8 @@ public class SeededComparerTests
 
         public static HashSet<GenericTupleChild<long>> GenericTupleChildKey() => [];
 
+        public static HashSet<TupleGrandchild> TupleGrandchildKey() => [];
+
         public static HashSet<HandHashedBase> HandHashedBaseKey() => [new HandHashedDerived("name", 0)];
 
         public static int PairsDistinct(IEnumerable<KeyValuePair<long, int>> pairs) => pairs.Distinct().Count();
@@ -1004,6 +1009,8 @@ public class SeededComparerTests
 
         public static HashSet<SealedHandHashed> SealedHandHashedKeys() => [];
 
+        public static HashSet<HandHashedOverCompiler> HandHashedOverCompilerKeys() => [];
+
         public static Dictionary<long, int> Sized(int capacity) => new(capacity, SeededComparer.Instance);
 
         public static HashSet<(long, int)> Copy(HashSet<(long, int)> source) => new(source, SeededComparer.Instance);
@@ -1081,6 +1088,15 @@ public class SeededComparerTests
     /// <summary>A key deriving from a tuple of its type argument, which hashes as the tuple does.</summary>
     private sealed class GenericTupleChild<T>(T first, T second) : Tuple<T, T>(first, second);
 
+    /// <summary>A class deriving from a tuple of its type argument and a number, which other keys derive from.</summary>
+    private class TupleChildBase<T>(T first, long second) : Tuple<T, long>(first, second);
+
+    /// <summary>
+    /// A key deriving from a tuple of a string and a number through a class of its own, which hashes as the tuple does,
+    /// neither its base type nor its own type arguments the tuple it hashes as.
+    /// </summary>
+    private sealed class TupleGrandchild(string first, long second) : TupleChildBase<string>(first, second);
+
     /// <summary>A record hashed by hand that is not sealed: a record derived from it, hashed as the compiler writes, may stand behind it.</summary>
     private record HandHashedBase(string Name)
     {
@@ -1092,6 +1108,18 @@ public class SeededComparerTests
 
     /// <summary>A sealed record hashed by hand, which its own tests hold.</summary>
     private sealed record SealedHandHashed(string Name)
+    {
+        public override int GetHashCode() => Name.Length;
+    }
+
+    /// <summary>A record whose hash the compiler writes, which a record hashed by hand derives from.</summary>
+    private record CompilerHashedBase(string Name);
+
+    /// <summary>
+    /// A sealed record hashed by hand, which its own tests hold, deriving from one whose hash the compiler writes: the
+    /// attribute the compiler puts on that hash is not its own.
+    /// </summary>
+    private sealed record HandHashedOverCompiler(string Name, long Offset) : CompilerHashedBase(Name)
     {
         public override int GetHashCode() => Name.Length;
     }
@@ -1629,10 +1657,12 @@ public class SeededComparerTests
 
         /// <summary>
         /// Determines whether <paramref name="member"/> builds a hash collection over a key a file can steer or a type
-        /// parameter stands for, or one that enumerates by hash whatever its key, and gets that key:
-        /// null for what no comparer can seed — a table keyed by any object, built by its constructor or by
-        /// <see cref="System.Collections.Specialized.CollectionsUtil"/>, or a table built for a type argument by
-        /// <c>new()</c>, Activator, Lazy or LazyInitializer.
+        /// parameter stands for, or one that enumerates by hash whatever its key, and gets that key: null for what no
+        /// comparer can seed — a non-generic hash table or a type derived from one, keyed by any object or, as a
+        /// <see cref="System.Collections.Specialized.StringDictionary"/> is, by strings in a hash table that enumerates by
+        /// hash, built by its constructor or by <see cref="System.Collections.Specialized.CollectionsUtil"/>, or a table
+        /// built for a type argument by <c>new()</c>, Activator, Lazy or LazyInitializer. A generic table keyed by any
+        /// object gets that key, which <see cref="Steerable"/> counts.
         /// </summary>
         private static bool Builds(MemberInfo member, out Type? key)
         {
@@ -1711,8 +1741,8 @@ public class SeededComparerTests
 
         /// <summary>
         /// Determines whether building <paramref name="type"/> builds a hash table over a steerable key or a type parameter,
-        /// a table keyed by any object, or a concurrent dictionary whatever its key: it is one, or a type
-        /// whose <c>new()</c> constraint builds one for it.
+        /// a non-generic hash table or a type derived from one, or a concurrent dictionary whatever its key: it is one, or
+        /// a type whose <c>new()</c> constraint builds one for it.
         /// </summary>
         private static bool CreatesTable(Type type) =>
             IsNonGeneric(type)
@@ -1798,7 +1828,8 @@ public class SeededComparerTests
                 return true;
             }
 
-            // A type deriving from a tuple, which hashes as the tuple it derives from.
+            // A type deriving from a tuple, which hashes as the tuple it derives from: steerable when that tuple holds
+            // an item that is.
             if (hash.DeclaringType != key && hash.DeclaringType is { } inherited && IsTupleOrAnonymous(inherited))
             {
                 return Array.Exists(inherited.GetGenericArguments(), Steerable);
@@ -1812,7 +1843,7 @@ public class SeededComparerTests
             }
 
             // A record's hash, as the compiler writes it: a fixed combination of its members a file inverts.
-            return !key.IsEnum && hash.DeclaringType == key && hash.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute));
+            return !key.IsEnum && hash.DeclaringType == key && hash.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), inherit: false);
         }
 
         /// <summary>
@@ -2174,14 +2205,19 @@ public class SeededComparerTests
         }
 
         /// <summary>
-        /// Determines whether <paramref name="key"/> is a number, nullable or not, a tuple one of whose elements is, by the
-        /// type each element gives rather than the name it may follow it with, or a pair whatever it holds, which keeps
-        /// .NET's default hash: one holding a reference, a floating point number or padding is hashed by its first non-null
-        /// field alone.
+        /// Determines whether <paramref name="key"/> is a number, nullable or not, written alone or after its namespace, a
+        /// tuple one of whose elements is, by the type each element gives rather than the name it may follow it with, or a
+        /// pair whatever it holds, which keeps .NET's default hash: one holding a reference, a floating point number or
+        /// padding is hashed by its first non-null field alone.
         /// </summary>
         private static bool IsNumeric(string key)
         {
             key = key.Trim().TrimEnd('?').TrimEnd();
+
+            if (Regex.Match(key, @"^(?:global::)?(?:System\.)?Nullable<(?<inner>.*)>$") is { Success: true } nullable)
+            {
+                return IsNumeric(nullable.Groups["inner"].Value);
+            }
 
             if (key.StartsWith('(') && key.EndsWith(')'))
             {
@@ -2195,7 +2231,7 @@ public class SeededComparerTests
 
             return Regex.Match(key, @"^(?:global::)?(?:System\.)?(?:Value)?Tuple<(?<items>.*)>$") is { Success: true } tuple
                 ? Array.Exists(TopLevel(tuple.Groups["items"].Value), IsNumeric)
-                : Regex.IsMatch(key, $@"^(?:global::)?(?:System\.)?{Number}\??$");
+                : Regex.IsMatch(key, $@"^(?:global::)?(?:System\.(?:Numerics\.|Text\.|Runtime\.InteropServices\.)?)?{Number}\??$");
         }
 
         /// <summary>
