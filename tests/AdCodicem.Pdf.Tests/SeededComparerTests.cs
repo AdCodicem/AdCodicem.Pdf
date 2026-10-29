@@ -347,12 +347,14 @@ public class SeededComparerTests
         // type or a generic interface of it, only to find or add one name. An enumeration's values are the library's
         // own, and how the hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's
         // and PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
-        // callers choose its key, and no reading follows them; nor does it give such a table type, or any type
-        // parameter, whatever its constraints, whose callers' types no reading wholly follows, where new(), Activator,
-        // Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue, a BindingList or Marshal.PtrToStructure
-        // builds it, a Lazy or a BindingList one of them builds counting as the table it builds in turn, nor
-        // deserialize JSON into a type argument, which builds every table that type holds with .NET's default comparer
-        // unless its options or the type say otherwise, out of the reading's sight: the library reads no JSON.
+        // callers choose its key, and no reading follows them; nor does it give such a table type where a new()
+        // constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue, a BindingList or
+        // Marshal.PtrToStructure builds it, a Lazy or a BindingList one of them builds counting as the table it builds
+        // in turn, nor build a type parameter it is given, whatever its constraints, its own new() compiling to
+        // Activator, since what its callers give it is not all read — no new() constraint of .NET 10's shared framework
+        // can stand for a table, and one of the library's is read in its own body —, nor deserialize JSON into a type
+        // argument, which builds every table that type holds with .NET's default comparer unless its options or the
+        // type say otherwise, out of the reading's sight: the library reads no JSON.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes(), typeof(PdfName)))
@@ -368,14 +370,14 @@ public class SeededComparerTests
     {
         // The check above sees what a source reading cannot: an out var given [], an expression body, a comparer handed
         // on one path only, a base constructor, a factory, a collection expression lowered to one, a method group, a
-        // table over a type parameter whatever its comparer, a table type, or any type parameter, that a new()
-        // constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable, a BindingList or Marshal.PtrToStructure
-        // builds, or a Lazy or a BindingList one of them builds, a JSON deserializer whatever its type argument, a
-        // table keyed by any object, a value type or any interface, a type deriving from a tuple, read through the
-        // tuple it hashes as, a record that is not sealed, a non-generic hash table, and a collection that enumerates
-        // by hash, seeded or not: the order the process's seed gives it would reach what the library reports or writes
-        // (invariant 6). The samples hold, one per condition, shapes the source reading sees as well: every number type
-        // and every hashing operator among them.
+        // table over a type parameter whatever its comparer, a table type a new() constraint, or one or any type
+        // parameter that the library's own new(), Activator, Lazy, LazyInitializer, a ConditionalWeakTable, a
+        // BindingList or Marshal.PtrToStructure builds, or a Lazy or a BindingList one of them builds, a JSON
+        // deserializer whatever its type argument, a table keyed by any object, a value type or any interface, a type
+        // deriving from a tuple, read through the tuple it hashes as, a record that is not sealed, a non-generic hash
+        // table, and a collection that enumerates by hash, seeded or not: the order the process's seed gives it would
+        // reach what the library reports or writes (invariant 6). The samples hold, one per condition, shapes the
+        // source reading sees as well: every number type and every hashing operator among them.
         var refused = Refused(typeof(Unseeded));
 
         refused.Should().BeEquivalentTo(
@@ -523,6 +525,9 @@ public class SeededComparerTests
             nameof(Unseeded.LazyOfLazy),
             nameof(Unseeded.ActivatorLazy),
             nameof(Unseeded.MadeBound),
+            nameof(Unseeded.Gotten),
+            nameof(Unseeded.Entries),
+            "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
             nameof(Unseeded.Make),
@@ -1041,10 +1046,19 @@ public class SeededComparerTests
 
         public static int Subclasses() => new IntDictionary().Count + new NumberCollection().Count + new Cache<int>().Seen.Count;
 
+        public static int Entries() => new EntryDictionary().Count;
+
+        public static int Gotten() => new System.Diagnostics.TraceSource("probe").Attributes.Count;
+
         private sealed class IntDictionary : Dictionary<int, string>;
 
         /// <summary>A table derived from a non-generic one, which its base constructor builds.</summary>
         private sealed class DerivedStrings : System.Collections.Specialized.StringDictionary;
+
+        /// <summary>
+        /// A typed dictionary over the Hashtable its base keeps, keyed by any object and enumerated by hash.
+        /// </summary>
+        private sealed class EntryDictionary : System.Collections.DictionaryBase;
 
         private sealed class NumberCollection : KeyedCollection<int, string>
         {
@@ -1632,13 +1646,16 @@ public class SeededComparerTests
 
         /// <summary>
         /// The non-generic hash tables, and any type derived from one: keyed by any object, a boxed number hashing as
-        /// itself, which no comparer of a number can seed, or, as a StringDictionary is, by strings in a Hashtable, which
-        /// enumerates by hash. Their constructors, a base constructor included, and the factories that build them.
+        /// itself, which no comparer of a number can seed, or, as a StringDictionary is, by strings in a Hashtable,
+        /// which enumerates by hash; a DictionaryBase keeps such a Hashtable. Their constructors, a base constructor
+        /// included, and any method that returns one under its own type, as CollectionsUtil's factories and framework
+        /// getters such as a TraceSource's Attributes do.
         /// </summary>
         private static readonly HashSet<Type> NonGeneric =
         [
             typeof(Hashtable), typeof(System.Collections.Specialized.HybridDictionary),
             typeof(System.Collections.Specialized.OrderedDictionary), typeof(System.Collections.Specialized.StringDictionary),
+            typeof(System.Collections.DictionaryBase),
         ];
 
         /// <summary>The calls on the interning table that find or add one entry, and enumerate nothing.</summary>
@@ -1775,9 +1792,10 @@ public class SeededComparerTests
         /// parameter stands for, or one that enumerates by hash whatever its key, and gets that key: null for what no
         /// comparer can seed — a non-generic hash table or a type derived from one, keyed by any object or, as a
         /// <see cref="System.Collections.Specialized.StringDictionary"/> is, by strings in a hash table that enumerates
-        /// by hash, built by its constructor or by <see cref="System.Collections.Specialized.CollectionsUtil"/>, or
-        /// what <see cref="BuildsTypeArgument"/> finds built for a type argument. A generic table keyed by any object
-        /// gets that key, which <see cref="Steerable"/> counts.
+        /// by hash, built by its constructor or returned by a method under its own type, as
+        /// <see cref="System.Collections.Specialized.CollectionsUtil"/> and some framework getters do, or what
+        /// <see cref="BuildsTypeArgument"/> finds built for a type argument. A generic table keyed by any object gets
+        /// that key, which <see cref="Steerable"/> counts.
         /// </summary>
         private static bool Builds(MemberInfo member, out Type? key)
         {
@@ -1785,7 +1803,7 @@ public class SeededComparerTests
             key = null;
 
             if ((member is ConstructorInfo && IsNonGeneric(type))
-                || (type == typeof(System.Collections.Specialized.CollectionsUtil) && member is MethodInfo { ReturnType: var built } && IsNonGeneric(built))
+                || (member is MethodInfo { ReturnType: var built } && IsNonGeneric(built))
                 || BuildsTypeArgument(member))
             {
                 return true;
@@ -1805,9 +1823,10 @@ public class SeededComparerTests
         }
 
         /// <summary>
-        /// Determines whether <paramref name="member"/> builds a table for a type argument it is given, or one any type
-        /// parameter may stand for: where a <c>new()</c> constraint lets it, or as the framework's builders do without
-        /// a factory or a value — Activator, Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue, a
+        /// Determines whether <paramref name="member"/> builds a table for a type argument it is given, where a
+        /// <c>new()</c> constraint it is given a table type for lets it, or, for that type or any type parameter, as
+        /// the library's own <c>new()</c>, which compiles to Activator, and the framework's builders do without a
+        /// factory or a value — Activator, Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue, a
         /// BindingList for AddNew and Marshal.PtrToStructure, those a sweep of .NET 10's shared framework found that
         /// may build a table, none handing it a comparer —; or whether it deserializes JSON into a type argument, which
         /// builds every table that type holds with .NET's default comparer unless its options or the type say
