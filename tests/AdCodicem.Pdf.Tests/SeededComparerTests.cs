@@ -550,6 +550,7 @@ public class SeededComparerTests
             nameof(Unseeded.CreatedPairs),
             nameof(Unseeded.ParallelDistinct),
             nameof(Unseeded.ValidatingSchemas),
+            nameof(Unseeded.AnonymousPairs),
             "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
@@ -643,6 +644,9 @@ public class SeededComparerTests
         CompiledRules.TablesBuilt([typeof(Instanced)], typeof(Instanced))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".ctor: ConcurrentDictionary`2<String, Instanced>..ctor");
+        CompiledRules.TablesBuilt([typeof(Boxed)], typeof(Boxed))
+            .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
+            .Should().Equal(".cctor: ConcurrentDictionary`2<String, Boxed>..ctor");
 
         static string Parameters(MemberInfo built) =>
             built is MethodBase called ? string.Join(", ", called.GetParameters().Select(parameter => parameter.ParameterType.Name)) : "";
@@ -658,7 +662,8 @@ public class SeededComparerTests
         // hiding what follows it. A branch that lands on a probe lands on what follows it, so that a comparer handed on
         // one path only, the probe at the join, stays refused; and a probe takes out itself alone, so that a table
         // built with no comparer right after one stays refused. A local an instruction addresses by two bytes is read
-        // as two, so that the high byte of its index, read as an instruction, does not hide the table built after it.
+        // as two, and a constant of eight bytes as eight, so that the rest of an operand, read as instructions, does
+        // not hide the table built after it.
         var module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Probed"), AssemblyBuilderAccess.Run).DefineDynamicModule("Probed");
         var tracker = module.DefineType("StaticManagedTrackerTemplate_Sample", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
         var begin = tracker.DefineField("Begin", typeof(nint), FieldAttributes.Public | FieldAttributes.Static);
@@ -706,9 +711,15 @@ public class SeededComparerTests
         many.Emit(OpCodes.Stloc, last);
         many.Emit(OpCodes.Newobj, typeof(HashSet<int>).GetConstructor(Type.EmptyTypes)!);
         many.Emit(OpCodes.Ret);
+        var weighed = samples.DefineMethod("AfterDouble", MethodAttributes.Public | MethodAttributes.Static, typeof(HashSet<int>), Type.EmptyTypes).GetILGenerator();
+        weighed.Emit(OpCodes.Ldc_R8, 0.5);
+        weighed.Emit(OpCodes.Pop);
+        weighed.Emit(OpCodes.Newobj, typeof(HashSet<int>).GetConstructor(Type.EmptyTypes)!);
+        weighed.Emit(OpCodes.Ret);
         var type = samples.CreateType();
 
-        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().BeEquivalentTo("Wedged", "Misshapen", "OnePathProbed", "ProbeThenBare", "ManyLocals");
+        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name)
+            .Should().BeEquivalentTo("Wedged", "Misshapen", "OnePathProbed", "ProbeThenBare", "ManyLocals", "AfterDouble");
 
         void Emit(string name, params Action<ILGenerator>[] between)
         {
@@ -1145,6 +1156,8 @@ public class SeededComparerTests
 
         public static int ParallelDistinct(int[] numbers) => numbers.AsParallel().Distinct().Count();
 
+        public static int AnonymousPairs(IEnumerable<string> names) => names.Select(name => new { Name = name, Offset = 0L }).ToHashSet().Count;
+
 #pragma warning disable CS0618 // Obsolete: a sample of what the reading refuses, a getter returning a hash table.
         public static int ValidatingSchemas(System.Xml.XmlReader reader)
         {
@@ -1553,6 +1566,24 @@ public class SeededComparerTests
         }
 
         public static Looped Get(string value) => Table.GetOrAdd(value, static _ => new Looped());
+    }
+
+    /// <summary>
+    /// A stand-in whose static constructor builds its table into a field of an object a static field holds, not straight
+    /// into a static field of its own.
+    /// </summary>
+    private sealed class Boxed
+    {
+        private static readonly Holder Box = new();
+
+        static Boxed() => Box.Table = new(StringComparer.Ordinal);
+
+        public static bool Has(string value) => Box.Table!.ContainsKey(value);
+
+        private sealed class Holder
+        {
+            public ConcurrentDictionary<string, Boxed>? Table;
+        }
     }
 
     /// <summary>

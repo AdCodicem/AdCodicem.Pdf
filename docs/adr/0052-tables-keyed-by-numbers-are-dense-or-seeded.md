@@ -137,9 +137,10 @@ opening a file records each of its rows. Most files number their objects from 0 
 - A hash differs from one process to the next. Tables enumerate in an order their adds and removes set, never in an
   order their hashes give — the reading of the compiled library refuses one that would, whatever its key, but
   `PdfName`'s interning table, which nothing enumerates —, so nothing the library reports or writes changes with it
-  (invariant 6). A parallel query orders what it gives by partition and scheduling, whatever its comparer, and the
-  reading does not follow it: the library runs none, one document being read on one thread (`architecture.md`,
-  *Parallelism*). A caller must not store a `PdfObjectId`'s or a `PdfDiagnostic`'s hash.
+  (invariant 6). An unordered parallel query orders what it gives by partition and scheduling, whatever its comparer:
+  the reading holds a parallel hashing operator's key and comparer as it holds `Enumerable`'s, but not that order, and
+  the library runs no parallel query, parallelism never being implicit (`architecture.md`, *Parallelism*). A caller must
+  not store a `PdfObjectId`'s or a `PdfDiagnostic`'s hash.
 - One seed serves the whole process, as for strings: an attacker who could learn it, by timing a long-running server's
   lookups, could aim at it for the life of that process.
 
