@@ -86,14 +86,15 @@ public class SeededComparerTests
     {
         // Every hash table keyed by a number, a tuple holding one or a pair, whose type the source writes, is built
         // with SeededComparer among its own arguments, or in its initializer where it has none, a copy included: built
-        // with [], new() or no comparer, it would hash numbers a file chose as themselves, or a pair by its first field
-        // (#155). A concurrent, frozen or immutable one built with [] or new(), which enumerates by hash, is refused
-        // seeded or not; one an operator or a factory builds is the compiled reading's. A name declared with such a
-        // type and no table, given [] or new() later, is held too, so are the tables an array's initializer builds, and
-        // a LINQ operator that hashes names a comparer among its own arguments, whatever its key. Comments and literals
-        // are not read. This reading names the file and the line; what it cannot see — a table built where its type is
-        // not written, as an out var or an expression body gives it, a key it cannot tell a number, the comparer an
-        // operator is given — the reading of the compiled library below refuses.
+        // with [], new() or no comparer, it would hash numbers a file chose as themselves, or a pair holding a
+        // reference, a floating point number or padding by its first field (#155). A concurrent, frozen or immutable
+        // one built with [] or new(), which enumerates by hash, is refused seeded or not; one an operator or a factory
+        // builds is the compiled reading's. A name declared with such a type and no table, given [] or new() later, is
+        // held too, so are the tables an array's initializer builds, and a LINQ operator that hashes names a comparer
+        // among its own arguments, whatever its key. Comments and literals are not read. This reading names the file
+        // and the line; what it cannot see — a table built where its type is not written, as an out var or an
+        // expression body gives it, a key it cannot tell a number, the comparer an operator is given — the reading of
+        // the compiled library below refuses.
         var violations = new List<string>();
 
         foreach (var path in Directory.EnumerateFiles(Path.Combine(FeatureTables.RepositoryRoot, "src"), "*.cs", SearchOption.AllDirectories))
@@ -545,6 +546,10 @@ public class SeededComparerTests
             nameof(Unseeded.MakeSecond),
             nameof(Unseeded.MakeFirst),
             nameof(Unseeded.Implemented),
+            nameof(Unseeded.LazyMetadataNumber),
+            nameof(Unseeded.CreatedPairs),
+            nameof(Unseeded.ParallelDistinct),
+            nameof(Unseeded.ValidatingSchemas),
             "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
@@ -590,6 +595,9 @@ public class SeededComparerTests
             "Interned.Replace: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)",
             "Interned.Strings: ImmutableHashSet.ToImmutableHashSet(IEnumerable`1, IEqualityComparer`1)",
             "Interned.Keys: ConcurrentDictionary`2<String, Interned>.get_Keys()",
+            "Interned.Snapshot: ConcurrentDictionary`2<String, Interned>.ToArray()",
+            "Interned.Valued: ConcurrentDictionary`2<String, Interned>.get_Values()",
+            "Interned.CopiedTo: ICollection`1<KeyValuePair`2>.CopyTo(KeyValuePair`2[], Int32)",
             "Interned.Listed: Enumerable.ToList(IEnumerable`1)",
             "Interned.Enumerated: IEnumerable`1<KeyValuePair`2>.GetEnumerator()",
             "Interned.Viewed: IReadOnlyDictionary`2<String, Interned>.get_Keys()",
@@ -643,13 +651,14 @@ public class SeededComparerTests
     [Fact]
     public void The_reading_of_the_compiled_library_reads_through_the_probes_code_coverage_puts()
     {
-        // Code coverage, as CI runs the tests, puts a probe at each sequence point, which may fall between the comparer's
-        // getter and the table's constructor: the probe is not code the source wrote, and the table stays seeded. Any other
-        // instruction there is read as it stands, a tracker's field stored otherwise than a probe stores it included, so
-        // that a probe another instrumenter writes otherwise refuses the table rather than hiding what follows it. A branch
-        // that lands on a probe lands on what follows it, so that a comparer handed on one path only, the probe at the join,
-        // stays refused; and a probe takes out itself alone, so that a table built with no comparer right after one stays
-        // refused.
+        // Code coverage, as CI runs the tests, puts a probe at each sequence point, which may fall between the
+        // comparer's getter and the table's constructor: the probe is not code the source wrote, and the table stays
+        // seeded. Any other instruction there is read as it stands, a tracker's field stored otherwise than a probe
+        // stores it included, so that a probe another instrumenter writes otherwise refuses the table rather than
+        // hiding what follows it. A branch that lands on a probe lands on what follows it, so that a comparer handed on
+        // one path only, the probe at the join, stays refused; and a probe takes out itself alone, so that a table
+        // built with no comparer right after one stays refused. A local an instruction addresses by two bytes is read
+        // as two, so that the high byte of its index, read as an instruction, does not hide the table built after it.
         var module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Probed"), AssemblyBuilderAccess.Run).DefineDynamicModule("Probed");
         var tracker = module.DefineType("StaticManagedTrackerTemplate_Sample", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
         var begin = tracker.DefineField("Begin", typeof(nint), FieldAttributes.Public | FieldAttributes.Static);
@@ -685,9 +694,21 @@ public class SeededComparerTests
         bare.Emit(OpCodes.Stind_I1);
         bare.Emit(OpCodes.Newobj, typeof(HashSet<int>).GetConstructor(Type.EmptyTypes)!);
         bare.Emit(OpCodes.Ret);
+        var many = samples.DefineMethod("ManyLocals", MethodAttributes.Public | MethodAttributes.Static, typeof(HashSet<int>), Type.EmptyTypes).GetILGenerator();
+        var last = many.DeclareLocal(typeof(int));
+
+        while (last.LocalIndex < 0x0E01)
+        {
+            last = many.DeclareLocal(typeof(int));
+        }
+
+        many.Emit(OpCodes.Ldc_I4_0);
+        many.Emit(OpCodes.Stloc, last);
+        many.Emit(OpCodes.Newobj, typeof(HashSet<int>).GetConstructor(Type.EmptyTypes)!);
+        many.Emit(OpCodes.Ret);
         var type = samples.CreateType();
 
-        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().BeEquivalentTo("Wedged", "Misshapen", "OnePathProbed", "ProbeThenBare");
+        CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name).Should().BeEquivalentTo("Wedged", "Misshapen", "OnePathProbed", "ProbeThenBare", "ManyLocals");
 
         void Emit(string name, params Action<ILGenerator>[] between)
         {
@@ -1118,6 +1139,20 @@ public class SeededComparerTests
         public static int Implemented(System.Xml.Serialization.XmlSerializerImplementation implementation) =>
             implementation.ReadMethods?.Count ?? 0;
 
+        public static int LazyMetadataNumber() => new Lazy<HashSet<int>, int>(0).Value.Count;
+
+        public static int CreatedPairs<T>() => Activator.CreateInstance<HashSet<(T, string)>>().Count;
+
+        public static int ParallelDistinct(int[] numbers) => numbers.AsParallel().Distinct().Count();
+
+#pragma warning disable CS0618 // Obsolete: a sample of what the reading refuses, a getter returning a hash table.
+        public static int ValidatingSchemas(System.Xml.XmlReader reader)
+        {
+            using var validating = new System.Xml.XmlValidatingReader(reader);
+            return validating.Schemas.Count;
+        }
+#pragma warning restore CS0618
+
         private sealed class IntDictionary : Dictionary<int, string>;
 
         /// <summary>A table derived from a non-generic one, which its base constructor builds.</summary>
@@ -1277,7 +1312,9 @@ public class SeededComparerTests
     /// <summary>A key deriving from a tuple of numbers, which hashes as the tuple does.</summary>
     private sealed class TupleChild(long first, int second) : Tuple<long, int>(first, second);
 
-    /// <summary>A key deriving from a tuple whose only number is its first item, which hashes as the tuple does.</summary>
+    /// <summary>
+    /// A key deriving from a tuple whose only number is its first item, which hashes as the tuple does.
+    /// </summary>
     private sealed class LongFirst(long first, string second) : Tuple<long, string>(first, second);
 
     /// <summary>A key deriving from a tuple of its type argument, which hashes as the tuple does.</summary>
@@ -1376,6 +1413,16 @@ public class SeededComparerTests
         private static ConcurrentDictionary<string, Interned>? replaced;
 
         public static Interned Get(string value) => Table.GetOrAdd(value, static _ => new Interned());
+
+        public static int Snapshot() => Table.ToArray().Length;
+
+        public static int Valued() => Table.Values.Count;
+
+        public static void CopiedTo()
+        {
+            ICollection<KeyValuePair<string, Interned>> pairs = Table;
+            pairs.CopyTo(new KeyValuePair<string, Interned>[4], 0);
+        }
 
         public static bool Find(string value) =>
             Table.TryGetValue(value, out _) || Table.ContainsKey(value) || Table.TryAdd(value, Table[value])
@@ -2132,11 +2179,14 @@ public class SeededComparerTests
             return typeof(object).GetMethod(nameof(GetHashCode))!;
         }
 
-        /// <summary>Determines whether <paramref name="key"/> is a tuple or an anonymous type, hashed as the hashes of its members.</summary>
+        /// <summary>
+        /// Determines whether <paramref name="key"/> is a tuple or an anonymous type, hashed as the hashes of its
+        /// members: an anonymous type by the name the compiler gives it, which no source can declare.
+        /// </summary>
         private static bool IsTupleOrAnonymous(Type key) =>
             key.IsGenericType && ((key.GetGenericTypeDefinition() is { Namespace: "System" } tuple
                     && (tuple.Name.StartsWith("ValueTuple`", StringComparison.Ordinal) || tuple.Name.StartsWith("Tuple`", StringComparison.Ordinal)))
-                || (key.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute)) && key.Name.Contains("AnonymousType", StringComparison.Ordinal)));
+                || key.Name.StartsWith("<>f__AnonymousType", StringComparison.Ordinal));
 
         /// <summary>
         /// Determines whether <paramref name="method"/> takes the comparer of <paramref name="key"/> last: as a hashing
