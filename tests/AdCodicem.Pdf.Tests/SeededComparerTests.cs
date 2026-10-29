@@ -348,9 +348,11 @@ public class SeededComparerTests
         // own, and how the hash of a type the library hashes by hand spreads is held by its own tests, as PdfObjectId's
         // and PdfDiagnostic's are. The library builds no collection over a type parameter, whatever its comparer: its
         // callers choose its key, and no reading follows them; nor does it give such a table type, or a type parameter
-        // its callers choose, where new(), Activator, Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue,
-        // a BindingList or Marshal.PtrToStructure builds it, nor deserialize JSON into a type argument, which builds
-        // every table that type holds with .NET's default comparer.
+        // with no new() constraint, whose callers no reading follows, where new(), Activator, Lazy, LazyInitializer, a
+        // ConditionalWeakTable's GetOrCreateValue, a BindingList or Marshal.PtrToStructure builds it, a Lazy or a
+        // BindingList one of them builds counting as the table it builds in turn, nor deserialize JSON into a type
+        // argument, which builds every table that type holds with .NET's default comparer unless options the reading
+        // cannot see say otherwise.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes(), typeof(PdfName)))
@@ -368,12 +370,12 @@ public class SeededComparerTests
         // on one path only, a base constructor, a factory, a collection expression lowered to one, a method group, a
         // table over a type parameter whatever its comparer, a table type, or a type parameter with no new()
         // constraint, that a new() constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable, a BindingList
-        // or Marshal.PtrToStructure builds, a JSON deserializer whatever its type argument, a table keyed by any
-        // object, a value type or any interface, a type deriving from a tuple, read through the tuple it hashes as, a
-        // record that is not sealed, a non-generic hash table, and a collection that enumerates by hash, seeded or not:
-        // the order the process's seed gives it would reach what the library reports or writes (invariant 6). The
-        // samples hold, one per condition, shapes the source reading sees as well: every number type and every hashing
-        // operator among them.
+        // or Marshal.PtrToStructure builds, or a Lazy or a BindingList one of them builds, a JSON deserializer whatever
+        // its type argument, a table keyed by any object, a value type or any interface, a type deriving from a tuple,
+        // read through the tuple it hashes as, a record that is not sealed, a non-generic hash table, and a collection
+        // that enumerates by hash, seeded or not: the order the process's seed gives it would reach what the library
+        // reports or writes (invariant 6). The samples hold, one per condition, shapes the source reading sees as well:
+        // every number type and every hashing operator among them.
         var refused = Refused(typeof(Unseeded));
 
         refused.Should().BeEquivalentTo(
@@ -511,6 +513,16 @@ public class SeededComparerTests
             nameof(Unseeded.Deserialized),
             nameof(Unseeded.Fetched),
             nameof(Unseeded.ReadAsJson),
+            nameof(Unseeded.ActivatorBare),
+            nameof(Unseeded.LazyInitializedBare),
+            nameof(Unseeded.MarshalledBare),
+            nameof(Unseeded.WeakOpen),
+            nameof(Unseeded.BoundOpen),
+            nameof(Unseeded.BoundAddedOpen),
+            nameof(Unseeded.StoredOnly),
+            nameof(Unseeded.LazyOfLazy),
+            nameof(Unseeded.ActivatorLazy),
+            nameof(Unseeded.MadeBound),
             nameof(Unseeded.NestedCreation),
             nameof(Unseeded.WrappedCreation),
             "IntDictionary",
@@ -975,6 +987,32 @@ public class SeededComparerTests
 
         public static Task<int> ReadAsJson(HttpContent content) => System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<int>(content);
 
+        public static T ActivatorBare<T>() => Activator.CreateInstance<T>();
+
+        public static T LazyInitializedBare<T>()
+            where T : class
+        {
+            T? value = null;
+            return LazyInitializer.EnsureInitialized(ref value);
+        }
+
+        public static T? MarshalledBare<T>(IntPtr pointer) => System.Runtime.InteropServices.Marshal.PtrToStructure<T>(pointer);
+
+        public static T WeakOpen<T>(System.Runtime.CompilerServices.ConditionalWeakTable<object, T> table, object key)
+            where T : class => table.GetOrCreateValue(key);
+
+        public static System.ComponentModel.BindingList<T> BoundOpen<T>() => [];
+
+        public static T BoundAddedOpen<T>(System.ComponentModel.BindingList<T> list) => list.AddNew();
+
+        public static void StoredOnly() => Holder<HashSet<int>>.Other = null;
+
+        public static int LazyOfLazy() => new Lazy<Lazy<HashSet<int>>>().Value.Value.Count;
+
+        public static int ActivatorLazy() => Activator.CreateInstance<Lazy<HashSet<int>>>().Value.Count;
+
+        public static int MadeBound() => Make<System.ComponentModel.BindingList<HashSet<int>>>().Count;
+
         public static int NestedCreation() => Make<Wrapper<HashSet<int>>>() is null ? 0 : 1;
 
         public static int WrappedCreation() => new Wrapper<HashSet<int>>().Inner.Count;
@@ -1026,6 +1064,18 @@ public class SeededComparerTests
             where TInner : new()
         {
             public TInner Inner { get; } = new();
+        }
+
+        /// <summary>
+        /// What its type argument is, built through <c>new()</c> by its static initializer, which any use of a static
+        /// field of an instantiation runs, a store alone included.
+        /// </summary>
+        public static class Holder<T>
+            where T : class, new()
+        {
+            public static readonly T Value = new();
+
+            public static object? Other;
         }
     }
 
@@ -1081,6 +1131,8 @@ public class SeededComparerTests
             var lazy = new Lazy<HashSet<int>>(() => new HashSet<int>(SeededComparer.Instance));
             return LazyInitializer.EnsureInitialized(ref seen, () => new HashSet<int>(SeededComparer.Instance)).Count + lazy.Value.Count;
         }
+
+        public static int ActivatorLazyList() => Activator.CreateInstance<Lazy<List<int>>>().Value.Count;
 
         public static int LazyMetadataFactory() => new Lazy<HashSet<int>, int>(() => new HashSet<int>(SeededComparer.Instance), 0).Value.Count;
 
@@ -1553,13 +1605,14 @@ public class SeededComparerTests
             .ToDictionary(code => code.Value);
 
         /// <summary>
-        /// The instructions that build or call what they name, take a method group of it, virtual or not, or load a static
-        /// field or its address. A virtual method group is read for what reaches the interning table, and for a table a
-        /// <c>new()</c> constraint builds for its type argument, as an interface's or a virtual generic method may; no
-        /// hashing operator, factory or table constructor is virtual.
+        /// The instructions that build or call what they name, take a method group of it, virtual or not, or load or
+        /// store a static field, or take its address: any of them on a generic type runs its static initializer for the
+        /// type arguments it names. A virtual method group is read for what reaches the interning table, and for a
+        /// table a <c>new()</c> constraint builds for its type argument, as an interface's or a virtual generic method
+        /// may; no hashing operator, factory or table constructor is virtual.
         /// </summary>
         private static readonly HashSet<OpCode> Considered =
-            [OpCodes.Newobj, OpCodes.Call, OpCodes.Callvirt, OpCodes.Ldftn, OpCodes.Ldvirtftn, OpCodes.Ldsfld, OpCodes.Ldsflda];
+            [OpCodes.Newobj, OpCodes.Call, OpCodes.Callvirt, OpCodes.Ldftn, OpCodes.Ldvirtftn, OpCodes.Ldsfld, OpCodes.Ldsflda, OpCodes.Stsfld];
 
         /// <summary>The tables a constructor builds, a base constructor included.</summary>
         private static readonly HashSet<Type> Tables =
@@ -1748,7 +1801,8 @@ public class SeededComparerTests
         /// ConditionalWeakTable's GetOrCreateValue, a BindingList for AddNew and Marshal.PtrToStructure, those a sweep
         /// of .NET 10's shared framework found that may build a table, none handing it a comparer —; or whether it
         /// deserializes JSON into a type argument, which builds every table that type holds with .NET's default
-        /// comparer, no option giving another.
+        /// comparer unless its options or the type say otherwise, out of the reading's sight: the library reads no
+        /// JSON.
         /// </summary>
         private static bool BuildsTypeArgument(MemberInfo member)
         {
@@ -1767,7 +1821,8 @@ public class SeededComparerTests
                 }
 
                 // A JSON deserializer builds the type it is given and every table that type holds, at any depth, with
-                // .NET's default comparer, which no option changes: refused whatever that type.
+                // .NET's default comparer unless its options or the type say otherwise, which cannot be read where it
+                // is called: refused whatever that type, since the library reads no JSON.
                 if ((type.FullName == "System.Text.Json.JsonSerializer" && generic.Name.StartsWith("Deserialize", StringComparison.Ordinal))
                     || (type.FullName is "System.Net.Http.Json.HttpClientJsonExtensions" or "System.Net.Http.Json.HttpContentJsonExtensions"
                         && generic.Name.Contains("FromJson", StringComparison.Ordinal)))
@@ -1847,14 +1902,18 @@ public class SeededComparerTests
         }
 
         /// <summary>
-        /// Determines whether building <paramref name="type"/> builds a hash table over a steerable key or a type parameter,
-        /// a non-generic hash table or a type derived from one, or a concurrent dictionary whatever its key: it is one, or
-        /// a type whose <c>new()</c> constraint builds one for it.
+        /// Determines whether building <paramref name="type"/> builds a hash table over a steerable key or a type
+        /// parameter, a non-generic hash table or a type derived from one, or a concurrent dictionary whatever its key:
+        /// it is one, a type whose <c>new()</c> constraint builds one for it, or a Lazy or a BindingList over what may
+        /// be one, which another builder builds through its parameterless constructor, the Lazy building its value
+        /// without a factory and the BindingList an item for AddNew.
         /// </summary>
         private static bool CreatesTable(Type type) =>
             IsNonGeneric(type)
             || (type.IsGenericType && Tables.Contains(type.GetGenericTypeDefinition()) && type.GetGenericArguments()[0] is var key
                 && (key.ContainsGenericParameters || Steerable(key) || type.GetGenericTypeDefinition() == typeof(ConcurrentDictionary<,>)))
+            || (type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(Lazy<>) || type.GetGenericTypeDefinition() == typeof(System.ComponentModel.BindingList<>))
+                && BuildsTable(type.GetGenericArguments()[0]))
             || (type.IsGenericType && Constructed(type.GetGenericTypeDefinition().GetGenericArguments(), type.GetGenericArguments()));
 
         /// <summary>

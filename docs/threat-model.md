@@ -190,14 +190,15 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
   parameter with no `new()` constraint, whose callers no reading follows, by `new()`, `Activator`, `Lazy`,
   `LazyInitializer`, a `ConditionalWeakTable`'s `GetOrCreateValue`, a `BindingList`, which builds one for `AddNew`, or
   `Marshal.PtrToStructure` — the builders a sweep of .NET 10's shared framework found that may build a table, none
-  handing it a comparer —; and a generic JSON deserializer of `System.Text.Json` or `System.Net.Http.Json`, whatever its
-  type argument, which builds every table that type holds with .NET's default comparer, no option giving another. The
-  library builds no hash collection over a type parameter, whatever its comparer, since its callers choose the key; how
-  the hash of a type the library hashes by hand spreads is held by its own tests, as `PdfObjectId`'s and
-  `PdfDiagnostic`'s are; a collection built through reflection otherwise, or one a framework method returns under
-  another type, is not read. It reads through the probes code coverage puts, and only their shape: any other instruction
-  between the comparer and the table refuses it. The other reads the sources and names the file and line of the shapes
-  it recognizes.
+  handing it a comparer, a `Lazy` or a `BindingList` one of them builds counting as the table it builds in turn —; and a
+  generic JSON deserializer of `System.Text.Json` or `System.Net.Http.Json`, whatever its type argument, which builds
+  every table that type holds with .NET's default comparer unless its options or the type say otherwise, out of the
+  reading's sight: the library reads no JSON. The library builds no hash collection over a type parameter, whatever its
+  comparer, since its callers choose the key; how the hash of a type the library hashes by hand spreads is held by its
+  own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; a collection built through reflection otherwise, or one a
+  framework method returns under another type, is not read. It reads through the probes code coverage puts, and only
+  their shape: any other instruction between the comparer and the table refuses it. The other reads the sources and
+  names the file and line of the shapes it recognizes.
 
 ### Everything read is bounded by the source
 
