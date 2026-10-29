@@ -551,6 +551,15 @@ public class SeededComparerTests
             nameof(Unseeded.ParallelDistinct),
             nameof(Unseeded.ValidatingSchemas),
             nameof(Unseeded.AnonymousPairs),
+            nameof(Unseeded.ElementSelected),
+            nameof(Unseeded.PairsToDictionary),
+            nameof(Unseeded.JoinedNames),
+            nameof(Unseeded.NullableItemKey),
+            nameof(Unseeded.NullableItemChildKey),
+            nameof(Unseeded.ReferenceTripleKey),
+            nameof(Unseeded.WeakLazy),
+            nameof(Unseeded.BoundLazy),
+            nameof(Unseeded.ActivatorLazyOfLazy),
             "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
@@ -647,6 +656,9 @@ public class SeededComparerTests
         CompiledRules.TablesBuilt([typeof(Boxed)], typeof(Boxed))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".cctor: ConcurrentDictionary`2<String, Boxed>..ctor");
+        CompiledRules.TablesBuilt([typeof(HandedOff)], typeof(HandedOff))
+            .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
+            .Should().Equal(".cctor: ConcurrentDictionary`2<String, HandedOff>..ctor");
 
         static string Parameters(MemberInfo built) =>
             built is MethodBase called ? string.Join(", ", called.GetParameters().Select(parameter => parameter.ParameterType.Name)) : "";
@@ -662,8 +674,8 @@ public class SeededComparerTests
         // hiding what follows it. A branch that lands on a probe lands on what follows it, so that a comparer handed on
         // one path only, the probe at the join, stays refused; and a probe takes out itself alone, so that a table
         // built with no comparer right after one stays refused. A local an instruction addresses by two bytes is read
-        // as two, and a constant of eight bytes as eight, so that the rest of an operand, read as instructions, does
-        // not hide the table built after it.
+        // as two, a constant of eight bytes as eight and one of four as four, so that the rest of an operand, read as
+        // instructions, does not hide the table built after it.
         var module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Probed"), AssemblyBuilderAccess.Run).DefineDynamicModule("Probed");
         var tracker = module.DefineType("StaticManagedTrackerTemplate_Sample", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
         var begin = tracker.DefineField("Begin", typeof(nint), FieldAttributes.Public | FieldAttributes.Static);
@@ -716,10 +728,15 @@ public class SeededComparerTests
         weighed.Emit(OpCodes.Pop);
         weighed.Emit(OpCodes.Newobj, typeof(HashSet<int>).GetConstructor(Type.EmptyTypes)!);
         weighed.Emit(OpCodes.Ret);
+        var single = samples.DefineMethod("AfterSingle", MethodAttributes.Public | MethodAttributes.Static, typeof(HashSet<int>), Type.EmptyTypes).GetILGenerator();
+        single.Emit(OpCodes.Ldc_R4, 0.5f);
+        single.Emit(OpCodes.Pop);
+        single.Emit(OpCodes.Newobj, typeof(HashSet<int>).GetConstructor(Type.EmptyTypes)!);
+        single.Emit(OpCodes.Ret);
         var type = samples.CreateType();
 
         CompiledRules.TablesBuilt([type]).Select(found => found.Method.Name)
-            .Should().BeEquivalentTo("Wedged", "Misshapen", "OnePathProbed", "ProbeThenBare", "ManyLocals", "AfterDouble");
+            .Should().BeEquivalentTo("Wedged", "Misshapen", "OnePathProbed", "ProbeThenBare", "ManyLocals", "AfterDouble", "AfterSingle");
 
         void Emit(string name, params Action<ILGenerator>[] between)
         {
@@ -818,6 +835,12 @@ public class SeededComparerTests
         public static int AnonymousKey(int number) => ImmutableHashSet.Create(new { A = number, B = number }).Count;
 
         public static Dictionary<int, string> KeyedOperator(IEnumerable<string> names) => names.ToDictionary(name => name.Length);
+
+        public static Dictionary<long, string> ElementSelected(IEnumerable<string> names) => names.ToDictionary(name => (long)name.Length, name => name);
+
+        public static Dictionary<long, string> PairsToDictionary(IEnumerable<KeyValuePair<long, string>> pairs) => pairs.ToDictionary();
+
+        public static int JoinedNames(int[] numbers, string[] names) => numbers.Join(names, number => (long)number, name => (long)name.Length, (number, name) => name).Count();
 
         public static HashSet<T> GenericSized<T>(int capacity) => new(capacity);
 
@@ -1075,6 +1098,12 @@ public class SeededComparerTests
 
         public static int LazyOfLazy() => new Lazy<Lazy<HashSet<int>>>().Value.Value.Count;
 
+        public static int ActivatorLazyOfLazy() => Activator.CreateInstance<Lazy<Lazy<HashSet<int>>>>().Value.Value.Count;
+
+        public static int WeakLazy(System.Runtime.CompilerServices.ConditionalWeakTable<object, Lazy<HashSet<int>>> table, object key) => table.GetOrCreateValue(key).Value.Count;
+
+        public static int BoundLazy() => new System.ComponentModel.BindingList<Lazy<HashSet<int>>>().Count;
+
         public static int ActivatorLazy() => Activator.CreateInstance<Lazy<HashSet<int>>>().Value.Count;
 
         public static int MadeBound() => Make<System.ComponentModel.BindingList<HashSet<int>>>().Count;
@@ -1119,6 +1148,12 @@ public class SeededComparerTests
         public static HashSet<LongFirst> LongFirstKey() => [];
 
         public static HashSet<(long, int, int)> TripleKey() => [];
+
+        public static HashSet<Tuple<string, string, long>> ReferenceTripleKey() => [];
+
+        public static HashSet<(string, int?)> NullableItemKey() => [];
+
+        public static HashSet<NullableItemChild> NullableItemChildKey() => [];
 
         public static HashSet<IEquatable<long>> EquatableKey() => [];
 
@@ -1228,6 +1263,8 @@ public class SeededComparerTests
     private static class Seeded
     {
         public static HashSet<int> Constructor() => new(SeededComparer.Instance);
+
+        public static Dictionary<long, string> ElementSelected(IEnumerable<string> names) => names.ToDictionary(name => (long)name.Length, name => name, SeededComparer.Instance);
 
         public static HashSet<GenericTupleChild<string>> StringTupleChildren() => [];
 
@@ -1341,6 +1378,9 @@ public class SeededComparerTests
     /// neither its base type nor its own type arguments the tuple it hashes as.
     /// </summary>
     private sealed class TupleGrandchild(string first, long second) : TupleChildBase<string>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers is a nullable number, one level below it.</summary>
+    private sealed class NullableItemChild(string first, int? second) : Tuple<string, int?>(first, second);
 
     /// <summary>A record hashed by hand that is not sealed: a record derived from it, hashed as the compiler writes, may stand behind it.</summary>
     private record HandHashedBase(string Name)
@@ -1584,6 +1624,19 @@ public class SeededComparerTests
         {
             public ConcurrentDictionary<string, Boxed>? Table;
         }
+    }
+
+    /// <summary>
+    /// A stand-in whose static constructor hands its table on as an object beside a static field it loads, rather than
+    /// storing it straight into one.
+    /// </summary>
+    private sealed class HandedOff
+    {
+        private static readonly object Gate = new();
+
+        static HandedOff() => Register(new ConcurrentDictionary<string, HandedOff>(StringComparer.Ordinal), Gate);
+
+        private static void Register(object table, object gate) => GC.KeepAlive((table, gate));
     }
 
     /// <summary>
