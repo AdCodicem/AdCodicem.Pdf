@@ -167,7 +167,9 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
   library reports or writes (invariant 6). The library builds no table that enumerates by hash — concurrent, frozen,
   immutable, a `StringDictionary` or an obsolete `XmlSchemaCollection` —, whatever its key and comparer, which the
   reading of the compiled library below holds, but `PdfName`'s interning table, keyed by strings, which .NET hashes
-  without a seed until a chain grows long, and through the strings' seed after, and which nothing enumerates.
+  without a seed until a chain grows long, and through the strings' seed after, and which nothing enumerates. A parallel
+  query orders what it gives by partition and scheduling, whatever its comparer, and the reading does not follow it: the
+  library runs none, one document being read on one thread (`architecture.md`, *Parallelism*).
 - **Two tests read the code** (`SeededComparerTests`). One reads the compiled library and refuses every hash collection
   built over a key a file can steer — a number wider than a byte, nullable or not, a tuple or an anonymous type holding
   one, a type of the library hashed as the compiler writes a record's hash or a record that is not sealed, which one so
