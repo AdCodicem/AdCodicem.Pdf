@@ -347,9 +347,9 @@ public class SeededComparerTests
         // which its static constructor builds once, ahead of every branch target and straight into a static field, and
         // the library reaches, through its type or a generic interface of it, only to find or add one name. An
         // enumeration's values are the library's own, and how the hash of a type the library hashes by hand spreads is
-        // held by its own tests, as PdfObjectId's and PdfDiagnostic's are. The library builds no collection over a type
-        // parameter, whatever its comparer: its callers choose its key, and no reading follows them; nor does it give
-        // such a table type where a new() constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable's
+        // held by its own tests, as PdfObjectId's and PdfDiagnostic's are. The library builds no hash collection over a
+        // type parameter, whatever its comparer: its callers choose its key, and no reading follows them; nor does it
+        // give such a table type where a new() constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable's
         // GetOrCreateValue, a BindingList or Marshal.PtrToStructure builds it, a Lazy or a BindingList one of them
         // builds counting as the table it builds in turn, nor build a type parameter it is given, whatever its
         // constraints, its own new() compiling to Activator, since what its callers give it is not all read — no new()
@@ -560,6 +560,23 @@ public class SeededComparerTests
             nameof(Unseeded.WeakLazy),
             nameof(Unseeded.BoundLazy),
             nameof(Unseeded.ActivatorLazyOfLazy),
+            nameof(Unseeded.NamesJoined),
+            nameof(Unseeded.ArrayToDictionary),
+            nameof(Unseeded.GivenNested),
+            nameof(Unseeded.CreatedNested),
+            nameof(Unseeded.NestedItemKey),
+            nameof(Unseeded.NestedItemChildKey),
+            nameof(Unseeded.NullablePaddedKey),
+            nameof(Unseeded.EmptyNamedDictionary),
+            nameof(Unseeded.DictionaryBuilder),
+            nameof(Unseeded.CreatedOrdered),
+            nameof(Unseeded.BoundHybrid),
+            nameof(Unseeded.BoundSpecializedOrdered),
+            nameof(Unseeded.BoundStrings),
+            nameof(Unseeded.BoundSchemas),
+            nameof(Unseeded.ObjectItemKey),
+            nameof(Unseeded.ObjectItemChildKey),
+            nameof(Unseeded.NullablePairKey),
             "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
@@ -650,6 +667,9 @@ public class SeededComparerTests
         CompiledRules.TablesBuilt([typeof(LoopedSwitchBare)], typeof(LoopedSwitchBare))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedSwitchBare>..ctor");
+        CompiledRules.TablesBuilt([typeof(LoopedSwitchLast)], typeof(LoopedSwitchLast))
+            .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
+            .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedSwitchLast>..ctor");
         CompiledRules.TablesBuilt([typeof(Instanced)], typeof(Instanced))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".ctor: ConcurrentDictionary`2<String, Instanced>..ctor");
@@ -841,6 +861,10 @@ public class SeededComparerTests
         public static Dictionary<long, string> PairsToDictionary(IEnumerable<KeyValuePair<long, string>> pairs) => pairs.ToDictionary();
 
         public static int JoinedNames(int[] numbers, string[] names) => numbers.Join(names, number => (long)number, name => (long)name.Length, (number, name) => name).Count();
+
+        public static int NamesJoined(string[] names, int[] numbers) => names.Join(numbers, name => (long)name.Length, number => (long)number, (name, number) => name).Count();
+
+        public static int ArrayToDictionary(ImmutableArray<long> numbers) => numbers.ToDictionary(number => number).Count;
 
         public static HashSet<T> GenericSized<T>(int capacity) => new(capacity);
 
@@ -1037,6 +1061,10 @@ public class SeededComparerTests
 
         public static HashSet<(T, string)> Given<T>(IEqualityComparer<(T, string)> comparer) => new(comparer);
 
+        public static HashSet<(List<T>, string)> GivenNested<T>(IEqualityComparer<(List<T>, string)> comparer) => new(comparer);
+
+        public static int CreatedNested<T>() => Activator.CreateInstance<HashSet<(List<T>, string)>>().Count;
+
         public static HashSet<List<T>> ByReference<T>() => new(ReferenceEqualityComparer.Instance);
 
         public static HashSet<T> ActivatorOpen<T>() => Activator.CreateInstance<HashSet<T>>();
@@ -1154,6 +1182,34 @@ public class SeededComparerTests
         public static HashSet<(string, int?)> NullableItemKey() => [];
 
         public static HashSet<NullableItemChild> NullableItemChildKey() => [];
+
+        public static HashSet<(string, (long, int))> NestedItemKey() => [];
+
+        public static HashSet<NestedItemChild> NestedItemChildKey() => [];
+
+        public static HashSet<Padded?> NullablePaddedKey() => [];
+
+        public static HashSet<(string, object)> ObjectItemKey() => [];
+
+        public static HashSet<ObjectItemChild> ObjectItemChildKey() => [];
+
+        public static HashSet<Pair?> NullablePairKey() => [];
+
+        public static int EmptyNamedDictionary() => ImmutableDictionary<string, int>.Empty.Add("name", 1).Count;
+
+        public static int DictionaryBuilder() => ImmutableDictionary.CreateBuilder<long, int>().Count;
+
+        public static int CreatedOrdered() => Activator.CreateInstance<OrderedDictionary<long, string>>().Count;
+
+        public static int BoundHybrid() => new System.ComponentModel.BindingList<System.Collections.Specialized.HybridDictionary>().Count;
+
+        public static int BoundSpecializedOrdered() => new System.ComponentModel.BindingList<System.Collections.Specialized.OrderedDictionary>().Count;
+
+        public static int BoundStrings() => new System.ComponentModel.BindingList<System.Collections.Specialized.StringDictionary>().Count;
+
+#pragma warning disable CS0618 // Obsolete: a sample of what the reading refuses, a Hashtable it enumerates.
+        public static int BoundSchemas() => new System.ComponentModel.BindingList<System.Xml.Schema.XmlSchemaCollection>().Count;
+#pragma warning restore CS0618
 
         public static HashSet<IEquatable<long>> EquatableKey() => [];
 
@@ -1381,6 +1437,12 @@ public class SeededComparerTests
 
     /// <summary>A key deriving from a tuple whose only item a file steers is a nullable number, one level below it.</summary>
     private sealed class NullableItemChild(string first, int? second) : Tuple<string, int?>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers is a tuple of numbers, one level below it.</summary>
+    private sealed class NestedItemChild(string first, (long, int) second) : Tuple<string, (long, int)>(first, second);
+
+    /// <summary>A key deriving from a tuple whose only item a file steers is typed as an object, one level below it.</summary>
+    private sealed class ObjectItemChild(string first, object second) : Tuple<string, object>(first, second);
 
     /// <summary>A record hashed by hand that is not sealed: a record derived from it, hashed as the compiler writes, may stand behind it.</summary>
     private record HandHashedBase(string Name)
@@ -1795,6 +1857,46 @@ public class SeededComparerTests
         }
 
         public static LoopedSwitchBare Get(string value) => Table.GetOrAdd(value, static _ => new LoopedSwitchBare());
+    }
+
+    /// <summary>
+    /// A stand-in whose static constructor builds its table at the head of a loop that only the last case of a switch's
+    /// jump table closes.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1810:Initialize reference type static fields inline",
+        Justification = "The sample is a static constructor that builds its table in a loop.")]
+    private sealed class LoopedSwitchLast
+    {
+        private static readonly ConcurrentDictionary<string, LoopedSwitchLast>[] Shards = new ConcurrentDictionary<string, LoopedSwitchLast>[5];
+
+        private static readonly ConcurrentDictionary<string, LoopedSwitchLast> Table;
+
+        static LoopedSwitchLast()
+        {
+            var i = 0;
+
+            for (; ; )
+            {
+                Table = new(StringComparer.Ordinal);
+                Shards[i] = Table;
+
+                switch (i++)
+                {
+                    case 0:
+                        return;
+                    case 1:
+                        return;
+                    case 2:
+                        continue;
+                    default:
+                        return;
+                }
+            }
+        }
+
+        public static LoopedSwitchLast Get(string value) => Table.GetOrAdd(value, static _ => new LoopedSwitchLast());
     }
 
     /// <summary>A stand-in whose instance constructor builds its table, again at each instance, into a static field.</summary>
