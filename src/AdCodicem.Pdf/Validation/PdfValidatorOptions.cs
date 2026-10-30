@@ -19,8 +19,8 @@ public sealed record PdfValidatorOptions
 
     /// <summary>
     /// Gets the largest number of findings a report keeps. A pathological file can have a fault in every
-    /// object; beyond this number findings are counted but not kept. Defaults to 1,000; zero keeps none and
-    /// still counts them.
+    /// object; beyond this number findings are counted, neither kept nor written, so that the validator holds no more
+    /// of them than this whatever the file (#168). Defaults to 1,000; zero keeps none and still counts them.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
     public int FindingCapacity

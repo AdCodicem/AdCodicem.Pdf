@@ -849,6 +849,68 @@ public class ObjectRuleTests
         ReaderNeeds(file).Should().Be(5);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(4)]
+    public void Broken_object_streams_are_kept_whatever_the_room_for_their_rule_to_pass_over_the_circular_ones(int capacity)
+    {
+        // #168: streams 10, 20 and 30 need, for their /N, the object each holds: circular, and unreadable to the probe; the
+        // index places objects in streams 71 to 73, which it lacks. The probe cannot tell the circular ones, which a walk
+        // made later finds: it keeps a record of every broken stream, whatever the room, and the rule writes the findings of
+        // the others while the report has room for them. Each is counted once, as circular or as broken.
+        var file = ValidatorTests.ObjectStreamFaults();
+        using var document = PdfDocument.Open(file);
+        document.Reader.SettleIndex();
+
+        CrossReferenceProbe.Run(document, room: 0).BrokenObjectStreams.Select(broken => (broken.Stream, broken.Kind)).Should().Equal(
+            (10, BrokenObjectStreamKind.Unreadable),
+            (20, BrokenObjectStreamKind.Unreadable),
+            (30, BrokenObjectStreamKind.Unreadable),
+            (71, BrokenObjectStreamKind.NotHeld),
+            (72, BrokenObjectStreamKind.NotHeld),
+            (73, BrokenObjectStreamKind.NotHeld));
+
+        var report = new PdfValidator(new PdfValidatorOptions { FindingCapacity = capacity }).Validate(document);
+
+        report.ErrorCount.Should().Be(6, "three streams circular and three broken");
+        report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue();
+        report.Findings.Select(finding => finding.Location.Object?.Number).Should().Equal(new int?[] { 10, 20, 30, 71 }.Take(capacity));
+    }
+
+    [Fact]
+    public void Objects_referring_to_nothing_past_the_report_s_room_are_counted_and_not_read_again()
+    {
+        // #168: the graph read each object that refers to nothing again, once the walk was over, to say where in it the first
+        // such reference lies, whatever the report's room. Two hundred such objects, under the smallest cache, 64 objects:
+        // the walk reads them from the last to the first, which the cache keeps, and the graph describes them from the
+        // first. It reads again those it describes, as many as the report has room for, of which those the cache let go
+        // are read from the file: none of the first 64, and of a hundred less than half of what describing every one reads.
+        const int Objects = 200;
+        var file = HostileInputTests.ObjectsHolding(Objects, "/M 9999 0 R");
+
+        var (none, unread) = Walk(room: 0);
+        var (hundred, described) = Walk(room: 100);
+        var (every, _) = Walk(room: int.MaxValue);
+
+        unread.MissingReferences.Total.Should().Be(Objects);
+        unread.MissingReferences.Kept.Should().Be(0);
+        described.MissingReferences.Total.Should().Be(Objects);
+        described.MissingReferences.Select(finding => finding.Location.Object?.Number).Should().Equal(Enumerable.Range(3, 100).Select(number => (int?)number));
+        (hundred - none).Should().BePositive("the objects described the cache let go are read again");
+        (hundred - none).Should().BeLessThan((every - none) / 2, "a hundred objects are described, not two hundred");
+
+        (long Read, ObjectGraph Graph) Walk(int room)
+        {
+            using var source = new StrictCountingSource(file);
+            using var document = PdfDocument.Open(source, new PdfReaderOptions { ObjectCacheCapacity = 64 }, ownsSource: false);
+            var pages = PageTreeWalk.Run(document);
+            var before = source.BytesRead;
+            var graph = ObjectGraph.Run(document, pages, room);
+            return (source.BytesRead - before, graph);
+        }
+    }
+
     [Fact]
     public void The_walk_keeps_as_many_objects_as_the_reader_caches_and_reads_again_one_it_let_go()
     {

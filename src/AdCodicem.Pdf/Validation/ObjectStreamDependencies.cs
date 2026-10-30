@@ -107,12 +107,14 @@ internal sealed class ObjectStreamDependencies
     private static readonly string FilterKey = FileQuote.Name(PdfName.Filter);
     private static readonly string ParametersKey = FileQuote.Name(PdfName.DecodeParms);
 
-    private ObjectStreamDependencies()
+    private ObjectStreamDependencies(int room)
     {
+        Circular = new(room);
+        IntegersWrittenAsReals = new(room);
     }
 
     /// <summary>Gets the circular object streams, one finding each, in the order of their numbers.</summary>
-    public List<ProbeFinding> Circular { get; } = [];
+    public ProbeFindings Circular { get; }
 
     /// <summary>Gets the numbers of the circular object streams.</summary>
     public HashSet<int> CircularStreams { get; } = new(SeededComparer.Instance);
@@ -122,12 +124,16 @@ internal sealed class ObjectStreamDependencies
     /// where ISO 32000-1 asks for an integer (Tables 5 and 16): one finding per stream and key, in the order of their
     /// numbers. The reader reads each as the integer it equals (#215).
     /// </summary>
-    public List<ProbeFinding> IntegersWrittenAsReals { get; } = [];
+    public ProbeFindings IntegersWrittenAsReals { get; }
 
-    /// <summary>Works out which object streams of <paramref name="document"/> are circular.</summary>
-    public static ObjectStreamDependencies Run(PdfDocument document)
+    /// <summary>
+    /// Works out which object streams of <paramref name="document"/> are circular, writing of each kind of fault the first
+    /// <paramref name="room"/> it finds and counting the rest: the room the report has when the walk is made, or every
+    /// fault outside a validation. <see cref="CircularStreams"/> holds every circular stream, whatever the room.
+    /// </summary>
+    public static ObjectStreamDependencies Run(PdfDocument document, int room = int.MaxValue)
     {
-        var result = new ObjectStreamDependencies();
+        var result = new ObjectStreamDependencies(room);
         var reader = document.Reader;
         var streams = new SortedSet<int>();
 
@@ -173,9 +179,10 @@ internal sealed class ObjectStreamDependencies
 
             foreach (var key in IntegerKeys)
             {
-                if (objectStream.Dictionary.GetRaw(key)?.Resolve() is PdfReal real && real.AsInteger() is not null)
+                if (objectStream.Dictionary.GetRaw(key)?.Resolve() is PdfReal real && real.AsInteger() is not null &&
+                    result.IntegersWrittenAsReals.Take())
                 {
-                    result.IntegersWrittenAsReals.Add(new ProbeFinding(
+                    result.IntegersWrittenAsReals.Keep(new ProbeFinding(
                         Location(reader, stream, entry),
                         Invariant($"Object stream {stream} gives its {FileQuote.Name(key)} as a real number, where Table {(key == PdfName.Length ? 5 : 16)} of ISO 32000-1 asks for an integer; the reader read it as the integer it equals.")));
                 }
@@ -201,10 +208,18 @@ internal sealed class ObjectStreamDependencies
         {
             var (stream, location, own) = needing[place];
 
-            if (WayBack(components[place], own, places, components) is { } need)
+            if (WayBack(components[place], own, places, components) is not { } need)
             {
-                result.CircularStreams.Add(stream);
-                result.Circular.Add(new ProbeFinding(
+                continue;
+            }
+
+            // Every circular stream is known, for the rule that passes over them; its finding is written while there is
+            // room (#168).
+            result.CircularStreams.Add(stream);
+
+            if (result.Circular.Take())
+            {
+                result.Circular.Keep(new ProbeFinding(
                     location,
                     need.Stream == stream
                         ? Invariant($"Object stream {stream} needs object {need.Object}, which it holds, to be read: its {need.Key} names it, and the object cannot be read before the stream is.")

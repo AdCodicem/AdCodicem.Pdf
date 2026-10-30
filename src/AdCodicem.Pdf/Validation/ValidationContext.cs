@@ -8,12 +8,28 @@ namespace AdCodicem.Pdf.Validation;
 /// What the rules of one validation share: the document, its bytes, and the findings reported so far.
 /// </summary>
 /// <remarks>
+/// <para>
 /// It lives for one validation. What several rules need is worked out once and shared: the probe of every entry
 /// of the file's index, which four cross-reference rules read; the walk of the page tree, which the page tree rules
 /// and the object rules read; the walk of the objects reachable from the trailer; the walk that checks their shapes
 /// against the Arlington PDF Model; and which object streams need themselves to be read. None of them keeps the
-/// objects it resolved: those stay in the reader's cache, bounded by <see cref="PdfReaderOptions.ObjectCacheCapacity"/>,
-/// and each analysis keeps what it found wrong.
+/// objects it resolved: those stay in the reader's cache, bounded by <see cref="PdfReaderOptions.ObjectCacheCapacity"/> —
+/// but for the Arlington walk's queue, which holds the values written inside the objects it has still to check (#309).
+/// </para>
+/// <para>
+/// Each analysis is made with the <see cref="Room"/> the report has when a rule first asks for it, and writes, of each kind
+/// of fault it finds, the first that many, counting the rest (<see cref="ProbeFindings"/>): the report could keep no more of
+/// them, its room only shrinking as the rules run. Each rule reports what was written for it and adds what was counted
+/// (<see cref="Count"/>), so that the report is the one every finding written would have made, and what an analysis holds
+/// of a hostile file's faults is bounded by <see cref="PdfValidatorOptions.FindingCapacity"/> rather than by the file
+/// (#168). Two analyses keep more than the room: the probe, a record of each object stream it found broken, which their
+/// rule filters by what a later analysis finds, as many as the index names object streams; and the Arlington walk, a
+/// tally per rule and row of the model, which the model bounds, whose messages it writes once its walk is over.
+/// </para>
+/// <para>
+/// A rule that writes its findings itself asks <see cref="HasRoomFor"/> before writing each, so that a finding the report
+/// cannot keep is counted without being written. A count past what an <see langword="int"/> holds stays at its greatest.
+/// </para>
 /// </remarks>
 internal sealed class ValidationContext
 {
@@ -47,13 +63,13 @@ internal sealed class ValidationContext
     /// <summary>
     /// Gets what probing every entry of the file's own index found, worked out the first time a rule asks for it.
     /// </summary>
-    public CrossReferenceProbe Probe => _probe ??= CrossReferenceProbe.Run(Document);
+    public CrossReferenceProbe Probe => _probe ??= CrossReferenceProbe.Run(Document, Room);
 
     /// <summary>Gets the walk of the document's page tree, made the first time a rule asks for it.</summary>
-    public PageTreeWalk PageTree => _pageTree ??= PageTreeWalk.Run(Document);
+    public PageTreeWalk PageTree => _pageTree ??= PageTreeWalk.Run(Document, Room);
 
     /// <summary>Gets the walk of the objects reachable from the trailer, made the first time a rule asks for it.</summary>
-    public ObjectGraph Graph => _graph ??= ObjectGraph.Run(Document, PageTree);
+    public ObjectGraph Graph => _graph ??= ObjectGraph.Run(Document, PageTree, Room);
 
     /// <summary>
     /// Gets the walk that types the objects reachable from the trailer in the Arlington PDF Model and checks them, made
@@ -62,25 +78,18 @@ internal sealed class ValidationContext
     public ArlingtonWalk Arlington => _arlington ??= ArlingtonWalk.Run(Document, PageTree);
 
     /// <summary>Gets which object streams need themselves to be read, worked out the first time a rule asks for it.</summary>
-    public ObjectStreamDependencies ObjectStreams => _objectStreams ??= ObjectStreamDependencies.Run(Document);
+    public ObjectStreamDependencies ObjectStreams => _objectStreams ??= ObjectStreamDependencies.Run(Document, Room);
+
+    /// <summary>
+    /// Gets how many findings the report can still keep: its capacity less those it keeps, none once it is full. It only
+    /// shrinks as the rules report, so that an analysis made now need write no more findings of a kind than this.
+    /// </summary>
+    public int Room => _capacity - _findings.Count;
 
     /// <summary>Records a finding of <paramref name="rule"/>, under its identifier and at its severity.</summary>
     public void Report(IValidationRule rule, PdfValidationLocation location, string message, string? remedy)
     {
-        switch (rule.Severity)
-        {
-            case PdfValidationSeverity.Error:
-                _errors++;
-                break;
-            case PdfValidationSeverity.Warning:
-                _warnings++;
-                break;
-            default:
-                _information++;
-                break;
-        }
-
-        _ruleIds.Add(rule.Id);
+        Count(rule, 1);
 
         if (_findings.Count < _capacity)
         {
@@ -88,7 +97,54 @@ internal sealed class ValidationContext
         }
     }
 
+    /// <summary>
+    /// Counts <paramref name="findings"/> findings of <paramref name="rule"/> that the report cannot keep, under its
+    /// identifier and at its severity: those an analysis counted past the room the report had when it was made, which it
+    /// did not write. None counts nothing, and leaves the rule unnamed.
+    /// </summary>
+    public void Count(IValidationRule rule, int findings)
+    {
+        if (findings == 0)
+        {
+            return;
+        }
+
+        switch (rule.Severity)
+        {
+            case PdfValidationSeverity.Error:
+                _errors = Add(_errors, findings);
+                break;
+            case PdfValidationSeverity.Warning:
+                _warnings = Add(_warnings, findings);
+                break;
+            default:
+                _information = Add(_information, findings);
+                break;
+        }
+
+        _ruleIds.Add(rule.Id);
+    }
+
+    /// <summary>
+    /// Determines whether the report has room for another finding, which a rule that writes its findings itself asks before
+    /// writing one; when it has none, counts a finding of <paramref name="rule"/>, which the rule then neither writes nor
+    /// reports (#168).
+    /// </summary>
+    public bool HasRoomFor(IValidationRule rule)
+    {
+        if (_findings.Count < _capacity)
+        {
+            return true;
+        }
+
+        Count(rule, 1);
+        return false;
+    }
+
     /// <summary>Closes the validation, handing what was found to a report.</summary>
     public PdfValidationReport ToReport(ValidationProfile profile) =>
         new(profile, _findings, _ruleIds, _errors, _warnings, _information);
+
+    /// <summary>Adds <paramref name="findings"/> to <paramref name="count"/>, a sum past what an <see langword="int"/> holds staying at its greatest.</summary>
+    private static int Add(int count, int findings) => (int)Math.Min((long)count + findings, int.MaxValue);
 }

@@ -21,7 +21,9 @@ internal sealed class NameNullCharacterRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.Graph.NullCharacterNames)
+        var findings = context.Graph.NullCharacterNames;
+
+        foreach (var finding in findings)
         {
             context.Report(
                 this,
@@ -29,5 +31,8 @@ internal sealed class NameNullCharacterRule : IValidationRule
                 finding.Message,
                 "Rename the name without its null character, here and wherever the file uses it.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

@@ -25,8 +25,9 @@ internal sealed class SectionShiftedRule : IValidationRule
     {
         foreach (var section in context.Structure.Sections)
         {
-            // Found there and read, or found there and kept from being read by a guard, the section's own fault (#263).
-            if (!section.WasRelocated)
+            // Found there and read, or found there and kept from being read by a guard, the section's own fault (#263); past
+            // the report's room, counted, its finding not written (#168).
+            if (!section.WasRelocated || !context.HasRoomFor(this))
             {
                 continue;
             }

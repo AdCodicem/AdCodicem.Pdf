@@ -156,7 +156,8 @@ internal sealed class TrailerValueWrongRule : IValidationRule
             var reference = direct is not null ? value as PdfReference : null;
             var real = integer is not null && (resolve ? value?.Resolve() : value) is PdfReal written && written.AsInteger() is not null;
 
-            if (reference is null && !real)
+            // Past the report's room, the value is counted, its finding not written (#168).
+            if ((reference is null && !real) || !context.HasRoomFor(rule))
             {
                 return;
             }

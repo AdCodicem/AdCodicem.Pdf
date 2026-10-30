@@ -27,9 +27,14 @@ internal sealed class EndObjMissingRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.Graph.MissingEndObj)
+        var findings = context.Graph.MissingEndObj;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "End the object with endobj, on a line of its own.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

@@ -228,6 +228,30 @@ public class CorpusValidationTests
 
     [Theory]
     [MemberData(nameof(AllDocuments))]
+    public void A_report_that_keeps_fewer_findings_is_the_whole_report_cut_to_its_first(string file)
+    {
+        // #168: each analysis writes only the findings the report has room for when it is made, and counts the rest. A
+        // report at a lower capacity is the one that keeps every finding cut to its first, with the same counts and the same
+        // rules named: at none, one, half and all but one of its findings.
+        var entry = Corpus.Get(file);
+        var whole = Validate(entry, int.MaxValue);
+        var total = whole.Findings.Count;
+
+        foreach (var capacity in new[] { 0, 1, total / 2, total - 1 }.Where(capacity => capacity >= 0 && capacity < total).Distinct())
+        {
+            var report = Validate(entry, capacity);
+            var because = $"{entry.Name} validated at a capacity of {capacity}, of {total} findings";
+
+            report.Findings.Should().Equal(whole.Findings.Take(capacity), because);
+            report.ToString().Should().Be(whole.ToString(), because);
+            report.SuppressedCount.Should().Be(total - capacity, because);
+            ValidationProfile.Structural.RuleIds.Where(report.Contains).Should().Equal(
+                ValidationProfile.Structural.RuleIds.Where(whole.Contains), because);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(AllDocuments))]
     public void No_read_rebuilds_the_index_after_a_validation(string file)
     {
         // The validator rebuilds the index before its first rule when some read could still do so (#237): once it has, or
@@ -281,11 +305,11 @@ public class CorpusValidationTests
     /// under the default profile. An encrypted document is opened too: its structure is readable without its
     /// key, which only its content needs (M16).
     /// </summary>
-    private static PdfValidationReport Validate(CorpusDocument entry)
+    private static PdfValidationReport Validate(CorpusDocument entry, int? capacity = null)
     {
         var options = CorpusReadingTests.OptionsFor(entry) with { ThrowOnEncrypted = false };
         using var document = PdfDocument.Open(Corpus.PathOf(entry.File), options);
-        return new PdfValidator().Validate(document);
+        return new PdfValidator(capacity is { } findings ? new PdfValidatorOptions { FindingCapacity = findings } : null).Validate(document);
     }
 
     /// <summary>Every entry of the committed manifest, including remote documents this machine did not fetch.</summary>

@@ -21,9 +21,14 @@ internal sealed class PageTreeResourcesMissingRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.PageTree.ResourcesMissing)
+        var findings = context.PageTree.ResourcesMissing;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "Give the page, or a node above it, a /Resources dictionary, an empty one if its content uses no resource.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

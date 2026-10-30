@@ -174,7 +174,7 @@ public class ReaderTimingTests
         static void Probe(PdfDocument document)
         {
             var probe = CrossReferenceProbe.Run(document);
-            (probe.Broken.Count + probe.Shifted.Count + probe.BrokenObjectStreams.Count).Should().BePositive();
+            (probe.Broken.Total + probe.Shifted.Total + probe.BrokenObjectStreams.Count).Should().BePositive();
         }
     }
 

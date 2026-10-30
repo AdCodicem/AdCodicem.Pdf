@@ -28,6 +28,13 @@ namespace AdCodicem.Pdf.Validation;
 /// says the walk is partial.
 /// </para>
 /// <para>
+/// Nor is anything kept of the faults it finds past the room the report has: it is made with that room, writes of each
+/// kind of fault the first it finds up to it, and counts the rest, which the report could not keep (#168). A node of a
+/// million invalid kids costs it a count. What a finding names — a kid's path, <c>/Kids[12]</c>, its node, what it leads
+/// to — is written for a finding only; what a message says that the walk counts, as the pages a node listed again counts
+/// again, is counted whether the finding is written or not.
+/// </para>
+/// <para>
 /// Nothing is judged of what is written in an object one of the reader's limits cut, as the Arlington walk leaves it:
 /// neither what it lacks — that may lie past the cut — nor what it holds, the value at the cut being perhaps cut itself.
 /// A node so cut is taken to give what the pages below it inherit; its <c>/Count</c> is not judged, nor the value of those
@@ -94,31 +101,42 @@ internal sealed class PageTreeWalk
     /// <summary>What a page is called in the findings.</summary>
     private const string PageKind = "page object";
 
-    private PageTreeWalk(PdfFileReader reader) => _reader = reader;
+    private PageTreeWalk(PdfFileReader reader, int room)
+    {
+        _reader = reader;
+        Cycles = new(room);
+        RepeatedNodes = new(room);
+        NodesWithoutKids = new(room);
+        InvalidKids = new(room);
+        CountMismatches = new(room);
+        ParentFaults = new(room);
+        MediaBoxFaults = new(room);
+        ResourcesMissing = new(room);
+    }
 
     /// <summary>Gets the kids that loop back to the node listing them or to a node above it.</summary>
-    public List<ProbeFinding> Cycles { get; } = [];
+    public ProbeFindings Cycles { get; }
 
     /// <summary>Gets the kids that name a node or a page the tree lists elsewhere.</summary>
-    public List<ProbeFinding> RepeatedNodes { get; } = [];
+    public ProbeFindings RepeatedNodes { get; }
 
     /// <summary>Gets the nodes that have no <c>/Kids</c> array.</summary>
-    public List<ProbeFinding> NodesWithoutKids { get; } = [];
+    public ProbeFindings NodesWithoutKids { get; }
 
     /// <summary>Gets the kids that are neither a page nor a node the tree can read, or that are not referred to.</summary>
-    public List<ProbeFinding> InvalidKids { get; } = [];
+    public ProbeFindings InvalidKids { get; }
 
     /// <summary>Gets the nodes whose <c>/Count</c> is missing or is not the number of pages below them.</summary>
-    public List<ProbeFinding> CountMismatches { get; } = [];
+    public ProbeFindings CountMismatches { get; }
 
     /// <summary>Gets the nodes and pages whose <c>/Parent</c> is missing or is not the node listing them, and a root that has one.</summary>
-    public List<ProbeFinding> ParentFaults { get; } = [];
+    public ProbeFindings ParentFaults { get; }
 
     /// <summary>Gets the pages without a media box, and the media boxes that are no rectangle.</summary>
-    public List<ProbeFinding> MediaBoxFaults { get; } = [];
+    public ProbeFindings MediaBoxFaults { get; }
 
     /// <summary>Gets the pages without resources, their own or inherited.</summary>
-    public List<ProbeFinding> ResourcesMissing { get; } = [];
+    public ProbeFindings ResourcesMissing { get; }
 
     /// <summary>Gets how many pages the tree lists, each null or missing kid counted as a page.</summary>
     public int PageCount => (int)Math.Min(_pages, int.MaxValue);
@@ -181,10 +199,13 @@ internal sealed class PageTreeWalk
     /// <summary>Determines whether object <paramref name="number"/> is a page of the tree.</summary>
     public bool IsPage(int number) => PageIndexes.ContainsKey(number) || _pagesPastIndexes.Contains(number);
 
-    /// <summary>Walks the page tree of <paramref name="document"/>.</summary>
-    public static PageTreeWalk Run(PdfDocument document)
+    /// <summary>
+    /// Walks the page tree of <paramref name="document"/>, writing of each kind of fault the first <paramref name="room"/>
+    /// it finds and counting the rest: the room the report has when the walk is made, or every fault outside a validation.
+    /// </summary>
+    public static PageTreeWalk Run(PdfDocument document, int room = int.MaxValue)
     {
-        var walk = new PageTreeWalk(document.Reader);
+        var walk = new PageTreeWalk(document.Reader, room);
 
         // The catalog is an object of its own, or a dictionary written in the trailer, which file.root-invalid reports.
         var catalogPlace = document.Trailer.GetRaw(PdfName.Root) is PdfReference reference
@@ -244,9 +265,9 @@ internal sealed class PageTreeWalk
         }
 
         // A /Parent that names an object a guard kept from the reader is unknown: it may be null, which is absence.
-        if (!IsCut(place) && Given(node, PdfName.Parent) is { } rootParent && !NamesHiddenObject(rootParent))
+        if (!IsCut(place) && Given(node, PdfName.Parent) is { } rootParent && !NamesHiddenObject(rootParent) && ParentFaults.Take())
         {
-            ParentFaults.Add(new ProbeFinding(
+            ParentFaults.Keep(new ProbeFinding(
                 Location(place),
                 $"The root of the page tree, {Where(place)}, has a /Parent, which only the nodes below it may have."));
         }
@@ -298,10 +319,15 @@ internal sealed class PageTreeWalk
             // no object of the tree: each listing takes a page's place, the object the reader stopped following it at none.
             if (_reader.GetObject(id) is PdfReference)
             {
-                InvalidSlot(
-                    frame,
-                    index,
-                    Invariant($"names object {reference.Id.Number}, whose chain of references is too long to follow or loops, which reads as null"));
+                if (InvalidSlot(frame, out var page))
+                {
+                    KeepInvalidSlot(
+                        frame,
+                        index,
+                        page,
+                        Invariant($"names object {reference.Id.Number}, whose chain of references is too long to follow or loops, which reads as null"));
+                }
+
                 return;
             }
 
@@ -309,9 +335,9 @@ internal sealed class PageTreeWalk
             {
                 frame.Uncountable = true;
 
-                if (judged)
+                if (judged && Cycles.Take())
                 {
-                    Cycles.Add(new ProbeFinding(
+                    Cycles.Keep(new ProbeFinding(
                         Location(frame.Place),
                         Invariant($"{Kid(frame, index)} names {Named(reference, id)}, {(id.Number == frame.Id.Number ? "which is that node itself" : "a node above it")}: the tree loops back on itself there, and what it should have listed is unknown.")));
                 }
@@ -321,15 +347,14 @@ internal sealed class PageTreeWalk
 
             if (!_visited.Add(id.Number))
             {
-                if (judged)
+                // Counted whether its finding is written or not: the pages it lists are the tree's.
+                var counted = CountAgain(frame, id.Number);
+
+                if (judged && RepeatedNodes.Take())
                 {
-                    RepeatedNodes.Add(new ProbeFinding(
+                    RepeatedNodes.Keep(new ProbeFinding(
                         Location(frame.Place),
-                        Invariant($"{Kid(frame, index)} names {Named(reference, id)}, which the tree already lists: {CountedAgain(frame, id.Number)}.")));
-                }
-                else
-                {
-                    CountAgain(frame, id.Number);
+                        Invariant($"{Kid(frame, index)} names {Named(reference, id)}, which the tree already lists: {CountedAgain(counted)}.")));
                 }
 
                 return;
@@ -356,24 +381,36 @@ internal sealed class PageTreeWalk
                         return;
 
                     case ObjectPresence.Missing:
-                        InvalidSlot(frame, index, Invariant($"names {Named(reference, id)}, which the file lacks"));
+                        if (InvalidSlot(frame, out var lacked))
+                        {
+                            KeepInvalidSlot(frame, index, lacked, Invariant($"names {Named(reference, id)}, which the file lacks"));
+                        }
+
                         return;
 
                     default:
-                        InvalidSlot(frame, index, Invariant($"names {Named(reference, id)}, which is null"));
+                        if (InvalidSlot(frame, out var nulled))
+                        {
+                            KeepInvalidSlot(frame, index, nulled, Invariant($"names {Named(reference, id)}, which is null"));
+                        }
+
                         return;
                 }
 
             case PdfNull:
-                InvalidSlot(frame, index, "is null");
+                if (InvalidSlot(frame, out var nullPage))
+                {
+                    KeepInvalidSlot(frame, index, nullPage, "is null");
+                }
+
                 return;
 
             case PdfStream stream:
                 var streamPlace = reference is not null ? Place.Of(id) : frame.KidPlace(index);
 
-                if (reference is not null || judged)
+                if ((reference is not null || judged) && InvalidKids.Take())
                 {
-                    InvalidKids.Add(new ProbeFinding(
+                    InvalidKids.Keep(new ProbeFinding(
                         Location(reference is not null ? streamPlace : frame.Place),
                         reference is not null
                             ? Invariant($"{Kid(frame, index)} names {Named(reference, id)}, a stream rather than a dictionary: the reader reads the stream's dictionary in its place.")
@@ -384,9 +421,9 @@ internal sealed class PageTreeWalk
                 return;
 
             case PdfDictionary dictionary:
-                if (reference is null && judged)
+                if (reference is null && judged && InvalidKids.Take())
                 {
-                    InvalidKids.Add(new ProbeFinding(
+                    InvalidKids.Keep(new ProbeFinding(
                         Location(frame.Place),
                         $"{Kid(frame, index)} is a dictionary written in the array, where the tree wants an indirect reference to one."));
                 }
@@ -401,12 +438,17 @@ internal sealed class PageTreeWalk
                 return;
 
             case var other:
-                InvalidSlot(
-                    frame,
-                    index,
-                    reference is not null
-                        ? Invariant($"names {Named(reference, id)}, which is {RuleText.Kind(other)}, neither a page nor a node")
-                        : $"is {RuleText.Kind(other)}, neither a page nor a node");
+                if (InvalidSlot(frame, out var otherPage))
+                {
+                    KeepInvalidSlot(
+                        frame,
+                        index,
+                        otherPage,
+                        reference is not null
+                            ? Invariant($"names {Named(reference, id)}, which is {RuleText.Kind(other)}, neither a page nor a node")
+                            : $"is {RuleText.Kind(other)}, neither a page nor a node");
+                }
+
                 return;
         }
 
@@ -451,12 +493,15 @@ internal sealed class PageTreeWalk
         return counted;
     }
 
-    /// <summary>Counts again what lies below object <paramref name="number"/>, and says what was counted, for a finding.</summary>
-    private string CountedAgain(Frame frame, int number, bool array = false) => CountAgain(frame, number, array) switch
+    /// <summary>
+    /// Says what <see cref="CountAgain"/> counted again, <paramref name="counted"/> pages or -1, for a finding: the count is
+    /// made whether the finding is written or not.
+    /// </summary>
+    private static string CountedAgain(long counted) => counted switch
     {
         -1 => "what lies below it is counted again, how many pages that is being unknown",
         1 => "its page is counted again",
-        var counted => Invariant($"its {RuleText.Pages(counted)} are counted again"),
+        _ => Invariant($"its {RuleText.Pages(counted)} are counted again"),
     };
 
     /// <summary>
@@ -481,20 +526,24 @@ internal sealed class PageTreeWalk
     }
 
     /// <summary>
-    /// Records a kid that stands for a page the tree cannot read, and counts it as one with nothing on it; the record is
-    /// not kept where a limit cut the array.
+    /// Counts a kid that stands for a page the tree cannot read as one with nothing on it, the page counted at
+    /// <paramref name="page"/>, and says whether its finding is to be written: one is found where no limit cut the array,
+    /// and written while the walk has room for it (<see cref="KeepInvalidSlot"/>).
     /// </summary>
-    private void InvalidSlot(Frame frame, int index, string what)
+    private bool InvalidSlot(Frame frame, out long page)
     {
-        var page = CountPages(1);
-
-        if (!frame.KidsCut)
-        {
-            InvalidKids.Add(new ProbeFinding(
-                PageLocation(page, frame.Place),
-                $"{Kid(frame, index)} {what}: it counts as a page with nothing on it."));
-        }
+        page = CountPages(1);
+        return !frame.KidsCut && InvalidKids.Take();
     }
+
+    /// <summary>
+    /// Writes the finding of the kid at <paramref name="index"/> that <see cref="InvalidSlot"/> counted at
+    /// <paramref name="page"/>, which <paramref name="what"/> says.
+    /// </summary>
+    private void KeepInvalidSlot(Frame frame, int index, long page, string what) =>
+        InvalidKids.Keep(new ProbeFinding(
+            PageLocation(page, frame.Place),
+            $"{Kid(frame, index)} {what}: it counts as a page with nothing on it."));
 
     private void Enter(PdfDictionary dictionary, Place place, Frame parent)
     {
@@ -539,9 +588,9 @@ internal sealed class PageTreeWalk
             var kidsCutAway = NamesHiddenObject(kidsValue);
             Partial |= kidsCutAway;
 
-            if (!cut && !kidsCutAway && (kidsValue is null || kidsValue.Resolve() is not PdfNull))
+            if (!cut && !kidsCutAway && (kidsValue is null || kidsValue.Resolve() is not PdfNull) && NodesWithoutKids.Take())
             {
-                NodesWithoutKids.Add(new ProbeFinding(
+                NodesWithoutKids.Keep(new ProbeFinding(
                     Location(place),
                     kidsValue is null
                         ? $"{Subject(place, NodeKind)} has no /Kids: it lists no page."
@@ -632,24 +681,23 @@ internal sealed class PageTreeWalk
 
         if (loops)
         {
-            if (!cut)
+            if (!cut && Cycles.Take())
             {
-                Cycles.Add(new ProbeFinding(
+                Cycles.Keep(new ProbeFinding(
                     Location(place),
                     Invariant($"{Subject(place, NodeKind)} gives /Kids {kidsReference!.Id.Number} {kidsReference.Id.Generation} R, an array of kids above it: the tree loops back on itself there, and what it should have listed is unknown.")));
             }
         }
         else if (!walksKids)
         {
-            if (!cut)
+            // Counted whether its finding is written or not: the pages the array lists are the tree's.
+            var counted = CountAgain(frame, kidsArray.Number, array: true);
+
+            if (!cut && RepeatedNodes.Take())
             {
-                RepeatedNodes.Add(new ProbeFinding(
+                RepeatedNodes.Keep(new ProbeFinding(
                     Location(place),
-                    Invariant($"{Subject(place, NodeKind)} gives /Kids {kidsReference!.Id.Number} {kidsReference.Id.Generation} R, an array of kids the tree already lists: {CountedAgain(frame, kidsArray.Number, array: true)}.")));
-            }
-            else
-            {
-                CountAgain(frame, kidsArray.Number, array: true);
+                    Invariant($"{Subject(place, NodeKind)} gives /Kids {kidsReference!.Id.Number} {kidsReference.Id.Generation} R, an array of kids the tree already lists: {CountedAgain(counted)}.")));
             }
         }
     }
@@ -708,20 +756,29 @@ internal sealed class PageTreeWalk
 
             // One that names an object a guard kept from the reader is unknown, whatever was read of it.
             case var count when !frame.Doubtful && !NamesHiddenObject(count) && count.Resolve() is PdfInteger { Value: var declared } && declared != below:
-                CountMismatches.Add(new ProbeFinding(
-                    Location(frame.Place),
-                    Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {RuleText.Pages(below)} {Lie(below)} below it.")));
+                if (CountMismatches.Take())
+                {
+                    CountMismatches.Keep(new ProbeFinding(
+                        Location(frame.Place),
+                        Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {RuleText.Pages(below)} {Lie(below)} below it.")));
+                }
+
                 break;
         }
     }
 
     /// <summary>Records a node without <c>/Count</c>, saying how many pages lie below it when they can be counted.</summary>
-    private void CountMissing(Place place, long below, bool countable) =>
-        CountMismatches.Add(new ProbeFinding(
-            Location(place),
-            countable
-                ? Invariant($"{Subject(place, NodeKind)} has no /Count; {RuleText.Pages(below)} {Lie(below)} below it.")
-                : $"{Subject(place, NodeKind)} has no /Count, and how many pages lie below it is unknown."));
+    private void CountMissing(Place place, long below, bool countable)
+    {
+        if (CountMismatches.Take())
+        {
+            CountMismatches.Keep(new ProbeFinding(
+                Location(place),
+                countable
+                    ? Invariant($"{Subject(place, NodeKind)} has no /Count; {RuleText.Pages(below)} {Lie(below)} below it.")
+                    : $"{Subject(place, NodeKind)} has no /Count, and how many pages lie below it is unknown."));
+        }
+    }
 
     private void EnterPage(PdfDictionary page, Place place, Frame? parent)
     {
@@ -774,16 +831,16 @@ internal sealed class PageTreeWalk
         {
             CheckMediaBox(ownBox, location, place, PageKind);
         }
-        else if (parent?.GivesMediaBox != true)
+        else if (parent?.GivesMediaBox != true && MediaBoxFaults.Take())
         {
-            MediaBoxFaults.Add(new ProbeFinding(
+            MediaBoxFaults.Keep(new ProbeFinding(
                 location,
                 $"{Subject(place, PageKind)} has no /MediaBox, and no page tree node above it gives one: the page's size is unknown."));
         }
 
-        if (Given(page, PdfName.Resources) is null && parent?.HasResources != true)
+        if (Given(page, PdfName.Resources) is null && parent?.HasResources != true && ResourcesMissing.Take())
         {
-            ResourcesMissing.Add(new ProbeFinding(
+            ResourcesMissing.Keep(new ProbeFinding(
                 location,
                 $"{Subject(place, PageKind)} has no /Resources, and no page tree node above it gives any."));
         }
@@ -805,20 +862,23 @@ internal sealed class PageTreeWalk
             return;
         }
 
-        var fault = dictionary.GetRaw(PdfName.Parent) switch
+        var given = dictionary.GetRaw(PdfName.Parent);
+
+        if ((given is PdfReference listing && listing.Id.Number == parent.Id.Number) || !ParentFaults.Take())
+        {
+            return;
+        }
+
+        var fault = given switch
         {
             null => "has no /Parent",
-            PdfReference named when named.Id.Number == parent.Id.Number => null,
             PdfReference named => Invariant($"gives /Parent {named.Id.Number} {named.Id.Generation} R"),
             var other => $"has {RuleText.Kind(other)} for /Parent",
         };
 
-        if (fault is not null)
-        {
-            ParentFaults.Add(new ProbeFinding(
-                Locate(id),
-                Invariant($"{Subject(place, what)} {fault}, and page tree node {parent.Id.Number} lists it.")));
-        }
+        ParentFaults.Keep(new ProbeFinding(
+            Locate(id),
+            Invariant($"{Subject(place, what)} {fault}, and page tree node {parent.Id.Number} lists it.")));
     }
 
     /// <summary>
@@ -853,11 +913,15 @@ internal sealed class PageTreeWalk
 
         if (resolved is not PdfArray { Count: 4 } array)
         {
-            MediaBoxFaults.Add(new ProbeFinding(
-                location,
-                resolved is PdfArray other
-                    ? Invariant($"{MediaBoxOf(place, what)} is an array of {other.Count} values, not a rectangle.")
-                    : $"{MediaBoxOf(place, what)} is {RuleText.Kind(resolved)}, not a rectangle."));
+            if (MediaBoxFaults.Take())
+            {
+                MediaBoxFaults.Keep(new ProbeFinding(
+                    location,
+                    resolved is PdfArray other
+                        ? Invariant($"{MediaBoxOf(place, what)} is an array of {other.Count} values, not a rectangle.")
+                        : $"{MediaBoxOf(place, what)} is {RuleText.Kind(resolved)}, not a rectangle."));
+            }
+
             return;
         }
 
@@ -885,9 +949,13 @@ internal sealed class PageTreeWalk
                     break;
 
                 case var other:
-                    MediaBoxFaults.Add(new ProbeFinding(
-                        location,
-                        $"{MediaBoxOf(place, what)} holds {RuleText.Kind(other)} among its corners, not a rectangle of four numbers."));
+                    if (MediaBoxFaults.Take())
+                    {
+                        MediaBoxFaults.Keep(new ProbeFinding(
+                            location,
+                            $"{MediaBoxOf(place, what)} holds {RuleText.Kind(other)} among its corners, not a rectangle of four numbers."));
+                    }
+
                     return;
             }
 
@@ -895,9 +963,10 @@ internal sealed class PageTreeWalk
         }
 
         // Any two opposite corners make a rectangle (ISO 32000-1, 7.9.5), in whichever order they come.
-        if ((known[0] && known[2] && corners[0] == corners[2]) || (known[1] && known[3] && corners[1] == corners[3]))
+        if (((known[0] && known[2] && corners[0] == corners[2]) || (known[1] && known[3] && corners[1] == corners[3])) &&
+            MediaBoxFaults.Take())
         {
-            MediaBoxFaults.Add(new ProbeFinding(
+            MediaBoxFaults.Keep(new ProbeFinding(
                 location,
                 Invariant($"{MediaBoxOf(place, what)}, [{Corner(array, 0, known[0])} {Corner(array, 1, known[1])} {Corner(array, 2, known[2])} {Corner(array, 3, known[3])}], encloses no area.")));
         }
@@ -1021,8 +1090,25 @@ internal sealed class PageTreeWalk
     /// <see cref="Holder"/> it is; or a value written inside the object <see cref="Holder"/> names — the trailer when it
     /// names none —, at <see cref="Path"/> from it.
     /// </summary>
-    private readonly record struct Place(PdfObjectId Id, PdfObjectId Holder, string? Path)
+    /// <remarks>
+    /// A kid written in its node's array is placed by the frame of that node and its index, its path written only when a
+    /// finding names it (#168): the walk enters each such kid, and a path written for each cost a string a kid. Any other
+    /// value is placed by the path it is written at.
+    /// </remarks>
+    /// <param name="Id">The object it is, or a number 0 when it is written inside another.</param>
+    /// <param name="Holder">The object it is written in, or a number 0 for the trailer.</param>
+    /// <param name="Written">Its path from <paramref name="Holder"/>, when it is not a kid placed by its node.</param>
+    /// <param name="ListedIn">The frame of the node whose kids it is written among, or null.</param>
+    /// <param name="Kid">Its index among the kids of <paramref name="ListedIn"/>.</param>
+    private readonly record struct Place(PdfObjectId Id, PdfObjectId Holder, string? Written, Frame? ListedIn = null, int Kid = 0)
     {
+        /// <summary>
+        /// Gets its path from <see cref="Holder"/>, null for an object of its own: <c>/Kids[1]</c>, <c>[1]</c> in an array of
+        /// kids of its own, <c>/Pages</c> under the catalog, the path of its node before its own for a node written inside
+        /// another. Written each time it is asked for: by a finding only.
+        /// </summary>
+        public string? Path => ListedIn is { } node ? node.KidPath(Kid) : Written;
+
         /// <summary>Gives the place of object <paramref name="id"/>.</summary>
         public static Place Of(PdfObjectId id) => new(id, id, null);
 
@@ -1049,12 +1135,21 @@ internal sealed class PageTreeWalk
         /// <summary>Gives the place of the kid written at <paramref name="index"/> of the node's <c>/Kids</c>.</summary>
         /// <remarks>
         /// In an array that is an object of its own, the kid is written in that object; otherwise in the node, under its
-        /// <c>/Kids</c>.
+        /// <c>/Kids</c>. Its path is written when a finding asks for it (<see cref="KidPath"/>).
         /// </remarks>
         public Place KidPlace(int index) =>
-            KidsArray.Number > 0
-                ? new Place(default, KidsArray, Invariant($"[{index}]"))
-                : Place.Inside(Invariant($"/Kids[{index}]"));
+            new(default, KidsArray.Number > 0 ? KidsArray : Place.Holder, null, this, index);
+
+        /// <summary>
+        /// Writes the path of the kid at <paramref name="index"/> from the object it is written in: <c>[1]</c> in an array of
+        /// kids of its own, else the node's own path and <c>/Kids[1]</c>.
+        /// </summary>
+        /// <remarks>
+        /// The node's own path is its node's in turn when it is a kid written in an array too, as deep as values nest in one
+        /// object, which the parser bounds: an object of its own, or an array of kids of its own, starts a path.
+        /// </remarks>
+        public string KidPath(int index) =>
+            KidsArray.Number > 0 ? Invariant($"[{index}]") : Place.Path + Invariant($"/Kids[{index}]");
 
         /// <summary>Gets or sets the index of the next kid to visit.</summary>
         public int Next { get; set; }

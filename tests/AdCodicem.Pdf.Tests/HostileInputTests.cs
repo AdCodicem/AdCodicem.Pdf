@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
@@ -1836,8 +1837,8 @@ public class HostileInputTests
         var few = SharedByObjectStreams(shared, Few);
         var many = SharedByObjectStreams(shared, Many);
 
-        var fewAllocated = Allocations.Least(() => PdfDocument.Open(few), ObjectStreamDependencies.Run, out var fewDocument, out var fewResult);
-        var manyAllocated = Allocations.Least(() => PdfDocument.Open(many), ObjectStreamDependencies.Run, out var manyDocument, out var manyResult);
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(few), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(many), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
 
         using (fewDocument)
         using (manyDocument)
@@ -1867,8 +1868,8 @@ public class HostileInputTests
         var few = ChainedObjectStreams(shape, Few);
         var many = ChainedObjectStreams(shape, Many);
 
-        var fewAllocated = Allocations.Least(() => PdfDocument.Open(few, options), ObjectStreamDependencies.Run, out var fewDocument, out var fewResult);
-        var manyAllocated = Allocations.Least(() => PdfDocument.Open(many, options), ObjectStreamDependencies.Run, out var manyDocument, out var manyResult);
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(few, options), document => ObjectStreamDependencies.Run(document), out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(many, options), document => ObjectStreamDependencies.Run(document), out var manyDocument, out var manyResult);
 
         using (fewDocument)
         using (manyDocument)
@@ -2996,7 +2997,7 @@ public class HostileInputTests
         probe.Broken.Should().NotBeEmpty("the rows decided before the reading was spent lead nowhere");
         probe.NotChecked.Should().ContainSingle().Which.Message.Should().Be(string.Create(
             CultureInfo.InvariantCulture,
-            $"The validator stopped reading object headers where entries place them once it had read twice the file's length of them, past the first bytes of each: the entries of {Rows - probe.Broken.Count} objects it had not decided by then, the first object {3 + probe.Broken.Count}'s, were not checked."));
+            $"The validator stopped reading object headers where entries place them once it had read twice the file's length of them, past the first bytes of each: the entries of {Rows - probe.Broken.Total} objects it had not decided by then, the first object {3 + probe.Broken.Total}'s, were not checked."));
     }
 
     [Fact]
@@ -3256,13 +3257,172 @@ public class HostileInputTests
             file.Table(padding + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {padding + 3} /Root 1 0 R"));
             using var document = PdfDocument.Open(file.Bytes);
             document.Reader.SettleIndex();
-            return Allocations.Least(() => CrossReferenceProbe.Run(document).Broken.Count, out _);
+            return Allocations.Least(() => CrossReferenceProbe.Run(document).Broken.Total, out _);
         }
 
         var thousand = Probing(1_000);
         var fourThousand = Probing(4_000);
 
         (fourThousand - thousand).Should().BeLessThanOrEqualTo(3_000 * 4 + 64);
+    }
+
+    [Theory]
+    [InlineData("outside the file")]
+    [InlineData("at object 1's header")]
+    public void Probing_millions_of_broken_entries_writes_the_findings_the_report_has_room_for_and_counts_the_rest(string shape)
+    {
+        // #168: a cross-reference stream of 20 KB whose two million rows place their objects outside the file, or a table
+        // whose rows all place theirs where object 1's header is. The probe wrote each entry's finding, and kept it, for a
+        // report that keeps 1,000: 223 to 339 bytes held an entry, 445 MB for the stream. It writes the first findings of
+        // each kind the report has room for, and counts the rest: what one more entry costs is its number, copied to probe
+        // the entries in order.
+        const int Room = 1000;
+        var (fewAllocated, few) = Probing(1_000_000);
+        var (manyAllocated, many) = Probing(2_000_000);
+
+        few.Broken.Total.Should().Be(1_000_000);
+        many.Broken.Total.Should().Be(2_000_000);
+        many.Broken.Kept.Should().Be(Room);
+        many.Broken.Should().HaveCount(Room).And.OnlyContain(finding => finding.Message.StartsWith("The entry of object ", StringComparison.Ordinal));
+        ((manyAllocated - fewAllocated) / 1_000_000.0).Should().BeLessThan(5, "one more entry costs its number, four bytes");
+
+        (long Allocated, CrossReferenceProbe Probe) Probing(int entries)
+        {
+            using var document = PdfDocument.Open(shape == "outside the file" ? EntriesOutsideTheFile(entries) : EntriesAtObjectOne(entries));
+            document.Reader.SettleIndex();
+            var allocated = Allocations.Least(() => CrossReferenceProbe.Run(document, Room), out var probe);
+            return (allocated, probe);
+        }
+    }
+
+    [Fact]
+    public void Probing_millions_of_members_an_object_stream_does_not_list_writes_the_findings_the_report_has_room_for()
+    {
+        // #168: an object stream that lists one object, where the index places two million: each other member's finding was
+        // written and kept, 290 bytes a member, 579 MB in all. The probe writes those the report has room for and counts
+        // the rest: what one more member costs is its number, copied, and its place in its stream, gathered to check the
+        // stream's members together.
+        const int Room = 1000;
+        var (fewAllocated, few) = Probing(1_000_000);
+        var (manyAllocated, many) = Probing(2_000_000);
+
+        few.Broken.Total.Should().Be(1_000_000 - 2);
+        many.Broken.Total.Should().Be(2_000_000 - 2, "every member but object 3, which the stream lists, and the stream itself");
+        many.Broken.Kept.Should().Be(Room);
+        ((manyAllocated - fewAllocated) / 1_000_000.0).Should().BeLessThan(24, "one more member costs its number and its place");
+
+        static (long Allocated, CrossReferenceProbe Probe) Probing(int entries)
+        {
+            using var document = PdfDocument.Open(MembersTheHeaderDoesNotList(entries));
+            document.Reader.SettleIndex();
+            var allocated = Allocations.Least(() => CrossReferenceProbe.Run(document, Room), out var probe);
+            return (allocated, probe);
+        }
+    }
+
+    [Fact]
+    public void Walking_a_node_of_millions_of_invalid_kids_writes_the_findings_the_report_has_room_for_and_counts_the_rest()
+    {
+        // #168: a node whose /Kids is two million numbers, each a kid that is neither a page nor a node. The walk wrote each
+        // kid's finding, 800 bytes, and kept it, 340 bytes, for a report that keeps 1,000: seven million kids held 2.4 GB.
+        // It writes the first findings the report has room for, and counts the rest: once the node is read, walking its
+        // kids costs what walking any tree does, whatever their number.
+        const int Room = 1000;
+        var (fewAllocated, few) = Walking(1_000_000);
+        var (manyAllocated, many) = Walking(2_000_000);
+
+        few.InvalidKids.Total.Should().Be(1_000_000);
+        many.InvalidKids.Total.Should().Be(2_000_000);
+        many.InvalidKids.Kept.Should().Be(Room);
+        many.PageCount.Should().Be(2_000_000, "each invalid kid takes a page's place, counted whether its finding is written or not");
+        manyAllocated.Should().BeLessThan(2 * 1024 * 1024, "the findings the report has room for, and the walk's own frame");
+        (manyAllocated - fewAllocated).Should().BeLessThan(128 * 1024, "a million kids more cost nothing written");
+
+        static (long Allocated, PageTreeWalk Walk) Walking(int kids)
+        {
+            using var document = PdfDocument.Open(Kids(kids));
+            document.GetObject(new PdfObjectId(2));
+            var allocated = Allocations.Least(() => PageTreeWalk.Run(document, Room), out var walk);
+            return (allocated, walk);
+        }
+    }
+
+    [Fact]
+    public void Walking_pages_written_in_their_node_s_array_writes_no_path_nor_finding_past_the_report_s_room()
+    {
+        // #168: a node listing two hundred thousand pages written in its array, each with neither a media box nor resources:
+        // three findings a page, each written, its path, /Kids[12], written whether or not a finding named it, 3.2 KB a
+        // page. The walk writes a kid's path for a finding only, and the findings the report has room for.
+        const int Room = 1000;
+        var (fewAllocated, few) = Walking(100_000);
+        var (manyAllocated, many) = Walking(200_000);
+
+        few.MediaBoxFaults.Total.Should().Be(100_000);
+        many.InvalidKids.Total.Should().Be(200_000);
+        many.MediaBoxFaults.Total.Should().Be(200_000);
+        many.ResourcesMissing.Total.Should().Be(200_000);
+        many.MediaBoxFaults.Kept.Should().Be(Room);
+        many.MediaBoxFaults.First().Message.Should().Be(
+            "The page object under /Kids[0] of page tree node 2 has no /MediaBox, and no page tree node above it gives one: the page's size is unknown.");
+        ((manyAllocated - fewAllocated) / 100_000.0).Should().BeLessThan(4, "one more page costs no string");
+
+        static (long Allocated, PageTreeWalk Walk) Walking(int kids)
+        {
+            using var document = PdfDocument.Open(KidsWrittenInTheArray(kids));
+            document.GetObject(new PdfObjectId(2));
+            var allocated = Allocations.Least(() => PageTreeWalk.Run(document, Room), out var walk);
+            return (allocated, walk);
+        }
+    }
+
+    [Fact]
+    public void Walking_objects_that_refer_to_nothing_describes_those_the_report_has_room_for_and_reads_no_other_again()
+    {
+        // #168: fifty thousand objects, each referring to an object the file lacks and holding a name with a null character.
+        // The graph read each object again to describe where its first fault lies, and wrote its finding, 1.5 KB an object
+        // past what walking it costs. It describes those the report has room for, and counts the others: one more object
+        // costs its own walk, which parses it, the reader's cache holding fewer.
+        const int Room = 1000;
+        var (fewAllocated, few) = Walking(25_000);
+        var (manyAllocated, many) = Walking(50_000);
+
+        few.MissingReferences.Total.Should().Be(25_000);
+        many.MissingReferences.Total.Should().Be(50_000);
+        many.NullCharacterNames.Total.Should().Be(50_000);
+        many.MissingReferences.Kept.Should().Be(Room);
+        many.NullCharacterNames.Kept.Should().Be(Room);
+        ((manyAllocated - fewAllocated) / 25_000.0).Should().BeLessThan(800, "one more object costs its walk, not its description");
+
+        static (long Allocated, ObjectGraph Graph) Walking(int objects)
+        {
+            using var document = PdfDocument.Open(ObjectsHolding(objects));
+            var pages = PageTreeWalk.Run(document);
+            var allocated = Allocations.Least(() => ObjectGraph.Run(document, pages, Room), out var graph);
+            return (allocated, graph);
+        }
+    }
+
+    [Fact]
+    public void Validating_a_file_of_845_bytes_indexing_millions_of_broken_entries_holds_no_finding_past_the_report_s_room()
+    {
+        // #164's cross-reference stream of one-byte rows, under the default limits: 845 bytes that decode to 256 MB of rows,
+        // of which the index holds the 8,388,605 its guard allows, every one past object 3 placing its object nowhere. The
+        // probe wrote and kept each entry's finding: 5.5 GB allocated, 3.3 GB held, for a report of 1,000. Once the index is
+        // settled — what opening and settling hold, 640 MB, is the index's, which the guard bounds —, validating costs the
+        // probe's copy of the entries' numbers and little else.
+        var file = OneByteRows(256 * 1024 * 1024, out _);
+        file.Length.Should().BeLessThan(1024);
+        using var document = PdfDocument.Open(file);
+        document.Reader.SettleIndex();
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var report = Measure(() => new PdfValidator().Validate(document));
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        report.Findings.Should().HaveCount(PdfValidatorOptions.Default.FindingCapacity);
+        report.ErrorCount.Should().Be(8_388_603);
+        report.SuppressedCount.Should().Be(report.ErrorCount + report.WarningCount + report.InformationCount - 1000);
+        allocated.Should().BeLessThan((4L * report.ErrorCount) + (4 * 1024 * 1024), "the numbers of the entries, copied once, and the findings kept");
     }
 
     [Fact]
@@ -4166,6 +4326,167 @@ public class HostileInputTests
         output.Write(compressedRows.ToArray());
         Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
         return output.ToArray();
+    }
+
+    /// <summary>
+    /// The catalog and a page tree whose root, giving a media box and resources, lists <paramref name="kids"/> kids written
+    /// as <paramref name="kid"/> — or lists <paramref name="nodes"/> nodes, each listing them —: <c>0 </c> by default, a
+    /// number, which stands for a page the tree cannot read.
+    /// </summary>
+    internal static byte[] Kids(int kids, int nodes = 1, string kid = "0 ")
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>") };
+        var listed = new StringBuilder(kids * kid.Length);
+
+        for (var k = 0; k < kids; k++)
+        {
+            listed.Append(kid);
+        }
+
+        if (nodes == 1)
+        {
+            rows[2] = file.Object(2, $"<< /Type /Pages /Count 1 /MediaBox [0 0 10 10] /Resources << >> /Kids [{listed}] >>");
+        }
+        else
+        {
+            var below = new StringBuilder();
+
+            for (var node = 3; node < nodes + 3; node++)
+            {
+                below.Append(CultureInfo.InvariantCulture, $"{node} 0 R ");
+                rows[node] = file.Object(node, $"<< /Type /Pages /Parent 2 0 R /Count 1 /Kids [{listed}] >>");
+            }
+
+            rows[2] = file.Object(2, string.Create(
+                CultureInfo.InvariantCulture,
+                $"<< /Type /Pages /Count {nodes} /MediaBox [0 0 10 10] /Resources << >> /Kids [{below}] >>"));
+        }
+
+        var size = nodes == 1 ? 3 : nodes + 3;
+        file.Table(size, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {size} /Root 1 0 R"));
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// The catalog and a page tree whose root, giving neither a media box nor resources, lists <paramref name="kids"/> kids
+    /// written in its array as <paramref name="kid"/>: an empty dictionary by default, a page with neither.
+    /// </summary>
+    internal static byte[] KidsWrittenInTheArray(int kids, string kid = "<<>> ")
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long> { [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>") };
+        var listed = new StringBuilder(kids * kid.Length);
+
+        for (var k = 0; k < kids; k++)
+        {
+            listed.Append(kid);
+        }
+
+        rows[2] = file.Object(2, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages /Count {kids} /Kids [{listed}] >>"));
+        file.Table(3, rows, "/Size 3 /Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// The catalog, an empty page tree, <paramref name="objects"/> written as objects of their own, and a Flate cross-reference
+    /// stream, <c>/W [1 4 2]</c>, whose rows place every other number from 3 to <paramref name="entries"/> + 2 as
+    /// <paramref name="row"/> says.
+    /// </summary>
+    internal static byte[] CompressedRows(int entries, Func<int, (int Type, long Field2, int Field3)> row, params (int Number, string Body)[] objects)
+    {
+        using var output = new MemoryStream();
+        void Write(string text) => output.Write(Encoding.Latin1.GetBytes(text));
+
+        Write("%PDF-1.5\n");
+        var offsets = new Dictionary<int, long> { [1] = output.Position };
+        Write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+        offsets[2] = output.Position;
+        Write("2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n");
+
+        foreach (var (number, body) in objects)
+        {
+            offsets[number] = output.Position;
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n"));
+        }
+
+        var xref = entries + 3;
+        var xrefOffset = output.Position;
+        var rows = new byte[(xref + 1) * 7];
+
+        for (var number = 0; number <= xref; number++)
+        {
+            var (type, field2, field3) = number == 0 ? (0, 0L, 65535)
+                : number == xref ? (1, xrefOffset, 0)
+                : offsets.TryGetValue(number, out var at) ? (1, at, 0)
+                : row(number);
+            rows[number * 7] = (byte)type;
+            BinaryPrimitives.WriteUInt32BigEndian(rows.AsSpan((number * 7) + 1), (uint)field2);
+            BinaryPrimitives.WriteUInt16BigEndian(rows.AsSpan((number * 7) + 5), (ushort)field3);
+        }
+
+        var data = Compress(rows);
+        Write(string.Create(
+            CultureInfo.InvariantCulture,
+            $"{xref} 0 obj\n<< /Type /XRef /Size {xref + 1} /W [1 4 2] /Root 1 0 R /Filter /FlateDecode /Length {data.Length} >>\nstream\n"));
+        output.Write(data);
+        Write(string.Create(CultureInfo.InvariantCulture, $"\nendstream\nendobj\nstartxref\n{xrefOffset}\n%%EOF\n"));
+        return output.ToArray();
+    }
+
+    /// <summary>A cross-reference stream whose <paramref name="entries"/> rows place their objects outside the file.</summary>
+    internal static byte[] EntriesOutsideTheFile(int entries) => CompressedRows(entries, _ => (1, 0x7FFF_FFF0L, 0));
+
+    /// <summary>
+    /// A cross-reference stream that places objects 3 to <paramref name="entries"/> + 2 in object stream 5, each at the index
+    /// its number less 3 gives, where the stream lists object 3 alone: every other is a member its header does not list.
+    /// </summary>
+    internal static byte[] MembersTheHeaderDoesNotList(int entries) =>
+        CompressedRows(entries, number => (2, 5, number - 3), (5, "<< /Type /ObjStm /N 1 /First 4 /Length 9 >>\nstream\n3 0 <<>> \nendstream"));
+
+    /// <summary>A cross-reference stream whose <paramref name="rows"/> rows each place an object in an object stream the index lacks.</summary>
+    internal static byte[] ObjectStreamsTheIndexLacks(int rows) => CompressedRows(rows, number => (2, 4_000_000 + number, 0));
+
+    /// <summary>A classic table whose <paramref name="entries"/> rows past object 2 each place their object where object 1's header is.</summary>
+    internal static byte[] EntriesAtObjectOne(int entries)
+    {
+        var file = new HandWrittenFile();
+        var rows = new Dictionary<int, long>(entries + 2) { [1] = file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>") };
+        rows[2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 3; number < entries + 3; number++)
+        {
+            rows[number] = rows[1];
+        }
+
+        file.Table(entries + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {entries + 3} /Root 1 0 R"));
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// A catalog that lists <paramref name="objects"/> objects, each holding <paramref name="held"/>: by default, a reference
+    /// to an object the file lacks, and a key with a null character.
+    /// </summary>
+    internal static byte[] ObjectsHolding(int objects, string held = "/M 9999999 0 R /N#00 1")
+    {
+        var file = new HandWrittenFile();
+        var listed = new StringBuilder(objects * 10);
+
+        for (var number = 3; number < objects + 3; number++)
+        {
+            listed.Append(CultureInfo.InvariantCulture, $"{number} 0 R ");
+        }
+
+        var rows = new Dictionary<int, long>(objects + 2) { [1] = file.Object(1, $"<< /Type /Catalog /Pages 2 0 R /All [{listed}] >>") };
+        rows[2] = file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>");
+
+        for (var number = 3; number < objects + 3; number++)
+        {
+            rows[number] = file.Object(number, $"<< {held} >>");
+        }
+
+        file.Table(objects + 3, rows, string.Create(CultureInfo.InvariantCulture, $"/Size {objects + 3} /Root 1 0 R"));
+        return file.Bytes;
     }
 
     /// <summary>

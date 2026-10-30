@@ -10,7 +10,10 @@ namespace AdCodicem.Pdf.Validation;
 /// The report is bounded: it keeps at most <see cref="PdfValidatorOptions.FindingCapacity"/> findings, so a
 /// hostile file with a fault in every object cannot make it grow without limit. The counts by severity, and
 /// <see cref="Contains"/>, cover every finding, kept or not; <see cref="SuppressedCount"/> says how many were
-/// not kept.
+/// not kept. What builds it is bounded alike: the validator writes no finding past those the report can keep — it
+/// counts them —, so that a lower capacity also makes validating a hostile file cheaper, and the report is the same
+/// whatever the capacity, but for the findings it keeps (#168). A count past what an <see langword="int"/> holds, which
+/// only a file of gigabytes reaches, stays at <see cref="int.MaxValue"/>.
 /// </para>
 /// <para>
 /// Two validations of the same document under the same profile give the same report: rules run in the
@@ -58,7 +61,8 @@ public sealed class PdfValidationReport
     public int InformationCount { get; }
 
     /// <summary>Gets the number of findings not kept because <see cref="PdfValidatorOptions.FindingCapacity"/> was reached.</summary>
-    public int SuppressedCount => ErrorCount + WarningCount + InformationCount - Findings.Count;
+    public int SuppressedCount =>
+        (int)Math.Min((long)ErrorCount + WarningCount + InformationCount - Findings.Count, int.MaxValue);
 
     /// <summary>
     /// Gets a value indicating whether any finding is an error: the reader cannot vouch that it reads the document

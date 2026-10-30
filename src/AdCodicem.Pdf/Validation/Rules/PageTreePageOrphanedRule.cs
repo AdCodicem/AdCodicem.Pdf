@@ -66,6 +66,12 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
                 continue;
             }
 
+            // A page the report has no room for is counted, its finding not written: one an object (#168).
+            if (!context.HasRoomFor(this))
+            {
+                continue;
+            }
+
             context.Report(
                 this,
                 PdfValidationLocation.OfObject(id),
@@ -98,7 +104,8 @@ internal sealed class PageTreePageOrphanedRule : IValidationRule
             }
         }
 
+        // What the probe counted, not what it wrote: an entry past the room the report had is as broken (#168).
         var probe = context.Probe;
-        return probe.Broken.Count == 0 && probe.BrokenObjectStreams.Count == 0 && probe.NotChecked.Count == 0;
+        return probe.Broken.Total == 0 && probe.BrokenObjectStreams.Count == 0 && probe.NotChecked.Total == 0;
     }
 }

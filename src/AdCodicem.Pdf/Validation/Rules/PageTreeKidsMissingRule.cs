@@ -21,9 +21,14 @@ internal sealed class PageTreeKidsMissingRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.PageTree.NodesWithoutKids)
+        var findings = context.PageTree.NodesWithoutKids;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "Give the node a /Kids array listing its pages, or remove it from the tree.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

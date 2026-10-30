@@ -23,7 +23,9 @@ internal sealed class ObjectStreamCircularRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.ObjectStreams.Circular)
+        var findings = context.ObjectStreams.Circular;
+
+        foreach (var finding in findings)
         {
             context.Report(
                 this,
@@ -31,5 +33,8 @@ internal sealed class ObjectStreamCircularRule : IValidationRule
                 finding.Message,
                 "Write the value the stream needs directly in its dictionary, or store the object it names outside the stream.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

@@ -26,6 +26,11 @@ namespace AdCodicem.Pdf.Validation;
 /// the walk rebuilds it, and the object read again is the one the walk read (#237); were it another, read through an index
 /// rebuilt since, the finding would say what the walk counted without saying where.
 /// </para>
+/// <para>
+/// It is made with the room the report has, and describes, of each kind of fault, the objects that hold one up to that
+/// room, in the order of their numbers: those past it are counted, neither read again nor described, the report having no
+/// room for their findings (#168). What it holds of them is a count per object.
+/// </para>
 /// </remarks>
 internal sealed class ObjectGraph
 {
@@ -38,26 +43,33 @@ internal sealed class ObjectGraph
     private readonly SortedDictionary<int, int> _missingReferences = [];
     private readonly SortedDictionary<int, int> _nullCharacterNames = [];
 
-    private ObjectGraph(PdfDocument document, PageTreeWalk pages)
+    private ObjectGraph(PdfDocument document, PageTreeWalk pages, int room)
     {
         _document = document;
         _reader = document.Reader;
         _pages = pages;
+        MissingReferences = new(room);
+        NullCharacterNames = new(room);
+        MissingEndObj = new(room);
     }
 
     /// <summary>Gets the objects, one finding each, that refer to objects the file lacks.</summary>
-    public List<ProbeFinding> MissingReferences { get; } = [];
+    public ProbeFindings MissingReferences { get; }
 
     /// <summary>Gets the objects, one finding each, that hold a name with a null character.</summary>
-    public List<ProbeFinding> NullCharacterNames { get; } = [];
+    public ProbeFindings NullCharacterNames { get; }
 
     /// <summary>Gets the objects whose value <c>endobj</c> does not follow.</summary>
-    public List<ProbeFinding> MissingEndObj { get; } = [];
+    public ProbeFindings MissingEndObj { get; }
 
-    /// <summary>Walks the objects of <paramref name="document"/> reachable from its trailer.</summary>
-    public static ObjectGraph Run(PdfDocument document, PageTreeWalk pages)
+    /// <summary>
+    /// Walks the objects of <paramref name="document"/> reachable from its trailer, describing of each kind of fault the
+    /// first <paramref name="room"/> objects that hold one and counting the rest: the room the report has when the walk is
+    /// made, or every object outside a validation.
+    /// </summary>
+    public static ObjectGraph Run(PdfDocument document, PageTreeWalk pages, int room = int.MaxValue)
     {
-        var graph = new ObjectGraph(document, pages);
+        var graph = new ObjectGraph(document, pages, room);
         graph.Walk();
         graph.Describe();
         return graph;
@@ -190,12 +202,18 @@ internal sealed class ObjectGraph
     {
         foreach (var (owner, count) in _missingReferences)
         {
+            // Past the room the report had, an object is counted, neither read again nor described.
+            if (!MissingReferences.Take())
+            {
+                continue;
+            }
+
             var value = ValueOf(owner);
             var first = new StringBuilder();
             var found = TryFindMissing(value, owner, owner == 0 ? Role.Trailer : RoleOf(owner), first, out var target);
             var holder = Holder(owner);
 
-            MissingReferences.Add(new ProbeFinding(
+            MissingReferences.Keep(new ProbeFinding(
                 LocationOf(owner),
                 (count, found) switch
                 {
@@ -208,6 +226,11 @@ internal sealed class ObjectGraph
 
         foreach (var (owner, count) in _nullCharacterNames)
         {
+            if (!NullCharacterNames.Take())
+            {
+                continue;
+            }
+
             var first = new StringBuilder();
             var name = FindNullCharacter(ValueOf(owner), owner == 0, first, out var isKey);
             var holder = Holder(owner);
@@ -219,7 +242,7 @@ internal sealed class ObjectGraph
                 _ => $"under {RuleText.Path(first)}",
             };
 
-            NullCharacterNames.Add(new ProbeFinding(
+            NullCharacterNames.Keep(new ProbeFinding(
                 LocationOf(owner),
                 (count, name) switch
                 {
@@ -236,10 +259,10 @@ internal sealed class ObjectGraph
 
         foreach (var number in visited)
         {
-            if (_reader.IsEndObjMissing(number, out var position))
+            if (_reader.IsEndObjMissing(number, out var position) && MissingEndObj.Take())
             {
                 var id = IdOf(number);
-                MissingEndObj.Add(new ProbeFinding(
+                MissingEndObj.Keep(new ProbeFinding(
                     _pages.Locate(id, position),
                     Invariant($"Object {number} does not end with endobj: what follows its value is something else, or the end of the file.")));
             }

@@ -27,7 +27,8 @@ internal sealed class TrailerMissingRule : IValidationRule
 
         foreach (var section in context.Structure.Sections)
         {
-            if (section.TrailerFault != XRefTrailerFault.Missing)
+            // Past the report's room, the section is counted, its finding not written (#168).
+            if (section.TrailerFault != XRefTrailerFault.Missing || !context.HasRoomFor(this))
             {
                 continue;
             }

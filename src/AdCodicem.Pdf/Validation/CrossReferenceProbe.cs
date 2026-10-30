@@ -32,8 +32,13 @@ namespace AdCodicem.Pdf.Validation;
 /// which the reader reads as null and no entry of the file's the reader read would name (#161, #202).
 /// </para>
 /// <para>
-/// Several rules read it, so the validation context works it out once. What it keeps is what it found wrong,
-/// never an account of every entry.
+/// Several rules read it, so the validation context works it out once. What it keeps is what it found wrong, never an
+/// account of every entry, and of each kind of fault no more than the report has room for: it is made with that room,
+/// writes the first faults of each kind up to it and counts the rest, which their rules count in turn (#168). The object
+/// streams it finds broken are the exception, a record each — numbers, and the reader's fault —, written by their rule,
+/// which passes over those the dependency walk finds circular, something the probe cannot know: one record per stream
+/// number the index places objects in at most, which <see cref="Documents.PdfReaderLimits.MaxIndexEntries"/> bounds as
+/// it bounds the index.
 /// </para>
 /// </remarks>
 internal sealed class CrossReferenceProbe
@@ -50,25 +55,35 @@ internal sealed class CrossReferenceProbe
     /// <summary>The first of those entries, in the order of object numbers.</summary>
     private ProbeFinding? _firstUndecided;
 
-    private CrossReferenceProbe(long allowance) => _reading = new HeaderReading(allowance);
+    private CrossReferenceProbe(long allowance, int room)
+    {
+        _reading = new HeaderReading(allowance);
+        Broken = new(room);
+        Shifted = new(room);
+        GenerationMismatches = new(room);
+        NotChecked = new(room);
+    }
 
     /// <summary>Gets the entries whose object is neither where they place it nor near it.</summary>
-    public List<ProbeFinding> Broken { get; } = [];
+    public ProbeFindings Broken { get; }
 
     /// <summary>Gets the entries whose object is a few bytes from where they place it, or at another index of its stream.</summary>
-    public List<ProbeFinding> Shifted { get; } = [];
+    public ProbeFindings Shifted { get; }
 
     /// <summary>Gets the entries whose generation is not the one their object is written with.</summary>
-    public List<ProbeFinding> GenerationMismatches { get; } = [];
+    public ProbeFindings GenerationMismatches { get; }
 
-    /// <summary>Gets the object streams, one finding each, that cannot serve the objects the index places in them.</summary>
-    public List<ProbeFinding> BrokenObjectStreams { get; } = [];
+    /// <summary>
+    /// Gets the object streams that cannot serve the objects the index places in them, a record each, in the order of their
+    /// numbers: every one, whatever the room, their rule passing over those the dependency walk finds circular.
+    /// </summary>
+    public List<BrokenObjectStream> BrokenObjectStreams { get; } = [];
 
     /// <summary>
     /// Gets what could not be checked: an entry whose header runs past a limit, entries left undecided past what the probe
     /// may read, object streams a limit cut, or all of them in an encrypted document.
     /// </summary>
-    public List<ProbeFinding> NotChecked { get; } = [];
+    public ProbeFindings NotChecked { get; }
 
     /// <summary>Gets how many entries place their object on the white space before its header.</summary>
     public int ImpreciseCount { get; private set; }
@@ -82,11 +97,14 @@ internal sealed class CrossReferenceProbe
     /// <summary>Gets the lowest numbered of those objects.</summary>
     public ProbeFinding? FirstPastSize { get; private set; }
 
-    /// <summary>Probes the index the document's chain gave.</summary>
-    public static CrossReferenceProbe Run(PdfDocument document)
+    /// <summary>
+    /// Probes the index the document's chain gave, writing of each kind of fault the first <paramref name="room"/> it finds
+    /// and counting the rest: the room the report has when the probe is made, or every fault outside a validation.
+    /// </summary>
+    public static CrossReferenceProbe Run(PdfDocument document, int room = int.MaxValue)
     {
         var reader = document.Reader;
-        var probe = new CrossReferenceProbe(reader.HeaderReadingAllowance);
+        var probe = new CrossReferenceProbe(reader.HeaderReadingAllowance, room);
 
         if (reader.ChainIndex is not { } index)
         {
@@ -132,11 +150,11 @@ internal sealed class CrossReferenceProbe
             }
         }
 
-        if (probe._firstUndecided is { } first)
+        if (probe._firstUndecided is { } first && probe.NotChecked.Take())
         {
             const string Stopped = "The validator stopped reading object headers where entries place them once it had read twice the file's length of them, past the first bytes of each";
 
-            probe.NotChecked.Add(new ProbeFinding(
+            probe.NotChecked.Keep(new ProbeFinding(
                 first.Location,
                 probe._undecidedCount == 1
                     ? Invariant($"{Stopped}: the entry of {first.Message}, which it had not decided by then, was not checked.")
@@ -179,29 +197,40 @@ internal sealed class CrossReferenceProbe
             case HeaderPlace.Nearby when !placement.GuardAtOffset:
                 // The generation is the one the reader records for the object it relocates, read as a load reads it: a
                 // header longer than a first read is judged all the same (#118).
-                var found = !inFile ? "outside the file" :
-                    placement.NumberAtOffset > 0 ? Invariant($"where there is the header of object {placement.NumberAtOffset}") :
-                    "where there is no object header";
+                if (Shifted.Take())
+                {
+                    var found = !inFile ? "outside the file" :
+                        placement.NumberAtOffset > 0 ? Invariant($"where there is the header of object {placement.NumberAtOffset}") :
+                        "where there is no object header";
 
-                Shifted.Add(new ProbeFinding(
-                    at,
-                    Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {found}; the object starts {RuleText.Distance(placement.Position - offset)}, at offset {placement.Position}.")));
+                    Shifted.Keep(new ProbeFinding(
+                        at,
+                        Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, {found}; the object starts {RuleText.Distance(placement.Position - offset)}, at offset {placement.Position}.")));
+                }
 
                 CheckGeneration(number, entry, placement.Position, placement.Generation);
                 return;
 
             case HeaderPlace.NotFound when !inFile:
-                Broken.Add(new ProbeFinding(
-                    at,
-                    Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, outside the file.")));
+                if (Broken.Take())
+                {
+                    Broken.Keep(new ProbeFinding(
+                        at,
+                        Invariant($"The entry of object {number} gives offset {Named(reader, entry, offset, inFile)}, outside the file.")));
+                }
+
                 return;
 
             case HeaderPlace.NotFound:
-                var there = placement.NumberAtOffset > 0 ? Invariant($"the header of object {placement.NumberAtOffset}") : "no object header";
+                if (Broken.Take())
+                {
+                    var there = placement.NumberAtOffset > 0 ? Invariant($"the header of object {placement.NumberAtOffset}") : "no object header";
 
-                Broken.Add(new ProbeFinding(
-                    at,
-                    Invariant($"The entry of object {number} gives offset {offset}, where there is {there}, and the object is not within {PdfFileReader.NearbySearchRadius} bytes of it.")));
+                    Broken.Keep(new ProbeFinding(
+                        at,
+                        Invariant($"The entry of object {number} gives offset {offset}, where there is {there}, and the object is not within {PdfFileReader.NearbySearchRadius} bytes of it.")));
+                }
+
                 return;
 
             case HeaderPlace.Undecided:
@@ -215,9 +244,13 @@ internal sealed class CrossReferenceProbe
             default:
                 // A header that runs past the object guard, where the entry places the object or near it: what a load finds
                 // there is the limit's to say, and raising it lets the entry be checked.
-                NotChecked.Add(new ProbeFinding(
-                    at,
-                    Invariant($"Reading the header of object {number} where its entry places it, at offset {Named(reader, entry, offset, inFile)}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
+                if (NotChecked.Take())
+                {
+                    NotChecked.Keep(new ProbeFinding(
+                        at,
+                        Invariant($"Reading the header of object {number} where its entry places it, at offset {Named(reader, entry, offset, inFile)}, or near it, the reader reached PdfReaderLimits.MaxObjectLength: the entry was not checked. Raising the limit lets it be.")));
+                }
+
                 return;
         }
     }
@@ -228,9 +261,9 @@ internal sealed class CrossReferenceProbe
 
     private void CheckGeneration(int number, XRefEntry entry, long position, long generation)
     {
-        if (generation >= 0 && generation != entry.Generation)
+        if (generation >= 0 && generation != entry.Generation && GenerationMismatches.Take())
         {
-            GenerationMismatches.Add(new ProbeFinding(
+            GenerationMismatches.Keep(new ProbeFinding(
                 PdfValidationLocation.OfObject(new PdfObjectId(number, entry.Generation), position),
                 Invariant($"The entry of object {number} gives generation {entry.Generation}, and the object is written as {number} {generation} obj.")));
         }
@@ -249,9 +282,13 @@ internal sealed class CrossReferenceProbe
                 objects += list.Count;
             }
 
-            NotChecked.Add(new ProbeFinding(
-                default,
-                Invariant($"The document is encrypted: the {RuleText.Objects(objects)} its index places in object streams were not checked, those streams being readable only once decrypted.")));
+            if (NotChecked.Take())
+            {
+                NotChecked.Keep(new ProbeFinding(
+                    default,
+                    Invariant($"The document is encrypted: the {RuleText.Objects(objects)} its index places in object streams were not checked, those streams being readable only once decrypted.")));
+            }
+
             return;
         }
 
@@ -274,17 +311,14 @@ internal sealed class CrossReferenceProbe
                 return;
             }
 
-            BrokenObjectStreams.Add(new ProbeFinding(
-                PdfValidationLocation.OfObject(id),
-                Invariant($"The index places {RuleText.Objects(objects.Count)} in object stream {stream}, which it does not hold as an object.")));
+            BrokenObjectStreams.Add(new BrokenObjectStream(stream, BrokenObjectStreamKind.NotHeld, objects.Count));
             return;
         }
 
         if (entry.Kind == XRefEntryKind.Compressed)
         {
-            BrokenObjectStreams.Add(new ProbeFinding(
-                PdfValidationLocation.OfObject(id),
-                Invariant($"The index places {RuleText.Objects(objects.Count)} in object stream {stream}, which it places in object stream {entry.ObjectStreamNumber} in turn: an object stream cannot be stored in another.")));
+            BrokenObjectStreams.Add(
+                new BrokenObjectStream(stream, BrokenObjectStreamKind.InAnotherStream, objects.Count, Detail: entry.ObjectStreamNumber));
             return;
         }
 
@@ -292,7 +326,8 @@ internal sealed class CrossReferenceProbe
 
         // A row outside the file, its stream found near it, places it nowhere in the file: the finding is located at the
         // object alone, as the entry's own is (#125).
-        var at = reader.IsInFile(offset) ? PdfValidationLocation.OfObject(id, offset) : PdfValidationLocation.OfObject(id);
+        var position = reader.IsInFile(offset) ? offset : -1;
+        var at = position >= 0 ? PdfValidationLocation.OfObject(id, position) : PdfValidationLocation.OfObject(id);
 
         var result = reader.ReadObjectStreamHeader(stream, entry, out var numbers, out var fault, out var streamMembers);
         long[]? places = null;
@@ -304,21 +339,23 @@ internal sealed class CrossReferenceProbe
                 return;
 
             case ObjectStreamHeaderResult.CutByLimit:
-                NotChecked.Add(new ProbeFinding(
-                    at,
-                    Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it were not checked. Raising the limit the reader reported lets them be.")));
+                if (NotChecked.Take())
+                {
+                    NotChecked.Keep(new ProbeFinding(
+                        at,
+                        Invariant($"One of the reader's limits stopped it reading object stream {stream} before its header ended: the {RuleText.Objects(objects.Count)} the index places in it were not checked. Raising the limit the reader reported lets them be.")));
+                }
+
                 return;
 
             case ObjectStreamHeaderResult.NotAnObjectStream:
-                BrokenObjectStreams.Add(new ProbeFinding(
-                    at,
-                    Invariant($"Object {stream}, where the index places {RuleText.Objects(objects.Count)}, {fault}.")));
+                BrokenObjectStreams.Add(
+                    new BrokenObjectStream(stream, BrokenObjectStreamKind.NotAnObjectStream, objects.Count, position, Fault: fault));
                 return;
 
             case ObjectStreamHeaderResult.Unreadable when numbers.Length == 0:
-                BrokenObjectStreams.Add(new ProbeFinding(
-                    at,
-                    Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, cannot be read: {fault}.")));
+                BrokenObjectStreams.Add(
+                    new BrokenObjectStream(stream, BrokenObjectStreamKind.Unreadable, objects.Count, position, Fault: fault));
                 return;
 
             case ObjectStreamHeaderResult.Unreadable:
@@ -333,11 +370,8 @@ internal sealed class CrossReferenceProbe
 
                 if (lost > 0)
                 {
-                    BrokenObjectStreams.Add(new ProbeFinding(
-                        at,
-                        objects.Count == 1
-                            ? Invariant($"Object stream {stream}, where the index places 1 object, can be read only in part: {fault}; it is not listed before that, and lost.")
-                            : Invariant($"Object stream {stream}, where the index places {RuleText.Objects(objects.Count)}, can be read only in part: {fault}; {lost} of them {(lost == 1 ? "is" : "are")} not listed before that, and lost.")));
+                    BrokenObjectStreams.Add(
+                        new BrokenObjectStream(stream, BrokenObjectStreamKind.ReadInPart, objects.Count, position, lost, fault));
                 }
 
                 break;
@@ -352,7 +386,12 @@ internal sealed class CrossReferenceProbe
             // are listed in increasing order.
             if (actual >= 0 && Array.BinarySearch(streamMembers, actual) >= 0)
             {
-                Broken.Add(new ProbeFinding(
+                if (!Broken.Take())
+                {
+                    continue;
+                }
+
+                Broken.Keep(new ProbeFinding(
                     PdfValidationLocation.OfObject(new PdfObjectId(number)),
                     listed
                         ? Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold.")
@@ -374,13 +413,16 @@ internal sealed class CrossReferenceProbe
 
             if (actual >= 0)
             {
-                Shifted.Add(new ProbeFinding(
-                    PdfValidationLocation.OfObject(new PdfObjectId(number)),
-                    Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, whose header lists it at index {actual}.")));
+                if (Shifted.Take())
+                {
+                    Shifted.Keep(new ProbeFinding(
+                        PdfValidationLocation.OfObject(new PdfObjectId(number)),
+                        Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, whose header lists it at index {actual}.")));
+                }
             }
-            else
+            else if (Broken.Take())
             {
-                Broken.Add(new ProbeFinding(
+                Broken.Keep(new ProbeFinding(
                     PdfValidationLocation.OfObject(new PdfObjectId(number)),
                     Invariant($"The entry of object {number} places it at index {index} of object stream {stream}, whose header does not list it.")));
             }
@@ -438,12 +480,12 @@ internal sealed class CrossReferenceProbe
 
             foreach (var (number, index) in objects)
             {
-                if (Listed(numbers, number, index) && Array.BinarySearch(streamMembers, index) >= 0)
+                if (Listed(numbers, number, index) && Array.BinarySearch(streamMembers, index) >= 0 && Broken.Take())
                 {
                     // A number the chain's index lacks, a guard having stopped it short, may be placed past where it stopped.
                     var unread = reader.ChainStoppedByGuard && reader.ChainIndex?.TryGet(number, out _) != true;
 
-                    Broken.Add(new ProbeFinding(
+                    Broken.Keep(new ProbeFinding(
                         PdfValidationLocation.OfObject(new PdfObjectId(number)),
                         unread
                             ? Invariant($"The index the reader rebuilt places object {number} at index {index} of object stream {stream}, where it is written as a stream, which an object stream cannot hold; the part of the file's own index the reader read does not place it.")

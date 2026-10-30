@@ -20,9 +20,14 @@ internal sealed class PageTreeCycleRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.PageTree.Cycles)
+        var findings = context.PageTree.Cycles;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "Replace the kid that loops back with the page or node the tree should list there, or remove it and correct /Count.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

@@ -42,10 +42,10 @@ public class CrossReferenceProbeBenchmarks
     }
 
     [Benchmark(Description = "Probe the entries of a sound document of as many pages as rows")]
-    public int ProbeSound() => CrossReferenceProbe.Run(_sound!).Broken.Count;
+    public int ProbeSound() => CrossReferenceProbe.Run(_sound!).Broken.Total;
 
     [Benchmark(Description = "Probe rows that lead into one run of 2 MB of blanks")]
-    public int ProbeBlanks() => CrossReferenceProbe.Run(_blanks!).Broken.Count;
+    public int ProbeBlanks() => CrossReferenceProbe.Run(_blanks!).Broken.Total;
 
     /// <summary>
     /// Writes a file whose <paramref name="rows"/> rows place their objects in one run of <paramref name="blanks"/> null

@@ -145,6 +145,76 @@ public class PageTreeRuleTests
         PageTreeWalk.Run(document).PageCount.Should().Be(5);
     }
 
+    [Theory]
+    [InlineData("4 0 R")]
+    [InlineData("7 0 R")]
+    public void What_is_listed_again_past_the_report_s_room_is_counted_again_all_the_same(string again)
+    {
+        // #168: the finding of a node listed again, or of a node naming an array of kids walked already, says what is counted
+        // again, and the counting was done as its message was written. Past the report's room no message is written: the
+        // pages are counted all the same, or the right /Count of the node above is called wrong once the report is full.
+        var file = Objects(
+            (2, $"<< /Type /Pages /Kids [3 0 R 4 0 R {again}] /Count 5 /MediaBox [0 0 1 1] /Resources << >> >>"),
+            (3, "<< /Type /Page /Parent 2 0 R >>"),
+            (4, "<< /Type /Pages /Parent 2 0 R /Kids 8 0 R /Count 2 >>"),
+            (5, "<< /Type /Page /Parent 4 0 R >>"),
+            (6, "<< /Type /Page /Parent 4 0 R >>"),
+            (7, "<< /Type /Pages /Parent 2 0 R /Kids 8 0 R /Count 2 >>"),
+            (8, "[5 0 R 6 0 R]"));
+
+        foreach (var capacity in (int[])[0, 1000])
+        {
+            using var document = PdfDocument.Open(file);
+            var report = new PdfValidator(new PdfValidatorOptions { FindingCapacity = capacity }).Validate(document);
+
+            report.Contains(PdfValidationRuleIds.PageTreeNodeRepeated).Should().BeTrue();
+            report.Contains(PdfValidationRuleIds.PageTreeCountMismatch).Should().BeFalse(
+                $"the pages listed again are counted again at a capacity of {capacity}");
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1000)]
+    public void A_page_the_tree_leaves_out_is_not_judged_beside_a_broken_entry_whatever_the_report_s_room(int capacity)
+    {
+        // #168: the orphan rule judges an index the probe found sound throughout. Whether it found an entry broken is what it
+        // counted, not what it wrote, which past the report's room is nothing: at a capacity of 0, the probe writes no
+        // finding, and the index is not sound for all that. Object 4 is a member its stream does not list; object 6 a page
+        // the tree does not list.
+        const string Orphan = "<< /Type /Page /Parent 2 0 R >>";
+        var broken = HostileInputTests.CompressedRows(
+            4,
+            number => (2, 5, number - 3),
+            (5, "<< /Type /ObjStm /N 1 /First 4 /Length 9 >>\nstream\n3 0 <<>> \nendstream"),
+            (6, Orphan));
+        var sound = HostileInputTests.CompressedRows(
+            4,
+            number => (2, 5, number - 3),
+            (5, "<< /Type /ObjStm /N 2 /First 8 /Length 18 >>\nstream\n3 0 4 5 <<>> <<>> \nendstream"),
+            (6, Orphan));
+
+        var withBroken = Validate(broken, capacity, out var brokenRepaired);
+        var withSound = Validate(sound, capacity, out var soundRepaired);
+
+        brokenRepaired.Should().BeFalse();
+        soundRepaired.Should().BeFalse();
+        withSound.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeTrue("the index is sound, and the page left out");
+        withSound.InformationCount.Should().Be(1);
+        withBroken.Contains(PdfValidationRuleIds.XRefEntryBroken).Should().BeTrue();
+        withBroken.ErrorCount.Should().Be(1);
+        withBroken.Contains(PdfValidationRuleIds.PageTreePageOrphaned).Should().BeFalse("an entry is broken, written or not");
+        withBroken.InformationCount.Should().Be(0);
+
+        static PdfValidationReport Validate(byte[] file, int capacity, out bool repaired)
+        {
+            using var document = PdfDocument.Open(file);
+            var report = new PdfValidator(new PdfValidatorOptions { FindingCapacity = capacity }).Validate(document);
+            repaired = document.WasRepaired;
+            return report;
+        }
+    }
+
     [Fact]
     public void A_page_a_destination_names_again_is_not_repeated()
     {

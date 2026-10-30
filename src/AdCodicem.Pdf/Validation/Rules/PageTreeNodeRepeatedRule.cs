@@ -20,9 +20,14 @@ internal sealed class PageTreeNodeRepeatedRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.PageTree.RepeatedNodes)
+        var findings = context.PageTree.RepeatedNodes;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "List each node and page once, giving a page shown twice a page object of its own.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

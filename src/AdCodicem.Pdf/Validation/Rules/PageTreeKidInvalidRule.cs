@@ -29,9 +29,14 @@ internal sealed class PageTreeKidInvalidRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.PageTree.InvalidKids)
+        var findings = context.PageTree.InvalidKids;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "Replace the kid with an indirect reference to the page or node it stands for, or remove it and correct /Count.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

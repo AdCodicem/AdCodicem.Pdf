@@ -41,7 +41,7 @@ public class ObjectStreamDependencyBenchmarks
     public void Cleanup() => _document?.Dispose();
 
     [Benchmark(Description = "Walk the object streams' dependencies")]
-    public int Walk() => ObjectStreamDependencies.Run(_document!).Circular.Count;
+    public int Walk() => ObjectStreamDependencies.Run(_document!).Circular.Total;
 
     /// <summary>
     /// Writes a file indexed by a cross-reference stream, whose <paramref name="streams"/> Flate object streams each hold one

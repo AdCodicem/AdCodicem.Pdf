@@ -20,9 +20,14 @@ internal sealed class PageTreeParentWrongRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.PageTree.ParentFaults)
+        var findings = context.PageTree.ParentFaults;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "Point /Parent at the node that lists it, as an indirect reference; remove it from the root.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

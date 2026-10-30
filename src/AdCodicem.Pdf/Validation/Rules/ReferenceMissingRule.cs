@@ -31,9 +31,14 @@ internal sealed class ReferenceMissingRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.Graph.MissingReferences)
+        var findings = context.Graph.MissingReferences;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "Remove the reference, or add the object it names.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }

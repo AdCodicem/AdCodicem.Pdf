@@ -22,9 +22,14 @@ internal sealed class EntryShiftedRule : IValidationRule
     /// <inheritdoc/>
     public void Check(ValidationContext context)
     {
-        foreach (var finding in context.Probe.Shifted)
+        var findings = context.Probe.Shifted;
+
+        foreach (var finding in findings)
         {
             context.Report(this, finding.Location, finding.Message, "Correct the entry's offset, or its index.");
         }
+
+        // What the analysis counted past the room the report had when it was made, which it did not write (#168).
+        context.Count(this, findings.Unkept);
     }
 }
