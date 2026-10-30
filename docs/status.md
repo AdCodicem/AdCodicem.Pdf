@@ -22,119 +22,130 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
   [#253], with [#258] on 2026-10-17; the fourteenth, [#129] and [#175], with [#256] and [#259], with [#265] on
   2026-10-21; the fifteenth, [#160] and [#161], object stream members, with [#200], [#202], [#255], [#257], [#273],
   [#274] and [#275], with [#278] on 2026-10-22; the sixteenth, [#174] and [#170], stream data, with [#220], [#224],
-  [#230] and [#263], with [#297] on 2026-10-25. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the
-  milestone's adversarial review, slice 7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts
-  come from the reader's own work, the threat model's first version ([#135], `docs/threat-model.md`), M01's review after
-  the fact ([#136], `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to
-  [#210]), its third ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]), its eighth ([#229], [#230]),
-  its ninth ([#237]), its tenth ([#241], [#247]), its twelfth ([#250]), slice 4's blockers ([#253]), its thirteenth
-  ([#255] to [#257]), its fourteenth ([#259] to [#264]), its fifteenth ([#273] to [#277]) and its sixteenth ([#279] to
-  [#283], [#287] to [#290], [#292] to [#296]); [#123] moved to M20.
+  [#230] and [#263], with [#297] on 2026-10-25; the seventeenth, [#155], tables keyed by numbers dense or seeded (ADR
+  52), in [#308]. Then the other batches, slices 4 to 6 ([#60] to [#62]); then the milestone's adversarial review, slice
+  7 ([#137], ADR 46), once every other issue filed under M02 is closed. The debts come from the reader's own work, the
+  threat model's first version ([#135], `docs/threat-model.md`), M01's review after the fact ([#136],
+  `docs/reviews/M01.md`), the planning of step 4 ([#199] to [#202]), its second batch ([#207] to [#210]), its third
+  ([#212]), its fifth ([#215], [#216]), its sixth ([#218] to [#224]), its eighth ([#229], [#230]), its ninth ([#237]),
+  its tenth ([#241], [#247]), its twelfth ([#250]), slice 4's blockers ([#253]), its thirteenth ([#255] to [#257]), its
+  fourteenth ([#259] to [#264]), its fifteenth ([#273] to [#277]), its sixteenth ([#279] to [#283], [#287] to [#290],
+  [#292] to [#296]) and its seventeenth ([#307]); [#123] moved to M20. The seventeenth filed [#305] and [#306] under
+  M23.
 - **User documentation**: organized along Diátaxis since 2026-09-30 ([ADR 47](adr/0047-the-user-documentation-follows-diataxis.md),
   [#148]), on `main`: a tutorial held to its sample by a test, four how-to guides, four reference
   pages — the validation rules among them, moved from the project documents — with the API reference under them, and
   four explanations. Outside any milestone.
 - **Last milestone closed**: **M01 — Object model and tolerant reading**
-- **Tests**: 5,332 unit on [#297]'s branch (20 skipped: 2 by design, the theory over the remote corpus's streams whose
+- **Tests**: 5,573 unit on [#308]'s branch (20 skipped: 2 by design, the theory over the remote corpus's streams whose
   length is wrong, the fifteen remote documents of the theory over the corpus's filter chains, which have no document
   without them, the test held to PDFBox's remote report, and iPRES's stream that lost its `endstream`) + 1,495
   integration (skipped without Docker) + 48 for the remote corpus's fetcher + 43 for the roadmap's mirror on GitHub.
-  With the remote documents fetched, on [#297]'s branch: 7,704 unit with the 233 this container holds, 3 skipped — the
+  With the remote documents fetched, on [#308]'s branch: 7,945 unit with the 233 this container holds, 3 skipped — the
   laziness test on the two documents recorded as unsupported until [#47], which every other test holds to their
-  expectations, and the private manifest this container lacks —, the same under the runtime Microsoft ships; 3,688
-  integration against qpdf in its container, 3,682 passed and 6 skipped where qpdf cannot walk a damaged document's
-  pages; and, with all 242, `Remote corpus` run 80's 7,742 acceptance tests and 3,760 referee checks, on the code
-  [#297] ends with.
+  expectations, and the private manifest this container lacks —; 3,688 integration against qpdf in its container,
+  3,682 passed and 6 skipped where qpdf cannot walk a damaged document's pages; and, with all 242, `Remote corpus` run
+  93's 8,020 acceptance tests and 3,760 referee checks, on the library code [#308] ends with.
 - **Coverage**: on the committed corpus, as Codecov counts it (a line with an untaken branch is partial, the generated
-  Arlington tables left out), 99.42 % of `src/` — 8,124 of 8,171 lines on [#297]'s branch, 1,284 of its patch's 1,293
-  measurable lines, nine partial and none missed. The 47 left are those the rule of 2026-09-29 leaves (`CLAUDE.md`,
-  *Coverage*), and five that only faults filed reach. `main`'s 36 since [#278] are 32 now, at the line numbers [#297]
-  gives them. They are members that are private, or of a private type, which no input reaches — eight lines of
-  `ArlingtonWalk` (194, 925, 1029, 1039, 1040, 1060, 1062, 1152) and three of a defensive branch of `PdfLexer` (161, 164,
-  165) —, a `?.` on an index never null where it is read and a switch's default arm (`CrossReferenceProbe` 108 and 269,
-  `PageTreePageOrphanedRule` 51, `RootInvalidRule` 111 and 120), a line the compiler puts after a call that never
-  returns (`PdfFileReader` 2580), two branches the compiler adds that no input takes (`FileQuote` 145, an interpolation's
-  buffer too small; `PdfObjectParser` 1218, a concatenation's null check); a defensive arm of the real's expansion
-  (`PdfReal` 66, batch 5), one of the six ways out of a cross-reference stream row's `switch` (5187) and `Repair`'s guard
-  against a second rebuild (6458, 6460); `KeepObjectStream`'s release of the contents it replaces (6413, 6415, batch
-  13). Batch 14's five: the switch over a header's place (`CrossReferenceProbe` 167), whose target past the
-  enumeration's values the compiler adds and no input takes; the one over a kid's presence (`PageTreeWalk` 345), whose
-  default the batch's arm for a cut object leaves to `Deferred`, which `GetPresence` never answers; the test that a
-  judged catalog's `/Pages` is a dictionary or a stream (`ObjectGraph` 177), which the walk judged a root there, so is
-  one; and two defensive lines of a rebuild: `FinishRebuild`'s `??=` when reading `/Root` reaches a guard
-  (`PdfFileReader` 6573), which always finds one held already — a `/Root` a guard cuts is a regular object, or a member
-  of an object stream, that the rebuild read as it took in object streams, reaching the guard first —, and
-  `KeepMembersHiddenByGuard`'s position of a stream the rebuilt index lacks (6831), when every stream it marks hidden
-  was read from that index. Batch 15's two, in the probe's judging of the members only a rebuild places: the arms that
-  pass over an object stream the rebuilt index does not hold as a regular object, or whose header the reader cannot
-  read as one (`CrossReferenceProbe` 431), when the rebuild placed the members there for having found that stream and
-  read its header; and a `?.` on the chain's index (445), which a chain a guard stopped has read. Batch 16 takes three
-  off — `EndStreamAfter`'s two defensive arms, which a document whose searches are spent now takes, and the switch over
-  a `/Length`'s presence —, brings a fourth into its patch, the `HasValue` checks the compiler adds on a `long?`
-  (`PdfFileReader` 5040), and leaves fifteen. In its patch, nine no input takes: a `?.` on the set of what the chain
-  read, never null where it is forgotten (2517), and on a cross-reference stream's `/W` element, `/Size` and `/Index`
-  pair, which the parser never leaves null there (4575, 4612, 4628); those `HasValue` checks, on values already tested
-  (5040); a deferred length's search, always memoized by the parse before (4325), and its value, never null (4503),
-  defensive arms of private members; the operand of `ChecksumDisagrees` its one caller's precondition makes true
-  (`PdfFilterPipeline` 343); and a header's generation neither cut nor an integer, which the tests before it rule out
-  (`PdfObjectParser` 1570). Outside it, the dispatch the compiler builds over `SkipContainer`'s token kinds, to which
-  the batch's arm for a header adds a leaf no kind reaches (`PdfObjectParser` 1296); and five lines that inputs still
-  reach, but only to show a fault filed rather than pinned: a classic table's first token the probe's bound cut
-  (`PdfFileReader` 3349, 3351, 3352, [#295]), and `MarkCutByGuard`, which a `stream` a guard's edge parts reaches
-  (5878, 5880, [#294]). `codecov.yml` asks 95 % of each patch, and lets the project drop by half a point at most; the
-  aim is 100 %.
-- **CI**: green on `main` at `a76c9da` (CI run 678), [#278]'s last commit. `Remote corpus` passed on every document in
-  the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and [#211]'s branches, each rerun once
-  after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch, at its first attempt, and in run 22,
-  on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on `main`, failed only because
-  web.archive.org refused the download of ECan's scan (`Connection refused`, [#204]): every test over the 241 it fetched
-  passed. Run 24, on [#217]'s branch, lost the same document at its first attempt and passed whole at its one rerun; run
-  25, on [#225]'s branch, passed whole at its first attempt; run 26, on [#226]'s branch, lost ECan's scan again at its
-  first attempt and passed whole at its one rerun. The nightly run 27, on `main` at `2f26244`, lost the CFIA's form,
-  web.archive.org refusing the connection ([#204]), and passed every test over the 241 others. Runs 28 and 29, on
-  [#231]'s branch, passed whole at their first attempt, the second on the code the branch ends with; CI run 473 is green
-  on that code. The nightly run 30, on `main` at `78ff13b`, passed whole at its first attempt, and so did runs 31 and
-  32, on [#238]'s branch, the second on the batch's last code; run 33, on that code rebased onto `main`, lost ECan's
-  scan at its first attempt, web.archive.org refusing the connection ([#204]), and passed whole at its one rerun. CI run
-  509 is green on that code. The nightly runs 34 to 36 and 39 to 41, on `main` at `83d15a1`, passed whole at their first
-  attempt; runs 37 and 38 lost ECan's scan, web.archive.org refusing the connection, and run 42 the 88 documents of the
-  ipres2017 archive, its host timing out ([#204]), every test over the others passing. Run 43, on [#248]'s branch, and
-  run 44, on its last code, lost the ipres2017 archive the same way at their first attempt, every other test passing;
-  run 44 passed whole at its one rerun. CI run 534 is green on that code. The nightly run 45, on `main` at `a930544`,
-  passed whole at its first attempt, and so did run 46, on [#249]'s branch, on the batch's last code. Runs 47 and 48, on
-  [#252]'s branch, each failed on a test the branch then fixed — the corpus manifest's schema, which the new guard's
-  commit had left out, then a test that took a cut cross-reference stream's rows as read —, every other test over the
-  242 documents passing; runs 49 to 51 passed whole, run 51 on the batch's last code. The nightly run 53, on `main` at
-  `2d7d5dc`, lost ECan's scan, web.archive.org refusing the connection, and failed one test, an allocation window that a
-  collection elsewhere counted 8 KB over ([#253]), every other test passing. On [#254]'s branch, run 52, on its first
-  code, and run 54, on the code its second review changed, passed whole at their first attempt; run 55, on its last
-  code, lost ECan's scan, web.archive.org refusing the connection, and the 88 documents of the ipres2017 archive, its
-  host timing out ([#204]), every test over the others passing; at its one rerun it lost the ipres2017 archive alone,
-  every test over the 154 others passing, and the 88 it lost pass on that code in this container, whose unit and
-  integration runs hold them. The nightly run 56, on `main` at `2d7d5dc`, and run 57, on [#254]'s last code, lost
-  documents their hosts refused or timed out on ([#204]) — run 57 ECan's scan and the ipres2017 archive —, every test
-  over the others passing, run 57's 5,216 acceptance tests and 2,575 referee checks over 153 documents. The nightly run
-  58, on `main` at `8385c81`, passed whole at its first attempt, and so did runs 59 and 60, on [#258]'s branch, run 60
-  on the code it ends with. The nightly run 61, on `main` at `55ea05f`, lost ECan's scan, its host timing out in the TLS
-  handshake ([#204]), every test over the 241 others passing: 6,691 acceptance tests and 3,751 referee checks. Run 62,
-  on [#265]'s branch at `d3c0239`, lost the ipres2017 archive, its host timing out ([#204]), every test over the 154
-  others passing: 6,024 acceptance tests and 2,905 referee checks. Runs 63 to 65, on its next commits, passed whole at
-  their first attempt, run 65 on the code it ends with. The nightly runs 66 to 68, on `main` at `55ea05f`, and 69,
-  at `6a5aad3`, passed whole at their first attempt. Run 70, on [#278]'s branch at `f3a0d32`, failed one test: the
-  manifest still required `object.redefined` of PDFBox's `pdfbox3947`, whose broken object stream header the batch
-  ends before the pairs the rebuild had taken for eleven definitions of one number, and the branch corrected the
-  expectation. Run 71, on `48c7172`, passed whole at its first attempt, and so did run 72, on `e69756b`. Run 73, on
-  `0de8727`, the same tree under a corrected commit message, lost ECan's scan at its first attempt, web.archive.org
-  refusing the connection ([#204]), every test over the 241 others passing, and passed whole at its one rerun. Run 74,
-  on the code [#278] ends with, passed whole at its first attempt: 7,135 acceptance tests and 3,760 referee checks. The
-  nightly run 75, on `main` at `a76c9da`, passed whole; run 77 lost ECan's scan, its host timing out in the TLS
-  handshake, and run 79 the 88 documents of the ipres2017 archive, its host timing out ([#204]), every test over the
-  others passing. On [#297]'s branch, run 76, on `8f6a085`, passed whole; run 78, on `241d701`, lost the ipres2017
-  archive the same way and failed one test, whose bounds the zlib of this container set and the zlib-ng of the runtime
-  CI installs does not keep, which `d468352` corrected; run 80, on that commit, passed whole at its first attempt:
-  7,742 acceptance tests and 3,760 referee checks. Run 81, on `b9df537`, the first form of the record [#297] ends with,
-  lost two documents at its first attempt, web.archive.org refusing the connection or timing out ([#204]), every test
-  over the 240 others passing, and passed whole at its one rerun; CI run 780 is green on that code.
+  Arlington tables left out), 99.43 % of `src/` — 8,224 of 8,271 lines on [#308]'s branch, all 191 of its patch's
+  measurable lines; on [#297]'s, 8,124 of 8,171, and 1,284 of its patch's 1,293, nine partial and none missed. The 47
+  left are those the rule of 2026-09-29 leaves (`CLAUDE.md`, *Coverage*), and five that only faults filed reach. They
+  are [#297]'s, the batch adding none, at the line numbers [#308] gives them. They are members that are private, or of a
+  private type, which no input reaches — eight lines of `ArlingtonWalk` (194, 925, 1029, 1039, 1040, 1060, 1062, 1152)
+  and three of a defensive branch of `PdfLexer` (161, 164, 165) —, a `?.` on an index never null where it is read and a
+  switch's default arm (`CrossReferenceProbe` 107 and 268, `PageTreePageOrphanedRule` 50, `RootInvalidRule` 111 and
+  120), a line the compiler puts after a call that never returns (`PdfFileReader` 2586), two branches the compiler adds
+  that no input takes (`FileQuote` 145, an interpolation's buffer too small; `PdfObjectParser` 1218, a concatenation's
+  null check); a defensive arm of the real's expansion (`PdfReal` 66, batch 5), one of the six ways out of a
+  cross-reference stream row's `switch` (5195) and `Repair`'s guard against a second rebuild (6477, 6479);
+  `KeepObjectStream`'s release of the contents it replaces (6432, 6434, batch 13). Batch 14's five: the switch over a
+  header's place (`CrossReferenceProbe` 166), whose target past the enumeration's values the compiler adds and no input
+  takes; the one over a kid's presence (`PageTreeWalk` 345), whose default the batch's arm for a cut object leaves to
+  `Deferred`, which `GetPresence` never answers; the test that a judged catalog's `/Pages` is a dictionary or a stream
+  (`ObjectGraph` 177), which the walk judged a root there, so is one; and two defensive lines of a rebuild:
+  `FinishRebuild`'s `??=` when reading `/Root` reaches a guard (`PdfFileReader` 6592), which always finds one held
+  already — a `/Root` a guard cuts is a regular object, or a member of an object stream, that the rebuild read as it
+  took in object streams, reaching the guard first —, and `KeepMembersHiddenByGuard`'s position of a stream the rebuilt
+  index lacks (6850), when every stream it marks hidden was read from that index. Batch 15's two, in the probe's judging
+  of the members only a rebuild places: the arms that pass over an object stream the rebuilt index does not hold as a
+  regular object, or whose header the reader cannot read as one (`CrossReferenceProbe` 430), when the rebuild placed the
+  members there for having found that stream and read its header; and a `?.` on the chain's index (444), which a chain a
+  guard stopped has read. Batch 16 takes three off — `EndStreamAfter`'s two defensive arms, which a document whose
+  searches are spent now takes, and the switch over a `/Length`'s presence —, brings a fourth into its patch, the
+  `HasValue` checks the compiler adds on a `long?` (`PdfFileReader` 5048), and leaves fifteen. In its patch, nine no
+  input takes: a `?.` on the set of what the chain read, never null where it is forgotten (2523), and on a
+  cross-reference stream's `/W` element, `/Size` and `/Index` pair, which the parser never leaves null there (4583,
+  4620, 4636); those `HasValue` checks, on values already tested (5048); a deferred length's search, always memoized by
+  the parse before (4333), and its value, never null (4511), defensive arms of private members; the operand of
+  `ChecksumDisagrees` its one caller's precondition makes true (`PdfFilterPipeline` 343); and a header's generation
+  neither cut nor an integer, which the tests before it rule out (`PdfObjectParser` 1570). Outside it, the dispatch the
+  compiler builds over `SkipContainer`'s token kinds, to which the batch's arm for a header adds a leaf no kind reaches
+  (`PdfObjectParser` 1296); and five lines that inputs still reach, but only to show a fault filed rather than pinned: a
+  classic table's first token the probe's bound cut (`PdfFileReader` 3357, 3359, 3360, [#295]), and `MarkCutByGuard`,
+  which a `stream` a guard's edge parts reaches (5897, 5899, [#294]). `codecov.yml` asks 95 % of each patch, and lets
+  the project drop by half a point at most; the aim is 100 %.
+- **Mutation testing**: since 2026-10-30, a finite step of every pull request that changes `src/`, apart from its own
+  review (ADR 53): a fixed, first-order catalog over the lines it changes, and over the conditions it adds to or changes
+  in a test that reads the library's code; each survivor killed by a test, classed equivalent or, in such a test,
+  widening, each with its reason, or filed as debt. Batch 17's review, whose mutation sweeps had found no fixed point
+  in seven rounds, set it ([#308]).
+- **CI**: green on `main` at `e3e2034` (CI run 807), and on [#308]'s branch at `b932b9b` (CI run 855). `Remote corpus`
+  passed on every document in the nightly run 18, on `main` at `8c54490`, and in runs 19 and 20, on [#203]'s and
+  [#211]'s branches, each rerun once after web.archive.org refused a document ([#204]), in run 21, on [#213]'s branch,
+  at its first attempt, and in run 22, on [#214]'s branch, rerun once for the same refusal. The nightly run 23, on
+  `main`, failed only because web.archive.org refused the download of ECan's scan (`Connection refused`, [#204]): every
+  test over the 241 it fetched passed. Run 24, on [#217]'s branch, lost the same document at its first attempt and
+  passed whole at its one rerun; run 25, on [#225]'s branch, passed whole at its first attempt; run 26, on [#226]'s
+  branch, lost ECan's scan again at its first attempt and passed whole at its one rerun. The nightly run 27, on `main`
+  at `2f26244`, lost the CFIA's form, web.archive.org refusing the connection ([#204]), and passed every test over the
+  241 others. Runs 28 and 29, on [#231]'s branch, passed whole at their first attempt, the second on the code the branch
+  ends with; CI run 473 is green on that code. The nightly run 30, on `main` at `78ff13b`, passed whole at its first
+  attempt, and so did runs 31 and 32, on [#238]'s branch, the second on the batch's last code; run 33, on that code
+  rebased onto `main`, lost ECan's scan at its first attempt, web.archive.org refusing the connection ([#204]), and
+  passed whole at its one rerun. CI run 509 is green on that code. The nightly runs 34 to 36 and 39 to 41, on `main` at
+  `83d15a1`, passed whole at their first attempt; runs 37 and 38 lost ECan's scan, web.archive.org refusing the
+  connection, and run 42 the 88 documents of the ipres2017 archive, its host timing out ([#204]), every test over the
+  others passing. Run 43, on [#248]'s branch, and run 44, on its last code, lost the ipres2017 archive the same way at
+  their first attempt, every other test passing; run 44 passed whole at its one rerun. CI run 534 is green on that code.
+  The nightly run 45, on `main` at `a930544`, passed whole at its first attempt, and so did run 46, on [#249]'s branch,
+  on the batch's last code. Runs 47 and 48, on [#252]'s branch, each failed on a test the branch then fixed — the corpus
+  manifest's schema, which the new guard's commit had left out, then a test that took a cut cross-reference stream's
+  rows as read —, every other test over the 242 documents passing; runs 49 to 51 passed whole, run 51 on the batch's
+  last code. The nightly run 53, on `main` at `2d7d5dc`, lost ECan's scan, web.archive.org refusing the connection, and
+  failed one test, an allocation window that a collection elsewhere counted 8 KB over ([#253]), every other test
+  passing. On [#254]'s branch, run 52, on its first code, and run 54, on the code its second review changed, passed
+  whole at their first attempt; run 55, on its last code, lost ECan's scan, web.archive.org refusing the connection, and
+  the 88 documents of the ipres2017 archive, its host timing out ([#204]), every test over the others passing; at its
+  one rerun it lost the ipres2017 archive alone, every test over the 154 others passing, and the 88 it lost pass on that
+  code in this container, whose unit and integration runs hold them. The nightly run 56, on `main` at `2d7d5dc`, and run
+  57, on [#254]'s last code, lost documents their hosts refused or timed out on ([#204]) — run 57 ECan's scan and the
+  ipres2017 archive —, every test over the others passing, run 57's 5,216 acceptance tests and 2,575 referee checks over
+  153 documents. The nightly run 58, on `main` at `8385c81`, passed whole at its first attempt, and so did runs 59 and
+  60, on [#258]'s branch, run 60 on the code it ends with. The nightly run 61, on `main` at `55ea05f`, lost ECan's scan,
+  its host timing out in the TLS handshake ([#204]), every test over the 241 others passing: 6,691 acceptance tests and
+  3,751 referee checks. Run 62, on [#265]'s branch at `d3c0239`, lost the ipres2017 archive, its host timing out
+  ([#204]), every test over the 154 others passing: 6,024 acceptance tests and 2,905 referee checks. Runs 63 to 65, on
+  its next commits, passed whole at their first attempt, run 65 on the code it ends with. The nightly runs 66 to 68, on
+  `main` at `55ea05f`, and 69, at `6a5aad3`, passed whole at their first attempt. Run 70, on [#278]'s branch at
+  `f3a0d32`, failed one test: the manifest still required `object.redefined` of PDFBox's `pdfbox3947`, whose broken
+  object stream header the batch ends before the pairs the rebuild had taken for eleven definitions of one number, and
+  the branch corrected the expectation. Run 71, on `48c7172`, passed whole at its first attempt, and so did run 72, on
+  `e69756b`. Run 73, on `0de8727`, the same tree under a corrected commit message, lost ECan's scan at its first
+  attempt, web.archive.org refusing the connection ([#204]), every test over the 241 others passing, and passed whole at
+  its one rerun. Run 74, on the code [#278] ends with, passed whole at its first attempt: 7,135 acceptance tests and
+  3,760 referee checks. The nightly run 75, on `main` at `a76c9da`, passed whole; run 77 lost ECan's scan, its host
+  timing out in the TLS handshake, and run 79 the 88 documents of the ipres2017 archive, its host timing out ([#204]),
+  every test over the others passing. On [#297]'s branch, run 76, on `8f6a085`, passed whole; run 78, on `241d701`, lost
+  the ipres2017 archive the same way and failed one test, whose bounds the zlib of this container set and the zlib-ng of
+  the runtime CI installs does not keep, which `d468352` corrected; run 80, on that commit, passed whole at its first
+  attempt: 7,742 acceptance tests and 3,760 referee checks. Run 81, on `b9df537`, the first form of the record [#297]
+  ends with, lost two documents at its first attempt, web.archive.org refusing the connection or timing out ([#204]),
+  every test over the 240 others passing, and passed whole at its one rerun; CI run 780 is green on that code. The
+  nightly run 83, on `main` at `ce30948`, [#297] squashed, passed whole at its first attempt, and so did runs 84 to 86
+  ([#300]) and the nightly run 88, on `main` at `e3e2034`. On [#308]'s branch, runs 87, on `5b19cbc`, the first form of
+  the batch's record, 89, on `1b8edde`, and 90, on `3109cb5`, whose library code the branch ends with, passed whole at
+  their first attempt: run 90's 7,885 acceptance tests and 3,760 referee checks. Run 93, on `b932b9b`, with ADR 53 and
+  the last samples, passed whole at its first attempt: 8,020 acceptance tests and 3,760 referee checks.
 - **Corpus**: 168 committed documents, 23.0 MB — 19 generated here, 3 from Word and PDF24 on Windows, 146
   third-party files under attribution-only licenses (`docs/corpus-sources.md`). Beside them, a **remote
   corpus** of 242 documents we may use but not redistribute, fetched at a pinned SHA-256 and size (ADR 32),
@@ -186,15 +197,16 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 
 | Operation | Document | Time | Allocated |
 |---|---|---|---|
-| Indexing | synthetic, 1000 pages, ~4 MB | 280 µs | 122 KB |
-| Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 4.2 ms | 1.8 MB |
+| Indexing | synthetic, 1000 pages, ~4 MB | 200 to 222 µs | 83 KB |
+| Indexing, then reading every page | synthetic, 1000 pages, ~4 MB | 3.7 ms | 1.7 MB |
 | Indexing and walking the page tree | real ReportLab document, 1000 pages | — | 3.2 MB |
-| Indexing a classic table (xUnit, after a first reading) | generated, 300,000 objects | — | 16.9 MB |
-| Indexing a cross-reference stream whose rows Flate stores (xUnit, after a first reading) | generated, 300,000 objects | — | 29.5 MB |
-| Indexing a chain of a thousand classic sections (xUnit, after a first reading) | generated, 300,000 objects | — | 30.6 MB |
-| Validating under the structural profile, the document already open and read | synthetic, 1000 pages | 2.8 ms | 621 KB |
-| Typing and checking the objects the trailer reaches against the Arlington model, alone | synthetic, 1000 pages | 2.3 ms | 312 KB |
-| Opening and validating under the structural profile | synthetic, 1000 pages | 6.9 ms | 2.4 MB |
+| Indexing a classic table (xUnit, after a first reading) | generated, 300,000 objects | — | 12.0 MB |
+| Indexing a cross-reference stream whose rows Flate stores (xUnit, after a first reading) | generated, 300,000 objects | — | 22.5 MB |
+| Indexing a chain of a thousand classic sections (xUnit, after a first reading) | generated, 300,000 objects | — | 24.2 MB |
+| Indexing a classic table of numbers three apart, which the index's map serves | generated, 300,000 objects | 64 ms | 20.9 MB |
+| Validating under the structural profile, the document already open and read, a medium job | synthetic, 1000 pages | 2.9 to 3.2 ms | 621 KB |
+| Typing and checking the objects the trailer reaches against the Arlington model, alone, a medium job | synthetic, 1000 pages | 1.8 to 1.9 ms | 312 KB |
+| Opening and validating under the structural profile, a medium job | synthetic, 1000 pages | 7.0 to 7.3 ms | 2.3 MB |
 | Settling the index of a sound document, after opening it | synthetic, 1000 pages | 0.2 ms | 400 B |
 | Probing the cross-reference entries, the document open and settled | synthetic, 800 pages | 0.25 ms | 7.2 KB |
 | Probing rows that all lead into one run of 2 MB of null bytes | generated, 800 rows | 0.52 ms | 428 KB |
@@ -209,94 +221,97 @@ Tracking workflow mirrors from `docs/roadmap.md` (*Debt and open points*, below)
 | The same, each stream declared 2 bytes too long and searched for its `endstream` | synthetic, 1000 pages of 16 KB | 10.6 to 11.3 ms from memory, 14.9 to 16.4 ms from a file | 2.71 MB |
 | Parsing one object, a medium job | Word's page dictionary | 6.0 µs | 4.6 KB |
 
-The gap between the first two rows is the library's promise: opening a document does not read its content.
-The validation rows are slice 3's thirty-eight rules. The first measures the rules alone on a document whose objects
-the reader has cached: each entry of the index probed, the page tree walked, every object the trailer reaches met
-once and typed and checked against the Arlington model, every object of the index looked at for a page the tree
-leaves out — the allocation is the sets of object numbers met, each page's index, and the Arlington walk's queue and
-tallies. The second is that walk alone, which the four rules generated from the model share. The third is what a
-caller validating a file it has not read pays: every object parsed for the first time, about 2.7 KB a page, no
-stream's data read. Slice 3's first thirty-four rules took 716 µs and 308 KB on the first row, slice 2's twenty-one
-214 µs and 8.9 KB, slice 1's one rule 86 ns and 232 B; the rows grow with each slice of M02. Since batch 13 ([#258])
-the validator settles the index first: on a sound document, that is reading the header each regular entry places, 0.25
-to 0.28 ms and about 50 bytes for a thousand pages, which the third row includes; the first, whose document is settled
-already, pays nothing more. The three validation rows allocate what they did on `main` before the batch, to 40 bytes;
-under a medium job, twice, alternated, the first took 3.0 and 3.7 ms there, 3.4 and 3.6 ms on the branch, and the
-third 8.4 and 9.3 ms there, 9.2 and 9.7 ms on the branch, settling within a gap the runs' spread covers. Since batch
-14 ([#265]) settling and the probe read each header as a load does, in the reader's `PlaceHeader`: on a sound document
-the first 64 bytes decide each, as before, and settling allocates about 400 bytes, the record of the runs of blanks a
-reading crossed; under a medium job, twice, alternated, opening and settling took 0.40 and 0.42 ms on `main`, 0.47 ms
-on the branch, and opening and validating 6.6 and 6.8 ms there, 6.9 ms on the branch. The probe rows are
-`CrossReferenceProbeBenchmarks`' (ShortRun, twice): a sound document of 800 pages, 1,602 entries, took 0.18 to 0.20 ms
-and 6.7 KB on `main`; rows that lead into one run of blanks, which `main` read 64 bytes of each, were crossed once, from
-the first row to its end, in 0.43 ms, against 0.40 to 0.41 ms; the 412 KB, on both, were the 800 findings. The walk of
-the object streams' dependencies reads once an object their decoding keys share: a thousand streams sharing a 16 KB
-`/DecodeParms` took 118 to 128 ms and 125.6 MB on `main`, each stream parsing it again, and took 4.1 to 4.3 ms and
-2.3 MB (`ObjectStreamDependencyBenchmarks`, ShortRun, twice). Since batch 15 ([#278]) the walk follows a key's chain
-apart from a filter's walk: 4.2 to 4.3 ms and 1.9 MB, against 4.1 to 4.9 ms and 2.3 MB on `main` in the same runs. A
-member of an object stream is read to the next one's start, and the header's tables grow with its pairs rather than
-being allocated from `/N` (`ObjectStreamMemberBenchmarks`, ShortRun twice and a medium job, `main` and the branch
-alternated): indexing and reading the 100,000 members of one stream takes 136 ms under the medium job, against 176 ms
-on `main`, within the runs' spread, and allocates 64.2 MB against 63.2 MB, the tables' growth; a thousand take 1.2 ms
-and 728 KB on both. With each entry giving the next member's index, so that every member is found through the stream's
-lookup by number, 198 ms against 188 ms, 96.8 MB against 94.8 MB. The probe allocates 16 KB more for the 800 rows
-that lead into blanks, 428 KB against 412 KB, in 0.52 ms against 0.45 to 0.60 ms, and 20 bytes more for a sound
-document of 800 pages, 0.24 to 0.27 ms against 0.22 to 0.32 ms. Opening allocates 140 bytes more, the reader's new
-fields; the parser and the validation rows allocate what they did to 160 bytes, their times within the
-runs' spread.
-Indexing costs the map, 52 to 63 bytes an object, whatever the objects weigh, since a section makes room for its rows
-before reading them ([#164]); a map a rebuild grows costs 100 to 210, by where the count falls against its growth steps.
-A cross-reference stream adds 7 to about 42 bytes an object for its rows, and the object stream holding the catalog,
-when one does, what it holds. The first row is batch 11's (ShortRun, twice): 394 KB on `main` in the same runs, 304 to 324
-µs. The second is batch 16's ([#297], ShortRun, twice, alternated): no stream keeps its raw bytes since, each read from
-its source when it is asked for, so reading every page takes 4.1 to 4.3 ms and 1.79 MB, against 6.3 to 7.1 ms and
-5.82 MB on `main`. The third row is asserted as a budget in CI
-(`CorpusReadingTests`), so an allocation regression fails the build; it was 2.4 MB when M01 closed, and M01's review
-measured 3.2 MB on 2026-10-01, under the 4 MB budget. The three generated rows are held to 17.7 MB, 31.0 MB and 32.1 MB, 5 %
-over their figures (`DocumentReaderTests`, [#193], [#164]); growing the map allocated 31.1 MB, 43.1 MB and 33.2 MB; MB here are 2^20 bytes. A stream that ran out is
-read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams only; the
-second reading keeps nothing. A stream whose checksum is wrong, or that turns corrupt, is read again after the fault
-([#56]): its body as raw deflate, then, when that faults too, once more a byte at a time through the 8 KB piece of
-input the fault was met in. A sound stream is read once, as it was, and allocates 8 bytes more for it (88,480 →
-88,488 B at 64 KB); a medium job measured 93.5 → 88.8 µs at 64 KB and 10.0 → 8.85 ms at 4 MB, within noise, and the
-25,157 sound streams of the corpus decode to the same bytes in a time within the spread of four alternating runs.
-Damaged streams pay for the replay: the corrupt 64 KB stream took 54 µs to be left encoded and takes 671 µs to keep
-its 32 KB; the byte-at-a-time part costs about 0.3 µs an input byte, 8 KB at most per reading of a form of the data,
-so an 8,013-byte stream that faults at its end takes 1.8 to 2.5 ms instead of 64 µs, and a file made of nothing but
-small corrupt streams reads about 40 times slower than before — still in time linear in its size. The damaged streams
-of the corpus take 43 → 60 ms in all. What a 4 MB decode allocates is the output doubling towards its size, T28's and
-M23's business. The last two rows are [#55]'s (`StreamLengthBenchmarks`, medium job, before the check and with
-it). A stream past the 8 KB window is checked by asking the file for the 64 bytes after its declared length.
-From memory that is a copy, and costs a valid document nothing measurable: 4.4 ms before, 3.9 ms with it,
-2.02 MB both. From a file, the way the library recommends opening a large document, it is one read more for each
-stream: 6.4 → 7.1 ms for the thousand, about 0.7 µs a stream, allocating nothing more. A length Distiller 3
-wrote two bytes too long sends the reader searching the 8 KB of data past the window for each stream —
-4.1 → 6.4 ms from memory, 6.8 → 10.3 ms from a file, 2.02 → 2.82 MB for a report and a record each; looking for an
-object header in what it reads as well costs about 0.6 µs more a stream from memory and 1.4 µs from a file — 6.7 →
-7.3 ms and 11.2 → 12.5 ms, the means of two medium runs of each alternated, the same allocation; carrying what a
-read cuts of a header into the next, and the first read sized from what the parser holds, cost nothing measurable
-beside it, 7.1 → 7.0 ms and 11.4 → 11.1 ms measured the same way. Data made of near-headers costs the search more
-than data that holds none: 16 MB of ` obj` over and over take about 63 ms to search to the end, of `0 0 obj ` 44 ms,
-of letters 10 ms — some 4 ms a megabyte searched at worst, and, the budget letting a document's searches read about
+The gap between the first two rows is the library's promise: opening a document does not read its content. The
+validation rows are slice 3's thirty-eight rules. The first measures the rules alone on a document whose objects the
+reader has cached: each entry of the index probed, the page tree walked, every object the trailer reaches met once and
+typed and checked against the Arlington model, every object of the index looked at for a page the tree leaves out — the
+allocation is the sets of object numbers met, each page's index, and the Arlington walk's queue and tallies. The second
+is that walk alone, which the four rules generated from the model share. The third is what a caller validating a file it
+has not read pays: every object parsed for the first time, about 2.7 KB a page, no stream's data read. Slice 3's first
+thirty-four rules took 716 µs and 308 KB on the first row, slice 2's twenty-one 214 µs and 8.9 KB, slice 1's one rule 86
+ns and 232 B; the rows grow with each slice of M02. Since batch 13 ([#258]) the validator settles the index first: on a
+sound document, that is reading the header each regular entry places, 0.25 to 0.28 ms and about 50 bytes for a thousand
+pages, which the third row includes; the first, whose document is settled already, pays nothing more. The three
+validation rows allocate what they did on `main` before the batch, to 40 bytes; under a medium job, twice, alternated,
+the first took 3.0 and 3.7 ms there, 3.4 and 3.6 ms on the branch, and the third 8.4 and 9.3 ms there, 9.2 and 9.7 ms on
+the branch, settling within a gap the runs' spread covers. Since batch 14 ([#265]) settling and the probe read each
+header as a load does, in the reader's `PlaceHeader`: on a sound document the first 64 bytes decide each, as before, and
+settling allocates about 400 bytes, the record of the runs of blanks a reading crossed; under a medium job, twice,
+alternated, opening and settling took 0.40 and 0.42 ms on `main`, 0.47 ms on the branch, and opening and validating 6.6
+and 6.8 ms there, 6.9 ms on the branch. The probe rows are `CrossReferenceProbeBenchmarks`' (ShortRun, twice): a sound
+document of 800 pages, 1,602 entries, took 0.18 to 0.20 ms and 6.7 KB on `main`; rows that lead into one run of blanks,
+which `main` read 64 bytes of each, were crossed once, from the first row to its end, in 0.43 ms, against 0.40 to 0.41
+ms; the 412 KB, on both, were the 800 findings. The walk of the object streams' dependencies reads once an object their
+decoding keys share: a thousand streams sharing a 16 KB `/DecodeParms` took 118 to 128 ms and 125.6 MB on `main`, each
+stream parsing it again, and took 4.1 to 4.3 ms and 2.3 MB (`ObjectStreamDependencyBenchmarks`, ShortRun, twice). Since
+batch 15 ([#278]) the walk follows a key's chain apart from a filter's walk: 4.2 to 4.3 ms and 1.9 MB, against 4.1 to
+4.9 ms and 2.3 MB on `main` in the same runs. A member of an object stream is read to the next one's start, and the
+header's tables grow with its pairs rather than being allocated from `/N` (`ObjectStreamMemberBenchmarks`, ShortRun
+twice and a medium job, `main` and the branch alternated): indexing and reading the 100,000 members of one stream takes
+136 ms under the medium job, against 176 ms on `main`, within the runs' spread, and allocates 64.2 MB against 63.2 MB,
+the tables' growth; a thousand take 1.2 ms and 728 KB on both. With each entry giving the next member's index, so that
+every member is found through the stream's lookup by number, 198 ms against 188 ms, 96.8 MB against 94.8 MB. The probe
+allocates 16 KB more for the 800 rows that lead into blanks, 428 KB against 412 KB, in 0.52 ms against 0.45 to 0.60 ms,
+and 20 bytes more for a sound document of 800 pages, 0.24 to 0.27 ms against 0.22 to 0.32 ms. Opening allocates 140
+bytes more, the reader's new fields; the parser and the validation rows allocate what they did to 160 bytes, their times
+within the runs' spread. Indexing costs the index, 40 bytes an object numbered in order, whatever the objects weigh,
+since a section makes room for its rows before reading them ([#164]); an index a rebuild grows allocates 80 to 160, and
+numbers spread far apart, which the seeded map past the slots holds, keep 60 to 110 ([#155], ADR 52), the fourth
+generated row's 20.9 MB for 300,000 numbers three apart (`IndexBenchmarks`, ShortRun, twice). A cross-reference stream
+adds 7 to about 35 bytes an object for its rows, and the object stream holding the catalog, when one does, what it
+holds. Batch 17 ([#155]) made the hash table the index was arrays, and hashed every other table keyed by numbers through
+the process's seed: under a medium job, twice, alternated, indexing a thousand pages took 200 to 222 µs and 83 KB
+against 230 to 242 µs and 123 KB on `main`, an index of 300,000 objects 8 to 13 % less time, and the validation rows 2.9
+to 3.2 ms against 2.6 to 2.7, the Arlington walk 2 to 6 % more, opening and validating 7.0 to 7.3 ms against 6.7 to 6.8
+— the seeded hash the validator's walks now pay, about 15 % on the rules, is filed ([#305]). The first row is batch 11's
+(ShortRun, twice): 394 KB on `main` in the same runs, 304 to 324 µs. The second is batch 16's ([#297], ShortRun, twice,
+alternated): no stream keeps its raw bytes since, each read from its source when it is asked for, so reading every page
+takes 4.1 to 4.3 ms and 1.79 MB, against 6.3 to 7.1 ms and 5.82 MB on `main`. The third row is asserted as a budget in
+CI (`CorpusReadingTests`), so an allocation regression fails the build; it was 2.4 MB when M01 closed, and M01's review
+measured 3.2 MB on 2026-10-01, under the 4 MB budget. The three generated rows are held to 12.6 MB, 23.6 MB and 25.5 MB,
+5 % over their figures (`DocumentReaderTests`, [#193], [#164], [#155]), where the hash table the index was allocated
+16.9 MB, 27.4 MB and 30.6 MB sized so, and 32.6 MB, 43.1 MB and 33.2 MB left to grow; those rows' MB are 10^6 bytes. A
+stream that ran out is read twice to tell a lost checksum from lost data (T32), which costs time on damaged streams
+only; the second reading keeps nothing. A stream whose checksum is wrong, or that turns corrupt, is read again after the
+fault ([#56]): its body as raw deflate, then, when that faults too, once more a byte at a time through the 8 KB piece of
+input the fault was met in. A sound stream is read once, as it was, and allocates 8 bytes more for it (88,480 → 88,488 B
+at 64 KB); a medium job measured 93.5 → 88.8 µs at 64 KB and 10.0 → 8.85 ms at 4 MB, within noise, and the 25,157 sound
+streams of the corpus decode to the same bytes in a time within the spread of four alternating runs. Damaged streams pay
+for the replay: the corrupt 64 KB stream took 54 µs to be left encoded and takes 671 µs to keep its 32 KB; the
+byte-at-a-time part costs about 0.3 µs an input byte, 8 KB at most per reading of a form of the data, so an 8,013-byte
+stream that faults at its end takes 1.8 to 2.5 ms instead of 64 µs, and a file made of nothing but small corrupt streams
+reads about 40 times slower than before — still in time linear in its size. The damaged streams of the corpus take 43 →
+60 ms in all. What a 4 MB decode allocates is the output doubling towards its size, T28's and M23's business. The last
+two rows are [#55]'s (`StreamLengthBenchmarks`, medium job, before the check and with it). A stream past the 8 KB window
+is checked by asking the file for the 64 bytes after its declared length. From memory that is a copy, and costs a valid
+document nothing measurable: 4.4 ms before, 3.9 ms with it, 2.02 MB both. From a file, the way the library recommends
+opening a large document, it is one read more for each stream: 6.4 → 7.1 ms for the thousand, about 0.7 µs a stream,
+allocating nothing more. A length Distiller 3 wrote two bytes too long sends the reader searching the 8 KB of data past
+the window for each stream — 4.1 → 6.4 ms from memory, 6.8 → 10.3 ms from a file, 2.02 → 2.82 MB for a report and a
+record each; looking for an object header in what it reads as well costs about 0.6 µs more a stream from memory and 1.4
+µs from a file — 6.7 → 7.3 ms and 11.2 → 12.5 ms, the means of two medium runs of each alternated, the same allocation;
+carrying what a read cuts of a header into the next, and the first read sized from what the parser holds, cost nothing
+measurable beside it, 7.1 → 7.0 ms and 11.4 → 11.1 ms measured the same way. Data made of near-headers costs the search
+more than data that holds none: 16 MB of ` obj` over and over take about 63 ms to search to the end, of `0 0 obj ` 44
+ms, of letters 10 ms — some 4 ms a megabyte searched at worst, and, the budget letting a document's searches read about
 five times the file, some 20 ms a megabyte of file. Since batch 16 ([#297], medium job, twice, alternated) a sound
-stream costs what it did, and a wrong length about 2 µs and 120 to 300 bytes more: one search inside the window or
-past it, memoized with what follows the `endstream`, up to the next object's header or the next object the index
-places; the last two rows were 8.5 to 9.1 ms and 12.4 to 13.6 ms, 2.59 MB, on `main` in the same runs ([#296]). Inside the window the check is what it was, but a wrong length
-now costs its record and its mark of one report: about 440 bytes more allocated per stream (the 4 KB streams,
-2.20 → 2.64 MB), and about 180 bytes kept for the life of the document — 50,000 such streams, read with a cache of
-64 objects, keep 9.1 MB more. A sound stream allocates and keeps nothing more. The 4 KB streams take 3.3 → 3.5 ms
-from memory and 5.2 → 5.3 ms from a file, 3.7 → 3.9 and 6.0 → 6.0 ms when each length is wrong, within the
-measurement's error.
-The last row is `ParserBenchmarks`' ([#119], [#172]), the means of two medium runs of each alternated, before the
-checks of the syntax and with them. What a sound object allocates is what it was, to 10 bytes: 4.6 KB for Word's page
-dictionary, 1.37 MB for a thousand dictionaries of strings, 1.56 MB for a thousand of escaped names, 1.44 MB for ten
-thousand distinct keys. The checks cost 5.7 → 6.0 µs for the page dictionary, about 9 ns for each of its 34 names,
-1.71 → 1.77 ms for the names, 1.47 → 1.49 ms for the strings and 2.74 → 2.76 ms for the keys. A hostile object pays
-for its reports, formatted until the diagnostics hold 1,000 and counted past them: a thousand hexadecimal strings with
-stray bytes take 81 → 214 µs and 118 → 448 KB, a thousand names whose `#` is no escape 76 → 201 µs and 55 → 432 KB,
-ten thousand entries that give ten keys again and again 1.22 → 1.53 ms and 524 → 799 KB; ten thousand distinct keys
-given null, which a set now holds to tell a repeat that follows, 1.03 → 2.18 ms and 313 → 970 KB; an object the end
-of the data leaves open, 19.6 → 21.0 µs.
+stream costs what it did, and a wrong length about 2 µs and 120 to 300 bytes more: one search inside the window or past
+it, memoized with what follows the `endstream`, up to the next object's header or the next object the index places; the
+last two rows were 8.5 to 9.1 ms and 12.4 to 13.6 ms, 2.59 MB, on `main` in the same runs ([#296]). Inside the window
+the check is what it was, but a wrong length now costs its record and its mark of one report: about 440 bytes more
+allocated per stream (the 4 KB streams, 2.20 → 2.64 MB), and about 180 bytes kept for the life of the document — 50,000
+such streams, read with a cache of 64 objects, keep 9.1 MB more. A sound stream allocates and keeps nothing more. The 4
+KB streams take 3.3 → 3.5 ms from memory and 5.2 → 5.3 ms from a file, 3.7 → 3.9 and 6.0 → 6.0 ms when each length is
+wrong, within the measurement's error. The last row is `ParserBenchmarks`' ([#119], [#172]), the means of two medium
+runs of each alternated, before the checks of the syntax and with them. What a sound object allocates is what it was, to
+10 bytes: 4.6 KB for Word's page dictionary, 1.37 MB for a thousand dictionaries of strings, 1.56 MB for a thousand of
+escaped names, 1.44 MB for ten thousand distinct keys. The checks cost 5.7 → 6.0 µs for the page dictionary, about 9 ns
+for each of its 34 names, 1.71 → 1.77 ms for the names, 1.47 → 1.49 ms for the strings and 2.74 → 2.76 ms for the keys.
+A hostile object pays for its reports, formatted until the diagnostics hold 1,000 and counted past them: a thousand
+hexadecimal strings with stray bytes take 81 → 214 µs and 118 → 448 KB, a thousand names whose `#` is no escape 76 → 201
+µs and 55 → 432 KB, ten thousand entries that give ten keys again and again 1.22 → 1.53 ms and 524 → 799 KB; ten
+thousand distinct keys given null, which a set now holds to tell a repeat that follows, 1.03 → 2.18 ms and 313 → 970 KB;
+an object the end of the data leaves open, 19.6 → 21.0 µs.
 
 ## Next concrete step
 
@@ -353,8 +368,9 @@ One pull request per batch, each design question put to the maintainer after mea
        at its one rerun (journal of 2026-10-22).
    16. [#174] and [#170], stream data, with [#220], [#224], [#230] and [#263] — done, in [#297], `Remote corpus` runs
        76 and 80 green on its branch (journal of 2026-10-25).
-   17. [#155].
-   18. [#167] and [#168], with [#201] and [#277].
+   17. [#155], numbers a file chooses to share a bucket, tables keyed by numbers dense or seeded (ADR 52) — done, in
+       [#308], `Remote corpus` runs 87, 89, 90 and 93 green on its branch (journal of 2026-10-28).
+   18. [#167] and [#168], with [#201], [#277] and [#307].
    19. [#188], [#197] and [#156], with [#207], [#208], [#210], [#221], [#222], [#241], [#261] and [#264].
    20. [#189], with [#276].
    21. [#154] and [#171].
@@ -389,7 +405,10 @@ One pull request per batch, each design question put to the maintainer after mea
    whose walk of the object streams' dependencies it concerns. Of the fourteen batch 16 filed, [#279], [#282], [#287],
    [#289], [#290] and [#292] to [#295] go with [#163], the reader at its guards; [#280] and [#296] with [#181], the work
    one document asks; [#281] with [#188], the chain's reading of where its sections lie; [#283] and [#288] with [#162], the
-   filter reports they reword.
+   filter reports they reword. Of the three batch 17 filed, [#305], the seeded hash the validator's walks pay, and
+   [#306], the source reading's survivors, go under M23, which budgets what the library costs and hardens it; [#307],
+   the test of a disposed document's memory that failed once on .NET 11, with [#168], the next batch, whose object
+   streams it decodes, since the job it failed runs on every pull request.
 5. Slice 4 ([#60]) in two pull requests, streams then fonts, after the decisions it waits on: the severity of a font
    that is not embedded, the standard 14's aliases, where text is "meant to be extractable", how the rules that need
    content are left out and shown so, and the tools that referee both families.
@@ -410,6 +429,137 @@ A stream, object or section the reader cut at one of its limits (`limit.*`, ADR 
 not a fault of the file: the rules on it report at most, as information, that it was not checked whole.
 
 ## Journal
+
+### 2026-10-28 — Batch 17: numbers a file chooses to share a bucket ([#155])
+- **The question.** .NET hashes an `int` as itself, a `long` as its halves exclusive-ored and a record struct as a fixed
+  linear combination of its fields, and puts a key in the bucket its hash leaves modulo a prime from a list anyone can
+  read: a file whose object numbers lie that prime apart puts them all in one bucket, and every lookup walks them. A
+  sweep of the reader's and the validator's tables measured on `main` at `e3e2034`, each shape a single cold run
+  against the same file numbered in order: 34,167 one-row subsections opened in 1.9 s against 0.04 s, and validated in
+  4.0 s against 0.09 s; 36,350 objects and no table rebuilt in 8.0 s against 0.07 s; a million references to those
+  numbers resolved in 56 s against 0.73 s, and validated in 10.6 s against 0.68 s. No guard bounds it: each shape stays
+  far under every limit. Four ways were prototyped and measured: the index kept dense and a seeded hash elsewhere; a
+  seeded hash everywhere, opening an index of 300,000 objects 45 to 70 % slower; the hash as it is under 65,536 and
+  seeded above, chains of up to 256 entries left; and the dense index with that hash elsewhere.
+- **Settled with the maintainer**, all four as recommended (2026-10-28): the index dense in arrays, a seeded map past
+  its slots, and every other table keyed by numbers hashed through the seed (ADR 52); the process's seed,
+  `System.HashCode`'s, drawn once as .NET does for strings; `PdfObjectId` and `PdfDiagnostic` hashed through it, their
+  equality the record's; and a test that reads the code, its rule covering every numeric key whatever it numbers. On
+  2026-10-29, the maintainer dropped the check of each commit built alone and run through the unit suite, for this batch
+  and every one after: CI runs on each push, here on 49 of the 64 commits, and a batch is squashed, so that no commit
+  but the last reaches `main`. The same day, the twenty-second round having found a type parameter given `new()` reached
+  through a dispatch, a constrained call or a default implementation the reading does not follow, the maintainer chose
+  that the library build no type parameter it is given at all, generic code taking a factory instead. On 2026-10-30, the
+  review's mutation sweeps having each gone one level deeper for seven rounds, the maintainer bounded them for this
+  batch, then made a rule of it for every pull request that changes `src/` (ADR 53): a fixed, first-order catalog over
+  the code the pull request changes, and in a test that reads the library's code over the conditions it adds or changes;
+  a survivor a gap in the tests, killed, classed equivalent, classed widening in such a test, or filed as debt, and
+  never a review finding.
+- **Reviewed** thirty-two times, each finding put to a refuter, 286 findings in all. The first round's three majors: a
+  stale `/Size`, which the first cap turned into room for one entry more at each older section, the index copied whole
+  each time, 3.6 GB in 3.5 s for a thousand sections, found twice; and lazy reading's measured section, left with the
+  hash table's figures. None after: the later rounds turned to the stale `/Size`'s rule, to the two readings of the
+  code, every condition of which a sample now holds, and to the figures the documents give. The sixth found the ordering
+  rule the threat model states held by no test, and the seventh that the batch had seeded `PdfObjectId`'s hash while the
+  rule looked only at keys a file steers: both are held now. The eighth and the ninth found the exception that let a
+  hash-ordered table be over a key hashed without the seed misjudged twice more, an immutable one's `Empty`, a value
+  tuple of such keys, which .NET hashes through `HashCode.Combine`; rather than patch it a fourth time, the exception
+  went, every table that enumerates by hash is refused, and the one let be is named, `PdfName`'s interning table. The
+  tenth found that exception keyed on the type rather than the table, and a `StringDictionary` and `Hashtable`'s
+  subclasses let be; the reading now lets be the one table, built once by `PdfName`'s static constructor and called on
+  only to find or add a name. The eleventh to the fourteenth followed that table through its generic interfaces, its
+  views and copies, method groups, arrays, a generic method's arguments, a field's address and a loop in the static
+  constructor, each refused now; the fifteenth and the sixteenth generated mutants over both readings, and every
+  condition and set entry of the compiled reading one survived is held by a sample now, the source reading's survivors
+  that let through nothing the library writes filed as [#306]; the sixteenth to the twentieth turned to which keys a
+  file steers, and the reading counts now runes and complex numbers, a pair whatever it holds, a struct keeping .NET's
+  default hash or hiding it with `new`, a key typed by any interface, a type deriving from a tuple and a record that is
+  not sealed. The twentieth to the twenty-fourth turned to what builds a table without naming it — a `Lazy`, a
+  `ConditionalWeakTable`'s created value, a `BindingList`, `Marshal.PtrToStructure`, a JSON deserializer, a method
+  returning a table under its own type —, and a sweep of the framework's 172 assemblies took the place of finding them
+  one at a time; the twenty-second found a type parameter given `new()` built through a dispatch the reading does not
+  follow, and the library now builds no type parameter it is given, generic code taking a factory. From the
+  twenty-fifth, each round swept the compiled reading whole with mutants, 243 to 687 a round, its catalog finer each
+  time — every element of every set it reads, then each helper at each of its call sites, then each condition narrowed
+  to a sub-case of it —, and each survivor C# reaches counted as a minor finding, so that no round came back without
+  one, the library's code unchanged since `e628667`, on 28 October. ADR 53 ended that: the thirty-second round's
+  findings were two wordings, both applied, and its survivors were settled in the mutation step. A refuted finding of
+  the sixth, that "about 96" bytes an entry understated the 80 to 110 measured an object, was not applied: the first
+  counts the entries the index is sized for, the second the room a one-row subsection's header makes too.
+- **Done**, in [#308], 64 commits:
+  - `PdfObjectId` and `PdfDiagnostic` hash through `System.HashCode`, a position's halves combined apart;
+  - `PdfXRefTable` keeps the numbers and their entries in two arrays, in the order it first recorded them, which stays
+    the order it enumerates them in, and finds a number in a slot while numbers run in order — the slots no longer
+    than twice the entries held or made room for, and 1,024 more —, past them in a map hashed through the seed, which
+    gives back its room once the slots have taken most of its numbers: 40 bytes an object numbered in order, against
+    52 to 63;
+  - a `/Size` the sections number past stands for one past the highest number they gave, until an older section, or
+    its `/XRefStm` stream, numbers past the newer ones; from then on it bounds nothing, so that the index doubles
+    rather than growing by one entry at each such section;
+  - `SeededComparer`, for every other table keyed by numbers, offsets and the four tuples the reader keys by: the
+    reader's cache, its object streams, its sets and memos, the copies it marks and restores, and the validator's walks;
+  - `SeededComparerTests` reads the compiled library, and refuses every hash collection over a key a file can steer — a
+    number wider than a byte, a tuple or a pair, a struct keeping .NET's default hash, a record's compiler-written hash,
+    a key typed by any interface — that is not handed `SeededComparer.Instance` straight; and always a table keyed by
+    any object, a collection over a type parameter, or one built for a type argument over such a key, and every
+    collection that enumerates by hash, whatever its key and comparer, but `PdfName`'s interning table, built once and
+    called on only to find or add a name, so that no order a seed sets reaches an output. It takes out the probes code
+    coverage puts, by their shape alone. It reads the sources too, naming the file and line of the shapes it recognizes;
+  - `ReaderTimingTests` holds the shapes measured, each against the same file numbered in order; `DocumentReaderTests`
+    the stale `/Size`'s room on three chains that made room one entry at a time before; `IndexBenchmarks` gains a
+    table of numbers three apart, which the map serves.
+
+  Docs: ADR 52 and ADR 53, with its line among `CLAUDE.md`'s conventions; ADR 34's row for `MaxIndexEntries`, amended on
+  2026-10-28; the threat model's section on tables keyed by numbers and its rows on declared counts, the index and the
+  validator; `architecture.md`; `concepts/lazy-reading.md`, `reference/reader-limits.md`, the introduction and the
+  features page; M23.
+- **Tests**: 230 new unit tests, 5,343 to 5,573 — with the remote documents fetched, 7,715 to
+  7,945 —, in `SeededComparerTests`, `XRefTableTests`, `DocumentReaderTests`, `ReaderTimingTests`,
+  `ObjectModelTests`, `DiagnosticsTests` and their neighbors, with `CollidingNumbers` building the files.
+- **Mutation**: the stale `/Size` flag's assignments, made plain or removed on the classic table's line and on the
+  `/XRefStm` stream's, each failing a test written for it; every condition of the compiled reading, 11 mutants then the
+  two of the last round, and of the source reading, each failing a sample written for it; the source reading's array
+  initializers, 14 of the 22 cases added failing the reading before them, the others holding what it already did; the
+  ordering rule, the probes' shape, nullable and jagged arrays, declared hash-ordered tables, tables keyed by any object
+  and the identifiers the library seeds, ten mutants of the seventh and eighth rounds; the refusal of every hash-ordered
+  table, three of the ninth; the interning table's conditions and the non-generic tables, twelve of the tenth, the
+  stand-in's types read in an order that makes each condition left out let be another table than the one it should: each
+  failing a sample written for it; from the eleventh on, each round's conditions, 4 to 33 mutants a round, each failing
+  a sample written for it but those judged equivalent, and the fifteenth's and sixteenth's generated mutants, 349 of the
+  source reading's among them, whose survivors are held by samples now or filed as [#306]; and from the twenty-fifth
+  round to the thirty-second, eight sweeps of the compiled reading whole, 3,676 mutants, every survivor C# reaches
+  failing a sample written for it after, the others classed equivalent or widening, each with its reason — the last, 687
+  mutants, 545 failing a test, 64 survivors held by samples now, 78 classed.
+- **Tracking.** Filed under M23: [#305], the seeded hash the validator's walks pay, about 15 % on the rules where the
+  prototype had measured 5 to 8 %; and [#306], the source reading's survivors, the shapes it misses that the compiled
+  reading refuses. Filed under M02: [#307], the test of a disposed document's memory, which failed once in CI's .NET 11
+  job, on a commit that changes only `SeededComparerTests`, the process letting go of 92 MB between its first two
+  measures; the next commit passed it.
+- **Checked**:
+  - the unit suite under code coverage, as CI runs it: the reading of the compiled library failed there from the
+    commit that brought it, `32849ec`, the probes coverage puts between the comparer and the table taken for code the
+    source wrote, and CI runs 813 to 819 were red with it, which no run without coverage showed; `3abfe27` reads through
+    them, and the suite passed whole under coverage, CI run 820 green; on the committed corpus, 5,467 tests passed
+    under coverage at `12698b0`, the patch's 191 measurable lines all covered, the last partial one, a map's room where
+    none was made, since `19cfbc5`;
+  - the integration suite twice on `31d0870`, whose library code the branch ends with, later commits changing comments
+    and tests: 3,688 tests, 3,682 passed and 6 skipped, both runs;
+  - the 401 documents this container holds, 168 committed and 233 remote, opened and validated on `main` and on the
+    branch at `31d0870`, twice each: the same 2,475 lines on all four runs, 381 documents read, 213 diagnostics and
+    1,480 findings, and 20 refused as `main` refuses them;
+  - the documentation site, 266 pages with ADR 53, its check clean;
+  - `IndexBenchmarks`, `ReaderBenchmarks` and `ValidationBenchmarks` (ShortRun), twice, `main` and the branch
+    alternated, then `ValidationBenchmarks` under a medium job, twice: indexing a thousand pages 200 to 222 µs and 83 KB
+    against 230 to 242 µs and 123 KB, reading every page 3.7 ms and 1.7 MB against 3.5 to 3.7 ms and 1.8 MB; an index
+    of 300,000 objects 8 to 13 % faster, 11.5 MB against 16.1 MB for a table, 16.1 against 20.8 for a stream, a chain
+    23.1 against 29.2 and about as long, and numbers three apart 64 ms and 20.9 MB; the rules alone 2.9 to 3.2 ms
+    against 2.6 to 2.7, the Arlington walk 2 to 6 % more, opening and validating 7.0 to 7.3 ms against 6.7 to 6.8, the
+    same 621 KB and 312 KB and 40 KB less; BenchmarkDotNet's MB here are 2^20 bytes;
+  - `Remote corpus`: runs 87, on `5b19cbc`, the first form of ADR 52's commit, 89, on `1b8edde`, and 90, on `3109cb5`,
+    passed whole at their first attempt, run 90 with 7,885 acceptance tests and 3,760 referee checks. Run 93, on
+    `b932b9b`, with ADR 53 and the last samples, passed whole at its first attempt: 8,020 acceptance tests and 3,760
+    referee checks.
+- **Next**: batch 18, [#167] and [#168], with [#201], [#277] and [#307].
 
 ### 2026-10-27 — The remote corpus: a patient fetcher, an encrypted cache, and the project's own copies ([#204], [#291])
 - **The question.** RADAR timed out on the ipres2017 archive again in the nightly run 82 (2026-10-26, `main` at
@@ -529,7 +679,8 @@ not a fault of the file: the rules on it report at most, as information, that it
     compiler adds, five reached only by faults. The passes met four faults, each reproduced and filed rather than
     pinned ([#292] to [#295]): one the batch made, a false warning once a crafted file has spent the searches
     ([#293]), and three older ones, each of which the batch narrowed.
-- **Done**, in [#297], 145 commits, squashed into one at the maintainer's choice, too many for a rebase:
+- **Done**, in [#297], 145 commits, squashed into one at the maintainer's choice, too many for a rebase, merged as
+  `ce30948` on 2026-10-25:
   - [#174]: a `/Length` confirmed past any white space and comments, read on past the window; one memoized search for
     every unconfirmed length, up to the next object's header or the next object the index places, which never grows a
     window; with no `endstream`, the object's `endobj` ending the data, as the file wrote it, `stream.truncated` or
@@ -583,11 +734,13 @@ not a fault of the file: the rules on it report at most, as information, that it
   project copy are kept, unmodified, in a repository of their own ([#291]), `tests/corpus/remote/` is cached between
   runs where no pull request can restore it, and the fetcher waits as hosts ask; one pull request after this batch.
 - **Checked**:
-  - each commit of the branch built alone with no warning and run through the unit suite, a check still running when
-    this record was written: the first 30 build and pass, 7,065 to 7,297 tests with the remote documents fetched, but
-    for one run of the test of the validator's linear time over an object stream's members, on `d3c44d1`, a commit
-    that does not touch what it times, while other work loaded the machine. The squashed tree is the one CI and the
-    checks below ran on. commitlint finds no problem in the messages;
+  - each commit of the branch built alone with no warning and run through the unit suite, a check the maintainer
+    stopped once the squash made it needless: 61 commits checked, all building with no warning, 60 passing the suite
+    whole, 7,065 to 7,381 tests with the remote documents fetched; on `d3c44d1`, a commit that does not touch what it
+    times, one run of the test of the validator's linear time over an object stream's members failed while other dotnet
+    processes loaded the machine, and the test passed fifteen times of fifteen on the head, ten alone and five beside a
+    whole unit suite; nothing reproduced it, and no debt was filed. The squashed tree is the one CI and the checks below
+    ran on. commitlint finds no problem in the messages;
   - the integration suite twice on `241d701`, 3,688 tests, 3,682 passed and 6 skipped, both runs; the commits after it
     change tests alone;
   - the unit suite under the runtime Microsoft ships, as CI installs it, zlib-ng included, at `2055eeb`: 7,704 tests,
@@ -2609,3 +2762,7 @@ Until 2026-09-27 this section was a table whose rows were numbered T01 to T40; t
 [#296]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/296
 [#297]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/297
 [#300]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/300
+[#305]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/305
+[#306]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/306
+[#307]: https://github.com/AdCodicem/AdCodicem.Pdf/issues/307
+[#308]: https://github.com/AdCodicem/AdCodicem.Pdf/pull/308
