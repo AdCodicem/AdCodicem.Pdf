@@ -9,13 +9,15 @@ namespace AdCodicem.Pdf.Benchmarks;
 
 /// <summary>
 /// Measures the walk of the object streams' dependencies, which validation runs once, on Flate object streams that take
-/// their <c>/DecodeParms</c> from one object written directly in the file.
+/// their <c>/DecodeParms</c> from one object written directly in the file, or from an object the next stream holds.
 /// </summary>
 /// <remarks>
 /// The walk reads what decoding each stream reads, where the chain's index places it, outside the reader's cache (#128,
 /// #277): the streams are compressed, so that decoding reads their parameters — of a stream with no filter, it reads none.
 /// An object many streams lead through is read once a walk, not once a stream, while the walk keeps no more objects than
-/// the reader's cache holds (#201). The document is opened outside the measurement.
+/// the reader's cache holds (#201). Streams that each need the next, the last the first, are all circular: the streams
+/// that lead to one another are worked out once, in time linear in the streams, where a search from each stream's need
+/// took time in the square of their number (#168). The document is opened outside the measurement.
 /// </remarks>
 [MemoryDiagnoser]
 public class ObjectStreamDependencyBenchmarks
@@ -25,8 +27,15 @@ public class ObjectStreamDependencyBenchmarks
     [Params(100, 1000)]
     public int StreamCount { get; set; }
 
+    /// <summary>
+    /// Gets or sets what each stream's <c>/DecodeParms</c> names: <c>shared</c>, one dictionary of 16 KB written in the
+    /// file; <c>ring</c>, the object the next stream holds, the last naming the first's.
+    /// </summary>
+    [Params("shared", "ring")]
+    public string Parameters { get; set; } = "shared";
+
     [GlobalSetup]
-    public void Setup() => _document = PdfDocument.Open(Create(StreamCount, sharedBytes: 16 * 1024));
+    public void Setup() => _document = PdfDocument.Open(Create(StreamCount, sharedBytes: 16 * 1024, ring: Parameters == "ring"));
 
     [GlobalCleanup]
     public void Cleanup() => _document?.Dispose();
@@ -36,9 +45,10 @@ public class ObjectStreamDependencyBenchmarks
 
     /// <summary>
     /// Writes a file indexed by a cross-reference stream, whose <paramref name="streams"/> Flate object streams each hold one
-    /// dictionary and take their <c>/DecodeParms</c> from object 3, a dictionary of about <paramref name="sharedBytes"/>.
+    /// dictionary and take their <c>/DecodeParms</c> from object 3, a dictionary of about <paramref name="sharedBytes"/>, or,
+    /// in a <paramref name="ring"/>, from the dictionary the next stream holds.
     /// </summary>
-    private static byte[] Create(int streams, int sharedBytes)
+    private static byte[] Create(int streams, int sharedBytes, bool ring)
     {
         using var output = new MemoryStream();
         var offsets = new Dictionary<int, long>();
@@ -61,8 +71,9 @@ public class ObjectStreamDependencyBenchmarks
             var number = First + (2 * stream);
             var data = Compress(string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 << >>"));
             var header = string.Create(CultureInfo.InvariantCulture, $"{number + 1} 0 ").Length;
+            var parameters = ring ? First + (2 * ((stream + 1) % streams)) + 1 : 3;
             offsets[number] = output.Position;
-            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Type /ObjStm /N 1 /First {header} /Filter /FlateDecode /DecodeParms 3 0 R /Length {data.Length} >>\nstream\n"));
+            Write(string.Create(CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Type /ObjStm /N 1 /First {header} /Filter /FlateDecode /DecodeParms {parameters} 0 R /Length {data.Length} >>\nstream\n"));
             output.Write(data);
             Write("\nendstream\nendobj\n");
         }

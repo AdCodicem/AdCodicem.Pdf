@@ -229,6 +229,57 @@ public class ReaderTimingTests
             shortTime);
     }
 
+    [Theory]
+    [InlineData("chain")]
+    [InlineData("ring")]
+    [InlineData("rho")]
+    [InlineData("star")]
+    public void Four_times_as_many_object_streams_that_need_one_another_are_judged_circular_in_about_four_times_the_time(string shape)
+    {
+        // Object streams need one another's objects through their /DecodeParms, in HostileInputTests' shapes. The walk
+        // looked for a way back to each stream with a search from each of its needs, which cost the square of their number:
+        // 17 s for a chain of 20,000 streams, 44 s for a ring (#168). It works out the streams that lead to one another once:
+        // four times the streams take about four times as long, where the search took sixteen. The measure is the ratio, the
+        // best of five walks of each, each walked once first; each walk starts from a collected heap, so that what a walk
+        // before it left, the needs and findings of each stream, is not collected inside the next.
+        const int Small = 2000;
+        const int Large = 4 * Small;
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = Large } };
+        using var small = PdfDocument.Open(HostileInputTests.ChainedObjectStreams(shape, Small), options);
+        using var large = PdfDocument.Open(HostileInputTests.ChainedObjectStreams(shape, Large), options);
+
+        ObjectStreamDependencies.Run(small).CircularStreams.Should().HaveCount(HostileInputTests.CircularAmongChainedObjectStreams(shape, Small));
+        ObjectStreamDependencies.Run(large).CircularStreams.Should().HaveCount(HostileInputTests.CircularAmongChainedObjectStreams(shape, Large));
+        var smallTime = TimeSpan.MaxValue;
+        var largeTime = TimeSpan.MaxValue;
+
+        for (var run = 0; run < 5; run++)
+        {
+            smallTime = Min(smallTime, Time(() => ObjectStreamDependencies.Run(small)));
+            largeTime = Min(largeTime, Time(() => ObjectStreamDependencies.Run(large)));
+        }
+
+        largeTime.Should().BeLessThan(
+            smallTime * 8,
+            "four times the streams must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
+
+        static TimeSpan Time(Action action)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            var stopwatch = Stopwatch.StartNew();
+            action();
+            return stopwatch.Elapsed;
+        }
+    }
+
     [Fact]
     public void An_index_of_numbers_chosen_to_share_a_bucket_validates_as_fast_as_one_numbered_in_order()
     {

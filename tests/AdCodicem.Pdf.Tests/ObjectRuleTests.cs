@@ -5,6 +5,8 @@ using AdCodicem.Pdf.Documents;
 using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
+using FsCheck;
+using FsCheck.Fluent;
 
 namespace AdCodicem.Pdf.Tests;
 
@@ -756,6 +758,65 @@ public class ObjectRuleTests
 
         report.Contains(PdfValidationRuleIds.XRefObjectStreamCircular).Should().BeFalse();
         report.Contains(PdfValidationRuleIds.XRefObjectStreamBroken).Should().BeTrue("object 7's stream is not in the file");
+    }
+
+    [Fact]
+    public void Object_streams_on_a_loop_are_circular_each_naming_its_first_need_that_leads_back_and_the_tail_into_the_loop_is_not()
+    {
+        // Stream 10 needs 20, which needs 50 and then 30; 30 needs 40, which needs 20; 50 needs nothing. 20, 30 and 40 lead
+        // to one another, and each names its need on the next: 20 not its first, on 50, which leads nowhere. 10 leads into
+        // the loop, which does not lead back to it.
+        var circular = Validate(NeedingStreams([1, 1, 1, 1, 1], [[21], [51, 31], [41], [21], []]))
+            .Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.XRefObjectStreamCircular)
+            .Select(finding => (finding.Location.Object, finding.Message));
+
+        circular.Should().Equal(
+            (new PdfObjectId(20), "Object stream 20 needs object 31, which object stream 30 holds, to be read: its /DecodeParms names it, and reading object stream 30 needs object stream 20 in turn."),
+            (new PdfObjectId(30), "Object stream 30 needs object 41, which object stream 40 holds, to be read: its /DecodeParms names it, and reading object stream 40 needs object stream 30 in turn."),
+            (new PdfObjectId(40), "Object stream 40 needs object 21, which object stream 20 holds, to be read: its /DecodeParms names it, and reading object stream 20 needs object stream 40 in turn."));
+    }
+
+    [Fact]
+    public void Whatever_graph_object_streams_make_by_needing_one_another_the_circular_ones_and_what_each_names_are_those_a_search_from_each_need_finds()
+    {
+        // The walk looked for a way back to each stream with a search from each of its needs, in the order the reader needs
+        // them, which cost the square of a chain's length (#168). It finds the streams that lead to one another at once, and
+        // a stream is circular, naming the first of its needs that leads back, exactly as the search found. Over graphs of
+        // up to eight object streams, each holding up to three objects and needing up to four, any of them its own.
+        var graphs =
+            from count in Gen.Choose(1, 8)
+            from holds in Gen.ArrayOf(Gen.Choose(1, 3), count)
+            from lengths in Gen.ArrayOf(Gen.Choose(0, 4), count)
+            from picks in Gen.ArrayOf(Gen.Choose(0, holds.Sum() - 1), 4 * count)
+            select (holds, lengths, picks);
+
+        Check.One(PropertySettings, Prop.ForAll(graphs.ToArbitrary(), drawn =>
+        {
+            var (holds, lengths, picks) = drawn;
+            var members = new List<(int Stream, int Object)>();
+
+            for (var k = 0; k < holds.Length; k++)
+            {
+                for (var member = 1; member <= holds[k]; member++)
+                {
+                    members.Add((k, (10 * (k + 1)) + member));
+                }
+            }
+
+            var needs = new int[holds.Length][];
+
+            for (var k = 0; k < holds.Length; k++)
+            {
+                needs[k] = [.. picks.Skip(4 * k).Take(lengths[k]).Select(pick => members[pick].Object)];
+            }
+
+            using var document = PdfDocument.Open(NeedingStreams(holds, needs));
+            var walk = ObjectStreamDependencies.Run(document);
+            var expected = SearchedWayBack(needs, members);
+
+            return walk.CircularStreams.SetEquals(expected.Select(found => found.Stream)) &&
+                walk.Circular.Select(finding => finding.Message).SequenceEqual(expected.Select(found => found.Message));
+        }));
     }
 
     [Theory]
@@ -1727,6 +1788,123 @@ public class ObjectRuleTests
     {
         using var document = PdfDocument.Open(file);
         return new PdfValidator().Validate(document);
+    }
+
+    /// <summary>The cases a property draws, from a fixed seed, so that a failure replays exactly.</summary>
+    private static Config PropertySettings =>
+        Config.QuickThrowOnFailure.WithMaxTest(200).WithReplay(0x5EED_1729UL, 0x9E37_79B9_7F4A_7C15UL).WithQuietOnSuccess(true);
+
+    /// <summary>
+    /// A file of object streams numbered 10, 20 and so on, the <c>k</c>th holding <c>holds[k]</c> objects numbered after
+    /// it, each <c>0</c>, and needing the objects <c>needs[k]</c> names, in that order: its <c>/Filter</c> names as many
+    /// Flate steps, each of which reads the element of <c>/DecodeParms</c> at its place, and its data is compressed as many
+    /// times. The index is a cross-reference stream.
+    /// </summary>
+    private static byte[] NeedingStreams(int[] holds, int[][] needs)
+    {
+        var file = new HandWrittenFile(version: "1.5");
+        var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
+        {
+            [1] = (1, file.Object(1, "<< /Type /Catalog /Pages 2 0 R >>"), 0),
+            [2] = (1, file.Object(2, "<< /Type /Pages /Kids [] /Count 0 >>"), 0),
+        };
+
+        for (var k = 0; k < holds.Length; k++)
+        {
+            var number = 10 * (k + 1);
+            var header = new StringBuilder();
+            var contents = new StringBuilder();
+
+            for (var index = 0; index < holds[k]; index++)
+            {
+                rows[number + index + 1] = (2, number, index);
+                header.Append(CultureInfo.InvariantCulture, $"{number + index + 1} {contents.Length} ");
+                contents.Append("0 ");
+            }
+
+            var data = header.ToString() + contents;
+            var filters = new StringBuilder();
+            var parameters = new StringBuilder();
+
+            foreach (var need in needs[k])
+            {
+                data = Deflate(data);
+                filters.Append("/FlateDecode ");
+                parameters.Append(CultureInfo.InvariantCulture, $"{need} 0 R ");
+            }
+
+            var entries = needs[k].Length == 0 ? string.Empty : $"/Filter [{filters}] /DecodeParms [{parameters}] ";
+            rows[number] = (1, file.Object(
+                number,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"<< /Type /ObjStm /N {holds[k]} /First {header.Length} {entries}/Length {data.Length} >>\nstream\n{data}\nendstream")), 0);
+        }
+
+        var xref = 10 * (holds.Length + 1);
+        file.CrossReferenceStream(xref, xref + 1, rows, "/Root 1 0 R");
+        return file.Bytes;
+    }
+
+    /// <summary>
+    /// Gives the circular streams of the file <see cref="NeedingStreams"/> writes and the finding of each, as a search from
+    /// each need of each stream finds them: the first need of each stream it needs, in its own order, that names the stream
+    /// itself or one from which a search through every stream's needs reaches it.
+    /// </summary>
+    /// <param name="needs">The objects each stream needs, in order.</param>
+    /// <param name="members">The stream holding each object, by its place among the streams.</param>
+    private static List<(int Stream, string Message)> SearchedWayBack(int[][] needs, List<(int Stream, int Object)> members)
+    {
+        var holder = members.ToDictionary(member => member.Object, member => member.Stream);
+        var found = new List<(int Stream, string Message)>();
+
+        for (var k = 0; k < needs.Length; k++)
+        {
+            var seen = new HashSet<int>();
+
+            foreach (var need in needs[k])
+            {
+                var other = holder[need];
+
+                // Of the objects of one stream, the first is the need: another says nothing more.
+                if (!seen.Add(other) || (other != k && !Reaches(other, k)))
+                {
+                    continue;
+                }
+
+                var (stream, held) = (10 * (k + 1), 10 * (other + 1));
+                found.Add((stream, other == k
+                    ? $"Object stream {stream} needs object {need}, which it holds, to be read: its /DecodeParms names it, and the object cannot be read before the stream is."
+                    : $"Object stream {stream} needs object {need}, which object stream {held} holds, to be read: its /DecodeParms names it, and reading object stream {held} needs object stream {stream} in turn."));
+                break;
+            }
+        }
+
+        return found;
+
+        bool Reaches(int from, int target)
+        {
+            var reached = new HashSet<int> { from };
+            var work = new Queue<int>([from]);
+
+            while (work.TryDequeue(out var current))
+            {
+                foreach (var need in needs[current])
+                {
+                    if (holder[need] == target)
+                    {
+                        return true;
+                    }
+
+                    if (reached.Add(holder[need]))
+                    {
+                        work.Enqueue(holder[need]);
+                    }
+                }
+            }
+
+            return false;
+        }
     }
 
     /// <summary>Notes which entries of a step's parameters decoding reads, by the value each holds.</summary>

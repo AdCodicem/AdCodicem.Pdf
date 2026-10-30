@@ -1849,6 +1849,37 @@ public class HostileInputTests
     }
 
     [Theory]
+    [InlineData("chain")]
+    [InlineData("ring")]
+    [InlineData("rho")]
+    [InlineData("star")]
+    public void Object_streams_that_need_one_another_are_judged_circular_at_a_cost_for_each_that_does_not_grow_with_their_number(string shape)
+    {
+        // Object streams need one another's objects through their /DecodeParms: in a chain, the last needing none; in a
+        // ring; in a rho, the last needing the one halfway; in a star, the first needing every other, which each need it,
+        // under a bound on filters that lets it read them all. The walk looked for a way back to each stream with a search
+        // from each of its needs, each as long as the streams it reached: 8.6 GB for a chain of 20,000 streams, 21 GB for a
+        // ring (#168). It works out the streams that lead to one another once, taking each stream and each need once: what
+        // one more stream costs is its own walk, and the reader's decoding of the stream it needs, 4.1 to 5.7 KB.
+        const int Few = 500;
+        const int Many = 2000;
+        var options = new PdfReaderOptions { Limits = PdfReaderLimits.Default with { MaxFilterChainLength = Many } };
+        var few = ChainedObjectStreams(shape, Few);
+        var many = ChainedObjectStreams(shape, Many);
+
+        var fewAllocated = Allocations.Least(() => PdfDocument.Open(few, options), ObjectStreamDependencies.Run, out var fewDocument, out var fewResult);
+        var manyAllocated = Allocations.Least(() => PdfDocument.Open(many, options), ObjectStreamDependencies.Run, out var manyDocument, out var manyResult);
+
+        using (fewDocument)
+        using (manyDocument)
+        {
+            fewResult.CircularStreams.Should().HaveCount(CircularAmongChainedObjectStreams(shape, Few));
+            manyResult.CircularStreams.Should().HaveCount(CircularAmongChainedObjectStreams(shape, Many));
+            ((manyAllocated - fewAllocated) / (Many - Few)).Should().BeLessThan(8192, "what one more stream costs is its own walk");
+        }
+    }
+
+    [Theory]
     [InlineData("free")]
     [InlineData("unlisted")]
     [InlineData("compressed")]
@@ -3787,6 +3818,65 @@ public class HostileInputTests
             }
         }
     }
+
+    /// <summary>
+    /// A file of <paramref name="streams"/> object streams, numbered 10, 12 and so on, each holding one dictionary, numbered
+    /// after it, and needing one another's through its <c>/DecodeParms</c>, as <paramref name="shape"/> says: a chain, each
+    /// needing the next's and the last none; a ring, the last needing the first's; a rho, the last needing the halfway one's;
+    /// a star, the first needing every other's — through as many Flate steps, each reading the element at its place, its
+    /// data written as it is, which the first step fails on and the reader takes as it is —, and every other needing the
+    /// first's. The other streams are Flate-compressed, so that decoding reads their parameters.
+    /// </summary>
+    internal static byte[] ChainedObjectStreams(string shape, int streams)
+    {
+        var packed = new List<PackedStream>();
+
+        for (var k = 0; k < streams; k++)
+        {
+            var needed = shape switch
+            {
+                "chain" => k + 1 < streams ? k + 1 : -1,
+                "ring" => (k + 1) % streams,
+                "rho" => k + 1 < streams ? k + 1 : streams / 2,
+                "star" => k == 0 ? -1 : 0,
+                _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "No such shape."),
+            };
+
+            var dictionary = needed < 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $"/DecodeParms {11 + (2 * needed)} 0 R");
+            var data = PackedData.Flate;
+
+            if (shape == "star" && k == 0)
+            {
+                var filters = new StringBuilder("/Filter [");
+                var parameters = new StringBuilder("] /DecodeParms [");
+
+                for (var other = 1; other < streams; other++)
+                {
+                    filters.Append("/FlateDecode ");
+                    parameters.Append(CultureInfo.InvariantCulture, $"{11 + (2 * other)} 0 R ");
+                }
+
+                dictionary = filters.Append(parameters).Append(']').ToString();
+                data = PackedData.Plain;
+            }
+
+            packed.Add(new PackedStream(10 + (2 * k), dictionary, [(11 + (2 * k), "<< >>")], data));
+        }
+
+        return PackedFile(packed);
+    }
+
+    /// <summary>
+    /// Gives how many of the <paramref name="streams"/> object streams <see cref="ChainedObjectStreams"/> writes in
+    /// <paramref name="shape"/> are circular: none of a chain; of a rho, those from the halfway one to the last; all of a ring
+    /// or a star.
+    /// </summary>
+    internal static int CircularAmongChainedObjectStreams(string shape, int streams) => shape switch
+    {
+        "chain" => 0,
+        "rho" => streams - (streams / 2),
+        _ => streams,
+    };
 
     private static byte[] PackedFile(IReadOnlyList<PackedStream> streams, IReadOnlyList<(int Number, string Body)>? direct = null)
     {

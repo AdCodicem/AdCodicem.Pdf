@@ -50,8 +50,13 @@ namespace AdCodicem.Pdf.Validation;
 /// holds is the exception: what the reader serves of it may depend on which stream of a loop it decoded first.
 /// </para>
 /// <para>
-/// The streams so needed are linked, and a stream that its links lead back to is circular. Each stream keeps, of the
-/// objects of each stream it needs, the first it needs: another of the same stream says nothing more of a loop.
+/// The streams so needed are linked, each to each stream it needs, and a stream its links lead back to is circular: one
+/// that needs itself, or whose strongly connected component in that graph holds another stream, each of the two leading to
+/// the other (#168). The components are worked out once, and only when a stream needs one, by Tarjan's algorithm, in time
+/// and memory linear in the streams and their needs: a search from each need of each stream, which they replace, cost the
+/// square of a chain's length. Each stream keeps, of the objects of each stream it needs, the first it needs: another of
+/// the same stream says nothing more of a loop. Its finding names the first of them, in the order the reader needs them,
+/// whose stream is itself or lies in its component — the first that leads back to it.
 /// </para>
 /// <para>
 /// It reads each stream's dictionary, and the objects written directly in the file its values lead through, where the
@@ -139,10 +144,9 @@ internal sealed class ObjectStreamDependencies
             return result;
         }
 
-        // What each stream that needs an object stream needs: the first object of each it needs, another or itself; and
-        // where the chain's row places it.
-        var needs = new Dictionary<int, List<Need>>(SeededComparer.Instance);
-        var locations = new Dictionary<int, PdfValidationLocation>(SeededComparer.Instance);
+        // The streams that need an object stream, in the order of their numbers, each with where the chain's row places it
+        // and the first object of each stream it needs, another or itself.
+        var needing = new List<Needing>();
         var walk = new Walk(document, new Memo(document, reader.CacheCapacity, reader.FilterChainBound));
 
         foreach (var stream in streams)
@@ -157,8 +161,7 @@ internal sealed class ObjectStreamDependencies
 
             if (walk.TakeNeeds() is { } found)
             {
-                locations[stream] = Location(reader, stream, entry);
-                needs[stream] = found;
+                needing.Add(new Needing(stream, Location(reader, stream, entry), found));
             }
 
             // A stream that is not of /Type /ObjStm serves no object, to the reader, the probe or the rebuild alike (#274):
@@ -179,13 +182,30 @@ internal sealed class ObjectStreamDependencies
             }
         }
 
-        foreach (var stream in streams)
+        // A stream that needs none leads nowhere, and lies on no loop: with none needing one, none is circular.
+        if (needing.Count == 0)
         {
-            if (needs.TryGetValue(stream, out var own) && FindWayBack(stream, own, needs) is { } need)
+            return result;
+        }
+
+        var places = new Dictionary<int, int>(needing.Count, SeededComparer.Instance);
+
+        for (var place = 0; place < needing.Count; place++)
+        {
+            places.Add(needing[place].Stream, place);
+        }
+
+        var components = Components(needing, places);
+
+        for (var place = 0; place < needing.Count; place++)
+        {
+            var (stream, location, own) = needing[place];
+
+            if (WayBack(components[place], own, places, components) is { } need)
             {
                 result.CircularStreams.Add(stream);
                 result.Circular.Add(new ProbeFinding(
-                    locations[stream],
+                    location,
                     need.Stream == stream
                         ? Invariant($"Object stream {stream} needs object {need.Object}, which it holds, to be read: its {need.Key} names it, and the object cannot be read before the stream is.")
                         : Invariant($"Object stream {stream} needs object {need.Object}, which object stream {need.Stream} holds, to be read: its {need.Key} names it, and reading object stream {need.Stream} needs object stream {stream} in turn.")));
@@ -195,12 +215,24 @@ internal sealed class ObjectStreamDependencies
         return result;
     }
 
-    /// <summary>Gives the need of <paramref name="stream"/> that leads back to it, directly or through other streams, if any.</summary>
-    private static Need? FindWayBack(int stream, List<Need> own, Dictionary<int, List<Need>> needs)
+    /// <summary>
+    /// Gives the first of <paramref name="own"/>, a stream's needs in the order the reader needs them, whose stream lies in
+    /// <paramref name="component"/>, the stream's own — the stream itself among them —: the first that leads back to it,
+    /// directly or through other streams; null when none does, and the stream is not circular.
+    /// </summary>
+    /// <remarks>
+    /// A need leads back when the stream it names is the stream itself, or leads to it in turn: the two then lead to each
+    /// other, which is what lying in one component means (#168). A stream that needs none has no place, and leads nowhere.
+    /// </remarks>
+    /// <param name="component">The component of the stream whose needs <paramref name="own"/> are.</param>
+    /// <param name="own">The stream's needs, the first of each stream it needs, in the order the reader needs them.</param>
+    /// <param name="places">The place of each stream that needs one, by which <paramref name="components"/> is indexed.</param>
+    /// <param name="components">The component of each stream that needs one, by its place.</param>
+    private static Need? WayBack(int component, List<Need> own, Dictionary<int, int> places, int[] components)
     {
         foreach (var need in own)
         {
-            if (need.Stream == stream || Reaches(need.Stream, stream, needs))
+            if (places.TryGetValue(need.Stream, out var place) && components[place] == component)
             {
                 return need;
             }
@@ -209,34 +241,109 @@ internal sealed class ObjectStreamDependencies
         return null;
     }
 
-    private static bool Reaches(int from, int target, Dictionary<int, List<Need>> needs)
+    /// <summary>
+    /// Gives the strongly connected component of each stream of <paramref name="needing"/>, by its place there, in the graph
+    /// the needs make, each stream linked to each stream it needs: two streams share one when each leads to the other. They
+    /// are numbered from 1, in the order they close.
+    /// </summary>
+    /// <remarks>
+    /// It is Tarjan's algorithm (1972), which takes each stream and each need once (#168): a walk in depth from each stream
+    /// not reached yet, which keeps, of each stream, the order it was reached in and the earliest-reached stream still open
+    /// that it leads to; a stream that leads to none reached before it closes a component, of itself and the streams reached
+    /// since that are still open. Its frames are kept on a stack of its own, not the thread's, which a chain of streams as
+    /// long as an index allows would exhaust (invariant 4): each of its arrays holds each stream once at most, and has room
+    /// for as many as there are streams that need one. A stream that needs none is not taken: it leads nowhere.
+    /// </remarks>
+    /// <param name="needing">The streams that need an object stream, each with the first object of each stream it needs.</param>
+    /// <param name="places">The place in <paramref name="needing"/> of each stream it holds.</param>
+    private static int[] Components(List<Needing> needing, Dictionary<int, int> places)
     {
-        var seen = new HashSet<int>(SeededComparer.Instance) { from };
-        var work = new Stack<int>();
-        work.Push(from);
+        var count = needing.Count;
 
-        while (work.TryPop(out var current))
+        // The order each stream was reached in, from 1, 0 for one not reached yet; of the streams still open, the earliest
+        // reached it leads to; and its component, 0 while it is open — reached, and not yet closed into one.
+        var reached = new int[count];
+        var earliest = new int[count];
+        var components = new int[count];
+
+        // The streams still open, the last reached on top; and the walk's frames, each a stream and how many of its needs
+        // were taken, the stream being walked on top.
+        var open = new int[count];
+        var frames = new int[count];
+        var taken = new int[count];
+        var order = 0;
+        var closed = 0;
+        var top = 0;
+
+        for (var root = 0; root < count; root++)
         {
-            if (!needs.TryGetValue(current, out var next))
+            if (reached[root] != 0)
             {
                 continue;
             }
 
-            foreach (var need in next)
+            frames[0] = root;
+            taken[0] = 0;
+            var depth = 1;
+
+            while (depth > 0)
             {
-                if (need.Stream == target)
+                var place = frames[depth - 1];
+
+                // A stream framed is walked at once: on top for the first time, it is reached.
+                if (reached[place] == 0)
                 {
-                    return true;
+                    reached[place] = earliest[place] = ++order;
+                    open[top++] = place;
                 }
 
-                if (seen.Add(need.Stream))
+                var own = needing[place].Needs;
+
+                if (taken[depth - 1] < own.Count)
                 {
-                    work.Push(need.Stream);
+                    if (places.TryGetValue(own[taken[depth - 1]++].Stream, out var next))
+                    {
+                        if (reached[next] == 0)
+                        {
+                            frames[depth] = next;
+                            taken[depth++] = 0;
+                        }
+                        else if (components[next] == 0)
+                        {
+                            // Reached and still open: it leads back to the stream being walked, or to one framed below it.
+                            earliest[place] = Math.Min(earliest[place], reached[next]);
+                        }
+                    }
+
+                    continue;
+                }
+
+                // Every need taken: a stream that leads to no stream still open reached before it closes a component.
+                depth--;
+
+                if (earliest[place] == reached[place])
+                {
+                    closed++;
+                    int member;
+
+                    do
+                    {
+                        member = open[--top];
+                        components[member] = closed;
+                    }
+                    while (member != place);
+                }
+
+                // What it leads to, the stream that framed it leads to as well.
+                if (depth > 0)
+                {
+                    var caller = frames[depth - 1];
+                    earliest[caller] = Math.Min(earliest[caller], earliest[place]);
                 }
             }
         }
 
-        return false;
+        return components;
     }
 
     /// <summary>
@@ -273,6 +380,12 @@ internal sealed class ObjectStreamDependencies
 
     /// <summary>An object a stream needs to be read, the object stream holding it, and the key that leads to it.</summary>
     private readonly record struct Need(int Stream, int Object, string Key);
+
+    /// <summary>
+    /// An object stream that needs an object stream to be read, another or itself: where the chain's row places it, and the
+    /// first object of each stream it needs, in the order the reader needs them.
+    /// </summary>
+    private readonly record struct Needing(int Stream, PdfValidationLocation Location, List<Need> Needs);
 
     /// <summary>
     /// The walk of one object stream at a time, as the reader decodes it to read one of its objects: what that read loads,
