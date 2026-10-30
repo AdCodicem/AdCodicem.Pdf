@@ -3648,7 +3648,7 @@ public class HostileInputTests
     }
 
     /// <summary>The number of object stream <paramref name="stream"/>.</summary>
-    private static int StreamNumber(int stream) => 3 + stream;
+    internal static int StreamNumber(int stream) => 3 + stream;
 
     /// <summary>The number of the object at <paramref name="index"/> of object stream <paramref name="stream"/>.</summary>
     internal static int PackedNumber(int stream, int index, int objectsPerStream = 1) => 1000 + (stream * objectsPerStream) + index;

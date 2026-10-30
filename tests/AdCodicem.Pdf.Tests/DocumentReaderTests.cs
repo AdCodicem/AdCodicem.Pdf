@@ -1129,6 +1129,7 @@ public class DocumentReaderTests
         using var document = PdfDocument.Open(file);
 
         document.GetObject(new PdfObjectId(3)).Should().BeSameAs(PdfNull.Instance);
+        document.Reader.KeptObjectStreamData(4).IsEmpty.Should().BeTrue("the reader keeps the stream as one that serves no object, and no data of it");
         var report = document.Diagnostics.Should().ContainSingle(entry => entry.Code == PdfDiagnosticCodes.ObjectStreamUnreadable).Which;
         report.Position.Should().Be(Encoding.Latin1.GetString(file).IndexOf("stream\n", Encoding.Latin1.GetString(file).IndexOf("/N 2", StringComparison.Ordinal), StringComparison.Ordinal) + "stream\n".Length);
         report.Message.Should().Be("Object stream 4 is a stream that is not of /Type /ObjStm; none of its objects can be read from it.");

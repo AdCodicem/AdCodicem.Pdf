@@ -647,6 +647,19 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     /// <summary>Gets what the object streams the reader keeps weigh, in bytes — their decoded data and their headers —, which it bounds.</summary>
     internal long ObjectStreamBytes => _objectStreamBytes;
 
+    /// <summary>
+    /// Gets the decoded data the reader keeps of object stream <paramref name="number"/>, or no data when it keeps none: the
+    /// stream not decoded yet, let go by the budget or by closing, or one that serves no object.
+    /// </summary>
+    /// <remarks>
+    /// Nothing in the library reads it. A test watches the array behind it through a weak reference to see that disposing a
+    /// document lets go of it: the memory of the whole process, which a shared pool's trim moves by tens of megabytes between
+    /// two measures, cannot say so (#307). It looks the stream up, and never enumerates the streams kept, whose order the
+    /// seeded hash sets (#155).
+    /// </remarks>
+    internal ReadOnlyMemory<byte> KeptObjectStreamData(int number) =>
+        _objectStreams.TryGetValue(number, out var contents) && contents is not null ? contents.Data : default;
+
     /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfObject GetObject(PdfObjectId id)
@@ -7393,6 +7406,9 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         }
 
         public int Count => _numbers.Length;
+
+        /// <summary>Gets the stream's decoded data, which the contents keep for as long as they are kept.</summary>
+        public ReadOnlyMemory<byte> Data => _data;
 
         /// <summary>
         /// Determines whether a token that reaches a member window's edge at byte <paramref name="absoluteOffset"/> of the

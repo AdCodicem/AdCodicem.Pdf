@@ -10,11 +10,15 @@ using AdCodicem.Pdf.Validation;
 namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
-/// Hostile inputs held to a budget on memory live at once: a measure of the whole process, taken alone.
+/// Hostile inputs held to a budget on memory live at once: a measure of the whole process, taken alone, which bounds what is
+/// held from above; what is let go is watched through a weak reference (#307).
 /// </summary>
 [Collection(TimingCollection.Name)]
 public class HostileInputMemoryTests
 {
+    /// <summary>What the object stream a disposed document decoded holds, decoded: sixteen megabytes.</summary>
+    private const int DecodedLength = 16 * 1024 * 1024;
+
     [Fact]
     public void Object_streams_each_holding_a_stream_keep_no_more_than_their_budget_once_their_members_are_read()
     {
@@ -58,16 +62,15 @@ public class HostileInputMemoryTests
     public void Disposing_a_document_lets_go_of_the_object_streams_it_decoded_though_a_reference_it_gave_is_held()
     {
         // Sixteen megabytes of an object stream's decoded data, which the reader keeps, and a reference handed out, which
-        // reaches the reader: disposing lets go of the data all the same. The measure is the whole process's, whatever else
-        // runs in it, the test platform included: half the data parts what is kept from what is let go.
-        const long Decoded = 16L * 1024 * 1024;
-        var file = HostileInputTests.ObjectStreams(streams: 1, decodedLength: (int)Decoded, objectsPerStream: 1, everyIndexWrong: false);
-        var before = Retained();
-        var (held, kept) = OpenDecodeAndDispose(file);
-        var after = Retained();
+        // reaches the reader: disposing lets go of the data all the same. The data is watched through a weak reference, not
+        // through the memory of the whole process: a shared pool lets go, at a full collection, of arrays a test before
+        // parked in it half a minute earlier, which made that memory fall by 92 MB between two of its measures (#307).
+        var file = HostileInputTests.ObjectStreams(streams: 1, decodedLength: DecodedLength, objectsPerStream: 1, everyIndexWrong: false);
+        var (held, data) = OpenDecodeAndDispose(file);
 
-        kept.Should().BeGreaterThan(before + (Decoded / 2), "the reader kept the decoded data while the document was open");
-        after.Should().BeLessThan(before + (Decoded / 2), "the object streams the document decoded are let go");
+        Collect();
+
+        data.IsAlive.Should().BeFalse("the object streams the document decoded are let go");
         GC.KeepAlive(held);
     }
 
@@ -141,23 +144,46 @@ public class HostileInputMemoryTests
         after.Should().BeLessThan(before + (8L * 1024 * 1024), "a file in memory lends each object stream its data, and no copy is kept");
     }
 
+    /// <summary>
+    /// Opens <paramref name="file"/>, reads the member of its object stream, takes a reference from the document and
+    /// disposes of it, giving the reference and a weak reference to the array that held the stream's decoded data; out of
+    /// line, so that no strong reference to the document or to the array outlives the call.
+    /// </summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static (PdfObject Held, long Kept) OpenDecodeAndDispose(byte[] file)
+    private static (PdfObject Held, WeakReference Data) OpenDecodeAndDispose(byte[] file)
     {
         var document = PdfDocument.Open(file);
+        var stream = HostileInputTests.StreamNumber(0);
+        document.Reader.KeptObjectStreamData(stream).IsEmpty.Should().BeTrue("nothing is decoded before an object is read");
         document.GetObject(new PdfObjectId(HostileInputTests.PackedNumber(0, 0))).AsDictionary().Required();
         var held = document.Trailer.GetRaw(PdfName.Root)!;
-        var kept = Retained();
+        var data = Watch(document.Reader.KeptObjectStreamData(stream));
 
+        Collect();
+
+        data.IsAlive.Should().BeTrue("the reader keeps the decoded data while the document is open");
         document.Dispose();
-        return (held, kept);
+        return (held, data);
     }
 
-    private static long Retained()
+    /// <summary>Gives a weak reference to the array behind <paramref name="kept"/>, the whole of an object stream's decoded data.</summary>
+    private static WeakReference Watch(ReadOnlyMemory<byte> kept)
+    {
+        System.Runtime.InteropServices.MemoryMarshal.TryGetArray(kept, out var data).Should().BeTrue("decoded data is held in an array");
+        data.Count.Should().Be(DecodedLength, "the reader keeps the whole of the decoded data");
+        return new WeakReference(data.Array);
+    }
+
+    private static void Collect()
     {
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
+    }
+
+    private static long Retained()
+    {
+        Collect();
         return GC.GetTotalMemory(forceFullCollection: true);
     }
 
