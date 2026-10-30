@@ -59,6 +59,7 @@ A settled decision is not reopened without new evidence — that is what writing
 | [50](0050-validation-settles-the-reader-before-its-rules.md) | Validation settles the reader before its rules | — |
 | [51](0051-the-project-keeps-a-copy-of-what-a-license-lets-it-copy.md) | The project keeps a copy of the remote documents a license lets it copy | — |
 | [52](0052-tables-keyed-by-numbers-are-dense-or-seeded.md) | Tables keyed by numbers are dense or seeded | — |
+| [53](0053-mutation-testing-runs-a-fixed-catalog-over-the-changed-code.md) | Mutation testing runs a fixed catalog over the code a pull request changes | — |
 
 ## Decisions too small for a record of their own
 
