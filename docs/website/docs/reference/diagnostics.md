@@ -57,18 +57,19 @@ character it cannot write whole.
 ## `PdfDiagnostics`
 
 The list `PdfDocument.Diagnostics` holds, in the order the entries were recorded. It is an
-`IReadOnlyList<PdfDiagnostic>`.
+`IReadOnlyList<PdfDiagnostic>`, which grows as the document is read, after opening too, and as a validation starts:
+between two calls you make, entries are only added, after those it held.
 
 | Member | What it is |
 |---|---|
-| `Count`, the indexer, enumeration | The entries kept |
+| `Count`, the indexer, enumeration | The entries kept. An enumeration gives those recorded when it began: what a read or a validation records meanwhile, one the loop makes included, `Count` counts at once and the next enumeration gives, and the enumeration never throws for it |
 | `Capacity` | The most entries kept: `PdfReaderOptions.DiagnosticCapacity` for a document, 1,000 by default |
 | `SuppressedCount` | How many entries were dropped because `Capacity` was reached; they are counted, not kept |
 | `HasRepairs` | Whether any entry is a `Repair` |
 | `HasWarnings` | Whether any entry is a `Warning` |
 | `HasConformanceLoss` | Whether any entry is a `ConformanceLoss` |
 | `Contains(code)` | Whether any entry carries the code, compared ordinally |
-| `Add`, `Repair`, `Warn` | Record an entry; the library's own, public so that a caller can collect its own |
+| `Add`, `Repair`, `Warn` | Record an entry; the library's own, public so that a caller can collect its own. Nothing stops them yet from writing into a document's own record ([#310](https://github.com/AdCodicem/AdCodicem.Pdf/issues/310)) |
 
 `new PdfDiagnostics()` collects what decoding one stream reports, when it is passed to `Decode`:
 

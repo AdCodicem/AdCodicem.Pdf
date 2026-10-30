@@ -123,6 +123,25 @@ takes no room, so that a million copies of one object hide nothing behind them, 
 `MaxIndexEntries` is reported once (`limit.index-entries`). A rebuild of a chain a limit had cut keeps the entries the
 chain read for the numbers the scan did not find, rather than losing them.
 
+## What a rebuild after opening changes
+
+A rebuild after opening — which a read sets off, or the start of a validation — changes what the document answers next,
+not what it handed out before, so that a loop over what the document gives goes on whatever its body reads:
+
+- `WasRepaired` turns true, `ObjectCount` counts the rebuilt map's entries, and `Diagnostics` holds what the rebuild
+  reported, at once.
+- The next enumeration of `ObjectNumbers` gives the rebuilt map's numbers; one under way goes on over those it began
+  with. Nothing is copied: a rebuild that empties the map while an enumeration is under way records the new numbers in a
+  new array, 4 bytes for each entry the map has room for — 1.2 MB at 300,000 objects, beside the 25.7 MB the rebuild
+  allocates there.
+- An enumeration of `Diagnostics` under way gives the entries recorded when it began, and the next one the rebuild's
+  too: between two calls you make, entries are only added after those the record held.
+- The next `Trailer` gives the trailer the rebuild merged, and `Catalog` and `IsEncrypted` read that one. A trailer
+  taken before is left as it was, without an older trailer's `/Info` or `/Encrypt`, or a `/Root` the rebuild set: read
+  `Trailer` again after reading the document rather than keep it. The new trailer costs a copy of the old, a few hundred
+  bytes.
+- An object read before is left as it was; the next read of its number reads it through the rebuilt map.
+
 ## What it deliberately does not do
 
 Past the index and the catalog, nothing is parsed until something asks for it, and — short of a rebuild, which
