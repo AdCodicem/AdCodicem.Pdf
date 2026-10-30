@@ -636,6 +636,12 @@ public class SeededComparerTests
             nameof(Unseeded.MadeWrappedLazy),
             nameof(Unseeded.MadeWrappedBound),
             nameof(Unseeded.MadeWrappedTwice),
+            nameof(Unseeded.LazyProperties),
+            nameof(Unseeded.ImmutableNamed),
+            nameof(Unseeded.FrozenDictionarySeeded),
+            nameof(Unseeded.TripleChildKey),
+            nameof(Unseeded.HidingTupleChildKey),
+            nameof(Unseeded.SeededBeside),
             "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
@@ -656,6 +662,17 @@ public class SeededComparerTests
     public void The_reading_of_the_compiled_library_lets_a_seeded_table_and_other_keys_be()
     {
         Refused(typeof(Seeded)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_reading_of_the_compiled_library_refuses_every_number_wherever_a_key_holds_it()
+    {
+        // Each number type as the key of a table a builder builds, as a nullable key, as a tuple's item and as the item
+        // of a type deriving from a tuple: one table each, refused one by one, so that a number the reading would
+        // forget at one place a key is read, and not at the others, is seen.
+        CompiledRules.TablesBuilt([typeof(NumbersEverywhere)])
+            .GroupBy(found => found.Method.Name, (name, found) => $"{name}: {found.Count()}")
+            .Should().BeEquivalentTo("Built: 19", "Nullables: 19", "Items: 19", "DerivedItems: 19");
     }
 
     [Fact]
@@ -713,6 +730,7 @@ public class SeededComparerTests
             "Interned.Forwarded: Interned.Pairs(List`1)",
             "Interned.ViewsGiven: Interned.ViewsOf()",
             "Interned.ViewLists: List`1<IReadOnlyDictionary`2[]>.get_Count()",
+            "Interned.Stored: Slot`1<IReadOnlyDictionary`2>.Value()",
             "Interned..cctor: ConcurrentDictionary`2<String, Int32>..ctor(IEqualityComparer`1)",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor()",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)");
@@ -1382,6 +1400,21 @@ public class SeededComparerTests
 
         public static Wrapper<Wrapper<HashSet<int>>> MadeWrappedTwice() => Make<Wrapper<Wrapper<HashSet<int>>>>();
 
+        public static Lazy<System.Data.PropertyCollection> LazyProperties() => new();
+
+        public static ImmutableDictionary<string, int> ImmutableNamed() => ImmutableDictionary.Create<string, int>(StringComparer.Ordinal);
+
+        public static FrozenDictionary<int, int> FrozenDictionarySeeded(IEnumerable<int> numbers) =>
+            numbers.ToFrozenDictionary(number => number, SeededComparer.Instance);
+
+        public static HashSet<TripleChild> TripleChildKey() => [];
+
+        public static HashSet<HidingTupleChild> HidingTupleChildKey() => [];
+
+        public static int SeededBeside() => Beside(SeededComparer.Instance, new HashSet<long>());
+
+        private static int Beside(IEqualityComparer<long> comparer, HashSet<long> numbers) => comparer.GetHashCode(numbers.Count);
+
         public static int EmptyNamedDictionary() => ImmutableDictionary<string, int>.Empty.Add("name", 1).Count;
 
         public static int DictionaryBuilder() => ImmutableDictionary.CreateBuilder<long, int>().Count;
@@ -1570,6 +1603,94 @@ public class SeededComparerTests
             System.Net.Http.Json.HttpClientJsonExtensions.PostAsJsonAsync(client, new Uri("http://localhost/"), 1);
     }
 
+    /// <summary>Every number type at each place a key may hold it, one table each.</summary>
+    private static class NumbersEverywhere
+    {
+        public static int Built() =>
+            Activator.CreateInstance<HashSet<short>>().Count
+            + Activator.CreateInstance<HashSet<ushort>>().Count
+            + Activator.CreateInstance<HashSet<char>>().Count
+            + Activator.CreateInstance<HashSet<int>>().Count
+            + Activator.CreateInstance<HashSet<uint>>().Count
+            + Activator.CreateInstance<HashSet<long>>().Count
+            + Activator.CreateInstance<HashSet<ulong>>().Count
+            + Activator.CreateInstance<HashSet<nint>>().Count
+            + Activator.CreateInstance<HashSet<nuint>>().Count
+            + Activator.CreateInstance<HashSet<Int128>>().Count
+            + Activator.CreateInstance<HashSet<UInt128>>().Count
+            + Activator.CreateInstance<HashSet<System.Numerics.BigInteger>>().Count
+            + Activator.CreateInstance<HashSet<Half>>().Count
+            + Activator.CreateInstance<HashSet<float>>().Count
+            + Activator.CreateInstance<HashSet<double>>().Count
+            + Activator.CreateInstance<HashSet<decimal>>().Count
+            + Activator.CreateInstance<HashSet<System.Text.Rune>>().Count
+            + Activator.CreateInstance<HashSet<System.Runtime.InteropServices.NFloat>>().Count
+            + Activator.CreateInstance<HashSet<System.Numerics.Complex>>().Count;
+
+        public static int Nullables() =>
+            new HashSet<short?>().Count
+            + new HashSet<ushort?>().Count
+            + new HashSet<char?>().Count
+            + new HashSet<int?>().Count
+            + new HashSet<uint?>().Count
+            + new HashSet<long?>().Count
+            + new HashSet<ulong?>().Count
+            + new HashSet<nint?>().Count
+            + new HashSet<nuint?>().Count
+            + new HashSet<Int128?>().Count
+            + new HashSet<UInt128?>().Count
+            + new HashSet<System.Numerics.BigInteger?>().Count
+            + new HashSet<Half?>().Count
+            + new HashSet<float?>().Count
+            + new HashSet<double?>().Count
+            + new HashSet<decimal?>().Count
+            + new HashSet<System.Text.Rune?>().Count
+            + new HashSet<System.Runtime.InteropServices.NFloat?>().Count
+            + new HashSet<System.Numerics.Complex?>().Count;
+
+        public static int Items() =>
+            new HashSet<(string, short)>().Count
+            + new HashSet<(string, ushort)>().Count
+            + new HashSet<(string, char)>().Count
+            + new HashSet<(string, int)>().Count
+            + new HashSet<(string, uint)>().Count
+            + new HashSet<(string, long)>().Count
+            + new HashSet<(string, ulong)>().Count
+            + new HashSet<(string, nint)>().Count
+            + new HashSet<(string, nuint)>().Count
+            + new HashSet<(string, Int128)>().Count
+            + new HashSet<(string, UInt128)>().Count
+            + new HashSet<(string, System.Numerics.BigInteger)>().Count
+            + new HashSet<(string, Half)>().Count
+            + new HashSet<(string, float)>().Count
+            + new HashSet<(string, double)>().Count
+            + new HashSet<(string, decimal)>().Count
+            + new HashSet<(string, System.Text.Rune)>().Count
+            + new HashSet<(string, System.Runtime.InteropServices.NFloat)>().Count
+            + new HashSet<(string, System.Numerics.Complex)>().Count;
+
+        public static int DerivedItems() =>
+            new HashSet<GenericTupleChild<short>>().Count
+            + new HashSet<GenericTupleChild<ushort>>().Count
+            + new HashSet<GenericTupleChild<char>>().Count
+            + new HashSet<GenericTupleChild<int>>().Count
+            + new HashSet<GenericTupleChild<uint>>().Count
+            + new HashSet<GenericTupleChild<long>>().Count
+            + new HashSet<GenericTupleChild<ulong>>().Count
+            + new HashSet<GenericTupleChild<nint>>().Count
+            + new HashSet<GenericTupleChild<nuint>>().Count
+            + new HashSet<GenericTupleChild<Int128>>().Count
+            + new HashSet<GenericTupleChild<UInt128>>().Count
+            + new HashSet<GenericTupleChild<System.Numerics.BigInteger>>().Count
+            + new HashSet<GenericTupleChild<Half>>().Count
+            + new HashSet<GenericTupleChild<float>>().Count
+            + new HashSet<GenericTupleChild<double>>().Count
+            + new HashSet<GenericTupleChild<decimal>>().Count
+            + new HashSet<GenericTupleChild<System.Text.Rune>>().Count
+            + new HashSet<GenericTupleChild<System.Runtime.InteropServices.NFloat>>().Count
+            + new HashSet<GenericTupleChild<System.Numerics.Complex>>().Count;
+    }
+
     private readonly record struct Pair(int First, int Second);
 
     /// <summary>
@@ -1609,6 +1730,20 @@ public class SeededComparerTests
     /// A key deriving from a tuple whose only number is its first item, which hashes as the tuple does.
     /// </summary>
     private sealed class LongFirst(long first, string second) : Tuple<long, string>(first, second);
+
+    /// <summary>
+    /// A key deriving from a tuple of three items whose only number is its last, which hashes as the tuple does.
+    /// </summary>
+    private sealed class TripleChild(string first, string second, long third) : Tuple<string, string, long>(first, second, third);
+
+    /// <summary>
+    /// A key deriving from a tuple of numbers and hiding its hash with a method of its own, which a table does not
+    /// call: it hashes as the tuple does.
+    /// </summary>
+    private sealed class HidingTupleChild(long first, int second) : Tuple<long, int>(first, second)
+    {
+        public new int GetHashCode() => HashCode.Combine(Item1, Item2);
+    }
 
     /// <summary>A key deriving from a tuple of its type argument, which hashes as the tuple does.</summary>
     private sealed class GenericTupleChild<T>(T first, T second) : Tuple<T, T>(first, second);
@@ -1848,6 +1983,14 @@ public class SeededComparerTests
         private static IReadOnlyDictionary<string, Interned>[] ViewsOf() => null!;
 
         public static int ViewLists(List<IReadOnlyDictionary<string, Interned>[]> lists) => lists.Count;
+
+        public static void Stored() => Slot<IReadOnlyDictionary<string, Interned>>.Value = Table;
+
+        /// <summary>A static field of a generic type, which a view of the table may be stored into.</summary>
+        private static class Slot<T>
+        {
+            public static T? Value;
+        }
 
         private static string JoinOf<T>() => string.Join(",", (IEnumerable<T>)Table);
 
