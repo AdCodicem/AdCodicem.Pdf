@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using AdCodicem.Pdf.Diagnostics;
 using AdCodicem.Pdf.Documents;
+using AdCodicem.Pdf.IO;
 using AdCodicem.Pdf.IO.Filters;
 using AdCodicem.Pdf.Objects;
 using AdCodicem.Pdf.Validation;
@@ -176,16 +177,90 @@ public class ObjectRuleTests
         finding.Message.Should().Be("Object 2 refers to object 9 0 under /Kids[1]/A, which the file lacks: the reference reads as null.");
     }
 
-    [Fact]
-    public void A_reference_to_nothing_after_a_kid_to_nothing_is_the_one_described()
+    [Theory]
+    [InlineData(8)]
+    [InlineData(9)]
+    public void A_reference_to_nothing_after_a_kid_to_nothing_is_the_one_described(int foo)
     {
         // A kid naming nothing is page-tree.kid-invalid's, and the walk does not count it: describing the node's one counted
-        // reference passes over it, to /Foo.
+        // reference passes over it, to /Foo. One that names the object the kid names, which the walk met first, through the
+        // kid, is counted where it is written all the same.
         var finding = Single(
-            Validate(PdfTemplate.SoundWith("/Kids [3 0 R]", "/Kids [9 0 R 3 0 R] /Foo 8 0 R")),
+            Validate(PdfTemplate.SoundWith("/Kids [3 0 R]", $"/Kids [9 0 R 3 0 R] /Foo {foo} 0 R")),
             PdfValidationRuleIds.ObjectReferenceMissing);
 
-        finding.Message.Should().Be("Object 2 refers to object 8 0 under /Foo, which the file lacks: the reference reads as null.");
+        finding.Message.Should().Be($"Object 2 refers to object {foo} 0 under /Foo, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
+    public void References_to_one_object_the_file_lacks_are_counted_wherever_they_are_written_whichever_was_met_first()
+    {
+        // The catalog names object 9 first; the page names it three times after. Each reference is counted where it is
+        // written, in the object that holds it, whatever reference the walk met it through first.
+        var report = Validate(PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Outlines 9 0 R", StringComparison.Ordinal)
+            .Replace("/Resources << >> >>", "/Resources << >> /Annots [9 0 R 9 0 R] /Thumb 9 0 R >>", StringComparison.Ordinal)));
+
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.ObjectReferenceMissing).Select(finding => finding.Message).Should().Equal(
+            "Object 1 refers to object 9 0 under /Outlines, which the file lacks: the reference reads as null.",
+            "Object 3 holds 3 references to objects the file lacks, which read as null; the first refers to object 9 0 under /Annots[0].");
+    }
+
+    [Fact]
+    public void An_object_the_index_lacks_until_a_load_rebuilds_it_is_walked_where_the_walk_runs_on_an_unsettled_index()
+    {
+        // Validation settles the index first, and the graph tells an object the file lacks by the index alone. Run on an index
+        // a load can still rebuild — object 4 written in the file, its row lost with the section /Prev names —, the graph
+        // asks for the object all the same, as resolving the reference does: the load rebuilds the index and finds it, and
+        // the graph walks it, to the reference to nothing it holds.
+        var file = PdfTemplate.Build(PdfTemplate.Sound
+            .Replace("/Type /Catalog /Pages 2 0 R", "/Type /Catalog /Pages 2 0 R /Foo 4 0 R", StringComparison.Ordinal)
+            .Replace("xref\n0 4\n", "4 0 obj\n<< /A 9 0 R >>\nendobj\nxref\n0 4\n", StringComparison.Ordinal)
+            .Replace("/Size 4", "/Size 4 /Prev 9999999", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+        var pages = PageTreeWalk.Run(document);
+        document.Reader.GetPresence(4).Should().Be(ObjectPresence.Missing, "the index the chain gave lacks it");
+
+        var graph = ObjectGraph.Run(document, pages);
+
+        document.WasRepaired.Should().BeTrue();
+        graph.MissingReferences.Select(finding => finding.Message).Should().Equal(
+            "Object 4 refers to object 9 0 under /A, which the file lacks: the reference reads as null.");
+    }
+
+    [Fact]
+    public void An_object_a_rebuild_finds_lacking_after_the_walk_claimed_it_is_counted_for_the_reference_that_claimed_it()
+    {
+        // The update's trailer runs past MaxTrailerLength before its /Prev, so that an object only the original section could
+        // index — the page tree, 2, and object 9, which no section indexes — is unknown rather than missing, and claimed
+        // when the catalog names it. The catalog names object 5 last, which the update's table places where it is not:
+        // reading it first rebuilds the index, which finds 2 and not 9, missing now. Run on an index a load can still
+        // rebuild, the walk counts 9 when it reads it, for the catalog that claimed it, and each reference met after, as
+        // the page tree's.
+        var original = new TestPdfBuilder()
+            .WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .WithObject(2, "<< /Type /Pages /Kids [] /Count 0 /Foo 9 0 R >>")
+            .BuildClassic(rootNumber: 1);
+        var text = Encoding.Latin1.GetString(TestPdfBuilder.AppendIncrementalUpdate(
+            original,
+            rootNumber: 1,
+            [(1, $"<< /Type /Catalog /Pages 2 0 R /Foo 9 0 R /Bar 5 0 R /Note ({new string('x', 2000)}) >>"), (5, "<< /Five 5 >>")]));
+        var five = string.Create(CultureInfo.InvariantCulture, $"{text.LastIndexOf("5 0 obj", StringComparison.Ordinal):D10} 00000 n");
+        var trailer = text.LastIndexOf("/Root 1 0 R /Prev", StringComparison.Ordinal);
+        var file = Encoding.Latin1.GetBytes(text
+            .Insert(trailer + "/Root 1 0 R".Length, $" /Pad ({new string('x', 70 * 1024)})")
+            .Replace(five, "0000000010 00000 n", StringComparison.Ordinal));
+        using var document = PdfDocument.Open(file);
+        var pages = PageTreeWalk.Run(document);
+        document.Reader.GetPresence(9).Should().Be(ObjectPresence.Unindexed, "a guard left part of the chain unread");
+
+        var graph = ObjectGraph.Run(document, pages);
+
+        document.WasRepaired.Should().BeTrue();
+        document.Reader.GetPresence(9).Should().Be(ObjectPresence.Missing, "the rebuild read the whole file");
+        graph.MissingReferences.Select(finding => finding.Message).Should().Equal(
+            "Object 1 refers to object 9 0 under /Foo, which the file lacks: the reference reads as null.",
+            "Object 2 refers to object 9 0 under /Foo, which the file lacks: the reference reads as null.");
     }
 
     [Fact]

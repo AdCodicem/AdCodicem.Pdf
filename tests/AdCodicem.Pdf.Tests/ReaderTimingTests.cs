@@ -386,6 +386,51 @@ public class ReaderTimingTests
             orderedTime);
     }
 
+    [Fact]
+    public void A_page_tree_node_of_four_times_the_kids_is_walked_in_about_four_times_the_time_once_the_cache_lets_go_of_it()
+    {
+        // A page tree node lists 20,000 pages, another 80,000, each opened with a cache of 64 objects, which lets go of the
+        // node long before its last kid. The walk's frame keeps the node's array of kids, as the parse made it, rather than
+        // the node (#201): four times the kids take about four times as long. Reading the node again for each kid once the
+        // cache let go of it would read it again every 63 kids, sixteen times as long: 11 s for 50,000 kids, 57 s for
+        // 100,000. The measure is the ratio, the best walk of each, run in turn.
+        const int Small = 20_000;
+        const int Large = 4 * Small;
+        var options = new PdfReaderOptions { ObjectCacheCapacity = 64 };
+        using var small = PdfDocument.Open(Node(Small), options);
+        using var large = PdfDocument.Open(Node(Large), options);
+        small.Reader.SettleIndex();
+        large.Reader.SettleIndex();
+
+        var (smallTime, largeTime) = BestOfEach(() => Walk(small, Small), () => Walk(large, Large));
+
+        largeTime.Should().BeLessThan(
+            smallTime * 8,
+            "four times the kids must cost about four times the time ({0} for {1:N0}, {2} for {3:N0})",
+            smallTime,
+            Small,
+            largeTime,
+            Large);
+
+        static void Walk(PdfDocument document, int kids) => PageTreeWalk.Run(document).PageCount.Should().Be(kids);
+
+        static byte[] Node(int kids)
+        {
+            var builder = new TestPdfBuilder().WithObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            var listed = new StringBuilder(kids * 8);
+
+            for (var kid = 3; kid < kids + 3; kid++)
+            {
+                listed.Append(CultureInfo.InvariantCulture, $"{kid} 0 R ");
+                builder.WithObject(kid, "<< /Type /Page /Parent 2 0 R >>");
+            }
+
+            return builder
+                .WithObject(2, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages /Count {kids} /MediaBox [0 0 612 792] /Resources << >> /Kids [{listed}] >>"))
+                .BuildClassic(rootNumber: 1);
+        }
+    }
+
     /// <summary>
     /// Gets the shortest run of each action, the two run in turn: five times each at least, and on until neither has run
     /// faster for three turns — at most forty turns, or twenty seconds —, so that both are timed warm whatever ran before.

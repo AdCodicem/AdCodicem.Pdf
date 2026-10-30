@@ -13,8 +13,11 @@ namespace AdCodicem.Pdf.Validation;
 /// of the file's index, which four cross-reference rules read; the walk of the page tree, which the page tree rules
 /// and the object rules read; the walk of the objects reachable from the trailer; the walk that checks their shapes
 /// against the Arlington PDF Model; and which object streams need themselves to be read. None of them keeps the
-/// objects it resolved: those stay in the reader's cache, bounded by <see cref="PdfReaderOptions.ObjectCacheCapacity"/> —
-/// but for the Arlington walk's queue, which holds the values written inside the objects it has still to check (#309).
+/// objects it resolved: those stay in the reader's cache, bounded by <see cref="PdfReaderOptions.ObjectCacheCapacity"/>.
+/// Of what they have still to visit, the object graph keeps the numbers of the objects it claimed and has not read
+/// (#168), and the page tree walk the arrays of kids along its path, not the nodes that hold them (#201). The exception is
+/// the Arlington walk's queue, which holds the values written inside the objects it has still to check: filed as debt
+/// (#309).
 /// </para>
 /// <para>
 /// Each analysis is made with the <see cref="Room"/> the report has when a rule first asks for it, and writes, of each kind

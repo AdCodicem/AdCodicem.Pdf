@@ -674,6 +674,26 @@ public class PageTreeRuleTests
         finding.Message.Should().Be("Page tree node 4 has no /Count; 2 pages lie below it.", "null in a dictionary is absence (ISO 32000-1, 7.3.7)");
     }
 
+    [Theory]
+    [InlineData("/Count 7 0 R", "9", "Page tree node 4 gives /Count 9, and 2 pages lie below it.")]
+    [InlineData("/Count 7 0 R", "2", null)]
+    [InlineData("/Count 7 0 R", "(2)", null)]
+    [InlineData("/Count 5 0 R", "null", null)]
+    [InlineData("/Count 4 0 R", "null", null)]
+    public void A_count_read_through_a_reference_is_judged_as_one_written_in_the_node(string count, string seventh, string? message)
+    {
+        // The node's /Count is read when the walk enters it, so that its frame keeps what the node gives rather than the node
+        // (#201): one that names an integer is judged as an integer written there, and one that names anything else — a
+        // string, a page below the node, the node itself — is not this rule's.
+        using var document = PdfDocument.Open(TreeWith("/Kids [5 0 R 6 0 R] /Count 2", "/Kids [5 0 R 6 0 R] " + count, seventh));
+
+        var report = new PdfValidator().Validate(document);
+
+        report.Findings.Where(finding => finding.RuleId == PdfValidationRuleIds.PageTreeCountMismatch).Select(finding => finding.Message)
+            .Should().Equal(message is null ? [] : [message]);
+        PageTreeWalk.Run(document).PageCount.Should().Be(3, "a /Count read through a reference changes nothing of what the tree lists");
+    }
+
     [Fact]
     public void A_node_without_kids_lacks_its_count_as_well()
     {

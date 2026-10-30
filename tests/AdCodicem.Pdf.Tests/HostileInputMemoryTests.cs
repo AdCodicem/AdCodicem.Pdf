@@ -210,14 +210,18 @@ public class HostileInputMemoryTests
         held.Should().BeLessThan((32L * 1024 * 1024) + (3L * Bound), $"memory was sampled {source.Samples} times");
     }
 
-    [Fact]
-    public void Walking_a_chain_of_references_holds_what_the_reader_keeps_whatever_its_length()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Walking_a_chain_of_references_holds_what_the_reader_keeps_whatever_its_length(bool referenceLast)
     {
-        // Two hundred objects, each naming the next under /Next, its first key, and holding a string of 200,000 bytes, opened
-        // with a cache of eight objects. The object graph described each object from the value it walked, which held every
-        // link of the chain at once until the chain's end: 41 MB, growing with the chain. It reads an object again to
-        // describe it, so that what stays live is what the reader keeps — its cache, the windows it reads through —: 14 MB,
-        // the same for a chain of a hundred.
+        // Two hundred objects, each naming the next under /Next and holding a string of 200,000 bytes, opened with a cache
+        // of eight objects. With /Next first, the object graph described each object from the value it walked, which held
+        // every link of the chain at once until the chain's end: 41 MB, growing with the chain; it reads an object again to
+        // describe it. With /Next last, its stack held each object's /Pad, met before /Next and walked only once the chain
+        // had ended: 40 MB, and 80 MB for a chain of four hundred (#168); it walks an object whole when it reads it, and
+        // keeps of the next only its number. What stays live either way is what the reader keeps — its cache, the windows it
+        // reads through —: 13 MB, the same for a chain of a hundred or of four hundred.
         const int Links = 200;
         var pad = new string('x', 200_000);
         var builder = new TestPdfBuilder()
@@ -226,21 +230,62 @@ public class HostileInputMemoryTests
 
         for (var link = 3; link < Links + 3; link++)
         {
-            builder.WithObject(link, string.Create(CultureInfo.InvariantCulture, $"<< /Next {link + 1} 0 R /Pad ({pad}) >>"));
+            builder.WithObject(
+                link,
+                referenceLast
+                    ? string.Create(CultureInfo.InvariantCulture, $"<< /Pad ({pad}) /Next {link + 1} 0 R >>")
+                    : string.Create(CultureInfo.InvariantCulture, $"<< /Next {link + 1} 0 R /Pad ({pad}) >>"));
         }
 
         builder.WithObject(Links + 3, "null");
         var source = new SamplingSource(builder.BuildClassic(rootNumber: 1));
         using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 8 }, ownsSource: true);
+        document.Reader.SettleIndex();
         var pages = Validation.PageTreeWalk.Run(document);
         var before = GC.GetTotalMemory(forceFullCollection: true);
         source.Sampling = true;
 
-        Validation.ObjectGraph.Run(document, pages);
+        var graph = Validation.ObjectGraph.Run(document, pages);
 
         source.Sampling = false;
+        graph.MissingReferences.Total.Should().Be(0, "the chain ends at a literal null");
         var held = source.MostLive - before;
         held.Should().BeLessThan(20L * 1024 * 1024, $"memory was sampled {source.Samples} times");
+    }
+
+    [Fact]
+    public void Walking_a_deep_page_tree_whose_nodes_carry_large_values_holds_what_the_reader_keeps_whatever_its_depth()
+    {
+        // Four hundred page tree nodes, each the one kid of the node above it and carrying a string of 100,000 bytes after
+        // its /Kids, the last listing a page, opened with a cache of 64 objects. The walk kept each node on its path in its
+        // frame, past the reader's cache, until it left the node: 40 MB, and 80 MB for eight hundred nodes (#201). A frame
+        // keeps the node's /Count and its array of kids, not the node, and what stays live is what the reader keeps, its
+        // cache: 7 MB, the same for two hundred nodes or eight hundred.
+        const int Depth = 400;
+        var big = new string('x', 100_000);
+        var builder = new TestPdfBuilder().WithObject(1, "<< /Type /Catalog /Pages 3 0 R >>");
+        var last = Depth + 2;
+
+        for (var node = 3; node <= last; node++)
+        {
+            var parent = node == 3 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $"/Parent {node - 1} 0 R ");
+            builder.WithObject(node, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Pages {parent}/Kids [{node + 1} 0 R] /Count 1 /Big ({big}) >>"));
+        }
+
+        builder.WithObject(last + 1, string.Create(CultureInfo.InvariantCulture, $"<< /Type /Page /Parent {last} 0 R /MediaBox [0 0 612 792] /Resources << >> >>"));
+        var source = new SamplingSource(builder.BuildClassic(rootNumber: 1)) { Every = 4 };
+        using var document = PdfDocument.Open(source, PdfReaderOptions.Default with { ObjectCacheCapacity = 64 }, ownsSource: true);
+        document.Reader.SettleIndex();
+        var before = GC.GetTotalMemory(forceFullCollection: true);
+        source.Sampling = true;
+
+        var walk = Validation.PageTreeWalk.Run(document);
+
+        source.Sampling = false;
+        walk.PageCount.Should().Be(1);
+        walk.CountMismatches.Total.Should().Be(0, "each node gives the one page below it");
+        var held = source.MostLive - before;
+        held.Should().BeLessThan(16L * 1024 * 1024, $"memory was sampled {source.Samples} times");
     }
 
     [Fact]

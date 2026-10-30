@@ -28,6 +28,15 @@ namespace AdCodicem.Pdf.Validation;
 /// says the walk is partial.
 /// </para>
 /// <para>
+/// A frame keeps of its node the <c>/Count</c> it gives, read when the node is entered, and the array of kids the parse
+/// made, never the node: what a node holds beside them is the reader's to keep, so that a path of nodes each carrying a
+/// large value holds what the reader's cache holds, however deep (#201). The arrays of kids along the path are held, some
+/// 40 bytes a kid: a path of nodes that each list many kids holds them all, in proportion to the file (#311). A kid written
+/// in an array rather than referred to, which only a file that breaks ISO 32000-1 (7.7.3.2) writes, each such kid
+/// reported, is held with its array until its node is left. Reading a node again for each kid instead would read a node of
+/// many kids again every few dozen of them once the cache let go of it: a time that grows with the square of its kids.
+/// </para>
+/// <para>
 /// Nor is anything kept of the faults it finds past the room the report has: it is made with that room, writes of each
 /// kind of fault the first it finds up to it, and counts the rest, which the report could not keep (#168). A node of a
 /// million invalid kids costs it a count. What a finding names — a kid's path, <c>/Kids[12]</c>, its node, what it leads
@@ -654,9 +663,16 @@ internal sealed class PageTreeWalk
             JudgedKidsArrays.Add(kidsArray.Number);
         }
 
+        // The node's /Count is read now, so that its frame keeps what it gives rather than the node (#201). One that names an
+        // object a guard kept from the reader is unknown, whatever was read of it.
+        var count = Given(node, PdfName.Count);
+        long? declared = count is not null && !NamesHiddenObject(count) && count.Resolve() is PdfInteger { Value: var value } ? value : null;
+
         // A node a limit cut may give past the cut what its pages inherit, and a /Count of what lies below it.
-        var frame = new Frame(node, place, walksKids ? kids : [], kidsArray)
+        var frame = new Frame(place, walksKids ? kids : [], kidsArray)
         {
+            CountAbsent = count is null,
+            DeclaredCount = declared,
             PagesBefore = _pages,
             GivesMediaBox = ownBox is not null || parent?.GivesMediaBox == true || cut,
             HasResources = Given(node, PdfName.Resources) is not null || parent?.HasResources == true || cut,
@@ -743,27 +759,19 @@ internal sealed class PageTreeWalk
             _stack[^1].Uncountable = true;
         }
 
-        switch (Given(frame.Node, PdfName.Count))
+        if (frame.CountAbsent)
         {
-            case null:
-                // Missing whether or not the pages below can be counted; unknown where a limit cut the node.
-                if (!frame.Cut)
-                {
-                    CountMissing(frame.Place, below, countable: !frame.Doubtful);
-                }
-
-                break;
-
-            // One that names an object a guard kept from the reader is unknown, whatever was read of it.
-            case var count when !frame.Doubtful && !NamesHiddenObject(count) && count.Resolve() is PdfInteger { Value: var declared } && declared != below:
-                if (CountMismatches.Take())
-                {
-                    CountMismatches.Keep(new ProbeFinding(
-                        Location(frame.Place),
-                        Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {RuleText.Pages(below)} {Lie(below)} below it.")));
-                }
-
-                break;
+            // Missing whether or not the pages below can be counted; unknown where a limit cut the node.
+            if (!frame.Cut)
+            {
+                CountMissing(frame.Place, below, countable: !frame.Doubtful);
+            }
+        }
+        else if (!frame.Doubtful && frame.DeclaredCount is { } declared && declared != below && CountMismatches.Take())
+        {
+            CountMismatches.Keep(new ProbeFinding(
+                Location(frame.Place),
+                Invariant($"{Subject(frame.Place, NodeKind)} gives /Count {declared}, and {RuleText.Pages(below)} {Lie(below)} below it.")));
         }
     }
 
@@ -1117,16 +1125,23 @@ internal sealed class PageTreeWalk
     }
 
     /// <summary>A node of the tree the walk is below, and what the pages under it inherit.</summary>
-    private sealed class Frame(PdfDictionary node, Place place, PdfArray kids, PdfObjectId kidsArray)
+    /// <remarks>
+    /// It keeps of the node what the walk still asks once the node is entered — its <c>/Count</c>, read then, and its array
+    /// of kids —, never the node itself: a node holds what it likes beside them, which the reader's cache lets go of while
+    /// the walk is below it (#201).
+    /// </remarks>
+    private sealed class Frame(Place place, PdfArray kids, PdfObjectId kidsArray)
     {
-        public PdfDictionary Node { get; } = node;
-
         /// <summary>Gets where the node is written.</summary>
         public Place Place { get; } = place;
 
         /// <summary>Gets the node's object number, or 0 when it is written inside another object.</summary>
         public PdfObjectId Id => Place.Id;
 
+        /// <summary>
+        /// Gets the node's kids, the array the parse made, held while the node is on the path; a kid written in it rather
+        /// than referred to, which only an invalid file writes, is held with it.
+        /// </summary>
         public PdfArray Kids { get; } = kids;
 
         /// <summary>Gets the node's array of kids when it is an object of its own, or a number 0.</summary>
@@ -1153,6 +1168,18 @@ internal sealed class PageTreeWalk
 
         /// <summary>Gets or sets the index of the next kid to visit.</summary>
         public int Next { get; set; }
+
+        /// <summary>
+        /// Gets a value indicating whether the node gives no <c>/Count</c>: it lacks one, or gives <c>null</c>, which in a
+        /// dictionary is absence.
+        /// </summary>
+        public bool CountAbsent { get; init; }
+
+        /// <summary>
+        /// Gets the <c>/Count</c> the node gives, read when it was entered: null when it is absent, is no integer, or names an
+        /// object a guard kept from the reader, which is unknown whatever was read of it.
+        /// </summary>
+        public long? DeclaredCount { get; init; }
 
         /// <summary>Gets or sets how many pages the walk had counted when it entered the node.</summary>
         public long PagesBefore { get; init; }

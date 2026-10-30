@@ -20,6 +20,24 @@ namespace AdCodicem.Pdf.Validation;
 /// of numbers already met stops them.
 /// </para>
 /// <para>
+/// Each object is walked whole when it is read, in the order it is written, and claims the objects its references name
+/// that no reference named before: what the walk keeps of an object still to read is its number, with the object that
+/// named it first and the role of that reference — 16 bytes —, never a value written in the object that named it (#168).
+/// A chain of references so holds what the reader keeps, whatever the objects along it hold beside the reference and
+/// wherever they write it. The objects claimed are read last claimed first, so that a tree of objects is read as a
+/// depth-first walk of what it holds would read it, the last value first. Walking one object keeps a place for each level
+/// of nesting it is in, which the parser bounds in an object read from a file; a value a caller built nests as deep as it
+/// was built, and one that holds itself is walked without end (#310).
+/// </para>
+/// <para>
+/// The walk runs on a settled index (<see cref="PdfFileReader.SettleIndex"/>), as validation makes it before its first
+/// rule: the objects the file lacks are then the ones the index lacked when it was settled, so that a reference to one is
+/// told when it is met, without a load — the object is asked for all the same, as resolving the reference asks for it —,
+/// and counted at each place it is written. On an index a load could still rebuild, an object claimed when the index did not
+/// lack it — held it, or a guard left it unknown — may be lacked once it is read: it is counted then for the reference that
+/// claimed it, and for each one met after, not for those met in between.
+/// </para>
+/// <para>
 /// It keeps what it found wrong, counted by the object that holds it, and works out where in that object the first
 /// fault lies only for the objects that have one, once the walk is done, by reading each of them again: what is held
 /// meanwhile is the reader's cache and the counts. Validation settles the index before its first rule, so that no read in
@@ -37,11 +55,20 @@ internal sealed class ObjectGraph
     private readonly PdfDocument _document;
     private readonly PdfFileReader _reader;
     private readonly PageTreeWalk _pages;
-    private readonly Stack<Item> _work = new();
+
+    /// <summary>The objects claimed and not read yet, by number: never their values, nor those of the objects that named them.</summary>
+    private readonly Stack<Pending> _work = new();
     private readonly HashSet<int> _visited = new(SeededComparer.Instance);
     private readonly HashSet<int> _missing = new(SeededComparer.Instance);
     private readonly SortedDictionary<int, int> _missingReferences = [];
     private readonly SortedDictionary<int, int> _nullCharacterNames = [];
+
+    /// <summary>
+    /// The containers of the value being walked, the first <see cref="_depth"/>, from the outermost to the one being read:
+    /// one a level of nesting, each let go of when it is left, so that none outlives the walk of the object it is in.
+    /// </summary>
+    private Scope[] _scopes = new Scope[8];
+    private int _depth;
 
     private ObjectGraph(PdfDocument document, PageTreeWalk pages, int room)
     {
@@ -77,48 +104,140 @@ internal sealed class ObjectGraph
 
     private void Walk()
     {
-        PushDictionary(_document.Trailer, owner: 0, Role.Trailer);
+        Scan(_document.Trailer, owner: 0, Role.Trailer);
 
-        while (_work.TryPop(out var item))
+        while (_work.TryPop(out var pending))
         {
-            switch (item.Value)
+            var number = pending.Id.Number;
+            var value = _reader.GetObject(pending.Id);
+
+            // Null for an object the index holds in use is a literal null, or one the reader could not produce, which the
+            // cross-reference rules report: there is nothing in it to walk. One the file lacks was told when it was met,
+            // the index being settled; one lacked only now is lacked by an index a load rebuilt since it was claimed, which
+            // a settled index never is, and is counted for the reference that claimed it.
+            if (value is PdfNull && _reader.GetPresence(number) == ObjectPresence.Missing)
             {
-                case PdfReference reference:
-                    Follow(reference, item);
-                    break;
-
-                case PdfStream stream:
-                    PushDictionary(stream.Dictionary, item.Owner, item.Role);
-                    break;
-
-                case PdfDictionary dictionary:
-                    PushDictionary(dictionary, item.Owner, item.Role);
-                    break;
-
-                case PdfArray array:
-                    var role = ElementRole(item.Role);
-
-                    foreach (var element in array)
-                    {
-                        _work.Push(new Item(element, item.Owner, role));
-                    }
-
-                    break;
-
-                case PdfName name when HasNullCharacter(name):
-                    Tally(_nullCharacterNames, item.Owner);
-                    break;
+                _missing.Add(number);
+                CountMissing(pending.Role, pending.Owner);
+                continue;
             }
+
+            Scan(value, number, RoleOf(number));
         }
     }
 
-    private void Follow(PdfReference reference, Item item)
+    /// <summary>
+    /// Walks <paramref name="value"/>, written in object <paramref name="owner"/> or, 0, in the trailer, whole and in the
+    /// order it is written: the names and references it holds are met, and the containers it holds walked in their turn.
+    /// </summary>
+    private void Scan(PdfObject value, int owner, Role role)
+    {
+        Meet(value, owner, role);
+
+        while (_depth > 0)
+        {
+            ref var scope = ref _scopes[_depth - 1];
+            PdfObject next;
+            Role nextRole;
+
+            if (scope.Array is { } array)
+            {
+                if (scope.Next >= array.Count)
+                {
+                    Leave(ref scope);
+                    continue;
+                }
+
+                next = array[scope.Next++];
+                nextRole = scope.Role;
+            }
+            else if (scope.Entries.MoveNext())
+            {
+                var (key, entry) = scope.Entries.Current;
+
+                if (HasNullCharacter(key))
+                {
+                    Tally(_nullCharacterNames, owner);
+                }
+
+                if (IsSectionKey(key, scope.Role))
+                {
+                    continue;
+                }
+
+                next = entry;
+                nextRole = EntryRole(key, entry, scope.Role);
+            }
+            else
+            {
+                Leave(ref scope);
+                continue;
+            }
+
+            // Last: meeting a container enters it, which may move the scopes.
+            Meet(next, owner, nextRole);
+        }
+    }
+
+    /// <summary>
+    /// Meets <paramref name="value"/>, written in object <paramref name="owner"/> with <paramref name="role"/>: a reference
+    /// is claimed, a container entered, and a name with a null character counted.
+    /// </summary>
+    private void Meet(PdfObject value, int owner, Role role)
+    {
+        switch (value)
+        {
+            case PdfReference reference:
+                Claim(reference, owner, role);
+                break;
+
+            case PdfStream stream:
+                Enter(new Scope { Entries = stream.Dictionary.GetEnumerator(), Role = role });
+                break;
+
+            case PdfDictionary dictionary:
+                Enter(new Scope { Entries = dictionary.GetEnumerator(), Role = role });
+                break;
+
+            case PdfArray array:
+                Enter(new Scope { Array = array, Role = ElementRole(role) });
+                break;
+
+            case PdfName name when HasNullCharacter(name):
+                Tally(_nullCharacterNames, owner);
+                break;
+        }
+    }
+
+    private void Enter(Scope scope)
+    {
+        if (_depth == _scopes.Length)
+        {
+            Array.Resize(ref _scopes, _depth * 2);
+        }
+
+        _scopes[_depth++] = scope;
+    }
+
+    /// <summary>Leaves the innermost container, <paramref name="scope"/>, and lets go of it.</summary>
+    private void Leave(ref Scope scope)
+    {
+        scope = default;
+        _depth--;
+    }
+
+    /// <summary>
+    /// Claims the object <paramref name="reference"/> names, written in object <paramref name="owner"/> with
+    /// <paramref name="role"/>, for the walk to read later, unless a reference named it before; or counts the reference
+    /// when it names an object the file lacks, each time it is met.
+    /// </summary>
+    private void Claim(PdfReference reference, int owner, Role role)
     {
         var number = reference.Id.Number;
 
         if (_missing.Contains(number))
         {
-            CountMissing(item);
+            CountMissing(role, owner);
             return;
         }
 
@@ -127,47 +246,24 @@ internal sealed class ObjectGraph
             return;
         }
 
-        var value = _reader.GetObject(reference.Id);
-
-        if (value is PdfNull)
+        // A settled index lacks an object as it did when it was settled, which a load does not change: the reference is
+        // null, and the object is asked for all the same, as resolving the reference asks for it — without a load. On an
+        // index a load could still rebuild, one that finds the object leaves it claimed, to be read.
+        if (_reader.GetPresence(number) == ObjectPresence.Missing && _reader.GetObject(reference.Id) is PdfNull)
         {
-            // Null for an object the index holds in use is a literal null, or one the reader could not produce, which
-            // the cross-reference rules report; only an object the file lacks is this walk's.
-            if (_reader.GetPresence(number) == ObjectPresence.Missing)
-            {
-                _missing.Add(number);
-                CountMissing(item);
-            }
-
+            _missing.Add(number);
+            CountMissing(role, owner);
             return;
         }
 
-        _work.Push(new Item(value, number, RoleOf(number)));
+        _work.Push(new Pending(reference.Id, owner, role));
     }
 
-    private void CountMissing(Item item)
+    private void CountMissing(Role role, int owner)
     {
-        if ((item.Role & Role.Uncounted) == 0)
+        if ((role & Role.Uncounted) == 0)
         {
-            Tally(_missingReferences, item.Owner);
-        }
-    }
-
-    private void PushDictionary(PdfDictionary dictionary, int owner, Role role)
-    {
-        foreach (var (key, value) in dictionary)
-        {
-            if (HasNullCharacter(key))
-            {
-                Tally(_nullCharacterNames, owner);
-            }
-
-            if (IsSectionKey(key, role))
-            {
-                continue;
-            }
-
-            _work.Push(new Item(value, owner, EntryRole(key, value, role)));
+            Tally(_missingReferences, owner);
         }
     }
 
@@ -446,11 +542,27 @@ internal sealed class ObjectGraph
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>A value still to visit, the object that holds it, and what the other rules make of it.</summary>
-    /// <param name="Value">The value.</param>
-    /// <param name="Owner">The number of the indirect object that holds it, or 0 for the trailer.</param>
-    /// <param name="Role">What the page tree walk and the other rules make of the value.</param>
-    private readonly record struct Item(PdfObject Value, int Owner, Role Role);
+    /// <summary>An object claimed and not read yet, and the reference that claimed it.</summary>
+    /// <param name="Id">The object, as the reference names it.</param>
+    /// <param name="Owner">The number of the indirect object the reference is written in, or 0 for the trailer.</param>
+    /// <param name="Role">What the page tree walk and the other rules make of the reference.</param>
+    private readonly record struct Pending(PdfObjectId Id, int Owner, Role Role);
+
+    /// <summary>A container of the value being walked, and how far the walk has read it.</summary>
+    private struct Scope
+    {
+        /// <summary>The array, or null for a dictionary or a stream's dictionary.</summary>
+        public PdfArray? Array;
+
+        /// <summary>The dictionary's entries, past the last one met.</summary>
+        public Dictionary<PdfName, PdfObject>.Enumerator Entries;
+
+        /// <summary>The index of the array's next element.</summary>
+        public int Next;
+
+        /// <summary>The dictionary's role, or the role of the array's elements.</summary>
+        public Role Role;
+    }
 
     /// <summary>
     /// What the page tree walk and the other rules make of a value, which decides whose a reference to nothing in it is:
