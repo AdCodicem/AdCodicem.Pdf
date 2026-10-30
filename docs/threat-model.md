@@ -190,9 +190,9 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
   method group of, a member that takes it, gives it, views it or names its pairs, in an array, a reference or a type
   argument included, at any depth, or a static field declared on a type built over its pairs or a view of it, is
   refused, and through `object`, a non-generic interface or an expression tree, which names its members by token, it is
-  not followed; and a table over such a key, a type parameter, or one that enumerates by hash, built for a type argument
-  by a `new()` constraint, or for it or any type parameter, whatever its constraints, by the library's own `new()`,
-  which compiles to `Activator`, or by `Activator`, `Lazy`, `LazyInitializer`, a `ConditionalWeakTable`'s
+  not followed; and a table over such a key, a key holding a type parameter, or one that enumerates by hash, built for a
+  type argument by a `new()` constraint, or for it or any type parameter, whatever its constraints, by the library's own
+  `new()`, which compiles to `Activator`, or by `Activator`, `Lazy`, `LazyInitializer`, a `ConditionalWeakTable`'s
   `GetOrCreateValue`, a `BindingList`, which builds one for `AddNew`, or `Marshal.PtrToStructure` — the builders a sweep
   of .NET 10's shared framework found that may build a table, none handing it a comparer, a `Lazy` or a `BindingList`
   one of them builds counting as the table it builds in turn —; and a generic JSON deserializer of `System.Text.Json` or
@@ -200,12 +200,12 @@ bucket, every lookup walking tens of thousands of entries ([#155]).
   comparer unless its options or the type say otherwise, out of the reading's sight: the library reads no JSON. The
   library builds no type parameter it is given, generic code taking a factory instead: what its callers give it, through
   a dispatch, a constrained call or a default implementation as well as a call, is not all read. The library builds no
-  hash collection over a type parameter, whatever its comparer, since its callers choose the key; how the hash of a type
-  the library hashes by hand spreads is held by its own tests, as `PdfObjectId`'s and `PdfDiagnostic`'s are; a
-  collection built through reflection otherwise, an `UnsafeAccessor`'s among them, whose body the runtime writes, or one
-  a framework method returns under another type, is not read. It reads through the probes code coverage puts, and only
-  their shape: any other instruction between the comparer and the table refuses it. The other reads the sources and
-  names the file and line of the shapes it recognizes.
+  hash collection over a key holding a type parameter, at any depth, whatever its comparer, since its callers choose the
+  key; how the hash of a type the library hashes by hand spreads is held by its own tests, as `PdfObjectId`'s and
+  `PdfDiagnostic`'s are; a collection built through reflection otherwise, an `UnsafeAccessor`'s among them, whose body
+  the runtime writes, or one a framework method returns under another type, is not read. It reads through the probes
+  code coverage puts, and only their shape: any other instruction between the comparer and the table refuses it. The
+  other reads the sources and names the file and line of the shapes it recognizes.
 
 ### Everything read is bounded by the source
 
@@ -557,8 +557,8 @@ Known gaps:
   file cannot reach.
 - **A reading of the code** (`SeededComparerTests`), compiled and as written: every hash collection built over numbers
   takes the seeded comparer, so that no table a later change adds hashes numbers a file chose as themselves; none is
-  built over a type parameter, whose key its callers choose; and none that enumerates by hash is built, whatever its
-  key, but `PdfName`'s interning table.
+  built over a key holding a type parameter, which its callers choose; and none that enumerates by hash is built,
+  whatever its key, but `PdfName`'s interning table.
 - **Budgets on real documents, and on a generated index.** `CorpusReadingTests` holds what indexing a 1,000-page document and walking its
   page tree allocate, and each operation on every corpus document — opening it, reading every object, walking its
   pages, validating a damaged one — to 20 s. `CorpusValidationTests.Validating_the_largest_document_stays_within_its_budget`

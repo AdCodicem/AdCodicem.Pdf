@@ -337,10 +337,10 @@ public class SeededComparerTests
         // derive from, a type deriving from a tuple holding one, a pair or another struct that keeps .NET's default
         // hash, or hides it with new, which a table does not call, and which hashes one holding a reference, a floating
         // point number, padding or a field with an equality of its own by its first non-null field alone, or what a
-        // boxed number may be keyed as, any object, a value type or any interface, behind which a boxed tuple, record
-        // or struct may stand too, which no comparer of a number seeds: an identity table is keyed by a reference type
-        // of the library with ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash
-        // — concurrent, frozen or immutable, its factories, its builder and an immutable one's Empty included, a
+        // boxed number may be keyed as, object, ValueType or any interface, behind which a boxed tuple, record or
+        // struct may stand too, which no comparer of a number seeds: an identity table is keyed by a reference type of
+        // the library with ReferenceEqualityComparer.Instance, never by object. A collection that enumerates by hash —
+        // concurrent, frozen or immutable, its factories, its builder and an immutable one's Empty included, a
         // StringDictionary or an obsolete XmlSchemaCollection, however built — is refused whatever its key and
         // comparer: a hash that goes through a seed, now or after a later change, would order what it gives (invariant
         // 6), and no key is argued one by one. The one named and let be is PdfName's interning table, keyed by strings,
@@ -348,15 +348,15 @@ public class SeededComparerTests
         // the library reaches, through its type or a generic interface of it, only to find or add one name. An
         // enumeration's values are the library's own, and how the hash of a type the library hashes by hand spreads is
         // held by its own tests, as PdfObjectId's and PdfDiagnostic's are. The library builds no hash collection over a
-        // type parameter, whatever its comparer: its callers choose its key, and no reading follows them; nor does it
-        // give such a table type where a new() constraint, Activator, Lazy, LazyInitializer, a ConditionalWeakTable's
-        // GetOrCreateValue, a BindingList or Marshal.PtrToStructure builds it, a Lazy or a BindingList one of them
-        // builds counting as the table it builds in turn, nor build a type parameter it is given, whatever its
-        // constraints, its own new() compiling to Activator, since what its callers give it is not all read — no new()
-        // constraint of .NET 10's shared framework can stand for a table, and one of the library's is read in its own
-        // body —, nor deserialize JSON into a type argument, which builds every table that type holds with .NET's
-        // default comparer unless its options or the type say otherwise, out of the reading's sight: the library reads
-        // no JSON.
+        // key holding a type parameter, at any depth, whatever its comparer: its callers choose its key, and no reading
+        // follows them; nor does it give such a table type where a new() constraint, Activator, Lazy, LazyInitializer,
+        // a ConditionalWeakTable's GetOrCreateValue, a BindingList or Marshal.PtrToStructure builds it, a Lazy or a
+        // BindingList one of them builds counting as the table it builds in turn, nor build a type parameter it is
+        // given, whatever its constraints, its own new() compiling to Activator, since what its callers give it is not
+        // all read — no new() constraint of .NET 10's shared framework can stand for a table, and one of the library's
+        // is read in its own body —, nor deserialize JSON into a type argument, which builds every table that type
+        // holds with .NET's default comparer unless its options or the type say otherwise, out of the reading's sight:
+        // the library reads no JSON.
         var violations = new List<string>();
 
         foreach (var (method, built) in CompiledRules.TablesBuilt(typeof(SeededComparer).Assembly.GetTypes(), typeof(PdfName)))
@@ -372,13 +372,13 @@ public class SeededComparerTests
     {
         // The check above sees what a source reading cannot: an out var given [], an expression body, a comparer handed
         // on one path only, a base constructor, a factory, a collection expression lowered to one, a method group, a
-        // table over a type parameter whatever its comparer, a table type a new() constraint, or one or any type
-        // parameter that the library's own new(), Activator, Lazy, LazyInitializer, a ConditionalWeakTable, a
-        // BindingList or Marshal.PtrToStructure builds, or a Lazy or a BindingList one of them builds, a JSON
-        // deserializer whatever its type argument, a table keyed by any object, a value type or any interface, a type
-        // deriving from a tuple, read through the tuple it hashes as, a record that is not sealed, a non-generic hash
-        // table, and a collection that enumerates by hash, seeded or not: the order the process's seed gives it would
-        // reach what the library reports or writes (invariant 6). The samples hold, one per condition, shapes the
+        // table over a key holding a type parameter, at any depth, whatever its comparer, a table type a new()
+        // constraint, or one or any type parameter that the library's own new(), Activator, Lazy, LazyInitializer, a
+        // ConditionalWeakTable, a BindingList or Marshal.PtrToStructure builds, or a Lazy or a BindingList one of them
+        // builds, a JSON deserializer whatever its type argument, a table keyed by object, ValueType or any interface,
+        // a type deriving from a tuple, read through the tuple it hashes as, a record that is not sealed, a non-generic
+        // hash table, and a collection that enumerates by hash, seeded or not: the order the process's seed gives it
+        // would reach what the library reports or writes (invariant 6). The samples hold, one per condition, shapes the
         // source reading sees as well: every number type and every hashing operator among them.
         var refused = Refused(typeof(Unseeded));
 
@@ -577,6 +577,65 @@ public class SeededComparerTests
             nameof(Unseeded.ObjectItemKey),
             nameof(Unseeded.ObjectItemChildKey),
             nameof(Unseeded.NullablePairKey),
+            nameof(Unseeded.CreatedNullables),
+            nameof(Unseeded.CreatedObjects),
+            nameof(Unseeded.CreatedValueTypes),
+            nameof(Unseeded.CreatedInterfaces),
+            nameof(Unseeded.CreatedTuples),
+            nameof(Unseeded.CreatedStructs),
+            nameof(Unseeded.CreatedTupleChildren),
+            nameof(Unseeded.CreatedOpenRecords),
+            nameof(Unseeded.CreatedRecords),
+            nameof(Unseeded.ValueTypeItemKey),
+            nameof(Unseeded.InterfaceItemKey),
+            nameof(Unseeded.PaddedItemKey),
+            nameof(Unseeded.TupleChildItemKey),
+            nameof(Unseeded.OpenRecordItemKey),
+            nameof(Unseeded.RecordItemKey),
+            nameof(Unseeded.ValueTypeItemChildKey),
+            nameof(Unseeded.InterfaceItemChildKey),
+            nameof(Unseeded.PaddedItemChildKey),
+            nameof(Unseeded.TupleChildItemChildKey),
+            nameof(Unseeded.OpenRecordItemChildKey),
+            nameof(Unseeded.RecordItemChildKey),
+            nameof(Unseeded.CaseInsensitiveView),
+            nameof(Unseeded.ActivatorBound),
+            nameof(Unseeded.LazyTable),
+            nameof(Unseeded.LazyGeneric),
+            nameof(Unseeded.LazyConcurrent),
+            nameof(Unseeded.LazyBound),
+            nameof(Unseeded.WeakGeneric),
+            nameof(Unseeded.WeakConcurrent),
+            nameof(Unseeded.WeakBound),
+            nameof(Unseeded.BoundGeneric),
+            nameof(Unseeded.BoundConcurrent),
+            nameof(Unseeded.BoundOfBound),
+            nameof(Unseeded.ActivatorLazyTable),
+            nameof(Unseeded.ActivatorLazyGeneric),
+            nameof(Unseeded.ActivatorLazyConcurrent),
+            nameof(Unseeded.ActivatorLazyBound),
+            nameof(Unseeded.ActivatorWrapped),
+            nameof(Unseeded.LazyWrapped),
+            nameof(Unseeded.WeakWrapped),
+            nameof(Unseeded.BoundWrapped),
+            nameof(Unseeded.ActivatorLazyWrapped),
+            nameof(Unseeded.WrappedTable),
+            nameof(Unseeded.WrappedGeneric),
+            nameof(Unseeded.WrappedConcurrent),
+            nameof(Unseeded.WrappedLazy),
+            nameof(Unseeded.WrappedBound),
+            nameof(Unseeded.WrappedTwice),
+            nameof(Unseeded.FilledTable),
+            nameof(Unseeded.Fill),
+            nameof(Unseeded.MadeGeneric),
+            nameof(Unseeded.MadeConcurrent),
+            nameof(Unseeded.MadeLazy),
+            nameof(Unseeded.MadeWrappedTable),
+            nameof(Unseeded.MadeWrappedGeneric),
+            nameof(Unseeded.MadeWrappedConcurrent),
+            nameof(Unseeded.MadeWrappedLazy),
+            nameof(Unseeded.MadeWrappedBound),
+            nameof(Unseeded.MadeWrappedTwice),
             "EntryDictionary",
             nameof(Unseeded.LazyConstrained),
             nameof(Unseeded.ActivatorLazyOpen),
@@ -608,11 +667,12 @@ public class SeededComparerTests
         // another type builds, a frozen or immutable one, and a call to, or a method group of, a member that enumerates
         // it, views it, copies it, hands it out or names its pairs, in an array, a reference or a type argument
         // included, at any depth, and a static field declared on a type built over its pairs or a view of it, are
-        // refused, and finding or adding one entry, through its type or an interface of it, is not. One built in a
-        // loop, which may run it more than once, is refused too, whether the loop's branch lands on the construction or
-        // ahead of it. Its static constructor is read after its methods, and the other type before it, so that a
-        // condition left out lets be another table than the one it should, which the constructor's parameters tell
-        // apart.
+        // refused, and finding or adding one entry through GetOrAdd, TryAdd, TryGetValue, ContainsKey or the indexer's
+        // getter, declared on its type, its pairs or a generic interface of it, is not; any other member of them is
+        // refused. One built in a loop, which may run it more than once, is refused too, whether the loop's branch
+        // lands on the construction or ahead of it. Its static constructor is read after its methods, and the other
+        // type before it, so that a condition left out lets be another table than the one it should, which the
+        // constructor's parameters tell apart.
         var refused = CompiledRules.TablesBuilt([typeof(Interning), typeof(Interned)], typeof(Interned))
             .Select(found => $"{found.Method.DeclaringType!.Name}.{found.Method.Name}: {CompiledRules.Describe(found.Built)}({Parameters(found.Built)})");
 
@@ -648,6 +708,11 @@ public class SeededComparerTests
             "Interned.Postponed: Interned.Later()",
             "Interned.Paired: KeyValuePair`2<String, Interned>..ctor(String, Interned)",
             "Interned.FromArray: IList`1<ConcurrentDictionary`2>.get_Item(Int32)",
+            "Interned.MultiViews: IReadOnlyDictionary`2[,]..ctor(Int32, Int32)",
+            "Interned.TypedViews: Interned.CountOf()",
+            "Interned.Forwarded: Interned.Pairs(List`1)",
+            "Interned.ViewsGiven: Interned.ViewsOf()",
+            "Interned.ViewLists: List`1<IReadOnlyDictionary`2[]>.get_Count()",
             "Interned..cctor: ConcurrentDictionary`2<String, Int32>..ctor(IEqualityComparer`1)",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor()",
             "Interned..cctor: ConcurrentDictionary`2<String, Interned>..ctor(IEqualityComparer`1)");
@@ -670,6 +735,9 @@ public class SeededComparerTests
         CompiledRules.TablesBuilt([typeof(LoopedSwitchLast)], typeof(LoopedSwitchLast))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedSwitchLast>..ctor");
+        CompiledRules.TablesBuilt([typeof(LoopedSwitchFirst)], typeof(LoopedSwitchFirst))
+            .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
+            .Should().Equal(".cctor: ConcurrentDictionary`2<String, LoopedSwitchFirst>..ctor");
         CompiledRules.TablesBuilt([typeof(Instanced)], typeof(Instanced))
             .Select(found => $"{found.Method.Name}: {CompiledRules.Describe(found.Built)}")
             .Should().Equal(".ctor: ConcurrentDictionary`2<String, Instanced>..ctor");
@@ -1195,6 +1263,125 @@ public class SeededComparerTests
 
         public static HashSet<Pair?> NullablePairKey() => [];
 
+        public static int CreatedNullables() => Activator.CreateInstance<HashSet<int?>>().Count;
+
+        public static int CreatedObjects() => Activator.CreateInstance<HashSet<object>>().Count;
+
+        public static int CreatedValueTypes() => Activator.CreateInstance<HashSet<ValueType>>().Count;
+
+        public static int CreatedInterfaces() => Activator.CreateInstance<HashSet<IComparable>>().Count;
+
+        public static int CreatedTuples() => Activator.CreateInstance<HashSet<(long, int)>>().Count;
+
+        public static int CreatedStructs() => Activator.CreateInstance<HashSet<Padded>>().Count;
+
+        public static int CreatedTupleChildren() => Activator.CreateInstance<HashSet<TupleChild>>().Count;
+
+        public static int CreatedOpenRecords() => Activator.CreateInstance<HashSet<HandHashedBase>>().Count;
+
+        public static int CreatedRecords() => Activator.CreateInstance<HashSet<Numbered>>().Count;
+
+        public static HashSet<(string, ValueType)> ValueTypeItemKey() => [];
+
+        public static HashSet<(string, IComparable)> InterfaceItemKey() => [];
+
+        public static HashSet<(string, Padded)> PaddedItemKey() => [];
+
+        public static HashSet<(string, TupleChild)> TupleChildItemKey() => [];
+
+        public static HashSet<(string, HandHashedBase)> OpenRecordItemKey() => [];
+
+        public static HashSet<(string, Numbered)> RecordItemKey() => [];
+
+        public static HashSet<ValueTypeItemChild> ValueTypeItemChildKey() => [];
+
+        public static HashSet<InterfaceItemChild> InterfaceItemChildKey() => [];
+
+        public static HashSet<PaddedItemChild> PaddedItemChildKey() => [];
+
+        public static HashSet<TupleChildItemChild> TupleChildItemChildKey() => [];
+
+        public static HashSet<OpenRecordItemChild> OpenRecordItemChildKey() => [];
+
+        public static HashSet<RecordItemChild> RecordItemChildKey() => [];
+
+        public static System.Collections.IDictionary CaseInsensitiveView() => System.Collections.Specialized.CollectionsUtil.CreateCaseInsensitiveHashtable();
+
+        public static int ActivatorBound() => Activator.CreateInstance<System.ComponentModel.BindingList<HashSet<int>>>().Count;
+
+        public static Lazy<Hashtable> LazyTable() => new();
+
+        public static Lazy<HashSet<T>> LazyGeneric<T>() => new();
+
+        public static Lazy<ConcurrentDictionary<string, int>> LazyConcurrent() => new();
+
+        public static Lazy<System.ComponentModel.BindingList<HashSet<int>>> LazyBound() => new();
+
+        public static int WeakGeneric<T>(System.Runtime.CompilerServices.ConditionalWeakTable<object, HashSet<T>> table, object key) => table.GetOrCreateValue(key).Count;
+
+        public static int WeakConcurrent(System.Runtime.CompilerServices.ConditionalWeakTable<object, ConcurrentDictionary<string, int>> table, object key) => table.GetOrCreateValue(key).Count;
+
+        public static int WeakBound(System.Runtime.CompilerServices.ConditionalWeakTable<object, System.ComponentModel.BindingList<HashSet<int>>> table, object key) => table.GetOrCreateValue(key).Count;
+
+        public static int BoundGeneric<T>() => new System.ComponentModel.BindingList<HashSet<T>>().Count;
+
+        public static int BoundConcurrent() => new System.ComponentModel.BindingList<ConcurrentDictionary<string, int>>().Count;
+
+        public static int BoundOfBound() => new System.ComponentModel.BindingList<System.ComponentModel.BindingList<HashSet<int>>>().Count;
+
+        public static Lazy<Hashtable> ActivatorLazyTable() => Activator.CreateInstance<Lazy<Hashtable>>();
+
+        public static int ActivatorLazyGeneric<T>() => Activator.CreateInstance<Lazy<HashSet<T>>>().Value.Count;
+
+        public static int ActivatorLazyConcurrent() => Activator.CreateInstance<Lazy<ConcurrentDictionary<string, int>>>().Value.Count;
+
+        public static int ActivatorLazyBound() => Activator.CreateInstance<Lazy<System.ComponentModel.BindingList<HashSet<int>>>>().Value.Count;
+
+        public static object ActivatorWrapped() => Activator.CreateInstance<Wrapper<HashSet<int>>>();
+
+        public static Lazy<Wrapper<HashSet<int>>> LazyWrapped() => new();
+
+        public static object WeakWrapped(System.Runtime.CompilerServices.ConditionalWeakTable<object, Wrapper<HashSet<int>>> table, object key) => table.GetOrCreateValue(key);
+
+        public static int BoundWrapped() => new System.ComponentModel.BindingList<Wrapper<HashSet<int>>>().Count;
+
+        public static Lazy<Wrapper<HashSet<int>>> ActivatorLazyWrapped() => Activator.CreateInstance<Lazy<Wrapper<HashSet<int>>>>();
+
+        public static Wrapper<Hashtable> WrappedTable() => new();
+
+        public static Wrapper<HashSet<T>> WrappedGeneric<T>() => new();
+
+        public static Wrapper<ConcurrentDictionary<string, int>> WrappedConcurrent() => new();
+
+        public static Wrapper<Lazy<HashSet<int>>> WrappedLazy() => new();
+
+        public static Wrapper<System.ComponentModel.BindingList<HashSet<int>>> WrappedBound() => new();
+
+        public static Wrapper<Wrapper<HashSet<int>>> WrappedTwice() => new();
+
+        public static int FilledTable() => Fill<Hashtable>();
+
+        public static int Fill<T>()
+            where T : new() => new T() is null ? 0 : 1;
+
+        public static int MadeGeneric<T>() => Make<HashSet<T>>().Count;
+
+        public static int MadeConcurrent() => Make<ConcurrentDictionary<string, int>>().Count;
+
+        public static int MadeLazy() => Make<Lazy<HashSet<int>>>().Value.Count;
+
+        public static Wrapper<Hashtable> MadeWrappedTable() => Make<Wrapper<Hashtable>>();
+
+        public static Wrapper<HashSet<T>> MadeWrappedGeneric<T>() => Make<Wrapper<HashSet<T>>>();
+
+        public static Wrapper<ConcurrentDictionary<string, int>> MadeWrappedConcurrent() => Make<Wrapper<ConcurrentDictionary<string, int>>>();
+
+        public static Wrapper<Lazy<HashSet<int>>> MadeWrappedLazy() => Make<Wrapper<Lazy<HashSet<int>>>>();
+
+        public static Wrapper<System.ComponentModel.BindingList<HashSet<int>>> MadeWrappedBound() => Make<Wrapper<System.ComponentModel.BindingList<HashSet<int>>>>();
+
+        public static Wrapper<Wrapper<HashSet<int>>> MadeWrappedTwice() => Make<Wrapper<Wrapper<HashSet<int>>>>();
+
         public static int EmptyNamedDictionary() => ImmutableDictionary<string, int>.Empty.Add("name", 1).Count;
 
         public static int DictionaryBuilder() => ImmutableDictionary.CreateBuilder<long, int>().Count;
@@ -1444,6 +1631,38 @@ public class SeededComparerTests
     /// <summary>A key deriving from a tuple whose only item a file steers is typed as an object, one level below it.</summary>
     private sealed class ObjectItemChild(string first, object second) : Tuple<string, object>(first, second);
 
+    /// <summary>
+    /// A key deriving from a tuple whose only item a file steers is typed ValueType, one level below it.
+    /// </summary>
+    private sealed class ValueTypeItemChild(string first, ValueType second) : Tuple<string, ValueType>(first, second);
+
+    /// <summary>
+    /// A key deriving from a tuple whose only item a file steers is typed by an interface, one level below it.
+    /// </summary>
+    private sealed class InterfaceItemChild(string first, IComparable second) : Tuple<string, IComparable>(first, second);
+
+    /// <summary>
+    /// A key deriving from a tuple whose only item a file steers is a struct keeping .NET's default hash, one level
+    /// below it.
+    /// </summary>
+    private sealed class PaddedItemChild(string first, Padded second) : Tuple<string, Padded>(first, second);
+
+    /// <summary>
+    /// A key deriving from a tuple whose only item a file steers is a type deriving from a tuple, one level below it.
+    /// </summary>
+    private sealed class TupleChildItemChild(string first, TupleChild second) : Tuple<string, TupleChild>(first, second);
+
+    /// <summary>
+    /// A key deriving from a tuple whose only item a file steers is a record that is not sealed, one level below it.
+    /// </summary>
+    private sealed class OpenRecordItemChild(string first, HandHashedBase second) : Tuple<string, HandHashedBase>(first, second);
+
+    /// <summary>
+    /// A key deriving from a tuple whose only item a file steers is a record whose hash the compiler writes, one level
+    /// below it.
+    /// </summary>
+    private sealed class RecordItemChild(string first, Numbered second) : Tuple<string, Numbered>(first, second);
+
     /// <summary>A record hashed by hand that is not sealed: a record derived from it, hashed as the compiler writes, may stand behind it.</summary>
     private record HandHashedBase(string Name)
     {
@@ -1617,6 +1836,18 @@ public class SeededComparerTests
         }
 
         public static int Arrayed() => CountViews(new IReadOnlyDictionary<string, Interned>[1]);
+
+        public static int MultiViews() => new IReadOnlyDictionary<string, Interned>[1, 1].Length;
+
+        public static int TypedViews() => CountOf<IReadOnlyDictionary<string, Interned>[]>();
+
+        public static int Forwarded(List<KeyValuePair<string, Interned>> pairs) => Pairs(pairs);
+
+        public static bool ViewsGiven() => ViewsOf() is not null;
+
+        private static IReadOnlyDictionary<string, Interned>[] ViewsOf() => null!;
+
+        public static int ViewLists(List<IReadOnlyDictionary<string, Interned>[]> lists) => lists.Count;
 
         private static string JoinOf<T>() => string.Join(",", (IEnumerable<T>)Table);
 
@@ -1899,6 +2130,46 @@ public class SeededComparerTests
         public static LoopedSwitchLast Get(string value) => Table.GetOrAdd(value, static _ => new LoopedSwitchLast());
     }
 
+    /// <summary>
+    /// A stand-in whose static constructor builds its table at the head of a loop only the first case of a switch
+    /// closes.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1810:Initialize reference type static fields inline",
+        Justification = "The sample is a static constructor that builds its table in a loop.")]
+    private sealed class LoopedSwitchFirst
+    {
+        private static readonly ConcurrentDictionary<string, LoopedSwitchFirst>[] Shards = new ConcurrentDictionary<string, LoopedSwitchFirst>[5];
+
+        private static readonly ConcurrentDictionary<string, LoopedSwitchFirst> Table;
+
+        static LoopedSwitchFirst()
+        {
+            var i = 0;
+
+            for (; ; )
+            {
+                Table = new(StringComparer.Ordinal);
+                Shards[i] = Table;
+
+                switch (i++)
+                {
+                    case 0:
+                        continue;
+                    case 1:
+                        return;
+                    case 2:
+                        return;
+                    default:
+                        return;
+                }
+            }
+        }
+
+        public static LoopedSwitchFirst Get(string value) => Table.GetOrAdd(value, static _ => new LoopedSwitchFirst());
+    }
+
     /// <summary>A stand-in whose instance constructor builds its table, again at each instance, into a static field.</summary>
     private sealed class Instanced
     {
@@ -1966,7 +2237,9 @@ public class SeededComparerTests
 #pragma warning restore CS0618
         ];
 
-        /// <summary>The calls on the interning table that find or add one entry, and enumerate nothing.</summary>
+        /// <summary>
+        /// The only calls on the interning table let be: each finds or adds one entry and enumerates nothing.
+        /// </summary>
         private static readonly HashSet<string> Lookups = ["GetOrAdd", "TryAdd", "TryGetValue", "ContainsKey", "get_Item"];
 
         /// <summary>The frozen and immutable hash collections, which their factories, and an immutable one's <c>Empty</c>, build.</summary>
@@ -2002,23 +2275,24 @@ public class SeededComparerTests
         /// Gets each hash collection over a steerable key a method of <paramref name="types"/> builds without the
         /// comparer of its key, taken last, being SeededComparer.Instance handed to it straight — the instruction
         /// before it the property's getter, and it no branch's target, so that no other path reaches it. A method group
-        /// takes no comparer. A collection over a type parameter is refused whatever its comparer: its key is whatever
-        /// its callers choose, and so is the comparer they hand it, which no reading follows. A table type given where
-        /// <c>new()</c>, Lazy, LazyInitializer, a ConditionalWeakTable's GetOrCreateValue, a BindingList or
-        /// Marshal.PtrToStructure builds it, or Activator, takes no comparer either, nor does a Lazy or a BindingList
-        /// one of them builds, nor any type parameter, whatever its constraints, which the library never builds since
-        /// what its callers give it is not all read, nor what a JSON deserializer builds, whatever its type argument,
-        /// since its options or the type may choose a comparer out of the reading's sight, nor a table keyed by any
-        /// object. A collection that enumerates in an order its keys' hashes set — a concurrent dictionary, a frozen or
-        /// immutable hash collection, its builder or an immutable one's <c>Empty</c> — is refused whatever its key and
-        /// its comparer: no key, comparer or hash can be read to say that a seed, which differs from one process to the
-        /// next, orders nothing it gives. One is let be, the interning table of <paramref name="interning"/>, PdfName
-        /// for the library: a concurrent dictionary from strings to it, the first its static constructor builds ahead
-        /// of every branch target and stores straight into a static field, reached through its type or a generic
-        /// interface of it only to find or add one entry; a call to, or a method group of, a member that takes it,
-        /// gives it, views it or names its pairs, in an array, a reference or a type argument included, at any depth,
-        /// or a static field declared on a type built over its pairs or a view of it, is refused. Through object, a
-        /// non-generic interface or an expression tree, which names its members by token, it is not followed.
+        /// takes no comparer. A collection over a key holding a type parameter, at any depth, is refused whatever its
+        /// comparer: its key is whatever its callers choose, and so is the comparer they hand it, which no reading
+        /// follows. A table type given where <c>new()</c>, Lazy, LazyInitializer, a ConditionalWeakTable's
+        /// GetOrCreateValue, a BindingList or Marshal.PtrToStructure builds it, or Activator, takes no comparer either,
+        /// nor does a Lazy or a BindingList one of them builds, nor any type parameter, whatever its constraints, which
+        /// the library never builds since what its callers give it is not all read, nor what a JSON deserializer
+        /// builds, whatever its type argument, since its options or the type may choose a comparer out of the reading's
+        /// sight, nor a table keyed by any object. A collection that enumerates in an order its keys' hashes set — a
+        /// concurrent dictionary, a frozen or immutable hash collection, its builder or an immutable one's <c>Empty</c>
+        /// — is refused whatever its key and its comparer: no key, comparer or hash can be read to say that a seed,
+        /// which differs from one process to the next, orders nothing it gives. One is let be, the interning table of
+        /// <paramref name="interning"/>, PdfName for the library: a concurrent dictionary from strings to it, the first
+        /// its static constructor builds ahead of every branch target and stores straight into a static field, reached
+        /// through its type or a generic interface of it only to find or add one entry, through the lookups above; a
+        /// call to, or a method group of, a member that takes it, gives it, views it or names its pairs, in an array, a
+        /// reference or a type argument included, at any depth, or a static field declared on a type built over its
+        /// pairs or a view of it, is refused. Through object, a non-generic interface or an expression tree, which
+        /// names its members by token, it is not followed.
         /// </summary>
         public static IEnumerable<(MethodBase Method, MemberInfo Built)> TablesBuilt(IEnumerable<Type> types, Type? interning = null)
         {
@@ -2096,11 +2370,11 @@ public class SeededComparerTests
                 : $"{built.DeclaringType?.Name}.{built.Name}";
 
         /// <summary>
-        /// Determines whether <paramref name="member"/> builds a hash collection over a key a file can steer or a type
-        /// parameter stands for, or one that enumerates by hash whatever its key, and gets that key: null for what no
-        /// comparer can seed — a non-generic hash table or a type derived from one, keyed by any object or, as a
-        /// <see cref="System.Collections.Specialized.StringDictionary"/> is, by strings in a hash table that enumerates
-        /// by hash, built by its constructor or returned by a method under its own type, as
+        /// Determines whether <paramref name="member"/> builds a hash collection over a key a file can steer or one
+        /// holding a type parameter, at any depth, or one that enumerates by hash whatever its key, and gets that key:
+        /// null for what no comparer can seed — a non-generic hash table or a type derived from one, keyed by any
+        /// object or, as a <see cref="System.Collections.Specialized.StringDictionary"/> is, by strings in a hash table
+        /// that enumerates by hash, built by its constructor or returned by a method under its own type, as
         /// <see cref="System.Collections.Specialized.CollectionsUtil"/> and some framework getters do, or what
         /// <see cref="BuildsTypeArgument"/> finds built for a type argument. A generic table keyed by any object gets
         /// that key, which <see cref="Steerable"/> counts.
@@ -2237,11 +2511,11 @@ public class SeededComparerTests
         }
 
         /// <summary>
-        /// Determines whether building <paramref name="type"/> builds a hash table over a steerable key or a type
-        /// parameter, a non-generic hash table or a type derived from one, or a concurrent dictionary whatever its key:
-        /// it is one, a type whose <c>new()</c> constraint builds one for it, or a Lazy or a BindingList over what may
-        /// be one, which another builder builds through its parameterless constructor, the Lazy building its value
-        /// without a factory and the BindingList an item for AddNew.
+        /// Determines whether building <paramref name="type"/> builds a hash table over a steerable key or one holding
+        /// a type parameter, at any depth, a non-generic hash table or a type derived from one, or a concurrent
+        /// dictionary whatever its key: it is one, a type whose <c>new()</c> constraint builds one for it, or a Lazy or
+        /// a BindingList over what may be one, which another builder builds through its parameterless constructor, the
+        /// Lazy building its value without a factory and the BindingList an item for AddNew.
         /// </summary>
         private static bool CreatesTable(Type type) =>
             IsNonGeneric(type)
@@ -2304,8 +2578,9 @@ public class SeededComparerTests
                 return Steerable(value);
             }
 
-            // A number, or what a boxed one may be keyed as — any object, a value type, an interface —, which hashes as the
-            // number does; any interface, since a boxed tuple, record or struct keeping the default hash may stand behind it.
+            // A number, or what a boxed one may be keyed as — object, ValueType, an interface —, which hashes as the
+            // number does; any interface, since a boxed tuple, record or struct keeping the default hash may stand
+            // behind it.
             if (Numbers.Contains(key) || key == typeof(object) || key == typeof(ValueType) || key.IsInterface)
             {
                 return true;
