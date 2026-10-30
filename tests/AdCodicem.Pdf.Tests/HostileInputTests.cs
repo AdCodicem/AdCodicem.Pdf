@@ -1706,6 +1706,72 @@ public class HostileInputTests
         document.ObjectNumbers.Should().Equal(1, 2, 4, 3);
     }
 
+    [Theory]
+    [InlineData("entries")]
+    [InlineData("keys")]
+    [InlineData("validations")]
+    public void A_trailer_taken_before_a_rebuild_is_left_as_it_was_and_the_next_one_is_the_rebuilt_one(string loop)
+    {
+        // #237's shape: the newest trailer names /Bar 4 0 R and a /Prev nothing is at, and an older one gives /Foo and /Info.
+        // Resolving /Bar rebuilds the index, and so does validating, which merges the older trailer: into the very dictionary
+        // the loop enumerated, which threw at its next step. It merges into a new one, which the next call gives (#167).
+        using var document = PdfDocument.Open(PdfTemplate.Build(ConvergenceShapes.TrailerPrevLastTemplate));
+        var taken = document.Trailer;
+
+        switch (loop)
+        {
+            case "entries":
+                foreach (var (_, value) in document.Trailer)
+                {
+                    _ = value.Resolve();
+                }
+
+                break;
+
+            case "keys":
+                foreach (var key in document.Trailer.Keys)
+                {
+                    _ = document.Trailer[key]!.Resolve();
+                }
+
+                break;
+
+            default:
+                foreach (var (_, _) in document.Trailer)
+                {
+                    _ = new PdfValidator().Validate(document);
+                }
+
+                break;
+        }
+
+        document.WasRepaired.Should().BeTrue();
+        taken.Keys.Select(key => key.Value).Should().Equal("Size", "Root", "Bar", "Prev");
+        document.Trailer.Should().NotBeSameAs(taken);
+        document.Trailer.Keys.Select(key => key.Value).Should().BeEquivalentTo(["Size", "Root", "Bar", "Prev", "Foo", "Info"]);
+        document.Catalog.Should().BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
+    }
+
+    [Fact]
+    public void An_encryption_a_rebuild_merges_is_in_the_next_trailer_and_not_in_one_taken_before()
+    {
+        // #237's shape, the older trailer giving /Encrypt: the document opens as unencrypted, and the rebuild reading /Bar sets
+        // off merges /Encrypt into the trailer the document gives next, which IsEncrypted reads (#154); the trailer taken
+        // before keeps none (#167).
+        var template = ConvergenceShapes.TrailerPrevLastTemplate.Replace(
+            "/Info << /Title 5 >>", "/Encrypt << /Filter /Standard /V 1 /R 2 /O <00> /U <00> /P -4 >>", StringComparison.Ordinal);
+        using var document = PdfDocument.Open(PdfTemplate.Build(template));
+        var taken = document.Trailer;
+        document.IsEncrypted.Should().BeFalse();
+
+        _ = document.GetObject(new PdfObjectId(4));
+
+        document.WasRepaired.Should().BeTrue();
+        taken.ContainsKey(PdfName.Encrypt).Should().BeFalse();
+        document.Trailer.ContainsKey(PdfName.Encrypt).Should().BeTrue();
+        document.IsEncrypted.Should().BeTrue();
+    }
+
     [Fact]
     public void Enumerating_the_diagnostics_across_a_read_that_rebuilds_the_index_gives_the_entries_it_began_with()
     {

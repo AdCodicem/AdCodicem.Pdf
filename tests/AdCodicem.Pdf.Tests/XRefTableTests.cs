@@ -1,4 +1,5 @@
 using AdCodicem.Pdf.IO.XRef;
+using AdCodicem.Pdf.Objects;
 using FsCheck;
 using FsCheck.Fluent;
 
@@ -6,8 +7,8 @@ namespace AdCodicem.Pdf.Tests;
 
 /// <summary>
 /// The room the index makes for the rows a section is about to give, before it records them (#164), how it finds a
-/// number's entry, in a slot or in its seeded map (#155), and what an enumeration of its numbers keeps through a rebuild
-/// (#167).
+/// number's entry, in a slot or in its seeded map (#155), and what an enumeration of its numbers, or a trailer it handed
+/// out, keeps through a rebuild (#167).
 /// </summary>
 public class XRefTableTests
 {
@@ -514,6 +515,34 @@ public class XRefTableTests
 
             return table;
         }
+    }
+
+    [Fact]
+    public void A_renewed_trailer_holds_what_the_one_it_replaces_held_in_its_order_and_leaves_that_one_as_it_was()
+    {
+        // A rebuild merges trailers into the index's, and sets or removes its /Root: in a copy, so that a trailer taken
+        // before is left as it was (#167).
+        var table = new PdfXRefTable();
+        table.MergeTrailer(new PdfDictionary
+        {
+            [PdfName.Size] = PdfInteger.Create(4),
+            [PdfName.Root] = new PdfReference(new PdfObjectId(1)),
+            [PdfName.Info] = new PdfReference(new PdfObjectId(3)),
+        });
+        var taken = table.Trailer;
+
+        table.RenewTrailer();
+        var renewed = table.Trailer;
+
+        renewed.Should().NotBeSameAs(taken);
+        renewed.Should().Equal(taken, "the copy holds the same values, in the same order");
+
+        renewed.Remove(PdfName.Root);
+        table.MergeTrailer(new PdfDictionary { [PdfName.Encrypt] = PdfNull.Instance });
+
+        taken.Keys.Should().Equal(PdfName.Size, PdfName.Root, PdfName.Info);
+        table.Trailer.Should().BeSameAs(renewed);
+        renewed.Keys.Should().BeEquivalentTo([PdfName.Size, PdfName.Info, PdfName.Encrypt]);
     }
 
     [Fact]

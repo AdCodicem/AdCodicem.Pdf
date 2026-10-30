@@ -21,6 +21,14 @@ namespace AdCodicem.Pdf.Documents;
 /// caches what it parses, so one document belongs to one thread at a time. Several documents can of course be processed
 /// in parallel, and the reader holds no shared mutable state to make that unsafe.
 /// <para>
+/// A rebuild after opening changes what the document answers next, not what it handed out (#167). <see cref="WasRepaired"/>,
+/// <see cref="ObjectCount"/> and the entries <see cref="Diagnostics"/> holds change at once; the next enumeration of
+/// <see cref="ObjectNumbers"/> gives the rebuilt index's numbers, and the next <see cref="Trailer"/> the rebuilt trailer,
+/// which <see cref="Catalog"/> and <see cref="IsEncrypted"/> read. An enumeration under way, of the object numbers or of
+/// the diagnostics, goes on over what it began with, and never throws for the rebuild; a trailer taken before, and every
+/// object read before, is left as it was.
+/// </para>
+/// <para>
 /// Once disposed, a document answers nothing but its <see cref="Diagnostics"/>, the record of its reading, and
 /// <see cref="Dispose"/>: every other member throws <see cref="ObjectDisposedException"/>, and so does whatever reaches
 /// back into it from an object taken before — a reference resolved, through <see cref="PdfReference.Resolve"/> or an
@@ -59,7 +67,13 @@ public sealed class PdfDocument : IDisposable
     /// </remarks>
     public PdfDiagnostics Diagnostics { get; }
 
-    /// <summary>Gets the document trailer.</summary>
+    /// <summary>Gets the document trailer: the trailers of the file's cross-reference sections, merged.</summary>
+    /// <remarks>
+    /// A rebuild of the index after opening — which a read, or the start of a validation, can set off
+    /// (<see cref="WasRepaired"/>) — merges the trailers it finds into a new dictionary, and may set its <c>/Root</c> to a
+    /// catalog it finds: the next call gives that one, and a trailer taken before is left as it was, without them (#167).
+    /// Read it again after reading the document rather than keep it.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfDictionary Trailer
     {
@@ -71,6 +85,10 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>Gets the document catalog, the root of the object graph.</summary>
+    /// <remarks>
+    /// It is read through the <c>/Root</c> of the trailer <see cref="Trailer"/> gives now, which a rebuild of the index
+    /// after opening — set off by a read, or by the start of a validation — replaces (#167).
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public PdfDictionary? Catalog => Trailer.GetDictionary(PdfName.Root);
 
@@ -140,6 +158,11 @@ public sealed class PdfDocument : IDisposable
     }
 
     /// <summary>Gets a value indicating whether the document is encrypted.</summary>
+    /// <remarks>
+    /// It says whether the trailer <see cref="Trailer"/> gives now holds <c>/Encrypt</c>. A rebuild of the index after
+    /// opening — set off by a read, or by the start of a validation — can merge an older trailer's <c>/Encrypt</c> into the
+    /// trailer it makes, so that it can turn true after opening, on a document opened as unencrypted (#154).
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The document was disposed.</exception>
     public bool IsEncrypted => Trailer.ContainsKey(PdfName.Encrypt);
 

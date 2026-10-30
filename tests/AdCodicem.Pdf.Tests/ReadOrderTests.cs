@@ -691,6 +691,31 @@ public class ReadOrderTests
     }
 
     [Fact]
+    public void A_trailer_taken_while_a_rebuild_waits_to_be_finished_is_left_as_it_was_by_the_read_that_finishes_it()
+    {
+        // The file's trailer names no /Root, so that opening searched for the catalog and took object 1. Reading 7 rebuilds
+        // the index, which sets the search's guess aside, and the source fails twice to give 5: the rebuild waits to be
+        // finished, and a trailer taken then has no /Root. The next read finishes it, searches again and sets /Root: in a new
+        // trailer, so that the one taken is left as it was, and so is the one taken at opening, which keeps the guess (#167).
+        var (bytes, five) = MemberWhoseLengthLeadsNowhere(trailer: string.Empty);
+        using var source = new FailingSource(bytes);
+        using var document = PdfDocument.Open(source, options: null, ownsSource: false);
+        var opened = document.Trailer;
+        source.Fail(five, 1, 2);
+
+        FluentActions.Invoking(() => document.GetObject(new PdfObjectId(7))).Should().Throw<IOException>();
+        var waiting = document.Trailer;
+        document.GetObject(new PdfObjectId(1)).Should().BeOfType<PdfDictionary>();
+
+        opened.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1));
+        waiting.Should().NotBeSameAs(opened);
+        waiting.ContainsKey(PdfName.Root).Should().BeFalse();
+        document.Trailer.Should().NotBeSameAs(waiting);
+        document.Trailer.GetRaw(PdfName.Root).Should().BeOfType<PdfReference>().Which.Id.Should().Be(new PdfObjectId(1));
+        document.Catalog.Should().BeSameAs(document.GetObject(new PdfObjectId(1)) as PdfDictionary);
+    }
+
+    [Fact]
     public void An_enumeration_of_the_diagnostics_a_caller_s_source_begins_inside_a_read_ends_with_the_entries_the_read_leaves()
     {
         // Object stream 6's /Length is short, which the finish of the rebuild reading 7 sets off reports before the source
@@ -1299,9 +1324,10 @@ public class ReadOrderTests
 
     /// <summary>
     /// A file whose catalog names object 7, which object stream 6 holds; 6's /Length is object 5, whose row leads to the
-    /// catalog's header. Gives the file and where 5 is.
+    /// catalog's header; its cross-reference stream's dictionary holds <paramref name="trailer"/>. Gives the file and where 5
+    /// is.
     /// </summary>
-    private static (byte[] Bytes, long Five) MemberWhoseLengthLeadsNowhere()
+    private static (byte[] Bytes, long Five) MemberWhoseLengthLeadsNowhere(string trailer = "/Root 1 0 R")
     {
         var file = new HandWrittenFile(version: "1.5");
         var rows = new Dictionary<int, (int Type, long Field2, int Field3)>
@@ -1316,7 +1342,7 @@ public class ReadOrderTests
         rows[7] = (2, 6, 0);
         rows[8] = (1, file.Padding(8), 0);
         var five = file.Object(5, Data.Length.ToString(CultureInfo.InvariantCulture));
-        file.CrossReferenceStream(9, 10, rows, "/Root 1 0 R");
+        file.CrossReferenceStream(9, 10, rows, trailer);
         return (file.Bytes, five);
     }
 

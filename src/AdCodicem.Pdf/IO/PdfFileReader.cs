@@ -578,6 +578,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
     }
 
     /// <summary>Gets the trailer of the document, merged across the whole cross-reference chain.</summary>
+    /// <remarks>
+    /// Read it again rather than keep it: a rebuild merges into a new trailer, leaving the one taken before as it was
+    /// (#167).
+    /// </remarks>
     public PdfDictionary Trailer => _xref.Trailer;
 
     /// <summary>
@@ -6508,6 +6512,11 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var kept = _cutByGuard ? _chainIndex : null;
         _indexFull = false;
         _xref.Clear();
+
+        // What the rebuild sets in the trailer and merges into it — the file's /Root again for a search's guess, the
+        // trailers the scan finds, a catalog it searches for — goes into a copy: a trailer a caller took before is left as
+        // it was, and the next one taken is the rebuilt one (#167).
+        _xref.RenewTrailer();
         _cache.Clear();
         _cacheOrder.Clear();
         _objectStreams.Clear();
@@ -6649,6 +6658,10 @@ internal sealed class PdfFileReader : IPdfObjectSource, IPdfStreamDataProvider
         var attempt = unfinished.Reports ?? MarkReports();
 
         _xref.Clear();
+
+        // A catalog the finish searches for goes into a copy of the trailer too: a caller may have taken it between the
+        // read that left the rebuild unfinished, its finish failed by the source, and this one (#167).
+        _xref.RenewTrailer();
 
         foreach (var (number, entry) in unfinished.Scanned)
         {

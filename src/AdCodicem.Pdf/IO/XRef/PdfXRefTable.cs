@@ -76,7 +76,12 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
     private SortedOffsets? _offsets;
 
     /// <summary>Gets the trailer, merged across every section of the chain.</summary>
-    public PdfDictionary Trailer { get; } = new();
+    /// <remarks>
+    /// What the reader merges into it or sets in it once the document is open, it does in a copy made first
+    /// (<see cref="RenewTrailer"/>), which then takes its place: a trailer handed out is never changed by the reader
+    /// (#167).
+    /// </remarks>
+    public PdfDictionary Trailer { get; private set; } = new();
 
     /// <summary>Gets the number of indexed objects.</summary>
     public int Count => _count;
@@ -443,6 +448,27 @@ internal sealed class PdfXRefTable : IEnumerable<KeyValuePair<int, XRefEntry>>
             _slots = _slots.AsSpan(0, highest + 1).ToArray(),
             _beyond = _beyond is null ? null : new Dictionary<int, int>(_beyond, SeededComparer.Instance),
         };
+    }
+
+    /// <summary>
+    /// Replaces the trailer by a copy of it, holding the same keys, values and order, which what the reader merges or sets
+    /// from then on goes into: a trailer taken before is left as it was (#167).
+    /// </summary>
+    /// <remarks>
+    /// A rebuild calls it as it begins, and again as each attempt to finish it begins when loads in flight left it
+    /// unfinished, before either changes the trailer: each allocates a copy the size of what the reader holds already,
+    /// so that no bound is added (ADR 34).
+    /// </remarks>
+    public void RenewTrailer()
+    {
+        var renewed = new PdfDictionary(Trailer.Count);
+
+        foreach (var (key, value) in Trailer)
+        {
+            renewed.TryAdd(key, value);
+        }
+
+        Trailer = renewed;
     }
 
     /// <summary>Copies trailer keys that are not already known.</summary>
