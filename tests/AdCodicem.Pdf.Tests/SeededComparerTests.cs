@@ -379,7 +379,10 @@ public class SeededComparerTests
         // a type deriving from a tuple, read through the tuple it hashes as, a record that is not sealed, a non-generic
         // hash table, and a collection that enumerates by hash, seeded or not: the order the process's seed gives it
         // would reach what the library reports or writes (invariant 6). The samples hold, one per condition, shapes the
-        // source reading sees as well: every number type and every hashing operator among them.
+        // source reading sees as well: every number type and every hashing operator among them. What they hold is
+        // bounded: dropping, negating or narrowing one condition of the reading, one arm of a helper or one element of
+        // a set it reads, at one place it is read, fails a test, the equivalent mutants aside; a change made along one
+        // call path and not another, or to two conditions at once, is out of that bound.
         var refused = Refused(typeof(Unseeded));
 
         refused.Should().BeEquivalentTo(
