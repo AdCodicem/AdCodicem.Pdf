@@ -53,7 +53,11 @@ rule reports at one severity, always, and its identifier is public API, so that 
 working.
 
 The report is bounded. A hostile file can have a fault in every object; a report that kept every finding would let
-the file decide how much memory validating it takes. It keeps a fixed number, and still counts every one.
+the file decide how much memory validating it takes. It keeps a fixed number, and still counts every one. What builds
+the report is bounded alike: the validator writes no finding the report has no room for, and only counts it, so that a
+fault in each of a million objects costs a count rather than a sentence, and the report holds the findings a report of
+every one would have begun with
+([#168](https://github.com/AdCodicem/AdCodicem.Pdf/issues/168)).
 
 ## Profiles
 
@@ -129,9 +133,14 @@ not decided once reading the headers had consumed twice the file's length, is sa
 wrote them, not as the reader corrected them, and read each object stream where the file's own index places it,
 outside the document's cache: what they find there of a definition the reader no longer serves, once a rebuild serves a
 later one, is noted of no object ([#255](https://github.com/AdCodicem/AdCodicem.Pdf/issues/255)). Working out which
-object streams need one another, they read there too each object written directly in the file that a stream's decoding
-keys lead through, once a validation for as many of them as the document's cache holds. Of an index the reader rebuilt,
-they judge, besides, an object it places in an object stream, written there as a stream — which the reader reads
+object streams need one another, they follow what the reader reads to decode each stream, and nothing it does not —
+its length, type, count and start, then what its filters read of their parameters
+([#277](https://github.com/AdCodicem/AdCodicem.Pdf/issues/277)) —, reading there too each object written directly in
+the file such a value leads through, once a validation for as many of them as the document's cache holds, however many
+streams share it ([#201](https://github.com/AdCodicem/AdCodicem.Pdf/issues/201)), and a member of another object
+stream through the reader. Which streams lead back to themselves through what they need is worked out once, in time
+in proportion to the streams and what they need ([#168](https://github.com/AdCodicem/AdCodicem.Pdf/issues/168)). Of an
+index the reader rebuilt, they judge, besides, an object it places in an object stream, written there as a stream — which the reader reads
 as null —, where the file's own index places nothing under its number, or, where one of the reader's limits stopped the
 chain short, where the part of it the reader read places nothing; the object stream is read where the rebuilt index
 places it ([#161](https://github.com/AdCodicem/AdCodicem.Pdf/issues/161)), and no row the reader read would say that
@@ -143,9 +152,18 @@ reader settled on.
 
 The object and page tree rules walk what the trailer reaches, once: the page tree through its `/Kids`, and every
 object a reference leads to, each walked a single time and read through the document's cache — stream
-dictionaries, never stream data. They keep what they found wrong, counted by object, and a set of the object numbers
-they met, and read an object they found something wrong in again once the walk is done, to say where in it the first
-fault lies; on the corpus's thousand-page journal, opening it and validating it allocates about 3.8 MB. Pages are
+dictionaries, never stream data. They keep what they found wrong, counted by object, a set of the object numbers
+they met, and of what they have still to walk numbers rather than values: the object graph keeps the number of each
+object a reference named and it has not read yet, never a value of the object that named it, and the page tree walk
+keeps, of each node on its path, the `/Count` it gives and its array of kids, never the node
+([#168](https://github.com/AdCodicem/AdCodicem.Pdf/issues/168),
+[#201](https://github.com/AdCodicem/AdCodicem.Pdf/issues/201)). What the objects hold stays the document cache's to
+keep or let go, so that a long chain of references or a deep tree holds what the cache holds. Two walks hold more of a
+hostile file: the arrays of kids along the page tree's path, and the values written inside the objects the Arlington
+walk has still to check ([#311](https://github.com/AdCodicem/AdCodicem.Pdf/issues/311),
+[#309](https://github.com/AdCodicem/AdCodicem.Pdf/issues/309)). They read an object they found something wrong in
+again once the walk is done, to say where in it the first fault lies, while the report has room for its finding; on the
+corpus's thousand-page journal, opening it and validating it allocates about 3.8 MB. Pages are
 counted as the tree lists
 them, as qpdf counts them: a kid that is null, or that names an object the file lacks, takes the place of a page
 with nothing on it. Where the index is sound and whole — the reader rebuilt it neither as the document opened nor

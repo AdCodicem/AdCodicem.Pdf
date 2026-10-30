@@ -78,6 +78,10 @@ keep:
 var validator = new PdfValidator(new PdfValidatorOptions { FindingCapacity = 100 });
 ```
 
+The validator writes no finding past the bound, and only counts it, so a lower bound also makes validating a hostile
+file cheaper: each fault past the bound costs a count, not a message held until the report is made. The findings you
+keep are the first ones a report of every finding would give, and the counts are the same whatever the bound.
+
 `ErrorCount`, `WarningCount` and `InformationCount` count every finding, kept or not, so `HasErrors` is right however
 small the bound.
 
