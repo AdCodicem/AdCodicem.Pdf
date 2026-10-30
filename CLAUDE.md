@@ -162,6 +162,12 @@ over 2 MB, described in `tests/corpus/manifest.json` with origin `remote`, fetch
   input can reach it — conditions that contradict each other, a dead branch, a member nothing calls —, never
   because no file of the corpus does. A defensive branch stays, covered or not. A public member nothing
   calls is a question for the maintainer, not a removal.
+- **Mutation testing is a finite step, apart from the review** (ADR 53). A fixed, first-order catalog is run once
+  over the lines of `src/` a pull request changes, and over the conditions it adds to or changes in a test that
+  reads the library's code. Each mutant changes one thing, at one place the code writes it: no helper specialized at
+  each caller, no mutant of two changes at once. A survivor is a gap in the tests, not a review finding: a test is
+  written that kills it, or it is classed equivalent with its reason, and it is never reopened. Only the survivors
+  are run again, and the tests written to kill them are not mutated in their turn.
 - The documentation site is `docs/website` (Docusaurus). It publishes the user-facing documentation *and*
   `docs/` as they are, so a project document that does not build breaks CI. The user documentation is
   versioned (ADR 31): `docs/website/docs` is the preview; a released line is frozen in
